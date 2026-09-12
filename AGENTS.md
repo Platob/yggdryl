@@ -41,6 +41,9 @@ binding first.
 | datatype variant | `types/` family module, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
 | codec | `coding/<name>.rs` (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
+| string layout | a `StringLayout` variant + `DataTypeId` appended + `types/string/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| byte layout | a `BytesLayout` variant + `DataTypeId` appended + `types/bytes/` (parameters, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
+| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant -> interop both directions -> bench -> bindings -> `docs/charset/` |
 | storage backend | `holder/<name>/` with a location/container/leaf trio over the root traits - `Path`, `Folder`, `File` over a host tree; `Path`, `Node`, `Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `media/<name>/` free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<scheme>:<property>`; never a new `Field` accessor |
@@ -108,11 +111,14 @@ Paths below are under `rust/src/` unless stated otherwise.
 | --- | --- |
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
+| `types/temporal/` | the calendar and clock datatypes, their units and zones, and `iso.rs` - the ISO 8601 spellings every text codec and the scalar renderer write through |
 | `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families |
 | `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
+| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the nine registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::fixed_byte_width` and `is_code` instead, because it is an identity with a storage rather than a charset |
+| `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
 | `media/iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
@@ -148,10 +154,10 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
   derives, never what another contributes - mark one field, leave its sources
   ordinary columns.
 - Shared and dispatch enums each live in their named root file, re-exported from
-  the crate root: `Codec`, `DataTypeId`, `DataTypeKind`, `DigestAlgorithm`,
-  `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`, `MediaType`, `MimeType`,
-  `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No local copies, no `enums`
-  module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
+  the crate root: `Charset`, `Codec`, `DataTypeId`, `DataTypeKind`,
+  `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
+  local copies, no `enums` module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
   `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
   `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already
   writes their steps.
@@ -202,8 +208,9 @@ Equivalences a change keeps lossless, in both directions:
 
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
-Wrappers compose over a handle, never inside it - `Coded` (coding), `Buffered`
-(holder), `Hashed` (xxhash), `Counted` (tests) - each forwarding through
+Wrappers compose over a handle, never inside it - `Coded` (coding),
+`Transcoded` (charset), `Buffered` (holder), `Hashed` (xxhash), `Counted`
+(tests) - each forwarding through
 `delegate_iobase!` and overriding only what it changes. Commit cadence belongs to
 `RecordOptions` and the write session in `iobase/transfer.rs`
 (`ArrowWriteSession::{overwrite,append,merge}` with `push` and `finish`/`abort`),
@@ -396,10 +403,10 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 - `DataType::LOGICAL_NAMES` is the one fallback registry: FIX Latest datatype
   vocabulary plus `mic`, each name resolving to the closest core datatype and
   displaying as it - no variant, no second spelling. Never register a word the
-  Arrow/SQL grammar owns. `AsciiEnum::PREBUILT` keys the ISO code constants three
-  of those names prebuild; `AsciiEnum::from_logical_name` builds the enum a field
-  declares from one. A listing is a constant: every reader answers the same
-  members.
+  Arrow/SQL grammar owns. `StringEnum::PREBUILT` keys the ISO code constants
+  the registered names prebuild; `StringEnum::from_logical_name` builds the
+  enum a field declares from one. A listing is a constant: every reader answers
+  the same members.
 - Split only at top-level separators, honoring balanced wrappers, quoting, and
   escapes; reject trailing tokens, duplicates, malformed numbers, and invalid
   nullability with byte position and context. `variant(...)` is dense-union input
@@ -580,8 +587,10 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
 - Plain-text rows start with required `url: utf8` and `body: utf8` - a line is
-  text by construction, its bytes decoded once where the line is made, each
-  byte that is not UTF-8 read as the Windows-1252 character it is, and
+  text by construction - its bytes decoded at the transport in the charset the
+  handle's media type declares other than UTF-8 or US-ASCII, and otherwise
+  once where the line is made,
+  each byte that is not UTF-8 read as the Windows-1252 character it is,
   `TextLine::decoded_byte_size` counting them;
   `TextOptions.start_rownum: Option<i64>` inserts required `rownum: int64` between
   them and names its first value. `parse_mtime`, on by default, inserts nullable
@@ -665,6 +674,184 @@ change to `media/iceberg/`.
   resolver per key. The retry gate rebases append and metadata-only commits only;
   overwrite/merge/compact restore state on conflict, and a failed commit may
   leave unreferenced files.
+
+## Charsets
+
+`docs/charset/` documents the surface; these bind a change to `charset.rs`,
+`charset/`, and every byte that becomes text anywhere else.
+
+- **Text crosses the boundary once.** A byte payload is decoded at intake -
+  by a `Transcoded` handle, by `text::io::Plan`, by the record reader's
+  transport from the handle's media type, by a `string(...)` column's own
+  value contract, or by a direct `Charset::decode` - and everything past
+  that point is `str` or UTF-8 bytes. Nothing re-decodes,
+  and no cast, digest, or record layer branches on a charset per row. A layer
+  that wants a charset argument wants the wrong seam: wrap the handle instead.
+  A `string(...)` value does carry the charset it is *written* in, so it goes
+  back out the way it came - but it holds UTF-8 while it is here, and `as_str`
+  on it is infallible.
+- `Charset` is the one vocabulary and the only place a name selects an
+  implementation. Intake accepts every documented alias case-insensitively;
+  past it nothing sees a string. Two refusals are deliberate and are contract,
+  not omission: `iso-8859-1` is ISO 8859-1 and never `windows-1252`, and bare
+  `utf-16` is refused because RFC 2781 and the WHATWG Encoding Standard
+  disagree about it - `utf-16le`, `utf-16be`, and `Charset::from_bom` are the
+  three unambiguous answers.
+- Precedence where a caller did not say: an explicit argument, then the
+  declared `MediaType`, then one bounded content read of a byte-order mark.
+  `MediaType` carries `Option<Charset>`; absent is the media type saying
+  nothing, and `Charset::from_media_type` is the one place that absence becomes
+  `Utf8`. A mark is framing rather than content, so `from_bom` answers its
+  length and the caller decides - only the structured-text plan takes it off.
+- Every charset agrees with US-ASCII below `0x80` except the UTF-16 pair, and
+  that is load-bearing: `decode` and `encode` borrow an all-ASCII payload
+  rather than transcoding it, a line scan splits on `\n` before anything is
+  transcribed, and after a declared charset is decoded, and the borrow is
+  asserted in the counting allocator rather than argued. A charset that broke
+  it would need its own scan and its own line splitter.
+- Three doors, one verb: `decode` refuses and names the charset, the byte
+  position, and the byte or scalar found there, through `Error::Codec` - no new
+  error variant, and the charset's canonical name in `format`. `decode_lossy`
+  marks each fault with `U+FFFD` and is what a capture of arbitrary wire bytes
+  needs. `transcribe` reads every byte it can - an unassigned byte as its
+  ISO 8859-1 scalar, and bytes offered as UTF-8 or as US-ASCII that are not
+  what they were offered as by one rule written once in the layer, every
+  valid UTF-8 run kept and every other byte read as WHATWG windows-1252 with
+  the five holes as C1 controls, per invalid run (decision 12) - and is what a
+  `string(...)` column's values arrive through. There is no lossy *encode*: a
+  scalar a charset cannot spell is unrepresentable input, which fails.
+  `encoded_len` answers the stored length without building the bytes, and it
+  counts rather than judges - a scalar with no byte still occupies the one it
+  would occupy - so a length bound costs a walk and `encode` stays the single
+  authority on whether bytes can be written at all.
+- Tables are generated from Python's codec registry by
+  `scripts/generate_charset_tables.py` and never edited by hand; a wrong scalar
+  is a silently corrupted column. `scripts/check_charset_interop.py` checks
+  every table against that registry in both directions, because a table wrong
+  both ways round trips perfectly.
+- A decode resumes only at a sequence boundary, which `Decoder::is_pending`
+  answers, and every charset here is stateless past one - so a byte offset is
+  the whole of what `Transcoded` needs to seek. A shift-state encoding would
+  have to carry that state into the resume index before it could be added.
+- There is no charset option on the text record reader: `media/text` reads
+  the charset a handle's media type declares, once, where it builds the
+  transport (decision 12), and a whole resource in one charset is `Transcoded`,
+  not a second option on every reader.
+
+## Strings
+
+`types/string.rs` + `types/string/` own the family; these bind a change to any
+of the five layouts or to what a string declares.
+
+- **One datatype, one value, five layouts, one charset each.** `StringLayout`
+  names the layouts, `StringParameters` is a layout beside its charset and its
+  bound, `DataType::String(StringParameters)` is every string the crate has,
+  `DataType::string` is its one constructor and `utf8()`, `large_utf8()`,
+  `utf8_view()`, `ascii()`, `fixed_utf8(n)`, `fixed_ascii(n)` are that
+  constructor picking a layout once. There is no `Utf8`, `Ascii` or
+  `FixedAscii` variant, no redirect, and no second door: a `DataType::String`
+  built by hand can hold a fixed layout with no width, exactly as every other
+  parameterized variant can hold what its constructor refuses, and `validate`
+  is what catches it before a boundary. `string_parameters` reads back for
+  every string, which is what makes "which charset is this column in" one
+  question. The nine registered codes are not strings: a currency is three
+  ASCII bytes with an identity, so it is `DataType::Currency`, kind `Code`,
+  answers `is_code` and `fixed_byte_width`, and never `string_parameters`.
+- **Three spellings, one layout.** The `string` name is the general one, the
+  `utf8` name is what the same layout is called when its charset is UTF-8 and
+  the `ascii` name when it is US-ASCII, so `large_string`, `large_utf8` and
+  `large_ascii` parse to one thing and a value renders under whichever name its
+  charset earns; every other charset renders under the general name and states
+  itself: `string(windows-1252,32)`. A charset-named spelling takes only a
+  bound - `utf8(32)`, `fixed_ascii(4)` - and a charset beside it is refused.
+  The grammar's fold drops underscores, so `largeutf8` is that spelling too.
+  One number, one reading per layout: `ascii(4)` is a maximum, `fixed_ascii(4)`
+  the width.
+- **`Str` is the string.** `Scalar::String(Str)` holds the characters in the
+  crate's compact string - inline to `INLINE_CAPACITY` bytes, static for free,
+  one `Arc<str>` beyond - beside the layout and charset they are stored under
+  and, on the fixed layout, the width. A maximum is the column's rule and never
+  the value's: a cell read out of `utf8(32)` is a `utf8`. Equality, order and
+  hash read the characters alone, so a value is one value whichever column
+  holds it, and `Borrow<str>` is sound for that reason and no other. `Str` is
+  the holder every string-family API answers with - `ascii_value`,
+  `StringEnum` members, `str_from_value` - and `SmolStr` stays the crate's
+  utility string for names, keys and errors.
+- **The bound counts stored bytes, and one number carries both readings**: the
+  exact width on `FixedString`, the maximum on every other layout. Bytes,
+  because that is what the buffer holds and what Arrow's offsets measure; a
+  scalar count would make a bound a walk of the value. `Charset::encoded_len`
+  counts it without building the bytes. Whether those bytes can be written is
+  the write seam's question, not the value door's: a value read back through
+  `transcribe` carries scalars the charset does not assign - that is what
+  recovering damage means - so refusing it here would make the permissive read
+  useless, and the refusal names the scalar where it is written instead.
+- **A value holds UTF-8 and remembers its charset.** Decoding happens at the
+  seam, as everywhere else; what a `Str` keeps is the charset it is *written*
+  in, so it goes back out the way it came without the column being read twice.
+  `as_str` is therefore infallible on every string value there is.
+- **Arrow gets the truth about the bytes.** UTF-8 and US-ASCII ride Arrow's
+  string layouts - ASCII bytes are UTF-8 - and every other charset rides the
+  matching *binary* layout, because the bytes are not UTF-8 and an Arrow
+  reader told otherwise reads mojibake and calls it text; the fixed layout
+  rides `FixedSizeBinary` in every charset. `is_text_storage` is the one owner
+  of that split and every writer, reader, digest and cast asks it. What Arrow
+  cannot say - a charset other than UTF-8, a bound, the large view layout -
+  rides the `yggdryl.string` extension document, and only then: plain `utf8`,
+  `large_utf8` and `utf8_view` cross bare. A document over a storage it does
+  not describe is a foreign field wearing our name and imports as its storage.
+- **`Str::from_bytes` is the one door bytes take, and the charset decides how
+  strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
+  guarantees the first and the second rides Arrow's text storage - so bytes
+  that are not what they claim are refused, and a US-ASCII value holds no NUL
+  and no byte above `0x7F`. Every other charset is a declaration that the
+  column holds legacy bytes, and those are transcribed rather than refused:
+  `Charset::transcribe` reads an unassigned byte as its ISO 8859-1 scalar.
+  The row door, the Arrow cell reader and the cast all call that one function,
+  so a batch and a row cannot read bytes differently; a text-storage cell is
+  `Str::from_storage`, checked when it was written and not again.
+- **The value door judges US-ASCII and counts everything else.** A value
+  restated under a legacy charset may hold scalars that charset cannot write -
+  that is what recovering damage means - and the write seam (the Arrow array
+  build, the cast) refuses them naming the scalar. A `StringEnum` packs its
+  members into integers through `ascii_packed`, so it is accepted on a fixed
+  US-ASCII string of at most sixteen bytes or a code and refused by name
+  elsewhere.
+
+## Bytes
+
+`types/bytes/` owns the family the same way `types/string/` owns strings;
+these bind a change to any of the four layouts or to what a byte column
+declares.
+
+- **One datatype, one value, four layouts.** `BytesLayout` names Arrow's
+  four, `BytesParameters` is a layout beside its bound,
+  `DataType::Bytes(BytesParameters)` is every byte column the crate has,
+  `DataType::bytes` is its one constructor and `binary()`, `large_binary()`,
+  `binary_view()`, `fixed_size_binary(n)` are that constructor picking a
+  layout once. There is no `Binary`, `LargeBinary`, `BinaryView` or
+  `FixedSizeBinary` variant. `bytes_parameters` reads back for every byte
+  column. A UUID and a geospatial value are bytes with an identity, so they
+  are their own datatypes and answer no `bytes_parameters`, exactly as a
+  code answers no `string_parameters`.
+- **One number, one reading per layout.** `binary(16)` is a maximum of
+  sixteen bytes and `fixed_size_binary(16)` the exact width; bytes are never
+  padded, so a fixed value is exactly its width. `bytes`, `blob`, `bytea`,
+  `varbinary(n)` and `fixed_binary(n)` are accepted spellings and render as
+  the canonical ones.
+- **`Bytes` is the byte string.** `Scalar::Bytes(Bytes)` holds the payload
+  inline to `INLINE_BYTES` bytes with no heap behind it, static for free, one
+  `Arc<[u8]>` beyond, beside the layout it is stored under and, on the fixed
+  layout, the width. A maximum is the column's rule and never the value's.
+  Equality, order and hash read the payload alone, and `Borrow<[u8]>` is
+  sound for that reason and no other. `Bytes::from_storage` adopts a cell of
+  a column's own storage; `bytes_from_value` is what a value spells as bytes.
+- **Arrow already says the layout.** The storage is the layout, and only a
+  maximum on a variable layout - which no Arrow type can state - rides the
+  `yggdryl.bytes` document; a fixed width is the storage itself. A document
+  over a storage it does not describe imports as its storage. Avro and
+  Iceberg have no maximum either, so a bounded column crosses them unbounded
+  and the bound is enforced where the values enter.
 
 ## Structured codecs
 
@@ -761,10 +948,17 @@ Cost-model and allocation claims are assertions, not arguments - every derived
 cargo test --locked -p yggdryl --test iobase_calls --test allocations
 ```
 
+Generated tables are checked for drift rather than trusted:
+
+```bash
+python scripts/generate_charset_tables.py --check
+```
+
 Exchange formats, both directions, against outside implementations; a skipped
 half is a failure, not a pass:
 
 ```bash
+python scripts/check_charset_interop.py    # Python codecs, every code page
 python scripts/check_zip_interop.py       # Python zipfile
 python scripts/check_avro_interop.py      # fastavro, plus the apache-avro probe
 python scripts/check_object_interop.py        # MinIO + boto3
@@ -774,7 +968,7 @@ python scripts/check_iceberg_interop.py   # PyIceberg, v1/v2/v3 tables
 Benchmarks for every touched surface, release build, numbers regenerated:
 
 ```bash
-cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|media|holder|xxhash|expression|fix>
+cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|xxhash|expression|fix>
 ```
 
 # 3. Python

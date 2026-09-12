@@ -48,8 +48,7 @@
 //! a wrong number nobody can tell from a sent one.
 
 use crate::Scalar;
-use crate::types::ascii::AsciiFamily;
-use crate::types::{AsciiEnum, Isin, State};
+use crate::types::{Code, Isin, State, StringEnum};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -80,7 +79,7 @@ impl FixWhen {
         // matrices are written in. A state column holds the ranked value
         // rather than the code, so the code is read the way the column read
         // it before the two are compared; every other column holds the code.
-        if let Scalar::Ascii(AsciiFamily::State(state)) = held {
+        if let Scalar::Code(Code::State(state)) = held {
             return self
                 .values
                 .iter()
@@ -634,7 +633,7 @@ fn derive(registry: &FixRegistry, msg: &FixMsg, from: &FixDerivation) -> Option<
         FixDerivation::Country(tag) => {
             let isin = Isin::new(text(*tag)?).ok()?;
             let prefix = isin.prefix();
-            AsciiEnum::COUNTRIES
+            StringEnum::COUNTRIES
                 .binary_search(&prefix)
                 .is_ok()
                 .then(|| Scalar::from(prefix))

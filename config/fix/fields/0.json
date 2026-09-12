@@ -2,67 +2,67 @@
   {
     "name": "account",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
       "display": "Account",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"account\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"account\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1"
     }
   },
   {
     "name": "advid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier of advertisement message.",
       "display": "AdvId",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"advid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"advid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2"
     }
   },
   {
     "name": "advrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
       "display": "AdvRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advrefid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"advrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advrefid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"advrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "3"
     }
   },
   {
     "name": "advside",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Broker's side of advertised trade",
       "display": "AdvSide",
       "fix:codes": "{\"codes\":[{\"value\":\"B\",\"name\":\"Buy\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"S\",\"name\":\"Sell\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Sell\"},{\"value\":\"T\",\"name\":\"Trade\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Trade\"},{\"value\":\"X\",\"name\":\"Cross\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Cross\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advside\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advside\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "4"
     }
   },
   {
     "name": "advtranstype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies advertisement message transaction type",
       "display": "AdvTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"Cancel\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Cancel\"},{\"value\":\"N\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"R\",\"name\":\"Replace\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Replace\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advtranstype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"advtranstype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "5"
     }
   },
@@ -95,14 +95,14 @@
   {
     "name": "beginstring",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies beginning of new message and session protocol version by means of a session profile identifier (see FIX Session Layer for details). ALWAYS FIRST FIELD IN MESSAGE. (Always unencrypted).",
       "display": "BeginString",
       "fix:codes": "{\"codes\":[{\"value\":\"FIX.4.2\",\"name\":\"FIX42\",\"ep\":270,\"sort\":1,\"doc\":\"Session profile FIX.4.2\"},{\"value\":\"FIX.4.4\",\"name\":\"FIX44\",\"ep\":270,\"sort\":2,\"doc\":\"Session profile FIX4\"},{\"value\":\"FIXT.1.1\",\"name\":\"FIXT11\",\"ep\":270,\"sort\":3,\"doc\":\"Session profile FIXT or LFXIT\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"beginstring\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"beginstring\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "8"
     }
   },
@@ -122,26 +122,26 @@
   {
     "name": "checksum",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Three byte, simple checksum (see Volume 2: \"Checksum Calculation\" for description). ALWAYS LAST FIELD IN MESSAGE; i.e. serves, with the trailing <SOH>, as the end-of-message delimiter. Always defined as three characters. (Always unencrypted)",
       "display": "CheckSum",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"checksum\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"checksum\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "10"
     }
   },
   {
     "name": "clordid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for Order as assigned by the buy-side (institution, broker, intermediary etc.) (identified by SenderCompID(49) or OnBehalfOfCompID(115) as appropriate). Uniqueness must be guaranteed within a single trading day. Firms, particularly those which electronically submit multi-day orders, trade globally or throughout market close periods, should ensure uniqueness across days, for example by embedding a date within the ClOrdID(11) field.",
       "display": "ClOrdID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"clordid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"clordid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "11"
     }
   },
@@ -161,14 +161,14 @@
   {
     "name": "commtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies the basis or unit used to calculate the total commission based on the rate.",
       "display": "CommType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PerUnit\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Amount per unit\"},{\"value\":\"2\",\"name\":\"Percent\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Percent\"},{\"value\":\"3\",\"name\":\"Absolute\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Absolute\"},{\"value\":\"4\",\"name\":\"PercentageWaivedCashDiscount\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Percentage waived, cash discount basis\"},{\"value\":\"5\",\"name\":\"PercentageWaivedEnhancedUnits\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Percentage waived, enhanced units basis\"},{\"value\":\"6\",\"name\":\"PointsPerBondOrContract\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Points per bond or contract\"},{\"value\":\"7\",\"name\":\"BasisPoints\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":7,\"doc\":\"Basis points\"},{\"value\":\"8\",\"name\":\"AmountPerContract\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":8,\"doc\":\"Amount per contract\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"commtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"commtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "13"
     }
   },
@@ -194,7 +194,7 @@
     "metadata": {
       "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
       "display": "Currency",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"currency\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.2\",\"name\":\"currency\",\"type\":{\"type\":\"currency\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"currency\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"currency\",\"type\":{\"type\":\"currency\"}}]}",
       "fix:tag": "15"
     }
   },
@@ -214,27 +214,27 @@
   {
     "name": "execid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier of execution message as assigned by sell-side (broker, exchange, ECN) (will be 0 (zero) for ExecType (150)=I (Order Status)).",
       "display": "ExecID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"execid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"execid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"execid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"execid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "17"
     }
   },
   {
     "name": "execinst",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Instructions for order handling on exchange trading floor. If more than one instruction is applicable to an order, this field can contain multiple instructions separated by space. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "display": "ExecInst",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"StayOnOfferSide\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Stay on offer side\"},{\"value\":\"1\",\"name\":\"NotHeld\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Not held\"},{\"value\":\"2\",\"name\":\"Work\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Work\"},{\"value\":\"3\",\"name\":\"GoAlong\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Go along\"},{\"value\":\"4\",\"name\":\"OverTheDay\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Over the day\"},{\"value\":\"5\",\"name\":\"Held\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Held\"},{\"value\":\"6\",\"name\":\"ParticipateDoNotInitiate\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Participate don't initiate\"},{\"value\":\"7\",\"name\":\"StrictScale\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"Strict scale\"},{\"value\":\"8\",\"name\":\"TryToScale\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"Try to scale\"},{\"value\":\"9\",\"name\":\"StayOnBidSide\",\"since\":\"2.7\",\"sort\":10,\"doc\":\"Stay on bid side\"},{\"value\":\"A\",\"name\":\"NoCross\",\"since\":\"2.7\",\"sort\":11,\"doc\":\"No cross\"},{\"value\":\"B\",\"name\":\"OKToCross\",\"since\":\"2.7\",\"sort\":12,\"doc\":\"OK to cross\"},{\"value\":\"C\",\"name\":\"CallFirst\",\"since\":\"2.7\",\"sort\":13,\"doc\":\"Call first\"},{\"value\":\"D\",\"name\":\"PercentOfVolume\",\"since\":\"2.7\",\"sort\":14,\"doc\":\"Percent of volume\"},{\"value\":\"E\",\"name\":\"DoNotIncrease\",\"since\":\"2.7\",\"sort\":15,\"doc\":\"Do not increase - DNI\"},{\"value\":\"F\",\"name\":\"DoNotReduce\",\"since\":\"2.7\",\"sort\":16,\"doc\":\"Do not reduce - DNR\"},{\"value\":\"G\",\"name\":\"AllOrNone\",\"since\":\"2.7\",\"sort\":17,\"doc\":\"All or none - AON\"},{\"value\":\"H\",\"name\":\"ReinstateOnSystemFailure\",\"since\":\"4.3\",\"sort\":18,\"doc\":\"Reinstate on system failure\"},{\"value\":\"I\",\"name\":\"InstitutionsOnly\",\"since\":\"3.0\",\"sort\":19,\"doc\":\"Institutions only\"},{\"value\":\"J\",\"name\":\"ReinstateOnTradingHalt\",\"since\":\"4.3\",\"sort\":20,\"doc\":\"Reinstate on trading halt\"},{\"value\":\"K\",\"name\":\"CancelOnTradingHalt\",\"since\":\"4.3\",\"sort\":21,\"doc\":\"Cancel on trading halt\"},{\"value\":\"L\",\"name\":\"LastPeg\",\"since\":\"3.0\",\"deprecated\":\"5.0\",\"sort\":22,\"doc\":\"Last peg (last sale)\"},{\"value\":\"M\",\"name\":\"MidPricePeg\",\"since\":\"3.0\",\"deprecated\":\"5.0\",\"sort\":23,\"doc\":\"Mid-price peg (midprice of inside quote)\"},{\"value\":\"N\",\"name\":\"NonNegotiable\",\"since\":\"3.0\",\"sort\":24,\"doc\":\"Non-negotiable\"},{\"value\":\"O\",\"name\":\"OpeningPeg\",\"since\":\"3.0\",\"deprecated\":\"5.0\",\"sort\":25,\"doc\":\"Opening peg\"},{\"value\":\"P\",\"name\":\"MarketPeg\",\"since\":\"3.0\",\"deprecated\":\"5.0\",\"sort\":26,\"doc\":\"Market peg\"},{\"value\":\"Q\",\"name\":\"CancelOnSystemFailure\",\"since\":\"4.3\",\"sort\":27,\"doc\":\"Cancel on system failure\"},{\"value\":\"R\",\"name\":\"PrimaryPeg\",\"since\":\"3.0\",\"deprecated\":\"5.0\",\"sort\":28,\"doc\":\"Primary peg\"},{\"value\":\"S\",\"name\":\"Suspend\",\"since\":\"3.0\",\"sort\":29,\"doc\":\"Suspend\"},{\"value\":\"T\",\"name\":\"FixedPegToLocalBestBidOrOfferAtTimeOfOrder\",\"since\":\"4.4\",\"ep\":35,\"deprecated\":\"5.0\",\"sort\":30,\"doc\":\"Fixed peg to local best bid or offer at time of order\"},{\"value\":\"U\",\"name\":\"CustomerDisplayInstruction\",\"since\":\"4.1\",\"sort\":31,\"doc\":\"Customer display instruction\"},{\"value\":\"V\",\"name\":\"Netting\",\"since\":\"4.1\",\"sort\":32,\"doc\":\"Netting (for Forex)\"},{\"value\":\"W\",\"name\":\"PegToVWAP\",\"since\":\"4.2\",\"deprecated\":\"5.0\",\"sort\":33,\"doc\":\"Peg to VWAP\"},{\"value\":\"X\",\"name\":\"TradeAlong\",\"since\":\"4.3\",\"sort\":34,\"doc\":\"Trade along\"},{\"value\":\"Y\",\"name\":\"TryToStop\",\"since\":\"4.3\",\"sort\":35,\"doc\":\"Try to stop\"},{\"value\":\"Z\",\"name\":\"CancelIfNotBest\",\"since\":\"4.4\",\"sort\":36,\"doc\":\"Cancel if not best\"},{\"value\":\"a\",\"name\":\"TrailingStopPeg\",\"since\":\"4.4\",\"deprecated\":\"5.0\",\"sort\":37,\"doc\":\"Trailing stop peg\"},{\"value\":\"b\",\"name\":\"StrictLimit\",\"since\":\"4.4\",\"sort\":38,\"doc\":\"Strict limit\"},{\"value\":\"c\",\"name\":\"IgnorePriceValidityChecks\",\"since\":\"4.4\",\"sort\":39,\"doc\":\"Ignore price validity checks\"},{\"value\":\"d\",\"name\":\"PegToLimitPrice\",\"since\":\"4.4\",\"deprecated\":\"5.0\",\"sort\":40,\"doc\":\"Peg to limit price\"},{\"value\":\"e\",\"name\":\"WorkToTargetStrategy\",\"since\":\"4.4\",\"sort\":41,\"doc\":\"Work to target strategy\"},{\"value\":\"f\",\"name\":\"IntermarketSweep\",\"since\":\"4.4\",\"ep\":6,\"sort\":42,\"doc\":\"Intermarket sweep\"},{\"value\":\"g\",\"name\":\"ExternalRoutingAllowed\",\"since\":\"4.4\",\"ep\":14,\"sort\":43,\"doc\":\"External routing allowed\"},{\"value\":\"h\",\"name\":\"ExternalRoutingNotAllowed\",\"since\":\"4.4\",\"ep\":14,\"sort\":44,\"doc\":\"External routing not allowed\"},{\"value\":\"i\",\"name\":\"ImbalanceOnly\",\"since\":\"4.4\",\"ep\":22,\"sort\":45,\"doc\":\"Imbalance only\"},{\"value\":\"j\",\"name\":\"SingleExecutionRequestedForBlockTrade\",\"since\":\"4.4\",\"ep\":6,\"sort\":46,\"doc\":\"Single execution requested for block trade\"},{\"value\":\"k\",\"name\":\"BestExecution\",\"since\":\"4.4\",\"ep\":35,\"sort\":47,\"doc\":\"Best execution\"},{\"value\":\"l\",\"name\":\"SuspendOnSystemFailure\",\"since\":\"5.0\",\"ep\":58,\"sort\":48,\"doc\":\"Suspend on system failure\"},{\"value\":\"m\",\"name\":\"SuspendOnTradingHalt\",\"since\":\"5.0\",\"ep\":58,\"sort\":49,\"doc\":\"Suspend on trading halt\"},{\"value\":\"n\",\"name\":\"ReinstateOnConnectionLoss\",\"since\":\"5.0\",\"ep\":58,\"sort\":50,\"doc\":\"Reinstate on connection loss\"},{\"value\":\"o\",\"name\":\"CancelOnConnectionLoss\",\"since\":\"5.0\",\"ep\":58,\"sort\":51,\"doc\":\"Cancel on connection loss\"},{\"value\":\"p\",\"name\":\"SuspendOnConnectionLoss\",\"since\":\"5.0\",\"ep\":58,\"sort\":52,\"doc\":\"Suspend on connection loss\"},{\"value\":\"q\",\"name\":\"Release\",\"since\":\"5.0\",\"ep\":58,\"sort\":53,\"aliases\":[\"ReleaseFromSuspension\"],\"doc\":\"Release\"},{\"value\":\"r\",\"name\":\"ExecuteAsDeltaNeutral\",\"since\":\"5.0\",\"ep\":59,\"sort\":54,\"doc\":\"Execute as delta neutral using volatility provided\"},{\"value\":\"s\",\"name\":\"ExecuteAsDurationNeutral\",\"since\":\"5.0\",\"ep\":59,\"sort\":55,\"doc\":\"Execute as duration neutral\"},{\"value\":\"t\",\"name\":\"ExecuteAsFXNeutral\",\"since\":\"5.0\",\"ep\":59,\"sort\":56,\"doc\":\"Execute as FX neutral\"},{\"value\":\"u\",\"name\":\"MinGuaranteedFillEligible\",\"since\":\"5.0.2\",\"ep\":101,\"sort\":57,\"doc\":\"Minimum guaranteed fill eligible\"},{\"value\":\"v\",\"name\":\"BypassNonDisplayLiquidity\",\"since\":\"5.0.2\",\"ep\":101,\"sort\":58,\"doc\":\"Bypass non-displayed liquidity\"},{\"value\":\"w\",\"name\":\"Lock\",\"since\":\"5.0.2\",\"ep\":131,\"sort\":59,\"doc\":\"Lock\"},{\"value\":\"x\",\"name\":\"IgnoreNotionalValueChecks\",\"since\":\"5.0.2\",\"ep\":134,\"sort\":60,\"doc\":\"Ignore notional value checks\"},{\"value\":\"y\",\"name\":\"TrdAtRefPx\",\"since\":\"5.0.2\",\"ep\":210,\"sort\":61,\"doc\":\"Trade at reference price\"},{\"value\":\"z\",\"name\":\"AllowFacilitation\",\"since\":\"5.0.2\",\"ep\":251,\"sort\":62,\"doc\":\"Allow facilitation\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"execinst\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"execinst\",\"type\":{\"type\":\"string\"}}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"when\":\"T\",\"fills\":[{\"tag\":835,\"value\":\"1\"},{\"tag\":840,\"value\":\"1\"},{\"tag\":18,\"value\":\"R\"}],\"doc\":\"ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)\"},{\"since\":\"5.0\",\"when\":\"L\",\"fills\":[{\"tag\":1094,\"value\":\"1\"}],\"doc\":\"ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"M\",\"fills\":[{\"tag\":1094,\"value\":\"2\"}],\"doc\":\"ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"O\",\"fills\":[{\"tag\":1094,\"value\":\"3\"}],\"doc\":\"ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"P\",\"fills\":[{\"tag\":1094,\"value\":\"4\"}],\"doc\":\"ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"R\",\"fills\":[{\"tag\":1094,\"value\":\"5\"}],\"doc\":\"ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"W\",\"fills\":[{\"tag\":1094,\"value\":\"7\"}],\"doc\":\"ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"a\",\"fills\":[{\"tag\":1094,\"value\":\"8\"}],\"doc\":\"ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)\"},{\"since\":\"5.0\",\"when\":\"d\",\"fills\":[{\"tag\":1094,\"value\":\"9\"}],\"doc\":\"ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)\"}]}",
       "fix:tag": "18"
     }
@@ -242,26 +242,26 @@
   {
     "name": "execrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference identifier used with Trade, Trade Cancel and Trade Correct execution types.",
       "display": "ExecRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"execrefid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"execrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"execrefid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"execrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "19"
     }
   },
   {
     "name": "exectranstype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "ExecTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"4.0\",\"deprecated\":\"4.3\"},{\"value\":\"1\",\"name\":\"Cancel\",\"since\":\"4.0\",\"deprecated\":\"4.3\"},{\"value\":\"2\",\"name\":\"Correct\",\"since\":\"4.0\",\"deprecated\":\"4.3\"},{\"value\":\"3\",\"name\":\"Status\",\"since\":\"4.0\",\"deprecated\":\"4.3\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"exectranstype\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"exectranstype\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"when\":\"1\",\"fills\":[{\"tag\":150,\"value\":\"H\"}],\"doc\":\"ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"2\",\"fills\":[{\"tag\":150,\"value\":\"G\"}],\"doc\":\"ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"3\",\"fills\":[{\"tag\":150,\"value\":\"I\"}],\"doc\":\"ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "20"
     }
@@ -269,21 +269,21 @@
   {
     "name": "handlinst",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Instructions for order handling on Broker trading floor",
       "display": "HandlInst",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"AutomatedExecutionNoIntervention\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Automated execution order, private, no Broker intervention\"},{\"value\":\"2\",\"name\":\"AutomatedExecutionInterventionOK\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Automated execution order, public, Broker intervention OK\"},{\"value\":\"3\",\"name\":\"ManualOrder\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Manual order, best execution\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"handlinst\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"handlinst\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "21"
     }
   },
   {
     "name": "securityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -291,67 +291,67 @@
       "display": "SecurityIDSource",
       "fix:aliases": "idsource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"idsource\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"name\":\"securityidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"idsource\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"name\":\"securityidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "22"
     }
   },
   {
     "name": "ioiid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier of IOI message.",
       "display": "IOIID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioiid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"ioiid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioiid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"ioiid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "23"
     }
   },
   {
     "name": "ioiothsvc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "IOIOthSvc",
       "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Autex\",\"since\":\"4.0\",\"deprecated\":\"4.2\"},{\"value\":\"B\",\"name\":\"Bridge\",\"since\":\"4.0\",\"deprecated\":\"4.2\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"ioiothsvc\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"ioiothsvc\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:tag": "24"
     }
   },
   {
     "name": "ioiqltyind",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Relative quality of indication",
       "display": "IOIQltyInd",
       "fix:codes": "{\"codes\":[{\"value\":\"H\",\"name\":\"High\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"High\"},{\"value\":\"L\",\"name\":\"Low\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Low\"},{\"value\":\"M\",\"name\":\"Medium\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Medium\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioiqltyind\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioiqltyind\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "25"
     }
   },
   {
     "name": "ioirefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference identifier used with CANCEL and REPLACE, transaction types.",
       "display": "IOIRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioirefid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"ioirefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioirefid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"ioirefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "26"
     }
   },
   {
     "name": "ioiqty",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -359,35 +359,35 @@
       "display": "IOIQty",
       "fix:aliases": "ioishares",
       "fix:codes": "{\"codes\":[{\"value\":\"L\",\"name\":\"Large\",\"since\":\"4.4\",\"ep\":25,\"sort\":4,\"doc\":\"Large\"},{\"value\":\"M\",\"name\":\"Medium\",\"since\":\"4.4\",\"ep\":25,\"sort\":3,\"doc\":\"Medium\"},{\"value\":\"S\",\"name\":\"Small\",\"since\":\"4.4\",\"ep\":25,\"sort\":2,\"doc\":\"Small\"},{\"value\":\"U\",\"name\":\"UndisclosedQuantity\",\"since\":\"4.4\",\"ep\":25,\"sort\":5,\"doc\":\"Undisclosed Quantity\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioishares\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"name\":\"ioiqty\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioishares\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"name\":\"ioiqty\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "27"
     }
   },
   {
     "name": "ioitranstype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies IOI message transaction type",
       "display": "IOITransType",
       "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"Cancel\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Cancel\"},{\"value\":\"N\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"R\",\"name\":\"Replace\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Replace\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioitranstype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ioitranstype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "28"
     }
   },
   {
     "name": "lastcapacity",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Broker capacity in order execution",
       "display": "LastCapacity",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Agent\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Agent\"},{\"value\":\"2\",\"name\":\"CrossAsAgent\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Cross as agent\"},{\"value\":\"3\",\"name\":\"CrossAsPrincipal\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Cross as principal\"},{\"value\":\"4\",\"name\":\"Principal\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Principal\"},{\"value\":\"5\",\"name\":\"RisklessPrincipal\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":5,\"doc\":\"Riskless principal\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"lastcapacity\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"lastcapacity\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "29"
     }
   },
@@ -400,7 +400,7 @@
     "metadata": {
       "description": "Market of execution for last fill, or an indication of the market where an order was routed",
       "display": "LastMkt",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"lastmkt\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.2\",\"name\":\"lastmkt\",\"type\":{\"type\":\"mic\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"lastmkt\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"lastmkt\",\"type\":{\"type\":\"mic\"}}]}",
       "fix:tag": "30"
     }
   },
@@ -461,14 +461,14 @@
   {
     "name": "msgtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Defines message type ALWAYS THIRD FIELD IN MESSAGE. (Always unencrypted)",
       "display": "MsgType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Heartbeat\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Heartbeat\"},{\"value\":\"1\",\"name\":\"TestRequest\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"TestRequest\"},{\"value\":\"2\",\"name\":\"ResendRequest\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"ResendRequest\"},{\"value\":\"3\",\"name\":\"Reject\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Reject\"},{\"value\":\"4\",\"name\":\"SequenceReset\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"SequenceReset\"},{\"value\":\"5\",\"name\":\"Logout\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Logout\"},{\"value\":\"6\",\"name\":\"IOI\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"IOI\"},{\"value\":\"7\",\"name\":\"Advertisement\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"Advertisement\"},{\"value\":\"8\",\"name\":\"ExecutionReport\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"ExecutionReport\"},{\"value\":\"9\",\"name\":\"OrderCancelReject\",\"since\":\"2.7\",\"sort\":10,\"doc\":\"OrderCancelReject\"},{\"value\":\"A\",\"name\":\"Logon\",\"since\":\"2.7\",\"sort\":11,\"doc\":\"Logon\"},{\"value\":\"AA\",\"name\":\"DerivativeSecurityList\",\"since\":\"2.7\",\"sort\":60,\"doc\":\"DerivativeSecurityList\"},{\"value\":\"AB\",\"name\":\"NewOrderMultileg\",\"since\":\"2.7\",\"sort\":61,\"doc\":\"NewOrderMultileg\"},{\"value\":\"AC\",\"name\":\"MultilegOrderCancelReplace\",\"since\":\"2.7\",\"sort\":62,\"doc\":\"MultilegOrderCancelReplace\"},{\"value\":\"AD\",\"name\":\"TradeCaptureReportRequest\",\"since\":\"2.7\",\"sort\":63,\"doc\":\"TradeCaptureReportRequest\"},{\"value\":\"AE\",\"name\":\"TradeCaptureReport\",\"since\":\"2.7\",\"sort\":64,\"doc\":\"TradeCaptureReport\"},{\"value\":\"AF\",\"name\":\"OrderMassStatusRequest\",\"since\":\"2.7\",\"sort\":65,\"doc\":\"OrderMassStatusRequest\"},{\"value\":\"AG\",\"name\":\"QuoteRequestReject\",\"since\":\"2.7\",\"sort\":66,\"doc\":\"QuoteRequestReject\"},{\"value\":\"AH\",\"name\":\"RFQRequest\",\"since\":\"2.7\",\"sort\":67,\"doc\":\"RFQRequest\"},{\"value\":\"AI\",\"name\":\"QuoteStatusReport\",\"since\":\"2.7\",\"sort\":68,\"doc\":\"QuoteStatusReport\"},{\"value\":\"AJ\",\"name\":\"QuoteResponse\",\"since\":\"2.7\",\"sort\":69,\"doc\":\"QuoteResponse\"},{\"value\":\"AK\",\"name\":\"Confirmation\",\"since\":\"2.7\",\"sort\":70,\"doc\":\"Confirmation\"},{\"value\":\"AL\",\"name\":\"PositionMaintenanceRequest\",\"since\":\"2.7\",\"sort\":71,\"doc\":\"PositionMaintenanceRequest\"},{\"value\":\"AM\",\"name\":\"PositionMaintenanceReport\",\"since\":\"2.7\",\"sort\":72,\"doc\":\"PositionMaintenanceReport\"},{\"value\":\"AN\",\"name\":\"RequestForPositions\",\"since\":\"2.7\",\"sort\":73,\"doc\":\"RequestForPositions\"},{\"value\":\"AO\",\"name\":\"RequestForPositionsAck\",\"since\":\"2.7\",\"sort\":74,\"doc\":\"RequestForPositionsAck\"},{\"value\":\"AP\",\"name\":\"PositionReport\",\"since\":\"2.7\",\"sort\":75,\"doc\":\"PositionReport\"},{\"value\":\"AQ\",\"name\":\"TradeCaptureReportRequestAck\",\"since\":\"2.7\",\"sort\":76,\"doc\":\"TradeCaptureReportRequestAck\"},{\"value\":\"AR\",\"name\":\"TradeCaptureReportAck\",\"since\":\"2.7\",\"sort\":77,\"doc\":\"TradeCaptureReportAck\"},{\"value\":\"AS\",\"name\":\"AllocationReport\",\"since\":\"2.7\",\"sort\":78,\"doc\":\"AllocationReport\"},{\"value\":\"AT\",\"name\":\"AllocationReportAck\",\"since\":\"2.7\",\"sort\":79,\"doc\":\"AllocationReportAck\"},{\"value\":\"AU\",\"name\":\"ConfirmationAck\",\"since\":\"2.7\",\"sort\":80,\"doc\":\"ConfirmationAck\"},{\"value\":\"AV\",\"name\":\"SettlementInstructionRequest\",\"since\":\"2.7\",\"sort\":81,\"doc\":\"SettlementInstructionRequest\"},{\"value\":\"AW\",\"name\":\"AssignmentReport\",\"since\":\"2.7\",\"sort\":82,\"doc\":\"AssignmentReport\"},{\"value\":\"AX\",\"name\":\"CollateralRequest\",\"since\":\"2.7\",\"sort\":83,\"doc\":\"CollateralRequest\"},{\"value\":\"AY\",\"name\":\"CollateralAssignment\",\"since\":\"2.7\",\"sort\":84,\"doc\":\"CollateralAssignment\"},{\"value\":\"AZ\",\"name\":\"CollateralResponse\",\"since\":\"2.7\",\"sort\":85,\"doc\":\"CollateralResponse\"},{\"value\":\"B\",\"name\":\"News\",\"since\":\"2.7\",\"sort\":12,\"doc\":\"News\"},{\"value\":\"BA\",\"name\":\"CollateralReport\",\"since\":\"2.7\",\"sort\":86,\"doc\":\"CollateralReport\"},{\"value\":\"BB\",\"name\":\"CollateralInquiry\",\"since\":\"2.7\",\"sort\":87,\"doc\":\"CollateralInquiry\"},{\"value\":\"BC\",\"name\":\"NetworkCounterpartySystemStatusRequest\",\"since\":\"2.7\",\"sort\":88,\"doc\":\"NetworkCounterpartySystemStatusRequest\"},{\"value\":\"BD\",\"name\":\"NetworkCounterpartySystemStatusResponse\",\"since\":\"2.7\",\"sort\":89,\"doc\":\"NetworkCounterpartySystemStatusResponse\"},{\"value\":\"BE\",\"name\":\"UserRequest\",\"since\":\"2.7\",\"sort\":90,\"doc\":\"UserRequest\"},{\"value\":\"BF\",\"name\":\"UserResponse\",\"since\":\"2.7\",\"sort\":91,\"doc\":\"UserResponse\"},{\"value\":\"BG\",\"name\":\"CollateralInquiryAck\",\"since\":\"2.7\",\"sort\":92,\"doc\":\"CollateralInquiryAck\"},{\"value\":\"BH\",\"name\":\"ConfirmationRequest\",\"since\":\"2.7\",\"sort\":93,\"doc\":\"ConfirmationRequest\"},{\"value\":\"BI\",\"name\":\"TradingSessionListRequest\",\"since\":\"2.7\",\"sort\":101,\"doc\":\"TradingSessionListRequest\"},{\"value\":\"BJ\",\"name\":\"TradingSessionList\",\"since\":\"2.7\",\"sort\":100,\"doc\":\"TradingSessionList\"},{\"value\":\"BK\",\"name\":\"SecurityListUpdateReport\",\"since\":\"2.7\",\"sort\":96,\"doc\":\"SecurityListUpdateReport\"},{\"value\":\"BL\",\"name\":\"AdjustedPositionReport\",\"since\":\"2.7\",\"sort\":97,\"doc\":\"AdjustedPositionReport\"},{\"value\":\"BM\",\"name\":\"AllocationInstructionAlert\",\"since\":\"2.7\",\"sort\":98,\"doc\":\"AllocationInstructionAlert\"},{\"value\":\"BN\",\"name\":\"ExecutionAck\",\"since\":\"2.7\",\"sort\":99,\"aliases\":[\"ExecutionAcknowledgement\"],\"doc\":\"ExecutionAck\"},{\"value\":\"BO\",\"name\":\"ContraryIntentionReport\",\"since\":\"2.7\",\"sort\":94,\"doc\":\"ContraryIntentionReport\"},{\"value\":\"BP\",\"name\":\"SecurityDefinitionUpdateReport\",\"since\":\"2.7\",\"sort\":95,\"doc\":\"SecurityDefinitionUpdateReport\"},{\"value\":\"BQ\",\"name\":\"SettlementObligationReport\",\"sort\":102,\"doc\":\"SettlementObligationReport\"},{\"value\":\"BR\",\"name\":\"DerivativeSecurityListUpdateReport\",\"since\":\"2.7\",\"sort\":103,\"doc\":\"DerivativeSecurityListUpdateReport\"},{\"value\":\"BS\",\"name\":\"TradingSessionListUpdateReport\",\"since\":\"2.7\",\"sort\":104,\"doc\":\"TradingSessionListUpdateReport\"},{\"value\":\"BT\",\"name\":\"MarketDefinitionRequest\",\"since\":\"2.7\",\"sort\":105,\"doc\":\"MarketDefinitionRequest\"},{\"value\":\"BU\",\"name\":\"MarketDefinition\",\"since\":\"2.7\",\"sort\":106,\"doc\":\"MarketDefinition\"},{\"value\":\"BV\",\"name\":\"MarketDefinitionUpdateReport\",\"since\":\"2.7\",\"sort\":107,\"doc\":\"MarketDefinitionUpdateReport\"},{\"value\":\"BW\",\"name\":\"ApplicationMessageRequest\",\"since\":\"2.7\",\"sort\":108,\"doc\":\"ApplicationMessageRequest\"},{\"value\":\"BX\",\"name\":\"ApplicationMessageRequestAck\",\"since\":\"2.7\",\"sort\":109,\"doc\":\"ApplicationMessageRequestAck\"},{\"value\":\"BY\",\"name\":\"ApplicationMessageReport\",\"since\":\"2.7\",\"sort\":110,\"doc\":\"ApplicationMessageReport\"},{\"value\":\"BZ\",\"name\":\"OrderMassActionReport\",\"since\":\"2.7\",\"sort\":111,\"doc\":\"OrderMassActionReport\"},{\"value\":\"C\",\"name\":\"Email\",\"since\":\"2.7\",\"sort\":13,\"doc\":\"Email\"},{\"value\":\"CA\",\"name\":\"OrderMassActionRequest\",\"since\":\"2.7\",\"sort\":112,\"doc\":\"OrderMassActionRequest\"},{\"value\":\"CB\",\"name\":\"UserNotification\",\"since\":\"2.7\",\"sort\":113,\"doc\":\"UserNotification\"},{\"value\":\"CC\",\"name\":\"StreamAssignmentRequest\",\"since\":\"2.7\",\"sort\":114,\"doc\":\"StreamAssignmentRequest\"},{\"value\":\"CD\",\"name\":\"StreamAssignmentReport\",\"since\":\"2.7\",\"sort\":115,\"doc\":\"StreamAssignmentReport\"},{\"value\":\"CE\",\"name\":\"StreamAssignmentReportACK\",\"since\":\"2.7\",\"sort\":116,\"doc\":\"StreamAssignmentReportACK\"},{\"value\":\"CF\",\"name\":\"PartyDetailsListRequest\",\"since\":\"2.7\",\"sort\":117,\"doc\":\"PartyDetailsListRequest\"},{\"value\":\"CG\",\"name\":\"PartyDetailsListReport\",\"since\":\"2.7\",\"sort\":118,\"doc\":\"PartyDetailsListReport\"},{\"value\":\"CH\",\"name\":\"MarginRequirementInquiry\",\"since\":\"2.7\",\"sort\":119,\"doc\":\"MarginRequirementInquiry\"},{\"value\":\"CI\",\"name\":\"MarginRequirementInquiryAck\",\"since\":\"2.7\",\"sort\":120,\"doc\":\"MarginRequirementInquiryAck\"},{\"value\":\"CJ\",\"name\":\"MarginRequirementReport\",\"since\":\"2.7\",\"sort\":121,\"doc\":\"MarginRequirementReport\"},{\"value\":\"CK\",\"name\":\"PartyDetailsListUpdateReport\",\"since\":\"2.7\",\"sort\":122,\"doc\":\"PartyDetailsListUpdateReport\"},{\"value\":\"CL\",\"name\":\"PartyRiskLimitsRequest\",\"since\":\"2.7\",\"sort\":123,\"doc\":\"PartyRiskLimitsRequest\"},{\"value\":\"CM\",\"name\":\"PartyRiskLimitsReport\",\"since\":\"2.7\",\"sort\":124,\"doc\":\"PartyRiskLimitsReport\"},{\"value\":\"CN\",\"name\":\"SecurityMassStatusRequest\",\"since\":\"2.7\",\"sort\":125,\"doc\":\"SecurityMassStatusRequest\"},{\"value\":\"CO\",\"name\":\"SecurityMassStatus\",\"since\":\"2.7\",\"sort\":126,\"doc\":\"SecurityMassStatus\"},{\"value\":\"CQ\",\"name\":\"AccountSummaryReport\",\"since\":\"2.7\",\"sort\":127,\"doc\":\"AccountSummaryReport\"},{\"value\":\"CR\",\"name\":\"PartyRiskLimitsUpdateReport\",\"since\":\"2.7\",\"sort\":128,\"doc\":\"PartyRiskLimitsUpdateReport\"},{\"value\":\"CS\",\"name\":\"PartyRiskLimitsDefinitionRequest\",\"since\":\"2.7\",\"sort\":129,\"doc\":\"PartyRiskLimitsDefinitionRequest\"},{\"value\":\"CT\",\"name\":\"PartyRiskLimitsDefinitionRequestAck\",\"since\":\"2.7\",\"sort\":130,\"doc\":\"PartyRiskLimitsDefinitionRequestAck\"},{\"value\":\"CU\",\"name\":\"PartyEntitlementsRequest\",\"since\":\"2.7\",\"sort\":131,\"doc\":\"PartyEntitlementsRequest\"},{\"value\":\"CV\",\"name\":\"PartyEntitlementsReport\",\"since\":\"2.7\",\"sort\":132,\"doc\":\"PartyEntitlementsReport\"},{\"value\":\"CW\",\"name\":\"QuoteAck\",\"since\":\"2.7\",\"sort\":133,\"doc\":\"QuoteAck\"},{\"value\":\"CX\",\"name\":\"PartyDetailsDefinitionRequest\",\"since\":\"2.7\",\"sort\":134,\"doc\":\"PartyDetailsDefinitionRequest\"},{\"value\":\"CY\",\"name\":\"PartyDetailsDefinitionRequestAck\",\"since\":\"2.7\",\"sort\":135,\"doc\":\"PartyDetailsDefinitionRequestAck\"},{\"value\":\"CZ\",\"name\":\"PartyEntitlementsUpdateReport\",\"since\":\"2.7\",\"sort\":136,\"doc\":\"PartyEntitlementsUpdateReport\"},{\"value\":\"D\",\"name\":\"NewOrderSingle\",\"since\":\"2.7\",\"sort\":14,\"doc\":\"NewOrderSingle\"},{\"value\":\"DA\",\"name\":\"PartyEntitlementsDefinitionRequest\",\"since\":\"2.7\",\"sort\":137,\"doc\":\"PartyEntitlementsDefinitionRequest\"},{\"value\":\"DB\",\"name\":\"PartyEntitlementsDefinitionRequestAck\",\"since\":\"2.7\",\"sort\":138,\"doc\":\"PartyEntitlementsDefinitionRequestAck\"},{\"value\":\"DC\",\"name\":\"TradeMatchReport\",\"since\":\"2.7\",\"sort\":139,\"doc\":\"TradeMatchReport\"},{\"value\":\"DD\",\"name\":\"TradeMatchReportAck\",\"since\":\"2.7\",\"sort\":140,\"doc\":\"TradeMatchReportAck\"},{\"value\":\"DE\",\"name\":\"PartyRiskLimitsReportAck\",\"since\":\"2.7\",\"sort\":141,\"doc\":\"PartyRiskLimitsReportAck\"},{\"value\":\"DF\",\"name\":\"PartyRiskLimitCheckRequest\",\"since\":\"2.7\",\"sort\":142,\"doc\":\"PartyRiskLimitCheckRequest\"},{\"value\":\"DG\",\"name\":\"PartyRiskLimitCheckRequestAck\",\"since\":\"2.7\",\"sort\":143,\"doc\":\"PartyRiskLimitCheckRequestAck\"},{\"value\":\"DH\",\"name\":\"PartyActionRequest\",\"since\":\"2.7\",\"sort\":144,\"doc\":\"PartyActionRequest\"},{\"value\":\"DI\",\"name\":\"PartyActionReport\",\"since\":\"2.7\",\"sort\":145,\"doc\":\"PartyActionReport\"},{\"value\":\"DJ\",\"name\":\"MassOrder\",\"since\":\"2.7\",\"sort\":146,\"doc\":\"MassOrder\"},{\"value\":\"DK\",\"name\":\"MassOrderAck\",\"since\":\"2.7\",\"sort\":147,\"doc\":\"MassOrderAck\"},{\"value\":\"DL\",\"name\":\"PositionTransferInstruction\",\"since\":\"2.7\",\"sort\":148,\"doc\":\"PositionTransferInstruction\"},{\"value\":\"DM\",\"name\":\"PositionTransferInstructionAck\",\"since\":\"2.7\",\"sort\":149,\"doc\":\"PositionTransferInstructionAck\"},{\"value\":\"DN\",\"name\":\"PositionTransferReport\",\"since\":\"2.7\",\"sort\":150,\"doc\":\"PositionTransferReport\"},{\"value\":\"DO\",\"name\":\"MarketDataStatisticsRequest\",\"since\":\"2.7\",\"sort\":151,\"doc\":\"MarketDataStatisticsRequest\"},{\"value\":\"DP\",\"name\":\"MarketDataStatisticsReport\",\"since\":\"2.7\",\"sort\":152,\"doc\":\"MarketDataStatisticsReport\"},{\"value\":\"DQ\",\"name\":\"CollateralReportAck\",\"since\":\"2.7\",\"sort\":153,\"doc\":\"CollateralReportAck\"},{\"value\":\"DR\",\"name\":\"MarketDataReport\",\"since\":\"2.7\",\"sort\":154,\"doc\":\"MarketDataReport\"},{\"value\":\"DS\",\"name\":\"CrossRequest\",\"since\":\"2.7\",\"sort\":155,\"doc\":\"CrossRequest\"},{\"value\":\"DT\",\"name\":\"CrossRequestAck\",\"since\":\"2.7\",\"sort\":156,\"doc\":\"CrossRequestAck\"},{\"value\":\"DU\",\"name\":\"AllocationInstructionAlertRequest\",\"since\":\"2.7\",\"sort\":157,\"doc\":\"AllocationInstructionAlertRequest\"},{\"value\":\"DV\",\"name\":\"AllocationInstructionAlertRequestAck\",\"since\":\"2.7\",\"sort\":158,\"doc\":\"AllocationInstructionAlertRequestAck\"},{\"value\":\"DW\",\"name\":\"TradeAggregationRequest\",\"since\":\"2.7\",\"sort\":159,\"doc\":\"TradeAggregationRequest\"},{\"value\":\"DX\",\"name\":\"TradeAggregationReport\",\"since\":\"2.7\",\"sort\":160,\"doc\":\"TradeAggregationReport\"},{\"value\":\"DY\",\"name\":\"PayManagementRequest\",\"since\":\"2.7\",\"sort\":163,\"doc\":\"PayManagementRequest\"},{\"value\":\"DZ\",\"name\":\"PayManagementRequestAck\",\"since\":\"2.7\",\"sort\":164,\"doc\":\"PayManagementRequestAck\"},{\"value\":\"E\",\"name\":\"NewOrderList\",\"since\":\"2.7\",\"sort\":15,\"doc\":\"NewOrderList\"},{\"value\":\"EA\",\"name\":\"PayManagementReport\",\"since\":\"2.7\",\"sort\":161,\"doc\":\"PayManagementReport\"},{\"value\":\"EB\",\"name\":\"PayManagementReportAck\",\"since\":\"2.7\",\"sort\":162,\"doc\":\"PayManagementReportAck\"},{\"value\":\"EC\",\"name\":\"SettlementStatusRequest\",\"since\":\"2.7\",\"sort\":165,\"doc\":\"SettlementStatusRequest\"},{\"value\":\"ED\",\"name\":\"SettlementStatusRequestAck\",\"since\":\"2.7\",\"sort\":166,\"doc\":\"SettlementStatusRequestAck\"},{\"value\":\"EE\",\"name\":\"SettlementStatusReport\",\"since\":\"2.7\",\"sort\":167,\"doc\":\"SettlementStatusReport\"},{\"value\":\"EF\",\"name\":\"SettlementStatusReportAck\",\"since\":\"2.7\",\"sort\":168,\"doc\":\"SettlementStatusReportAck\"},{\"value\":\"EG\",\"name\":\"SecurityRiskMetricsReport\",\"since\":\"2.7\",\"sort\":169,\"doc\":\"SecurityRiskMetricsReport\"},{\"value\":\"EH\",\"name\":\"AlgoCertificateRequest\",\"ep\":292,\"sort\":170,\"doc\":\"AlgoCertificateRequest\"},{\"value\":\"EI\",\"name\":\"AlgoCertificateRequestAck\",\"ep\":292,\"sort\":171,\"doc\":\"AlgoCertificateRequestAck\"},{\"value\":\"EJ\",\"name\":\"AlgoCertificateReport\",\"ep\":292,\"sort\":172,\"doc\":\"AlgoCertificateReport\"},{\"value\":\"EK\",\"name\":\"AlgoCertificateReportAck\",\"ep\":292,\"sort\":173,\"doc\":\"AlgoCertificateReportAck\"},{\"value\":\"EL\",\"name\":\"TestSuiteDefinitionRequest\",\"ep\":292,\"sort\":174,\"doc\":\"TestSuiteDefinitionRequest\"},{\"value\":\"EM\",\"name\":\"TestSuiteDefinitionRequestAck\",\"ep\":292,\"sort\":175,\"doc\":\"TestSuiteDefinitionRequestAck\"},{\"value\":\"EN\",\"name\":\"TestActionRequest\",\"ep\":292,\"sort\":176,\"doc\":\"TestActionRequest\"},{\"value\":\"EO\",\"name\":\"TestActionRequestAck\",\"ep\":292,\"sort\":177,\"doc\":\"TestActionRequestAck\"},{\"value\":\"EP\",\"name\":\"TestActionReport\",\"ep\":292,\"sort\":178,\"doc\":\"TestActionReport\"},{\"value\":\"EQ\",\"name\":\"MarketDataAck\",\"ep\":300,\"sort\":179,\"doc\":\"MarketDataAck\"},{\"value\":\"ER\",\"name\":\"SecurityStatusAck\",\"ep\":300,\"sort\":180,\"doc\":\"SecurityStatusAck\"},{\"value\":\"ES\",\"name\":\"TradingSessionStatusAck\",\"ep\":300,\"sort\":181,\"doc\":\"TradingSessionStatusAck\"},{\"value\":\"F\",\"name\":\"OrderCancelRequest\",\"since\":\"2.7\",\"sort\":16,\"doc\":\"OrderCancelRequest\"},{\"value\":\"G\",\"name\":\"OrderCancelReplaceRequest\",\"since\":\"2.7\",\"sort\":17,\"doc\":\"OrderCancelReplaceRequest\"},{\"value\":\"H\",\"name\":\"OrderStatusRequest\",\"since\":\"2.7\",\"sort\":18,\"doc\":\"OrderStatusRequest\"},{\"value\":\"J\",\"name\":\"AllocationInstruction\",\"since\":\"2.7\",\"sort\":19,\"doc\":\"AllocationInstruction\"},{\"value\":\"K\",\"name\":\"ListCancelRequest\",\"since\":\"2.7\",\"sort\":20,\"doc\":\"ListCancelRequest\"},{\"value\":\"L\",\"name\":\"ListExecute\",\"since\":\"2.7\",\"sort\":21,\"doc\":\"ListExecute\"},{\"value\":\"M\",\"name\":\"ListStatusRequest\",\"since\":\"2.7\",\"sort\":22,\"doc\":\"ListStatusRequest\"},{\"value\":\"N\",\"name\":\"ListStatus\",\"since\":\"2.7\",\"sort\":23,\"doc\":\"ListStatus\"},{\"value\":\"P\",\"name\":\"AllocationInstructionAck\",\"since\":\"2.7\",\"sort\":24,\"doc\":\"AllocationInstructionAck\"},{\"value\":\"Q\",\"name\":\"DontKnowTrade\",\"since\":\"2.7\",\"sort\":25,\"doc\":\"DontKnowTrade\"},{\"value\":\"R\",\"name\":\"QuoteRequest\",\"since\":\"2.7\",\"sort\":26,\"doc\":\"QuoteRequest\"},{\"value\":\"S\",\"name\":\"Quote\",\"since\":\"2.7\",\"sort\":27,\"doc\":\"Quote\"},{\"value\":\"T\",\"name\":\"SettlementInstructions\",\"since\":\"2.7\",\"sort\":28,\"doc\":\"SettlementInstructions\"},{\"value\":\"V\",\"name\":\"MarketDataRequest\",\"since\":\"2.7\",\"sort\":29,\"doc\":\"MarketDataRequest\"},{\"value\":\"W\",\"name\":\"MarketDataSnapshotFullRefresh\",\"since\":\"2.7\",\"sort\":30,\"doc\":\"MarketDataSnapshotFullRefresh\"},{\"value\":\"X\",\"name\":\"MarketDataIncrementalRefresh\",\"since\":\"2.7\",\"sort\":31,\"doc\":\"MarketDataIncrementalRefresh\"},{\"value\":\"Y\",\"name\":\"MarketDataRequestReject\",\"since\":\"2.7\",\"sort\":32,\"doc\":\"MarketDataRequestReject\"},{\"value\":\"Z\",\"name\":\"QuoteCancel\",\"since\":\"2.7\",\"sort\":33,\"doc\":\"QuoteCancel\"},{\"value\":\"a\",\"name\":\"QuoteStatusRequest\",\"since\":\"2.7\",\"sort\":34,\"doc\":\"QuoteStatusRequest\"},{\"value\":\"b\",\"name\":\"MassQuoteAck\",\"since\":\"2.7\",\"sort\":35,\"aliases\":[\"MassQuoteAcknowledgement\"],\"doc\":\"MassQuoteAck\"},{\"value\":\"c\",\"name\":\"SecurityDefinitionRequest\",\"since\":\"2.7\",\"sort\":36,\"doc\":\"SecurityDefinitionRequest\"},{\"value\":\"d\",\"name\":\"SecurityDefinition\",\"since\":\"2.7\",\"sort\":37,\"doc\":\"SecurityDefinition\"},{\"value\":\"e\",\"name\":\"SecurityStatusRequest\",\"since\":\"2.7\",\"sort\":38,\"doc\":\"SecurityStatusRequest\"},{\"value\":\"f\",\"name\":\"SecurityStatus\",\"since\":\"2.7\",\"sort\":39,\"doc\":\"SecurityStatus\"},{\"value\":\"g\",\"name\":\"TradingSessionStatusRequest\",\"since\":\"2.7\",\"sort\":40,\"doc\":\"TradingSessionStatusRequest\"},{\"value\":\"h\",\"name\":\"TradingSessionStatus\",\"since\":\"2.7\",\"sort\":41,\"doc\":\"TradingSessionStatus\"},{\"value\":\"i\",\"name\":\"MassQuote\",\"since\":\"2.7\",\"sort\":42,\"doc\":\"MassQuote\"},{\"value\":\"j\",\"name\":\"BusinessMessageReject\",\"since\":\"2.7\",\"sort\":43,\"doc\":\"BusinessMessageReject\"},{\"value\":\"k\",\"name\":\"BidRequest\",\"since\":\"2.7\",\"sort\":44,\"doc\":\"BidRequest\"},{\"value\":\"l\",\"name\":\"BidResponse\",\"since\":\"2.7\",\"sort\":45,\"doc\":\"BidResponse\"},{\"value\":\"m\",\"name\":\"ListStrikePrice\",\"since\":\"2.7\",\"sort\":46,\"doc\":\"ListStrikePrice\"},{\"value\":\"n\",\"name\":\"XMLnonFIX\",\"since\":\"2.7\",\"sort\":47,\"doc\":\"XMLnonFIX\"},{\"value\":\"o\",\"name\":\"RegistrationInstructions\",\"since\":\"2.7\",\"sort\":48,\"doc\":\"RegistrationInstructions\"},{\"value\":\"p\",\"name\":\"RegistrationInstructionsResponse\",\"since\":\"2.7\",\"sort\":49,\"doc\":\"RegistrationInstructionsResponse\"},{\"value\":\"q\",\"name\":\"OrderMassCancelRequest\",\"since\":\"2.7\",\"sort\":50,\"doc\":\"OrderMassCancelRequest\"},{\"value\":\"r\",\"name\":\"OrderMassCancelReport\",\"since\":\"2.7\",\"sort\":51,\"doc\":\"OrderMassCancelReport\"},{\"value\":\"s\",\"name\":\"NewOrderCross\",\"since\":\"2.7\",\"sort\":52,\"doc\":\"NewOrderCross\"},{\"value\":\"t\",\"name\":\"CrossOrderCancelReplaceRequest\",\"since\":\"2.7\",\"sort\":53,\"doc\":\"CrossOrderCancelReplaceRequest\"},{\"value\":\"u\",\"name\":\"CrossOrderCancelRequest\",\"since\":\"2.7\",\"sort\":54,\"doc\":\"CrossOrderCancelRequest\"},{\"value\":\"v\",\"name\":\"SecurityTypeRequest\",\"since\":\"2.7\",\"sort\":55,\"doc\":\"SecurityTypeRequest\"},{\"value\":\"w\",\"name\":\"SecurityTypes\",\"since\":\"2.7\",\"sort\":56,\"doc\":\"SecurityTypes\"},{\"value\":\"x\",\"name\":\"SecurityListRequest\",\"since\":\"2.7\",\"sort\":57,\"doc\":\"SecurityListRequest\"},{\"value\":\"y\",\"name\":\"SecurityList\",\"since\":\"2.7\",\"sort\":58,\"doc\":\"SecurityList\"},{\"value\":\"z\",\"name\":\"DerivativeSecurityListRequest\",\"since\":\"2.7\",\"sort\":59,\"doc\":\"DerivativeSecurityListRequest\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"msgtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"msgtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "35"
     }
   },
@@ -488,13 +488,13 @@
   {
     "name": "orderid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
       "display": "OrderID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"5.0.1\",\"msgtypes\":[\"r\"],\"fills\":[{\"tag\":1369}]}]}",
       "fix:tag": "37"
     }
@@ -522,21 +522,21 @@
       "description": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
       "display": "OrdStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"PartiallyFilled\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Partially filled\"},{\"value\":\"2\",\"name\":\"Filled\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Filled\"},{\"value\":\"3\",\"name\":\"DoneForDay\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Done for day\"},{\"value\":\"4\",\"name\":\"Canceled\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Canceled\"},{\"value\":\"5\",\"name\":\"Replaced\",\"since\":\"4.4\",\"ep\":35,\"deprecated\":\"4.3\",\"sort\":6,\"doc\":\"Replaced (No longer used)\"},{\"value\":\"6\",\"name\":\"PendingCancel\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Pending Cancel (i.e. result of Order Cancel Request)\"},{\"value\":\"7\",\"name\":\"Stopped\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"Stopped\"},{\"value\":\"8\",\"name\":\"Rejected\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"Rejected\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"3.0\",\"sort\":10,\"doc\":\"Suspended\"},{\"value\":\"A\",\"name\":\"PendingNew\",\"since\":\"3.0\",\"sort\":11,\"doc\":\"Pending New\"},{\"value\":\"B\",\"name\":\"Calculated\",\"since\":\"4.0\",\"sort\":12,\"doc\":\"Calculated\"},{\"value\":\"C\",\"name\":\"Expired\",\"since\":\"4.0\",\"sort\":13,\"doc\":\"Expired\"},{\"value\":\"D\",\"name\":\"AcceptedForBidding\",\"since\":\"4.2\",\"sort\":14,\"doc\":\"Accepted for Bidding\"},{\"value\":\"E\",\"name\":\"PendingReplace\",\"since\":\"4.2\",\"sort\":15,\"doc\":\"Pending Replace (i.e. result of Order Cancel/Replace Request)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordstatus\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"name\":\"ordstatus\",\"type\":{\"type\":\"state\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordstatus\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"name\":\"ordstatus\",\"type\":{\"type\":\"state\"}}]}",
       "fix:tag": "39"
     }
   },
   {
     "name": "ordtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Order type.",
       "display": "OrdType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Market\",\"since\":\"2.7\",\"doc\":\"Market\"},{\"value\":\"2\",\"name\":\"Limit\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Limit\"},{\"value\":\"3\",\"name\":\"Stop\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Stop/Stop Loss.\"},{\"value\":\"4\",\"name\":\"StopLimit\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Stop Limit.\"},{\"value\":\"5\",\"name\":\"MarketOnClose\",\"since\":\"2.7\",\"deprecated\":\"4.3\",\"sort\":4,\"doc\":\"Market On Close (No longer used)\"},{\"value\":\"6\",\"name\":\"WithOrWithout\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"With Or Without\"},{\"value\":\"7\",\"name\":\"LimitOrBetter\",\"since\":\"2.7\",\"deprecated\":\"4.4\",\"sort\":6,\"doc\":\"Limit Or Better\"},{\"value\":\"8\",\"name\":\"LimitWithOrWithout\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Limit With Or Without\"},{\"value\":\"9\",\"name\":\"OnBasis\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"On Basis\"},{\"value\":\"A\",\"name\":\"OnClose\",\"since\":\"2.7\",\"deprecated\":\"4.3\",\"sort\":9,\"doc\":\"On Close (No longer used)\"},{\"value\":\"B\",\"name\":\"LimitOnClose\",\"since\":\"2.7\",\"deprecated\":\"4.3\",\"sort\":10,\"doc\":\"Limit On Close (No longer used)\"},{\"value\":\"C\",\"name\":\"ForexMarket\",\"since\":\"4.0\",\"deprecated\":\"4.3\",\"sort\":11,\"doc\":\"Forex Market (No longer used)\"},{\"value\":\"D\",\"name\":\"PreviouslyQuoted\",\"since\":\"4.0\",\"sort\":12,\"doc\":\"Previously Quoted\"},{\"value\":\"E\",\"name\":\"PreviouslyIndicated\",\"since\":\"4.0\",\"sort\":13,\"doc\":\"Previously Indicated\"},{\"value\":\"F\",\"name\":\"ForexLimit\",\"since\":\"4.1\",\"deprecated\":\"4.3\",\"sort\":14,\"doc\":\"Forex Limit (No longer used)\"},{\"value\":\"G\",\"name\":\"ForexSwap\",\"since\":\"4.1\",\"sort\":15,\"doc\":\"Forex Swap\"},{\"value\":\"H\",\"name\":\"ForexPreviouslyQuoted\",\"since\":\"4.1\",\"deprecated\":\"4.3\",\"sort\":16,\"doc\":\"Forex Previously Quoted (No longer used)\"},{\"value\":\"I\",\"name\":\"Funari\",\"since\":\"4.2\",\"sort\":17,\"doc\":\"Funari (Limit day order with unexecuted portion handles as Market On Close. E.g. Japan)\"},{\"value\":\"J\",\"name\":\"MarketIfTouched\",\"since\":\"4.3\",\"sort\":18,\"doc\":\"Market If Touched (MIT)\"},{\"value\":\"K\",\"name\":\"MarketWithLeftOverAsLimit\",\"since\":\"4.3\",\"sort\":19,\"doc\":\"Market With Left Over as Limit\"},{\"value\":\"L\",\"name\":\"PreviousFundValuationPoint\",\"since\":\"4.3\",\"sort\":20,\"doc\":\"Previous Fund Valuation Point (Historic pricing; for CIV)\"},{\"value\":\"M\",\"name\":\"NextFundValuationPoint\",\"since\":\"4.3\",\"sort\":21,\"doc\":\"Next Fund Valuation Point (Forward pricing; for CIV)\"},{\"value\":\"P\",\"name\":\"Pegged\",\"since\":\"3.0\",\"sort\":22,\"doc\":\"Pegged\"},{\"value\":\"Q\",\"name\":\"CounterOrderSelection\",\"since\":\"4.4\",\"ep\":22,\"sort\":23,\"doc\":\"Counter-order selection\"},{\"value\":\"R\",\"name\":\"StopOnBidOrOffer\",\"since\":\"5.0.2\",\"ep\":166,\"sort\":24,\"doc\":\"Stop on Bid or Offer\"},{\"value\":\"S\",\"name\":\"StopLimitOnBidOrOffer\",\"since\":\"5.0.2\",\"ep\":166,\"sort\":25,\"doc\":\"Stop Limit on Bid or Offer\"},{\"value\":\"T\",\"name\":\"MarketWithinPriceBand\",\"ep\":304,\"sort\":26,\"doc\":\"Market within price band\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"when\":\"5\",\"fills\":[{\"tag\":40,\"value\":\"1\"},{\"tag\":59,\"value\":\"7\"}],\"doc\":\"OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"A\",\"fills\":[{\"tag\":40,\"value\":\"1\"},{\"tag\":59,\"value\":\"7\"}],\"doc\":\"OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"B\",\"fills\":[{\"tag\":40,\"value\":\"2\"},{\"tag\":59,\"value\":\"7\"}],\"doc\":\"OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"C\",\"fills\":[{\"tag\":40,\"value\":\"1\"},{\"tag\":460,\"value\":\"4\"}],\"doc\":\"OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"F\",\"fills\":[{\"tag\":40,\"value\":\"2\"},{\"tag\":460,\"value\":\"4\"}],\"doc\":\"OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"H\",\"fills\":[{\"tag\":40,\"value\":\"D\"},{\"tag\":460,\"value\":\"4\"}],\"doc\":\"OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)\"}]}",
       "fix:tag": "40"
     }
@@ -544,13 +544,13 @@
   {
     "name": "origclordid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
       "display": "OrigClOrdID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"origclordid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"origclordid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "41"
     }
   },
@@ -579,7 +579,7 @@
       "description": "Indicates possible retransmission of message with this sequence number",
       "display": "PossDupFlag",
       "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"OriginalTransmission\",\"since\":\"2.7\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Original transmission\"},{\"value\":\"Y\",\"name\":\"PossibleDuplicate\",\"since\":\"2.7\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Possible duplicate\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"possdupflag\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.2\",\"name\":\"possdupflag\",\"type\":{\"type\":\"boolean\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"possdupflag\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"possdupflag\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "43"
     }
   },
@@ -612,12 +612,12 @@
   {
     "name": "relatdsym",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "RelatdSym",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"relatdsym\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"relatdsym\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"tag\":55}]}]}",
       "fix:tag": "46"
     }
@@ -625,13 +625,13 @@
   {
     "name": "rule80a",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "Rule80A",
       "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"AgencySingleOrder\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"B\",\"name\":\"ShortExemptTransactionAType\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"C\",\"name\":\"ProprietaryNonAlgo\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"D\",\"name\":\"ProgramOrderMember\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"E\",\"name\":\"ShortExemptTransactionForPrincipal\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"F\",\"name\":\"ShortExemptTransactionWType\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"H\",\"name\":\"ShortExemptTransactionIType\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"I\",\"name\":\"IndividualInvestor\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"J\",\"name\":\"ProprietaryAlgo\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"K\",\"name\":\"AgencyAlgo\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"L\",\"name\":\"ShortExemptTransactionMemberAffliated\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"M\",\"name\":\"ProgramOrderOtherMember\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"N\",\"name\":\"AgentForOtherMember\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"O\",\"name\":\"ProprietaryTransactionAffiliated\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"P\",\"name\":\"Principal\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"R\",\"name\":\"TransactionNonMember\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"S\",\"name\":\"SpecialistTrades\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"T\",\"name\":\"TransactionUnaffiliatedMember\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"U\",\"name\":\"AgencyIndexArb\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"W\",\"name\":\"AllOtherOrdersAsAgentForOtherMember\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"X\",\"name\":\"ShortExemptTransactionMemberNotAffliated\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"Y\",\"name\":\"AgencyNonAlgo\",\"since\":\"4.0\",\"deprecated\":\"4.4\"},{\"value\":\"Z\",\"name\":\"ShortExemptTransactionNonMember\",\"since\":\"4.1\",\"deprecated\":\"4.4\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"rule80a\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"deprecated\":true},{\"since\":\"4.4\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"rule80a\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"deprecated\":true},{\"since\":\"4.4\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"when\":\"A\",\"fills\":[{\"tag\":528,\"value\":\"A\"}],\"doc\":\"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"B\",\"fills\":[{\"tag\":528,\"value\":\"A\"}],\"doc\":\"Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"C\",\"fills\":[{\"tag\":528,\"value\":\"P\"},{\"tag\":529,\"value\":\"1 3\"}],\"doc\":\"Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"D\",\"fills\":[{\"tag\":528,\"value\":\"P\"},{\"tag\":529,\"value\":\"1 2\"}],\"doc\":\"Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"E\",\"fills\":[{\"tag\":528,\"value\":\"P\"}],\"doc\":\"Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"F\",\"fills\":[{\"tag\":528,\"value\":\"W\"}],\"doc\":\"Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"H\",\"fills\":[{\"tag\":528,\"value\":\"I\"}],\"doc\":\"Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"I\",\"fills\":[{\"tag\":528,\"value\":\"I\"}],\"doc\":\"Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"J\",\"fills\":[{\"tag\":528,\"value\":\"I\"},{\"tag\":529,\"value\":\"1 2\"}],\"doc\":\"Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"K\",\"fills\":[{\"tag\":528,\"value\":\"I\"},{\"tag\":529,\"value\":\"1 3\"}],\"doc\":\"Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"L\",\"fills\":[{\"tag\":528,\"value\":\"P\"},{\"tag\":529,\"value\":\"4\"}],\"doc\":\"Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"M\",\"fills\":[{\"tag\":528,\"value\":\"W\"},{\"tag\":529,\"value\":\"1 2\"}],\"doc\":\"Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"N\",\"fills\":[{\"tag\":528,\"value\":\"W\"},{\"tag\":529,\"value\":\"1 3\"}],\"doc\":\"Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"O\",\"fills\":[{\"tag\":528,\"value\":\"P\"},{\"tag\":529,\"value\":\"4\"}],\"doc\":\"Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"P\",\"fills\":[{\"tag\":528,\"value\":\"P\"}],\"doc\":\"Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"R\",\"fills\":[{\"tag\":528,\"value\":\"A\"},{\"tag\":529,\"value\":\"4\"}],\"doc\":\"Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"S\",\"fills\":[{\"tag\":528,\"value\":\"P\"},{\"tag\":529,\"value\":\"5\"}],\"doc\":\"Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"T\",\"fills\":[{\"tag\":528,\"value\":\"W\"},{\"tag\":529,\"value\":\"5\"}],\"doc\":\"Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"U\",\"fills\":[{\"tag\":528,\"value\":\"A\"},{\"tag\":529,\"value\":\"1 2\"}],\"doc\":\"Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"W\",\"fills\":[{\"tag\":528,\"value\":\"W\"}],\"doc\":\"Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"X\",\"fills\":[{\"tag\":528,\"value\":\"W\"},{\"tag\":529,\"value\":\"4\"}],\"doc\":\"Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"Y\",\"fills\":[{\"tag\":528,\"value\":\"A\"},{\"tag\":529,\"value\":\"1 3\"}],\"doc\":\"Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"when\":\"Z\",\"fills\":[{\"tag\":528,\"value\":\"A\"},{\"tag\":529,\"value\":\"4\"}],\"doc\":\"Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "47"
     }
@@ -639,39 +639,39 @@
   {
     "name": "securityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
       "display": "SecurityID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"securityid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"securityid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "48"
     }
   },
   {
     "name": "sendercompid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned value used to identify firm sending message.",
       "display": "SenderCompID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendercompid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendercompid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "49"
     }
   },
   {
     "name": "sendersubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned value used to identify specific message originator (desk, trader, etc.)",
       "display": "SenderSubID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendersubid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendersubid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "50"
     }
   },
@@ -727,73 +727,73 @@
       "description": "Side of order (see Volume : \"Glossary\" for value definitions)",
       "display": "Side",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Sell\"},{\"value\":\"3\",\"name\":\"BuyMinus\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Buy minus\"},{\"value\":\"4\",\"name\":\"SellPlus\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Sell plus\"},{\"value\":\"5\",\"name\":\"SellShort\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Sell short\"},{\"value\":\"6\",\"name\":\"SellShortExempt\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Sell short exempt\"},{\"value\":\"7\",\"name\":\"Undisclosed\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"Undisclosed\"},{\"value\":\"8\",\"name\":\"Cross\",\"since\":\"4.1\",\"sort\":8,\"doc\":\"Cross (orders where counterparty is an exchange, valid for all messages except IOIs)\"},{\"value\":\"9\",\"name\":\"CrossShort\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Cross short\"},{\"value\":\"A\",\"name\":\"CrossShortExempt\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Cross short exempt\"},{\"value\":\"B\",\"name\":\"AsDefined\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"\\\"As Defined\\\" (for use with multileg instruments)\"},{\"value\":\"C\",\"name\":\"Opposite\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"\\\"Opposite\\\" (for use with multileg instruments)\"},{\"value\":\"D\",\"name\":\"Subscribe\",\"since\":\"4.4\",\"sort\":13,\"doc\":\"Subscribe (e.g. CIV)\"},{\"value\":\"E\",\"name\":\"Redeem\",\"since\":\"4.4\",\"sort\":14,\"doc\":\"Redeem (e.g. CIV)\"},{\"value\":\"F\",\"name\":\"Lend\",\"since\":\"4.4\",\"sort\":15,\"doc\":\"Lend (FINANCING - identifies direction of collateral)\"},{\"value\":\"G\",\"name\":\"Borrow\",\"since\":\"4.4\",\"sort\":16,\"doc\":\"Borrow (FINANCING - identifies direction of collateral)\"},{\"value\":\"H\",\"name\":\"SellUndisclosed\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":17,\"doc\":\"Sell undisclosed\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"side\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"name\":\"side\",\"type\":{\"type\":\"side\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"side\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"name\":\"side\",\"type\":{\"type\":\"side\"}}]}",
       "fix:tag": "54"
     }
   },
   {
     "name": "symbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
       "display": "Symbol",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "55"
     }
   },
   {
     "name": "targetcompid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned value used to identify receiving firm.",
       "display": "TargetCompID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"targetcompid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"targetcompid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "56"
     }
   },
   {
     "name": "targetsubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned value used to identify specific individual or unit intended to receive message. \"ADMIN\" reserved for administrative messages not intended for a specific user.",
       "display": "TargetSubID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"targetsubid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"targetsubid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "57"
     }
   },
   {
     "name": "text",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Free format text string",
       "display": "Text",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"text\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"text\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "58"
     }
   },
   {
     "name": "timeinforce",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
       "display": "TimeInForce",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Day\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"since\":\"4.0\",\"sort\":7,\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"since\":\"5.0\",\"ep\":61,\"sort\":9,\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"since\":\"5.0\",\"ep\":61,\"sort\":10,\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":11,\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"since\":\"5.0.2\",\"ep\":131,\"sort\":12,\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":13,\"doc\":\"Good for this Month (GFM)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"timeinforce\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"timeinforce\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "59"
     }
   },
@@ -815,14 +815,14 @@
   {
     "name": "urgency",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Urgency flag",
       "display": "Urgency",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Normal\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Normal\"},{\"value\":\"1\",\"name\":\"Flash\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Flash\"},{\"value\":\"2\",\"name\":\"Background\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Background\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"urgency\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"urgency\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "61"
     }
   },
@@ -844,7 +844,7 @@
   {
     "name": "settltype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -852,7 +852,7 @@
       "display": "SettlType",
       "fix:aliases": "settlmnttyp",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Regular\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Regular / FX Spot settlement (T+1 or T+2 depending on currency)\"},{\"value\":\"1\",\"name\":\"Cash\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Cash (TOD / T+0)\"},{\"value\":\"2\",\"name\":\"NextDay\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Next Day (TOM / T+1)\"},{\"value\":\"3\",\"name\":\"TPlus2\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"T+2\"},{\"value\":\"4\",\"name\":\"TPlus3\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"T+3\"},{\"value\":\"5\",\"name\":\"TPlus4\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"T+4\"},{\"value\":\"6\",\"name\":\"Future\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Future\"},{\"value\":\"7\",\"name\":\"WhenAndIfIssued\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"When And If Issued\"},{\"value\":\"8\",\"name\":\"SellersOption\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"Sellers Option\"},{\"value\":\"9\",\"name\":\"TPlus5\",\"since\":\"3.0\",\"sort\":10,\"doc\":\"T+5\"},{\"value\":\"A\",\"name\":\"T1\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"B\",\"name\":\"BrokenDate\",\"since\":\"4.4\",\"ep\":25,\"sort\":12,\"doc\":\"Broken date\"},{\"value\":\"C\",\"name\":\"FXSpotNextSettlement\",\"since\":\"4.4\",\"ep\":21,\"sort\":99,\"doc\":\"FX Spot Next settlement (Spot+1, aka next day)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"settlmnttyp\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"settltype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"settlmnttyp\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.4\",\"name\":\"settltype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"when\":\"A\",\"fills\":[{\"tag\":63,\"value\":\"2\"}],\"doc\":\"SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)\"}]}",
       "fix:tag": "63"
     }
@@ -875,27 +875,27 @@
   {
     "name": "symbolsfx",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Additional information about the security (e.g. preferred, warrants, etc.). Note also see SecurityType (167).",
       "display": "SymbolSfx",
       "fix:codes": "{\"codes\":[{\"value\":\"CD\",\"name\":\"EUCPWithLumpSumInterest\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For Fixed Income\",\"doc\":\"EUCP with lump-sum interest rather than discount price\"},{\"value\":\"WI\",\"name\":\"WhenIssued\",\"since\":\"4.4\",\"sort\":2,\"group\":\"For Fixed Income\",\"doc\":\"\\\"When Issued\\\" for a security to be reissued under an old CUSIP or ISIN\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbolsfx\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbolsfx\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "65"
     }
   },
   {
     "name": "listid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for list as assigned by institution, used to associate multiple individual orders. Uniqueness must be guaranteed within a single trading day. Firms which generate multi-day orders should consider embedding a date within the ListID field to assure uniqueness across days.",
       "display": "ListID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"listid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"listid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "66"
     }
   },
@@ -929,40 +929,40 @@
   {
     "name": "listexecinst",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Free format text message containing list handling and execution instructions.",
       "display": "ListExecInst",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"listexecinst\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"listexecinst\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "69"
     }
   },
   {
     "name": "allocid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for allocation message.",
       "display": "AllocID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"allocid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"allocid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"allocid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"allocid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "70"
     }
   },
   {
     "name": "alloctranstype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies allocation transaction type *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" ***",
       "display": "AllocTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Replace\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Replace\"},{\"value\":\"2\",\"name\":\"Cancel\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Cancel\"},{\"value\":\"3\",\"name\":\"Preliminary\",\"since\":\"4.1\",\"deprecated\":\"5.0.2\"},{\"value\":\"4\",\"name\":\"Calculated\",\"since\":\"4.1\",\"deprecated\":\"5.0.2\"},{\"value\":\"5\",\"name\":\"CalculatedWithoutPreliminary\",\"since\":\"4.2\",\"deprecated\":\"5.0.2\"},{\"value\":\"6\",\"name\":\"Reversal\",\"since\":\"4.4\",\"ep\":5,\"sort\":7,\"doc\":\"Reversal\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"alloctranstype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"alloctranstype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"msgtypes\":[\"J\"],\"when\":\"0\",\"fills\":[{\"tag\":626,\"value\":\"1\"}],\"doc\":\"A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)\"},{\"since\":\"4.3\",\"msgtypes\":[\"J\"],\"when\":\"3\",\"fills\":[{\"tag\":71,\"value\":\"0\"},{\"tag\":626,\"value\":\"2\"}],\"doc\":\"A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "71"
     }
@@ -970,13 +970,13 @@
   {
     "name": "refallocid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference identifier to be used with AllocTransType (71) = Replace or Cancel.",
       "display": "RefAllocID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"refallocid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"refallocid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"refallocid\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.1\",\"name\":\"refallocid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "72"
     }
   },
@@ -1024,12 +1024,12 @@
   {
     "name": "execbroker",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "ExecBroker",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"execbroker\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"execbroker\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"group\":\"parties\",\"members\":[{\"tag\":448},{\"tag\":452,\"value\":\"1\"}]}],\"doc\":\"ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "76"
     }
@@ -1037,7 +1037,7 @@
   {
     "name": "positioneffect",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1045,7 +1045,7 @@
       "display": "PositionEffect",
       "fix:aliases": "openclose",
       "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"Close\",\"since\":\"4.1\",\"sort\":1,\"doc\":\"Close\"},{\"value\":\"D\",\"name\":\"Default\",\"since\":\"5.0\",\"ep\":61,\"sort\":6,\"doc\":\"Default\"},{\"value\":\"F\",\"name\":\"FIFO\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"FIFO\"},{\"value\":\"N\",\"name\":\"CloseButNotifyOnOpen\",\"since\":\"5.0\",\"ep\":61,\"sort\":5,\"doc\":\"Close but notify on open\"},{\"value\":\"O\",\"name\":\"Open\",\"since\":\"4.1\",\"sort\":3,\"doc\":\"Open\"},{\"value\":\"R\",\"name\":\"Rolled\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Rolled\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"openclose\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"name\":\"positioneffect\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"openclose\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"name\":\"positioneffect\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "77"
     }
   },
@@ -1065,13 +1065,13 @@
   {
     "name": "allocaccount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Sub-account mnemonic",
       "display": "AllocAccount",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"allocaccount\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"allocaccount\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "79"
     }
   },
@@ -1092,14 +1092,14 @@
   {
     "name": "processcode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Processing code for sub-account. Absence of this field in AllocAccount (79) / AllocPrice (366) /AllocQty (80) / ProcessCode instance indicates regular trade.",
       "display": "ProcessCode",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Regular\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Regular\"},{\"value\":\"1\",\"name\":\"SoftDollar\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Soft Dollar\"},{\"value\":\"2\",\"name\":\"StepIn\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Step-In\"},{\"value\":\"3\",\"name\":\"StepOut\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Step-Out\"},{\"value\":\"4\",\"name\":\"SoftDollarStepIn\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Soft-dollar Step-In\"},{\"value\":\"5\",\"name\":\"SoftDollarStepOut\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Soft-dollar Step-Out\"},{\"value\":\"6\",\"name\":\"PlanSponsor\",\"since\":\"4.0\",\"sort\":7,\"doc\":\"Plan Sponsor\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"processcode\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"processcode\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "81"
     }
   },
@@ -1158,12 +1158,12 @@
   {
     "name": "dlvyinst",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "DlvyInst",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"dlvyinst\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"dlvyinst\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:tag": "86"
     }
   },
@@ -1237,12 +1237,12 @@
   {
     "name": "brokerofcredit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "display": "BrokerOfCredit",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"brokerofcredit\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.3\",\"removed\":true}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"brokerofcredit\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"removed\":true}]}",
       "fix:replacements": "{\"replacements\":[{\"since\":\"4.3\",\"fills\":[{\"group\":\"parties\",\"members\":[{\"tag\":448},{\"tag\":452,\"value\":\"2\"}]}],\"doc\":\"BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)\"}]}",
       "fix:tag": "92"
     }
@@ -1263,14 +1263,14 @@
   {
     "name": "emailtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Email message type.",
       "display": "EmailType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Reply\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Reply\"},{\"value\":\"2\",\"name\":\"AdminReply\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Admin Reply\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"emailtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"emailtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "94"
     }
   },
@@ -1310,7 +1310,7 @@
       "description": "Indicates that message may contain information that has been sent under another sequence number.",
       "display": "PossResend",
       "fix:codes": "{\"codes\":[{\"value\":\"N\",\"name\":\"OriginalTransmission\",\"since\":\"4.1\",\"sort\":1,\"aliases\":[\"No\"],\"doc\":\"Original Transmission\"},{\"value\":\"Y\",\"name\":\"PossibleResend\",\"since\":\"4.1\",\"sort\":2,\"aliases\":[\"Yes\"],\"doc\":\"Possible Resend\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"possresend\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.2\",\"name\":\"possresend\",\"type\":{\"type\":\"boolean\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"possresend\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"possresend\",\"type\":{\"type\":\"boolean\"}}]}",
       "fix:tag": "97"
     }
   },

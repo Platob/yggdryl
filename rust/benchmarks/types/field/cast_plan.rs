@@ -40,8 +40,8 @@ fn target() -> Field {
         "row",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
-            DataType::Utf8.required_field("venue"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::utf8().required_field("venue"),
         ])
         .expect("the benchmark root is valid"),
         false,

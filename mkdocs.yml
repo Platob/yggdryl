@@ -138,8 +138,8 @@ nav:
       - Cast: types/cast.md
     - Families:
       - Numeric & temporal: types/numeric.md
-      - Text & bytes: types/text.md
-      - ASCII: types/ascii.md
+      - Strings & bytes: types/text.md
+      - Codes: types/codes.md
       - UUID: types/uuid.md
       - Nested: types/nested.md
       - Geospatial: types/geospatial.md
@@ -165,6 +165,11 @@ nav:
     - gzip: coding/gzip.md
     - zlib: coding/zlib.md
     - zstd: coding/zstd.md
+  - Charset:
+    - charset/index.md
+    - Encodings: charset/encodings.md
+    - Transcoded: charset/transcoded.md
+    - Streams: charset/streams.md
   - Media:
     - media/index.md
     - Options: media/options.md

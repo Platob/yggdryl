@@ -99,18 +99,27 @@ enum DataTypeRef<'a> {
     Interval {
         unit: TimeUnit,
     },
-    Binary {},
-    FixedSizeBinary {
-        width: i32,
+    // The `binary` layout is the default, so a plain `binary` is the bare
+    // tag and only what a byte datatype declares is written.
+    Binary {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        layout: Option<crate::types::BytesLayout>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fixed: Option<u32>,
     },
-    LargeBinary {},
-    BinaryView {},
-    Utf8 {},
-    LargeUtf8 {},
-    Utf8View {},
-    Ascii {},
-    FixedAscii {
-        width: i32,
+    // The `string` layout and the UTF-8 charset are the defaults, so a plain
+    // `utf8` is the bare tag and only what a string declares is written.
+    String {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        layout: Option<crate::types::StringLayout>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        charset: Option<crate::Charset>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        max: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fixed: Option<u32>,
     },
     Country {},
     Currency {},
@@ -240,15 +249,25 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Duration32(unit) => Self::Duration32 { unit: *unit },
             D::Duration64(unit) => Self::Duration64 { unit: *unit },
             D::Interval(unit) => Self::Interval { unit: *unit },
-            D::Binary => Self::Binary {},
-            D::FixedSizeBinary(width) => Self::FixedSizeBinary { width: *width },
-            D::LargeBinary => Self::LargeBinary {},
-            D::BinaryView => Self::BinaryView {},
-            D::Utf8 => Self::Utf8 {},
-            D::LargeUtf8 => Self::LargeUtf8 {},
-            D::Utf8View => Self::Utf8View {},
-            D::Ascii => Self::Ascii {},
-            D::FixedAscii(width) => Self::FixedAscii { width: *width },
+            D::Bytes(parameters) => {
+                let parameters = *parameters;
+                Self::Binary {
+                    layout: Some(parameters.layout())
+                        .filter(|layout| *layout != crate::types::BytesLayout::Binary),
+                    max: parameters.max(),
+                    fixed: parameters.fixed(),
+                }
+            }
+            D::String(parameters) => {
+                let parameters = *parameters;
+                Self::String {
+                    layout: Some(parameters.layout())
+                        .filter(|layout| *layout != crate::types::StringLayout::String),
+                    charset: Some(parameters.charset()).filter(|charset| !charset.is_utf8()),
+                    max: parameters.max(),
+                    fixed: parameters.fixed(),
+                }
+            }
             D::Country => Self::Country {},
             D::Currency => Self::Currency {},
             D::Mic => Self::Mic {},
@@ -357,18 +376,23 @@ enum DataTypeValue {
     Interval {
         unit: TimeUnit,
     },
-    Binary {},
-    FixedSizeBinary {
-        width: i32,
+    Binary {
+        #[serde(default)]
+        layout: crate::types::BytesLayout,
+        #[serde(default)]
+        max: Option<u32>,
+        #[serde(default)]
+        fixed: Option<u32>,
     },
-    LargeBinary {},
-    BinaryView {},
-    Utf8 {},
-    LargeUtf8 {},
-    Utf8View {},
-    Ascii {},
-    FixedAscii {
-        width: i32,
+    String {
+        #[serde(default)]
+        layout: crate::types::StringLayout,
+        #[serde(default)]
+        charset: crate::Charset,
+        #[serde(default)]
+        max: Option<u32>,
+        #[serde(default)]
+        fixed: Option<u32>,
     },
     Country {},
     Currency {},
@@ -483,15 +507,15 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Duration32 { unit } => Self::duration32(unit)?,
             DataTypeValue::Duration64 { unit } => Self::duration64(unit)?,
             DataTypeValue::Interval { unit } => Self::Interval(unit),
-            DataTypeValue::Binary {} => Self::Binary,
-            DataTypeValue::FixedSizeBinary { width } => Self::fixed_size_binary(width)?,
-            DataTypeValue::LargeBinary {} => Self::LargeBinary,
-            DataTypeValue::BinaryView {} => Self::BinaryView,
-            DataTypeValue::Utf8 {} => Self::Utf8,
-            DataTypeValue::LargeUtf8 {} => Self::LargeUtf8,
-            DataTypeValue::Utf8View {} => Self::Utf8View,
-            DataTypeValue::Ascii {} => Self::Ascii,
-            DataTypeValue::FixedAscii { width } => Self::ascii(width)?,
+            DataTypeValue::Binary { layout, max, fixed } => {
+                Self::bytes(bytes_parameters(layout, max, fixed)?)?
+            }
+            DataTypeValue::String {
+                layout,
+                charset,
+                max,
+                fixed,
+            } => Self::string(string_parameters(layout, charset, max, fixed)?)?,
             DataTypeValue::Country {} => Self::Country,
             DataTypeValue::Currency {} => Self::Currency,
             DataTypeValue::Mic {} => Self::Mic,
@@ -591,7 +615,7 @@ impl DataType {
     /// let row = DataType::from_fields([DataType::Int64.required_field("id")])?;
     /// let value = row.clone().into_value();
     ///
-    /// assert_eq!(value.get_key_str("type").and_then(Scalar::as_utf8), Some("struct"));
+    /// assert_eq!(value.get_key_str("type").and_then(Scalar::as_str), Some("struct"));
     /// assert_eq!(DataType::from_value(value)?, row);
     /// # Ok(())
     /// # }
@@ -618,13 +642,6 @@ impl DataType {
             D::Float64 => tag("float64"),
             D::Date32 => tag("date32"),
             D::Date64 => tag("date64"),
-            D::Binary => tag("binary"),
-            D::LargeBinary => tag("large_binary"),
-            D::BinaryView => tag("binary_view"),
-            D::Utf8 => tag("utf8"),
-            D::LargeUtf8 => tag("large_utf8"),
-            D::Utf8View => tag("utf8_view"),
-            D::Ascii => tag("ascii"),
             D::Country => tag("country"),
             D::Currency => tag("currency"),
             D::Mic => tag("mic"),
@@ -669,13 +686,43 @@ impl DataType {
                 tag("interval");
                 entries.push((key("unit"), unit_value(*unit)));
             }
-            D::FixedSizeBinary(width) => {
-                tag("fixed_size_binary");
-                entries.push((key("width"), Scalar::from(*width)));
+            D::Bytes(parameters) => {
+                let parameters = *parameters;
+                tag("binary");
+                if parameters.layout() != crate::types::BytesLayout::Binary {
+                    entries.push((
+                        key("layout"),
+                        Scalar::from(SmolStr::new_static(parameters.layout().as_str())),
+                    ));
+                }
+                if let Some(max) = parameters.max() {
+                    entries.push((key("max"), Scalar::from(max)));
+                }
+                if let Some(fixed) = parameters.fixed() {
+                    entries.push((key("fixed"), Scalar::from(fixed)));
+                }
             }
-            D::FixedAscii(width) => {
-                tag("fixed_ascii");
-                entries.push((key("width"), Scalar::from(*width)));
+            D::String(parameters) => {
+                let parameters = *parameters;
+                tag("string");
+                if parameters.layout() != crate::types::StringLayout::String {
+                    entries.push((
+                        key("layout"),
+                        Scalar::from(SmolStr::new_static(parameters.layout().as_str())),
+                    ));
+                }
+                if !parameters.charset().is_utf8() {
+                    entries.push((
+                        key("charset"),
+                        Scalar::from(SmolStr::new_static(parameters.charset().as_str())),
+                    ));
+                }
+                if let Some(max) = parameters.max() {
+                    entries.push((key("max"), Scalar::from(max)));
+                }
+                if let Some(fixed) = parameters.fixed() {
+                    entries.push((key("fixed"), Scalar::from(fixed)));
+                }
             }
             D::List(field) => {
                 tag("list");
@@ -786,7 +833,7 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let list = DataType::list(DataType::Utf8.nullable_field("item"));
+    /// let list = DataType::list(DataType::utf8().nullable_field("item"));
     /// assert_eq!(DataType::from_value(list.clone().into_value())?, list);
     /// # Ok(())
     /// # }
@@ -820,6 +867,15 @@ impl DataType {
             text.parse()
         };
         let width = |name: &str| -> Result<i32> { integer(at(name), name) };
+        let bound = |name: &str| -> Result<u32> {
+            u32::try_from(integer(at(name), name)?).map_err(|_| {
+                invalid(
+                    &format!("$.{name}"),
+                    "a byte bound",
+                    "an out-of-range value",
+                )
+            })
+        };
         let child = |name: &str| -> Result<Field> {
             let held = at(name)
                 .ok_or_else(|| invalid(&format!("$.{name}"), "a field mapping", "nothing"))?;
@@ -859,22 +915,13 @@ impl DataType {
             "float64" => Self::Float64,
             "date32" => Self::Date32,
             "date64" => Self::Date64,
-            "binary" => Self::Binary,
-            "large_binary" => Self::LargeBinary,
-            "binary_view" => Self::BinaryView,
-            "utf8" => Self::Utf8,
-            "large_utf8" => Self::LargeUtf8,
-            "utf8_view" => Self::Utf8View,
-            "ascii" => Self::Ascii,
             "country" => Self::Country,
             "currency" => Self::Currency,
             "mic" => Self::Mic,
             "cfi" => Self::Cfi,
             "isin" => Self::Isin,
             "side" => Self::Side,
-            // `direction` was this datatype's first spelling; a schema
-            // written under it still reads.
-            "msgdirection" | "direction" => Self::MsgDirection,
+            "msgdirection" => Self::MsgDirection,
             "state" => Self::State,
             "timeinforce" => Self::TimeInForce,
             "uuid" => Self::Uuid,
@@ -897,8 +944,45 @@ impl DataType {
             "duration32" => Self::duration32(unit("unit")?)?,
             "duration64" => Self::duration64(unit("unit")?)?,
             "interval" => Self::Interval(unit("unit")?),
-            "fixed_size_binary" => Self::fixed_size_binary(width("width")?)?,
-            "fixed_ascii" => Self::ascii(width("width")?)?,
+            "binary" => {
+                let layout = match at("layout") {
+                    None => crate::types::BytesLayout::Binary,
+                    Some(held) => {
+                        let name = held.as_str().ok_or_else(|| {
+                            invalid("$.layout", "a name", format_smolstr!("{}", held.kind()))
+                        })?;
+                        crate::types::BytesLayout::from_str(name)?
+                    }
+                };
+                let max = at("max").map(|_| bound("max")).transpose()?;
+                let fixed = at("fixed").map(|_| bound("fixed")).transpose()?;
+                Self::bytes(bytes_parameters(layout, max, fixed)?)?
+            }
+            "string" => {
+                let name = |field: &str| -> Result<Option<SmolStr>> {
+                    match at(field) {
+                        None => Ok(None),
+                        Some(held) => held.as_str().map(SmolStr::new).map(Some).ok_or_else(|| {
+                            invalid(
+                                &format!("$.{field}"),
+                                "a name",
+                                format_smolstr!("{}", held.kind()),
+                            )
+                        }),
+                    }
+                };
+                let layout = match name("layout")? {
+                    Some(layout) => crate::types::StringLayout::from_str(&layout)?,
+                    None => crate::types::StringLayout::String,
+                };
+                let charset = match name("charset")? {
+                    Some(charset) => crate::Charset::from_str(&charset)?,
+                    None => crate::Charset::Utf8,
+                };
+                let max = at("max").map(|_| bound("max")).transpose()?;
+                let fixed = at("fixed").map(|_| bound("fixed")).transpose()?;
+                Self::string(string_parameters(layout, charset, max, fixed)?)?
+            }
             "list" => Self::list(child("field")?),
             "list_view" => Self::list_view(child("field")?),
             "fixed_size_list" => Self::fixed_size_list(child("field")?, width("length")?)?,
@@ -1042,6 +1126,43 @@ fn decimal(entries: &mut Vec<(Scalar, Scalar)>, name: &str, precision: u8, scale
     entries.push((key("scale"), Scalar::from(scale)));
 }
 
+/// The parameters a `string` document declares.
+///
+/// The bound is written under the key its layout gives it - `fixed` on the
+/// fixed layout, `max` on every other - and a bound under the other key is
+/// refused rather than read as the one the layout has.
+fn string_parameters(
+    layout: crate::types::StringLayout,
+    charset: crate::Charset,
+    max: Option<u32>,
+    fixed: Option<u32>,
+) -> Result<crate::types::StringParameters> {
+    let parameters = crate::types::StringParameters::new(layout, charset);
+    match (layout.is_fixed(), fixed, max) {
+        (true, Some(width), None) => parameters.try_with_bound(width),
+        (false, None, Some(max)) => parameters.try_with_bound(max),
+        (_, None, None) => Ok(parameters),
+        (true, _, Some(max)) => Err(invalid("$.max", "a fixed width on a fixed layout", max)),
+        (false, Some(fixed), _) => Err(invalid("$.fixed", "a maximum on a variable layout", fixed)),
+    }
+}
+
+/// The parameters a `binary` document declares, under the same rule.
+fn bytes_parameters(
+    layout: crate::types::BytesLayout,
+    max: Option<u32>,
+    fixed: Option<u32>,
+) -> Result<crate::types::BytesParameters> {
+    let parameters = crate::types::BytesParameters::new(layout);
+    match (layout.is_fixed(), fixed, max) {
+        (true, Some(width), None) => parameters.try_with_bound(width),
+        (false, None, Some(max)) => parameters.try_with_bound(max),
+        (_, None, None) => Ok(parameters),
+        (true, _, Some(max)) => Err(invalid("$.max", "a fixed width on a fixed layout", max)),
+        (false, Some(fixed), _) => Err(invalid("$.fixed", "a maximum on a variable layout", fixed)),
+    }
+}
+
 /// A mapping key, which is always a plain string in a schema document.
 pub(crate) fn key(name: &str) -> Scalar {
     Scalar::from(SmolStr::new(name))
@@ -1075,16 +1196,7 @@ pub(crate) fn integer(held: Option<&Scalar>, name: &str) -> Result<i32> {
         // A structured-text document may carry a wide integer as text; the
         // JSON path already accepts the decimal-string spelling for the same
         // reason, so the two stay interchangeable.
-        let crate::types::Text::Utf8(text) = (match held {
-            Scalar::Text(text) => text,
-            other => {
-                return Err(invalid(
-                    &format!("$.{name}"),
-                    "an integer",
-                    format_smolstr!("{}", other.kind()),
-                ));
-            }
-        }) else {
+        let Scalar::String(text) = held else {
             return Err(invalid(
                 &format!("$.{name}"),
                 "an integer",

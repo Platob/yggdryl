@@ -1323,9 +1323,9 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
             DataType::Uuid.scalar(Scalar::from(value.clone()))
         }
         (OfficialPrimitiveType::Fixed(width), OfficialPrimitiveLiteral::Binary(value)) => {
-            let width = i32::try_from(*width).map_err(|_| {
+            let width = u32::try_from(*width).map_err(|_| {
                 invalid(format_smolstr!(
-                    "expected an Iceberg fixed width fitting i32, got {width}"
+                    "expected an Iceberg fixed width fitting u32, got {width}"
                 ))
             })?;
             DataType::fixed_size_binary(width)?.scalar(Scalar::from(value.clone()))
@@ -1710,11 +1710,7 @@ fn partition_avro_type(field: &Field, id: i32) -> Result<Scalar> {
             avro_fixed(
                 id,
                 "decimal",
-                i32::try_from(width).map_err(|_| {
-                    invalid(format_smolstr!(
-                        "expected the Avro decimal width to fit i32, got {width}"
-                    ))
-                })?,
+                width,
                 Some("decimal"),
                 Some((precision, scale)),
             )?
@@ -1740,7 +1736,7 @@ fn avro_logical(physical: &str, logical: &str) -> Result<Scalar> {
 fn avro_fixed(
     id: i32,
     kind: &str,
-    width: i32,
+    width: u32,
     logical: Option<&str>,
     decimal: Option<(u8, i8)>,
 ) -> Result<Scalar> {
@@ -2487,7 +2483,7 @@ mod official_read_tests {
     fn field() -> Field {
         let mut field = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("venue"),
+            DataType::utf8().nullable_field("venue"),
         ])
         .unwrap()
         .required_field("row");
@@ -3143,8 +3139,8 @@ mod official_read_tests {
     fn planning_reader_preserves_nonlexical_partition_spec_order() {
         let mut field = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.required_field("z"),
-            DataType::Utf8.required_field("a"),
+            DataType::utf8().required_field("z"),
+            DataType::utf8().required_field("a"),
         ])
         .unwrap()
         .required_field("row");

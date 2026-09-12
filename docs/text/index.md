@@ -25,6 +25,7 @@
 | `Limits` | input bytes, nesting, decoded nodes, document count, enforced while streaming; four nullable spellings in both bindings; omitted uses the safe core default |
 | Errors | name the format and byte offset, cumulative across documents; readers fuse after the first error |
 | Coding | `text::from_io` / `into_io` infer format and coding from the handle `MediaType`, so `quotes.json.gz` is JSON through gzip; `from_io_with_field` types strictly |
+| Charset | the same plan resolves a [charset](../charset/index.md) from the handle's `MediaType`, or from a leading byte-order mark; the mark is framing at this seam and comes off before the parser sees it, so a `windows-1252` JSON document reads without an argument |
 
 ## Use
 
@@ -37,7 +38,7 @@
     let quote = json::from_utf8(r#"{"symbol":"AAPL","price":12.5}"#)?;
 
     assert_eq!(
-        quote.get_key_str("symbol").and_then(Scalar::as_utf8),
+        quote.get_key_str("symbol").and_then(Scalar::as_str),
         Some("AAPL")
     );
     assert_eq!(json::into_utf8(&quote)?, r#"{"price":12.5,"symbol":"AAPL"}"#);
@@ -51,9 +52,9 @@
 
     quote = json.loads('{"symbol":"AAPL","price":12.5}', cls=Scalar)
 
-    assert quote["symbol"].as_utf8() == "AAPL"
+    assert quote["symbol"].as_str() == "AAPL"
     assert quote.path("price").kind == "f64"
-    assert quote.set("venue", "XNAS").get("venue").as_utf8() == "XNAS"
+    assert quote.set("venue", "XNAS").get("venue").as_str() == "XNAS"
     assert quote.as_py() == {"price": 12.5, "symbol": "AAPL"}
     ```
 
@@ -66,9 +67,9 @@
     const quote = json.loads('{"symbol":"AAPL","price":12.5}', { scalar: true })
 
     assert.ok(quote instanceof Scalar)
-    assert.equal(quote.get('symbol').asUtf8(), 'AAPL')
+    assert.equal(quote.get('symbol').asStr(), 'AAPL')
     assert.equal(quote.path('price').kind, 'f64')
-    assert.equal(quote.set('venue', 'XNAS').get('venue').asUtf8(), 'XNAS')
+    assert.equal(quote.set('venue', 'XNAS').get('venue').asStr(), 'XNAS')
     assert.deepEqual(quote.asJs(), { price: 12.5, symbol: 'AAPL' })
     ```
 
@@ -137,7 +138,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | --- | --- |
 | temporal | a `TimeUnit` and a `Timezone`; `Timezone::NAIVE` is the wall-clock marker, never a nullable field; `DateTime64` is the one datetime |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_utf8`, `as_json_bytes` / `as_json_utf8`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `as_json_bytes` / `as_json_utf8`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## Field-directed parsing
 

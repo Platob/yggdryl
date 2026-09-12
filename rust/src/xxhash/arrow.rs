@@ -37,6 +37,8 @@ use crate::TemporalFamily;
 use crate::arrow::{Error, Result};
 use crate::metadata::is_all_sources;
 use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
+use crate::types::string::is_text_storage;
+use crate::types::{BytesLayout, Str, StringLayout, StringParameters};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
 
@@ -497,7 +499,9 @@ fn default_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
     match field.dtype() {
         DataType::Int32 | DataType::UInt32 => Some(DigestAlgorithm::Xxh32),
         DataType::Int64 | DataType::UInt64 => Some(DigestAlgorithm::Xxh3),
-        DataType::FixedSizeBinary(16) => Some(DigestAlgorithm::Xxh128),
+        DataType::Bytes(parameters) if parameters.fixed() == Some(16) => {
+            Some(DigestAlgorithm::Xxh128)
+        }
         _ => None,
     }
 }
@@ -1075,23 +1079,20 @@ fn feed_cell(
             f64::from(downcast::<Float32Array>(array)?.value(index)),
         ),
         DataType::Float64 => write_float(digester, downcast::<Float64Array>(array)?.value(index)),
-        DataType::Utf8 => write_string(digester, downcast::<StringArray>(array)?.value(index)),
-        DataType::LargeUtf8 => {
-            write_string(digester, downcast::<LargeStringArray>(array)?.value(index));
-        }
-        DataType::Utf8View => {
-            write_string(digester, downcast::<StringViewArray>(array)?.value(index));
-        }
-        DataType::Binary => write_binary(digester, downcast::<BinaryArray>(array)?.value(index)),
-        DataType::LargeBinary => {
-            write_binary(digester, downcast::<LargeBinaryArray>(array)?.value(index));
-        }
-        DataType::BinaryView => {
-            write_binary(digester, downcast::<BinaryViewArray>(array)?.value(index));
-        }
-        DataType::FixedSizeBinary(_) => write_binary(
+        // A string digests as its characters, whatever charset holds them:
+        // the digest is of the value, and the charset is how it is stored.
+        DataType::String(parameters) => feed_string(digester, *parameters, array, index)?,
+        // Bytes digest as their payload, whichever layout holds them.
+        DataType::Bytes(parameters) => write_binary(
             digester,
-            downcast::<FixedSizeBinaryArray>(array)?.value(index),
+            match parameters.layout() {
+                BytesLayout::FixedSizeBinary => {
+                    downcast::<FixedSizeBinaryArray>(array)?.value(index)
+                }
+                BytesLayout::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
+                BytesLayout::BinaryView => downcast::<BinaryViewArray>(array)?.value(index),
+                BytesLayout::Binary => downcast::<BinaryArray>(array)?.value(index),
+            },
         ),
         DataType::Decimal32 { scale, .. } => write_decimal(
             digester,
@@ -1187,8 +1188,8 @@ fn feed_cell(
         }
         // Everything below reads through the shared scalar boundary. The arms
         // are spelled out rather than caught by `_` so a datatype added to the
-        // model is a compile error here, not a silent fallback: ASCII and code
-        // storage trims the padding its layout adds, an identifier and a
+        // model is a compile error here, not a silent fallback: code storage
+        // trims the padding its layout adds, an identifier and a
         // version restate their canonical text, an interval and a 32-bit
         // duration validate components the buffer alone does not fix, a
         // geospatial payload carries its own tag, and every list, struct, map,
@@ -1197,8 +1198,6 @@ fn feed_cell(
         // binary encoding lands with the Iceberg v3 layer.
         DataType::Duration32(_)
         | DataType::Interval(_)
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
         | DataType::Country
         | DataType::Currency
         | DataType::Mic
@@ -1264,3 +1263,42 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
 
 #[cfg(test)]
 mod tests;
+
+/// Feed one string cell as the characters a [`Str`] read from it holds.
+///
+/// Text storage was validated when it was written, so the cell is fed
+/// straight from the buffer - the characters [`Str::from_storage`] would
+/// hold, without the value. Binary storage goes through [`Str::from_bytes`],
+/// the one door bytes take into a string value: a fixed slot is trimmed of
+/// its padding, and a legacy charset is transcribed rather than refused.
+fn feed_string(
+    digester: &mut impl Hasher,
+    parameters: StringParameters,
+    array: &dyn Array,
+    index: usize,
+) -> Result<()> {
+    if !parameters.is_fixed() && is_text_storage(parameters) {
+        let cell = match parameters.layout() {
+            StringLayout::LargeString => downcast::<LargeStringArray>(array)?.value(index),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                downcast::<StringViewArray>(array)?.value(index)
+            }
+            _ => downcast::<StringArray>(array)?.value(index),
+        };
+        write_string(digester, cell);
+        return Ok(());
+    }
+    let cell = if parameters.is_fixed() {
+        downcast::<FixedSizeBinaryArray>(array)?.value(index)
+    } else {
+        match parameters.layout() {
+            StringLayout::LargeString => downcast::<LargeBinaryArray>(array)?.value(index),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                downcast::<BinaryViewArray>(array)?.value(index)
+            }
+            _ => downcast::<BinaryArray>(array)?.value(index),
+        }
+    };
+    write_string(digester, &Str::from_bytes(cell, parameters)?);
+    Ok(())
+}

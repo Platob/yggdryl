@@ -32,7 +32,7 @@ fn the_configuration_directory_seeds_the_default() {
         .join(format!("yggdryl-fix-global-home-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
 
-    let mut symbol = DataType::Utf8.required_field("Symbol");
+    let mut symbol = DataType::utf8().required_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a valid tag");
     FixRegistry::from_fields([symbol])
         .expect("one field")

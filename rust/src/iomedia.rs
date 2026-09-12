@@ -649,7 +649,7 @@ pub trait IOMedia: Send {
     /// # fn main() -> yggdryl::Result<()> {
     /// let field = DataType::from_fields([
     ///     DataType::Int32.required_field("id"),
-    ///     DataType::Utf8.required_field("symbol"),
+    ///     DataType::utf8().required_field("symbol"),
     /// ])?
     /// .required_field("quote");
     /// let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());

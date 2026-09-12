@@ -1,5 +1,6 @@
 mod arrow;
 mod ascii;
+mod bytes;
 mod coded;
 mod compatibility;
 mod default;
@@ -9,4 +10,5 @@ mod nested;
 mod parser;
 mod scalar;
 mod serde;
+mod string;
 mod temporal;

@@ -289,12 +289,12 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(mode.enumValue, 'append')
   assert.equal(mode.enumOrdinal, 1)
   assert.equal(mode.asJs(), 'append')
-  assert.equal(mode.asUtf8(), 'append')
+  assert.equal(mode.asStr(), 'append')
   assert.throws(() => Scalar.fromEnum('io_mode', 'missing'), /unknown/)
 
   assert.deepEqual(Scalar.fromJs(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
-  assert.equal(Scalar.fromJs('AAPL').asUtf8(), 'AAPL')
-  assert.equal(Scalar.fromJs(1).asUtf8(), null)
+  assert.equal(Scalar.fromJs('AAPL').asStr(), 'AAPL')
+  assert.equal(Scalar.fromJs(1).asStr(), null)
   const record = Scalar.fromJs({ z: 2, a: 1 })
   assert.equal(record.asJsonUtf8(), '{"a":1,"z":2}')
   assert.deepEqual(record.asJsonBytes(), Buffer.from(record.asJsonUtf8()))
@@ -317,14 +317,14 @@ test('Scalar identity accessors name the exact leaf and family', () => {
     [Scalar.float(1.5, 32), 'float32', 'floating'],
     [Scalar.decimal(150n, 2), 'decimal128', 'decimal'],
     [Scalar.date(1), 'date32', 'temporal'],
-    [Scalar.fromJs('AAPL'), 'utf8', 'text'],
+    [Scalar.fromJs('AAPL'), 'string', 'text'],
     [
       json.loads('"USD"', {
         field: new Field('value', 'currency', false),
         scalar: true,
       }),
       'currency',
-      'ascii',
+      'code',
     ],
     [
       json.loads('"00112233-4455-6677-8899-aabbccddeeff"', {
@@ -418,7 +418,7 @@ test('Scalar traversal and persistent updates stay entirely native', () => {
   assert.equal(mapping.get(Scalar.decimal(15n, 1)).count, instant.count)
   assert.equal([...mapping][0].kind, 'd128')
   const added = mapping.set('venue', 'XNAS')
-  assert.equal(added.get('venue').asUtf8(), 'XNAS')
+  assert.equal(added.get('venue').asStr(), 'XNAS')
   assert.equal(mapping.get('venue'), null)
   assert.equal(added.remove('venue').length, 1)
 

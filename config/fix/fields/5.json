@@ -2,39 +2,39 @@
   {
     "name": "cashdistribagentacctnumber",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Account number at agent bank for distributions.",
       "display": "CashDistribAgentAcctNumber",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentacctnumber\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentacctnumber\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "500"
     }
   },
   {
     "name": "cashdistribpayref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Free format Payment reference to assist with reconciliation of distributions.",
       "display": "CashDistribPayRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribpayref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribpayref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "501"
     }
   },
   {
     "name": "cashdistribagentacctname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Name of account at agent bank for distributions.",
       "display": "CashDistribAgentAcctName",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentacctname\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashdistribagentacctname\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "502"
     }
   },
@@ -69,27 +69,27 @@
   {
     "name": "paymentremitterid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies sender of a payment, e.g. the payment remitter or a customer reference number.",
       "display": "PaymentRemitterID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"paymentremitterid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"paymentremitterid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "505"
     }
   },
   {
     "name": "registstatus",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Registration status as returned by the broker or (for CIV) the fund manager:",
       "display": "RegistStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Accepted\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"H\",\"name\":\"Held\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Held\"},{\"value\":\"N\",\"name\":\"Reminder\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Reminder - i.e. Registration Instructions are still outstanding\"},{\"value\":\"R\",\"name\":\"Rejected\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Rejected\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registstatus\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registstatus\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "506"
     }
   },
@@ -110,27 +110,27 @@
   {
     "name": "registrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference identifier for the RegistID(513) with Cancel and Replace RegistTransType(514) transaction types.",
       "display": "RegistRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "508"
     }
   },
   {
     "name": "registdtls",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Set of Registration name and address details, possibly including phone, fax etc.",
       "display": "RegistDtls",
       "fix:aliases": "registdetls",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registdetls\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"registdtls\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registdetls\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.4\",\"name\":\"registdtls\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "509"
     }
   },
@@ -150,13 +150,13 @@
   {
     "name": "registemail",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Email address relating to Registration name and address details",
       "display": "RegistEmail",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registemail\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registemail\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "511"
     }
   },
@@ -176,27 +176,27 @@
   {
     "name": "registid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier of the registration details as assigned by institution or intermediary.",
       "display": "RegistID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "513"
     }
   },
   {
     "name": "registtranstype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies Registration Instructions transaction type",
       "display": "RegistTransType",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"Replace\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Replace\"},{\"value\":\"2\",\"name\":\"Cancel\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Cancel\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registtranstype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"registtranstype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "514"
     }
   },
@@ -231,14 +231,14 @@
   {
     "name": "ownershiptype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The relationship between Registration parties.",
       "display": "OwnershipType",
       "fix:codes": "{\"codes\":[{\"value\":\"2\",\"name\":\"JointTrustees\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Joint Trustees\"},{\"value\":\"J\",\"name\":\"JointInvestors\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Joint Investors\"},{\"value\":\"T\",\"name\":\"TenantsInCommon\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Tenants in Common\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"ownershiptype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"ownershiptype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "517"
     }
   },
@@ -312,122 +312,122 @@
   {
     "name": "partysubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.",
       "display": "PartySubID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partysubid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"partysubid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "523"
     }
   },
   {
     "name": "nestedpartyid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "PartyID value within a nested repeating group.",
       "display": "NestedPartyID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nestedpartyid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nestedpartyid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "524"
     }
   },
   {
     "name": "nestedpartyidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "PartyIDSource value within a nested repeating group.",
       "display": "NestedPartyIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0.2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0.2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0.2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0.2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nestedpartyidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nestedpartyidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "525"
     }
   },
   {
     "name": "secondaryclordid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned by the party which originates the order. Can be used to provide the ClOrdID (11) used by an exchange or executing system.",
       "display": "SecondaryClOrdID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"secondaryclordid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"secondaryclordid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "526"
     }
   },
   {
     "name": "secondaryexecid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Assigned by the party which accepts the order. Can be used to provide the ExecID (17) used by an exchange or executing system.",
       "display": "SecondaryExecID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"secondaryexecid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"secondaryexecid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "527"
     }
   },
   {
     "name": "ordercapacity",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Designates the capacity of the firm placing the order.",
       "display": "OrderCapacity",
       "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"Agency\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Agency\"},{\"value\":\"G\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Proprietary\"},{\"value\":\"I\",\"name\":\"Individual\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Individual\"},{\"value\":\"M\",\"name\":\"MixedCapacity\",\"since\":\"5.0.2\",\"ep\":170,\"sort\":7,\"doc\":\"Mixed capacity\"},{\"value\":\"P\",\"name\":\"Principal\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Principal\"},{\"value\":\"R\",\"name\":\"RisklessPrincipal\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Riskless Principal\"},{\"value\":\"W\",\"name\":\"AgentForOtherMember\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Agent for Other Member\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"ordercapacity\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"ordercapacity\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "528"
     }
   },
   {
     "name": "orderrestrictions",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Restrictions associated with an order. If more than one restriction is applicable to an order, this field can contain multiple instructions separated by space.",
       "display": "OrderRestrictions",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"ProgramTrade\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Program Trade\"},{\"value\":\"2\",\"name\":\"IndexArbitrage\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Index Arbitrage\"},{\"value\":\"3\",\"name\":\"NonIndexArbitrage\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Non-Index Arbitrage\"},{\"value\":\"4\",\"name\":\"CompetingMarketMaker\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Competing Market Maker\"},{\"value\":\"5\",\"name\":\"ActingAsMarketMakerOrSpecialistInSecurity\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Acting as Market Maker or Specialist in the security\"},{\"value\":\"6\",\"name\":\"ActingAsMarketMakerOrSpecialistInUnderlying\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Acting as Market Maker or Specialist in the underlying security of a derivative security\"},{\"value\":\"7\",\"name\":\"ForeignEntity\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Foreign Entity (of foreign government or regulatory jurisdiction)\"},{\"value\":\"8\",\"name\":\"ExternalMarketParticipant\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"External Market Participant\"},{\"value\":\"9\",\"name\":\"ExternalInterConnectedMarketLinkage\",\"since\":\"4.3\",\"sort\":9,\"doc\":\"External Inter-connected Market Linkage\"},{\"value\":\"A\",\"name\":\"RisklessArbitrage\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Riskless Arbitrage\"},{\"value\":\"B\",\"name\":\"IssuerHolding\",\"since\":\"5.0\",\"ep\":61,\"sort\":11,\"doc\":\"Issuer Holding\"},{\"value\":\"C\",\"name\":\"IssuePriceStabilization\",\"since\":\"5.0\",\"ep\":61,\"sort\":12,\"doc\":\"Issue Price Stabilization\"},{\"value\":\"D\",\"name\":\"NonAlgorithmic\",\"since\":\"5.0\",\"sort\":13,\"doc\":\"Non-algorithmic\"},{\"value\":\"E\",\"name\":\"Algorithmic\",\"since\":\"5.0\",\"sort\":14,\"doc\":\"Algorithmic\"},{\"value\":\"F\",\"name\":\"Cross\",\"since\":\"5.0.1\",\"ep\":78,\"sort\":15,\"doc\":\"Cross\"},{\"value\":\"G\",\"name\":\"InsiderAccount\",\"since\":\"5.0.2\",\"ep\":101,\"sort\":16,\"doc\":\"Insider Account\"},{\"value\":\"H\",\"name\":\"SignificantShareholder\",\"since\":\"5.0.2\",\"ep\":101,\"sort\":17,\"doc\":\"Significant Shareholder\"},{\"value\":\"I\",\"name\":\"NormalCourseIssuerBid\",\"since\":\"5.0.2\",\"ep\":101,\"sort\":18,\"doc\":\"Normal Course Issuer Bid (NCIB)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"orderrestrictions\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"orderrestrictions\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "529"
     }
   },
   {
     "name": "masscancelrequesttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies scope of Order Mass Cancel Request.",
       "display": "MassCancelRequestType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CancelOrdersForASecurity\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Cancel orders for a security\"},{\"value\":\"2\",\"name\":\"CancelOrdersForAnUnderlyingSecurity\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Cancel orders for an underlying security\"},{\"value\":\"3\",\"name\":\"CancelOrdersForAProduct\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Cancel orders for a product\"},{\"value\":\"4\",\"name\":\"CancelOrdersForACFICode\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Cancel orders for a CFICode\"},{\"value\":\"5\",\"name\":\"CancelOrdersForASecurityType\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Cancel orders for a security type\"},{\"value\":\"6\",\"name\":\"CancelOrdersForATradingSession\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Cancel orders for a trading session\"},{\"value\":\"7\",\"name\":\"CancelAllOrders\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Cancel all orders\"},{\"value\":\"8\",\"name\":\"CancelOrdersForAMarket\",\"since\":\"5.0\",\"ep\":58,\"sort\":8,\"doc\":\"Cancel orders for a market\"},{\"value\":\"9\",\"name\":\"CancelOrdersForAMarketSegment\",\"since\":\"5.0\",\"ep\":58,\"sort\":9,\"doc\":\"Cancel orders for a market segment\"},{\"value\":\"A\",\"name\":\"CancelOrdersForASecurityGroup\",\"since\":\"5.0\",\"ep\":58,\"sort\":10,\"doc\":\"Cancel orders for a security group\"},{\"value\":\"B\",\"name\":\"CancelOrdersForSecurityIssuer\",\"since\":\"5.0.1\",\"ep\":85,\"sort\":11,\"doc\":\"Cancel orders for an issuer\"},{\"value\":\"C\",\"name\":\"CancelForIssuerOfUnderlyingSecurity\",\"since\":\"5.0.1\",\"ep\":85,\"sort\":12,\"doc\":\"Cancel orders for an issuer of underlying security\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"masscancelrequesttype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"masscancelrequesttype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "530"
     }
   },
   {
     "name": "masscancelresponse",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies the action taken by counterparty order handling system as a result of the Order Mass Cancel Request",
       "display": "MassCancelResponse",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"CancelRequestRejected\",\"since\":\"4.3\",\"doc\":\"Cancel Request Rejected - See MassCancelRejectReason (532)\"},{\"value\":\"1\",\"name\":\"CancelOrdersForASecurity\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Cancel orders for a security\"},{\"value\":\"2\",\"name\":\"CancelOrdersForAnUnderlyingSecurity\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Cancel orders for an underlying security\"},{\"value\":\"3\",\"name\":\"CancelOrdersForAProduct\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Cancel orders for a product\"},{\"value\":\"4\",\"name\":\"CancelOrdersForACFICode\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Cancel orders for a CFI Code\"},{\"value\":\"5\",\"name\":\"CancelOrdersForASecurityType\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Cancel orders for a security type\"},{\"value\":\"6\",\"name\":\"CancelOrdersForATradingSession\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Cancel orders for a trading session\"},{\"value\":\"7\",\"name\":\"CancelAllOrders\",\"since\":\"4.3\",\"sort\":7,\"doc\":\"Cancel all orders\"},{\"value\":\"8\",\"name\":\"CancelOrdersForAMarket\",\"since\":\"5.0\",\"ep\":58,\"sort\":8,\"doc\":\"Cancel orders for a market\"},{\"value\":\"9\",\"name\":\"CancelOrdersForAMarketSegment\",\"since\":\"5.0\",\"ep\":58,\"sort\":9,\"doc\":\"Cancel orders for a market segment\"},{\"value\":\"A\",\"name\":\"CancelOrdersForASecurityGroup\",\"since\":\"5.0\",\"ep\":58,\"sort\":10,\"doc\":\"Cancel orders for a security group\"},{\"value\":\"B\",\"name\":\"CancelOrdersForASecuritiesIssuer\",\"since\":\"5.0.1\",\"ep\":85,\"sort\":11,\"doc\":\"Cancel orders for an issuer\"},{\"value\":\"C\",\"name\":\"CancelOrdersForIssuerOfUnderlyingSecurity\",\"since\":\"5.0.1\",\"ep\":85,\"sort\":12,\"doc\":\"Cancel orders for an issuer of underlying security\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"masscancelresponse\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"masscancelresponse\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "531"
     }
   },
@@ -441,7 +441,7 @@
       "description": "Reason Order Mass Cancel Request was rejected",
       "display": "MassCancelRejectReason",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"MassCancelNotSupported\",\"since\":\"4.3\",\"doc\":\"Mass Cancel Not Supported\"},{\"value\":\"1\",\"name\":\"InvalidOrUnknownSecurity\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Invalid or unknown security\"},{\"value\":\"10\",\"name\":\"InvalidOrUnknownSecurityIssuer\",\"since\":\"5.0.1\",\"ep\":85,\"sort\":11,\"doc\":\"Invalid or unknown security issuer\"},{\"value\":\"11\",\"name\":\"InvalidOrUnknownIssuerOfUnderlyingSecurity\",\"since\":\"5.0.1\",\"ep\":85,\"sort\":12,\"doc\":\"Invalid or unknown issuer of underlying security\"},{\"value\":\"2\",\"name\":\"InvalidOrUnknownUnderlyingSecurity\",\"since\":\"4.3\",\"sort\":2,\"aliases\":[\"InvalidOrUnkownUnderlyingSecurity\"],\"doc\":\"Invalid or unknown underlying security\"},{\"value\":\"3\",\"name\":\"InvalidOrUnknownProduct\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Invalid or unknown product\"},{\"value\":\"4\",\"name\":\"InvalidOrUnknownCFICode\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Invalid or unknown CFI Code\"},{\"value\":\"5\",\"name\":\"InvalidOrUnknownSecurityType\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Invalid or unknown security type\"},{\"value\":\"6\",\"name\":\"InvalidOrUnknownTradingSession\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Invalid or unknown trading session\"},{\"value\":\"7\",\"name\":\"InvalidOrUnknownMarket\",\"since\":\"5.0\",\"ep\":58,\"sort\":8,\"doc\":\"Invalid or unknown market\"},{\"value\":\"8\",\"name\":\"InvalidOrUnkownMarketSegment\",\"since\":\"5.0\",\"ep\":58,\"sort\":9,\"doc\":\"Invalid or unknown market segment\"},{\"value\":\"9\",\"name\":\"InvalidOrUnknownSecurityGroup\",\"since\":\"5.0\",\"ep\":58,\"sort\":10,\"doc\":\"Invalid or unknown security group\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"4.4\",\"sort\":99,\"doc\":\"Other\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"masscancelrejectreason\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0\",\"name\":\"masscancelrejectreason\",\"type\":{\"type\":\"int32\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"masscancelrejectreason\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0\",\"name\":\"masscancelrejectreason\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "532"
     }
   },
@@ -474,26 +474,26 @@
   {
     "name": "affectedorderid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "OrderID(37) of an order affected by a mass cancel or mass action request.",
       "display": "AffectedOrderID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"affectedorderid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"affectedorderid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "535"
     }
   },
   {
     "name": "affectedsecondaryorderid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "SecondaryOrderID(198) of an order affected by a mass cancel or mass action request.",
       "display": "AffectedSecondaryOrderID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"affectedsecondaryorderid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"affectedsecondaryorderid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "536"
     }
   },
@@ -583,54 +583,54 @@
   {
     "name": "instrregistry",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Values may include BIC for the depository or custodian who maintain ownership records, the ISO country code for the location of the record, or the value \"ZZ\" to specify physical ownership of the security (e.g. stock certificate).",
       "display": "InstrRegistry",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"instrregistry\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"instrregistry\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "543"
     }
   },
   {
     "name": "cashmargin",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies whether an order is a margin order or a non-margin order. This is primarily used when sending orders to Japanese exchanges to indicate sell margin or buy to cover. The same tag could be assigned also by buy-side to indicate the intent to sell or buy margin and the sell-side to accept or reject (base on some validation criteria) the margin request.",
       "display": "CashMargin",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Cash\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Cash\"},{\"value\":\"2\",\"name\":\"MarginOpen\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Margin Open\"},{\"value\":\"3\",\"name\":\"MarginClose\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Margin Close\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashmargin\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"cashmargin\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "544"
     }
   },
   {
     "name": "nestedpartysubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "PartySubID value within a nested repeating group.",
       "display": "NestedPartySubID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nestedpartysubid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"nestedpartysubid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "545"
     }
   },
   {
     "name": "scope",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies the market scope of the market data.",
       "display": "Scope",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"LocalMarket\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Local Market (Exchange, ECN, ATS)\"},{\"value\":\"2\",\"name\":\"National\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"National\"},{\"value\":\"3\",\"name\":\"Global\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Global\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"scope\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"scope\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "546"
     }
   },
@@ -651,13 +651,13 @@
   {
     "name": "crossid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for a cross order. Must be unique during a given trading day. Recommend that firms use the order date as part of the CrossID for Good Till Cancel (GT) orders.",
       "display": "CrossID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"crossid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"crossid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "548"
     }
   },
@@ -692,13 +692,13 @@
   {
     "name": "origcrossid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "CrossID of the previous cross order (NOT the initial cross order of the day) as assigned by the institution, used to identify the previous cross order in Cross Cancel and Cross Cancel/Replace Requests.",
       "display": "OrigCrossID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"origcrossid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"origcrossid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "551"
     }
   },
@@ -719,26 +719,26 @@
   {
     "name": "username",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Userid or username.",
       "display": "Username",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"username\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"username\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "553"
     }
   },
   {
     "name": "password",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Password or passphrase.",
       "display": "Password",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"password\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"password\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "554"
     }
   },
@@ -866,14 +866,14 @@
   {
     "name": "legpositioneffect",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "PositionEffect for leg of a multileg",
       "display": "LegPositionEffect",
       "fix:codes": "{\"codes\":[{\"value\":\"C\",\"name\":\"Close\",\"since\":\"4.1\",\"sort\":1,\"doc\":\"Close\"},{\"value\":\"D\",\"name\":\"Default\",\"since\":\"5.0\",\"ep\":61,\"sort\":6,\"doc\":\"Default\"},{\"value\":\"F\",\"name\":\"FIFO\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"FIFO\"},{\"value\":\"N\",\"name\":\"CloseButNotifyOnOpen\",\"since\":\"5.0\",\"ep\":61,\"sort\":5,\"doc\":\"Close but notify on open\"},{\"value\":\"O\",\"name\":\"Open\",\"since\":\"4.1\",\"sort\":3,\"doc\":\"Open\"},{\"value\":\"R\",\"name\":\"Rolled\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Rolled\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legpositioneffect\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legpositioneffect\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "564"
     }
   },
@@ -921,13 +921,13 @@
   {
     "name": "traderequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Trade Capture Report Request ID",
       "display": "TradeRequestID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"traderequestid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"traderequestid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "568"
     }
   },
@@ -962,54 +962,54 @@
   {
     "name": "tradereportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier of trade capture report",
       "display": "TradeReportID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereportid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereportid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "571"
     }
   },
   {
     "name": "tradereportrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference identifier used with CANCEL and REPLACE transaction types.",
       "display": "TradeReportRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereportrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradereportrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "572"
     }
   },
   {
     "name": "matchstatus",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The status of this trade with respect to matching or comparison.",
       "display": "MatchStatus",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Compared\",\"since\":\"4.3\",\"doc\":\"Compared, matched or affirmed\"},{\"value\":\"1\",\"name\":\"Uncompared\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Uncompared, unmatched, or unaffirmed\"},{\"value\":\"2\",\"name\":\"AdvisoryOrAlert\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Advisory or alert\"},{\"value\":\"3\",\"name\":\"Mismatched\",\"since\":\"5.0.2\",\"ep\":246,\"sort\":3,\"doc\":\"Mismatched\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"matchstatus\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"matchstatus\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "573"
     }
   },
   {
     "name": "matchtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The point in the matching process at which this trade was matched.",
       "display": "MatchType",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"OnePartyTradeReport\",\"since\":\"4.4\",\"ep\":22,\"sort\":70,\"group\":\"General Purpose\",\"doc\":\"One-Party Trade Report (privately negotiated trade)\"},{\"value\":\"10\",\"name\":\"AutoMatchLastLook\",\"since\":\"5.0.2\",\"ep\":198,\"sort\":79,\"group\":\"General Purpose\",\"doc\":\"Auto-match with last look\"},{\"value\":\"11\",\"name\":\"CrossAuctionLastLook\",\"since\":\"5.0.2\",\"ep\":198,\"sort\":80,\"group\":\"General Purpose\",\"doc\":\"Cross auction with last look\"},{\"value\":\"2\",\"name\":\"TwoPartyTradeReport\",\"since\":\"4.4\",\"ep\":22,\"sort\":71,\"group\":\"General Purpose\",\"doc\":\"Two-Party Trade Report (privately negotiated trade)\"},{\"value\":\"3\",\"name\":\"ConfirmedTradeReport\",\"since\":\"4.4\",\"ep\":22,\"sort\":72,\"group\":\"General Purpose\",\"doc\":\"Confirmed Trade Report (reporting from recognized markets)\"},{\"value\":\"4\",\"name\":\"AutoMatch\",\"since\":\"4.4\",\"ep\":22,\"sort\":73,\"group\":\"General Purpose\",\"doc\":\"Auto-match\"},{\"value\":\"5\",\"name\":\"CrossAuction\",\"since\":\"4.4\",\"ep\":22,\"sort\":74,\"group\":\"General Purpose\",\"doc\":\"Cross Auction\"},{\"value\":\"6\",\"name\":\"CounterOrderSelection\",\"since\":\"4.4\",\"ep\":22,\"sort\":75,\"group\":\"General Purpose\",\"doc\":\"Counter-Order Selection\"},{\"value\":\"60\",\"name\":\"OnePartyPrivatelyNegotiatedTradeReport\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"61\",\"name\":\"TwoPartyPrivatelyNegotiatedTradeReport\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"62\",\"name\":\"ContinuousAutoMatch\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"63\",\"name\":\"CrossAuctionLegacy\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"64\",\"name\":\"CounterOrderSelectionLegacy\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"65\",\"name\":\"CallAuctionLegacy\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"7\",\"name\":\"CallAuction\",\"since\":\"4.4\",\"ep\":22,\"sort\":76,\"group\":\"General Purpose\",\"doc\":\"Call Auction\"},{\"value\":\"8\",\"name\":\"Issuing\",\"since\":\"5.0\",\"ep\":47,\"sort\":77,\"group\":\"General Purpose\",\"doc\":\"Issuing/Buy Back Auction\"},{\"value\":\"9\",\"name\":\"SystematicInternaliser\",\"since\":\"5.0.2\",\"ep\":163,\"sort\":78,\"group\":\"General Purpose\",\"doc\":\"Systematic Internaliser (SI)\"},{\"value\":\"A1\",\"name\":\"ExactMatchPlus4BadgesExecTime\",\"since\":\"4.3\",\"group\":\"NYSE and AMEX\",\"doc\":\"Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator plus four badges and execution time (within two-minute window)\"},{\"value\":\"A2\",\"name\":\"ExactMatchPlus4Badges\",\"since\":\"4.3\",\"sort\":1,\"group\":\"NYSE and AMEX\",\"doc\":\"Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator, plus four badges\"},{\"value\":\"A3\",\"name\":\"ExactMatchPlus2BadgesExecTime\",\"since\":\"4.3\",\"sort\":2,\"group\":\"NYSE and AMEX\",\"doc\":\"Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator, plus two badges and execution time (within two-minute window)\"},{\"value\":\"A4\",\"name\":\"ExactMatchPlus2Badges\",\"since\":\"4.3\",\"sort\":3,\"group\":\"NYSE and AMEX\",\"doc\":\"Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator, plus two badges\"},{\"value\":\"A5\",\"name\":\"ExactMatchPlusExecTime\",\"since\":\"4.3\",\"sort\":4,\"group\":\"NYSE and AMEX\",\"doc\":\"Exact match on Trade Date, Stock Symbol, Quantity, Price, TradeType, and Special Trade Indicator plus execution time (within two-minute window)\"},{\"value\":\"AQ\",\"name\":\"StampedAdvisoriesOrSpecialistAccepts\",\"since\":\"4.3\",\"sort\":5,\"group\":\"NYSE and AMEX\",\"doc\":\"Compared records resulting from stamped advisories or specialist accepts/pair-offs\"},{\"value\":\"M1\",\"name\":\"ExactMatchMinusBadgesTimes\",\"since\":\"4.3\",\"sort\":11,\"group\":\"NYSE, AMEX and NASDAQ\",\"doc\":\"Exact match on Trade Date, Stock Symbol, Quantity, Price, Trade Type, and Special Trade Indicator minus badges And times: ACT M1 match\"},{\"value\":\"M2\",\"name\":\"SummarizedMatchMinusBadgesTimes\",\"since\":\"4.3\",\"sort\":12,\"group\":\"NYSE, AMEX and NASDAQ\",\"doc\":\"Summarized match minus badges and times: ACT M2 Match\"},{\"value\":\"M3\",\"name\":\"ACTAcceptedTrade\",\"since\":\"4.3\",\"sort\":2,\"group\":\"NASDAQ\",\"doc\":\"ACT Accepted Trade\"},{\"value\":\"M4\",\"name\":\"ACTDefaultTrade\",\"since\":\"4.3\",\"sort\":3,\"group\":\"NASDAQ\",\"doc\":\"ACT Default Trade\"},{\"value\":\"M5\",\"name\":\"ACTDefaultAfterM2\",\"since\":\"4.3\",\"sort\":4,\"group\":\"NASDAQ\",\"doc\":\"ACT Default After M2\"},{\"value\":\"M6\",\"name\":\"ACTM6Match\",\"since\":\"4.3\",\"sort\":5,\"group\":\"NASDAQ\",\"doc\":\"ACT M6 Match\"},{\"value\":\"MT\",\"name\":\"OCSLockedIn\",\"since\":\"4.3\",\"sort\":13,\"group\":\"NYSE, AMEX and NASDAQ\",\"doc\":\"OCS Locked In: Non-ACT\"},{\"value\":\"S1\",\"name\":\"A1ExactMatchSummarizedQuantity\",\"since\":\"4.3\",\"sort\":6,\"group\":\"NYSE and AMEX\",\"doc\":\"Summarized match using A1 exact match criteria except quantity is summaried\"},{\"value\":\"S2\",\"name\":\"A2ExactMatchSummarizedQuantity\",\"since\":\"4.3\",\"sort\":7,\"group\":\"NYSE and AMEX\",\"doc\":\"Summarized match using A2 exact match criteria except quantity is summarized\"},{\"value\":\"S3\",\"name\":\"A3ExactMatchSummarizedQuantity\",\"since\":\"4.3\",\"sort\":8,\"group\":\"NYSE and AMEX\",\"doc\":\"Summarized match using A3 exact match criteria except quantity is summarized\"},{\"value\":\"S4\",\"name\":\"A4ExactMatchSummarizedQuantity\",\"since\":\"4.3\",\"sort\":9,\"group\":\"NYSE and AMEX\",\"doc\":\"Summarized match using A4 exact match criteria except quantity is summarized\"},{\"value\":\"S5\",\"name\":\"A5ExactMatchSummarizedQuantity\",\"since\":\"4.3\",\"sort\":10,\"group\":\"NYSE and AMEX\",\"doc\":\"Summarized match using A5 exact match criteria except quantity is summarized\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"matchtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"matchtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "574"
     }
   },
@@ -1058,26 +1058,26 @@
   {
     "name": "tradeinputsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Type of input device or system from which the trade was entered.",
       "display": "TradeInputSource",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradeinputsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradeinputsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "578"
     }
   },
   {
     "name": "tradeinputdevice",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specific device number, terminal number or station where trade was entered",
       "display": "TradeInputDevice",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradeinputdevice\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"tradeinputdevice\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "579"
     }
   },
@@ -1125,26 +1125,26 @@
   {
     "name": "clordlinkid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Permits order originators to tie together groups of orders in which trades resulting from orders are associated for a specific purpose, for example the calculation of average execution price for a customer or to associate lists submitted to a broker as waves of a larger program trade.",
       "display": "ClOrdLinkID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"clordlinkid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"clordlinkid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "583"
     }
   },
   {
     "name": "massstatusreqid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Value assigned by issuer of Mass Status Request to uniquely identify the request",
       "display": "MassStatusReqID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"massstatusreqid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"massstatusreqid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "584"
     }
   },
@@ -1180,7 +1180,7 @@
   {
     "name": "legsettltype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1188,7 +1188,7 @@
       "display": "LegSettlType",
       "fix:aliases": "legsettlmnttyp",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Regular\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Regular / FX Spot settlement (T+1 or T+2 depending on currency)\"},{\"value\":\"1\",\"name\":\"Cash\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Cash (TOD / T+0)\"},{\"value\":\"2\",\"name\":\"NextDay\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Next Day (TOM / T+1)\"},{\"value\":\"3\",\"name\":\"TPlus2\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"T+2\"},{\"value\":\"4\",\"name\":\"TPlus3\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"T+3\"},{\"value\":\"5\",\"name\":\"TPlus4\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"T+4\"},{\"value\":\"6\",\"name\":\"Future\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Future\"},{\"value\":\"7\",\"name\":\"WhenAndIfIssued\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"When And If Issued\"},{\"value\":\"8\",\"name\":\"SellersOption\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"Sellers Option\"},{\"value\":\"9\",\"name\":\"TPlus5\",\"since\":\"3.0\",\"sort\":10,\"doc\":\"T+5\"},{\"value\":\"B\",\"name\":\"BrokenDate\",\"since\":\"4.4\",\"ep\":25,\"sort\":12,\"doc\":\"Broken date\"},{\"value\":\"C\",\"name\":\"FXSpotNextSettlement\",\"since\":\"4.4\",\"ep\":21,\"sort\":99,\"doc\":\"FX Spot Next settlement (Spot+1, aka next day)\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsettlmnttyp\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"4.4\",\"name\":\"legsettltype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legsettlmnttyp\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.4\",\"name\":\"legsettltype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "587"
     }
   },
@@ -1210,42 +1210,42 @@
   {
     "name": "daybookinginst",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Indicates whether or not automatic booking can occur.",
       "display": "DayBookingInst",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Auto\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Can trigger booking without reference to the order initiator (\\\"auto\\\")\"},{\"value\":\"1\",\"name\":\"SpeakWithOrderInitiatorBeforeBooking\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Speak with order initiator before booking (\\\"speak first\\\")\"},{\"value\":\"2\",\"name\":\"Accumulate\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Accumulate\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"daybookinginst\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"daybookinginst\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "589"
     }
   },
   {
     "name": "bookingunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Indicates what constitutes a bookable unit.",
       "display": "BookingUnit",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"EachPartialExecutionIsABookableUnit\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Each partial execution is a bookable unit\"},{\"value\":\"1\",\"name\":\"AggregatePartialExecutionsOnThisOrder\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Aggregate partial executions on this order, and book one trade per order\"},{\"value\":\"2\",\"name\":\"AggregateExecutionsForThisSymbol\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Aggregate executions for this symbol, side, and settlement date\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"bookingunit\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"bookingunit\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "590"
     }
   },
   {
     "name": "preallocmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Indicates the method of preallocation.",
       "display": "PreallocMethod",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ProRata\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Pro rata\"},{\"value\":\"1\",\"name\":\"DoNotProRata\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Do not pro-rata - discuss first\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"preallocmethod\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"preallocmethod\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "591"
     }
   },
@@ -1265,39 +1265,39 @@
   {
     "name": "underlyingstateorprovinceofissue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Underlying security's StateOrProvinceOfIssue.",
       "display": "UnderlyingStateOrProvinceOfIssue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingstateorprovinceofissue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyingstateorprovinceofissue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "593"
     }
   },
   {
     "name": "underlyinglocaleofissue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Underlying security's LocaleOfIssue.",
       "display": "UnderlyingLocaleOfIssue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyinglocaleofissue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyinglocaleofissue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "594"
     }
   },
   {
     "name": "underlyinginstrregistry",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Underlying security's InstrRegistry.",
       "display": "UnderlyingInstrRegistry",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyinginstrregistry\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"underlyinginstrregistry\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "595"
     }
   },
@@ -1317,39 +1317,39 @@
   {
     "name": "legstateorprovinceofissue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual leg security's StateOrProvinceOfIssue.",
       "display": "LegStateOrProvinceOfIssue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legstateorprovinceofissue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"legstateorprovinceofissue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "597"
     }
   },
   {
     "name": "leglocaleofissue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual leg security's LocaleOfIssue.",
       "display": "LegLocaleOfIssue",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"leglocaleofissue\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"leglocaleofissue\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "598"
     }
   },
   {
     "name": "leginstrregistry",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Multileg instrument's individual leg security's InstrRegistry.",
       "display": "LegInstrRegistry",
-      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"leginstrregistry\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"leginstrregistry\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "599"
     }
   }

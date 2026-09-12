@@ -2,7 +2,7 @@
   {
     "name": "protectiontermeventqualifier",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -27,7 +27,7 @@
   {
     "name": "protectiontermobligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -39,7 +39,7 @@
   {
     "name": "protectiontermobligationvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -99,13 +99,13 @@
   {
     "name": "physicalsettltermxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "PhysicalSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"physicalsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"physicalsettltermxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "40208"
     }
   },
@@ -124,7 +124,7 @@
   {
     "name": "physicalsettldeliverableobligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -136,7 +136,7 @@
   {
     "name": "physicalsettldeliverableobligationvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -261,7 +261,7 @@
   {
     "name": "paymentbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -286,7 +286,7 @@
   {
     "name": "legmarketdisruptionvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -347,7 +347,7 @@
   {
     "name": "legpaymentstreamnondeliverablesettlreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -359,7 +359,7 @@
   {
     "name": "paymenttext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -419,7 +419,7 @@
   {
     "name": "paymentsettlpartyid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -431,7 +431,7 @@
   {
     "name": "paymentsettlpartyidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -482,7 +482,7 @@
   {
     "name": "paymentsettlpartysubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -532,7 +532,7 @@
   {
     "name": "legstreamdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -594,7 +594,7 @@
   {
     "name": "legstreamtext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -632,7 +632,7 @@
   {
     "name": "legstreameffectivedatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -668,7 +668,7 @@
   {
     "name": "legstreameffectivedateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -733,7 +733,7 @@
   {
     "name": "legstreamterminationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -769,7 +769,7 @@
   {
     "name": "legstreamterminationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -821,7 +821,7 @@
   {
     "name": "legstreamcalculationperiodbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -859,7 +859,7 @@
   {
     "name": "legstreamfirstperiodstartdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -935,7 +935,7 @@
   {
     "name": "legstreamcalculationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -948,7 +948,7 @@
   {
     "name": "legstreamcalculationrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1159,7 +1159,7 @@
   {
     "name": "legpaymentstreampaymentdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1183,7 +1183,7 @@
   {
     "name": "legpaymentstreampaymentfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1196,7 +1196,7 @@
   {
     "name": "legpaymentstreampaymentrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

@@ -14,7 +14,7 @@
   {
     "name": "underlyingpaymentscheduleinterimexchangedatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -91,7 +91,7 @@
   {
     "name": "underlyingpaymentschedulereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -177,7 +177,7 @@
   {
     "name": "underlyingpaymentstubindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -214,7 +214,7 @@
   {
     "name": "underlyingpaymentstubindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -353,7 +353,7 @@
   {
     "name": "underlyingpaymentstubindex2",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -390,7 +390,7 @@
   {
     "name": "underlyingpaymentstubindex2curveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -651,7 +651,7 @@
   {
     "name": "paymentstreampaymentdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -675,7 +675,7 @@
   {
     "name": "paymentstreampaymentfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -688,7 +688,7 @@
   {
     "name": "paymentstreampaymentrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -751,7 +751,7 @@
   {
     "name": "paymentstreampaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -789,7 +789,7 @@
   {
     "name": "paymentstreamresetdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -813,7 +813,7 @@
   {
     "name": "paymentstreamresetfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -826,7 +826,7 @@
   {
     "name": "paymentstreamresetweeklyrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -864,7 +864,7 @@
   {
     "name": "paymentstreaminitialfixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -888,7 +888,7 @@
   {
     "name": "paymentstreaminitialfixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -952,7 +952,7 @@
   {
     "name": "paymentstreamfixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -976,7 +976,7 @@
   {
     "name": "paymentstreamfixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1027,7 +1027,7 @@
   {
     "name": "paymentstreamratecutoffdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1114,7 +1114,7 @@
   {
     "name": "paymentstreamrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1139,7 +1139,7 @@
   {
     "name": "paymentstreamrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

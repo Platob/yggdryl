@@ -28,7 +28,7 @@ fn wide() -> Field {
         if index % 2 == 0 {
             DataType::Int64.required_field(format!("c{index:02}"))
         } else {
-            DataType::Utf8.required_field(format!("c{index:02}"))
+            DataType::utf8().required_field(format!("c{index:02}"))
         }
     });
     DataType::from_fields(fields)

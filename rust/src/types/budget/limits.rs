@@ -280,18 +280,22 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. }
-            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Currency => self.add_fixed_rows(rows, 3)?,
-            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Isin => self.add_fixed_rows(rows, 12)?,
-            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
-            DataType::State => self.add_fixed_rows(rows, 10)?,
-            DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
-            // A fixed ASCII column charges the width it stores, whatever it is.
-            DataType::FixedAscii(width) => {
-                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
+            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            // A registered code is fixed US-ASCII storage at the width its
+            // standard fixes. The variants stay spelled out so this match
+            // keeps refusing to compile when a datatype is added; the number
+            // they charge is read from `fixed_byte_width`, which owns it,
+            // rather than restated here.
+            DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Isin
+            | DataType::Side
+            | DataType::MsgDirection
+            | DataType::State
+            | DataType::TimeInForce => {
+                self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
             }
             DataType::Int64
             | DataType::UInt64
@@ -306,8 +310,6 @@ impl MaterializationBudget {
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
-            | DataType::BinaryView
-            | DataType::Utf8View
             | DataType::Uuid
             | DataType::LargeListView(_) => {
                 self.add_fixed_rows(rows, 16)?;
@@ -316,11 +318,8 @@ impl MaterializationBudget {
             DataType::Interval(_) => {
                 return Err(unsupported(dtype, "invalid interval layout"));
             }
-            DataType::Binary
-            | DataType::Utf8
-            | DataType::Version
+            DataType::Version
             | DataType::Url
-            | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -334,14 +333,12 @@ impl MaterializationBudget {
                 self.add_offsets(rows, 4)?;
                 self.add_offsets(rows, 4)?;
             }
-            DataType::LargeBinary | DataType::LargeUtf8 | DataType::LargeList(_) => {
-                self.add_offsets(rows, 8)?;
-            }
-            DataType::FixedSizeBinary(width) => {
-                let width = usize::try_from(*width)
-                    .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
-                self.add_fixed_rows(rows, width)?;
-            }
+            DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+            // A byte or string column's cost is its storage's: a fixed width
+            // is that width per row, a view is one sixteen-byte descriptor,
+            // and the two variable layouts are their offset runs.
+            DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
+            DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
             DataType::Null
             | DataType::FixedSizeList(..)
             | DataType::Struct(_)
@@ -392,18 +389,22 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. }
-            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Currency => self.add_fixed_rows(rows, 3)?,
-            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Isin => self.add_fixed_rows(rows, 12)?,
-            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
-            DataType::State => self.add_fixed_rows(rows, 10)?,
-            DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
-            // A fixed ASCII column charges the width it stores, whatever it is.
-            DataType::FixedAscii(width) => {
-                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
+            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            // A registered code is fixed US-ASCII storage at the width its
+            // standard fixes. The variants stay spelled out so this match
+            // keeps refusing to compile when a datatype is added; the number
+            // they charge is read from `fixed_byte_width`, which owns it,
+            // rather than restated here.
+            DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Isin
+            | DataType::Side
+            | DataType::MsgDirection
+            | DataType::State
+            | DataType::TimeInForce => {
+                self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
             }
             DataType::Int64
             | DataType::UInt64
@@ -418,19 +419,14 @@ impl MaterializationBudget {
             | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
             DataType::Interval(TimeUnit::MonthDayNano)
             | DataType::Decimal128 { .. }
-            | DataType::BinaryView
-            | DataType::Utf8View
             | DataType::Uuid
             | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
             DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
             DataType::Interval(_) => {
                 return Err(unsupported(dtype, "invalid interval layout"));
             }
-            DataType::Binary
-            | DataType::Utf8
-            | DataType::Version
+            DataType::Version
             | DataType::Url
-            | DataType::Ascii
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -444,14 +440,12 @@ impl MaterializationBudget {
                 self.add_offsets(rows, 4)?;
                 self.add_offsets(rows, 4)?;
             }
-            DataType::LargeBinary | DataType::LargeUtf8 | DataType::LargeList(_) => {
-                self.add_offsets(rows, 8)?;
-            }
-            DataType::FixedSizeBinary(width) => {
-                let width = usize::try_from(*width)
-                    .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
-                self.add_fixed_rows(rows, width)?;
-            }
+            DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+            // A byte or string column's cost is its storage's: a fixed width
+            // is that width per row, a view is one sixteen-byte descriptor,
+            // and the two variable layouts are their offset runs.
+            DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
+            DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
             DataType::FixedSizeList(child, size) => {
                 let size = usize::try_from(*size)
                     .map_err(|_| invalid_value("a fixed list size within usize", size))?;
@@ -504,6 +498,48 @@ impl MaterializationBudget {
             self.add_fixed_rows(rows, 4)?;
         }
         Ok(())
+    }
+
+    /// Charge one byte column against the storage it lays out.
+    fn add_bytes_rows(
+        &mut self,
+        rows: usize,
+        parameters: crate::types::BytesParameters,
+    ) -> Result<()> {
+        use arrow_schema::DataType as ArrowDataType;
+
+        match crate::types::bytes::arrow_storage(parameters)? {
+            ArrowDataType::FixedSizeBinary(width) => {
+                let width = usize::try_from(width)
+                    .map_err(|_| invalid_value("a fixed binary width within usize", width))?;
+                self.add_fixed_rows(rows, width)
+            }
+            ArrowDataType::LargeBinary => self.add_offsets(rows, 8),
+            ArrowDataType::BinaryView => self.add_fixed_rows(rows, 16),
+            _ => self.add_offsets(rows, 4),
+        }
+    }
+
+    /// Charge one string column against the layout it declares.
+    fn add_string_rows(
+        &mut self,
+        rows: usize,
+        parameters: crate::types::StringParameters,
+    ) -> Result<()> {
+        use crate::types::StringLayout;
+
+        if let Some(width) = parameters.fixed() {
+            return self.add_fixed_rows(rows, width as usize);
+        }
+        match parameters.layout() {
+            StringLayout::String => self.add_offsets(rows, 4),
+            StringLayout::LargeString => self.add_offsets(rows, 8),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                self.add_fixed_rows(rows, 16)
+            }
+            // The fixed layout answered above; it is the only one with a width.
+            StringLayout::FixedString => self.add_offsets(rows, 4),
+        }
     }
 
     fn add_offsets(&mut self, rows: usize, width: usize) -> Result<()> {

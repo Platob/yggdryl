@@ -4,7 +4,7 @@ use yggdryl::{DataType, Field, TimeUnit, Timezone};
 fn variant_parser_alias_canonicalizes_to_dense_union() {
     let expected = DataType::dense_union([
         Field::new("number", DataType::Int64, true),
-        Field::new("text", DataType::Utf8, true),
+        Field::new("text", DataType::utf8(), true),
     ])
     .unwrap();
     for source in [
@@ -26,7 +26,7 @@ fn variant_parser_alias_canonicalizes_to_dense_union() {
 fn union_layout_words_remain_available_as_unquoted_member_names() {
     let members = [
         Field::new("dense", DataType::Int64, true),
-        Field::new("sparse", DataType::Utf8, true),
+        Field::new("sparse", DataType::utf8(), true),
     ];
     let variant = DataType::dense_union(members.clone()).unwrap();
     assert_eq!(
@@ -283,15 +283,18 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::Float16,
         DataType::Float32,
         DataType::Float64,
-        DataType::Binary,
+        DataType::binary(),
         DataType::fixed_size_binary(16).unwrap(),
-        DataType::LargeBinary,
-        DataType::BinaryView,
-        DataType::Utf8,
-        DataType::LargeUtf8,
-        DataType::Utf8View,
-        DataType::Ascii,
-        DataType::ascii(4).unwrap(),
+        DataType::large_binary(),
+        DataType::binary_view(),
+        DataType::utf8(),
+        DataType::large_utf8(),
+        DataType::utf8_view(),
+        DataType::ascii(),
+        DataType::from_str("ascii(4)").unwrap(),
+        DataType::fixed_ascii(4).unwrap(),
+        DataType::from_str("binary(16)").unwrap(),
+        DataType::from_str("string(windows-1252)").unwrap(),
         DataType::Country,
         DataType::Currency,
         DataType::Mic,
@@ -320,12 +323,12 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
         DataType::large_list_view(DataType::Int32.nullable_field("item")),
         DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 4).unwrap(),
         DataType::from_fields([DataType::Int32.required_field("a")]).unwrap(),
-        DataType::map_of(DataType::Utf8, DataType::Int32, false).unwrap(),
-        DataType::map_of(DataType::Utf8, DataType::Int32, true).unwrap(),
-        DataType::dictionary(DataType::Int32, DataType::Utf8).unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap(),
+        DataType::dictionary(DataType::Int32, DataType::utf8()).unwrap(),
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
-            DataType::Utf8.nullable_field("values"),
+            DataType::utf8().nullable_field("values"),
         )
         .unwrap(),
         DataType::dense_union([DataType::Int64.nullable_field("number")]).unwrap(),
@@ -341,9 +344,12 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
             .parse::<DataType>()
             .unwrap_or_else(|error| panic!("{printed} does not read back: {error}"));
         assert_eq!(reparsed, value, "{printed}");
-        // The id's own name is a spelling too, wherever it takes no parameter.
+        // The id's own name is a spelling too, wherever it takes no parameter
+        // and names the datatype's own default: `string` is `utf8`, not the
+        // US-ASCII string that shares its id.
         let named = value.id().as_str();
-        if !printed.contains('(') && !printed.contains('<') {
+        let default_charset = value.charset().is_none_or(|charset| charset.is_utf8());
+        if !printed.contains('(') && !printed.contains('<') && default_charset {
             assert_eq!(
                 named
                     .parse::<DataType>()
@@ -355,7 +361,7 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
     }
     // Every parameterized id name is a grammar keyword too.
     for (named, expected) in [
-        ("fixed_ascii(4)", DataType::ascii(4).unwrap()),
+        ("fixed_ascii(4)", DataType::fixed_ascii(4).unwrap()),
         (
             "fixed_size_binary(16)",
             DataType::fixed_size_binary(16).unwrap(),
@@ -375,14 +381,31 @@ fn every_datatype_variant_prints_a_spelling_the_grammar_reads_back() {
 
 #[test]
 fn a_declared_sql_length_is_a_length() {
-    // The length says nothing this crate's variable storage stores, but a
-    // declaration no storage could have meant is malformed input.
-    for accepted in ["varchar(10)", "char(1)", "binary(16)", "varbinary(4)"] {
-        assert!(accepted.parse::<DataType>().is_ok(), "{accepted}");
+    // A string length and a binary length are both bounds this crate
+    // stores. A declaration no storage could have meant is malformed input.
+    assert_eq!(
+        "varchar(10)".parse::<DataType>().unwrap().to_string(),
+        "utf8(10)"
+    );
+    assert_eq!(
+        "char(1)".parse::<DataType>().unwrap().to_string(),
+        "fixed_utf8(1)"
+    );
+    for (accepted, canonical) in [("binary(16)", "binary(16)"), ("varbinary(4)", "binary(4)")] {
+        let parsed = accepted.parse::<DataType>().unwrap();
+        assert_eq!(parsed.to_string(), canonical, "{accepted}");
+        assert_eq!(
+            parsed.bytes_parameters().unwrap().max(),
+            Some(canonical[7..canonical.len() - 1].parse().unwrap()),
+            "{accepted}"
+        );
     }
-    for malformed in ["varchar(0)", "char(-1)", "binary(-1)", "varbinary(0)"] {
+    for malformed in ["binary(-1)", "varbinary(0)"] {
         let refused = malformed.parse::<DataType>().unwrap_err().to_string();
-        assert!(refused.contains("positive number of bytes"), "{refused}");
+        assert!(refused.contains("maximum"), "{refused}");
+    }
+    for malformed in ["varchar(0)", "char(-1)"] {
+        assert!(malformed.parse::<DataType>().is_err(), "{malformed}");
     }
 }
 

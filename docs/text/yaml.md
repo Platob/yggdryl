@@ -30,7 +30,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
     let value = yaml::from_utf8("symbol: AAPL\nquantity: 2\n")?;
 
     assert_eq!(
-        value.get_key_str("symbol").and_then(Scalar::as_utf8),
+        value.get_key_str("symbol").and_then(Scalar::as_str),
         Some("AAPL")
     );
     assert_eq!(yaml::into_utf8(&value)?, "quantity: 2\nsymbol: AAPL\n");

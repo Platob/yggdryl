@@ -19,7 +19,7 @@ fn handle(name: &str) -> Buffer {
 
 fn quote_root() -> Field {
     root([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])
 }
@@ -91,13 +91,13 @@ fn shaped_values() -> Vec<(ArrowShape, ArrowValue, Field, Scalar)> {
 fn nested_root() -> Field {
     root([
         DataType::from_fields([
-            DataType::Utf8.required_field("mic"),
+            DataType::utf8().required_field("mic"),
             DataType::Int64.required_field("rank"),
         ])
         .expect("the child datatype is valid")
         .required_field("venue"),
         DataType::list(DataType::Int64.required_field("item")).required_field("sizes"),
-        DataType::Utf8.nullable_field("note"),
+        DataType::utf8().nullable_field("note"),
         DataType::Decimal128 {
             precision: 12,
             scale: 2,
@@ -300,7 +300,7 @@ mod record_encodings {
             .expect("the rows write");
 
         let declared = root([
-            DataType::Utf8.required_field("symbol"),
+            DataType::utf8().required_field("symbol"),
             DataType::Decimal128 {
                 precision: 12,
                 scale: 4,
@@ -412,7 +412,7 @@ mod casting {
     #[test]
     fn one_compiled_plan_casts_every_batch_a_stream_yields() {
         let target = root([
-            DataType::Utf8.required_field("symbol"),
+            DataType::utf8().required_field("symbol"),
             DataType::Float64.required_field("size"),
         ]);
         let cast = quote_stream(3)

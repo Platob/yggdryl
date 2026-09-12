@@ -3,20 +3,32 @@
 use std::io::{Cursor, Read};
 
 use crate::text::{Format, Formatting, Limits, Loading, Scalar};
-use crate::{Codec, Error, Field, Level, MediaType, MimeType, Result};
+use crate::{Charset, Codec, Error, Field, Level, MediaType, MimeType, Result};
 use crate::{DEFAULT_STREAM_BATCH_SIZE, IOBase};
 
-/// The structured format and content coding used by a handle.
+/// The structured format, content coding, and charset used by a handle.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Plan {
     format: Format,
     codec: Codec,
+    charset: Charset,
 }
 
 impl Plan {
-    /// Pair an explicit format with an explicit coding.
+    /// Pair an explicit format with an explicit coding, read as UTF-8.
     pub const fn new(format: Format, codec: Codec) -> Self {
-        Self { format, codec }
+        Self {
+            format,
+            codec,
+            charset: Charset::Utf8,
+        }
+    }
+
+    /// Return this plan with a different charset.
+    #[must_use]
+    pub const fn with_charset(mut self, charset: Charset) -> Self {
+        self.charset = charset;
+        self
     }
 
     /// Derive a plan from a media type.
@@ -26,6 +38,7 @@ impl Plan {
         Ok(Self {
             format,
             codec: Codec::from_media_type(media_type),
+            charset: Charset::from_media_type(media_type),
         })
     }
 
@@ -46,7 +59,11 @@ impl Plan {
                     .and_then(|media| format_from_mime(media.base()))
             })
             .ok_or_else(|| unknown_format(declared))?;
-        Ok(Self { format, codec })
+        Ok(Self {
+            format,
+            codec,
+            charset: Charset::from_media_type(declared),
+        })
     }
 
     /// Return the structured format.
@@ -57,6 +74,11 @@ impl Plan {
     /// Return the content coding.
     pub const fn codec(self) -> Codec {
         self.codec
+    }
+
+    /// Return the charset the decoded bytes are read in.
+    pub const fn charset(self) -> Charset {
+        self.charset
     }
 }
 
@@ -155,11 +177,22 @@ pub fn into_io_with_formatting<H: IOBase + ?Sized>(
     let plan = Plan::infer(target)?;
     let mut encoded = Vec::new();
     {
-        let mut writer = plan
+        let mut coded = plan
             .codec()
             .writer_with_level(&mut encoded, formatting.level());
-        crate::text::into_writer_with_formatting(value, &mut writer, plan.format(), formatting)?;
-        writer.finish()?;
+        {
+            // Rendered text is encoded in the declared charset, and only then
+            // compressed: the coding applies to the bytes a reader will meet.
+            let mut writer = plan.charset().writer(&mut coded);
+            crate::text::into_writer_with_formatting(
+                value,
+                &mut writer,
+                plan.format(),
+                formatting,
+            )?;
+            writer.finish()?;
+        }
+        coded.finish()?;
     }
     target.write_all_bytes(&encoded)
 }
@@ -178,16 +211,20 @@ pub fn into_io_all_with_formatting<H: IOBase + ?Sized>(
     let plan = Plan::infer(target)?;
     let mut encoded = Vec::new();
     {
-        let mut writer = plan
+        let mut coded = plan
             .codec()
             .writer_with_level(&mut encoded, formatting.level());
-        crate::text::into_writer_all_with_formatting(
-            values.iter(),
-            &mut writer,
-            plan.format(),
-            formatting,
-        )?;
-        writer.finish()?;
+        {
+            let mut writer = plan.charset().writer(&mut coded);
+            crate::text::into_writer_all_with_formatting(
+                values.iter(),
+                &mut writer,
+                plan.format(),
+                formatting,
+            )?;
+            writer.finish()?;
+        }
+        coded.finish()?;
     }
     target.write_all_bytes(&encoded)
 }
@@ -230,7 +267,41 @@ fn decoded_with_format<H: IOBase + ?Sized>(
         None => Plan::detect(source, &head)?,
     };
     let replayed = Cursor::new(head).chain(encoded);
-    Ok((plan.codec().reader(replayed), plan))
+    let mut decompressed = plan.codec().reader(replayed);
+
+    // The mark sits under the coding, so it is looked for here rather than in
+    // the probe above, which is still compressed. Precedence is the one every
+    // intake follows: what the handle declared first, then this content read.
+    // Either way the mark itself is framing and comes off the stream - a
+    // parser that met `U+FEFF` before the first token would refuse it.
+    let mut marked = [0_u8; MARK_LEN];
+    let filled = fill(&mut decompressed, &mut marked)?;
+    let declared = source.media_type().charset();
+    let (charset, mark) = match Charset::from_bom(&marked[..filled]) {
+        Some((found, length)) => (declared.unwrap_or(found), length),
+        None => (declared.unwrap_or_default(), 0),
+    };
+    let replayed = Cursor::new(marked[mark..filled].to_vec()).chain(decompressed);
+    Ok((charset.reader(replayed), plan.with_charset(charset)))
+}
+
+/// The longest byte-order mark, which bounds the replayed prefix.
+const MARK_LEN: usize = crate::charset::MARK_LEN;
+
+/// Read until `target` is full or the source ends, answering what was filled.
+///
+/// `Read::read` may answer short for reasons of its own, so a mark split
+/// across two reads would otherwise go unrecognized.
+fn fill(source: &mut impl Read, target: &mut [u8]) -> Result<usize> {
+    let mut filled = 0;
+    while filled < target.len() {
+        let read = source.read(&mut target[filled..])?;
+        if read == 0 {
+            break;
+        }
+        filled += read;
+    }
+    Ok(filled)
 }
 
 #[cfg(test)]

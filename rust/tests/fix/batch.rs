@@ -47,7 +47,7 @@ const CAPTURE: &[&str] = &[
 /// The capture as the batches a text reader hands the codec: one `body`
 /// column of bytes, `rows` lines to an input batch.
 fn capture_reader(lines: &[&str], rows: usize) -> BatchReader {
-    let field = DataType::from_fields([DataType::Binary.required_field("body")])
+    let field = DataType::from_fields([DataType::binary().required_field("body")])
         .unwrap()
         .required_field("capture");
     let batches: Vec<RecordBatch> = lines
@@ -147,8 +147,8 @@ fn bulk_configuration_lines_expand_without_pulling_the_next_line() {
 fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
     let field = DataType::from_fields([
         DataType::Int64.required_field("rownum"),
-        DataType::Utf8.required_field("direction"),
-        DataType::Binary.required_field("body"),
+        DataType::utf8().required_field("direction"),
+        DataType::binary().required_field("body"),
     ])
     .unwrap()
     .required_field("capture");
@@ -531,7 +531,7 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
 
     // The column is named otherwise: refused, naming what was asked for and
     // what the source carries.
-    let named_line = DataType::from_fields([DataType::Binary.required_field("line")])
+    let named_line = DataType::from_fields([DataType::binary().required_field("line")])
         .unwrap()
         .required_field("capture");
     let rows = Scalar::from_sequence([Scalar::from_sequence([frame.clone()])]);
@@ -844,7 +844,7 @@ fn a_line_is_read_by_its_captures_and_a_bare_body_reads_as_the_byte_reader_does(
 /// resolves in the one namespace whatever plugin the row names.
 fn plugin_registry() -> Arc<FixRegistry> {
     let mut registry = registry().as_ref().clone();
-    let mut field = DataType::Utf8.nullable_field("VenueTag");
+    let mut field = DataType::utf8().nullable_field("VenueTag");
     field.as_fix_mut().set_tag(5001).unwrap();
     field.as_fix_mut().set_branches(["venue"]).unwrap();
     registry.insert(field).unwrap();
@@ -1033,9 +1033,9 @@ fn the_batch_reader_and_the_line_reader_agree_on_a_rows_plugin() {
         .map(|(body, plugin, previous)| plugin_line(body, *plugin, *previous))
         .collect();
     let capture = DataType::from_fields([
-        DataType::Binary.required_field("body"),
-        DataType::Utf8.nullable_field("pluginid"),
-        DataType::Utf8.nullable_field("prevpluginid"),
+        DataType::binary().required_field("body"),
+        DataType::utf8().nullable_field("pluginid"),
+        DataType::utf8().nullable_field("prevpluginid"),
     ])
     .unwrap()
     .required_field("capture");
@@ -1148,13 +1148,13 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
     // Shaped the way the text line reader shapes a capture: where the line was
     // read from, which line it was, what stamped it, and the frame itself.
     let capture = DataType::from_fields([
-        DataType::Utf8.required_field("url"),
+        DataType::utf8().required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Utf8.nullable_field("threadname"),
-        DataType::Binary.required_field("body"),
+        DataType::utf8().nullable_field("threadname"),
+        DataType::binary().required_field("body"),
         // A name a FIX column already takes, which yields to it: one column
         // per name, and the FIX one is what a reader spelling it means.
-        DataType::Utf8.nullable_field("nofixentries"),
+        DataType::utf8().nullable_field("nofixentries"),
     ])
     .expect("a capture root")
     .required_field("line");
@@ -1282,8 +1282,8 @@ fn a_pluginid_capture_with_no_field_to_fill_is_silence() {
     );
 
     let capture = DataType::from_fields([
-        DataType::Binary.required_field("body"),
-        DataType::Utf8.nullable_field("pluginid"),
+        DataType::binary().required_field("body"),
+        DataType::utf8().nullable_field("pluginid"),
     ])
     .unwrap()
     .required_field("capture");
@@ -1340,7 +1340,7 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
         .collect();
     let alone: Vec<FixMsg> = lines.iter().map(|line| one_of(&codec, line)).collect();
 
-    let capture = DataType::from_fields([DataType::Utf8.required_field("pluginid")])
+    let capture = DataType::from_fields([DataType::utf8().required_field("pluginid")])
         .unwrap()
         .required_field("capture");
     let values = Scalar::from_sequence(

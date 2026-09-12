@@ -49,6 +49,7 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench uri
     cargo bench --bench expression
     cargo bench --bench text
+    cargo bench --bench charset
     cargo bench --bench coding
     cargo bench --bench xxhash
     cargo bench --bench txhash
@@ -101,6 +102,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | --- | --- |
 | `types` | parsing, construction, validation, mutation, cached access, and Arrow schemas |
 | `holder` | byte streams, listings, buffering, and foreign-filesystem boundaries |
+| `charset` | the borrow an all-ASCII payload answers with, the transcode a mixed one pays for, and the three streaming doors |
 | `coding` | content codings beside their standard-library baselines on the same wire |
 | `media` | record round trips, text projection, Avro, Parquet, Iceberg, and pushdown |
 | `text` | natural whole-value and streaming codecs, field-directed parsing, and placeholders |

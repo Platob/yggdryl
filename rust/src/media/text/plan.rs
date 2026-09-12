@@ -128,7 +128,7 @@ impl TextPlan {
                 &mut columns,
                 TextSource::BodyType,
                 MIMETYPE_COLUMN,
-                DataType::Utf8,
+                DataType::utf8(),
                 false,
                 "What the line was classified as.",
             );
@@ -137,7 +137,7 @@ impl TextPlan {
             &mut columns,
             TextSource::Body,
             "body",
-            DataType::Utf8,
+            DataType::utf8(),
             false,
             "The line itself, as text, with whatever was read off its front removed.",
         );
@@ -182,7 +182,7 @@ impl TextPlan {
                 &mut columns,
                 TextSource::Entry(path.clone()),
                 name,
-                DataType::Utf8,
+                DataType::utf8(),
                 true,
                 None,
             );

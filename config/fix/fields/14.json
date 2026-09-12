@@ -108,13 +108,13 @@
   {
     "name": "defaultcstmapplverid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The default custom application version ID that is the default for a session.",
       "display": "DefaultCstmApplVerID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"defaultcstmapplverid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"defaultcstmapplverid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1408"
     }
   },
@@ -162,13 +162,13 @@
   {
     "name": "nested4partysubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Refer to definition of PartySubID(523)",
       "display": "Nested4PartySubID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nested4partysubid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nested4partysubid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1412"
     }
   },
@@ -201,27 +201,27 @@
   {
     "name": "nested4partyid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Refer to definition of PartyID(448)",
       "display": "Nested4PartyID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nested4partyid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nested4partyid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1415"
     }
   },
   {
     "name": "nested4partyidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Refer to definition of PartyIDSource(447)",
       "display": "Nested4PartyIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0.2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0.2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0.2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0.2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nested4partyidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"nested4partyidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1416"
     }
   },
@@ -283,14 +283,14 @@
   {
     "name": "legpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Refer to definition for PriceUnitOfMeasure(1191)",
       "display": "LegPriceUnitOfMeasure",
       "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0.1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0.2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0.1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0.2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"legpriceunitofmeasure\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"legpriceunitofmeasure\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1421"
     }
   },
@@ -323,14 +323,14 @@
   {
     "name": "underlyingpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Refer to definition for PriceUnitOfMeasure(1191)",
       "display": "UnderlyingPriceUnitOfMeasure",
       "fix:codes": "{\"codes\":[{\"value\":\"Alw\",\"name\":\"Allowances\",\"since\":\"5.0.1\",\"ep\":89,\"sort\":1,\"group\":\"Variable Quantity UOM\",\"doc\":\"Allowances\"},{\"value\":\"BDFT\",\"name\":\"BoardFeet\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":3,\"group\":\"Variable Quantity UOM\",\"doc\":\"Board feet\"},{\"value\":\"Bbl\",\"name\":\"Barrels\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Variable Quantity UOM\",\"doc\":\"Barrels\"},{\"value\":\"Bcf\",\"name\":\"BillionCubicFeet\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Billion cubic feet\"},{\"value\":\"Bu\",\"name\":\"Bushels\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Variable Quantity UOM\",\"doc\":\"Bushels\"},{\"value\":\"CBM\",\"name\":\"CubicMeters\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":2,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Cubic Meters\"},{\"value\":\"CDD\",\"name\":\"CoolingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"group\":\"Variable Quantity UOM\",\"doc\":\"Cooling degree day\"},{\"value\":\"CER\",\"name\":\"CertifiedEmissionsReduction\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":7,\"group\":\"Variable Quantity UOM\",\"doc\":\"Certified emissions reduction\"},{\"value\":\"CPD\",\"name\":\"CriticalPrecipDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"group\":\"Variable Quantity UOM\",\"doc\":\"Critical precipitation day\"},{\"value\":\"CRT\",\"name\":\"ClimateReserveTonnes\",\"since\":\"5.0.2\",\"ep\":114,\"sort\":9,\"group\":\"Variable Quantity UOM\",\"doc\":\"Climate reserve tonnes\"},{\"value\":\"Ccy\",\"name\":\"Currency\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":5,\"group\":\"Variable Quantity UOM\",\"doc\":\"Amount of currency\"},{\"value\":\"DGE\",\"name\":\"DieselGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":43,\"group\":\"Variable Quantity UOM\",\"doc\":\"Diesel gallon equivalent\"},{\"value\":\"EnvAllwnc\",\"name\":\"EnvAllwncCert\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":13,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental allowance certificates\"},{\"value\":\"EnvCrd\",\"name\":\"EnvironmentalCredit\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":14,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental credit\"},{\"value\":\"EnvOfst\",\"name\":\"EnvironmentalOffset\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":15,\"group\":\"Variable Quantity UOM\",\"doc\":\"Environmental Offset\"},{\"value\":\"GGE\",\"name\":\"GasolineGallonEquivalent\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":46,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gasonline gallon equivalent\"},{\"value\":\"GJ\",\"name\":\"Gigajoules\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":3,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"gigajoules\"},{\"value\":\"GT\",\"name\":\"GrossTons\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":18,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gross tons\"},{\"value\":\"Gal\",\"name\":\"Gallons\",\"since\":\"4.4\",\"sort\":17,\"group\":\"Variable Quantity UOM\",\"doc\":\"Gallons\"},{\"value\":\"Gal_gb\",\"name\":\"GBGallon\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":45,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Gallon\"},{\"value\":\"HDD\",\"name\":\"HeatingDegreeDay\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":19,\"group\":\"Variable Quantity UOM\",\"doc\":\"Heating degree day\"},{\"value\":\"IPNT\",\"name\":\"IndexPoint\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":20,\"group\":\"Variable Quantity UOM\",\"doc\":\"Index point\"},{\"value\":\"L\",\"name\":\"Liters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":28,\"group\":\"Variable Quantity UOM\",\"doc\":\"liters\"},{\"value\":\"M\",\"name\":\"Meter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":50,\"group\":\"Variable Quantity UOM\",\"doc\":\"Meter\"},{\"value\":\"MHR\",\"name\":\"MegaHeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":6,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Mega heat rate\"},{\"value\":\"MMBtu\",\"name\":\"OneMillionBTU\",\"since\":\"4.4\",\"sort\":7,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"One Million BTU\"},{\"value\":\"MMbbl\",\"name\":\"MillionBarrels\",\"since\":\"4.4\",\"deprecated\":\"5.0.1\",\"sort\":99,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Million Barrels\"},{\"value\":\"MW-M\",\"name\":\"MegawattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":33,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt month (electrical capacity)\"},{\"value\":\"MW-a\",\"name\":\"MegawattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":30,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt year (electrical capacity)\"},{\"value\":\"MW-d\",\"name\":\"MegawattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":31,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt day (electrical capacity)\"},{\"value\":\"MW-h\",\"name\":\"MegawattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":32,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt hour (electrical capacity)\"},{\"value\":\"MW-min\",\"name\":\"MegawattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":34,\"group\":\"Variable Quantity UOM\",\"doc\":\"Megawatt minute (electrical capacity)\"},{\"value\":\"MWh\",\"name\":\"MegawattHours\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Megawatt hours\"},{\"value\":\"PRINC\",\"name\":\"PrincipalWithRelationToDebtInstrument\",\"since\":\"5.0.2\",\"ep\":107,\"sort\":36,\"group\":\"Variable Quantity UOM\",\"doc\":\"Principal with relation to debt instrument\"},{\"value\":\"SqM\",\"name\":\"SquareMeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":64,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square meter\"},{\"value\":\"SqcM\",\"name\":\"SquareCentimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":60,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square centimeter\"},{\"value\":\"Sqft\",\"name\":\"SquareFoot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":61,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square foot\"},{\"value\":\"Sqin\",\"name\":\"SquareInch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":62,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square inch\"},{\"value\":\"SqkM\",\"name\":\"SquareKilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":63,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square kilometer\"},{\"value\":\"SqmM\",\"name\":\"SquareMillimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":66,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square millimeter\"},{\"value\":\"Sqmi\",\"name\":\"SquareMile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":65,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square mile\"},{\"value\":\"Sqyd\",\"name\":\"SquareYard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":67,\"group\":\"Variable Quantity UOM\",\"doc\":\"Square yard\"},{\"value\":\"USD\",\"name\":\"USDollars\",\"since\":\"4.4\",\"deprecated\":\"5.0.2\",\"sort\":99,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Dollars\"},{\"value\":\"a\",\"name\":\"Are\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":39,\"group\":\"Variable Quantity UOM\",\"doc\":\"Are\"},{\"value\":\"ac\",\"name\":\"Acre\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":40,\"group\":\"Variable Quantity UOM\",\"doc\":\"Acre\"},{\"value\":\"cL\",\"name\":\"Centiliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":41,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centiliter\"},{\"value\":\"cM\",\"name\":\"Centimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":42,\"group\":\"Variable Quantity UOM\",\"doc\":\"Centimeter\"},{\"value\":\"cwt\",\"name\":\"Hundredweight\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":10,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hundredweight(US)\"},{\"value\":\"day\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":11,\"group\":\"Variable Quantity UOM\",\"doc\":\"Days\"},{\"value\":\"dt\",\"name\":\"DryMetricTons\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":12,\"group\":\"Variable Quantity UOM\",\"doc\":\"Dry metric tons\"},{\"value\":\"ft\",\"name\":\"Foot\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":44,\"group\":\"Variable Quantity UOM\",\"doc\":\"Foot\"},{\"value\":\"g\",\"name\":\"Grams\",\"since\":\"5.0.2\",\"ep\":122,\"sort\":16,\"group\":\"Variable Quantity UOM\",\"doc\":\"Grams\"},{\"value\":\"ha\",\"name\":\"Hectare\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":47,\"group\":\"Variable Quantity UOM\",\"doc\":\"Hectare\"},{\"value\":\"in\",\"name\":\"Inch\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":48,\"group\":\"Variable Quantity UOM\",\"doc\":\"Inch\"},{\"value\":\"kHR\",\"name\":\"HeatRate\",\"since\":\"5.0.2\",\"ep\":243,\"sort\":4,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Heat rate\"},{\"value\":\"kL\",\"name\":\"Kiloliters\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":22,\"group\":\"Variable Quantity UOM\",\"doc\":\"kiloliters\"},{\"value\":\"kM\",\"name\":\"Kilometer\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":49,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilometer\"},{\"value\":\"kW-M\",\"name\":\"KilowattMonth\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":26,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt month (electrical capacity)\"},{\"value\":\"kW-a\",\"name\":\"KilowattYear\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":23,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt year (electrical capacity)\"},{\"value\":\"kW-d\",\"name\":\"KilowattDay\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":24,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt day (electrical capacity)\"},{\"value\":\"kW-h\",\"name\":\"KilowattHour\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":25,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt hour (electrical capacity)\"},{\"value\":\"kW-min\",\"name\":\"KilowattMinute\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":27,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilowatt-Minute (electrical capacity)\"},{\"value\":\"kWh\",\"name\":\"KilowattHours\",\"since\":\"5.0.2\",\"ep\":137,\"sort\":5,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Kilowatt hours\"},{\"value\":\"kg\",\"name\":\"Kilograms\",\"since\":\"5.0.2\",\"ep\":154,\"sort\":21,\"group\":\"Variable Quantity UOM\",\"doc\":\"Kilograms\"},{\"value\":\"lbs\",\"name\":\"Pounds\",\"since\":\"4.4\",\"sort\":29,\"group\":\"Variable Quantity UOM\",\"doc\":\"pounds\"},{\"value\":\"mL\",\"name\":\"Milliliter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":52,\"group\":\"Variable Quantity UOM\",\"doc\":\"Milliliter\"},{\"value\":\"mM\",\"name\":\"Millimeter\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":53,\"group\":\"Variable Quantity UOM\",\"doc\":\"Millimeter\"},{\"value\":\"mi\",\"name\":\"Mile\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":51,\"group\":\"Variable Quantity UOM\",\"doc\":\"Mile\"},{\"value\":\"oz\",\"name\":\"USOunce\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":54,\"group\":\"Variable Quantity UOM\",\"doc\":\"US ounce\"},{\"value\":\"oz_tr\",\"name\":\"TroyOunces\",\"since\":\"4.4\",\"sort\":35,\"group\":\"Variable Quantity UOM\",\"doc\":\"Troy ounces\"},{\"value\":\"pc\",\"name\":\"Piece\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":55,\"group\":\"Variable Quantity UOM\",\"doc\":\"Piece\"},{\"value\":\"pt\",\"name\":\"USPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":56,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Pint\"},{\"value\":\"pt_gb\",\"name\":\"GBPint\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":57,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB pint\"},{\"value\":\"qt\",\"name\":\"USQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":58,\"group\":\"Variable Quantity UOM\",\"doc\":\"US Quart\"},{\"value\":\"qt_gb\",\"name\":\"GBQuart\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":59,\"group\":\"Variable Quantity UOM\",\"doc\":\"GB Quart\"},{\"value\":\"t\",\"name\":\"MetricTons\",\"since\":\"4.4\",\"sort\":37,\"group\":\"Variable Quantity UOM\",\"doc\":\"Metric tons\"},{\"value\":\"thm\",\"name\":\"Therms\",\"since\":\"5.0.2\",\"ep\":152,\"sort\":9,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"therms\"},{\"value\":\"tn\",\"name\":\"Tons\",\"since\":\"4.4\",\"sort\":38,\"group\":\"Variable Quantity UOM\",\"doc\":\"Tons (US)\"},{\"value\":\"tnCO2\",\"name\":\"TonsOfCarbonDioxide\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":10,\"group\":\"Fixed Magnitude UOM\",\"doc\":\"Tons of carbon dioxide\"},{\"value\":\"yd\",\"name\":\"Yard\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":68,\"group\":\"Variable Quantity UOM\",\"doc\":\"Yard\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"underlyingpriceunitofmeasure\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"underlyingpriceunitofmeasure\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1424"
     }
   },
@@ -364,13 +364,13 @@
   {
     "name": "sideexecid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "When reporting trades, used to reference the identifier of the execution (ExecID) being reported if different ExecIDs were assigned to each side of the trade.",
       "display": "SideExecID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"sideexecid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"sideexecid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1427"
     }
   },
@@ -404,14 +404,14 @@
   {
     "name": "venuetype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the type of venue where a trade was executed.",
       "display": "VenueType",
       "fix:codes": "{\"codes\":[{\"value\":\"A\",\"name\":\"AuctionDrivenMarket\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":9,\"doc\":\"Auction driven market\"},{\"value\":\"B\",\"name\":\"CentralLimitOrderBook\",\"since\":\"5.0.2\",\"ep\":163,\"sort\":6,\"doc\":\"Central limit order book\"},{\"value\":\"C\",\"name\":\"ClearingHouse\",\"since\":\"5.0.2\",\"ep\":141,\"sort\":3,\"doc\":\"Clearinghouse\"},{\"value\":\"D\",\"name\":\"DarkOrderBook\",\"since\":\"5.0.2\",\"ep\":163,\"sort\":8,\"doc\":\"Dark order book\"},{\"value\":\"E\",\"name\":\"Electronic\",\"since\":\"5.0.1\",\"ep\":77,\"doc\":\"Electronic exchange\"},{\"value\":\"H\",\"name\":\"HybridMarket\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":12,\"doc\":\"Hybrid market\"},{\"value\":\"N\",\"name\":\"QuoteNegotiation\",\"since\":\"5.0.2\",\"ep\":216,\"sort\":10,\"doc\":\"Quote negotiation\"},{\"value\":\"O\",\"name\":\"OffMarket\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Off-market\"},{\"value\":\"P\",\"name\":\"Pit\",\"since\":\"5.0.1\",\"ep\":77,\"sort\":1,\"doc\":\"Pit\"},{\"value\":\"Q\",\"name\":\"QuoteDrivenMarket\",\"since\":\"5.0.2\",\"ep\":163,\"sort\":7,\"doc\":\"Quote driven market\"},{\"value\":\"R\",\"name\":\"RegisteredMarket\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Registered market\"},{\"value\":\"V\",\"name\":\"VoiceNegotiation\",\"since\":\"5.0.2\",\"ep\":228,\"sort\":11,\"doc\":\"Voice negotiation\"},{\"value\":\"X\",\"name\":\"ExPit\",\"since\":\"5.0.1\",\"ep\":77,\"sort\":2,\"doc\":\"Ex-pit\"},{\"value\":\"z\",\"name\":\"OtherMarket\",\"ep\":277,\"sort\":13,\"doc\":\"Other market (lowercase \\\"z\\\")\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"venuetype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"venuetype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1430"
     }
   },
@@ -446,13 +446,13 @@
   {
     "name": "refapplreqid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Used to reference a previously submitted ApplReqID (1346) from within a subsequent ApplicationMessageRequest(MsgType=BW)",
       "display": "RefApplReqID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"refapplreqid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"refapplreqid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1433"
     }
   },
@@ -654,41 +654,41 @@
   {
     "name": "referencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the reference \"page\" from the rate source. For FX, the reference page to the spot rate to be used for the reference FX spot rate. When RateSource(1446) = 3 (ISDA Settlement Rate Option) this contains the value from the scheme that reflects the terms of the Annex A to the ISDA 1998 FX and Currency Option Definitions. See: https://fpml.org/coding-scheme/settlement-rate-option",
       "display": "ReferencePage",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"referencepage\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"referencepage\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1448"
     }
   },
   {
     "name": "restructuringtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A category of CDS credit event in which the underlying bond experiences a restructuring.",
       "display": "RestructuringType",
       "fix:codes": "{\"codes\":[{\"value\":\"FR\",\"name\":\"FullRestructuring\",\"since\":\"5.0.1\",\"ep\":83,\"doc\":\"Full Restructuring\"},{\"value\":\"MM\",\"name\":\"ModifiedModRestructuring\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":2,\"doc\":\"Modified Mod Restructuring\"},{\"value\":\"MR\",\"name\":\"ModifiedRestructuring\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":1,\"doc\":\"Modified Restructuring\"},{\"value\":\"XR\",\"name\":\"NoRestructuringSpecified\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":3,\"doc\":\"No Restructuring specified\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"restructuringtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"restructuringtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1449"
     }
   },
   {
     "name": "seniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies which issue (underlying bond) will receive payment priority in the event of a default.",
       "display": "Seniority",
       "fix:codes": "{\"codes\":[{\"value\":\"JR\",\"name\":\"Junior\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":3,\"doc\":\"Junior\"},{\"value\":\"MZ\",\"name\":\"Mezzanine\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":4,\"doc\":\"Mezzanine\"},{\"value\":\"SB\",\"name\":\"Subordinated\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":2,\"doc\":\"Subordinated\"},{\"value\":\"SD\",\"name\":\"SeniorSecured\",\"since\":\"5.0.1\",\"ep\":83,\"doc\":\"Senior Secured\"},{\"value\":\"SN\",\"name\":\"SeniorNonPreferred\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":5,\"doc\":\"Senior Non-Preferred\"},{\"value\":\"SR\",\"name\":\"Senior\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":1,\"doc\":\"Senior\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"seniority\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"seniority\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1450"
     }
   },
@@ -721,28 +721,28 @@
   {
     "name": "underlyingrestructuringtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "See RestructuringType(1449)",
       "display": "UnderlyingRestructuringType",
       "fix:codes": "{\"codes\":[{\"value\":\"FR\",\"name\":\"FullRestructuring\",\"since\":\"5.0.1\",\"ep\":83,\"doc\":\"Full Restructuring\"},{\"value\":\"MM\",\"name\":\"ModifiedModRestructuring\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":2,\"doc\":\"Modified Mod Restructuring\"},{\"value\":\"MR\",\"name\":\"ModifiedRestructuring\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":1,\"doc\":\"Modified Restructuring\"},{\"value\":\"XR\",\"name\":\"NoRestructuringSpecified\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":3,\"doc\":\"No Restructuring specified\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"underlyingrestructuringtype\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"underlyingrestructuringtype\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1453"
     }
   },
   {
     "name": "underlyingseniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "See Seniority(1450)",
       "display": "UnderlyingSeniority",
       "fix:codes": "{\"codes\":[{\"value\":\"JR\",\"name\":\"Junior\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":3,\"doc\":\"Junior\"},{\"value\":\"MZ\",\"name\":\"Mezzanine\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":4,\"doc\":\"Mezzanine\"},{\"value\":\"SB\",\"name\":\"Subordinated\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":2,\"doc\":\"Subordinated\"},{\"value\":\"SD\",\"name\":\"SeniorSecured\",\"since\":\"5.0.1\",\"ep\":83,\"doc\":\"Senior Secured\"},{\"value\":\"SN\",\"name\":\"SeniorNonPreferred\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":5,\"doc\":\"Senior Non-Preferred\"},{\"value\":\"SR\",\"name\":\"Senior\",\"since\":\"5.0.1\",\"ep\":83,\"sort\":1,\"doc\":\"Senior\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"underlyingseniority\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"underlyingseniority\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1454"
     }
   },
@@ -840,27 +840,27 @@
   {
     "name": "targetpartyid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "PartyID value within an target party repeating group.",
       "display": "TargetPartyID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"targetpartyid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"targetpartyid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1462"
     }
   },
   {
     "name": "targetpartyidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "PartyIDSource value within an target party repeating group.",
       "display": "TargetPartyIDSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"KoreanInvestorID\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Korean Investor ID\"},{\"value\":\"2\",\"name\":\"TaiwaneseForeignInvestorID\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Qualified Foreign Investor ID QFII/FID\"},{\"value\":\"3\",\"name\":\"TaiwaneseTradingAcct\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Taiwanese Trading Acct\"},{\"value\":\"4\",\"name\":\"MalaysianCentralDepository\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Malaysian Central Depository (MCD) number\"},{\"value\":\"5\",\"name\":\"ChineseInvestorID\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for Equities\",\"doc\":\"Chinese Investor ID\"},{\"value\":\"6\",\"name\":\"UKNationalInsuranceOrPensionNumber\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"UK National Insurance or Pension Number\"},{\"value\":\"7\",\"name\":\"USSocialSecurityNumber\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Social Security Number\"},{\"value\":\"8\",\"name\":\"USEmployerOrTaxIDNumber\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"US Employer or Tax ID Number\"},{\"value\":\"9\",\"name\":\"AustralianBusinessNumber\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Business Number\"},{\"value\":\"A\",\"name\":\"AustralianTaxFileNumber\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Australian Tax File Number\"},{\"value\":\"B\",\"name\":\"BIC\",\"since\":\"4.3\",\"sort\":1,\"group\":\"For all PartyRoles\",\"doc\":\"BIC (Bank Identification Code - SWIFT managed) code (ISO9362 - See \\\"Appendix 6-B\\\")\"},{\"value\":\"C\",\"name\":\"GeneralIdentifier\",\"since\":\"4.3\",\"sort\":2,\"group\":\"For all PartyRoles\",\"doc\":\"Generally accepted market participant identifier (e.g. NASD mnemonic)\"},{\"value\":\"D\",\"name\":\"Proprietary\",\"since\":\"4.3\",\"sort\":3,\"group\":\"For all PartyRoles\",\"doc\":\"Proprietary / Custom code\"},{\"value\":\"E\",\"name\":\"ISOCountryCode\",\"since\":\"4.3\",\"sort\":4,\"group\":\"For all PartyRoles\",\"doc\":\"ISO Country Code\"},{\"value\":\"F\",\"name\":\"SettlementEntityLocation\",\"since\":\"4.3\",\"sort\":5,\"group\":\"For all PartyRoles\",\"doc\":\"Settlement Entity Location (note if Local Market Settlement use \\\"E=ISO Country Code\\\") (see \\\"Appendix 6-G\\\" for valid values)\"},{\"value\":\"G\",\"name\":\"MIC\",\"since\":\"4.4\",\"sort\":6,\"group\":\"For all PartyRoles\",\"doc\":\"Market Identifier Code (ISO 10383) MIC\"},{\"value\":\"H\",\"name\":\"CSDParticipant\",\"since\":\"4.4\",\"sort\":7,\"group\":\"For all PartyRoles\",\"doc\":\"CSD participant/member code (e.g. Euroclear, DTC, CREST or Kassenverein number\"},{\"value\":\"I\",\"name\":\"ISITCAcronym\",\"since\":\"4.4\",\"sort\":1,\"group\":\"For PartyRole=\\\"Broker of Credit\\\"\",\"doc\":\"Directed broker three character acronym as defined in ISITC \\\"ETC Best Practice\\\" guidelines document\"},{\"value\":\"J\",\"name\":\"TaxID\",\"since\":\"5.0.2\",\"ep\":103,\"sort\":6,\"group\":\"For PartyRole = \\\"InvestorID\\\" and for CIV\",\"doc\":\"Tax ID\"},{\"value\":\"K\",\"name\":\"AustralianCompanyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":8,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Company Number\"},{\"value\":\"L\",\"name\":\"AustralianRegisteredBodyNumber\",\"since\":\"5.0.2\",\"ep\":108,\"sort\":9,\"group\":\"For all PartyRoles\",\"doc\":\"Australian Registered Body Number\"},{\"value\":\"M\",\"name\":\"CFTCReportingFirmIdentifier\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":10,\"group\":\"For all PartyRoles\",\"doc\":\"CFTC reporting firm identifier\"},{\"value\":\"N\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":156,\"sort\":11,\"group\":\"For all PartyRoles\",\"doc\":\"Legal Entity Identifier (ISO 17442) LEI\"},{\"value\":\"O\",\"name\":\"InterimIdentifier\",\"since\":\"5.0.2\",\"ep\":192,\"sort\":12,\"group\":\"For all PartyRoles\",\"doc\":\"Interim identifier\"},{\"value\":\"P\",\"name\":\"ShortCodeIdentifier\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":13,\"group\":\"For all PartyRoles\",\"doc\":\"Short code identifier\"},{\"value\":\"Q\",\"name\":\"NationalIDNaturalPerson\",\"since\":\"5.0.2\",\"ep\":222,\"sort\":14,\"group\":\"For all PartyRoles\",\"doc\":\"National ID of natural person\"},{\"value\":\"R\",\"name\":\"IndiaPermanentAccountNumber\",\"since\":\"5.0.2\",\"ep\":244,\"sort\":15,\"group\":\"For all PartyRoles\",\"doc\":\"India Permanent Account Number\"},{\"value\":\"S\",\"name\":\"FDID\",\"since\":\"5.0.2\",\"ep\":248,\"sort\":16,\"group\":\"For all PartyRoles\",\"doc\":\"Firm designated identifier\"},{\"value\":\"T\",\"name\":\"SPSAID\",\"ep\":262,\"sort\":17,\"group\":\"For all PartyRoles\",\"doc\":\"Special Segregated Account ID\"},{\"value\":\"U\",\"name\":\"MasterSPSAID\",\"ep\":262,\"sort\":18,\"group\":\"For all PartyRoles\",\"doc\":\"Master Special Segregated Account ID\"},{\"value\":\"V\",\"name\":\"KoreaShortSellingRegistrationNumber\",\"ep\":296,\"sort\":19,\"group\":\"For all PartyRoles\",\"doc\":\"Korea Short Selling Registration Number\"}]}",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"targetpartyidsource\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"targetpartyidsource\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1463"
     }
   },
@@ -881,39 +881,39 @@
   {
     "name": "securitylistid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies an identifier for a Security List",
       "display": "SecurityListID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"securitylistid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"securitylistid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1465"
     }
   },
   {
     "name": "securitylistrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies a reference from one Security List to another. Used to support a hierarchy of Security Lists.",
       "display": "SecurityListRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"securitylistrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"securitylistrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1466"
     }
   },
   {
     "name": "securitylistdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Specifies a description or name of a Security List.",
       "display": "SecurityListDesc",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"securitylistdesc\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"securitylistdesc\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1467"
     }
   },
@@ -974,13 +974,13 @@
   {
     "name": "newsid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for a News message",
       "display": "NewsID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"newsid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"newsid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1472"
     }
   },
@@ -1001,14 +1001,16 @@
   {
     "name": "languagecode",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 2
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 2
     },
     "nullable": true,
     "metadata": {
       "description": "The national language in which the news item is provided.",
       "display": "LanguageCode",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"languagecode\",\"type\":{\"type\":\"fixed_ascii\",\"width\":2}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"languagecode\",\"type\":{\"type\":\"string\",\"layout\":\"fixed_string\",\"charset\":\"us-ascii\",\"fixed\":2}}]}",
       "fix:tag": "1474"
     }
   },
@@ -1028,13 +1030,13 @@
   {
     "name": "newsrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to another News message identified by NewsID(1474).",
       "display": "NewsRefID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"newsrefid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"newsrefid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1476"
     }
   },
@@ -1316,13 +1318,13 @@
   {
     "name": "streamasgnreqid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Unique identifier for the stream assignment request provided by the requester.",
       "display": "StreamAsgnReqID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"streamasgnreqid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.1\",\"name\":\"streamasgnreqid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "1497"
     }
   },

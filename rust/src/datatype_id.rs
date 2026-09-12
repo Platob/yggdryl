@@ -72,24 +72,28 @@ pub enum DataTypeId {
     Duration64,
     /// Calendar interval.
     Interval,
-    /// Variable-width binary with 32-bit offsets.
+    /// Bytes with 32-bit offsets, under any bound.
     Binary,
-    /// Fixed-width binary.
+    /// Bytes of one fixed width.
     FixedSizeBinary,
-    /// Variable-width binary with 64-bit offsets.
+    /// Bytes with 64-bit offsets.
     LargeBinary,
-    /// Binary view layout.
+    /// Bytes in the view layout.
     BinaryView,
-    /// UTF-8 with 32-bit offsets.
-    Utf8,
-    /// UTF-8 with 64-bit offsets.
-    LargeUtf8,
-    /// UTF-8 view layout.
-    Utf8View,
-    /// Variable-width ASCII text.
-    Ascii,
-    /// ASCII text padded with trailing NUL to a fixed byte width.
-    FixedAscii,
+    /// A string with 32-bit offsets, in any charset, with any bound.
+    ///
+    /// The five string layouts sit where the five text identifiers they
+    /// replaced sat, so every later number - and every digest tag - stays
+    /// what it was; this one is the number UTF-8 text always fed.
+    String,
+    /// A string of one fixed, padded byte width.
+    FixedString,
+    /// A string in the view layout.
+    StringView,
+    /// A string with 64-bit offsets.
+    LargeString,
+    /// A string in the view layout, declared large.
+    LargeStringView,
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.
@@ -186,11 +190,11 @@ impl DataTypeId {
         Self::FixedSizeBinary,
         Self::LargeBinary,
         Self::BinaryView,
-        Self::Utf8,
-        Self::LargeUtf8,
-        Self::Utf8View,
-        Self::Ascii,
-        Self::FixedAscii,
+        Self::String,
+        Self::FixedString,
+        Self::StringView,
+        Self::LargeString,
+        Self::LargeStringView,
         Self::Country,
         Self::Currency,
         Self::Mic,
@@ -266,11 +270,6 @@ impl DataTypeId {
             Self::FixedSizeBinary => "fixed_size_binary",
             Self::LargeBinary => "large_binary",
             Self::BinaryView => "binary_view",
-            Self::Utf8 => "utf8",
-            Self::LargeUtf8 => "large_utf8",
-            Self::Utf8View => "utf8_view",
-            Self::Ascii => "ascii",
-            Self::FixedAscii => "fixed_ascii",
             Self::Country => "country",
             Self::Currency => "currency",
             Self::Mic => "mic",
@@ -300,6 +299,11 @@ impl DataTypeId {
             Self::Geography => "geography",
             Self::Version => "version",
             Self::Url => "url",
+            Self::String => "string",
+            Self::FixedString => "fixed_string",
+            Self::StringView => "string_view",
+            Self::LargeString => "large_string",
+            Self::LargeStringView => "large_string_view",
         }
     }
 
@@ -352,15 +356,17 @@ impl DataTypeId {
             Self::Binary | Self::FixedSizeBinary | Self::LargeBinary | Self::BinaryView => {
                 DataTypeKind::Bytes
             }
-            Self::Utf8 | Self::LargeUtf8 | Self::Utf8View | Self::Version | Self::Url => {
-                DataTypeKind::Text
-            }
-            Self::Ascii
-            | Self::FixedAscii
-            // A registered code is fixed-width ASCII text with an identity,
-            // so it belongs to the family every text behaviour is uniform
-            // over: comparison, casting to a variable layout, merging.
-            | Self::Country
+            Self::String
+            | Self::FixedString
+            | Self::StringView
+            | Self::LargeString
+            | Self::LargeStringView
+            | Self::Version
+            | Self::Url => DataTypeKind::Text,
+            // A registered code is fixed-width ASCII text with an identity;
+            // the family is the identity, and every text behaviour - comparison,
+            // casting to a variable layout, merging - is uniform over it too.
+            Self::Country
             | Self::Currency
             | Self::Mic
             | Self::Cfi
@@ -368,7 +374,7 @@ impl DataTypeId {
             | Self::Side
             | Self::State
             | Self::TimeInForce
-            | Self::MsgDirection => DataTypeKind::Ascii,
+            | Self::MsgDirection => DataTypeKind::Code,
             Self::Uuid => DataTypeKind::Uuid,
             Self::List
             | Self::ListView
@@ -398,8 +404,15 @@ impl DataTypeId {
                 | Self::Duration32
                 | Self::Duration64
                 | Self::Interval
+                | Self::Binary
                 | Self::FixedSizeBinary
-                | Self::FixedAscii
+                | Self::LargeBinary
+                | Self::BinaryView
+                | Self::String
+                | Self::FixedString
+                | Self::StringView
+                | Self::LargeString
+                | Self::LargeStringView
                 | Self::List
                 | Self::ListView
                 | Self::FixedSizeList
@@ -460,9 +473,10 @@ impl DataTypeId {
         matches!(self.kind(), DataTypeKind::Bytes)
     }
 
-    /// Return whether the variant stores UTF-8 text.
+    /// Return whether the variant stores text: a string, a code, a version
+    /// or a URL.
     pub const fn is_string(self) -> bool {
-        matches!(self.kind(), DataTypeKind::Text | DataTypeKind::Ascii)
+        matches!(self.kind(), DataTypeKind::Text | DataTypeKind::Code)
     }
 
     /// Return whether the variant always holds child fields.
@@ -597,39 +611,37 @@ mod tests {
     }
 
     #[test]
-    fn the_ascii_family_and_the_codes_are_text() {
+    fn the_strings_and_the_codes_are_text() {
         assert_eq!(DataTypeId::ALL.len(), 61);
         for id in [
-            DataTypeId::Ascii,
-            DataTypeId::FixedAscii,
-            DataTypeId::Country,
-            DataTypeId::Currency,
-            DataTypeId::Mic,
-            DataTypeId::Cfi,
-            DataTypeId::Isin,
+            DataTypeId::String,
+            DataTypeId::FixedString,
+            DataTypeId::StringView,
+            DataTypeId::LargeString,
+            DataTypeId::LargeStringView,
         ] {
-            assert_eq!(id.kind(), DataTypeKind::Ascii);
+            assert_eq!(id.kind(), DataTypeKind::Text);
             assert!(id.is_string());
+            // Every string carries a charset and a bound, so none of the
+            // layouts is a complete datatype on its own.
+            assert!(id.is_parameterized());
         }
-        // A fixed width is a parameter; every other ASCII identifier is not.
-        assert!(DataTypeId::FixedAscii.is_parameterized());
-        assert!(!DataTypeId::Ascii.is_parameterized());
-        assert!(!DataTypeId::Currency.is_parameterized());
-        assert_eq!(DataTypeId::from_str("ASCII").unwrap(), DataTypeId::Ascii);
+        for (_, dtype, width) in crate::DataType::CODES {
+            let id = dtype.id();
+            assert_eq!(id.kind(), DataTypeKind::Code);
+            assert!(id.is_string());
+            assert!(!id.is_parameterized());
+            assert_eq!(id.fixed_byte_width(), Some(*width));
+        }
+        assert_eq!(DataTypeId::from_str("STRING").unwrap(), DataTypeId::String);
         assert_eq!(
-            DataTypeId::from_str("Fixed_Ascii").unwrap(),
-            DataTypeId::FixedAscii
+            DataTypeId::from_str("Fixed_String").unwrap(),
+            DataTypeId::FixedString
         );
         assert_eq!(
             DataTypeId::from_str("Currency").unwrap(),
             DataTypeId::Currency
         );
-        // Each code stores the width its standard fixes, and `cfi` takes six
-        // bytes, which is a width no ASCII variant has.
-        assert_eq!(DataTypeId::Country.fixed_byte_width(), Some(2));
-        assert_eq!(DataTypeId::Currency.fixed_byte_width(), Some(3));
-        assert_eq!(DataTypeId::Mic.fixed_byte_width(), Some(4));
-        assert_eq!(DataTypeId::Cfi.fixed_byte_width(), Some(6));
     }
 
     #[test]
@@ -675,9 +687,13 @@ mod tests {
         assert_eq!(DataTypeId::Time64.as_u8(), 19);
         assert_eq!(DataTypeId::Duration64.as_u8(), 21);
         assert_eq!(DataTypeId::Binary.as_u8(), 23);
-        assert_eq!(DataTypeId::Utf8.as_u8(), 27);
-        assert_eq!(DataTypeId::Ascii.as_u8(), 30);
-        assert_eq!(DataTypeId::FixedAscii.as_u8(), 31);
+        // The five string layouts took the five slots the text identifiers
+        // they replaced held, so nothing after them moved.
+        assert_eq!(DataTypeId::String.as_u8(), 27);
+        assert_eq!(DataTypeId::FixedString.as_u8(), 28);
+        assert_eq!(DataTypeId::StringView.as_u8(), 29);
+        assert_eq!(DataTypeId::LargeString.as_u8(), 30);
+        assert_eq!(DataTypeId::LargeStringView.as_u8(), 31);
         assert_eq!(DataTypeId::Country.as_u8(), 32);
         assert_eq!(DataTypeId::Cfi.as_u8(), 35);
         assert_eq!(DataTypeId::Uuid.as_u8(), 36);
@@ -713,11 +729,10 @@ mod tests {
         assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
         assert_eq!(DataTypeId::Currency.fixed_byte_width(), Some(3));
         assert_eq!(DataTypeId::Cfi.fixed_byte_width(), Some(6));
-        // A fixed ASCII width is a parameter, so the identifier alone has
-        // none: `DataType::ascii_width` is what answers for one value.
-        assert_eq!(DataTypeId::FixedAscii.fixed_byte_width(), None);
-        assert_eq!(DataTypeId::Ascii.fixed_byte_width(), None);
-        assert_eq!(DataTypeId::Utf8.fixed_byte_width(), None);
+        // A fixed string's width is a parameter, so the identifier alone has
+        // none: `DataType::fixed_byte_width` is what answers for one value.
+        assert_eq!(DataTypeId::FixedString.fixed_byte_width(), None);
+        assert_eq!(DataTypeId::String.fixed_byte_width(), None);
         assert_eq!(DataTypeId::Struct.fixed_byte_width(), None);
     }
 }

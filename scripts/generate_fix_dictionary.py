@@ -132,7 +132,7 @@ SOURCES: tuple[Source, ...] = (
 )
 
 # The FIX datatype names the crate's logical-name table resolves. A scraped
-# datatype outside this set is a hard failure rather than a silent `utf8`.
+# datatype outside this set is a hard failure rather than a silent `string`.
 LOGICAL_NAMES = {
     "int", "float", "char", "boolean", "string", "data", "pattern",
     "length", "tagnum", "seqnum", "numingroup", "dayofmonth",
@@ -452,11 +452,12 @@ def canonical_json(value: Any) -> str:
 
 
 # The datatype tags that hold an instant, a date or a time of day, and the
-# ones that hold text. Mirrors `DataTypeId::is_temporal` and
+# one that holds text: every string is the `string` tag, whatever layout,
+# charset or bound it declares. Mirrors `DataTypeId::is_temporal` and
 # `DataTypeId::is_string` over the tags `dtype_document` can write; the
 # cross-host test asserts the two hosts back-type identically.
 TEMPORAL_TAGS = {"date32", "date64", "time32", "time64", "datetime64"}
-TEXT_TAGS = {"utf8", "large_utf8", "utf8_view", "ascii", "fixed_ascii"}
+TEXT_TAGS = {"string"}
 
 
 def back_type(entries: list[dict[str, Any]]) -> None:
@@ -491,7 +492,7 @@ def lineage_document(entries: list[dict[str, Any]]) -> str:
 
     - the datatype is stored resolved, as the crate's serialized type and
       exactly as the field's own ``dtype`` is stored, so a parameterized type
-      carries its parameters and ``char`` and ``String`` are one ``utf8``;
+      carries its parameters and ``char`` and ``String`` are one ``string``;
     - an entry stating nothing its predecessor did not is dropped, because a
       dated point repeating what was already true is not a point in a history.
 
@@ -1317,9 +1318,9 @@ def dtype_document(name: str) -> dict[str, Any]:
     documents: dict[str, dict[str, Any]] = {
         "int": {"type": "int32"},
         "float": {"type": "float64"},
-        "char": {"type": "utf8"},
-        "String": {"type": "utf8"},
-        "string": {"type": "utf8"},
+        "char": {"type": "string"},
+        "String": {"type": "string"},
+        "string": {"type": "string"},
         "Boolean": {"type": "boolean"},
         "boolean": {"type": "boolean"},
         "data": {"type": "binary"},
@@ -1345,17 +1346,17 @@ def dtype_document(name: str) -> dict[str, Any]:
         "LocalMktDate": {"type": "datetime64", "unit": "nanosecond"},
         "LocalMktDatetime": {"type": "datetime64", "unit": "nanosecond"},
         "TZTimeOnly": {"type": "datetime64", "unit": "nanosecond", "timezone": "UTC"},
-        "MonthYear": {"type": "fixed_ascii", "width": 8},
-        "Tenor": {"type": "fixed_ascii", "width": 8},
-        "Language": {"type": "fixed_ascii", "width": 2},
+        "MonthYear": {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8},
+        "Tenor": {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8},
+        "Language": {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 2},
         "Country": {"type": "country"},
         "Currency": {"type": "currency"},
         "Exchange": {"type": "mic"},
-        "MultipleCharValue": {"type": "utf8"},
-        "MultipleStringValue": {"type": "utf8"},
-        "XID": {"type": "utf8"},
-        "XIDREF": {"type": "utf8"},
-        "Pattern": {"type": "utf8"},
+        "MultipleCharValue": {"type": "string"},
+        "MultipleStringValue": {"type": "string"},
+        "XID": {"type": "string"},
+        "XIDREF": {"type": "string"},
+        "Pattern": {"type": "string"},
         "Reserved100Plus": {"type": "int32"},
         "Reserved1000Plus": {"type": "int32"},
         "Reserved4000Plus": {"type": "int32"},

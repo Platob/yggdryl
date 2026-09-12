@@ -20,6 +20,7 @@ pub use coded::Coded;
 
 use std::io::{BufRead, BufReader, Read};
 
+use crate::bytestream::SkipReader;
 use crate::holder::Holder;
 use crate::{ByteStream, DEFAULT_STREAM_BATCH_SIZE, IOBase};
 use crate::{Codec, Level, MediaType, Result, Url};
@@ -297,9 +298,15 @@ fn decoded_media_type(media_type: &MediaType, codec: Codec) -> MediaType {
         encodings.pop();
     }
     // The sequence came from a valid media type minus one entry, so it stays
-    // valid; a rejected rebuild would mean the input was already invalid.
-    MediaType::from_parts(media_type.base().clone(), encodings)
-        .unwrap_or_else(|_| MediaType::new(media_type.base().clone()))
+    // valid; a rejected rebuild would mean the input was already invalid. The
+    // charset rides through untouched: a coding changes how the bytes are
+    // packed, never which encoding the text inside them is written in.
+    let rebuilt = MediaType::from_parts(media_type.base().clone(), encodings)
+        .unwrap_or_else(|_| MediaType::new(media_type.base().clone()));
+    match media_type.charset() {
+        Some(charset) => rebuilt.with_charset(charset),
+        None => rebuilt,
+    }
 }
 
 impl<H: IOBase> crate::IOMedia for Coding<H> {
@@ -590,39 +597,6 @@ impl Read for LazyDecoder<'_> {
         self.decoder
             .as_mut()
             .map_or(Ok(0), |decoder| decoder.read(target))
-    }
-}
-
-/// Lazily discard a decoded prefix before serving the requested position.
-struct SkipReader<R> {
-    reader: R,
-    remaining: u64,
-}
-
-impl<R> SkipReader<R> {
-    const fn new(reader: R, remaining: u64) -> Self {
-        Self { reader, remaining }
-    }
-}
-
-impl<R: Read> Read for SkipReader<R> {
-    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
-        if target.is_empty() {
-            return Ok(0);
-        }
-        let mut discarded = [0_u8; 8 * 1024];
-        while self.remaining > 0 {
-            let length = usize::try_from(self.remaining)
-                .unwrap_or(usize::MAX)
-                .min(discarded.len());
-            let read = self.reader.read(&mut discarded[..length])?;
-            if read == 0 {
-                self.remaining = 0;
-                return Ok(0);
-            }
-            self.remaining -= read as u64;
-        }
-        self.reader.read(target)
     }
 }
 

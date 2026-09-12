@@ -892,7 +892,7 @@ impl FixFieldMut<'_> {
     /// use yggdryl::{DataType, Version};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut broker = DataType::Utf8.nullable_field("execbroker");
+    /// let mut broker = DataType::utf8().nullable_field("execbroker");
     /// broker.as_fix_mut().set_tag(76)?;
     /// // ExecBroker(76) became one Parties occurrence: PartyID(448) takes the
     /// // broker, PartyRole(452) says it is an executing firm.

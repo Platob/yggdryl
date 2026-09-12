@@ -29,7 +29,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
     let value = json::from_utf8(r#"{"symbol":"AAPL","quantity":100}"#)?;
 
     assert_eq!(
-        value.get_key_str("symbol").and_then(Scalar::as_utf8),
+        value.get_key_str("symbol").and_then(Scalar::as_str),
         Some("AAPL")
     );
     assert_eq!(
@@ -164,6 +164,70 @@ A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to 
     ```
 
 A Struct Field yields one ordered row `Sequence` in Rust, a dictionary or object elsewhere; Python `cls=SomeDataclass` materializes it.
+
+A [string](../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::text::json;
+
+    let symbol = Field::new("symbol", DataType::fixed_ascii(4)?, false);
+    let held = json::from_utf8_with_field(r#""AAPL""#, &symbol)?;
+
+    assert_eq!(held.dtype()?, DataType::fixed_ascii(4)?);
+    assert_eq!(held.as_str(), Some("AAPL"));
+    let refused = json::from_utf8_with_field(r#""AAPLE""#, &symbol).unwrap_err().to_string();
+    assert!(refused.contains("expected at most 4 bytes of us-ascii, got 5"), "{refused}");
+
+    let key = Field::new("key", DataType::fixed_size_binary(2)?, false);
+    assert_eq!(json::from_utf8_with_field(r#""AP8=""#, &key)?, Scalar::from(&[0_u8, 0xFF][..]));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Field, Scalar
+    from yggdryl.text import json
+
+    symbol = Field("symbol", "fixed_ascii(4)", nullable=False)
+    held = json.loads('"AAPL"', field=symbol, cls=Scalar)
+
+    assert held.dtype == DataType("fixed_ascii(4)")
+    assert held.as_str() == "AAPL"
+    assert json.loads('"AAPL"', field=symbol) == "AAPL"
+    try:
+        json.loads('"AAPLE"', field=symbol)
+    except ValueError as error:
+        assert "expected at most 4 bytes of us-ascii, got 5" in str(error), error
+    else:
+        raise AssertionError("five bytes do not fit a four-byte string")
+
+    key = Field("key", "fixed_size_binary(2)", nullable=False)
+    assert json.loads('"AP8="', field=key) == b"\x00\xff"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Field, json } = require('yggdryl')
+
+    const symbol = new Field('symbol', 'fixed_ascii(4)', false)
+    const held = json.loads('"AAPL"', { field: symbol, scalar: true })
+
+    assert.ok(held.dtype.equals(DataType.from('fixed_ascii(4)')))
+    assert.equal(held.asStr(), 'AAPL')
+    assert.equal(json.loads('"AAPL"', { field: symbol }), 'AAPL')
+    assert.throws(
+      () => json.loads('"AAPLE"', { field: symbol }),
+      /expected at most 4 bytes of us-ascii, got 5/,
+    )
+
+    const key = new Field('key', 'fixed_size_binary(2)', false)
+    assert.deepEqual(json.loads('"AP8="', { field: key }), Buffer.from([0, 255]))
+    ```
 
 ## Documents and streams
 

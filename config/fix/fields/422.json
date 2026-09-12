@@ -14,7 +14,7 @@
   {
     "name": "legfinancingtermsupplementdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -51,7 +51,7 @@
   {
     "name": "legcontractualmatrixsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -76,7 +76,7 @@
   {
     "name": "legcontractualmatrixterm",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -138,7 +138,7 @@
   {
     "name": "cashsettldateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -189,7 +189,7 @@
   {
     "name": "cashsettldatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -201,7 +201,7 @@
   {
     "name": "cashsettlpricesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -226,7 +226,7 @@
   {
     "name": "dividendfloatingrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -250,7 +250,7 @@
   {
     "name": "dividendfloatingrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -401,7 +401,7 @@
   {
     "name": "dividendfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -464,7 +464,7 @@
   {
     "name": "dividendaccrualpaymentdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -500,7 +500,7 @@
   {
     "name": "dividendaccrualpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -603,7 +603,7 @@
   {
     "name": "dividendunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -653,7 +653,7 @@
   {
     "name": "extraordinarydividenddeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -836,7 +836,7 @@
   {
     "name": "dividendfxtriggerdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -913,7 +913,7 @@
   {
     "name": "dividendfxtriggerdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -975,7 +975,7 @@
   {
     "name": "dividendperiodunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1049,7 +1049,7 @@
   {
     "name": "dividendperiodvaluationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1125,7 +1125,7 @@
   {
     "name": "dividendperiodpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1164,13 +1164,13 @@
   {
     "name": "dividendperiodxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "DividendPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"dividendperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"dividendperiodxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42293"
     }
   },
@@ -1189,7 +1189,7 @@
   {
     "name": "dividendperiodbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1213,7 +1213,7 @@
   {
     "name": "extraordinaryeventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1225,7 +1225,7 @@
   {
     "name": "extraordinaryeventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

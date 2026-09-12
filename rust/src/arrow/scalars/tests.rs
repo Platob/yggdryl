@@ -10,7 +10,7 @@ use crate::{ArrowCastOptions, DataType, Field};
 
 fn quote_root() -> Field {
     DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])
     .expect("the root datatype is valid")
@@ -93,7 +93,7 @@ mod shapes {
     #[test]
     fn a_columns_width_is_the_width_of_the_root_its_rows_live_under() {
         let structure = DataType::from_fields([
-            DataType::Utf8.required_field("symbol"),
+            DataType::utf8().required_field("symbol"),
             DataType::Int64.required_field("size"),
         ])
         .expect("the struct datatype is valid");
@@ -138,14 +138,14 @@ mod pairing {
     fn a_column_must_carry_the_declared_layout() {
         // int64 values under a utf8 field are refused at the pairing, not at
         // the first read.
-        let wrong = Field::new("price", DataType::Utf8, false);
+        let wrong = Field::new("price", DataType::utf8(), false);
         assert!(ArrowValue::from_array(wrong, prices()).is_err());
     }
 
     #[test]
     fn a_declared_root_must_be_exactly_the_rows_own_schema() {
         let widened = DataType::from_fields([
-            DataType::Utf8.required_field("symbol"),
+            DataType::utf8().required_field("symbol"),
             DataType::Int64.nullable_field("size"),
         ])
         .expect("the root datatype is valid")

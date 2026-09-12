@@ -162,7 +162,7 @@ fn a_folder_write_routes_each_row_to_the_partition_it_belongs_to() {
 fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
     let (root, mut handle) = lake("ascii");
     let field = DataType::from_fields([
-        DataType::FixedAscii(4).required_field("ccy"),
+        DataType::fixed_ascii(4).unwrap().required_field("ccy"),
         DataType::Int64.required_field("qty"),
     ])
     .unwrap()
@@ -619,8 +619,8 @@ fn a_declared_layout_that_contradicts_the_stored_one_is_refused_by_name() {
             DataType::from_fields([
                 DataType::Int64.required_field("price"),
                 DataType::Int32.required_field("year"),
-                DataType::Utf8.required_field("month"),
-                DataType::Utf8.required_field("venue"),
+                DataType::utf8().required_field("month"),
+                DataType::utf8().required_field("venue"),
             ])
             .unwrap(),
         )
@@ -670,7 +670,7 @@ fn a_null_partition_value_is_spelled_out_in_the_path() {
     let field = crate::DataType::from_fields([
         crate::DataType::Int64.required_field("price"),
         crate::DataType::Int32.nullable_field("year"),
-        crate::DataType::Utf8.nullable_field("month"),
+        crate::DataType::utf8().nullable_field("month"),
     ])
     .unwrap()
     .required_field("row");

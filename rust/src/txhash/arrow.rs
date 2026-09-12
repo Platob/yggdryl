@@ -408,7 +408,7 @@ pub(crate) fn row_txhashes_with<S: ArrowDigestState>(
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let instants = TimestampSecondArray::from(vec![1_700_000_000, 1_700_000_001]);
 /// let symbols: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
-/// let field = Field::new("symbol", DataType::Utf8, false);
+/// let field = Field::new("symbol", DataType::utf8(), false);
 ///
 /// let coupled = txhash::arrow::column_txhashes(&instants, Arc::clone(&symbols), &field, TimeUnit::Second, DigestAlgorithm::Xxh3)?;
 /// let (times, digests) = txhash::arrow::decompose(coupled.as_ref(), TimeUnit::Second, DigestAlgorithm::Xxh3)?;

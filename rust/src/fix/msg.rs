@@ -51,14 +51,14 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, from_json_scalar_with_field, into_json_scalar};
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let mut symbol = DataType::Utf8.required_field("Symbol");
+/// let mut symbol = DataType::utf8().required_field("Symbol");
 /// symbol.as_fix_mut().set_tag(55)?;
 /// symbol.as_fix_mut().set_aliases(["Ticker"])?;
 /// let mut qty = DataType::Int64.required_field("OrderQty");
 /// qty.as_fix_mut().set_tag(38)?;
 /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone(), qty.clone()])?);
 ///
-/// let root = DataType::from_fields([symbol, qty, DataType::Utf8.nullable_field("9999")])?
+/// let root = DataType::from_fields([symbol, qty, DataType::utf8().nullable_field("9999")])?
 ///     .required_field("NewOrderSingle");
 /// let value = Scalar::from_record([
 ///     ("Symbol", Scalar::from("AAPL")),
@@ -352,11 +352,11 @@ impl FixMsg {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut qty = DataType::Int64.nullable_field("orderqty");
     /// qty.as_fix_mut().set_tag(38)?;
-    /// let mut symbol = DataType::Utf8.nullable_field("symbol");
+    /// let mut symbol = DataType::utf8().nullable_field("symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([qty, symbol])?);
     ///
-    /// let root = DataType::from_fields([DataType::Utf8.required_field("symbol")])?
+    /// let root = DataType::from_fields([DataType::utf8().required_field("symbol")])?
     ///     .required_field("D");
     /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
     /// let mut msg = FixMsg::with_registry(registry, root, value)?;
@@ -412,10 +412,10 @@ impl FixMsg {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut qty = DataType::Int64.nullable_field("orderqty");
     /// qty.as_fix_mut().set_tag(38)?;
-    /// let mut symbol = DataType::Utf8.nullable_field("symbol");
+    /// let mut symbol = DataType::utf8().nullable_field("symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([qty, symbol])?);
-    /// let root = DataType::from_fields([DataType::Utf8.required_field("symbol")])?
+    /// let root = DataType::from_fields([DataType::utf8().required_field("symbol")])?
     ///     .required_field("D");
     /// let value = Scalar::from_record([("symbol", Scalar::from("AAPL"))])?;
     /// let mut msg = FixMsg::with_registry(registry, root, value)?;
@@ -495,10 +495,10 @@ impl FixMsg {
     /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let mut symbol = DataType::Utf8.nullable_field("symbol");
+    /// let mut symbol = DataType::utf8().nullable_field("symbol");
     /// symbol.as_fix_mut().set_tag(55)?;
     /// let registry = Arc::new(FixRegistry::from_fields([symbol.clone()])?);
-    /// let root = DataType::from_fields([symbol, DataType::Utf8.nullable_field("9999")])?
+    /// let root = DataType::from_fields([symbol, DataType::utf8().nullable_field("9999")])?
     ///     .required_field("D");
     /// let value = Scalar::from_record([
     ///     ("symbol", Scalar::from("AAPL")),
@@ -550,7 +550,7 @@ impl FixMsg {
                             .and_then(|at| self.field.get_field_at(at))
                             .cloned()
                             .unwrap_or_else(|| {
-                                DataType::Utf8.nullable_field(format_smolstr!("{tag}"))
+                                DataType::utf8().nullable_field(format_smolstr!("{tag}"))
                             });
                         Ok((at, field))
                     }
@@ -785,7 +785,7 @@ impl FixMsg {
     ///
     /// let root = DataType::from_fields([
     ///     DataType::Int64.required_field("LastShares"),
-    ///     DataType::Utf8.nullable_field("9999"),
+    ///     DataType::utf8().nullable_field("9999"),
     /// ])?
     /// .required_field("8");
     /// let value = Scalar::from_record([

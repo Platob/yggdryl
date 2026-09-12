@@ -72,7 +72,7 @@ An existing ordinary dataclass can enter through the same native boundary:
 ```python
 import dataclasses
 
-from yggdryl import field
+from yggdryl import DataType, field
 
 
 @dataclasses.dataclass
@@ -83,7 +83,7 @@ class Venue:
 venue_field = field(Venue)
 
 assert venue_field.name == "Venue"
-assert venue_field["mic"].dtype.id == "utf8"
+assert venue_field["mic"].dtype == DataType("utf8")
 ```
 
 Use reserved `Annotated` options when the logical Python type needs an exact

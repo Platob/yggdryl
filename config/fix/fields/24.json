@@ -53,7 +53,7 @@
   {
     "name": "compliancetext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -78,7 +78,7 @@
   {
     "name": "allocregulatorylegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -138,7 +138,7 @@
   {
     "name": "regulatorylegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -150,21 +150,21 @@
   {
     "name": "ratesourcereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifies the page heading from the rate source.",
       "display": "RateSourceReferencePageHeading",
       "fix:aliases": "ratesourcereferemcepageheading",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"ratesourcereferemcepageheading\",\"type\":{\"type\":\"utf8\"}},{\"since\":\"5.0.2\",\"ep\":187,\"name\":\"ratesourcereferencepageheading\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"ratesourcereferemcepageheading\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"ep\":187,\"name\":\"ratesourcereferencepageheading\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2412"
     }
   },
   {
     "name": "relatedtosecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -176,7 +176,7 @@
   {
     "name": "relatedtosecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -189,20 +189,20 @@
   {
     "name": "relatedtostreamxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "StreamXID(41303), LegStreamXID(41700) or UnderlyingStreamXID(42016) of the stream with which the related instrument has correlation.",
       "display": "RelatedToStreamXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"relatedtostreamxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"relatedtostreamxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2415"
     }
   },
   {
     "name": "sideregulatorylegrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -214,20 +214,20 @@
   {
     "name": "relatedtodividendperiodxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "The DividendPeriodXID(42293) of the stream dividend period with which the related instrument has correlation.",
       "display": "RelatedToDividendPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"relatedtodividendperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"relatedtodividendperiodxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "2417"
     }
   },
   {
     "name": "firmtradeeventid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -263,7 +263,7 @@
   {
     "name": "fillrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -287,7 +287,7 @@
   {
     "name": "massorderrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -299,7 +299,7 @@
   {
     "name": "massorderreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -362,7 +362,7 @@
   {
     "name": "orderentryaction",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -424,7 +424,7 @@
   {
     "name": "targetpartysubid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -449,7 +449,7 @@
   {
     "name": "transferinstructionid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -461,7 +461,7 @@
   {
     "name": "transferid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -473,7 +473,7 @@
   {
     "name": "transferreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -577,7 +577,7 @@
   {
     "name": "aggressorside",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -651,7 +651,7 @@
   {
     "name": "mdstatisticreqid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -663,7 +663,7 @@
   {
     "name": "mdstatisticrptid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -675,7 +675,7 @@
   {
     "name": "mdstatisticname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -687,7 +687,7 @@
   {
     "name": "mdstatisticdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -814,7 +814,7 @@
   {
     "name": "mdstatisticintervaltypeunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -944,7 +944,7 @@
   {
     "name": "mdstatisticid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1058,7 +1058,7 @@
   {
     "name": "firmtransactionid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1070,7 +1070,7 @@
   {
     "name": "transactionid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1082,7 +1082,7 @@
   {
     "name": "wirereference",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1120,7 +1120,7 @@
   {
     "name": "packageid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1218,7 +1218,7 @@
   {
     "name": "legagreementdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1230,7 +1230,7 @@
   {
     "name": "legagreementid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1242,7 +1242,7 @@
   {
     "name": "legagreementversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

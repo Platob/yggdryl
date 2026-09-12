@@ -14,8 +14,8 @@ fn bits() -> ArrowCastOptions {
     ArrowCastOptions::new().with_representation(crate::Representation::Bits)
 }
 use crate::types::{
-    DateTime64Field, GeometryField, Int32Field, Int64Field, StructField, UInt32Field, UInt64Field,
-    Utf8Field, VariantField,
+    DateTime64Field, GeometryField, Int32Field, Int64Field, StringField, StructField, UInt32Field,
+    UInt64Field, VariantField,
 };
 use crate::{DataType, EdgeAlgorithm, Field};
 use crate::{TimeUnit, Timezone};
@@ -34,12 +34,15 @@ fn a_typed_field_returns_its_own_array_type() {
 
 #[test]
 fn a_string_field_parses_and_formats_through_the_same_call() {
-    let field = Utf8Field::new("symbol", false);
+    let field = StringField::try_new("symbol", DataType::utf8(), false).unwrap();
     let numbers: ArrayRef = Arc::new(Float64Array::from(vec![1.5, 2.5]));
 
-    let text: StringArray = field
+    // A string's layout and charset decide its array, so the binding is the
+    // storage the field projects rather than one concrete array type.
+    let cast = field
         .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
         .unwrap();
+    let text = crate::types::cast::downcast::<StringArray>(cast.as_ref()).unwrap();
     assert_eq!(text.value(0), "1.5");
     assert_eq!(text.value(1), "2.5");
 }
@@ -80,7 +83,7 @@ fn a_struct_field_casts_children_by_name() {
         "row",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
         ])
         .unwrap(),
         false,
@@ -231,7 +234,7 @@ fn eight_bytes_read_as_an_integer_a_float_or_bytes_alike() {
 
     // The whole point of naming a width: an integer, its opposite sign, a
     // float and raw bytes are one buffer under four readings.
-    let bytes = Field::new("digest", DataType::FixedSizeBinary(8), true)
+    let bytes = Field::new("digest", DataType::fixed_size_binary(8).unwrap(), true)
         .cast_arrow_array(Arc::clone(&source), bits())
         .unwrap();
     let stored: &FixedSizeBinaryArray = bytes.as_any().downcast_ref().unwrap();
@@ -295,20 +298,20 @@ fn a_pair_that_is_not_the_same_bytes_converts_as_it_always_did() {
         .unwrap();
     assert_eq!(widened.values(), &[7]);
 
-    let text = Field::new("id", DataType::Utf8, true)
+    let text = Field::new("id", DataType::utf8(), true)
         .cast_arrow_array(Arc::new(Int64Array::from(vec![7])), bits())
         .unwrap();
     assert_eq!(text.data_type(), &arrow_schema::DataType::Utf8);
 
     // A datatype whose values follow a rule keeps that rule: four bytes are
-    // not an ASCII code merely because they are four bytes.
-    let refused = Field::new("ccy", DataType::FixedAscii(4), true)
+    // not US-ASCII text merely because they are four bytes.
+    let refused = Field::new("ccy", DataType::fixed_ascii(4).unwrap(), true)
         .cast_arrow_array(
             Arc::new(
                 arrow_array::FixedSizeBinaryArray::try_from_iter([[0xff_u8; 4]].into_iter())
                     .unwrap(),
             ),
-            bits(),
+            bits().with_safe(false),
         )
         .unwrap_err()
         .to_string();
@@ -410,7 +413,7 @@ fn a_geometry_column_renders_wkt_into_a_utf8_target() {
         DataType::geometry(None).unwrap(),
         vec![Some(wkb_point(1.0, 2.0)), None],
     );
-    let cast = cast_shape_to(batch, Field::new("shape", DataType::Utf8, true)).unwrap();
+    let cast = cast_shape_to(batch, Field::new("shape", DataType::utf8(), true)).unwrap();
     let text = cast
         .column(0)
         .as_any()
@@ -424,7 +427,7 @@ fn a_geometry_column_renders_wkt_into_a_utf8_target() {
 fn a_geometry_column_stays_lossless_into_a_binary_target() {
     let point = wkb_point(3.0, 4.0);
     let batch = geospatial_batch(DataType::geometry(None).unwrap(), vec![Some(point.clone())]);
-    let cast = cast_shape_to(batch, Field::new("shape", DataType::Binary, true)).unwrap();
+    let cast = cast_shape_to(batch, Field::new("shape", DataType::binary(), true)).unwrap();
     let bytes = cast
         .column(0)
         .as_any()
@@ -551,7 +554,7 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
     let batch = arrow_array::RecordBatch::try_new(schema, vec![variant_storage_array(1)]).unwrap();
     let target = Field::new(
         "row",
-        DataType::from_fields([Field::new("payload", DataType::Utf8, true)]).unwrap(),
+        DataType::from_fields([Field::new("payload", DataType::utf8(), true)]).unwrap(),
         false,
     );
     let refused = target
@@ -756,12 +759,296 @@ mod layouts {
             b"abc"
         );
 
-        let back = DataType::Utf8.cast_arrow_array(fixed, strict()).unwrap();
+        let back = DataType::utf8().cast_arrow_array(fixed, strict()).unwrap();
         assert_eq!(
             crate::types::cast::downcast::<StringArray>(back.as_ref())
                 .unwrap()
                 .value(0),
             "abc"
         );
+    }
+}
+
+/// A string reads values under what the source declares and writes them
+/// under what the target declares: the layout, the charset and the bound.
+mod strings {
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
+
+    use super::{ArrowCast, ArrowCastOptions};
+    use crate::types::cast::downcast;
+    use crate::{DataType, Field};
+
+    fn dtype(expression: &str) -> DataType {
+        expression.parse().unwrap()
+    }
+
+    fn strict() -> ArrowCastOptions {
+        ArrowCastOptions::new().with_safe(false)
+    }
+
+    /// One column under a declared field, so its extension identity rides
+    /// into the cast.
+    fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
+        let root = Field::new("row", DataType::from_fields([field]).unwrap(), false);
+        let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
+        arrow_array::RecordBatch::try_new(schema, vec![column]).unwrap()
+    }
+
+    fn cast_column(
+        source: arrow_array::RecordBatch,
+        target: DataType,
+        options: ArrowCastOptions,
+    ) -> crate::arrow::Result<ArrayRef> {
+        let root = Field::new(
+            "row",
+            DataType::from_fields([Field::new("text", target, true)]).unwrap(),
+            false,
+        );
+        Ok(Arc::clone(
+            root.cast_arrow_batch(source, options)?.column(0),
+        ))
+    }
+
+    #[test]
+    fn a_bound_is_checked_on_the_way_in_and_a_failing_cell_is_null_when_safe() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec![Some("abc"), Some("abcdef"), None]));
+        let refused = dtype("utf8(4)")
+            .cast_arrow_array(Arc::clone(&text), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 1"), "{refused}");
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+
+        // A nullable field keeps the null a failing cell became.
+        let lenient = Field::new("text", dtype("utf8(4)"), true)
+            .cast_arrow_array(text, ArrowCastOptions::new())
+            .unwrap();
+        let lenient = downcast::<StringArray>(lenient.as_ref()).unwrap();
+        assert_eq!(lenient.value(0), "abc");
+        assert!(lenient.is_null(1));
+        assert!(lenient.is_null(2));
+    }
+
+    #[test]
+    fn a_code_answers_safe_and_strict_exactly_as_a_string_does() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EURO"), None]));
+        let refused = DataType::Currency
+            .cast_arrow_array(Arc::clone(&text), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 1"), "{refused}");
+        assert!(refused.contains("at most 3 bytes"), "{refused}");
+
+        let lenient = Field::new("ccy", DataType::Currency, true)
+            .cast_arrow_array(text, ArrowCastOptions::new())
+            .unwrap();
+        let lenient = downcast::<FixedSizeBinaryArray>(lenient.as_ref()).unwrap();
+        assert_eq!(lenient.value(0), b"USD");
+        assert!(lenient.is_null(1));
+        assert!(lenient.is_null(2));
+
+        // A source already in the code's own storage is validated in place
+        // and rebuilt only where a cell has to become null.
+        let stored: ArrayRef = Arc::new(
+            FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+                [Some(b"USD".as_slice()), Some(b"EU\xff".as_slice())].into_iter(),
+                3,
+            )
+            .unwrap(),
+        );
+        assert!(
+            DataType::Currency
+                .cast_arrow_array(Arc::clone(&stored), strict())
+                .is_err()
+        );
+        let lenient = Field::new("ccy", DataType::Currency, true)
+            .cast_arrow_array(stored, ArrowCastOptions::new())
+            .unwrap();
+        let lenient = downcast::<FixedSizeBinaryArray>(lenient.as_ref()).unwrap();
+        assert_eq!(lenient.value(0), b"USD");
+        assert!(lenient.is_null(1));
+    }
+
+    #[test]
+    fn a_charset_is_written_from_text_and_read_back_from_its_own_bytes() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["caf\u{e9}"]));
+        let latin = batch(
+            Field::new("text", dtype("string(windows-1252)"), true),
+            dtype("string(windows-1252)")
+                .cast_arrow_array(text, strict())
+                .unwrap(),
+        );
+        let bytes = downcast::<BinaryArray>(latin.column(0).as_ref()).unwrap();
+        assert_eq!(bytes.value(0), b"caf\xe9");
+
+        // The recognized source is read under its own charset, so the
+        // characters come back rather than the bytes.
+        let back = cast_column(latin, DataType::utf8(), strict()).unwrap();
+        assert_eq!(
+            downcast::<StringArray>(back.as_ref()).unwrap().value(0),
+            "caf\u{e9}"
+        );
+    }
+
+    #[test]
+    fn a_scalar_the_target_charset_cannot_spell_fails_at_the_write() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["\u{20ac}"]));
+        let refused = dtype("string(iso-8859-1)")
+            .cast_arrow_array(text, strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 0"), "{refused}");
+    }
+
+    #[test]
+    fn a_fixed_width_pads_on_the_way_in_and_trims_on_the_way_out() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["ab"]));
+        let fixed = dtype("fixed_ascii(4)")
+            .cast_arrow_array(text, strict())
+            .unwrap();
+        assert_eq!(
+            downcast::<FixedSizeBinaryArray>(fixed.as_ref())
+                .unwrap()
+                .value(0),
+            b"ab\0\0"
+        );
+
+        let source = batch(Field::new("text", dtype("fixed_ascii(4)"), true), fixed);
+        let back = cast_column(source, dtype("ascii"), strict()).unwrap();
+        assert_eq!(
+            downcast::<StringArray>(back.as_ref()).unwrap().value(0),
+            "ab"
+        );
+    }
+
+    #[test]
+    fn a_code_reads_into_a_string_and_bare_bytes_are_taken_as_the_target_charset() {
+        let codes: ArrayRef = Arc::new(StringArray::from(vec!["USD"]));
+        let currency = DataType::Currency
+            .cast_arrow_array(codes, strict())
+            .unwrap();
+        let source = batch(Field::new("text", DataType::Currency, true), currency);
+        let back = cast_column(source, dtype("utf8(8)"), strict()).unwrap();
+        assert_eq!(
+            downcast::<StringArray>(back.as_ref()).unwrap().value(0),
+            "USD"
+        );
+
+        let bytes: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b"caf\xe9"]));
+        let latin = dtype("string(windows-1252)")
+            .cast_arrow_array(bytes, strict())
+            .unwrap();
+        assert_eq!(
+            downcast::<BinaryArray>(latin.as_ref()).unwrap().value(0),
+            b"caf\xe9"
+        );
+    }
+}
+
+/// A byte column reads its cells only where it declares a maximum, which is
+/// the one thing about bytes Arrow has nowhere to state.
+mod bytes {
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
+
+    use super::{ArrowCast, ArrowCastOptions};
+    use crate::types::cast::downcast;
+    use crate::{DataType, Field};
+
+    fn dtype(expression: &str) -> DataType {
+        expression.parse().unwrap()
+    }
+
+    fn strict() -> ArrowCastOptions {
+        ArrowCastOptions::new().with_safe(false)
+    }
+
+    /// One column under a declared field, so its extension identity rides
+    /// into the cast.
+    fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
+        let root = Field::new("row", DataType::from_fields([field]).unwrap(), false);
+        let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
+        arrow_array::RecordBatch::try_new(schema, vec![column]).unwrap()
+    }
+
+    #[test]
+    fn a_maximum_is_checked_on_the_way_in_and_a_failing_cell_is_null_when_safe() {
+        let cells: ArrayRef = Arc::new(BinaryArray::from(vec![
+            Some(b"abc".as_slice()),
+            Some(b"abcdef".as_slice()),
+            None,
+        ]));
+        let refused = dtype("binary(4)")
+            .cast_arrow_array(Arc::clone(&cells), strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("row 1"), "{refused}");
+        assert!(refused.contains("at most 4 bytes"), "{refused}");
+
+        // A nullable field keeps the null a failing cell became.
+        let lenient = Field::new("payload", dtype("binary(4)"), true)
+            .cast_arrow_array(cells, ArrowCastOptions::new())
+            .unwrap();
+        let lenient = downcast::<BinaryArray>(lenient.as_ref()).unwrap();
+        assert_eq!(lenient.value(0), b"abc");
+        assert!(lenient.is_null(1));
+        assert!(lenient.is_null(2));
+    }
+
+    #[test]
+    fn a_bounded_target_writes_its_own_layout_from_any_byte_source() {
+        let text: ArrayRef = Arc::new(StringArray::from(vec!["ab"]));
+        let large = dtype("large_binary(4)")
+            .cast_arrow_array(text, strict())
+            .unwrap();
+        assert_eq!(
+            downcast::<LargeBinaryArray>(large.as_ref())
+                .unwrap()
+                .value(0),
+            b"ab"
+        );
+
+        let fixed = dtype("fixed_size_binary(3)")
+            .cast_arrow_array(Arc::new(BinaryArray::from_vec(vec![b"abc"])), strict())
+            .unwrap();
+        let view = dtype("binary_view(3)")
+            .cast_arrow_array(fixed, strict())
+            .unwrap();
+        assert_eq!(view.data_type(), &arrow_schema::DataType::BinaryView);
+    }
+
+    #[test]
+    fn an_unbounded_layout_is_its_storage_and_a_declared_source_is_exact() {
+        let cells: ArrayRef = Arc::new(BinaryArray::from_vec(vec![b"abc"]));
+        let plain = DataType::binary()
+            .cast_arrow_array(Arc::clone(&cells), strict())
+            .unwrap();
+        assert!(Arc::ptr_eq(&plain, &cells));
+
+        // A column written as `binary(4)` was measured when it was written,
+        // so it comes back as the same array rather than a re-read one.
+        let source = batch(Field::new("payload", dtype("binary(4)"), true), cells);
+        let root = Field::new(
+            "row",
+            DataType::from_fields([Field::new("payload", dtype("binary(4)"), true)]).unwrap(),
+            false,
+        );
+        let exact = root.cast_arrow_batch(source.clone(), strict()).unwrap();
+        assert!(Arc::ptr_eq(exact.column(0), source.column(0)));
+    }
+
+    #[test]
+    fn two_fixed_widths_are_a_value_change_and_say_so() {
+        let fixed = dtype("fixed_size_binary(3)")
+            .cast_arrow_array(Arc::new(BinaryArray::from_vec(vec![b"abc"])), strict())
+            .unwrap();
+        let refused = dtype("fixed_size_binary(4)")
+            .cast_arrow_array(fixed, strict())
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("value change"), "{refused}");
     }
 }

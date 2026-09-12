@@ -21,9 +21,9 @@ pub(crate) const ROWS: i64 = crate::bench_profile::corpus(65_536, 2_048) as i64;
 pub(crate) fn wide() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ])
     .expect("a valid struct root")
     .required_field("row")

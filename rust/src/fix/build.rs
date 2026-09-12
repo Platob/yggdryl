@@ -34,8 +34,7 @@ use super::group_plan::GroupPlan;
 use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::media::text::TextBytes;
-use crate::types::State;
-use crate::types::ascii::AsciiFamily;
+use crate::types::{Code, State};
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
@@ -872,7 +871,7 @@ impl<'registry> Builder<'registry> {
         }
         let name = folded_name(key);
         let tag = super::field::parse_tag(key).unwrap_or(0);
-        (DataType::Utf8.nullable_field(name), tag, None)
+        (DataType::utf8().nullable_field(name), tag, None)
     }
 
     /// What the dictionary holds under one key, asked once per run.
@@ -1018,7 +1017,7 @@ impl<'registry> Builder<'registry> {
                     (stated(found), tag, Some(found))
                 }
                 None => (
-                    DataType::Utf8.nullable_field(folded_name(key)),
+                    DataType::utf8().nullable_field(folded_name(key)),
                     parsed,
                     None,
                 ),
@@ -1177,7 +1176,7 @@ impl<'registry> Builder<'registry> {
                     (stated(known), tag, true)
                 }
                 None => (
-                    DataType::Utf8.nullable_field(folded_name(group)),
+                    DataType::utf8().nullable_field(folded_name(group)),
                     super::field::parse_tag(group).unwrap_or(0),
                     false,
                 ),
@@ -1247,7 +1246,8 @@ impl<'registry> Builder<'registry> {
         let mut source = None;
         let (leaf_field, leaf_tag, nested_counter) = if leaf.is_empty() {
             (
-                DataType::Utf8.nullable_field(occurrence_name(&levels.last().expect("a level").0)),
+                DataType::utf8()
+                    .nullable_field(occurrence_name(&levels.last().expect("a level").0)),
                 0,
                 false,
             )
@@ -1942,7 +1942,7 @@ fn typed_translation(
             None => view.code_name(spelling),
         };
         if let Some(state) = named.and_then(State::from_spelling) {
-            return Scalar::Ascii(AsciiFamily::State(state));
+            return Scalar::Code(Code::State(state));
         }
     }
     // Every wire value is text, and the generic value contract does not
@@ -2013,7 +2013,7 @@ fn declared_members(group: &Field) -> Vec<i32> {
 pub(super) fn beginstring_field(registry: &FixRegistry) -> Field {
     registry.get_field_by_tag(8).map_or_else(
         || {
-            let mut field = DataType::Utf8.required_field("beginstring");
+            let mut field = DataType::utf8().required_field("beginstring");
             let _ = field.as_fix_mut().set_tag(8);
             field
         },
@@ -2026,7 +2026,7 @@ pub(super) fn beginstring_field(registry: &FixRegistry) -> Field {
 /// A `data` field's value is bytes and the row is where they live, so the
 /// typed read hands them over untouched instead of reading a spelling.
 const fn is_binary(dtype: &DataType) -> bool {
-    matches!(dtype, DataType::Binary | DataType::LargeBinary)
+    matches!(dtype, DataType::Bytes(_))
 }
 
 /// One unknown key's own spelling, folded the way every built name is.

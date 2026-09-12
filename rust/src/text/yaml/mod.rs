@@ -710,8 +710,8 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Boolean(_)
             | Scalar::Integer(_)
             | Scalar::Floating(_)
-            | Scalar::Text(_)
-            | Scalar::Ascii(_)
+            | Scalar::String(_)
+            | Scalar::Code(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
@@ -742,8 +742,8 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             writer,
             &crate::types::decimal::scalars::decimal_text(value.coefficient(), value.scale()),
         )?,
-        Scalar::Text(value) => write_scalar_string(writer, value.as_str())?,
-        Scalar::Ascii(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::String(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::Code(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Uuid(value) => write_scalar_string(writer, &value.to_string())?,
@@ -765,7 +765,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         }
         Scalar::Temporal(crate::types::Temporal::Date32(value)) => {
             if value.unit() == crate::TimeUnit::Day {
-                if let Some(text) = crate::types::ascii::iso::format_date(value.count()) {
+                if let Some(text) = crate::types::temporal::iso::format_date(value.count()) {
                     return write_scalar_string(writer, &text);
                 }
             }
@@ -778,7 +778,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
                 && value.count().rem_euclid(DAY_MILLISECONDS) == 0
             {
                 if let Ok(days) = i32::try_from(days) {
-                    if let Some(text) = crate::types::ascii::iso::format_date(days) {
+                    if let Some(text) = crate::types::temporal::iso::format_date(days) {
                         return write_scalar_string(writer, &text);
                     }
                 }
@@ -798,9 +798,9 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         }
         Scalar::Temporal(crate::types::Temporal::DateTime64(value)) => {
             let text = if value.timezone().is_naive() {
-                crate::types::ascii::iso::format_datetime(value.count(), value.unit())
+                crate::types::temporal::iso::format_datetime(value.count(), value.unit())
             } else {
-                crate::types::ascii::iso::format_timestamp(
+                crate::types::temporal::iso::format_timestamp(
                     value.count(),
                     value.unit(),
                     &value.timezone(),
@@ -868,7 +868,7 @@ fn write_time<W: Write>(
             "time-of-day cannot carry a timezone; use DateTime64 for a zoned instant",
         ));
     }
-    let Some(text) = crate::types::ascii::iso::format_time(count, unit) else {
+    let Some(text) = crate::types::temporal::iso::format_time(count, unit) else {
         write!(writer, "{count}")?;
         return Ok(());
     };
@@ -882,7 +882,7 @@ fn write_duration<W: Write>(
     zone: &crate::Timezone,
 ) -> Result<()> {
     if zone.is_naive() {
-        if let Some(text) = crate::types::ascii::iso::format_duration(count, unit) {
+        if let Some(text) = crate::types::temporal::iso::format_duration(count, unit) {
             return write_scalar_string(writer, &text);
         }
     } else {

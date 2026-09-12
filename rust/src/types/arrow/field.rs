@@ -13,9 +13,10 @@ use arrow_schema::{
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::{
-    ASCII_EXTENSION_NAME, GEOARROW_WKB_EXTENSION_NAME, URL_EXTENSION_NAME, UUID_EXTENSION_NAME,
-    VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts,
-    code_for_extension, is_variant_storage,
+    BYTES_EXTENSION_NAME, BytesParameters, GEOARROW_WKB_EXTENSION_NAME, STRING_EXTENSION_NAME,
+    StringParameters, URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
+    VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension,
+    is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
 use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
@@ -394,17 +395,20 @@ pub(crate) enum RecognizedExtension {
     /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
     /// document says whether it is a geometry or a geography.
     Geospatial(GeospatialParameters),
-    /// The `yggdryl.ascii` extension: `Binary` for the variable form, and
-    /// `FixedSizeBinary(n)` for the width the storage names.
-    Ascii(DataType),
     /// A code's own `yggdryl.{country,currency,mic,cfi}` over the
     /// `FixedSizeBinary` width that code fixes.
     ///
-    /// It is separate from [`Self::Ascii`] because the identity is the point:
-    /// three bytes under `yggdryl.currency` are a currency and three bytes
-    /// under `yggdryl.ascii` are an `ascii(3)`, and neither imports as the
-    /// other.
+    /// It is separate from [`Self::String`] because the identity is the
+    /// point: three bytes under `yggdryl.currency` are a currency and three
+    /// bytes under `yggdryl.string` are a `fixed_ascii(3)`, and neither
+    /// imports as the other.
     Code(DataType),
+    /// The `yggdryl.string` extension: a layout, a charset and a bound over
+    /// the Arrow storage that layout and charset lay out.
+    String(DataType),
+    /// The `yggdryl.bytes` extension: a layout and a bound over the Arrow
+    /// storage that layout is.
+    Bytes(DataType),
     /// The canonical `arrow.uuid` over `FixedSizeBinary(16)`.
     Uuid,
     /// The canonical version text over Utf8.
@@ -425,7 +429,7 @@ impl RecognizedExtension {
                     DataType::Geometry(Arc::new(geospatial))
                 }
             }
-            Self::Ascii(dtype) | Self::Code(dtype) => dtype,
+            Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
             Self::Uuid => DataType::Uuid,
             Self::Version => DataType::Version,
             Self::Url => DataType::Url,
@@ -436,9 +440,9 @@ impl RecognizedExtension {
 /// Recognizes the Arrow extension spellings the first-class datatypes ride:
 /// `geoarrow.wkb` over Binary storage, the canonical `arrow.parquet.variant`
 /// over its exact storage struct with an empty extension metadata document,
-/// `yggdryl.ascii` over `FixedSizeBinary(2 | 3 | 4 | 8 | 12 | 16)`, each
-/// registered code's own `yggdryl.{country,currency,mic,cfi}` over the width
-/// that code fixes, and the canonical `arrow.uuid` over
+/// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
+/// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
+/// the width that code fixes, and the canonical `arrow.uuid` over
 /// `FixedSizeBinary(16)`, each with an empty or absent document.
 ///
 /// The answer is what the extension describes, which is the *values* of a
@@ -447,9 +451,9 @@ impl RecognizedExtension {
 /// layout and lost in the other.
 ///
 /// Any other pairing keeps today's behavior exactly - a foreign extension
-/// name, one of ours over a storage it does not spell, a variant or an ASCII
-/// width with a non-empty document: the field imports as its storage type
-/// with the `ARROW:extension:*` keys as plain metadata.
+/// name, one of ours over a storage it does not spell, a variant or a code
+/// with a non-empty document: the field imports as its storage type with the
+/// `ARROW:extension:*` keys as plain metadata.
 ///
 /// # Errors
 ///
@@ -483,16 +487,46 @@ pub(crate) fn recognized_arrow_extension(
         {
             Ok(Some(RecognizedExtension::Variant))
         }
-        // The storage shape alone tells the two ASCII datatypes apart: the
-        // variable form is Arrow's `Binary`, and a width is that width's
-        // `FixedSizeBinary`.
-        ASCII_EXTENSION_NAME if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::Binary => Some(RecognizedExtension::Ascii(DataType::Ascii)),
-            ArrowDataType::FixedSizeBinary(width) => {
-                Some(RecognizedExtension::Ascii(DataType::ascii(*width)?))
+        // A string declares everything about itself in its document, so the
+        // storage is checked against what that document lays out: our name
+        // over a storage it does not describe is a foreign field wearing it,
+        // and that imports as its storage rather than as a string.
+        STRING_EXTENSION_NAME => {
+            let Some(document) = document else {
+                return Ok(None);
+            };
+            let parameters = StringParameters::from_extension_json(document).map_err(|error| {
+                Error::InvalidMetadataValue {
+                    key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
+                    reason: format_smolstr!("{error}"),
+                }
+            })?;
+            if !crate::types::string::describes_storage(parameters, storage)? {
+                return Ok(None);
             }
-            _ => None,
-        }),
+            Ok(Some(RecognizedExtension::String(DataType::string(
+                parameters,
+            )?)))
+        }
+        // The same rule for bytes: the document names the layout, and the
+        // storage must be that layout.
+        BYTES_EXTENSION_NAME => {
+            let Some(document) = document else {
+                return Ok(None);
+            };
+            let parameters = BytesParameters::from_extension_json(document).map_err(|error| {
+                Error::InvalidMetadataValue {
+                    key: SmolStr::new_static(EXTENSION_TYPE_METADATA_KEY),
+                    reason: format_smolstr!("{error}"),
+                }
+            })?;
+            if !crate::types::bytes::describes_storage(parameters, storage)? {
+                return Ok(None);
+            }
+            Ok(Some(RecognizedExtension::Bytes(DataType::bytes(
+                parameters,
+            )?)))
+        }
         UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                 .then_some(RecognizedExtension::Uuid))
@@ -846,6 +880,7 @@ mod tests {
 
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
+    use crate::types::{BytesLayout, BytesParameters};
     use crate::{DataType, EdgeAlgorithm, Field};
 
     use super::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
@@ -929,7 +964,7 @@ mod tests {
                 (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
             ]));
         let imported = Field::from_arrow(&arrow).unwrap();
-        assert_eq!(imported.dtype(), &DataType::Binary);
+        assert_eq!(imported.dtype(), &DataType::binary());
         assert_eq!(
             imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
             Some("someorg.blob")
@@ -946,7 +981,7 @@ mod tests {
             )]),
         );
         let imported = Field::from_arrow(&arrow).unwrap();
-        assert_eq!(imported.dtype(), &DataType::LargeBinary);
+        assert_eq!(imported.dtype(), &DataType::large_binary());
         assert_eq!(
             imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
             Some("geoarrow.wkb")
@@ -1025,23 +1060,37 @@ mod tests {
     }
 
     #[test]
-    fn an_ascii_field_projects_the_yggdryl_extension_and_reimports_itself() {
-        // The storage shape carries the whole identity: `Binary` is the
-        // variable form and every `FixedSizeBinary(n)` is that width, so no
-        // width is special and none is excluded.
-        for (dtype, storage) in [
-            (DataType::Ascii, ArrowDataType::Binary),
-            (DataType::FixedAscii(1), ArrowDataType::FixedSizeBinary(1)),
-            (DataType::FixedAscii(3), ArrowDataType::FixedSizeBinary(3)),
-            (DataType::FixedAscii(5), ArrowDataType::FixedSizeBinary(5)),
-            (DataType::FixedAscii(16), ArrowDataType::FixedSizeBinary(16)),
-            (DataType::FixedAscii(64), ArrowDataType::FixedSizeBinary(64)),
+    fn an_ascii_field_projects_the_string_extension_and_reimports_itself() {
+        // US-ASCII is UTF-8, so it rides Arrow's own text storage and the
+        // charset rides the document; a width is that width's fixed binary
+        // and the document names it, so no width is special.
+        for (dtype, storage, document) in [
+            (
+                DataType::ascii(),
+                ArrowDataType::Utf8,
+                r#"{"layout":"string","charset":"us-ascii"}"#,
+            ),
+            (
+                DataType::fixed_ascii(1).unwrap(),
+                ArrowDataType::FixedSizeBinary(1),
+                r#"{"layout":"fixed_string","charset":"us-ascii","fixed":1}"#,
+            ),
+            (
+                DataType::fixed_ascii(3).unwrap(),
+                ArrowDataType::FixedSizeBinary(3),
+                r#"{"layout":"fixed_string","charset":"us-ascii","fixed":3}"#,
+            ),
+            (
+                DataType::fixed_ascii(64).unwrap(),
+                ArrowDataType::FixedSizeBinary(64),
+                r#"{"layout":"fixed_string","charset":"us-ascii","fixed":64}"#,
+            ),
         ] {
             let field = Field::new("ccy", dtype, false);
             let arrow = field.clone().into_arrow().unwrap();
             assert_eq!(arrow.data_type(), &storage);
-            assert_eq!(arrow.extension_type_name(), Some("yggdryl.ascii"));
-            assert_eq!(arrow.extension_type_metadata(), Some(""));
+            assert_eq!(arrow.extension_type_name(), Some("yggdryl.string"));
+            assert_eq!(arrow.extension_type_metadata(), Some(document));
 
             let imported = Field::from_arrow(&arrow).unwrap();
             assert_eq!(imported, field);
@@ -1050,32 +1099,95 @@ mod tests {
     }
 
     #[test]
-    fn an_ascii_extension_over_other_storage_or_a_document_keeps_todays_import() {
-        // The extension names a value rule over one of two storage shapes.
-        // Any other storage is not that rule, so the name stays metadata.
+    fn a_string_extension_over_other_storage_or_a_retired_name_keeps_todays_import() {
+        // The document lays out one storage. Any other storage is a foreign
+        // field wearing our name, so the name stays metadata.
+        let document = r#"{"layout":"string","charset":"us-ascii"}"#;
         let large = ArrowField::new("ccy", ArrowDataType::LargeBinary, true).with_metadata(
-            HashMap::from([(
-                EXTENSION_TYPE_NAME_KEY.to_owned(),
-                "yggdryl.ascii".to_owned(),
-            )]),
-        );
-        let imported = Field::from_arrow(&large).unwrap();
-        assert_eq!(imported.dtype(), &DataType::LargeBinary);
-        assert_eq!(
-            imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
-            Some("yggdryl.ascii")
-        );
-
-        let documented = ArrowField::new("ccy", ArrowDataType::FixedSizeBinary(4), true)
-            .with_metadata(HashMap::from([
+            HashMap::from([
                 (
                     EXTENSION_TYPE_NAME_KEY.to_owned(),
-                    "yggdryl.ascii".to_owned(),
+                    "yggdryl.string".to_owned(),
                 ),
-                (EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned()),
-            ]));
-        let imported = Field::from_arrow(&documented).unwrap();
-        assert_eq!(imported.dtype(), &DataType::FixedSizeBinary(4));
-        assert_eq!(imported.into_arrow().unwrap(), documented);
+                (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
+            ]),
+        );
+        let imported = Field::from_arrow(&large).unwrap();
+        assert_eq!(imported.dtype(), &DataType::large_binary());
+        assert_eq!(
+            imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+            Some("yggdryl.string")
+        );
+        assert_eq!(imported.into_arrow().unwrap(), large);
+
+        // `yggdryl.ascii` names nothing this crate has.
+        let retired = ArrowField::new("ccy", ArrowDataType::FixedSizeBinary(4), true)
+            .with_metadata(HashMap::from([(
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "yggdryl.ascii".to_owned(),
+            )]));
+        let imported = Field::from_arrow(&retired).unwrap();
+        assert_eq!(imported.dtype(), &DataType::fixed_size_binary(4).unwrap());
+        assert_eq!(imported.into_arrow().unwrap(), retired);
+    }
+
+    #[test]
+    fn a_bounded_bytes_field_projects_the_bytes_extension_and_reimports_itself() {
+        // The four layouts are Arrow's own and a fixed width is the storage,
+        // so only a maximum rides the document.
+        let bounded = BytesParameters::new(BytesLayout::Binary)
+            .try_with_bound(16)
+            .unwrap();
+        let field = Field::new("key", DataType::bytes(bounded).unwrap(), true);
+        let arrow = field.clone().into_arrow().unwrap();
+        assert_eq!(arrow.data_type(), &ArrowDataType::Binary);
+        assert_eq!(arrow.extension_type_name(), Some("yggdryl.bytes"));
+        assert_eq!(
+            arrow.extension_type_metadata(),
+            Some(r#"{"layout":"binary","max":16}"#)
+        );
+        let imported = Field::from_arrow(&arrow).unwrap();
+        assert_eq!(imported, field);
+        assert!(imported.as_metadata().is_empty());
+
+        for dtype in [
+            DataType::binary(),
+            DataType::large_binary(),
+            DataType::binary_view(),
+            DataType::fixed_size_binary(16).unwrap(),
+        ] {
+            let arrow = Field::new("key", dtype, true).into_arrow().unwrap();
+            assert_eq!(arrow.extension_type_name(), None, "{arrow:?}");
+        }
+    }
+
+    #[test]
+    fn a_bytes_extension_over_other_storage_keeps_todays_import() {
+        let document = r#"{"layout":"binary","max":16}"#;
+        let large = ArrowField::new("key", ArrowDataType::LargeBinary, true).with_metadata(
+            HashMap::from([
+                (
+                    EXTENSION_TYPE_NAME_KEY.to_owned(),
+                    "yggdryl.bytes".to_owned(),
+                ),
+                (EXTENSION_TYPE_METADATA_KEY.to_owned(), document.to_owned()),
+            ]),
+        );
+        let imported = Field::from_arrow(&large).unwrap();
+        assert_eq!(imported.dtype(), &DataType::large_binary());
+        assert_eq!(
+            imported.get_metadata(EXTENSION_TYPE_NAME_KEY),
+            Some("yggdryl.bytes")
+        );
+        assert_eq!(imported.into_arrow().unwrap(), large);
+    }
+
+    #[test]
+    fn a_negative_arrow_fixed_binary_width_is_refused() {
+        let refused = DataType::from_arrow(&ArrowDataType::FixedSizeBinary(-1))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("-1"), "{refused}");
+        assert!(DataType::from_arrow(&ArrowDataType::FixedSizeBinary(0)).is_err());
     }
 }

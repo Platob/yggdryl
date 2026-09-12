@@ -45,7 +45,7 @@
 //!
 //! let schema = DataType::from_fields([
 //!     DataType::Int64.required_field("id"),
-//!     DataType::Utf8.nullable_field("venue").with_partition(true),
+//!     DataType::utf8().nullable_field("venue").with_partition(true),
 //! ])?
 //! .required_field("row");
 //!

@@ -178,6 +178,14 @@ name = "coding"
 path = "benchmarks/coding.rs"
 harness = false
 
+# Character encodings: the borrow an all-ASCII payload answers with, the
+# transcode a mixed one pays for, the reverse table an encode searches, and the
+# three streaming doors over one payload. No feature carries any of it.
+[[bench]]
+name = "charset"
+path = "benchmarks/charset.rs"
+harness = false
+
 # Record media: Avro is unconditional; Parquet-backed I/O and Iceberg groups
 # compile only with their owning features.
 [[bench]]

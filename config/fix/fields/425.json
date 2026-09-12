@@ -14,7 +14,7 @@
   {
     "name": "legpaymentstubstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -65,7 +65,7 @@
   {
     "name": "legpaymentstubstartdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -151,7 +151,7 @@
   {
     "name": "legreturnratevaluationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -214,7 +214,7 @@
   {
     "name": "legreturnratevaluationstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -290,7 +290,7 @@
   {
     "name": "legreturnratevaluationenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -341,7 +341,7 @@
   {
     "name": "legreturnratevaluationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -354,7 +354,7 @@
   {
     "name": "legreturnratevaluationfrequencyrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -392,7 +392,7 @@
   {
     "name": "legreturnratefxcurrencysymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -416,7 +416,7 @@
   {
     "name": "legreturnratefxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -454,7 +454,7 @@
   {
     "name": "legreturnratecommissionbasis",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -503,7 +503,7 @@
   {
     "name": "legreturnratedeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -527,7 +527,7 @@
   {
     "name": "legreturnratequotemeasuretype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -539,7 +539,7 @@
   {
     "name": "legreturnratequoteunits",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -576,7 +576,7 @@
   {
     "name": "legreturnratequotecurrencytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -642,7 +642,7 @@
   {
     "name": "legreturnratequotebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -666,7 +666,7 @@
   {
     "name": "legreturnratequotepricingmodel",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -678,7 +678,7 @@
   {
     "name": "legreturnratecashflowtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -717,7 +717,7 @@
   {
     "name": "legreturnratevaluationtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -780,7 +780,7 @@
   {
     "name": "legreturnratereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -792,7 +792,7 @@
   {
     "name": "legreturnratereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -878,7 +878,7 @@
   {
     "name": "legreturnratevaluationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -978,7 +978,7 @@
   {
     "name": "legsettlmethodelectiondateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1029,7 +1029,7 @@
   {
     "name": "legsettlmethodelectiondatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1041,7 +1041,7 @@
   {
     "name": "legstreamversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1066,7 +1066,7 @@
   {
     "name": "legstreamnotionaldeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1091,7 +1091,7 @@
   {
     "name": "streamcommoditydeliverypricingregion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1103,7 +1103,7 @@
   {
     "name": "legstreamcommoditydeliverypricingregion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1115,7 +1115,7 @@
   {
     "name": "underlyingstreamcommoditydeliverypricingregion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1165,7 +1165,7 @@
   {
     "name": "makewholebenchmarkcurvename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1177,7 +1177,7 @@
   {
     "name": "makewholebenchmarkcurvepoint",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1239,7 +1239,7 @@
   {
     "name": "paymentamountdeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

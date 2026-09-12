@@ -427,7 +427,7 @@ impl<'doc> Parse<'doc> {
     fn new(bytes: &'doc [u8], dialect: Option<&str>) -> Result<Self> {
         let dialect = match dialect {
             Some(name) => {
-                let mut probe = DataType::Utf8.nullable_field("dialect");
+                let mut probe = DataType::utf8().nullable_field("dialect");
                 probe.as_fix_mut().set_branches([name])?;
                 probe.as_fix().branches().next().map(str::to_owned)
             }

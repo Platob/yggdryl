@@ -6,7 +6,7 @@ use yggdryl::{DataType, Field, Scheme};
 pub(crate) fn default_and_compatibility_benchmarks(criterion: &mut Criterion) {
     let nested = DataType::from_fields([
         Field::new("id", DataType::Int64, false),
-        Field::new("label", DataType::Utf8, true),
+        Field::new("label", DataType::utf8(), true),
         Field::new(
             "items",
             DataType::fixed_size_list(Field::new("item", DataType::Int32, true), 32).unwrap(),

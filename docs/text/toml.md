@@ -31,7 +31,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
     let encoded = toml::into_utf8(&value)?;
 
     assert_eq!(
-        value.get_key_str("title").and_then(Scalar::as_utf8),
+        value.get_key_str("title").and_then(Scalar::as_str),
         Some("yggdryl")
     );
     assert_eq!(toml::from_utf8(&encoded)?, value);
@@ -90,7 +90,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 
     assert_eq!(from_toml_scalar(encoded.as_bytes())?, value);
     assert_eq!(
-        value.get_key_str("title").and_then(Scalar::as_utf8),
+        value.get_key_str("title").and_then(Scalar::as_str),
         Some("yggdryl")
     );
     ```
@@ -329,7 +329,7 @@ Opt-in, inside quoted strings, substituted after parsing and before Field interp
         &loading,
     )?;
 
-    assert_eq!(value.get_key_str("host").and_then(Scalar::as_utf8), Some("db.internal"));
+    assert_eq!(value.get_key_str("host").and_then(Scalar::as_str), Some("db.internal"));
     assert_eq!(value.get_key_str("port"), Some(&Scalar::from(5432_i64)));
     ```
 

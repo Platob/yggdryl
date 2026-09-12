@@ -25,7 +25,7 @@ fn undated_fields() -> Vec<Field> {
     qty.as_fix_mut()
         .set_aliases(["LastShares"])
         .expect("an alias");
-    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).expect("a tag");
     vec![qty, symbol]
 }
@@ -111,7 +111,7 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
         undated_registry(),
         vec![
             DataType::Int64.required_field("LastShares"),
-            DataType::Utf8.required_field("symbol"),
+            DataType::utf8().required_field("symbol"),
         ],
         &[
             ("LastShares", Scalar::from(100)),
@@ -134,7 +134,7 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
 fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
     let message = built(
         undated_registry(),
-        vec![DataType::Utf8.nullable_field("32")],
+        vec![DataType::utf8().nullable_field("32")],
         &[("32", Scalar::from("100"))],
     );
     let latest = message.into_latest().expect("restated");
@@ -149,7 +149,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
         undated_registry(),
         vec![
             DataType::Float64.nullable_field("lastqty"),
-            DataType::Utf8.required_field("symbol"),
+            DataType::utf8().required_field("symbol"),
             DataType::Int64.required_field("LastShares"),
         ],
         &[
@@ -201,8 +201,8 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
     let message = built(
         undated_registry(),
         vec![
-            DataType::Utf8.nullable_field("9999"),
-            DataType::Utf8.nullable_field("VenueOwnThing"),
+            DataType::utf8().nullable_field("9999"),
+            DataType::utf8().nullable_field("VenueOwnThing"),
             DataType::Int64.required_field("LastShares"),
         ],
         &[
@@ -216,7 +216,7 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
     assert_eq!(latest.by_tag(9999).unwrap(), &Scalar::from("custom"));
     assert_eq!(
         latest.as_field().fields()[1],
-        DataType::Utf8.nullable_field("VenueOwnThing")
+        DataType::utf8().nullable_field("VenueOwnThing")
     );
 }
 
@@ -242,7 +242,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
     assert_eq!(again, latest);
 
     // A stated version is replaced in place rather than stood beside.
-    let mut stated = DataType::Utf8.required_field("version");
+    let mut stated = DataType::utf8().required_field("version");
     stated
         .as_fix_mut()
         .set_tag(VERSION_TAG_NAME.0)
@@ -263,7 +263,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
 /// A hand-built rule: `Rule80A(47)` `A` fills `OrderCapacity(528)` `A`,
 /// whose code set declares `A` and `P` current and `Z` deprecated at 4.4.
 fn ruled_registry() -> Arc<FixRegistry> {
-    let mut rule80a = DataType::Utf8.nullable_field("rule80a");
+    let mut rule80a = DataType::utf8().nullable_field("rule80a");
     rule80a.as_fix_mut().set_tag(47).expect("a tag");
     rule80a
         .as_fix_mut()
@@ -283,7 +283,7 @@ fn ruled_registry() -> Arc<FixRegistry> {
                 value: FixFillSource::Constant("A".into()),
             }])])
         .expect("a rule");
-    let mut capacity = DataType::Utf8.nullable_field("ordercapacity");
+    let mut capacity = DataType::utf8().nullable_field("ordercapacity");
     capacity.as_fix_mut().set_tag(528).expect("a tag");
     capacity
         .as_fix_mut()
@@ -298,8 +298,8 @@ fn ruled_registry() -> Arc<FixRegistry> {
 
 #[test]
 fn a_target_takes_a_value_unless_it_states_a_current_code() {
-    let rule80a = || DataType::Utf8.required_field("rule80a");
-    let capacity = || DataType::Utf8.nullable_field("ordercapacity");
+    let rule80a = || DataType::utf8().required_field("rule80a");
+    let capacity = || DataType::utf8().nullable_field("ordercapacity");
     // Absent: appended.
     let message = built(
         ruled_registry(),

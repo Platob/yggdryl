@@ -211,9 +211,9 @@ fn cast_source() -> RecordBatch {
 
 fn cast_field() -> Field {
     DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("price"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ])
     .expect("a struct root")
     .required_field("row")
@@ -234,7 +234,7 @@ fn nested_wide() -> (Field, RecordBatch) {
     fields.push(
         DataType::from_fields([
             DataType::Int64.required_field("sequence"),
-            DataType::Utf8.required_field("label"),
+            DataType::utf8().required_field("label"),
         ])
         .expect("a nested struct")
         .required_field("details"),

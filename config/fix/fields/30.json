@@ -143,7 +143,7 @@
   {
     "name": "alloctrdregtimestampsrc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -155,7 +155,7 @@
   {
     "name": "algocertificateid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -167,7 +167,7 @@
   {
     "name": "algocertificatedesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -179,7 +179,7 @@
   {
     "name": "algocertificaterequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -191,7 +191,7 @@
   {
     "name": "algocertificaterequestrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -229,7 +229,7 @@
   {
     "name": "algocertificatereportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -241,7 +241,7 @@
   {
     "name": "algocertificatereportrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -306,7 +306,7 @@
   {
     "name": "algotestdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -330,7 +330,7 @@
   {
     "name": "algosystemmodulename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -342,7 +342,7 @@
   {
     "name": "algosystemmoduleversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -366,7 +366,7 @@
   {
     "name": "testscenarioid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -419,7 +419,7 @@
   {
     "name": "mdorigindesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -445,7 +445,7 @@
   {
     "name": "teststepgroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -469,7 +469,7 @@
   {
     "name": "teststepid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -481,7 +481,7 @@
   {
     "name": "teststepdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -583,7 +583,7 @@
   {
     "name": "teststepparametername",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -608,7 +608,7 @@
   {
     "name": "teststepparametervalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -632,7 +632,7 @@
   {
     "name": "testsystemmodulename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -644,7 +644,7 @@
   {
     "name": "testsystemmoduleversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -668,7 +668,7 @@
   {
     "name": "testmeasurename",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -680,7 +680,7 @@
   {
     "name": "testmeasuredesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -779,7 +779,7 @@
   {
     "name": "testsuiterequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -791,7 +791,7 @@
   {
     "name": "testsuiterequestrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -829,7 +829,7 @@
   {
     "name": "testactionrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -893,7 +893,7 @@
   {
     "name": "testactionreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -905,7 +905,7 @@
   {
     "name": "ratesourcesymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -956,7 +956,7 @@
   {
     "name": "fxbenchmarkbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -994,7 +994,7 @@
   {
     "name": "testscenariogroupid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1046,7 +1046,7 @@
   {
     "name": "testorderid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1058,7 +1058,7 @@
   {
     "name": "testordersymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1070,7 +1070,7 @@
   {
     "name": "testordersecurityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1082,7 +1082,7 @@
   {
     "name": "testordersecurityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1168,7 +1168,7 @@
   {
     "name": "testgatewaydetailname",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1193,7 +1193,7 @@
   {
     "name": "testgatewaydetailvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1217,7 +1217,7 @@
   {
     "name": "algotrialid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1229,7 +1229,7 @@
   {
     "name": "lastalgoid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

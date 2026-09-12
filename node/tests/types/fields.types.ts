@@ -4,8 +4,13 @@ import {
   fields,
   type ArrowCastOptions,
   type AsciiField,
+  type BytesDataTypeId,
+  type BytesField,
   type CurrencyField,
   type FixedAsciiField,
+  type FixedUtf8Field,
+  type StringDataTypeId,
+  type StringField,
   type GeographyField,
   type GeometryField,
   type Duration32Field,
@@ -72,19 +77,46 @@ const region: GeographyField = fields.geography('region', 'OGC:CRS84', 'vincenty
 })
 const currency: CurrencyField = fields.currency('ccy', { nullable: false })
 const currencyId: 'currency' = currency.dtype.id
-const currencyKind: 'ascii' = currency.dtype.kind
+const currencyKind: 'code' = currency.dtype.kind
 const currencyValue: string = currency.defaultJSValue()
 const note: AsciiField = fields.ascii('note', { nullable: false })
-const noteId: 'ascii' = note.dtype.id
+const noteId: 'string' = note.dtype.id
+const noteKind: 'text' = note.dtype.kind
 const sized: FixedAsciiField = fields.fixedAscii('code', 12, { nullable: false })
+const sizedId: 'fixed_string' = sized.dtype.id
 const nullableCode: string | null = fields.fixedAscii('code', 3).defaultJSValue()
+const padded: FixedUtf8Field = fields.fixedUtf8('label', 8, { nullable: false })
+// The whole family: the parameters ride the options beside the field's own.
+const latin: StringField = fields.string('latin', {
+  charset: 'windows-1252',
+  max: 32,
+  nullable: false,
+})
+const latinId: StringDataTypeId = latin.dtype.id
+const latinKind: 'text' = latin.dtype.kind
+const latinValue: string = latin.defaultJSValue()
+const nullableLatin: string | null = fields.string('latin').defaultJSValue()
+const blob: BytesField = fields.bytes('blob', { layout: 'large_binary', nullable: false })
+const blobId: BytesDataTypeId = blob.dtype.id
+const blobValue: Uint8Array = blob.defaultJSValue()
 void currencyId
 void currencyKind
 void currencyValue
 void note
 void noteId
+void noteKind
 void sized
+void sizedId
 void nullableCode
+void padded
+void latin
+void latinId
+void latinKind
+void latinValue
+void nullableLatin
+void blob
+void blobId
+void blobValue
 void payloadId
 void release
 void source
@@ -138,6 +170,8 @@ id._showDiffs(fields.int32('native_other'))
 id.update(new Map([['attempts', 3]]))
 // @ts-expect-error generic time selection requires an explicit unit
 fields.time('clock')
+// @ts-expect-error a string field's options carry only the family's parameters
+fields.string('bad', { width: 4 })
 // @ts-expect-error generic time selection requires an explicit unit
 DataType.time()
 // @ts-expect-error a defaulted factory field is nullable, so its default is not a bare number

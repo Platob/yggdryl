@@ -14,20 +14,23 @@
 //! 3. Two nested layouts of the same family recurse into their children. A
 //!    struct takes the *union* of its fields; a list, map, or run-end node
 //!    merges the children it has.
-//! 4. Bytes win. A binary type paired with anything else answers binary,
-//!    because bytes are the container every other encoding fits inside. A
-//!    type storing a fixed width beside a fixed binary of that same width -
-//!    an ASCII width, a registered code, a UUID - keeps the storage both
-//!    already have: widening answers the plain bytes, narrowing the side that
-//!    constrains them. Any other pairing is variable bytes.
-//! 5. Text wins next, over numbers and temporals. Two ASCII widths meet at
-//!    the wider or the narrower; ASCII beside variable text meets at the
-//!    variable text when widening and at the ASCII width when narrowing; a
-//!    registered code beside plainer text is the width it stores when
-//!    widening and the code itself when narrowing, so the tighter type
-//!    survives the direction that asks for it; text absorbing a non-text side
-//!    is at least `utf8`, because a number's rendering does not fit four
-//!    bytes.
+//! 4. Bytes win. A byte type paired with anything else answers bytes,
+//!    because bytes are the container every other encoding fits inside. Two
+//!    byte types meet parameter by parameter, exactly as two strings do: the
+//!    wider offsets, the variable layout over a fixed one, no bound over a
+//!    bound when widening, and the mirror when narrowing. A type storing a
+//!    fixed width beside fixed bytes of that same width - a fixed string, a
+//!    registered code, a UUID - keeps the storage both already have: widening
+//!    answers the plain bytes, narrowing the side that constrains them. Any
+//!    other pairing is variable bytes in the byte side's layout.
+//! 5. Text wins next, over numbers and temporals. Two strings meet parameter
+//!    by parameter: widening takes the wider offsets, the variable layout
+//!    over a fixed one, UTF-8 over two different charsets, and no bound over
+//!    a bound; narrowing takes the mirror. A registered code is the fixed
+//!    US-ASCII width it stores when widening and the code itself when
+//!    narrowing, so the tighter type survives the direction that asks for
+//!    it; text absorbing a non-text side is at least `utf8`, because a
+//!    number's rendering does not fit four bytes.
 //! 6. Numbers meet by width, and temporals by unit. An exact decimal keeps
 //!    the widest storage either side declared when widening, so a merge never
 //!    re-encodes a `decimal128` column into a `decimal64` one.
@@ -40,17 +43,19 @@
 //! deliberate opposite, for a caller who wants the tightest type that names
 //! both and accepts that stored values may not fit it.
 
+use std::num::NonZeroU32;
+
 use smol_str::format_smolstr;
 
-use crate::{DataType, Error, Field, Result};
+use crate::{Charset, DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
-use super::ascii::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH};
-use super::uuid::UUID_BYTES;
+use super::bytes::{BytesLayout, BytesParameters};
+use super::string::{StringLayout, StringParameters};
 
 /// Whether a pair with no shared family may meet by being re-encoded.
 ///
-/// Answering `Utf8` for an integer beside a string is the right call when two
+/// Answering `utf8` for an integer beside a string is the right call when two
 /// schemas are being unioned - text is the container both fit in. It is the
 /// wrong call when a type is being *inferred* from values, or a comparison
 /// typed, because there the answer asserts something about the data rather
@@ -84,14 +89,6 @@ impl Widening {
     }
 
     /// Pick between two ranked candidates.
-    /// The wider or the narrower of two ordered values, as this asks for.
-    fn widen<T: Ord>(self, left: T, right: T) -> T {
-        match self {
-            Self::Up => left.max(right),
-            Self::Down => left.min(right),
-        }
-    }
-
     fn pick<T>(self, left: (u8, T), right: (u8, T)) -> T {
         let take_left = match self {
             Self::Up => left.0 >= right.0,
@@ -108,13 +105,14 @@ impl DataType {
     /// yields to whatever is defined beside it; two nested layouts of the same
     /// family recurse, a struct taking the *union* of its fields; bytes win
     /// over everything, because every other encoding fits inside them; text
-    /// wins next, ASCII widths meeting by width and absorbing a non-text
-    /// side at no less than `utf8`; and numbers meet by width, temporals by
-    /// unit. Anything left is refused rather than guessed - a boolean and a
-    /// timestamp have no meeting point that is not a re-encoding.
+    /// wins next, strings meeting parameter by parameter and absorbing a
+    /// non-text side at no less than `utf8`; and numbers meet by width,
+    /// temporals by unit. Anything left is refused rather than guessed - a
+    /// boolean and a timestamp have no meeting point that is not a
+    /// re-encoding.
     ///
     /// A type that names fewer values than the shape it stores in - a
-    /// registered ASCII code, a UUID, a decimal's declared backing - survives
+    /// registered code, a UUID, a decimal's declared backing - survives
     /// the direction that asks for it: widening answers the shape holding
     /// both, narrowing answers the tighter type.
     ///
@@ -132,20 +130,20 @@ impl DataType {
     /// assert_eq!(DataType::Int32.merge_with(&DataType::Int64, false)?, DataType::Int32);
     ///
     /// // Null yields to whatever is defined beside it.
-    /// assert_eq!(DataType::Null.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    /// assert_eq!(DataType::Null.merge_with(&DataType::utf8(), true)?, DataType::utf8());
     ///
     /// // Bytes win over text, and text over numbers.
-    /// assert_eq!(DataType::Utf8.merge_with(&DataType::Binary, true)?, DataType::Binary);
-    /// assert_eq!(DataType::Int64.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    /// assert_eq!(DataType::utf8().merge_with(&DataType::binary(), true)?, DataType::binary());
+    /// assert_eq!(DataType::Int64.merge_with(&DataType::utf8(), true)?, DataType::utf8());
     ///
-    /// // ASCII widths are text, so they meet variable text there when widening.
-    /// assert_eq!(DataType::FixedAscii(4).merge_with(&DataType::Utf8, true)?, DataType::Utf8);
-    /// assert_eq!(DataType::FixedAscii(4).merge_with(&DataType::FixedAscii(8), false)?, DataType::FixedAscii(4));
+    /// // A fixed width is text, so it meets variable text there when widening.
+    /// assert_eq!(DataType::fixed_ascii(4)?.merge_with(&DataType::utf8(), true)?, DataType::utf8());
+    /// assert_eq!(DataType::fixed_ascii(4)?.merge_with(&DataType::fixed_ascii(8)?, false)?, DataType::fixed_ascii(4)?);
     ///
     /// // Narrowing keeps the tighter type: the code over the width it stores
     /// // in, and the decimal's own backing over the one precision needs.
-    /// assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, false)?, DataType::Currency);
-    /// assert_eq!(DataType::Currency.merge_with(&DataType::Utf8, true)?, DataType::Utf8);
+    /// assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), false)?, DataType::Currency);
+    /// assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), true)?, DataType::utf8());
     /// assert_eq!(
     ///     DataType::decimal128(10, 2)?.merge_with(&DataType::Int16, true)?,
     ///     DataType::decimal128(10, 2)?,
@@ -412,43 +410,39 @@ fn merge_scalar(
     how: Widening,
     recode: Recode,
 ) -> Result<Option<DataType>> {
-    // Bytes hold every other encoding, so a binary side decides the pair.
-    if let Some(rank) = binary_rank(left) {
-        return Ok(Some(match binary_rank(right) {
-            Some(other) => rebuild_binary(how.pick((rank, rank), (other, other)), how, left, right),
+    // Bytes hold every other encoding, so a byte side decides the pair.
+    if let Some(parameters) = left.bytes_parameters() {
+        return match right.bytes_parameters() {
+            Some(other) => DataType::bytes(merge_bytes(parameters, other, how)?).map(Some),
             None if recode == Recode::Allowed && is_mergeable_into_bytes(right) => {
-                rebuild_binary(rank, how, left, right)
+                rebuild_binary(parameters, how, left, right).map(Some)
             }
-            None => return Ok(None),
-        }));
+            None => Ok(None),
+        };
     }
-    if let Some(rank) = binary_rank(right) {
-        return Ok(
-            if recode == Recode::Allowed && is_mergeable_into_bytes(left) {
-                Some(rebuild_binary(rank, how, left, right))
-            } else {
-                None
-            },
-        );
+    if let Some(parameters) = right.bytes_parameters() {
+        return if recode == Recode::Allowed && is_mergeable_into_bytes(left) {
+            rebuild_binary(parameters, how, left, right).map(Some)
+        } else {
+            Ok(None)
+        };
     }
     // Text is next, over numbers and temporals.
-    if let Some(rank) = text_rank(left) {
-        return Ok(match text_rank(right) {
-            Some(other) => Some(merge_text((left, rank), (right, other), how)),
+    if let Some(parameters) = text_parameters(left) {
+        return match text_parameters(right) {
+            Some(other) => merge_text((left, parameters), (right, other), how).map(Some),
             None if recode == Recode::Allowed && is_mergeable_into_text(right) => {
-                Some(rebuild_text(rank.max(TextRank::Utf8)))
+                absorbing_text(parameters).map(Some)
             }
-            None => None,
-        });
+            None => Ok(None),
+        };
     }
-    if let Some(rank) = text_rank(right) {
-        return Ok(
-            if recode == Recode::Allowed && is_mergeable_into_text(left) {
-                Some(rebuild_text(rank.max(TextRank::Utf8)))
-            } else {
-                None
-            },
-        );
+    if let Some(parameters) = text_parameters(right) {
+        return if recode == Recode::Allowed && is_mergeable_into_text(left) {
+            absorbing_text(parameters).map(Some)
+        } else {
+            Ok(None)
+        };
     }
     if let Some(merged) = merge_numeric(left, right, how)? {
         return Ok(Some(merged));
@@ -469,105 +463,121 @@ fn is_mergeable_into_text(dtype: &DataType) -> bool {
     is_mergeable_into_bytes(dtype)
 }
 
-/// How wide a binary layout is, if it is one.
-const fn binary_rank(dtype: &DataType) -> Option<u8> {
+/// Meet two byte types parameter by parameter.
+///
+/// The same table as [`merge_parameters`] without the charset: widening takes
+/// the wider offsets and the variable layout over a fixed one, a view staying
+/// a view only beside another view, and no bound unless both have one, and
+/// then the larger; narrowing is the mirror. Two fixed widths that agree are
+/// one type and never reach here, and two that disagree are variable bytes
+/// when widening, because a byte value is never padded to a wider slot.
+fn merge_bytes(
+    left: BytesParameters,
+    right: BytesParameters,
+    how: Widening,
+) -> Result<BytesParameters> {
+    let layout = match how {
+        Widening::Up => match (left.is_fixed(), right.is_fixed()) {
+            (true, true) => BytesLayout::Binary,
+            (true, false) => right.layout(),
+            (false, true) => left.layout(),
+            (false, false) => variable_bytes_layout(
+                left.layout().is_view() && right.layout().is_view(),
+                left.layout().is_large() || right.layout().is_large(),
+            ),
+        },
+        Widening::Down if left.is_fixed() || right.is_fixed() => BytesLayout::FixedSizeBinary,
+        Widening::Down => variable_bytes_layout(
+            left.layout().is_view() && right.layout().is_view(),
+            left.layout().is_large() && right.layout().is_large(),
+        ),
+    };
+    let bound = match (how, left.bound(), right.bound()) {
+        (Widening::Up, Some(left), Some(right)) => Some(left.max(right)),
+        (Widening::Up, _, _) => None,
+        (Widening::Down, Some(left), Some(right)) => Some(left.min(right)),
+        (Widening::Down, left, right) => left.or(right),
+    };
+    let parameters = BytesParameters::new(layout);
+    match bound {
+        Some(bound) => parameters.try_with_bound(bound),
+        None => Ok(parameters),
+    }
+}
+
+/// The variable byte layout with the given view and offsets declarations.
+const fn variable_bytes_layout(view: bool, large: bool) -> BytesLayout {
+    match (view, large) {
+        (true, _) => BytesLayout::BinaryView,
+        (false, true) => BytesLayout::LargeBinary,
+        (false, false) => BytesLayout::Binary,
+    }
+}
+
+/// The byte width of a fixed-width byte layout: fixed bytes, a fixed string,
+/// a registered code, or a UUID, each of whose storage is the fixed binary of
+/// that width. A number's width is its own encoding and never bytes it
+/// shares, so `int32` beside `fixed_size_binary(4)` is variable bytes.
+fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
-        DataType::FixedSizeBinary(_) => Some(0),
-        DataType::Binary => Some(1),
-        DataType::BinaryView => Some(2),
-        DataType::LargeBinary => Some(3),
+        DataType::Bytes(_) | DataType::String(_) | DataType::Uuid => dtype.fixed_byte_width(),
+        _ if dtype.is_code() => dtype.fixed_byte_width(),
         _ => None,
     }
 }
 
-/// The byte width of a fixed-width byte layout: a fixed binary, an ASCII
-/// width, or a UUID, each of whose storage is the fixed binary of that width.
-fn fixed_width(dtype: &DataType) -> Option<i32> {
-    match dtype {
-        DataType::FixedSizeBinary(width) => Some(*width),
-        // An identifier is sixteen bytes, the same fixed binary a schema
-        // naming the layout directly would declare, so the pair keeps it.
-        DataType::Uuid => Some(UUID_BYTES as i32),
-        other => other.ascii_width(),
-    }
-}
-
-/// Rebuild a binary layout from a width rank, keeping a shared fixed width.
+/// Rebuild the byte side beside a non-byte one, keeping a shared fixed width.
 ///
 /// Two sides storing the same number of bytes keep that storage, and the
 /// direction decides which of the two names it. Widening answers the plain
 /// bytes, which hold every value either side can carry; narrowing answers the
-/// side that constrains them - an ASCII width, a registered code, a UUID -
+/// side that constrains them - a fixed string, a registered code, a UUID -
 /// because that is the tightest type naming both and the storage is identical
-/// either way.
-fn rebuild_binary(rank: u8, how: Widening, left: &DataType, right: &DataType) -> DataType {
+/// either way. Any other pairing is variable bytes in the byte side's layout:
+/// the other side's rendering fits no fixed width and no maximum.
+fn rebuild_binary(
+    parameters: BytesParameters,
+    how: Widening,
+    left: &DataType,
+    right: &DataType,
+) -> Result<DataType> {
     if let (Some(left_width), Some(right_width)) = (fixed_width(left), fixed_width(right)) {
         if left_width == right_width {
             if how == Widening::Down {
-                if let Some(constrained) = constrained_bytes(left, right) {
-                    return constrained;
-                }
+                // The side that is not the bytes is the one constraining them.
+                return Ok(match left.bytes_parameters() {
+                    Some(_) => right.clone(),
+                    None => left.clone(),
+                });
             }
-            return DataType::FixedSizeBinary(left_width);
+            if let Ok(width) = u32::try_from(left_width) {
+                return DataType::fixed_size_binary(width);
+            }
         }
     }
-    match rank {
-        2 => DataType::BinaryView,
-        3 => DataType::LargeBinary,
-        // A fixed width the two sides do not share becomes variable bytes.
-        _ => DataType::Binary,
-    }
+    let layout = match parameters.is_fixed() {
+        true => BytesLayout::Binary,
+        false => parameters.layout(),
+    };
+    Ok(DataType::Bytes(BytesParameters::new(layout)))
 }
 
-/// The side of a same-width pair that constrains what its bytes may hold, when
-/// exactly one of the two does.
-fn constrained_bytes(left: &DataType, right: &DataType) -> Option<DataType> {
-    match (binary_rank(left), binary_rank(right)) {
-        (None, Some(_)) => Some(left.clone()),
-        (Some(_), None) => Some(right.clone()),
-        _ => None,
-    }
-}
-
-/// The rank of `utf8`: the narrowest text a non-text side re-encodes into.
-/// Where one text layout sits in the family's order.
+/// The parameters a text datatype merges as, if it is text at all.
 ///
-/// The derived order is the one merging wants: a fixed ASCII width orders by
-/// the bytes it stores, every fixed width is narrower than variable ASCII,
-/// and every ASCII shape is narrower than UTF-8 - so widening beside variable
-/// text answers the variable text and narrowing answers the fixed width.
-#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-enum TextRank {
-    /// Fixed ASCII of that many bytes.
-    Fixed(i32),
-    /// Variable ASCII, which holds any fixed value.
-    Ascii,
-    /// UTF-8 with 32-bit offsets.
-    Utf8,
-    /// The UTF-8 view layout.
-    Utf8View,
-    /// UTF-8 with 64-bit offsets.
-    LargeUtf8,
-}
-
-/// Where a datatype sits in the text order, if it is text at all.
-///
-/// A registered code ranks as the fixed width it stores. Two schemas that
+/// A registered code is the fixed US-ASCII width it stores. Two schemas that
 /// agree on a code never reach here - the merge answers an equal pair before
-/// ranking anything - so this decides only the pairs that disagree, and
-/// [`merge_text`] is what says when the code identity survives the rank.
-fn text_rank(dtype: &DataType) -> Option<TextRank> {
+/// reading anything - so this decides only the pairs that disagree, and
+/// [`merge_text`] is what says when the code identity survives.
+fn text_parameters(dtype: &DataType) -> Option<StringParameters> {
     match dtype {
-        DataType::FixedAscii(width) => Some(TextRank::Fixed(*width)),
-        DataType::Country => Some(TextRank::Fixed(COUNTRY_WIDTH as i32)),
-        DataType::Currency => Some(TextRank::Fixed(CURRENCY_WIDTH as i32)),
-        DataType::Mic => Some(TextRank::Fixed(MIC_WIDTH as i32)),
-        DataType::Cfi => Some(TextRank::Fixed(CFI_WIDTH as i32)),
-        DataType::Isin => Some(TextRank::Fixed(ISIN_WIDTH as i32)),
-        DataType::Ascii => Some(TextRank::Ascii),
-        DataType::Utf8 => Some(TextRank::Utf8),
-        DataType::Utf8View => Some(TextRank::Utf8View),
-        DataType::LargeUtf8 => Some(TextRank::LargeUtf8),
+        DataType::String(parameters) => Some(*parameters),
+        _ if dtype.is_code() => {
+            let width = u32::try_from(dtype.fixed_byte_width()?).ok()?;
+            Some(
+                StringParameters::ascii(StringLayout::FixedString)
+                    .with_bound(NonZeroU32::new(width)?),
+            )
+        }
         _ => None,
     }
 }
@@ -576,42 +586,119 @@ fn text_rank(dtype: &DataType) -> Option<TextRank> {
 ///
 /// Widening never answers a code: a code names fewer values than the width it
 /// stores in, so the type holding both sides is the plain one - `currency`
-/// beside `ascii(3)` is `ascii(3)`. Narrowing asks the opposite question, for
-/// the tightest type that names both, and there the code is the answer
-/// whenever the other side is at least as general: `currency` beside `utf8`
-/// or `ascii(3)` narrows to `currency`, and only a side narrower still, such
-/// as `ascii(2)`, outranks it.
+/// beside `fixed_ascii(3)` is `fixed_ascii(3)`. Narrowing asks the opposite
+/// question, for the tightest type that names both, and there the code is the
+/// answer whenever the other side is at least as general: `currency` beside
+/// `utf8` or `fixed_ascii(3)` narrows to `currency`, and only a side narrower
+/// still, such as `fixed_ascii(2)`, outranks it.
 ///
 /// Two *different* codes are the one pair neither direction answers with a
 /// code, because neither standard names the other's values: a currency merged
-/// with a country is `ascii(3)` widening and `ascii(2)` narrowing, never one
-/// standard's code carrying the other's values.
+/// with a country is `fixed_ascii(3)` widening and `fixed_ascii(2)` narrowing,
+/// never one standard's code carrying the other's values.
 fn merge_text(
-    left: (&DataType, TextRank),
-    right: (&DataType, TextRank),
+    left: (&DataType, StringParameters),
+    right: (&DataType, StringParameters),
     how: Widening,
-) -> DataType {
-    let ((left_type, left_rank), (right_type, right_rank)) = (left, right);
+) -> Result<DataType> {
+    let ((left_type, left_parameters), (right_type, right_parameters)) = (left, right);
     if how == Widening::Down && !(left_type.is_code() && right_type.is_code()) {
-        if left_type.is_code() && left_rank <= right_rank {
-            return left_type.clone();
+        if left_type.is_code() && holds_width(right_parameters, left_parameters) {
+            return Ok(left_type.clone());
         }
-        if right_type.is_code() && right_rank <= left_rank {
-            return right_type.clone();
+        if right_type.is_code() && holds_width(left_parameters, right_parameters) {
+            return Ok(right_type.clone());
         }
     }
-    rebuild_text(how.widen(left_rank, right_rank))
+    DataType::string(merge_parameters(left_parameters, right_parameters, how)?)
 }
 
-/// Rebuild a text layout from its rank.
-const fn rebuild_text(rank: TextRank) -> DataType {
-    match rank {
-        TextRank::Fixed(width) => DataType::FixedAscii(width),
-        TextRank::Ascii => DataType::Ascii,
-        TextRank::Utf8View => DataType::Utf8View,
-        TextRank::LargeUtf8 => DataType::LargeUtf8,
-        TextRank::Utf8 => DataType::Utf8,
+/// Whether one string's bound leaves room for every value of a fixed width.
+fn holds_width(parameters: StringParameters, fixed: StringParameters) -> bool {
+    parameters
+        .bound()
+        .is_none_or(|bound| Some(bound) >= fixed.bound())
+}
+
+/// Meet two strings parameter by parameter.
+///
+/// Widening takes, for the layout, the wider offsets and the variable layout
+/// over a fixed one, a view staying a view only beside another view; for the
+/// charset, UTF-8 unless both agree; for the bound, none unless both have
+/// one, and then the larger. Narrowing is the mirror: the narrower layout,
+/// the narrower repertoire, the smaller bound.
+fn merge_parameters(
+    left: StringParameters,
+    right: StringParameters,
+    how: Widening,
+) -> Result<StringParameters> {
+    let layout = match how {
+        Widening::Up => match (left.is_fixed(), right.is_fixed()) {
+            (true, true) => StringLayout::FixedString,
+            (true, false) => right.layout(),
+            (false, true) => left.layout(),
+            (false, false) => variable_layout(
+                left.layout().is_view() && right.layout().is_view(),
+                left.layout().is_large() || right.layout().is_large(),
+            ),
+        },
+        Widening::Down if left.is_fixed() || right.is_fixed() => StringLayout::FixedString,
+        Widening::Down => variable_layout(
+            left.layout().is_view() && right.layout().is_view(),
+            left.layout().is_large() && right.layout().is_large(),
+        ),
+    };
+    let charset = match how {
+        _ if left.charset() == right.charset() => left.charset(),
+        Widening::Up => Charset::Utf8,
+        // Two different repertoires of one rank name neither's values; the
+        // left one is the deterministic pick, as with a decimal's backing.
+        Widening::Down if repertoire(right.charset()) < repertoire(left.charset()) => {
+            right.charset()
+        }
+        Widening::Down => left.charset(),
+    };
+    let bound = match (how, left.bound(), right.bound()) {
+        (Widening::Up, Some(left), Some(right)) => Some(left.max(right)),
+        (Widening::Up, _, _) => None,
+        (Widening::Down, Some(left), Some(right)) => Some(left.min(right)),
+        (Widening::Down, left, right) => left.or(right),
+    };
+    let parameters = StringParameters::new(layout, charset);
+    match bound {
+        Some(bound) => parameters.try_with_bound(bound),
+        None => Ok(parameters),
     }
+}
+
+/// The variable layout with the given view and offsets declarations.
+const fn variable_layout(view: bool, large: bool) -> StringLayout {
+    match (view, large) {
+        (true, true) => StringLayout::LargeStringView,
+        (true, false) => StringLayout::StringView,
+        (false, true) => StringLayout::LargeString,
+        (false, false) => StringLayout::String,
+    }
+}
+
+/// How much a charset names: US-ASCII, then one byte per scalar, then all
+/// of Unicode.
+const fn repertoire(charset: Charset) -> u8 {
+    match charset {
+        Charset::Ascii => 0,
+        _ if charset.is_single_byte() => 1,
+        _ => 2,
+    }
+}
+
+/// The text a non-text side re-encodes into beside `parameters`: at least
+/// `utf8`, because a number's rendering fits no fixed width and no bound.
+fn absorbing_text(parameters: StringParameters) -> Result<DataType> {
+    DataType::string(merge_parameters(
+        parameters,
+        StringParameters::default(),
+        Widening::Up,
+    )?)
 }
 
 /// Merge two numbers: decimals, then floats, then integers.
@@ -878,84 +965,164 @@ mod tests {
     use crate::DataType;
 
     #[test]
-    fn ascii_widths_meet_text_by_width_in_the_direction_asked_for() {
+    fn fixed_widths_meet_text_by_width_in_the_direction_asked_for() {
         let up = |left: &DataType, right: &DataType| left.merge_with(right, true).unwrap();
         let down = |left: &DataType, right: &DataType| left.merge_with(right, false).unwrap();
 
         assert_eq!(
-            up(&DataType::FixedAscii(4), &DataType::Utf8),
-            DataType::Utf8
+            up(&DataType::fixed_ascii(4).unwrap(), &DataType::utf8()),
+            DataType::utf8()
         );
         assert_eq!(
-            down(&DataType::FixedAscii(4), &DataType::Utf8),
-            DataType::FixedAscii(4)
+            down(&DataType::fixed_ascii(4).unwrap(), &DataType::utf8()),
+            DataType::fixed_ascii(4).unwrap()
         );
         assert_eq!(
-            up(&DataType::FixedAscii(4), &DataType::FixedAscii(8)),
-            DataType::FixedAscii(8)
+            up(
+                &DataType::fixed_ascii(4).unwrap(),
+                &DataType::fixed_ascii(8).unwrap()
+            ),
+            DataType::fixed_ascii(8).unwrap()
         );
         assert_eq!(
-            down(&DataType::FixedAscii(4), &DataType::FixedAscii(8)),
-            DataType::FixedAscii(4)
+            down(
+                &DataType::fixed_ascii(4).unwrap(),
+                &DataType::fixed_ascii(8).unwrap()
+            ),
+            DataType::fixed_ascii(4).unwrap()
         );
         assert_eq!(
-            up(&DataType::LargeUtf8, &DataType::FixedAscii(16)),
-            DataType::LargeUtf8
+            up(&DataType::large_utf8(), &DataType::fixed_ascii(16).unwrap()),
+            DataType::large_utf8()
         );
         assert_eq!(
-            down(&DataType::LargeUtf8, &DataType::FixedAscii(16)),
-            DataType::FixedAscii(16)
+            down(&DataType::large_utf8(), &DataType::fixed_ascii(16).unwrap()),
+            DataType::fixed_ascii(16).unwrap()
         );
         assert_eq!(
-            DataType::FixedAscii(4)
-                .merge_exact(&DataType::Utf8, Widening::Up)
+            DataType::fixed_ascii(4)
+                .unwrap()
+                .merge_exact(&DataType::utf8(), Widening::Up)
                 .unwrap(),
-            DataType::Utf8
+            DataType::utf8()
         );
     }
 
     #[test]
-    fn ascii_absorbs_a_number_at_no_less_than_utf8_and_only_when_allowed() {
+    fn a_fixed_string_absorbs_a_number_at_no_less_than_utf8_and_only_when_allowed() {
         assert_eq!(
-            DataType::FixedAscii(4)
+            DataType::fixed_ascii(4)
+                .unwrap()
                 .merge_with(&DataType::Int32, true)
                 .unwrap(),
-            DataType::Utf8
+            DataType::utf8()
         );
         assert_eq!(
             DataType::Int32
-                .merge_with(&DataType::FixedAscii(4), false)
+                .merge_with(&DataType::fixed_ascii(4).unwrap(), false)
                 .unwrap(),
-            DataType::Utf8
+            DataType::utf8()
         );
-        let refused = DataType::FixedAscii(4)
+        let refused = DataType::fixed_ascii(4)
+            .unwrap()
             .merge_exact(&DataType::Int32, Widening::Up)
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("ascii(4)"), "{refused}");
+        assert!(refused.contains("fixed_ascii(4)"), "{refused}");
         assert!(refused.contains("int32"), "{refused}");
     }
 
     #[test]
-    fn bytes_win_over_ascii_and_keep_only_an_identical_fixed_width() {
+    fn bytes_win_over_text_and_keep_only_an_identical_fixed_width() {
         assert_eq!(
-            DataType::FixedAscii(4)
-                .merge_with(&DataType::FixedSizeBinary(4), true)
+            DataType::fixed_ascii(4)
+                .unwrap()
+                .merge_with(&DataType::fixed_size_binary(4).unwrap(), true)
                 .unwrap(),
-            DataType::FixedSizeBinary(4)
+            DataType::fixed_size_binary(4).unwrap()
         );
         assert_eq!(
-            DataType::FixedSizeBinary(8)
-                .merge_with(&DataType::FixedAscii(4), true)
+            DataType::fixed_size_binary(8)
+                .unwrap()
+                .merge_with(&DataType::fixed_ascii(4).unwrap(), true)
                 .unwrap(),
-            DataType::Binary
+            DataType::binary()
         );
         assert_eq!(
-            DataType::FixedAscii(4)
-                .merge_with(&DataType::Binary, true)
+            DataType::fixed_ascii(4)
+                .unwrap()
+                .merge_with(&DataType::binary(), true)
                 .unwrap(),
-            DataType::Binary
+            DataType::binary()
         );
+        // The byte side keeps its layout and drops a maximum the other side
+        // never declared.
+        assert_eq!(
+            DataType::from_str("large_binary(16)")
+                .unwrap()
+                .merge_with(&DataType::utf8(), true)
+                .unwrap(),
+            DataType::large_binary()
+        );
+    }
+
+    #[test]
+    fn a_number_never_shares_a_fixed_byte_width() {
+        // Four bytes of `int32` are an encoding, not a slot the bytes side
+        // stores, so the pair is variable bytes in either direction.
+        let fixed = DataType::fixed_size_binary(4).unwrap();
+        assert_eq!(
+            DataType::Int32.merge_with(&fixed, true).unwrap(),
+            DataType::binary()
+        );
+        assert_eq!(
+            fixed.merge_with(&DataType::Int32, false).unwrap(),
+            DataType::binary()
+        );
+    }
+
+    #[test]
+    fn two_byte_types_meet_parameter_by_parameter() {
+        let up = |left: &str, right: &str| {
+            DataType::from_str(left)
+                .unwrap()
+                .merge_with(&DataType::from_str(right).unwrap(), true)
+                .unwrap()
+                .to_string()
+        };
+        let down = |left: &str, right: &str| {
+            DataType::from_str(left)
+                .unwrap()
+                .merge_with(&DataType::from_str(right).unwrap(), false)
+                .unwrap()
+                .to_string()
+        };
+        // Widening: the wider offsets, a view only beside a view, the
+        // variable layout over a fixed one, no bound over a bound.
+        assert_eq!(up("binary", "large_binary"), "large_binary");
+        assert_eq!(up("binary_view", "binary"), "binary");
+        assert_eq!(up("binary_view", "large_binary"), "large_binary");
+        assert_eq!(up("fixed_size_binary(4)", "binary_view"), "binary_view");
+        assert_eq!(up("fixed_size_binary(4)", "binary(2)"), "binary(4)");
+        assert_eq!(
+            up("fixed_size_binary(4)", "fixed_size_binary(8)"),
+            "binary(8)"
+        );
+        assert_eq!(up("binary(16)", "binary"), "binary");
+        assert_eq!(up("binary(16)", "binary(32)"), "binary(32)");
+        // Narrowing: the mirror.
+        assert_eq!(down("binary", "large_binary"), "binary");
+        assert_eq!(down("binary_view", "large_binary"), "binary");
+        assert_eq!(
+            down("fixed_size_binary(4)", "binary_view"),
+            "fixed_size_binary(4)"
+        );
+        assert_eq!(
+            down("fixed_size_binary(4)", "fixed_size_binary(8)"),
+            "fixed_size_binary(4)"
+        );
+        assert_eq!(down("binary(16)", "binary"), "binary(16)");
+        assert_eq!(down("binary(16)", "binary(32)"), "binary(16)");
     }
 
     #[test]
@@ -963,9 +1130,12 @@ mod tests {
         // The storage is the same either way, so the direction is free to
         // answer the tighter of the two types.
         for (left, right) in [
-            (DataType::FixedAscii(4), DataType::FixedSizeBinary(4)),
-            (DataType::Currency, DataType::FixedSizeBinary(3)),
-            (DataType::Uuid, DataType::FixedSizeBinary(16)),
+            (
+                DataType::fixed_ascii(4).unwrap(),
+                DataType::fixed_size_binary(4).unwrap(),
+            ),
+            (DataType::Currency, DataType::fixed_size_binary(3).unwrap()),
+            (DataType::Uuid, DataType::fixed_size_binary(16).unwrap()),
         ] {
             assert_eq!(
                 left.merge_with(&right, false).unwrap(),
@@ -977,10 +1147,9 @@ mod tests {
                 left,
                 "in either position"
             );
-            let width = super::fixed_width(&left).unwrap();
             assert_eq!(
                 left.merge_with(&right, true).unwrap(),
-                DataType::FixedSizeBinary(width),
+                right,
                 "widening answers the bytes"
             );
         }
@@ -988,9 +1157,9 @@ mod tests {
         // A width neither side shares is variable bytes, as before.
         assert_eq!(
             DataType::Uuid
-                .merge_with(&DataType::FixedSizeBinary(8), true)
+                .merge_with(&DataType::fixed_size_binary(8).unwrap(), true)
                 .unwrap(),
-            DataType::Binary
+            DataType::binary()
         );
     }
 
@@ -1002,41 +1171,44 @@ mod tests {
         // The code is the tighter type, so narrowing answers it in either
         // position and widening answers the shape that holds both.
         for other in [
-            DataType::FixedAscii(3),
-            DataType::Ascii,
-            DataType::Utf8,
-            DataType::LargeUtf8,
+            DataType::fixed_ascii(3).unwrap(),
+            DataType::ascii(),
+            DataType::utf8(),
+            DataType::large_utf8(),
         ] {
             assert_eq!(down(&DataType::Currency, &other), DataType::Currency);
             assert_eq!(down(&other, &DataType::Currency), DataType::Currency);
             assert_ne!(up(&DataType::Currency, &other), DataType::Currency);
         }
         assert_eq!(
-            down(&DataType::Cfi, &DataType::FixedAscii(6)),
+            down(&DataType::Cfi, &DataType::fixed_ascii(6).unwrap()),
             DataType::Cfi
         );
 
         // A side narrower than the code still outranks it: narrowing is the
         // tightest type that names both, not the most specific one.
         assert_eq!(
-            down(&DataType::Currency, &DataType::FixedAscii(2)),
-            DataType::FixedAscii(2)
+            down(&DataType::Currency, &DataType::fixed_ascii(2).unwrap()),
+            DataType::fixed_ascii(2).unwrap()
         );
 
         // Two different codes are the pair neither direction answers with a
         // code: neither standard names the other's values.
         assert_eq!(
             down(&DataType::Currency, &DataType::Country),
-            DataType::FixedAscii(2)
+            DataType::fixed_ascii(2).unwrap()
         );
         assert_eq!(
             up(&DataType::Currency, &DataType::Country),
-            DataType::FixedAscii(3)
+            DataType::fixed_ascii(3).unwrap()
         );
 
         // A number's rendering does not fit a code, so absorbing one is still
         // no less than `utf8`.
-        assert_eq!(down(&DataType::Currency, &DataType::Int32), DataType::Utf8);
+        assert_eq!(
+            down(&DataType::Currency, &DataType::Int32),
+            DataType::utf8()
+        );
     }
 
     #[test]
@@ -1084,6 +1256,73 @@ mod tests {
                 .merge_with(&DataType::decimal128(20, 2).unwrap(), false)
                 .unwrap(),
             DataType::decimal128(20, 2).unwrap()
+        );
+    }
+
+    #[test]
+    fn strings_meet_parameter_by_parameter() {
+        let up = |left: &DataType, right: &DataType| left.merge_with(right, true).unwrap();
+        let down = |left: &DataType, right: &DataType| left.merge_with(right, false).unwrap();
+        let dtype = |spelling: &str| DataType::from_str(spelling).unwrap();
+
+        // Offsets widen and narrow; a view stays a view only beside a view.
+        assert_eq!(
+            up(&DataType::utf8(), &DataType::large_utf8()),
+            DataType::large_utf8()
+        );
+        assert_eq!(
+            down(&DataType::utf8(), &DataType::large_utf8()),
+            DataType::utf8()
+        );
+        assert_eq!(
+            up(&DataType::utf8_view(), &DataType::utf8()),
+            DataType::utf8()
+        );
+        assert_eq!(
+            up(&DataType::utf8_view(), &dtype("large_utf8_view")),
+            dtype("large_utf8_view")
+        );
+        assert_eq!(
+            down(&DataType::utf8_view(), &dtype("large_utf8_view")),
+            DataType::utf8_view()
+        );
+
+        // Two charsets widen to UTF-8 and narrow to the smaller repertoire.
+        assert_eq!(
+            up(&DataType::ascii(), &dtype("string(windows-1252)")),
+            DataType::utf8()
+        );
+        assert_eq!(
+            down(&DataType::utf8(), &dtype("string(windows-1252)")),
+            dtype("string(windows-1252)")
+        );
+        assert_eq!(
+            down(&dtype("string(windows-1252)"), &DataType::ascii()),
+            DataType::ascii()
+        );
+        assert_eq!(
+            down(&dtype("string(latin1)"), &dtype("string(windows-1252)")),
+            dtype("string(latin1)")
+        );
+
+        // No bound beats a maximum widening; the smaller bound wins narrowing.
+        assert_eq!(up(&dtype("utf8(32)"), &DataType::utf8()), DataType::utf8());
+        assert_eq!(up(&dtype("utf8(32)"), &dtype("utf8(8)")), dtype("utf8(32)"));
+        assert_eq!(
+            down(&dtype("utf8(32)"), &DataType::utf8()),
+            dtype("utf8(32)")
+        );
+        assert_eq!(
+            down(&dtype("utf8(32)"), &dtype("utf8(8)")),
+            dtype("utf8(8)")
+        );
+        assert_eq!(
+            up(&dtype("fixed_utf8(40)"), &dtype("utf8(32)")),
+            dtype("utf8(40)")
+        );
+        assert_eq!(
+            down(&dtype("fixed_utf8(40)"), &dtype("utf8(32)")),
+            dtype("fixed_utf8(32)")
         );
     }
 }

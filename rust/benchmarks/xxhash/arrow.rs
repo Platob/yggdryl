@@ -100,7 +100,7 @@ fn fallback_batch() -> RecordBatch {
 /// One target root and the three source shapes holder filling distinguishes.
 #[cfg(feature = "arrow")]
 fn holder_fixtures(signed: bool) -> (Field, RecordBatch, RecordBatch, RecordBatch) {
-    let symbol = Field::new("symbol", DataType::Utf8, false);
+    let symbol = Field::new("symbol", DataType::utf8(), false);
     let mut digest = Field::new(
         "row_digest",
         if signed {

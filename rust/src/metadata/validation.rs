@@ -284,7 +284,7 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
             validate_python_qualname(&value)?;
             value
         }
-        FIELD_ENUM_KEY => parse_ascii_enum(&value)?.into_json(),
+        FIELD_ENUM_KEY => parse_string_enum(&value)?.into_json(),
         FIELD_INIT_KEY => parse_reserved_bool(FIELD_INIT_KEY, &value)?.to_string(),
         FIELD_PARTITION_KEY => parse_reserved_bool(FIELD_PARTITION_KEY, &value)?.to_string(),
         PARQUET_FIELD_ID_KEY => parse_field_id(&value)?.to_string(),
@@ -411,10 +411,10 @@ pub(super) fn invalid_content_length() -> Error {
 
 /// Parse the enum document a field's ASCII values are named by.
 ///
-/// The stored spelling is the one [`AsciiEnum::into_json`] renders, so a
+/// The stored spelling is the one [`StringEnum::into_json`] renders, so a
 /// document that reaches storage reads back as the enum that wrote it.
-pub(crate) fn parse_ascii_enum(value: &str) -> Result<AsciiEnum> {
-    AsciiEnum::from_json(value).map_err(|error| Error::InvalidMetadataValue {
+pub(crate) fn parse_string_enum(value: &str) -> Result<StringEnum> {
+    StringEnum::from_json(value).map_err(|error| Error::InvalidMetadataValue {
         key: SmolStr::new_static(FIELD_ENUM_KEY),
         reason: SmolStr::new(error.to_string()),
     })

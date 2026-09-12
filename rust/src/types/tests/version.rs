@@ -248,10 +248,12 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!(DataTypeId::Version.as_str(), "version");
     assert_eq!(DataTypeId::Version.as_u8(), 54);
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
-    // `Version` is no longer last: the coded FIX datatypes, then `Url`, then
+    // `Version` is no longer last: the coded FIX datatypes, then `Url` and
     // `Isin` were appended after it, which is what `as_u8` being a wire
-    // contract requires.
+    // contract requires; the five string layouts took the slots the text
+    // variants they replaced held.
     assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Isin));
+    assert_eq!(DataTypeId::LargeStringView.as_u8(), 31);
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());
     assert!(!dtype.is_nested());
@@ -351,7 +353,7 @@ fn arrow_field_values_and_casts_keep_version_identity() {
         .unwrap();
     assert!(Arc::ptr_eq(exact.column(0), &source));
 
-    let text_root = root(DataType::Utf8.required_field("begin_string"));
+    let text_root = root(DataType::utf8().required_field("begin_string"));
     let rendered = text_root
         .cast_arrow_batch(batch.clone(), ArrowCastOptions::new().with_safe(false))
         .unwrap();
@@ -385,7 +387,7 @@ fn defaults_merges_and_compatibility_do_not_fall_through() {
         DataType::Version
     );
     let refused = DataType::Version
-        .merge_with(&DataType::Utf8, true)
+        .merge_with(&DataType::utf8(), true)
         .unwrap_err()
         .to_string();
     assert!(refused.contains("version"), "{refused}");
@@ -409,7 +411,7 @@ fn defaults_merges_and_compatibility_do_not_fall_through() {
                 .clone()
                 .into_scheme_compat(&scheme)
                 .unwrap(),
-            DataType::Utf8,
+            DataType::utf8(),
             "{scheme}"
         );
     }

@@ -27,12 +27,12 @@ from typing import Annotated
 import pyarrow as pa
 
 from yggdryl import (
-    AsciiEnum,
     DataType,
     Field,
     MediaType,
     MimeType,
     PythonMetadata,
+    StringEnum,
     scalar,
     types,
     field,
@@ -151,12 +151,37 @@ def _build_generic_time_field() -> Field:
     return types.time("at", "us", nullable=False)
 
 
-def _build_ascii_datatype() -> DataType:
-    return DataType.ascii(3)
+def _build_fixed_ascii_datatype() -> DataType:
+    return DataType.fixed_ascii(3)
 
 
-def _build_ascii_field() -> Field:
+def _build_fixed_ascii_field() -> Field:
     return types.fixed_ascii("ccy", 4, nullable=False)
+
+
+def _build_string_datatype() -> DataType:
+    # The general constructor: a layout, a charset, and a bound read once.
+    return DataType.string("large_string", "windows-1252", 32)
+
+
+def _build_string_field() -> Field:
+    return types.string("name", charset="windows-1252", max=32, nullable=False)
+
+
+def _read_string_parameters() -> object:
+    return LATIN.string_parameters
+
+
+def _build_bytes_datatype() -> DataType:
+    return DataType.bytes("binary", 16)
+
+
+def _build_bytes_field() -> Field:
+    return types.bytes("blob", layout="fixed_size_binary", fixed=16, nullable=False)
+
+
+def _read_bytes_parameters() -> object:
+    return BOUNDED_BYTES.bytes_parameters
 
 
 def _build_code_datatype() -> DataType:
@@ -339,12 +364,14 @@ def _write_python_class_metadata() -> None:
 
 
 CURRENCY = DataType("currency")
-CURRENCIES = AsciiEnum.from_logical_name("currency")
+CURRENCIES = StringEnum.from_logical_name("currency")
+LATIN = DataType.string("large_string", "windows-1252", 32)
+BOUNDED_BYTES = DataType.bytes("binary", 16)
 
 
 def _ascii_prebuilt_vocabulary() -> object:
     # What a schema pays once when it declares a currency column.
-    return AsciiEnum.from_logical_name("currency")
+    return StringEnum.from_logical_name("currency")
 
 
 def _ascii_vocabulary_members() -> object:
@@ -384,8 +411,14 @@ def main() -> None:
         _measure("native typed map", _build_nested_typed_field, args.iterations)
         _measure("generic time datatype", _build_generic_time_datatype, args.iterations)
         _measure("generic time field", _build_generic_time_field, args.iterations)
-        _measure("ascii width datatype", _build_ascii_datatype, args.iterations)
-        _measure("ascii width field", _build_ascii_field, args.iterations)
+        _measure("fixed ascii datatype", _build_fixed_ascii_datatype, args.iterations)
+        _measure("fixed ascii field", _build_fixed_ascii_field, args.iterations)
+        _measure("string datatype", _build_string_datatype, args.iterations)
+        _measure("string field", _build_string_field, args.iterations)
+        _measure("string parameters read", _read_string_parameters, args.iterations)
+        _measure("bytes datatype", _build_bytes_datatype, args.iterations)
+        _measure("bytes field", _build_bytes_field, args.iterations)
+        _measure("bytes parameters read", _read_bytes_parameters, args.iterations)
         _measure("code datatype", _build_code_datatype, args.iterations)
         _measure("code field", _build_code_field, args.iterations)
         _measure("native variant datatype", _build_variant_datatype, args.iterations)
@@ -510,17 +543,17 @@ def main() -> None:
             args.iterations,
         )
         _measure(
-            "ASCII vocabulary prebuilt",
+            "string vocabulary prebuilt",
             _ascii_prebuilt_vocabulary,
             max(1, args.iterations // 100),
         )
         _measure(
-            "ASCII vocabulary members",
+            "string vocabulary members",
             _ascii_vocabulary_members,
             max(1, args.iterations // 100),
         )
         _measure(
-            "ASCII vocabulary IntEnum",
+            "string vocabulary IntEnum",
             _ascii_vocabulary_intenum,
             max(1, args.iterations // 1_000),
         )

@@ -54,8 +54,7 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 
 use crate::txhash::{TxHash, unix_from_scalar};
-use crate::types::State;
-use crate::types::ascii::AsciiFamily;
+use crate::types::{Code, State};
 use crate::{DigestAlgorithm, Result, Scalar, TimeUnit};
 
 use super::msg::FixMsg;
@@ -405,7 +404,7 @@ fn is_terminal(message: &FixMsg) -> bool {
         .filter_map(|tag| message.get_by_tag(tag))
         .find(|held| !held.is_null())
         .and_then(|held| match held {
-            Scalar::Ascii(AsciiFamily::State(state)) => Some(state.clone()),
+            Scalar::Code(Code::State(state)) => Some(state.clone()),
             other => other.as_str().and_then(State::from_spelling),
         })
         .is_some_and(|state| !state.is_live())

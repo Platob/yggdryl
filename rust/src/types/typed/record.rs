@@ -37,7 +37,7 @@ use crate::{Error, Field, Result, Scalar};
 /// # fn main() -> yggdryl::Result<()> {
 /// let row = DataType::from_fields([
 ///     DataType::Int64.required_field("id"),
-///     DataType::Utf8.nullable_field("symbol"),
+///     DataType::utf8().nullable_field("symbol"),
 /// ])?
 /// .required_field("row");
 ///
@@ -191,7 +191,7 @@ impl<'a> FieldRecord<'a> {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let row = DataType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::Utf8.nullable_field("symbol"),
+    ///     DataType::utf8().nullable_field("symbol"),
     /// ])?
     /// .required_field("row");
     /// let rows = Scalar::from_sequence([

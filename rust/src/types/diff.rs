@@ -327,12 +327,31 @@ impl DiffEngine {
                     ));
                 }
             }
-            (D::FixedSizeBinary(left), D::FixedSizeBinary(right)) => {
-                if left != right {
+            // The layout is the identifier, so two layouts are two kinds
+            // below; one layout leaves the bound, and for a string the
+            // charset, to compare.
+            (D::Bytes(left), D::Bytes(right)) if left.layout() == right.layout() => {
+                if left.bound() != right.bound() {
+                    self.pending.push_back(changed_debug(
+                        &property_path(&path, "bound"),
+                        left.bound(),
+                        right.bound(),
+                    ));
+                }
+            }
+            (D::String(left), D::String(right)) if left.layout() == right.layout() => {
+                if left.charset() != right.charset() {
                     self.pending.push_back(changed_display(
-                        &property_path(&path, "width"),
-                        left,
-                        right,
+                        &property_path(&path, "charset"),
+                        left.charset(),
+                        right.charset(),
+                    ));
+                }
+                if left.bound() != right.bound() {
+                    self.pending.push_back(changed_debug(
+                        &property_path(&path, "bound"),
+                        left.bound(),
+                        right.bound(),
                     ));
                 }
             }

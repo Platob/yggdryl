@@ -179,7 +179,7 @@ impl Index<&str> for DataType {
 /// use yggdryl::DataType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let items = DataType::list(DataType::Utf8.nullable_field("item"));
+/// let items = DataType::list(DataType::utf8().nullable_field("item"));
 /// assert_eq!(items[0].name(), "item");
 /// # Ok(())
 /// # }
@@ -751,8 +751,8 @@ impl Field {
     /// let mut row = DataType::from_fields([DataType::Int64.required_field("id")])?
     ///     .required_field("row");
     ///
-    /// row.set_field_at(0, DataType::Utf8.required_field("id"))?;
-    /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
+    /// row.set_field_at(0, DataType::utf8().required_field("id"))?;
+    /// assert_eq!(row["id"].dtype(), &DataType::utf8());
     /// # Ok(())
     /// # }
     /// ```
@@ -796,14 +796,14 @@ impl Field {
     ///     .required_field("row");
     ///
     /// // An unknown name appends.
-    /// row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))?;
+    /// row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))?;
     /// assert_eq!(row.field_len(), 2);
     ///
     /// // A known one replaces, keeping its position.
-    /// row.set_field_by_path("id", DataType::Utf8.required_field("id"))?;
+    /// row.set_field_by_path("id", DataType::utf8().required_field("id"))?;
     /// assert_eq!(row.field_len(), 2);
     /// assert_eq!(row[0].name(), "id");
-    /// assert_eq!(row["id"].dtype(), &DataType::Utf8);
+    /// assert_eq!(row["id"].dtype(), &DataType::utf8());
     /// # Ok(())
     /// # }
     /// ```
@@ -862,7 +862,7 @@ impl Field {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut row = DataType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::Utf8.required_field("venue"),
+    ///     DataType::utf8().required_field("venue"),
     /// ])?
     /// .required_field("row");
     ///

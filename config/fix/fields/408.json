@@ -52,7 +52,7 @@
   {
     "name": "paymentstreamfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -115,7 +115,7 @@
   {
     "name": "paymentstreaminflationlagunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -167,7 +167,7 @@
   {
     "name": "paymentstreaminflationpublicationsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -241,7 +241,7 @@
   {
     "name": "paymentstreamnondeliverablefixingdatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -277,7 +277,7 @@
   {
     "name": "paymentstreamnondeliverablefixingdatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -303,7 +303,7 @@
   {
     "name": "underlyingpaymentstreamnondeliverablesettlreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -565,7 +565,7 @@
   {
     "name": "paymentschedulestepfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -677,7 +677,7 @@
   {
     "name": "paymentschedulefixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -701,7 +701,7 @@
   {
     "name": "paymentschedulefixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -754,7 +754,7 @@
   {
     "name": "paymentschedulefixingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -791,7 +791,7 @@
   {
     "name": "paymentscheduleinterimexchangedatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -815,7 +815,7 @@
   {
     "name": "paymentscheduleinterimexchangedatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -892,7 +892,7 @@
   {
     "name": "paymentschedulereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -978,7 +978,7 @@
   {
     "name": "paymentstubindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1015,7 +1015,7 @@
   {
     "name": "paymentstubindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1154,7 +1154,7 @@
   {
     "name": "paymentstubindex2",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1191,7 +1191,7 @@
   {
     "name": "paymentstubindex2curveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

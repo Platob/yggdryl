@@ -13,6 +13,7 @@
 #[cfg(feature = "arrow")]
 pub mod arrow;
 mod bytestream;
+pub mod charset;
 mod codec;
 pub mod coding;
 mod datatype_id;
@@ -60,6 +61,7 @@ pub mod xxhash;
 #[cfg(feature = "arrow")]
 pub use arrow::{ArrowShape, ArrowValue};
 pub use bytestream::ByteStream;
+pub use charset::Charset;
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;
@@ -127,16 +129,16 @@ pub use types::protocol::{
     SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::{
-    AsciiEnum, AsciiType, BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType,
-    GeospatialParameters, GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType,
-    TemporalType, TextType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
-};
-pub use types::{
-    AsciiValue, BytesValue, Children, DecimalValue, Differences, Enum, Field, FieldRecord,
+    Bytes, Children, Code, CodeValue, DecimalValue, Differences, Enum, Field, FieldRecord,
     FieldRef, FieldScalar, FieldType, Floating, FloatingValue, GeospatialValue, Integer,
     IntegerValue, NestedValue, OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty,
-    Scalar, ScalarFamily, ScalarValue, TemporalFamily, TemporalValue, TextValue, TypedField,
+    Scalar, ScalarFamily, ScalarValue, Str, TemporalFamily, TemporalValue, TypedField,
     TypedFieldRef,
+};
+pub use types::{
+    BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,
+    GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType, StringEnum, StringType,
+    TemporalType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

@@ -27,7 +27,7 @@ fn warehouse(label: &str) -> (std::path::PathBuf, Catalog<Folder>) {
 fn taxi_schema() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .unwrap()
     .required_field("row")
@@ -37,7 +37,9 @@ fn taxi_schema() -> Field {
 fn marked_taxi_schema() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue").with_partition(true),
+        DataType::utf8()
+            .nullable_field("venue")
+            .with_partition(true),
     ])
     .unwrap()
     .required_field("row")

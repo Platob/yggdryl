@@ -37,8 +37,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::types::ascii::casts::{ingest_ascii_array, ingest_code_array, render_ascii_text};
-use crate::types::bytes::casts::bridges_through_binary;
+use crate::types::bytes::casts::{bridges_through_binary, ingest_bytes_array};
 use crate::types::cast::text::{holds_text, ingest_text_values};
 use crate::types::decimal::casts::holds_decimal;
 use crate::types::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
@@ -47,12 +46,17 @@ use crate::types::nested::casts::{
     exposed_logical_null_count, fill_nulls, folded_field_mapping, is_logically_null,
     is_reconcilable_nested, list_child, union_mode_matches,
 };
+use crate::types::string::casts::{StringSource, ingest_code_array, ingest_string_array};
+use crate::types::string::{is_text_storage, needs_extension};
 use crate::types::temporal::casts::{
     holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };
 use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
-use crate::types::version::casts::{ingest_version_array, is_text_storage};
-use crate::types::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, code_refusal};
+use crate::types::version::casts::{ingest_version_array, is_text_layout};
+use crate::types::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
+    STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
+};
 use crate::types::{RecognizedExtension, recognized_arrow_extension};
 use crate::{DataType, Field, Scalar};
 use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
@@ -303,20 +307,24 @@ enum ArrayCastKind {
     GeospatialIngest,
     /// A recognized geospatial source rendering as WKT text.
     GeospatialWkt,
-    /// Values entering an ASCII width: every exposed value is validated
-    /// under the width's rule and padded into the fixed storage. A fixed
-    /// binary of the target width is the same array once validated; any
-    /// other source first renders as Utf8 through Arrow's kernel.
-    AsciiIngest,
-    /// A recognized ASCII source rendering as trimmed text.
-    AsciiText,
-    /// Values entering a registered code: the same rule as [`Self::AsciiIngest`]
-    /// at the width the code fixes, which is a constant, so the validation
-    /// and the padding run monomorphized per code rather than reading a
-    /// width out of the datatype on every row.
+    /// Values entering a string: every exposed value is read under what the
+    /// source declares, restated under the target's layout, charset and
+    /// bound, and written into the target's own storage. A recognized string
+    /// or code source is read under its own parameters; bare text is read as
+    /// text and bare bytes as bytes already in the target's charset.
+    StringIngest {
+        source: StringSource,
+    },
+    /// Values entering a bounded byte layout: every exposed value is
+    /// measured against the maximum Arrow has nowhere to state, and written
+    /// into the target's own layout. An unbounded layout declares nothing
+    /// Arrow does not, so it stays with the kernel.
+    BytesIngest,
+    /// Values entering a registered code: the string rule at the width the
+    /// code fixes, which is a constant, so the validation and the padding
+    /// run monomorphized per code rather than reading a width out of the
+    /// datatype on every row.
     CodeIngest,
-    /// A recognized code source rendering as trimmed text, at its own width.
-    CodeText,
     /// Values entering a UUID: every exposed value is validated under the one
     /// UUID rule and stored as its sixteen bytes.
     UuidIngest,
@@ -477,24 +485,33 @@ impl ArrayCastPlan {
         };
         check_extension_source(field, source_extension.as_ref())?;
         let expected = field.clone().into_arrow_ref()?.data_type().clone();
-        // A geospatial target validates WKB on the way in and an ASCII
-        // target validates text, so an exact storage source must still take
-        // the planned path - unless it is a recognized ASCII source of the
-        // same width, already validated when it was written.
+        // A geospatial target validates WKB on the way in and a string that
+        // declares more than Arrow can say - a charset, a bound - validates
+        // text, so an exact storage source must still take the planned path,
+        // unless it is a recognized source of exactly this datatype, already
+        // validated when it was written. Plain UTF-8 declares nothing Arrow
+        // does not, so its storage is its value; the same holds for bytes,
+        // where only a maximum says more than the layout.
         let ingest_validated = match field.dtype() {
             DataType::Geometry(_) | DataType::Geography(_) => true,
-            DataType::Ascii | DataType::FixedAscii(_) => !matches!(
-                source_extension.as_ref(),
-                Some(RecognizedExtension::Ascii(source)) if source == field.dtype()
-            ),
+            DataType::String(parameters) => {
+                needs_extension(*parameters)
+                    && !matches!(
+                        source_extension.as_ref(),
+                        Some(RecognizedExtension::String(source)) if source == field.dtype()
+                    )
+            }
+            DataType::Bytes(parameters) => {
+                crate::types::bytes::needs_extension(*parameters)
+                    && !matches!(
+                        source_extension.as_ref(),
+                        Some(RecognizedExtension::Bytes(source)) if source == field.dtype()
+                    )
+            }
             // The same rule for a code, over its own extension: a currency
             // column written as a currency is already validated, and one
             // written as three anonymous bytes is not.
-            DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin => !matches!(
+            code if code.is_code() => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
@@ -514,8 +531,8 @@ impl ArrayCastPlan {
         // Asked for the bytes, and the two layouts really are the same bytes:
         // nothing is converted, so no conversion rule applies. The same guard
         // that forces a validating target onto its own path excludes it here
-        // too - an ASCII width or a code is a rule about values, and sharing a
-        // buffer past it would store bytes the datatype promises are not there.
+        // too - a bounded string or a code is a rule about values, and sharing
+        // a buffer past it would store bytes the datatype promises are not there.
         } else if options.representation().is_bits()
             && !ingest_validated
             && same_bit_layout(source_type, &expected)
@@ -569,8 +586,8 @@ impl ArrayCastPlan {
         let kind = match (dtype, source_type) {
             // The extension-typed variants follow declared rules, never the
             // positional kernel: WKB is validated entering a geospatial
-            // column, text is validated entering an ASCII width, WKT needs a
-            // parser this workspace deliberately lacks, and a variant's
+            // column, text is validated entering a declared string, WKT needs
+            // a parser this workspace deliberately lacks, and a variant's
             // binary encoding lands with the Iceberg v3 layer, so only the
             // identity works until then.
             (DataType::Geometry(_) | DataType::Geography(_), source) => match source {
@@ -613,35 +630,10 @@ impl ArrayCastPlan {
                     });
                 }
             }
-            // An ASCII width takes fixed binary directly and everything the
-            // kernel renders as text through one Utf8 temporary; the width
-            // rule is checked per value either way.
-            (DataType::Ascii | DataType::FixedAscii(_), source) => {
-                if matches!(source, ArrowDataType::FixedSizeBinary(_))
-                    || can_cast_types(source, &ArrowDataType::Utf8)
-                {
-                    ArrayCastKind::AsciiIngest
-                } else {
-                    return Err(Error::Unsupported {
-                        kind: dtype.name(),
-                        reason: format!(
-                            "expected a fixed binary or a column Arrow renders as utf8 to cast \
-                             into {}, got {source:?}",
-                            dtype.name()
-                        ),
-                    });
-                }
-            }
-            // A code takes the same two sources as a width, and refuses the
-            // same third, at the width its own type fixes.
-            (
-                DataType::Country
-                | DataType::Currency
-                | DataType::Mic
-                | DataType::Cfi
-                | DataType::Isin,
-                source,
-            ) => {
+            // A code takes fixed binary directly and everything the kernel
+            // renders as text through one Utf8 temporary, at the width its
+            // own type fixes; the rule is checked per value either way.
+            (code, source) if code.is_code() => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
@@ -657,22 +649,15 @@ impl ArrayCastPlan {
                     });
                 }
             }
-            (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, ArrowDataType::Binary)
-                if matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
+            // The renderings below spell a value as text and write it into
+            // the target's text storage as it is, so they take only a string
+            // whose storage is text and whose bound has nothing to check.
+            (DataType::String(parameters), ArrowDataType::Binary)
+                if is_text_storage(*parameters)
+                    && !parameters.is_bounded()
+                    && matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
             {
                 ArrayCastKind::GeospatialWkt
-            }
-            (
-                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-                ArrowDataType::Binary | ArrowDataType::FixedSizeBinary(_),
-            ) if matches!(source_extension, Some(RecognizedExtension::Ascii(_))) => {
-                ArrayCastKind::AsciiText
-            }
-            (
-                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-                ArrowDataType::FixedSizeBinary(_),
-            ) if matches!(source_extension, Some(RecognizedExtension::Code(_))) => {
-                ArrayCastKind::CodeText
             }
             // A UUID takes its sixteen bytes directly and every text spelling
             // through one Utf8 temporary; the one UUID rule runs per value
@@ -688,24 +673,93 @@ impl ArrayCastPlan {
                     }
                 }
             }
-            (DataType::Version, source) if is_text_storage(source) => ArrayCastKind::VersionIngest,
+            (DataType::Version, source) if is_text_layout(source) => ArrayCastKind::VersionIngest,
             (DataType::Version, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to version is not supported"),
             },
-            (DataType::Url, source) if is_text_storage(source) => ArrayCastKind::UrlIngest,
+            (DataType::Url, source) if is_text_layout(source) => ArrayCastKind::UrlIngest,
             (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
             },
-            (
-                DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-                ArrowDataType::FixedSizeBinary(16),
-            ) if matches!(source_extension, Some(RecognizedExtension::Uuid)) => {
+            (DataType::String(parameters), ArrowDataType::FixedSizeBinary(16))
+                if is_text_storage(*parameters)
+                    && !parameters.is_bounded()
+                    && matches!(source_extension, Some(RecognizedExtension::Uuid)) =>
+            {
                 ArrayCastKind::UuidText
             }
-            (DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View, source)
-                if is_temporal_arrow(source) =>
+            (DataType::String(parameters), source)
+                if is_text_storage(*parameters)
+                    && !parameters.is_bounded()
+                    && is_temporal_arrow(source) =>
             {
                 ArrayCastKind::TemporalText
+            }
+            // A string reads its values, never its buffers: a recognized
+            // string or code source is read under what it declares, bare text
+            // as text, and bare bytes as bytes already in the target's
+            // charset. Plain UTF-8 from bare storage declares nothing to
+            // check, so it stays with Arrow's own kernel below; an encoded
+            // source is decoded first, by the arms below, so the reading
+            // sees the column the encoding was hiding.
+            (DataType::String(parameters), source)
+                if !matches!(
+                    source,
+                    ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
+                ) && (needs_extension(*parameters)
+                    || matches!(
+                        source_extension,
+                        Some(RecognizedExtension::String(_) | RecognizedExtension::Code(_))
+                    )) =>
+            {
+                if !(matches!(
+                    source,
+                    ArrowDataType::Binary
+                        | ArrowDataType::LargeBinary
+                        | ArrowDataType::BinaryView
+                        | ArrowDataType::FixedSizeBinary(_)
+                ) || can_cast_types(source, &ArrowDataType::Utf8))
+                {
+                    return Err(Error::Unsupported {
+                        kind: dtype.name(),
+                        reason: format!(
+                            "expected a binary column or a column Arrow renders as utf8 to \
+                             cast into {dtype}, got {source:?}"
+                        ),
+                    });
+                }
+                ArrayCastKind::StringIngest {
+                    source: match source_extension {
+                        Some(RecognizedExtension::String(DataType::String(parameters))) => {
+                            StringSource::String(*parameters)
+                        }
+                        Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
+                        _ => StringSource::Bare,
+                    },
+                }
+            }
+            // A bounded byte layout reads its cells for the same reason: the
+            // maximum is the one thing about bytes Arrow cannot check. An
+            // encoded source is decoded first, by the arms below.
+            (DataType::Bytes(parameters), source)
+                if crate::types::bytes::needs_extension(*parameters)
+                    && !matches!(
+                        source,
+                        ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
+                    ) =>
+            {
+                if !(matches!(source, ArrowDataType::FixedSizeBinary(_))
+                    || can_cast_types(source, &ArrowDataType::Binary))
+                {
+                    return Err(Error::Unsupported {
+                        kind: dtype.name(),
+                        reason: format!(
+                            "expected a column Arrow reads as binary to cast into {dtype}, \
+                             got {source:?}"
+                        ),
+                    });
+                }
+                ArrayCastKind::BytesIngest
             }
             // A temporal reads text with this crate's spellings rather than
             // Arrow's: a grouped fraction, an hour past the end of the day, a
@@ -957,15 +1011,16 @@ impl ArrayCastPlan {
             // pair gets: the payload a row holds is not the payload the target
             // declares, so it is a value change rather than a framing change,
             // and Arrow's own message names neither datatype.
-            (DataType::FixedSizeBinary(width), ArrowDataType::FixedSizeBinary(source_width))
-                if width != source_width =>
+            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
+                if parameters
+                    .fixed()
+                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
             {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
                     reason: format!(
                         "a fixed binary of {source_width} bytes holds a different payload than \
-                         one of {width} bytes, so it is a value change rather than a framing \
-                         change"
+                         {dtype}, so it is a value change rather than a framing change"
                     ),
                 });
             }
@@ -1086,14 +1141,12 @@ impl ArrayCastPlan {
             ArrayCastKind::GeospatialWkt => {
                 render_wkt_array(&array, &self.expected, &self.field, exposure, budget)?
             }
-            ArrayCastKind::AsciiIngest => ingest_ascii_array(
-                &array,
-                &self.expected,
-                self.safe(),
-                &self.field,
-                exposure,
-                budget,
-            )?,
+            ArrayCastKind::StringIngest { source } => {
+                ingest_string_array(&array, source, self.safe(), &self.field, exposure, budget)?
+            }
+            ArrayCastKind::BytesIngest => {
+                ingest_bytes_array(&array, self.safe(), &self.field, exposure, budget)?
+            }
             ArrayCastKind::UuidIngest => ingest_uuid_array(
                 &array,
                 &self.expected,
@@ -1110,9 +1163,6 @@ impl ArrayCastPlan {
             }
             ArrayCastKind::UrlIngest => {
                 crate::types::url::casts::ingest_url_array(&array, &self.field, exposure, budget)?
-            }
-            ArrayCastKind::AsciiText => {
-                render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
             }
             // One match per array selects the code's width; every row after
             // it runs against a constant.
@@ -1152,14 +1202,36 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
+                DataType::Side => ingest_code_array::<SIDE_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::MsgDirection => ingest_code_array::<DIRECTION_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::State => ingest_code_array::<STATE_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::TimeInForce => ingest_code_array::<TIMEINFORCE_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
                 other => return Err(code_refusal(other).into()),
             },
-            // Rendering reads bytes out and never pads, so a code shares the
-            // width's one implementation: the storage says the width, and
-            // the recognizer already agreed it is the code's own.
-            ArrayCastKind::CodeText => {
-                render_ascii_text(&array, &self.expected, &self.field, exposure, budget)?
-            }
             ArrayCastKind::TemporalText => {
                 render_temporal_text(&array, self.safe(), &self.field, exposure, budget)?
             }
@@ -1338,7 +1410,7 @@ impl ArrayCastPlan {
 ///
 /// `source_metadata` is the Arrow metadata of the field the array came from,
 /// when the caller has one: it carries the extension identity, so a
-/// recognized ASCII width or geospatial column follows the declared rules
+/// recognized string or geospatial column follows the declared rules
 /// exactly as a batch column does. A bare array casts as its storage.
 pub(crate) fn cast_field_array(
     field: &Field,
@@ -1368,30 +1440,39 @@ pub(crate) fn cast_field_array(
 /// edge-interpretation change by name: both are value transformations, not
 /// schema casts. A matching geospatial pair, and every plain-storage target
 /// (bytes stay bytes, text renders as WKT), passes through to the planned
-/// arms. An ASCII source is validated text and crosses to every target:
-/// another width re-validates, text trims, bytes keep the padding.
+/// arms. A string or code source is validated text and crosses to every
+/// target: another string re-reads it, text takes its characters, bytes
+/// keep what was stored. A bounded byte source crosses the same way.
 fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) -> Result<()> {
     let Some(source) = source else {
         return Ok(());
     };
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
-        (_, RecognizedExtension::Ascii(_) | RecognizedExtension::Code(_)) => Ok(()),
+        (_, RecognizedExtension::Code(_) | RecognizedExtension::String(_)) => Ok(()),
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
-        (
-            DataType::Version | DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-            RecognizedExtension::Version,
-        ) => Ok(()),
+        // A bounded byte source is its storage with a rule already checked:
+        // another byte target re-measures it, and every other target reads
+        // the bytes as it reads bare storage.
+        (_, RecognizedExtension::Bytes(_)) => Ok(()),
+        (DataType::Version, RecognizedExtension::Version) => Ok(()),
+        (DataType::String(parameters), RecognizedExtension::Version)
+            if is_text_storage(*parameters) =>
+        {
+            Ok(())
+        }
         (other, RecognizedExtension::Version) => Err(Error::Unsupported {
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
         }),
-        (
-            DataType::Url | DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
-            RecognizedExtension::Url,
-        ) => Ok(()),
+        (DataType::Url, RecognizedExtension::Url) => Ok(()),
+        (DataType::String(parameters), RecognizedExtension::Url)
+            if is_text_storage(*parameters) =>
+        {
+            Ok(())
+        }
         (other, RecognizedExtension::Url) => Err(Error::Unsupported {
             kind: "url",
             reason: format!("casting url to {} is not supported", other.name()),

@@ -310,6 +310,46 @@ fn into_io_error(error: Error) -> std::io::Error {
     }
 }
 
+/// Lazily discard a prefix of a reader before serving the requested position.
+///
+/// A transformed stream has no seek: the bytes at a decoded or decompressed
+/// offset are only reachable by producing everything before them. Both
+/// transforming handles - [`crate::coding::Coding`] and
+/// [`crate::charset::Transcoded`] - reach a position this way, through one
+/// bounded scratch buffer that retains nothing.
+pub(crate) struct SkipReader<R> {
+    reader: R,
+    remaining: u64,
+}
+
+impl<R> SkipReader<R> {
+    /// Serve `reader` from `remaining` bytes in.
+    pub(crate) const fn new(reader: R, remaining: u64) -> Self {
+        Self { reader, remaining }
+    }
+}
+
+impl<R: Read> Read for SkipReader<R> {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        if target.is_empty() {
+            return Ok(0);
+        }
+        let mut discarded = [0_u8; 8 * 1024];
+        while self.remaining > 0 {
+            let length = usize::try_from(self.remaining)
+                .unwrap_or(usize::MAX)
+                .min(discarded.len());
+            let read = self.reader.read(&mut discarded[..length])?;
+            if read == 0 {
+                self.remaining = 0;
+                return Ok(0);
+            }
+            self.remaining -= read as u64;
+        }
+        self.reader.read(target)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Read;

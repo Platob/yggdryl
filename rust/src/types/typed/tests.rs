@@ -33,8 +33,8 @@ fn a_pairing_holds_only_a_value_its_field_accepts() {
 fn nullability_is_the_fields_rule() {
     for dtype in [
         DataType::Int64,
-        DataType::Utf8,
-        DataType::Binary,
+        DataType::utf8(),
+        DataType::binary(),
         DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::NAIVE,
@@ -51,7 +51,7 @@ fn nullability_is_the_fields_rule() {
         assert!(refused.to_string().contains("null"), "{refused}");
     }
 
-    let field = Field::new("value", DataType::Utf8, false);
+    let field = Field::new("value", DataType::utf8(), false);
     assert!(!FieldScalar::new(&field, "").unwrap().is_null());
 }
 
@@ -82,7 +82,7 @@ fn text_is_read_under_the_field_through_the_one_text_door() {
     );
     assert!(FieldScalar::parse_str(&size, "forty-two").is_err());
 
-    let payload = Field::new("payload", DataType::Binary, false);
+    let payload = Field::new("payload", DataType::binary(), false);
     assert_eq!(
         FieldScalar::parse_str(&payload, "QUJD").unwrap().as_bytes(),
         Some(&b"ABC"[..])
@@ -129,7 +129,7 @@ fn a_nested_value_is_validated_against_the_field_it_claims() {
     let row = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]);
     let schema = DataType::from_fields([
         Field::new("id", DataType::Int64, false),
-        Field::new("symbol", DataType::Utf8, false),
+        Field::new("symbol", DataType::utf8(), false),
     ])
     .unwrap()
     .required_field("row");
@@ -186,7 +186,7 @@ fn the_accessors_are_the_values_own() {
 
 #[test]
 fn both_halves_come_back_out() {
-    let field = Field::new("symbol", DataType::Utf8, false);
+    let field = Field::new("symbol", DataType::utf8(), false);
     let (borrowed, value) = FieldScalar::new(&field, "AAPL").unwrap().into_parts();
     assert!(std::ptr::eq(borrowed, &field));
     assert_eq!(value, Scalar::from("AAPL"));
@@ -405,7 +405,7 @@ mod arrow {
     fn a_struct_pairing_decodes_and_reprojects_its_canonical_row_spelling() {
         let structure = DataType::from_fields([
             Field::new("id", DataType::Int64, false),
-            Field::new("name", DataType::Utf8, true),
+            Field::new("name", DataType::utf8(), true),
         ])
         .unwrap()
         .required_field("row");

@@ -25,7 +25,7 @@ const ROWS: usize = crate::bench_profile::corpus(65_536, 1_024);
 fn batch(base: usize, rows: usize) -> RecordBatch {
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Float64.required_field("price"),
     ])
     .expect("a struct")

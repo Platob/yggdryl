@@ -13,7 +13,7 @@ fn handle(name: &str) -> Buffer {
 
 fn quote_root() -> Field {
     DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])
     .expect("the root datatype is valid")
@@ -77,7 +77,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
         .expect("the bytes write");
 
     let widened = DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Decimal128 {
             precision: 12,
             scale: 2,

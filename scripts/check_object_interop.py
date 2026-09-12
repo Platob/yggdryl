@@ -93,14 +93,25 @@ KMS_KEY_ID = "arn:aws:kms:eu-west-1:123456789012:key/abcd-ef01"
 KMS_CONTEXT = '{"desk":"power","book":"eu-gas"}'
 
 
+# The last MinIO release that attached a binary per platform to its GitHub
+# release. MinIO stopped publishing binaries after it, and `dl.min.io`, which
+# served the unversioned `minio` this script fetched before, answers 410 Gone
+# for every path since 2026-09-12; the GitHub assets are the one download
+# that still exists, so the release is pinned here rather than resolved.
+MINIO_RELEASE = "RELEASE.2025-04-22T22-12-26Z"
+
+
 def minio_url() -> str:
-    """The MinIO release for this platform."""
+    """The pinned MinIO release's binary for this platform."""
     system = {"Linux": "linux", "Darwin": "darwin", "Windows": "windows"}[platform.system()]
     machine = {"x86_64": "amd64", "AMD64": "amd64", "arm64": "arm64", "aarch64": "arm64"}[
         platform.machine()
     ]
     suffix = ".exe" if system == "windows" else ""
-    return f"https://dl.min.io/server/minio/release/{system}-{machine}/minio{suffix}"
+    return (
+        "https://github.com/minio/minio/releases/download/"
+        f"{MINIO_RELEASE}/minio.{system}-{machine}.{MINIO_RELEASE}{suffix}"
+    )
 
 
 def provision_minio() -> subprocess.Popen[bytes]:

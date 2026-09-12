@@ -2,13 +2,13 @@
   {
     "name": "legpaymentstreamcompoundingxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "LegPaymentStreamCompoundingXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"legpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42400"
     }
   },
@@ -140,7 +140,7 @@
   {
     "name": "legpaymentstreamcompoundingdatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -190,7 +190,7 @@
   {
     "name": "legpaymentstreamcompoundingfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -203,7 +203,7 @@
   {
     "name": "legpaymentstreamcompoundingrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -254,7 +254,7 @@
   {
     "name": "legpaymentstreamcompoundingdatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -303,7 +303,7 @@
   {
     "name": "legpaymentstreamcompoundingenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -342,7 +342,7 @@
   {
     "name": "legpaymentstreamcompoundingrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -366,7 +366,7 @@
   {
     "name": "legpaymentstreamcompoundingrateindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -517,7 +517,7 @@
   {
     "name": "legpaymentstreamcompoundingfinalrateroundingdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -605,7 +605,7 @@
   {
     "name": "legpaymentstreamcompoundingstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -705,7 +705,7 @@
   {
     "name": "legpaymentstreamfinalpricepaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -833,7 +833,7 @@
   {
     "name": "legpaymentstreamunderlierrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1003,7 +1003,7 @@
   {
     "name": "legpaymentstreamnearestexchangecontractrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1039,7 +1039,7 @@
   {
     "name": "legpaymentstreamformulacurrencydeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1087,7 +1087,7 @@
   {
     "name": "legpaymentstreamformuladesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1149,7 +1149,7 @@
   {
     "name": "legpaymentstubenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1200,7 +1200,7 @@
   {
     "name": "legpaymentstubenddatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

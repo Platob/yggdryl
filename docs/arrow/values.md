@@ -64,7 +64,7 @@ A held container keeps the length it knows; a stream keeps its laziness.
     use yggdryl::{ArrowShape, ArrowValue, DataType, Field, Scalar};
 
     let root = DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])?
     .required_field("row");
@@ -173,7 +173,7 @@ rows parse into.
     use yggdryl::{ArrowShape, ArrowValue, DataType, IOBase, IOMedia, IOMode, Scalar, Url};
 
     let root = DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::Int64.required_field("size"),
     ])?
     .required_field("row");

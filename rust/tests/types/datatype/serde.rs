@@ -21,7 +21,10 @@ fn structural_json_uses_tagged_objects_and_rejects_bad_shapes() {
         r#"{"type":"datetime64","unit":"year_month"}"#,
         r#"{"type":"interval","unit":"second"}"#,
         r#"{"type":"decimal128","precision":0,"scale":0}"#,
-        r#"{"type":"fixed_size_binary","width":-1}"#,
+        r#"{"type":"fixed_size_binary","width":16}"#,
+        r#"{"type":"binary","layout":"fixed_size_binary"}"#,
+        r#"{"type":"binary","max":0}"#,
+        r#"{"type":"utf8"}"#,
     ] {
         assert!(
             DataType::from_json(malformed_or_invalid).is_err(),

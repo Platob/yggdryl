@@ -414,8 +414,6 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
-module.exports.AsciiEnum = nativeBinding.AsciiEnum
-module.exports.JsAsciiEnum = nativeBinding.JsAsciiEnum
 module.exports.AvroBlock = nativeBinding.AvroBlock
 module.exports.JsAvroBlock = nativeBinding.JsAvroBlock
 module.exports.AvroBlocks = nativeBinding.AvroBlocks
@@ -516,6 +514,8 @@ module.exports.SnapshotRef = nativeBinding.SnapshotRef
 module.exports.JsSnapshotRef = nativeBinding.JsSnapshotRef
 module.exports.Statement = nativeBinding.Statement
 module.exports.JsStatement = nativeBinding.JsStatement
+module.exports.StringEnum = nativeBinding.StringEnum
+module.exports.JsStringEnum = nativeBinding.JsStringEnum
 module.exports.Table = nativeBinding.Table
 module.exports.JsTable = nativeBinding.JsTable
 module.exports.Tables = nativeBinding.Tables

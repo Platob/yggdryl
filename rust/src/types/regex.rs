@@ -15,7 +15,7 @@ impl DataType {
     /// optional branch. With `autotype`, a capture whose regex constrains its
     /// complete language to a supported scalar format becomes Boolean, Int64,
     /// Float64, Date32, Time32/Time64, or DateTime64. Broad captures such as
-    /// `\S+` remain Utf8. Disabling `autotype` makes every capture Utf8.
+    /// `\S+` remain `utf8`. Disabling `autotype` makes every capture `utf8`.
     ///
     /// Inference examines syntax only. It never reads a value, so callers can
     /// publish a result schema before opening the resource they will parse.
@@ -30,7 +30,7 @@ impl DataType {
     ///     r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)",
     ///     true,
     /// )?;
-    /// assert_eq!(dtype.field("level")?.dtype(), &DataType::Utf8);
+    /// assert_eq!(dtype.field("level")?.dtype(), &DataType::utf8());
     /// assert_eq!(dtype.field("id")?.dtype(), &DataType::Int64);
     /// assert!(dtype.field("id")?.is_nullable());
     /// # Ok(())
@@ -378,7 +378,7 @@ mod tests {
                 timezone: Timezone::UTC,
             }
         );
-        assert_eq!(dtype.field("text").unwrap().dtype(), &DataType::Utf8);
+        assert_eq!(dtype.field("text").unwrap().dtype(), &DataType::utf8());
         assert!(fields.iter().all(Field::is_nullable));
     }
 
@@ -390,7 +390,7 @@ mod tests {
                 .as_fields()
                 .unwrap()
                 .iter()
-                .all(|field| field.dtype() == &DataType::Utf8)
+                .all(|field| field.dtype() == &DataType::utf8())
         );
     }
 

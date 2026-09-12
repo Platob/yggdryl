@@ -5,7 +5,7 @@ use super::typed::assert_typed_marker;
 
 #[test]
 fn nested_markers_cover_every_child_layout() {
-    let item = || Field::new("item", DataType::Utf8, true);
+    let item = || Field::new("item", DataType::utf8(), true);
     assert_typed_marker::<nested::ListType>(DataType::list(item()));
     assert_typed_marker::<nested::ListViewType>(DataType::list_view(item()));
     assert_typed_marker::<nested::FixedSizeListType>(DataType::fixed_size_list(item(), 3).unwrap());
@@ -16,15 +16,15 @@ fn nested_markers_cover_every_child_layout() {
         DataType::union([(4, item())], UnionMode::Dense).unwrap(),
     );
     assert_typed_marker::<nested::DictionaryTypeMarker>(
-        DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
     );
     assert_typed_marker::<nested::MapTypeMarker>(
-        DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
     );
     assert_typed_marker::<nested::RunEndEncodedTypeMarker>(
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
-            Field::new("values", DataType::Utf8, true),
+            Field::new("values", DataType::utf8(), true),
         )
         .unwrap(),
     );
@@ -117,22 +117,22 @@ fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
         .required_field("row");
 
     // An unknown name appends - dict-like, and how a schema is built up.
-    row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))
+    row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[1].name(), "venue");
 
     // A known name replaces in place, keeping its position.
-    row.set_field_by_path("id", DataType::Utf8.required_field("id"))
+    row.set_field_by_path("id", DataType::utf8().required_field("id"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
-    assert_eq!(row["id"].dtype(), &DataType::Utf8);
+    assert_eq!(row["id"].dtype(), &DataType::utf8());
 
     // A position replaces only, and never grows the node silently.
-    row.set_field(1, DataType::LargeUtf8.nullable_field("venue"))
+    row.set_field(1, DataType::large_utf8().nullable_field("venue"))
         .unwrap();
-    assert_eq!(row["venue"].dtype(), &DataType::LargeUtf8);
+    assert_eq!(row["venue"].dtype(), &DataType::large_utf8());
     let message = row
         .set_field(7, DataType::Int64.nullable_field("late"))
         .unwrap_err()
@@ -178,9 +178,11 @@ fn a_path_resolves_by_name_before_it_decomposes() {
     assert!(row.get_field_by_path("a.b.c").is_none());
 
     // The same string does resolve when the route exists.
-    let deep = DataType::from_fields([DataType::from_fields([DataType::Utf8.required_field("c")])
-        .unwrap()
-        .required_field("a.b")])
+    let deep = DataType::from_fields([DataType::from_fields([
+        DataType::utf8().required_field("c")
+    ])
+    .unwrap()
+    .required_field("a.b")])
     .unwrap()
     .required_field("deep");
     assert_eq!(deep.field_by_path("a.b.c").unwrap().name(), "c");
@@ -194,7 +196,7 @@ fn a_path_resolves_by_name_before_it_decomposes() {
 fn a_list_is_transparent_to_a_dotted_path_when_reading() {
     let item = DataType::from_fields([
         DataType::Float64.required_field("price"),
-        DataType::from_fields([DataType::Utf8.required_field("id")])
+        DataType::from_fields([DataType::utf8().required_field("id")])
             .unwrap()
             .required_field("party"),
     ])
@@ -256,7 +258,7 @@ fn a_list_is_transparent_to_a_dotted_path_when_reading() {
             "{layout}"
         );
     }
-    let map = DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap();
+    let map = DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap();
     assert!(map.get_field_by_path("value").is_none());
     assert_eq!(
         map.get_field_by_path("entries.value").map(Field::name),
@@ -318,7 +320,7 @@ fn a_datatype_replaces_removes_and_keeps_its_layout() {
     // Growing or shrinking is a struct's business: a list holds exactly one
     // child, so it refuses rather than quietly becoming a struct.
     let message = list
-        .set_field_by_path("extra", DataType::Utf8.nullable_field("extra"))
+        .set_field_by_path("extra", DataType::utf8().nullable_field("extra"))
         .unwrap_err()
         .to_string();
     assert!(message.contains("a struct field"), "{message}");
@@ -327,7 +329,7 @@ fn a_datatype_replaces_removes_and_keeps_its_layout() {
 
     // A struct grows by an unresolved name and shrinks by either key.
     let mut row = DataType::from_fields([DataType::Int64.required_field("id")]).unwrap();
-    row.set_field("venue", DataType::Utf8.nullable_field("venue"))
+    row.set_field("venue", DataType::utf8().nullable_field("venue"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row.remove_field("venue").unwrap().name(), "venue");
@@ -367,19 +369,28 @@ fn two_datatypes_meet_at_the_one_that_holds_both() {
         up(&DataType::Float32, &DataType::Float64),
         DataType::Float64
     );
-    assert_eq!(down(&DataType::Utf8, &DataType::LargeUtf8), DataType::Utf8);
+    assert_eq!(
+        down(&DataType::utf8(), &DataType::large_utf8()),
+        DataType::utf8()
+    );
 
     // A null column has no shape, so it takes the other's in either position
     // and in either direction.
-    assert_eq!(up(&DataType::Null, &DataType::Utf8), DataType::Utf8);
+    assert_eq!(up(&DataType::Null, &DataType::utf8()), DataType::utf8());
     assert_eq!(down(&DataType::Int64, &DataType::Null), DataType::Int64);
 
     // Bytes hold every other encoding, and text holds all but bytes.
-    assert_eq!(up(&DataType::Utf8, &DataType::Binary), DataType::Binary);
-    assert_eq!(up(&DataType::Int64, &DataType::Binary), DataType::Binary);
-    assert_eq!(up(&DataType::Int64, &DataType::Utf8), DataType::Utf8);
-    assert_eq!(up(&DataType::Boolean, &DataType::Utf8), DataType::Utf8);
-    assert_eq!(up(&DataType::Date32, &DataType::Utf8), DataType::Utf8);
+    assert_eq!(
+        up(&DataType::utf8(), &DataType::binary()),
+        DataType::binary()
+    );
+    assert_eq!(
+        up(&DataType::Int64, &DataType::binary()),
+        DataType::binary()
+    );
+    assert_eq!(up(&DataType::Int64, &DataType::utf8()), DataType::utf8());
+    assert_eq!(up(&DataType::Boolean, &DataType::utf8()), DataType::utf8());
+    assert_eq!(up(&DataType::Date32, &DataType::utf8()), DataType::utf8());
 
     // A pair with no meeting point that is not a re-encoding is refused, and
     // the refusal names both sides.
@@ -403,7 +414,7 @@ fn two_datatypes_meet_at_the_one_that_holds_both() {
 fn merging_structs_takes_the_union_of_their_fields() {
     let left = DataType::from_fields([
         DataType::Int32.required_field("id"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ])
     .unwrap();
     let right = DataType::from_fields([
@@ -449,14 +460,14 @@ fn merging_reaches_into_every_nested_layout() {
 
     // Maps merge through their entries.
     assert_eq!(
-        DataType::map_of(DataType::Utf8, DataType::Int32, true)
+        DataType::map_of(DataType::utf8(), DataType::Int32, true)
             .unwrap()
             .merge_with(
-                &DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap(),
+                &DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
                 true,
             )
             .unwrap(),
-        DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap(),
+        DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
     );
 
     // And the recursion goes all the way down.
@@ -504,7 +515,7 @@ fn unnesting_flattens_structs_to_leaves_named_by_their_path() {
         DataType::Int64.required_field("id"),
         DataType::from_fields([
             DataType::Float64.required_field("px"),
-            DataType::from_fields([DataType::Utf8.required_field("ccy")])
+            DataType::from_fields([DataType::utf8().required_field("ccy")])
                 .unwrap()
                 .required_field("meta"),
         ])
@@ -546,10 +557,10 @@ fn exploding_replaces_each_collection_with_what_it_holds() {
     let row = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
-        DataType::map_of(DataType::Utf8, DataType::Int64, true)
+        DataType::map_of(DataType::utf8(), DataType::Int64, true)
             .unwrap()
             .nullable_field("tags"),
-        DataType::dictionary(DataType::Int16, DataType::Utf8)
+        DataType::dictionary(DataType::Int16, DataType::utf8())
             .unwrap()
             .required_field("codes"),
     ])
@@ -576,7 +587,7 @@ fn exploding_replaces_each_collection_with_what_it_holds() {
     );
     assert_eq!(
         exploded[3].dtype(),
-        &DataType::Utf8,
+        &DataType::utf8(),
         "a dictionary answers its value"
     );
 

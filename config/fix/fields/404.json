@@ -2,7 +2,7 @@
   {
     "name": "legpaymentschedulefixingdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -26,7 +26,7 @@
   {
     "name": "legpaymentschedulefixingdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -79,7 +79,7 @@
   {
     "name": "legpaymentschedulefixingtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -116,7 +116,7 @@
   {
     "name": "legpaymentscheduleinterimexchangedatesbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -140,7 +140,7 @@
   {
     "name": "legpaymentscheduleinterimexchangedatesoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -217,7 +217,7 @@
   {
     "name": "legpaymentschedulereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -303,7 +303,7 @@
   {
     "name": "legpaymentstubindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -340,7 +340,7 @@
   {
     "name": "legpaymentstubindexcurveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -479,7 +479,7 @@
   {
     "name": "legpaymentstubindex2",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -516,7 +516,7 @@
   {
     "name": "legpaymentstubindex2curveunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -654,7 +654,7 @@
   {
     "name": "legprovisiondatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -691,7 +691,7 @@
   {
     "name": "legprovisiondatetenorunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -891,7 +891,7 @@
   {
     "name": "businesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -903,7 +903,7 @@
   {
     "name": "legprovisiontext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -966,7 +966,7 @@
   {
     "name": "legprovisionoptionexercisebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -990,7 +990,7 @@
   {
     "name": "legprovisionoptionexerciseearliestdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1015,7 +1015,7 @@
   {
     "name": "legprovisionoptionexercisefrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1065,7 +1065,7 @@
   {
     "name": "legprovisionoptionexercisestartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1156,7 +1156,7 @@
   {
     "name": "legprovisionoptionexerciseearliesttimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1182,7 +1182,7 @@
   {
     "name": "legprovisionoptionexerciselatesttimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

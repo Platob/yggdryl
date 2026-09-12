@@ -86,7 +86,7 @@ fn typed_row_field() -> Field {
                 DataType::time32(TimeUnit::Millisecond).unwrap(),
                 false,
             ),
-            Field::new("payload", DataType::Binary, false),
+            Field::new("payload", DataType::binary(), false),
         ])
         .unwrap(),
         false,
@@ -256,10 +256,11 @@ fn codec_errors_keep_the_format_and_byte_position() {
 
 #[test]
 fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
-    let row = DataType::from_fields([DataType::FixedAscii(4).required_field("ccy")])
+    let row = DataType::from_fields([DataType::fixed_ascii(4).unwrap().required_field("ccy")])
         .unwrap()
         .required_field("row");
-    let expected = Scalar::from_sequence([DataType::FixedAscii(4).scalar("USD").unwrap()]);
+    let expected =
+        Scalar::from_sequence([DataType::fixed_ascii(4).unwrap().scalar("USD").unwrap()]);
     assert_eq!(
         json::from_utf8_with_field(r#"{"ccy":"USD"}"#, &row).unwrap(),
         expected
@@ -272,10 +273,7 @@ fn an_ascii_field_reads_natural_text_trimmed_and_refuses_what_does_not_fit() {
     let refused = json::from_utf8_with_field(r#"{"ccy":"EURO!"}"#, &row)
         .unwrap_err()
         .to_string();
-    assert!(
-        refused.contains("ASCII text of at most 4 bytes"),
-        "{refused}"
-    );
+    assert!(refused.contains("at most 4 bytes of us-ascii"), "{refused}");
 }
 
 #[test]

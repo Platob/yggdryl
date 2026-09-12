@@ -36,7 +36,7 @@ The media type picks the encoding; batches arrive one at a time.
     // A non-null struct Field is the schema.
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
 
@@ -220,7 +220,7 @@ impl From<Quote> for Scalar {
 
 let field = DataType::from_fields([
     DataType::Int32.required_field("id"),
-    DataType::Utf8.required_field("symbol"),
+    DataType::utf8().required_field("symbol"),
 ])?
 .required_field("quote");
 let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
@@ -411,8 +411,8 @@ The options field selects and casts in one pass; columns it omits are never read
 
     let stored = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("symbol"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("symbol"),
+        DataType::utf8().required_field("venue"),
     ])?
     .required_field("row");
     let arrow_schema = stored.into_arrow_schema()?;
@@ -444,7 +444,7 @@ The options field selects and casts in one pass; columns it omits are never read
     // reads everything and the cast supplies that column as nulls.
     let invented = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("nowhere"),
+        DataType::utf8().nullable_field("nowhere"),
     ])?
     .required_field("row");
     let widened = handle.read_arrow_reader(&plain.with_field(invented))?;
@@ -683,7 +683,7 @@ Overwrite replaces the resource, append retains stored rows, merge updates match
 
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
     let arrow_schema = schema.clone().into_arrow_schema()?;
@@ -816,7 +816,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
     use std::sync::Arc;
     let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
     let batch = RecordBatch::try_new(

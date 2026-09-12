@@ -121,9 +121,12 @@ def test_field_http_metadata_is_canonical_typed_and_https_compatible() -> None:
     assert field.content_encoding == " gzip,\tbr "
     assert field.content_length == 42
     assert field.mime_type == MimeType.JSON
-    assert field.media_type == MediaType.from_parts(
-        MimeType.JSON, [MimeType.GZIP, MimeType.BROTLI]
-    )
+    # The header declared a charset, and the media type now carries it rather
+    # than dropping it with the rest of the parameters.
+    assert field.media_type.charset == "utf-8"
+    declared = MediaType.from_parts(MimeType.JSON, [MimeType.GZIP, MimeType.BROTLI])
+    declared.set_charset("utf-8")
+    assert field.media_type == declared
     assert field.metadata.get("HTTPS:CONTENT-TYPE") == field.content_type
     assert field.get_property("https", "CONTENT-TYPE") == field.content_type
     assert dict(field.property_iter("https")) == {
@@ -1494,10 +1497,14 @@ def test_asking_for_bits_never_reinterprets_a_different_width() -> None:
     )
     assert widened.to_pylist() == [7]
 
-    # And a datatype whose values follow a rule keeps that rule.
+    # And a datatype whose values follow a rule keeps that rule: a safe cast
+    # nulls the cell it cannot read, a strict one names it.
+    assert Field("ccy", "fixed_ascii(4)").cast_arrow_array(
+        pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), **bits
+    ).to_pylist() == [None]
     with pytest.raises(ValueError, match="ccy"):
-        Field("ccy", "ascii(4)").cast_arrow_array(
-            pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), **bits
+        Field("ccy", "fixed_ascii(4)").cast_arrow_array(
+            pa.array([b"\xff\xff\xff\xff"], type=pa.binary(4)), safe=False, **bits
         )
 
 

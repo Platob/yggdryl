@@ -192,11 +192,15 @@ test('field HTTP metadata is canonical, typed, and HTTPS-compatible', () => {
   assert.equal(field.contentEncoding, ' gzip,\tbr ')
   assert.equal(field.contentLength, 42n)
   assert.ok(field.mimeType.equals(MimeType.JSON))
-  assert.ok(
-    field.mediaType.equals(
-      MediaType.fromParts(MimeType.JSON, [MimeType.GZIP, MimeType.BROTLI]),
-    ),
-  )
+  // The header declared a charset, and the media type now carries it rather
+  // than dropping it with the rest of the parameters.
+  assert.equal(field.mediaType.charset, 'utf-8')
+  const declared = MediaType.fromParts(MimeType.JSON, [
+    MimeType.GZIP,
+    MimeType.BROTLI,
+  ])
+  declared.setCharset('utf-8')
+  assert.ok(field.mediaType.equals(declared))
   assert.equal(field.get('HTTPS:CONTENT-TYPE'), field.contentType)
   assert.equal(field.getProperty('https', 'CONTENT-TYPE'), field.contentType)
   assert.deepEqual(field.propertyIter('https'), [

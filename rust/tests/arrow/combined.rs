@@ -55,7 +55,7 @@ fn identical_schemas_pass_through_uncast() {
 #[test]
 fn disjoint_columns_unite_and_absent_ones_read_null() {
     let left_shape = root([DataType::Int64.nullable_field("id")]);
-    let right_shape = root([DataType::Utf8.nullable_field("venue")]);
+    let right_shape = root([DataType::utf8().nullable_field("venue")]);
 
     let joined = combined(
         reader(&left_shape, vec![ids(&[1])]),
@@ -93,11 +93,11 @@ fn disjoint_columns_unite_and_absent_ones_read_null() {
 fn overlapping_columns_and_a_differing_order_reconcile() {
     let left_shape = root([
         DataType::Int64.nullable_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ]);
     // The same two columns, declared the other way round.
     let right_shape = root([
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
         DataType::Int64.nullable_field("id"),
     ]);
 
@@ -147,7 +147,7 @@ fn column_names_unite_case_insensitively() {
 #[test]
 fn a_column_only_on_one_side_becomes_nullable_even_when_required() {
     let left_shape = root([DataType::Int64.required_field("id")]);
-    let right_shape = root([DataType::Utf8.required_field("venue")]);
+    let right_shape = root([DataType::utf8().required_field("venue")]);
 
     let joined = combined(
         reader(&left_shape, vec![ids(&[1])]),
@@ -179,7 +179,7 @@ fn a_shared_column_that_is_required_on_one_side_widens_to_nullable() {
 #[test]
 fn a_conflicting_datatype_is_refused_naming_both_sides() {
     let left_shape = root([DataType::Int64.nullable_field("price")]);
-    let right_shape = root([DataType::Utf8.nullable_field("price")]);
+    let right_shape = root([DataType::utf8().nullable_field("price")]);
 
     let refused = combined(
         reader(&left_shape, vec![ids(&[1])]),
@@ -236,7 +236,7 @@ fn combining_pulls_no_batch_until_the_result_is_iterated() {
     }
 
     let left_shape = root([DataType::Int64.nullable_field("id")]);
-    let right_shape = root([DataType::Utf8.nullable_field("venue")]);
+    let right_shape = root([DataType::utf8().nullable_field("venue")]);
 
     // The merge is derived from the two schemas alone, which a reader answers
     // without pulling anything.
@@ -255,9 +255,9 @@ fn combining_pulls_no_batch_until_the_result_is_iterated() {
 #[test]
 fn an_explicit_root_casts_both_sides() {
     let left_shape = root([DataType::Int64.nullable_field("id")]);
-    let right_shape = root([DataType::Utf8.nullable_field("id")]);
+    let right_shape = root([DataType::utf8().nullable_field("id")]);
     // Declared: both sides land here, whatever they were.
-    let target = root([DataType::Utf8.nullable_field("id")]);
+    let target = root([DataType::utf8().nullable_field("id")]);
 
     let joined = combined_as(
         reader(&left_shape, vec![ids(&[1])]),

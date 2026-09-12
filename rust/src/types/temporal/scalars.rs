@@ -15,8 +15,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
+use super::iso;
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
-use crate::types::ascii::iso;
 use crate::types::decimal::scalars::exact_value_parts;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{

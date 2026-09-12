@@ -31,6 +31,7 @@ use iceberg_official::spec::{
 };
 use smol_str::SmolStr;
 
+use crate::types::string::is_text_storage;
 use crate::{DataType, Scalar, TimeUnit};
 
 /// The literal Iceberg writes for a null partition value.
@@ -55,9 +56,19 @@ pub(super) fn scalar_text(value: &Scalar) -> SmolStr {
 ///
 /// A decimal is the case that differs - Parquet stores it big-endian in a fixed
 /// width, Iceberg stores the minimal two's-complement big-endian - so a decimal
-/// column gets counts but no bounds. A missing statistic costs a planner one
-/// file read; a wrong one costs correctness.
+/// column gets counts but no bounds. A string in a charset other than UTF-8
+/// or US-ASCII is the other: its statistic bytes are not the UTF-8 an Iceberg
+/// string bound holds. A missing statistic costs a planner one file read; a
+/// wrong one costs correctness.
 pub(super) const fn is_portable(dtype: &DataType) -> bool {
+    if let DataType::String(parameters) = dtype {
+        return is_text_storage(*parameters);
+    }
+    // Iceberg has `string` and nothing that carries a code's identity, so
+    // every registered code is portable as the text it is.
+    if dtype.is_code() {
+        return true;
+    }
     matches!(
         dtype,
         DataType::Boolean
@@ -71,21 +82,8 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
                 unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
                 ..
             }
-            | DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
-            | DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
             | DataType::Uuid
-            | DataType::Binary
-            | DataType::LargeBinary
-            | DataType::BinaryView
-            | DataType::FixedSizeBinary(_)
+            | DataType::Bytes(_)
     )
 }
 
@@ -123,18 +121,12 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
             unit: TimeUnit::Nanosecond,
             ..
         } => OfficialDatum::timestamptz_nanos(count(value)?),
-        // A bound over an ASCII column is a string bound: the value is the
-        // trimmed text.
-        DataType::Utf8
-        | DataType::LargeUtf8
-        | DataType::Utf8View
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin => OfficialDatum::string(value.as_str()?),
+        // A bound over a text-storage string or a code is a string bound: the
+        // value is the trimmed text.
+        DataType::String(parameters) if is_text_storage(*parameters) => {
+            OfficialDatum::string(value.as_str()?)
+        }
+        code if code.is_code() => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
         DataType::Uuid => {
@@ -144,15 +136,15 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
             };
             OfficialDatum::uuid(uuid::Uuid::from_bytes(bytes))
         }
-        DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
-            OfficialDatum::binary(value.as_bytes()?.iter().copied())
-        }
-        DataType::FixedSizeBinary(width) => {
+        DataType::Bytes(parameters) => {
             let bytes = value.as_bytes()?;
-            if usize::try_from(*width).ok()? != bytes.len() {
-                return None;
+            match parameters.fixed() {
+                None => OfficialDatum::binary(bytes.iter().copied()),
+                Some(width) if usize::try_from(width).ok()? == bytes.len() => {
+                    OfficialDatum::fixed(bytes.iter().copied())
+                }
+                Some(_) => return None,
             }
-            OfficialDatum::fixed(bytes.iter().copied())
         }
         _ => return None,
     };
@@ -192,29 +184,23 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => {
             Scalar::from(crate::Float64::from_f64((*value).into_inner()))
         }
-        (
-            DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
-            | DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin,
-            OfficialPrimitiveLiteral::String(value),
-        ) => Scalar::from(value.as_str()),
+        (DataType::String(parameters), OfficialPrimitiveLiteral::String(value))
+            if is_text_storage(*parameters) =>
+        {
+            Scalar::from(value.as_str())
+        }
+        // A bound is read off a column, so it becomes the value the column
+        // holds: the pruner compares a code against a code, never against
+        // the bare text a string bound carries.
+        (code, OfficialPrimitiveLiteral::String(value)) if code.is_code() => {
+            code.scalar(value.as_str()).ok()?
+        }
         (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
             Scalar::from(crate::types::uuid_text(&value.to_be_bytes()))
         }
-        (
-            DataType::Binary
-            | DataType::LargeBinary
-            | DataType::BinaryView
-            | DataType::FixedSizeBinary(_),
-            OfficialPrimitiveLiteral::Binary(value),
-        ) => Scalar::from(value.as_slice()),
+        (DataType::Bytes(_), OfficialPrimitiveLiteral::Binary(value)) => {
+            Scalar::from(value.as_slice())
+        }
         _ => return None,
     };
     dtype.scalar(value).ok()
@@ -251,27 +237,18 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
             unit: TimeUnit::Nanosecond,
             ..
         } if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
-        DataType::Utf8
-        | DataType::LargeUtf8
-        | DataType::Utf8View
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin => OfficialPrimitiveType::String,
+        DataType::String(parameters) if is_text_storage(*parameters) => {
+            OfficialPrimitiveType::String
+        }
+        code if code.is_code() => OfficialPrimitiveType::String,
         DataType::Uuid => OfficialPrimitiveType::Uuid,
-        DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
-            OfficialPrimitiveType::Binary
-        }
-        DataType::FixedSizeBinary(width)
-            if usize::try_from(*width)
-                .ok()
-                .is_some_and(|width| width == bytes.len()) =>
-        {
-            OfficialPrimitiveType::Fixed(u64::try_from(*width).ok()?)
-        }
+        DataType::Bytes(parameters) => match parameters.fixed() {
+            None => OfficialPrimitiveType::Binary,
+            Some(width) if usize::try_from(width).ok() == Some(bytes.len()) => {
+                OfficialPrimitiveType::Fixed(u64::from(width))
+            }
+            Some(_) => return None,
+        },
         _ => return None,
     };
     let datum = OfficialDatum::try_from_bytes(bytes, primitive).ok()?;
@@ -345,9 +322,9 @@ mod tests {
         assert!(single_to_value(&[], &DataType::Boolean).is_none());
         assert!(single_to_value(&[0, 1], &DataType::Boolean).is_none());
         assert!(single_to_value(&[2], &DataType::Boolean).is_none());
-        assert!(single_to_value(&[0; 3], &DataType::FixedSizeBinary(4)).is_none());
-        assert!(single_to_value(&[0; 5], &DataType::FixedSizeBinary(4)).is_none());
-        assert!(single_to_value(&[0xff], &DataType::Utf8).is_none());
+        assert!(single_to_value(&[0; 3], &DataType::fixed_size_binary(4).unwrap()).is_none());
+        assert!(single_to_value(&[0; 5], &DataType::fixed_size_binary(4).unwrap()).is_none());
+        assert!(single_to_value(&[0xff], &DataType::utf8()).is_none());
     }
 
     #[test]
@@ -375,8 +352,8 @@ mod tests {
             (Scalar::from(true), DataType::Boolean),
             (Scalar::from(-7), DataType::Int32),
             (Scalar::from(9), DataType::Int64),
-            (Scalar::from("é"), DataType::Utf8),
-            (Scalar::from([0_u8, 1, 2].as_slice()), DataType::Binary),
+            (Scalar::from("é"), DataType::utf8()),
+            (Scalar::from([0_u8, 1, 2].as_slice()), DataType::binary()),
         ];
         for (value, dtype) in cases {
             let bytes = single_value(&value, &dtype).expect("a supported value");
@@ -387,19 +364,25 @@ mod tests {
     #[test]
     fn decoded_bounds_keep_the_declared_scalar_identity() {
         let cases = [
-            (Scalar::from("value"), DataType::LargeUtf8),
-            (Scalar::from("value"), DataType::Utf8View),
-            (Scalar::from("USD"), DataType::FixedAscii(4)),
+            (Scalar::from("value"), DataType::large_utf8()),
+            (Scalar::from("value"), DataType::utf8_view()),
+            (Scalar::from("USD"), DataType::fixed_ascii(4).unwrap()),
             (Scalar::from("USD"), DataType::Currency),
             (
                 Scalar::from("00112233-4455-6677-8899-aabbccddeeff"),
                 DataType::Uuid,
             ),
-            (Scalar::from([1_u8, 2, 3].as_slice()), DataType::LargeBinary),
-            (Scalar::from([1_u8, 2, 3].as_slice()), DataType::BinaryView),
             (
                 Scalar::from([1_u8, 2, 3].as_slice()),
-                DataType::FixedSizeBinary(3),
+                DataType::large_binary(),
+            ),
+            (
+                Scalar::from([1_u8, 2, 3].as_slice()),
+                DataType::binary_view(),
+            ),
+            (
+                Scalar::from([1_u8, 2, 3].as_slice()),
+                DataType::fixed_size_binary(3).unwrap(),
             ),
         ];
         for (natural, dtype) in cases {

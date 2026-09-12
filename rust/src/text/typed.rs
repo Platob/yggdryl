@@ -125,12 +125,9 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         return Ok(value);
     }
     match field.dtype() {
-        DataType::Binary
-        | DataType::FixedSizeBinary(_)
-        | DataType::LargeBinary
-        | DataType::BinaryView
-        | DataType::Geometry(_)
-        | DataType::Geography(_) => base64_payload(value, field),
+        DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => {
+            base64_payload(value, field)
+        }
         DataType::List(child)
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
@@ -255,12 +252,7 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
 /// Whether a subtree stores bytes anywhere a document would spell base64.
 fn holds_byte_leaf(dtype: &DataType) -> bool {
     match dtype {
-        DataType::Binary
-        | DataType::FixedSizeBinary(_)
-        | DataType::LargeBinary
-        | DataType::BinaryView
-        | DataType::Geometry(_)
-        | DataType::Geography(_) => true,
+        DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => true,
         DataType::List(child)
         | DataType::ListView(child)
         | DataType::FixedSizeList(child, _)
@@ -280,7 +272,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
 /// Decode the base64 a document spells a byte payload with.
 fn base64_payload(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::Text(encoded) => base64::engine::general_purpose::STANDARD
+        Scalar::String(encoded) => base64::engine::general_purpose::STANDARD
             .decode(encoded.as_str().as_bytes())
             .map(Scalar::from)
             .map_err(|_| invalid(field, "expected base64 text")),

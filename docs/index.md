@@ -12,7 +12,7 @@ Arrow-native schemas, byte storage, and structured values, implemented once in R
         "row",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
         ])?,
         false,
     );
@@ -70,6 +70,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Types | `DataType`, `Field`, `Scalar`, casting, and the datatype families | [types](types/index.md) |
 | Holder | `IOBase` handles: bytes, values, records, and the storage backends | [holder](holder/index.md) |
 | Coding | gzip, zlib/deflate, and Zstandard over any handle | [coding](coding/index.md) |
+| Charset | UTF-8, UTF-16, US-ASCII, and the ISO 8859, Windows, DOS and Mac code pages over any handle | [charset](charset/index.md) |
 | Media | Arrow IPC, Parquet, Avro, plain-text records, and Iceberg tables | [media](media/index.md) |
 | Text | JSON, YAML, and TOML over the shared `Scalar` | [text](text/index.md) |
 | URI | `Uri`, `Url`, `Urn`, paths, globs, and partitions | [uri](uri/index.md) |

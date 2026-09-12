@@ -282,7 +282,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 keys = Some(unify(keys.as_ref(), key.dtype(), expression)?);
                 values = Some(unify(values.as_ref(), value.dtype(), expression)?);
             }
-            let key = Field::new("key", keys.unwrap_or(DataType::Utf8), false);
+            let key = Field::new("key", keys.unwrap_or(DataType::utf8()), false);
             let value = Field::new("value", values.unwrap_or(DataType::Null), nullable);
             let entries_field = Field::new("entries", DataType::from_fields([key, value])?, false);
             Ok(named(
@@ -435,23 +435,17 @@ pub(crate) fn unwrap_dictionary(dtype: &DataType) -> &DataType {
 
 /// Return whether a datatype holds text.
 ///
-/// The kind is the one source of truth, so an ASCII width is text here as
-/// everywhere else: its row values are the trimmed string.
+/// The kind is the one source of truth, so a code is text here as everywhere
+/// else: its row values are the trimmed string.
 pub(crate) fn is_text(dtype: &DataType) -> bool {
     let dtype = unwrap_dictionary(dtype);
     matches!(dtype, DataType::Null)
-        || matches!(dtype.kind(), DataTypeKind::Text | DataTypeKind::Ascii)
+        || matches!(dtype.kind(), DataTypeKind::Text | DataTypeKind::Code)
 }
 
 /// Return whether a datatype holds bytes.
 pub(crate) fn is_binary(dtype: &DataType) -> bool {
-    matches!(
-        unwrap_dictionary(dtype),
-        DataType::Binary
-            | DataType::LargeBinary
-            | DataType::BinaryView
-            | DataType::FixedSizeBinary(_)
-    )
+    matches!(unwrap_dictionary(dtype), DataType::Bytes(_))
 }
 
 /// Return whether a datatype holds a whole number.
@@ -692,7 +686,7 @@ fn function_field(
                     function.as_str()
                 )));
             }
-            DataType::Utf8
+            DataType::utf8()
         }
         Function::Concat => {
             for field in &fields {
@@ -703,7 +697,7 @@ fn function_field(
                     )));
                 }
             }
-            DataType::Utf8
+            DataType::utf8()
         }
         Function::Length => {
             if !is_text(&first) && !is_binary(&first) {

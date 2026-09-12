@@ -1,6 +1,6 @@
 from typing import Mapping
 
-from .ascii import (
+from .string import (
     AsciiCode as AsciiCode,
     CfiCode as CfiCode,
     CountryCode as CountryCode,
@@ -24,6 +24,7 @@ IO_WRITE_MODES: tuple[str, ...]
 LEADING_FRAGMENTS: tuple[str, ...]
 EDGE_ALGORITHMS: tuple[str, ...]
 FORMATS: tuple[str, ...]
+CHARSETS: tuple[str, ...]
 CODECS: tuple[str, ...]
 DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
@@ -44,6 +45,7 @@ __all__ = [
     "Currency",
     "MIC",
     "fixed_ascii",
+    "CHARSETS",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "PYTHON_KINDS",

@@ -556,9 +556,9 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
     assert_eq!(read[2].by_tag(37).unwrap().as_str(), Some("O-9"));
 
     let field = yggdryl::DataType::from_fields([
-        yggdryl::DataType::Utf8.required_field("url"),
+        yggdryl::DataType::utf8().required_field("url"),
         yggdryl::DataType::Int64.required_field("rownum"),
-        yggdryl::DataType::Binary.required_field("body"),
+        yggdryl::DataType::binary().required_field("body"),
     ])
     .unwrap()
     .required_field("capture");

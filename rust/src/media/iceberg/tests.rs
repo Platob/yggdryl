@@ -688,8 +688,8 @@ fn root(label: &str) -> std::path::PathBuf {
 fn trade_schema() -> Field {
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("symbol"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .unwrap()
     .required_field("row");
@@ -1085,27 +1085,48 @@ mod types {
     }
 
     #[test]
-    fn an_ascii_width_or_a_code_is_an_iceberg_string() {
+    fn a_text_storage_string_or_a_code_is_an_iceberg_string() {
         // The padding is storage; every Iceberg reader sees the text. Iceberg
         // has nothing that carries a code's identity, so a code is a string
         // there exactly as a width is.
         for dtype in [
-            DataType::FixedAscii(2),
-            DataType::FixedAscii(3),
-            DataType::FixedAscii(4),
-            DataType::FixedAscii(8),
-            DataType::FixedAscii(12),
-            DataType::FixedAscii(16),
-            DataType::Country,
-            DataType::Currency,
-            DataType::Mic,
-            DataType::Cfi,
-        ] {
+            DataType::utf8(),
+            DataType::large_utf8(),
+            DataType::utf8_view(),
+            DataType::ascii(),
+            DataType::fixed_utf8(8).unwrap(),
+            DataType::fixed_ascii(2).unwrap(),
+            DataType::fixed_ascii(3).unwrap(),
+            DataType::fixed_ascii(4).unwrap(),
+            DataType::fixed_ascii(8).unwrap(),
+            DataType::fixed_ascii(12).unwrap(),
+            DataType::fixed_ascii(16).unwrap(),
+        ]
+        .into_iter()
+        // And every registered code, read from the one listing rather than
+        // named four at a time here.
+        .chain(DataType::CODES.iter().map(|(_, dtype, _)| dtype.clone()))
+        {
             assert_eq!(
                 PrimitiveType::from_dtype(&dtype).unwrap(),
-                PrimitiveType::String
+                PrimitiveType::String,
+                "{dtype}"
             );
         }
+    }
+
+    #[test]
+    fn a_string_in_another_charset_is_refused_by_name() {
+        // Iceberg's string is UTF-8; bytes in another charset are not, and
+        // writing them as a string would hand every reader mojibake.
+        let latin = DataType::string(crate::Charset::Cp1252).unwrap();
+        let message = PrimitiveType::from_dtype(&latin).unwrap_err().to_string();
+        assert!(
+            message.contains("expected a datatype Iceberg can express"),
+            "{message}"
+        );
+        assert!(message.contains("string(windows-1252)"), "{message}");
+        assert!(!crate::media::iceberg::value::is_portable(&latin));
     }
 
     #[test]
@@ -1117,13 +1138,20 @@ mod types {
             (DataType::Currency, "USD"),
             (DataType::Mic, "XPAR"),
             (DataType::Cfi, "ESVUFR"),
+            (DataType::Isin, "US0378331005"),
+            (DataType::Side, "1"),
+            (DataType::MsgDirection, "SENT"),
+            (DataType::State, "0"),
+            (DataType::TimeInForce, "GTC"),
         ] {
             assert!(crate::media::iceberg::value::is_portable(&dtype), "{dtype}");
-            let scalar = crate::Scalar::from(value);
-            let bytes = crate::media::iceberg::value::single_value(&scalar, &dtype)
+            // A bound is read off a column, so the value it encodes is the
+            // one the column holds: a code with a vocabulary stores its own
+            // spelling, which is what the reader will compare against.
+            let exact = dtype.scalar(crate::Scalar::from(value)).unwrap();
+            let bytes = crate::media::iceberg::value::single_value(&exact, &dtype)
                 .unwrap_or_else(|| panic!("{dtype} must encode a bound"));
-            assert_eq!(bytes, value.as_bytes(), "{dtype}");
-            let exact = dtype.scalar(scalar).unwrap();
+            assert_eq!(bytes, exact.as_str().unwrap().as_bytes(), "{dtype}");
             assert_eq!(
                 crate::media::iceberg::value::single_to_value(&bytes, &dtype),
                 Some(exact),
@@ -1288,14 +1316,16 @@ mod partition_specs {
             assert_eq!(transform.result_type(&timestamp).unwrap(), DataType::Int32);
         }
         assert_eq!(
-            Transform::Bucket(16).result_type(&DataType::Utf8).unwrap(),
+            Transform::Bucket(16)
+                .result_type(&DataType::utf8())
+                .unwrap(),
             DataType::Int32
         );
         assert_eq!(
             Transform::Truncate(3)
-                .result_type(&DataType::Binary)
+                .result_type(&DataType::binary())
                 .unwrap(),
-            DataType::Binary
+            DataType::binary()
         );
 
         assert!(Transform::Year.result_type(&DataType::Int64).is_err());
@@ -1316,7 +1346,7 @@ mod partition_specs {
     fn scalar_transform_plan_is_total_at_date_extremes_and_truncates_binary() {
         let mut schema = DataType::from_fields([
             DataType::Date32.required_field("day"),
-            DataType::Binary.required_field("payload"),
+            DataType::binary().required_field("payload"),
         ])
         .unwrap()
         .required_field("row");
@@ -1366,7 +1396,7 @@ mod partition_specs {
         assert_eq!(unknown, Transform::Unknown);
         assert_eq!(
             unknown.result_type(&DataType::Int64).unwrap(),
-            DataType::Utf8
+            DataType::utf8()
         );
         assert_eq!(
             Transform::Void.result_type(&DataType::Int64).unwrap(),
@@ -1835,7 +1865,7 @@ mod tables {
         // The schema a user projects straight from Arrow: no ids anywhere.
         let schema = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("venue"),
+            DataType::utf8().nullable_field("venue"),
         ])
         .unwrap()
         .required_field("row");
@@ -1872,7 +1902,7 @@ mod tables {
         let path = root("partly-numbered-create");
         let mut id = DataType::Int64.required_field("id");
         id.set_parquet_field_id(7);
-        let schema = DataType::from_fields([id, DataType::Utf8.nullable_field("venue")])
+        let schema = DataType::from_fields([id, DataType::utf8().nullable_field("venue")])
             .unwrap()
             .required_field("row");
 
@@ -2231,7 +2261,7 @@ mod tables {
         let path = root("transformed-partitions");
         let mut schema = DataType::from_fields([
             DataType::Int32.required_field("id"),
-            DataType::Utf8.required_field("text"),
+            DataType::utf8().required_field("text"),
             DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: crate::Timezone::NAIVE,
@@ -2355,7 +2385,7 @@ mod tables {
     #[test]
     fn a_nested_struct_partition_source_is_resolved_by_field_id() {
         let path = root("nested-transformed-partition");
-        let nested = DataType::from_fields([DataType::Utf8.required_field("category")])
+        let nested = DataType::from_fields([DataType::utf8().required_field("category")])
             .unwrap()
             .required_field("payload");
         let mut schema = DataType::from_fields([nested])
@@ -3220,7 +3250,7 @@ mod planning {
     fn a_scan_root_the_caller_declares_is_what_the_reader_reports() {
         let (_path, table) = venues("plan-schema");
         let target: Field = DataType::from_fields([
-            DataType::Utf8.nullable_field("venue"),
+            DataType::utf8().nullable_field("venue"),
             DataType::Int64.required_field("id"),
         ])
         .unwrap()
@@ -3802,7 +3832,7 @@ mod handles {
         )
         .unwrap();
 
-        let loose = DataType::from_fields([DataType::Utf8.nullable_field("id")])
+        let loose = DataType::from_fields([DataType::utf8().nullable_field("id")])
             .unwrap()
             .required_field("row");
         let bad = RecordBatch::try_new(
@@ -5287,9 +5317,11 @@ mod datatype_coverage {
                 timezone: crate::Timezone::NAIVE,
             }
             .nullable_field("at"),
-            DataType::Utf8.nullable_field("name"),
-            DataType::Binary.nullable_field("raw"),
-            DataType::FixedSizeBinary(4).nullable_field("tag"),
+            DataType::utf8().nullable_field("name"),
+            DataType::binary().nullable_field("raw"),
+            DataType::fixed_size_binary(4)
+                .unwrap()
+                .nullable_field("tag"),
         ];
         let rows = vec![
             vec![
@@ -5358,12 +5390,12 @@ mod datatype_coverage {
     fn nested_and_deeply_nested_shapes_round_trip_through_data_files() {
         let point = DataType::from_fields([
             DataType::Int64.required_field("x"),
-            DataType::Utf8.nullable_field("label"),
+            DataType::utf8().nullable_field("label"),
         ])
         .unwrap();
         let deep = DataType::from_fields([
             DataType::List(Arc::new(DataType::Int64.nullable_field("item"))).nullable_field("xs"),
-            DataType::map_of(DataType::Utf8, point.clone(), false)
+            DataType::map_of(DataType::utf8(), point.clone(), false)
                 .unwrap()
                 .nullable_field("m"),
         ])
@@ -5403,7 +5435,7 @@ mod datatype_coverage {
         let path = root("types-merge");
         let children = vec![
             DataType::Int64.required_field("id"),
-            DataType::Utf8.required_field("venue"),
+            DataType::utf8().required_field("venue"),
             DataType::Decimal128 {
                 precision: 18,
                 scale: 4,

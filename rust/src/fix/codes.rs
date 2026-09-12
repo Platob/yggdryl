@@ -8,10 +8,11 @@
 //!
 //! `fix:codes` is that vocabulary: one [canonical document](super::document)
 //! ordered by wire value, read borrowed. It is a second key beside
-//! [`AsciiEnum`](crate::AsciiEnum) rather than a second copy of it - that
+//! [`StringEnum`](crate::StringEnum) rather than a second copy of it - that
 //! type is name to ASCII value packed through the field's own width, so it
-//! accepts only ASCII-width and coded datatypes and carries no description or
-//! pedigree. A field may carry both and neither derives from the other.
+//! accepts only fixed US-ASCII strings of at most sixteen bytes and coded
+//! datatypes and carries no description or pedigree. A field may carry both
+//! and neither derives from the other.
 //!
 //! # Resolving a spelling
 //!
@@ -436,7 +437,7 @@ impl<'field> FixCodes<'field> {
     ///
     /// Ordering is by wire value, so one code set is one text however it was
     /// built. Two names may share a value - that is an alias, the rule
-    /// `AsciiEnum` already states - but two codes may not share a name.
+    /// `StringEnum` already states - but two codes may not share a name.
     ///
     /// # Errors
     ///

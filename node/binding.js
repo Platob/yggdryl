@@ -331,7 +331,6 @@ const internalDtypeNames = new Set([
   'fromJSON',
   '_simple',
   '_temporal',
-  '_fixedSizeBinary',
   '_decimal',
   '_list',
   '_fromFields',
@@ -565,7 +564,6 @@ const { createFields, normalizeMetadata } = require('./fields.js')
 const internalDtype = Object.freeze({
   simple: NativeDataType._simple.bind(NativeDataType),
   temporal: NativeDataType._temporal.bind(NativeDataType),
-  fixedSizeBinary: NativeDataType._fixedSizeBinary.bind(NativeDataType),
   decimal: NativeDataType._decimal.bind(NativeDataType),
   list: NativeDataType._list.bind(NativeDataType),
   fromFields: NativeDataType._fromFields.bind(NativeDataType),
@@ -1308,7 +1306,7 @@ Object.defineProperties(Scalar.prototype, {
 // The generated enum is name to code only: a numeric reverse map would
 // collide with values that render as digits, and `members` already answers
 // the name to value direction.
-Object.defineProperties(binding.AsciiEnum.prototype, {
+Object.defineProperties(binding.StringEnum.prototype, {
   intoEnum: {
     configurable: true,
     value(width) {
@@ -3586,6 +3584,34 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   binding[name] = Object.freeze({ loads, dumps, ...raw })
 }
 
+// The character encodings, grouped the way the documentation names them. The
+// native halves carry a leading underscore so only this namespace is the
+// public spelling; `fromBom` answers `null` rather than an object when the
+// payload carries no mark, because a mark is framing a payload may not have.
+{
+  const decode = binding._charsetDecode
+  const decodeLossy = binding._charsetDecodeLossy
+  const encode = binding._charsetEncode
+  const fromBom = binding._charsetFromBom
+  const bom = binding._charsetBom
+  const canonicalName = binding._charsetCanonicalName
+  delete binding._charsetDecode
+  delete binding._charsetDecodeLossy
+  delete binding._charsetEncode
+  delete binding._charsetFromBom
+  delete binding._charsetBom
+  delete binding._charsetCanonicalName
+  binding.charset = Object.freeze({
+    CHARSETS: Object.freeze(binding._enumValuesNative().charsets),
+    decode,
+    decodeLossy,
+    encode,
+    fromBom,
+    bom,
+    canonicalName,
+  })
+}
+
 // The digest surface, grouped the way the documentation names it. The native
 // halves carry a leading underscore so only this namespace is the public
 // spelling, and every one of them takes bytes the wrapper has already narrowed
@@ -3891,6 +3917,7 @@ binding.yaml = yaml
     unionModes: Object.freeze(listing.unionModes),
     ioModes: Object.freeze(listing.ioModes),
     codecs: Object.freeze(listing.codecs),
+    charsets: Object.freeze(listing.charsets),
     digestAlgorithms: Object.freeze(listing.digestAlgorithms),
     ioKinds: Object.freeze(listing.ioKinds),
     pythonKinds: Object.freeze(listing.pythonKinds),

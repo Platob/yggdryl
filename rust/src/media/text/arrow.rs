@@ -1,6 +1,7 @@
 //! `text/plain` rows through the shared Scalar/Arrow record boundary.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::borrow::Cow;
+use std::io::{BufRead, BufReader, Chain, Read, Write};
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -18,9 +19,9 @@ use crate::arrow::BatchReader;
 use crate::holder::Buffer;
 use crate::holder::Holder;
 use crate::media::IORecordOptions;
-use crate::types::ascii::iso;
-use crate::{Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
-use crate::{Cursor, IOBase};
+use crate::types::temporal::iso;
+use crate::{Charset, Codec, DataType, Error, Result, Scalar, TimeUnit, Timezone, Url};
+use crate::{Cursor, IOBase, charset};
 
 use super::leading::LeadingFragment;
 use super::options::TextOptions;
@@ -67,12 +68,18 @@ fn read_owned_arrow_reader_at<H: IOBase + 'static>(
     options: &TextOptions,
 ) -> Result<BatchReader> {
     options.require_framing_rowheader()?;
-    let codings = handle.media_type().encodings().to_vec();
+    // One ask of the handle answers both: the codings the transport peels
+    // and the charset it decodes under, which the call-count pins hold to
+    // the one `media_type` read the codings always took.
+    let media_type = handle.media_type();
+    let codings = media_type.encodings().to_vec();
+    let charset = Charset::from_media_type(media_type);
     let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
-        Some(bound) => Box::new(BoundReader::new(bound, codings)),
+        Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
         None => Box::new(NonemptySendDecodedReader::new(
             Box::new(Cursor::new(handle)),
             codings,
+            charset,
         )),
     };
 
@@ -138,12 +145,18 @@ fn read_owned_text_lines_at<H: IOBase + 'static>(
     options: &TextOptions,
 ) -> Result<TextLines> {
     options.require_framing_rowheader()?;
-    let codings = handle.media_type().encodings().to_vec();
+    // One ask of the handle answers both: the codings the transport peels
+    // and the charset it decodes under, which the call-count pins hold to
+    // the one `media_type` read the codings always took.
+    let media_type = handle.media_type();
+    let codings = media_type.encodings().to_vec();
+    let charset = Charset::from_media_type(media_type);
     let source: Box<dyn Read + Send + 'static> = match handle.bound_location().cloned() {
-        Some(bound) => Box::new(BoundReader::new(bound, codings)),
+        Some(bound) => Box::new(BoundReader::new(bound, codings, charset)),
         None => Box::new(NonemptySendDecodedReader::new(
             Box::new(Cursor::new(handle)),
             codings,
+            charset,
         )),
     };
     text_lines(source, url, mtime, options)
@@ -158,10 +171,15 @@ pub(crate) fn row_size(handle: &(impl IOBase + ?Sized), options: &TextOptions) -
     counting.set_lstrip::<[&str; 0], &str>([])?;
     counting.set_rstrip::<[&str; 0], &str>([])?;
     counting.set_max_record_byte_size(Some(0));
-    let codings = handle.media_type().encodings().to_vec();
+    // One ask of the handle answers both: the codings the transport peels
+    // and the charset it decodes under, which the call-count pins hold to
+    // the one `media_type` read the codings always took.
+    let media_type = handle.media_type();
+    let codings = media_type.encodings().to_vec();
+    let charset = Charset::from_media_type(media_type);
     let raw: Box<dyn Read + '_> =
         Box::new(handle.pstream_bytes(0, crate::DEFAULT_FETCH_BYTE_SIZE)?);
-    let source = NonemptyDecodedReader::new(raw, codings);
+    let source = NonemptyDecodedReader::new(raw, codings, charset);
     let records = RawRows::counting(source, handle.url().cloned(), Arc::new(counting));
     let mut rows = 0_u64;
     for row in records {
@@ -204,19 +222,94 @@ fn fetched<R: Read>(source: R) -> BufReader<R> {
     BufReader::with_capacity(crate::DEFAULT_FETCH_BYTE_SIZE, source)
 }
 
+/// Whether a declared charset is laid over the transport at all.
+///
+/// UTF-8 and US-ASCII never are: the line layer already reads both by rule
+/// one - every valid UTF-8 run kept, every stray byte as Windows-1252, where
+/// the line is made - and writes UTF-8 as it is, so under either the
+/// transport is the object `main` builds and the writer the bytes it renders.
+const fn transports(charset: Charset) -> bool {
+    !matches!(charset, Charset::Utf8 | Charset::Ascii)
+}
+
+/// The declared charset, laid over the coded stream.
+///
+/// Coding first, charset second - the order `text::io::Plan` composes in,
+/// and the only one that can: a coding wraps bytes, and a charset spells
+/// text in them. Everything above this - the line splitter, the row header,
+/// the strips, the direction, adjacent deduplication, the entries - reads the
+/// declared text, and `TextLine::from_bytes` finds every line text as read.
+/// The stream transcribes and never refuses, as the line never refuses: a
+/// byte the charset leaves unassigned reads as its C1 control, a lone
+/// surrogate as `U+FFFD`, and a sequence the source cuts short at its very
+/// end as one `U+FFFD` per sequence left.
+///
+/// The one mark taken off is the declared form's own: `FF FE` under
+/// `utf-16le` comes off, the declaration winning over the mark, and every
+/// other mark is data, replayed with the rest - `FE FF` under `utf-16le` is
+/// the code unit it is. The structured plan strips whatever mark it finds,
+/// because a parser would refuse `U+FEFF`; the record reader does not,
+/// because a line refuses nothing and a mark for another form is a fact of
+/// the wire. Nor is a mark looked for under UTF-8, since UTF-8 is never
+/// wrapped and the line layer reads the bytes as they are: `EF BB BF` under
+/// `charset=utf-8` is the first three bytes of the first line exactly as it
+/// is undeclared.
+fn declared<R: Read>(
+    charset: Charset,
+    mut coded: R,
+) -> std::io::Result<charset::Reader<Chain<std::io::Cursor<Vec<u8>>, R>>> {
+    let mut replayed = Vec::new();
+    if let Some(mark) = charset.bom() {
+        let mut head = [0_u8; charset::MARK_LEN];
+        let filled = fill(&mut coded, &mut head[..mark.len()])?;
+        let skipped = if head[..filled].starts_with(mark) {
+            mark.len()
+        } else {
+            0
+        };
+        replayed.extend_from_slice(&head[skipped..filled]);
+    }
+    Ok(charset::Reader::new(
+        charset.transcriber(),
+        std::io::Cursor::new(replayed).chain(coded),
+    ))
+}
+
+/// Read until `target` is full or the source ends, answering what was filled.
+///
+/// `Read::read` may answer short for reasons of its own, so a mark split
+/// across two reads would otherwise go unrecognized.
+fn fill(source: &mut impl Read, target: &mut [u8]) -> std::io::Result<usize> {
+    let mut filled = 0;
+    while filled < target.len() {
+        let read = source.read(&mut target[filled..])?;
+        if read == 0 {
+            break;
+        }
+        filled += read;
+    }
+    Ok(filled)
+}
+
 /// One lazily opened filesystem stream retained for the complete decode.
 struct BoundReader {
     bound: Option<crate::holder::fs::BoundLocation>,
     codings: Vec<crate::MimeType>,
+    charset: Charset,
     reader: Option<Box<dyn Read + Send>>,
     done: bool,
 }
 
 impl BoundReader {
-    fn new(bound: crate::holder::fs::BoundLocation, codings: Vec<crate::MimeType>) -> Self {
+    fn new(
+        bound: crate::holder::fs::BoundLocation,
+        codings: Vec<crate::MimeType>,
+        charset: Charset,
+    ) -> Self {
         Self {
             bound: Some(bound),
             codings,
+            charset,
             reader: None,
             done: false,
         }
@@ -251,6 +344,9 @@ impl BoundReader {
         let mut reader: Box<dyn Read + Send> = Box::new(stream);
         for coding in self.codings.iter().rev() {
             reader = Codec::from_mime_type(coding).reader_send(reader);
+        }
+        if transports(self.charset) {
+            reader = Box::new(declared(self.charset, reader)?);
         }
         self.reader = Some(reader);
         Ok(true)
@@ -304,15 +400,17 @@ impl Drop for BoundStream {
 struct NonemptySendDecodedReader {
     source: Option<Box<dyn Read + Send>>,
     codings: Vec<crate::MimeType>,
+    charset: Charset,
     reader: Option<Box<dyn Read + Send>>,
     done: bool,
 }
 
 impl NonemptySendDecodedReader {
-    fn new(source: Box<dyn Read + Send>, codings: Vec<crate::MimeType>) -> Self {
+    fn new(source: Box<dyn Read + Send>, codings: Vec<crate::MimeType>, charset: Charset) -> Self {
         Self {
             source: Some(source),
             codings,
+            charset,
             reader: None,
             done: false,
         }
@@ -331,6 +429,9 @@ impl NonemptySendDecodedReader {
         let mut reader: Box<dyn Read + Send> = Box::new(source);
         for coding in self.codings.iter().rev() {
             reader = Codec::from_mime_type(coding).reader_send(reader);
+        }
+        if transports(self.charset) {
+            reader = Box::new(declared(self.charset, reader)?);
         }
         self.reader = Some(reader);
         Ok(true)
@@ -362,15 +463,21 @@ impl Read for NonemptySendDecodedReader {
 struct NonemptyDecodedReader<'source> {
     source: Option<Box<dyn Read + 'source>>,
     codings: Vec<crate::MimeType>,
+    charset: Charset,
     reader: Option<Box<dyn Read + 'source>>,
     done: bool,
 }
 
 impl<'source> NonemptyDecodedReader<'source> {
-    fn new(source: Box<dyn Read + 'source>, codings: Vec<crate::MimeType>) -> Self {
+    fn new(
+        source: Box<dyn Read + 'source>,
+        codings: Vec<crate::MimeType>,
+        charset: Charset,
+    ) -> Self {
         Self {
             source: Some(source),
             codings,
+            charset,
             reader: None,
             done: false,
         }
@@ -389,6 +496,9 @@ impl<'source> NonemptyDecodedReader<'source> {
         let mut reader: Box<dyn Read + 'source> = Box::new(source);
         for coding in self.codings.iter().rev() {
             reader = Codec::from_mime_type(coding).reader(reader);
+        }
+        if transports(self.charset) {
+            reader = Box::new(declared(self.charset, reader)?);
         }
         self.reader = Some(reader);
         Ok(true)
@@ -1064,7 +1174,7 @@ pub(crate) fn parse_capture(
         )
     };
     match dtype {
-        DataType::Utf8 => Ok(Scalar::from(value)),
+        DataType::String(_) => Ok(Scalar::from(value)),
         DataType::Boolean => value
             .parse::<bool>()
             .map(Scalar::from)
@@ -1187,7 +1297,8 @@ pub(crate) fn write_arrow_reader(
     batches: BatchReader,
     options: &TextOptions,
 ) -> Result<()> {
-    let encoded = encoded_bodies(batches, options, handle.codec(), options.level())?;
+    let charset = Charset::from_media_type(handle.media_type());
+    let encoded = encoded_bodies(batches, options, charset, handle.codec(), options.level())?;
     handle.write_all_bytes(&encoded)
 }
 
@@ -1197,13 +1308,16 @@ pub(crate) fn append_arrow_reader(
     batches: BatchReader,
     options: &TextOptions,
 ) -> Result<()> {
-    let terminator = options.output_linesep();
+    // The tail of what is there is compared with the terminator as the
+    // handle declares it, since that is how the rows already there end.
+    let charset = Charset::from_media_type(handle.media_type());
+    let terminator = encoded_terminator(charset, options.output_linesep())?;
     let codec = handle.codec();
     if codec == Codec::Identity {
-        let rendered = encoded_bodies(batches, options, codec, options.level())?;
+        let rendered = encoded_bodies(batches, options, charset, codec, options.level())?;
         let mut offset = handle.size();
-        if offset > 0 && !ends_with(handle, terminator)? {
-            handle.pwrite_all(offset, terminator)?;
+        if offset > 0 && !ends_with(handle, &terminator)? {
+            handle.pwrite_all(offset, &terminator)?;
             offset += terminator.len() as u64;
         }
         handle.pwrite_all(offset, &rendered)?;
@@ -1227,10 +1341,10 @@ pub(crate) fn append_arrow_reader(
                 encoder.write_all(&chunk[..read])?;
             }
         }
-        if !suffix.is_empty() && suffix.as_slice() != terminator {
-            encoder.write_all(terminator)?;
+        if !suffix.is_empty() && suffix.as_slice() != terminator.as_ref() {
+            encoder.write_all(&terminator)?;
         }
-        render_batches(batches, options, &mut encoder)?;
+        render_declared(batches, options, charset, &mut encoder)?;
         encoder.finish()?;
     }
     handle.write_all_bytes(&encoded)
@@ -1239,16 +1353,57 @@ pub(crate) fn append_arrow_reader(
 fn encoded_bodies(
     batches: BatchReader,
     options: &TextOptions,
+    charset: Charset,
     codec: Codec,
     level: crate::Level,
 ) -> Result<Vec<u8>> {
     let mut encoded = Vec::new();
     {
         let mut encoder = codec.writer_with_level(&mut encoded, level);
-        render_batches(batches, options, &mut encoder)?;
+        render_declared(batches, options, charset, &mut encoder)?;
         encoder.finish()?;
     }
     Ok(encoded)
+}
+
+/// Render the bodies in the charset the handle declares, inside the coding.
+///
+/// The writer follows the declaration the reader follows, or a declared
+/// handle would read its own UTF-8 back as legacy bytes. Under UTF-8 or
+/// US-ASCII the text is written as it is - the same rule that leaves the
+/// reader's transport unwrapped - and under any other charset it goes
+/// through the charset's writer, finished before the coding writer is.
+fn render_declared(
+    batches: BatchReader,
+    options: &TextOptions,
+    charset: Charset,
+    target: &mut impl Write,
+) -> Result<()> {
+    if !transports(charset) {
+        return render_batches(batches, options, target);
+    }
+    let mut writer = charset.writer(target);
+    render_batches(batches, options, &mut writer)?;
+    writer.finish()
+}
+
+/// The record terminator as the declared charset spells it.
+///
+/// Borrowed under UTF-8 and US-ASCII, where the terminator is written as it
+/// is; under any other charset the terminator is text like the bodies it
+/// ends, and one that is not text has no spelling there to compare against.
+fn encoded_terminator(charset: Charset, terminator: &[u8]) -> Result<Cow<'_, [u8]>> {
+    if !transports(charset) {
+        return Ok(Cow::Borrowed(terminator));
+    }
+    let text = std::str::from_utf8(terminator).map_err(|_| Error::InvalidRecord {
+        path: SmolStr::new_static("$.linesep"),
+        reason: crate::text::expected_got(
+            format_args!("a record terminator that is text, to write it as {charset}"),
+            format_args!("{terminator:?}"),
+        ),
+    })?;
+    charset.encode(text)
 }
 
 fn render_batches(

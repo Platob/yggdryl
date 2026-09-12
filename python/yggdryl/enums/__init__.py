@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Mapping
 
 from .._native import _enum_values
-from .ascii import (
+from .string import (
     AsciiCode,
     CfiCode,
     CountryCode,
@@ -63,6 +63,9 @@ FORMATS: tuple[str, ...] = tuple(_LISTING["formats"])
 #: Every content coding, e.g. ``"identity"``, ``"gzip"``, ``"zstd"``.
 CODECS: tuple[str, ...] = tuple(_LISTING["codecs"])
 
+#: Every character encoding, e.g. ``"utf-8"``, ``"windows-1252"``.
+CHARSETS: tuple[str, ...] = tuple(_LISTING["charsets"])
+
 #: Every digest algorithm, e.g. ``"xxh3-64"``, ``"xxh3-128"``.
 DIGEST_ALGORITHMS: tuple[str, ...] = tuple(_LISTING["digest_algorithms"])
 
@@ -95,6 +98,7 @@ __all__ = [
     "Currency",
     "MIC",
     "fixed_ascii",
+    "CHARSETS",
     "CODECS",
     "COMPATIBILITY_SCHEMES",
     "PYTHON_KINDS",

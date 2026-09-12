@@ -18,7 +18,6 @@ from yggdryl.holder import Path as Path_
 from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 from yggdryl import (
-    AsciiEnum,
     Bound,
     BoundStatement,
     DataType,
@@ -59,12 +58,15 @@ from yggdryl._native import (
     MsgTypeIterator,
     ScalarEntryIterator,
     ScalarIterator,
+    StringEnum,
+    StringParameters,
+    BytesParameters,
     UlPlugins,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import (
-    AsciiField,
-    FixedAsciiField,
+    BytesField,
+    StringField,
     UuidField,
     CfiField,
     CountryField,
@@ -386,17 +388,55 @@ geography_dtype: DataType = DataType.geography("OGC:CRS84", "karney")
 typed_geography: GeographyField = types.geography("region", "OGC:CRS84", "vincenty")
 typed_geography_kind: Literal["geography"] = typed_geography.dtype.id
 typed_geography_default_scalar: Scalar = typed_geography.default_scalar()
-ascii_dtype: DataType = DataType.ascii(3)
-ascii_width: int | None = ascii_dtype.ascii_width
+ascii_dtype: DataType = DataType.fixed_ascii(3)
+ascii_width: int | None = ascii_dtype.fixed_byte_width
+ascii_parameters: StringParameters | None = ascii_dtype.string_parameters
+ascii_charset: str | None = ascii_dtype.charset
+string_parameters: StringParameters = StringParameters("large_string", "windows-1252", 32)
+string_parameters_layout: str = string_parameters.layout
+string_parameters_charset: str = string_parameters.charset
+string_parameters_bound: int | None = string_parameters.bound
+string_parameters_fixed: int | None = string_parameters.fixed
+string_parameters_max: int | None = string_parameters.max
+string_dtype: DataType = DataType.string("string_view", "utf-8", 16)
+utf8_dtype: DataType = DataType.utf8()
+large_utf8_dtype: DataType = DataType.large_utf8()
+utf8_view_dtype: DataType = DataType.utf8_view()
+variable_ascii_dtype: DataType = DataType.ascii()
+fixed_utf8_dtype: DataType = DataType.fixed_utf8(8)
+bytes_parameters: BytesParameters = BytesParameters("fixed_size_binary", 16)
+bytes_parameters_layout: str = bytes_parameters.layout
+bytes_parameters_fixed: int | None = bytes_parameters.fixed
+bytes_parameters_max: int | None = bytes_parameters.max
+bytes_dtype: DataType = DataType.bytes("binary_view", 64)
+binary_dtype: DataType = DataType.binary()
+large_binary_dtype: DataType = DataType.large_binary()
+binary_view_dtype: DataType = DataType.binary_view()
+fixed_size_binary_dtype: DataType = DataType.fixed_size_binary(16)
+bytes_dtype_parameters: BytesParameters | None = bytes_dtype.bytes_parameters
 currency_dtype: DataType = DataType.from_logical_name("currency")
-currency_width: int | None = currency_dtype.ascii_width
+currency_width: int | None = currency_dtype.fixed_byte_width
 logical_names: dict[str, DataType] = DataType.logical_names()
-prebuilt_lists: dict[str, list[str]] = AsciiEnum.prebuilt()
-prebuilt_mics: AsciiEnum = AsciiEnum.from_logical_name("mic")
-typed_ascii: AsciiField = types.ascii("note", nullable=False)
-typed_ascii_kind: Literal["ascii"] = typed_ascii.dtype.id
-typed_ascii_fixed: FixedAsciiField = types.fixed_ascii("ccy", 3, nullable=False)
-typed_ascii_fixed_kind: Literal["fixed_ascii"] = typed_ascii_fixed.dtype.id
+prebuilt_lists: dict[str, list[str]] = StringEnum.prebuilt()
+prebuilt_mics: StringEnum = StringEnum.from_logical_name("mic")
+typed_ascii: StringField = types.ascii("note", nullable=False)
+typed_ascii_kind: Literal[
+    "string", "fixed_string", "string_view", "large_string", "large_string_view"
+] = typed_ascii.dtype.id
+typed_ascii_fixed: StringField = types.fixed_ascii("ccy", 3, nullable=False)
+typed_ascii_fixed_kind: Literal[
+    "string", "fixed_string", "string_view", "large_string", "large_string_view"
+] = typed_ascii_fixed.dtype.id
+typed_string: StringField = types.string(
+    "name", layout="large_string", charset="windows-1252", max=32, nullable=False
+)
+typed_fixed_utf8: StringField = types.fixed_utf8("name", 8)
+typed_bytes: BytesField = types.bytes("blob", layout="binary_view", max=64)
+typed_fixed_bytes: BytesField = types.bytes("digest", layout="fixed_size_binary", fixed=16)
+typed_binary: BytesField = types.binary("payload", nullable=False)
+typed_binary_kind: Literal[
+    "binary", "fixed_size_binary", "large_binary", "binary_view"
+] = typed_binary.dtype.id
 typed_country: CountryField = types.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
 typed_currency: CurrencyField = types.currency("ccy", nullable=False)
@@ -411,10 +451,10 @@ typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
-typed_ascii_sedol: FixedAsciiField = types.fixed_ascii("sedol", 7)
+typed_ascii_sedol: StringField = types.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
 typed_ascii_sedol_value: object = typed_ascii_sedol.default_scalar().as_py()
-ascii_member_name: str = AsciiEnum.member_name("n/a")
+ascii_member_name: str = StringEnum.member_name("n/a")
 
 
 # A width base is a class built at runtime, so it is bound to a name rather
@@ -432,14 +472,14 @@ ascii_declared_value: str = TypedCurrency.USD.into_str()
 ascii_parsed: TypedCurrency = TypedCurrency.from_str("JPY")
 ascii_by_code: TypedCurrency = TypedCurrency.from_code(0x55534400)
 ascii_declared_dtype: DataType = TypedCurrency.dtype()
-ascii_declared_enum: AsciiEnum = TypedCurrency.as_enum()
+ascii_declared_enum: StringEnum = TypedCurrency.as_enum()
 ascii_declared_field: Field = TypedCurrency.into_field("ccy", nullable=False)
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
 ascii_base: type[AsciiCode] = TypedCurrency
 
-ascii_declaration: AsciiEnum = AsciiEnum("Side", {"BUY": "B"})
+ascii_declaration: StringEnum = StringEnum("Side", {"BUY": "B"})
 ascii_declaration_json: str = ascii_declaration.into_json()
-ascii_declaration_parsed: AsciiEnum = AsciiEnum.from_json(ascii_declaration_json)
+ascii_declaration_parsed: StringEnum = StringEnum.from_json(ascii_declaration_json)
 ascii_declaration_name: str = ascii_declaration.name
 ascii_declaration_members: dict[str, str] = ascii_declaration.members
 ascii_declaration_value: str | None = ascii_declaration.get("BUY")
@@ -447,11 +487,11 @@ ascii_declaration_member: str | None = ascii_declaration.get_member("B")
 ascii_declaration_prior: str | None = ascii_declaration.insert("SELL", "S")
 ascii_declaration_removed: str | None = ascii_declaration.remove("SELL")
 ascii_declaration_codes: list[tuple[str, int]] = ascii_declaration.into_members(
-    DataType.ascii(4)
+    DataType.fixed_ascii(4)
 )
-ascii_declaration_intenum: type[IntEnum] = ascii_declaration.into_intenum(DataType.ascii(4))
+ascii_declaration_intenum: type[IntEnum] = ascii_declaration.into_intenum(DataType.fixed_ascii(4))
 ascii_declaration_intenum_member: IntEnum = ascii_declaration_intenum["BUY"]
-ascii_field_enum: AsciiEnum | None = ascii_declared_field.ascii_enum
+ascii_field_enum: StringEnum | None = ascii_declared_field.string_enum
 
 byte_chunks: Iterator[bytes] = IOBase.from_bytes(b"payload").pstream_bytes(
     position=1, batch_size=3

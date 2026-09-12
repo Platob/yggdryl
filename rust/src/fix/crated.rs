@@ -142,7 +142,7 @@ pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 const DIGEST_ALGORITHM: DigestAlgorithm = DigestAlgorithm::Xxh128;
 
 /// The digest's width in bytes, which is the algorithm's.
-const DIGEST_WIDTH: i32 = 16;
+const DIGEST_WIDTH: u32 = 16;
 
 /// How wide a partition is by default, in seconds.
 ///
@@ -296,7 +296,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             VERSION_TAG_NAME,
             "Version",
-            DataType::Utf8,
+            DataType::utf8(),
             "The FIX version the message was read at, which is not always \
              the one its BeginString claims.",
         )?,
@@ -304,7 +304,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             SYMBOLTICKER_TAG_NAME,
             "SymbolTicker",
-            DataType::Utf8,
+            DataType::utf8(),
             "One instrument symbol that is the same across venues, qualified \
              by its scheme and its exchange where the message states them.",
         )?,
@@ -330,14 +330,14 @@ fn build() -> Result<Vec<Field>> {
         crated(
             PARENTCLORDID_TAG_NAME,
             "ParentClOrdID",
-            DataType::Utf8,
+            DataType::utf8(),
             "The client order identifier this order descends from, which no \
              standard tag names.",
         )?,
         crated(
             PARENTORDERID_TAG_NAME,
             "ParentOrderID",
-            DataType::Utf8,
+            DataType::utf8(),
             "The venue order identifier this order descends from, which no \
              standard tag names.",
         )?,
@@ -349,7 +349,7 @@ fn build() -> Result<Vec<Field>> {
         aliased(
             SENDERSESSIONID_TAG_NAME,
             "SenderSessionId",
-            DataType::Utf8,
+            DataType::utf8(),
             "The session a message came from: the message's own statement, \
              else the session instance its bridge handled the line on.",
             &["SessionId"],
@@ -359,7 +359,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             MSGCTXID_TAG_NAME,
             "MsgCtxId",
-            DataType::Utf8,
+            DataType::utf8(),
             "The message context a bridge handled the message in, as its own \
              log names it.",
         )?,
@@ -375,14 +375,14 @@ fn build() -> Result<Vec<Field>> {
         crated(
             PLUGINID_TAG_NAME,
             "PluginId",
-            DataType::Utf8,
+            DataType::utf8(),
             "The plugin that logged the line inside a bridge, as the bridge \
              names it: the row's own pluginid column, never derived.",
         )?,
         crated(
             PREVPLUGINID_TAG_NAME,
             "PrevPluginId",
-            DataType::Utf8,
+            DataType::utf8(),
             "The plugin the message came through before the one that logged \
              it, as the bridge names it: the row's own prevpluginid column, \
              never derived.",
@@ -396,7 +396,7 @@ fn build() -> Result<Vec<Field>> {
         aliased(
             SENDERSESSIONNAME_TAG_NAME,
             "SenderSessionName",
-            DataType::Utf8,
+            DataType::utf8(),
             "The name of the session a message came from, as the bridge row \
              states it.",
             &["ULFromSessionName"],
@@ -404,7 +404,7 @@ fn build() -> Result<Vec<Field>> {
         aliased(
             TARGETSESSIONNAME_TAG_NAME,
             "TargetSessionName",
-            DataType::Utf8,
+            DataType::utf8(),
             "The name of the session a message went to, as the bridge row \
              states it.",
             &["ULToSessionName"],
@@ -465,7 +465,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             TARGETSESSIONID_TAG_NAME,
             "TargetSessionId",
-            DataType::Utf8,
+            DataType::utf8(),
             "The session a message went to, as the message states it.",
         )?,
     ])
@@ -527,7 +527,7 @@ impl super::FixRegistry {
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
     /// use yggdryl::{DataType, FixRegistry};
-    /// let mut field = DataType::Utf8.nullable_field("msgtype");
+    /// let mut field = DataType::utf8().nullable_field("msgtype");
     /// field.as_fix_mut().set_tag(35)?;
     /// let mut registry = FixRegistry::from_fields([field])?;
     /// let message = registry.register_msgtype("P Report Ack", Some("AllocationReportAck"), None)?;

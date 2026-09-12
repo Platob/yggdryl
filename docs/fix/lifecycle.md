@@ -12,7 +12,7 @@ A message says what happened; it does not say which order it happened to, beyond
 | `id` | the instant closest to the market impact, in microseconds, then the xxh3 digest of what the message said: every message has one, and ids sort by time |
 | `persistentid` | the instant the chain was created, then the xxh3 digest of its instrument and first identifier; the same on every later message sharing one of the chain's identifiers, null on a message naming no order |
 | Chain | joined on `OrigClOrdID(41)`, `ClOrdID(11)`, `OrderID(37)`, `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, in that order; every identifier a message carries then reaches the chain it joined |
-| Ends | a terminal [state](../types/ascii.md#a-state-sorts-by-its-lifecycle) - filled, done for day, cancelled, rejected, expired - closes the chain and forgets its identifiers |
+| Ends | a terminal [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - filled, done for day, cancelled, rejected, expired - closes the chain and forgets its identifiers |
 | Clock | `TransactTime(60)`, else `SendingTime(52)`, else the row's `timestamp`, else the epoch |
 | Stated | a value the message already carries is never overwritten, so a stamped stream read again is a no-op |
 | Entries | untouched: the wire re-emits byte for byte |

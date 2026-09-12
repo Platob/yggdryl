@@ -17,13 +17,14 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
 
-use super::ascii::{
-    ASCII_EXTENSION_NAME, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_extension_name,
-};
+use super::bytes::BYTES_EXTENSION_NAME;
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
+use super::string::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
+    STATE_WIDTH, STRING_EXTENSION_NAME, TIMEINFORCE_WIDTH, code_extension_name, needs_extension,
+};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 use super::url::URL_EXTENSION_NAME;
 use super::uuid::UUID_EXTENSION_NAME;
@@ -114,13 +115,13 @@ impl DataType {
             A::Time64(unit) => Self::time64((*unit).into())?,
             A::Duration(unit) => Self::duration64((*unit).into())?,
             A::Interval(unit) => Self::Interval((*unit).into()),
-            A::Binary => Self::Binary,
-            A::FixedSizeBinary(width) => Self::fixed_size_binary(*width)?,
-            A::LargeBinary => Self::LargeBinary,
-            A::BinaryView => Self::BinaryView,
-            A::Utf8 => Self::Utf8,
-            A::LargeUtf8 => Self::LargeUtf8,
-            A::Utf8View => Self::Utf8View,
+            A::Binary => Self::binary(),
+            A::FixedSizeBinary(width) => Self::fixed_size_binary(arrow_fixed_width(*width)?)?,
+            A::LargeBinary => Self::large_binary(),
+            A::BinaryView => Self::binary_view(),
+            A::Utf8 => Self::utf8(),
+            A::LargeUtf8 => Self::large_utf8(),
+            A::Utf8View => Self::utf8_view(),
             A::List(field) => Self::List(Arc::new(Field::from_arrow_ref_at_depth(
                 Arc::clone(field),
                 child_depth,
@@ -202,13 +203,13 @@ impl DataType {
             A::Time64(unit) => Self::time64(unit.into())?,
             A::Duration(unit) => Self::duration64(unit.into())?,
             A::Interval(unit) => Self::Interval(unit.into()),
-            A::Binary => Self::Binary,
-            A::FixedSizeBinary(width) => Self::fixed_size_binary(width)?,
-            A::LargeBinary => Self::LargeBinary,
-            A::BinaryView => Self::BinaryView,
-            A::Utf8 => Self::Utf8,
-            A::LargeUtf8 => Self::LargeUtf8,
-            A::Utf8View => Self::Utf8View,
+            A::Binary => Self::binary(),
+            A::FixedSizeBinary(width) => Self::fixed_size_binary(arrow_fixed_width(width)?)?,
+            A::LargeBinary => Self::large_binary(),
+            A::BinaryView => Self::binary_view(),
+            A::Utf8 => Self::utf8(),
+            A::LargeUtf8 => Self::large_utf8(),
+            A::Utf8View => Self::utf8_view(),
             A::List(field) => Self::List(Arc::new(Field::from_arrow_ref_at_depth(
                 field,
                 child_depth,
@@ -391,21 +392,8 @@ impl TryFrom<&DataType> for ArrowDataType {
                 Self::Duration(unit.into_arrow_time()?)
             }
             R::Interval(unit) => Self::Interval(unit.into_arrow_interval()?),
-            R::Binary => Self::Binary,
-            R::FixedSizeBinary(width) => {
-                validate_non_negative("FixedSizeBinary", "width", *width)?;
-                Self::FixedSizeBinary(*width)
-            }
-            R::LargeBinary => Self::LargeBinary,
-            R::BinaryView => Self::BinaryView,
-            R::Utf8 => Self::Utf8,
-            R::LargeUtf8 => Self::LargeUtf8,
-            R::Utf8View => Self::Utf8View,
-            R::Ascii => Self::Binary,
-            R::FixedAscii(width) => {
-                validate_non_negative("FixedAscii", "width", *width)?;
-                Self::FixedSizeBinary(*width)
-            }
+            R::Bytes(parameters) => super::bytes::arrow_storage(*parameters)?,
+            R::String(parameters) => super::string::arrow_storage(*parameters)?,
             R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
             R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
@@ -479,7 +467,7 @@ impl TryFrom<&DataType> for ArrowDataType {
             // (`ARROW:extension:name`), so they ride `Field`'s projection;
             // this level answers the storage type Arrow actually lays out:
             // the canonical `arrow.parquet.variant` struct of two required
-            // binaries, and WKB bytes for the geospatial pair. The ASCII
+            // binaries, and WKB bytes for the geospatial pair. The code
             // widths lay out as the fixed binary their arms above name.
             R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
                 arrow_schema::Field::new("metadata", Self::Binary, false),
@@ -533,21 +521,8 @@ impl TryFrom<DataType> for ArrowDataType {
                 Self::Duration(unit.into_arrow_time()?)
             }
             R::Interval(unit) => Self::Interval(unit.into_arrow_interval()?),
-            R::Binary => Self::Binary,
-            R::FixedSizeBinary(width) => {
-                validate_non_negative("FixedSizeBinary", "width", width)?;
-                Self::FixedSizeBinary(width)
-            }
-            R::LargeBinary => Self::LargeBinary,
-            R::BinaryView => Self::BinaryView,
-            R::Utf8 => Self::Utf8,
-            R::LargeUtf8 => Self::LargeUtf8,
-            R::Utf8View => Self::Utf8View,
-            R::Ascii => Self::Binary,
-            R::FixedAscii(width) => {
-                validate_non_negative("FixedAscii", "width", width)?;
-                Self::FixedSizeBinary(width)
-            }
+            R::Bytes(parameters) => super::bytes::arrow_storage(parameters)?,
+            R::String(parameters) => super::string::arrow_storage(parameters)?,
             R::Country => Self::FixedSizeBinary(COUNTRY_WIDTH as i32),
             R::Currency => Self::FixedSizeBinary(CURRENCY_WIDTH as i32),
             R::Mic => Self::FixedSizeBinary(MIC_WIDTH as i32),
@@ -644,7 +619,7 @@ impl TryFrom<DataType> for ArrowDataType {
             // (`ARROW:extension:name`), so they ride `Field`'s projection;
             // this level answers the storage type Arrow actually lays out:
             // the canonical `arrow.parquet.variant` struct of two required
-            // binaries, and WKB bytes for the geospatial pair. The ASCII
+            // binaries, and WKB bytes for the geospatial pair. The code
             // widths lay out as the fixed binary their arms above name.
             R::Variant => Self::Struct(arrow_schema::Fields::from(vec![
                 arrow_schema::Field::new("metadata", Self::Binary, false),
@@ -696,6 +671,17 @@ fn from_arrow_fields_at_depth(fields: &ArrowFields, depth: usize) -> Result<Fiel
     Fields::from_imported_fields(fields)
 }
 
+/// The width an Arrow fixed binary declares, as the count this crate bounds
+/// bytes in. Arrow's field is signed; a negative width is no width.
+fn arrow_fixed_width(width: i32) -> Result<u32> {
+    u32::try_from(width).map_err(|_| {
+        invalid(
+            "bytes",
+            format_smolstr!("width must be non-negative: {width}"),
+        )
+    })
+}
+
 fn check_arrow_import_depth(depth: usize) -> Result<()> {
     if depth >= DataType::PARSE_RECURSION_LIMIT {
         Err(invalid(
@@ -713,9 +699,6 @@ fn check_arrow_import_depth(depth: usize) -> Result<()> {
 /// The Arrow extension name and metadata an extension-typed datatype
 /// projects, `None` for every other datatype.
 ///
-/// An ASCII width projects an empty document: the storage width says the
-/// width, so there is nothing else to carry.
-///
 /// A dictionary projects what its values would. Arrow's `Dictionary` holds a
 /// bare datatype for its values rather than a field, so a dictionary-encoded
 /// currency has nowhere but the field itself to carry its identity - and a
@@ -727,13 +710,22 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
         DataType::Geometry(geospatial) | DataType::Geography(geospatial) => {
             Some((GEOARROW_WKB_EXTENSION_NAME, geospatial.geoarrow_json()))
         }
-        DataType::Ascii | DataType::FixedAscii(_) => Some((ASCII_EXTENSION_NAME, String::new())),
+        // A charset, a length bound, and which of the two view layouts this
+        // is: three facts Arrow has nowhere to put, so they ride here when
+        // the string declares any of them; plain UTF-8 is Arrow's own.
+        DataType::String(parameters) if needs_extension(*parameters) => {
+            Some((STRING_EXTENSION_NAME, parameters.extension_json()))
+        }
+        // A maximum on a variable layout is the one fact about bytes Arrow
+        // has nowhere to put; the four layouts and a fixed width are its own.
+        DataType::Bytes(parameters) if super::bytes::needs_extension(*parameters) => {
+            Some((BYTES_EXTENSION_NAME, parameters.extension_json()))
+        }
         DataType::Uuid => Some((UUID_EXTENSION_NAME, String::new())),
         DataType::Version => Some((VERSION_EXTENSION_NAME, String::new())),
         DataType::Url => Some((URL_EXTENSION_NAME, String::new())),
         // A code carries its own name, so the identity survives Arrow: three
-        // bytes under `yggdryl.currency` read back a currency, and the same
-        // three bytes under `yggdryl.ascii` read back the width.
+        // bytes under `yggdryl.currency` read back a currency.
         code => code_extension_name(code).map(|name| (name, String::new())),
     }
 }
@@ -899,19 +891,14 @@ fn native_dtype_to_ffi(dtype: &DataType) -> Result<FFI_ArrowSchema> {
         // and a C schema is a field, so the storage projection carries the
         // two `ARROW:extension:*` entries here. `Field::into_arrow_ffi`
         // merges the same entries with the field's own metadata.
-        DataType::Variant
-        | DataType::Geometry(_)
-        | DataType::Geography(_)
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Uuid
-        | DataType::Version
-        | DataType::Url => {
+        //
+        // Which datatypes those are is asked of the function that answers it
+        // rather than re-listed here. The list this used to spell had drifted
+        // five datatypes behind - `side`, `state`, `timeinforce`,
+        // `msgdirection` and every `string(...)` - and each of them fell to
+        // the plain arm below and crossed the C Data Interface as anonymous
+        // storage, which is exactly what this arm exists to prevent.
+        dtype if arrow_extension_parts(dtype).is_some() => {
             let arrow = dtype.clone().into_arrow()?;
             let schema = FFI_ArrowSchema::try_from(&arrow)?;
             let Some((name, metadata)) = arrow_extension_parts(dtype) else {

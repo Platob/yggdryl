@@ -740,7 +740,7 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: Function) -> Scalar {
     use crate::types::Temporal;
-    use crate::types::ascii::iso;
+    use crate::types::temporal::iso;
 
     let text = match value {
         Scalar::Temporal(Temporal::Date32(date)) => iso::format_date(date.count()),
@@ -951,13 +951,13 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 Err(error) => Err(error),
             }
         }
-        DataType::Ascii | DataType::FixedAscii(_) => canonical(value.clone()),
+        // A string already holds its characters: the value door restates
+        // them under the target's layout, charset and bound without a copy.
+        DataType::String(_) if matches!(value, Scalar::String(_)) => canonical(value.clone()),
         // A code takes the same tier at the width its own type fixes.
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
-            canonical(value.clone())
-        }
+        code if code.is_code() => canonical(value.clone()),
         DataType::Version => match value {
-            Scalar::Version(_) | Scalar::Text(_) => canonical(value.clone()),
+            Scalar::Version(_) | Scalar::String(_) => canonical(value.clone()),
             _ => refuse("version text"),
         },
         other if is_text(other) => {

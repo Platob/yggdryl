@@ -52,7 +52,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(15), DataType::Currency, "Currency(15)");
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
-    assert_eq!(typed(35), DataType::Utf8, "MsgType(35)");
+    assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
     assert!(
         matches!(typed(60), DataType::DateTime64 { .. }),
         "TransactTime"
@@ -106,9 +106,9 @@ fn a_row_read_against_one_schema_then_another_answers_each_schema_s_own_columns(
     // the next, and the memory is the schema's own: a narrower schema, a
     // rebuilt one and the first again each fill their own columns.
     let wide = fix_schema(&registry, "fix").unwrap();
-    let mut symbol = DataType::Utf8.nullable_field("symbol");
+    let mut symbol = DataType::utf8().nullable_field("symbol");
     symbol.as_fix_mut().set_tag(55).unwrap();
-    let mut side = DataType::Utf8.nullable_field("side");
+    let mut side = DataType::utf8().nullable_field("side");
     side.as_fix_mut().set_tag(54).unwrap();
     let narrow = fix_schema(&FixRegistry::from_fields([side, symbol]).unwrap(), "fix").unwrap();
     let rebuilt = fix_schema(&registry, "fix").unwrap();
@@ -312,7 +312,7 @@ fn a_datatype_is_named_the_same_by_both_documents() {
         let record = dtype.clone().into_value();
         let stated = record
             .get_key_str("type")
-            .and_then(Scalar::as_utf8)
+            .and_then(Scalar::as_str)
             .map(str::to_owned);
         let document = dtype
             .clone()

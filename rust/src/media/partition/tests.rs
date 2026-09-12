@@ -12,7 +12,7 @@ fn schema() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("price"),
         DataType::Int32.required_field("year"),
-        DataType::Utf8.required_field("month"),
+        DataType::utf8().required_field("month"),
     ])
     .unwrap()
     .required_field("row")
@@ -63,7 +63,7 @@ fn restored_columns_take_the_type_the_schema_declares() {
 fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
     let declared = DataType::from_fields([
         DataType::Int64.required_field("price"),
-        DataType::FixedAscii(4).required_field("ccy"),
+        DataType::fixed_ascii(4).unwrap().required_field("ccy"),
     ])
     .unwrap()
     .required_field("row");
@@ -85,7 +85,7 @@ fn an_ascii_partition_column_is_restored_padded_with_its_identity() {
         .expect("the ASCII storage, as the schema declares");
     assert_eq!(ccy.value(0), b"USD\0");
     let field = Field::from_arrow(restored.schema().field(1)).unwrap();
-    assert_eq!(field.dtype(), &DataType::FixedAscii(4));
+    assert_eq!(field.dtype(), &DataType::fixed_ascii(4).unwrap());
     assert!(field.is_partition());
 }
 

@@ -5,6 +5,10 @@ pub(crate) mod casts;
 
 mod dtypes;
 mod fields;
+// The classic ISO 8601 spellings of the temporals, beside the temporals they
+// spell. Crate-private: the structured-text codecs and the scalar renderer are
+// its only callers.
+pub(crate) mod iso;
 mod parser;
 pub(crate) mod scalars;
 

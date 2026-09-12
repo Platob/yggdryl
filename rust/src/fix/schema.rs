@@ -233,9 +233,9 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
 /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
 /// # let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
 /// let capture = DataType::from_fields([
-///     DataType::Utf8.required_field("url"),
+///     DataType::utf8().required_field("url"),
 ///     DataType::Int64.required_field("rownum"),
-///     DataType::Utf8.required_field("body"),
+///     DataType::utf8().required_field("body"),
 /// ])?
 /// .required_field("line");
 ///
@@ -426,12 +426,12 @@ fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
         DataType::list(entry_item(level + 1)?).required_field(ENTRIES_COLUMN)
     } else {
-        DataType::Binary.required_field(ENTRIES_COLUMN)
+        DataType::binary().required_field(ENTRIES_COLUMN)
     };
     Ok(DataType::from_fields([
         DataType::Int32.nullable_field("tag"),
-        DataType::Utf8.nullable_field("key"),
-        DataType::Utf8.nullable_field("value"),
+        DataType::utf8().nullable_field("key"),
+        DataType::utf8().nullable_field("value"),
         tail,
     ])?
     .required_field(ENTRY_COMPONENT))
@@ -459,7 +459,7 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
         crate::Scalar::from(rendered.as_bytes())
     };
     // The key and the value are the ranges of the line the entry names, read
-    // as the text a `Utf8` column holds - lossily where a data field's bytes
+    // as the text a `utf8` column holds - lossily where a data field's bytes
     // are not text, which is the one place a row cannot say what arrived. It
     // says that it cannot: the decode leaves the replacement character, and
     // `anomalies()` reads it as the `Lossy` it is, on the parsed message and
@@ -610,7 +610,7 @@ impl super::FixMsg {
     /// exactly as [`Self::with_registry`] checks one, so the columns are the
     /// message's children under the names the schema gave them and every
     /// lookup reaches them by tag as it reaches a parsed message's. The
-    /// branch is the schema's own `fix:branch`. The entries are rebuilt from
+    /// branches are the schema's own `fix:branches`. The entries are rebuilt from
     /// the [`ENTRIES_COLUMN`] - every level the row materialized, and the
     /// leaf the deepest level folded into decoded through the crate's own
     /// JSON reader - so [`Self::into_bytes`] re-emits the line the row was
@@ -621,7 +621,7 @@ impl super::FixMsg {
     /// The round trip is byte for byte over every capture this crate is
     /// tested against, and it is exact for an entry whose bytes are text -
     /// which is every entry a log wrote. It cannot be for one whose bytes are
-    /// not: the row spells a key and a value as `Utf8` because a column a
+    /// not: the row spells a key and a value as `utf8` because a column a
     /// reader can read is what a row is for, and a `data` field carrying
     /// bytes no text holds reaches that column as the decode of them. A
     /// message read from a line keeps the bytes and re-emits them; the same

@@ -30,24 +30,6 @@ _INTEGER_KINDS = frozenset(
     ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
 )
 _FLOAT_KINDS = frozenset(("float16", "float32", "float64"))
-_BINARY_KINDS = frozenset(
-    ("binary", "fixed_size_binary", "large_binary", "binary_view")
-)
-_STRING_KINDS = frozenset(
-    (
-        "utf8",
-        "large_utf8",
-        "utf8_view",
-        "ascii",
-        "fixed_ascii",
-        "country",
-        "currency",
-        "mic",
-        "cfi",
-        "isin",
-        "uuid",
-    )
-)
 _LIST_KINDS = frozenset(
     ("list", "list_view", "fixed_size_list", "large_list", "large_list_view")
 )
@@ -178,9 +160,12 @@ def _hint_from_datatype(
         return dt.timedelta
     if kind == "interval":
         return Any
-    if kind in _BINARY_KINDS:
+    # Every byte layout crosses as bytes; every string layout, every code,
+    # and a UUID cross as text. The datatype answers the family, so no layout
+    # is listed here.
+    if dtype.is_binary:
         return bytes
-    if kind in _STRING_KINDS:
+    if dtype.is_string or dtype.is_code or kind == "uuid":
         return str
     if kind in _LIST_KINDS:
         child = dtype[0]
@@ -619,7 +604,7 @@ def _arrow_scalar_value(
             )
         return scalar.as_py()
     # A leaf crosses under its native datatype through the core scalar
-    # boundary, so storage such as an ASCII width's padding never reaches
+    # boundary, so storage such as a fixed width's padding never reaches
     # Python.
     return Scalar.from_arrow_scalar(
         scalar, NativeField("value", plan.dtype, nullable=True)

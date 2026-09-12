@@ -43,8 +43,7 @@ use super::msg::FixMsg;
 use super::replacements::{FixFillEntry, FixFillValue, FixFills, FixReplacementEntry};
 use super::schema::item_fields;
 use super::{FixPedigree, FixRegistry, occurrence_name};
-use crate::types::State;
-use crate::types::ascii::AsciiFamily;
+use crate::types::{Code, State};
 use crate::{DataType, Field, Result, Scalar, Version};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
@@ -348,12 +347,12 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
 /// has no text for.
 ///
 /// A boolean is `Y` or `N`, a number its decimal, a temporal its canonical
-/// rendering; text and ASCII are themselves. A `state` answers its stored
+/// rendering; a string and a code are themselves. A `state` answers its stored
 /// spelling, which [`matches`] never reaches: a state is compared through
 /// [`State::from_spelling`] and never rendered back to a code.
 fn wire_text(value: &Scalar) -> Option<SmolStr> {
     match value {
-        Scalar::Text(_) | Scalar::Ascii(_) | Scalar::Enum(_) => value.as_str().map(SmolStr::new),
+        Scalar::String(_) | Scalar::Code(_) | Scalar::Enum(_) => value.as_str().map(SmolStr::new),
         Scalar::Boolean(_) => value
             .as_bool()
             .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),
@@ -381,7 +380,7 @@ fn joined_part(value: &Scalar) -> Option<SmolStr> {
 /// `MultipleCharValue` such as `ExecInst` states several codes in one value
 /// - and a `state` matches when the code names the state held.
 fn matches(held: &Scalar, when: &str) -> bool {
-    if let Scalar::Ascii(AsciiFamily::State(state)) = held {
+    if let Scalar::Code(Code::State(state)) = held {
         return State::from_spelling(when).as_ref() == Some(state);
     }
     let Some(text) = wire_text(held) else {
@@ -399,7 +398,7 @@ fn restated_tokens(held: &Scalar, when: Option<&str>, text: &str) -> SmolStr {
     let Some(when) = when else {
         return SmolStr::new(text);
     };
-    if matches!(held, Scalar::Ascii(AsciiFamily::State(_))) {
+    if matches!(held, Scalar::Code(Code::State(_))) {
         return SmolStr::new(text);
     }
     match wire_text(held) {
@@ -426,7 +425,7 @@ fn converted(target: &Field, value: &Scalar) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
-    if !matches!(value, Scalar::Text(_)) {
+    if !matches!(value, Scalar::String(_)) {
         if let Ok(typed) = target.scalar(value.clone()) {
             if !typed.is_null() {
                 return typed;
@@ -854,7 +853,7 @@ impl<'msg> Restater<'msg> {
         let Some(first) = codes.next_ok() else {
             return true;
         };
-        if let Scalar::Ascii(AsciiFamily::State(state)) = held {
+        if let Scalar::Code(Code::State(state)) = held {
             let mut code = Some(first);
             while let Some(held) = code {
                 if self.current(held) && State::from_spelling(held.name()).as_ref() == Some(state) {

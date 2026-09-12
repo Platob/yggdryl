@@ -286,7 +286,7 @@ A schema document from an unnumbered tree is refused, while creating a table num
     let _ = std::fs::remove_dir_all(&root);
     let schema = DataType::from_fields([
         DataType::Int32.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?
     .required_field("row");
     let mut table = Table::create(
@@ -306,7 +306,7 @@ A schema document from an unnumbered tree is refused, while creating a table num
     let mut update = SchemaUpdate::from_metadata(table.metadata())?;
     update.update_type("id", DataType::Int64);
     update.rename_column("symbol", "ticker");
-    update.add_column("", DataType::Utf8.nullable_field("venue"));
+    update.add_column("", DataType::utf8().nullable_field("venue"));
     let evolved = update.into_field()?;
 
     table.commit_metadata_changes(|metadata| {
@@ -526,7 +526,7 @@ use yggdryl::{DataType, TimeUnit, Timezone};
 
 // Every Iceberg primitive name has exactly one physical datatype.
 assert_eq!(PrimitiveType::from_str("long")?.into_dtype()?, DataType::Int64);
-assert_eq!(PrimitiveType::from_str("string")?.into_dtype()?, DataType::Utf8);
+assert_eq!(PrimitiveType::from_str("string")?.into_dtype()?, DataType::utf8());
 assert_eq!(
     PrimitiveType::from_str("decimal(18, 4)")?.into_dtype()?,
     DataType::decimal(18, 4)?
@@ -570,10 +570,10 @@ assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
 | `timestamptz` | `DateTime64 { unit: Microsecond, timezone: UTC }` | v1 |
 | `timestamp_ns` | `DateTime64 { unit: Nanosecond, timezone: NAIVE }` | v3 |
 | `timestamptz_ns` | `DateTime64 { unit: Nanosecond, timezone: UTC }` | v3 |
-| `string` | `Utf8` | v1 |
-| `uuid` | `FixedSizeBinary(16)` | v1 |
-| `fixed[n]` | `FixedSizeBinary(n)` | v1 |
-| `binary` | `Binary` | v1 |
+| `string` | `utf8()` | v1 |
+| `uuid` | `Uuid` | v1 |
+| `fixed[n]` | `fixed_size_binary(n)` | v1 |
+| `binary` | `binary()` | v1 |
 | `unknown` | `Null` | v3 |
 
 `into_dtype` is total; `from_dtype` names the datatype it refuses instead of widening it.
@@ -582,10 +582,22 @@ assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
 use yggdryl::media::iceberg::PrimitiveType;
 use yggdryl::DataType;
 
-// The variants that differ only in physical layout collapse onto one name.
-assert_eq!(PrimitiveType::from_dtype(&DataType::Utf8)?, PrimitiveType::String);
-assert_eq!(PrimitiveType::from_dtype(&DataType::LargeUtf8)?, PrimitiveType::String);
-assert_eq!(PrimitiveType::from_dtype(&DataType::BinaryView)?, PrimitiveType::Binary);
+// The layouts that differ only in physical storage collapse onto one name.
+// Iceberg's string is UTF-8, so every string on text storage - UTF-8 or
+// US-ASCII, any layout, a bound or not - is `string`; a string in another
+// charset holds bytes that are not UTF-8 and is refused by name.
+assert_eq!(PrimitiveType::from_dtype(&DataType::utf8())?, PrimitiveType::String);
+assert_eq!(PrimitiveType::from_dtype(&DataType::large_utf8())?, PrimitiveType::String);
+assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_ascii(4)?)?, PrimitiveType::String);
+let legacy = PrimitiveType::from_dtype(&DataType::from_str("string(windows-1252)")?)
+    .unwrap_err()
+    .to_string();
+assert!(legacy.contains("string(windows-1252)"), "{legacy}");
+// A fixed byte layout is `fixed[n]`; the variable layouts are `binary`, and
+// Iceberg has no maximum, so `binary(16)` crosses unbounded.
+assert_eq!(PrimitiveType::from_dtype(&DataType::binary_view())?, PrimitiveType::Binary);
+assert_eq!(PrimitiveType::from_dtype(&DataType::fixed_size_binary(16)?)?, PrimitiveType::Fixed(16));
+assert_eq!(PrimitiveType::from_dtype(&DataType::from_str("binary(16)")?)?, PrimitiveType::Binary);
 assert_eq!(
     PrimitiveType::from_dtype(&DataType::decimal64(9, 2)?)?,
     PrimitiveType::Decimal { precision: 9, scale: 2 }
@@ -716,7 +728,9 @@ assert!(!written.fields()[0].is_nullable());
 - equivalent schema, spec, or sort order -> the builder's canonical id is reused; a conflicting requested id is reassigned.
 - `from_dtype` of `int8`, `uint32`, `interval`, `union`, `decimal256`, or a non micro/nano unit -> refused naming the datatype.
 - `Scheme::ICEBERG` -> `Int8` widens to `Int32`; `Interval` stays refused.
-- `LargeUtf8`, `BinaryView`, `decimal64` -> collapse onto `string`, `binary`, `decimal(p, s)`.
+- `large_utf8`, `utf8_view`, `fixed_ascii(n)`, `utf8(n)` -> `string`; `binary_view`, `large_binary`, `binary(n)` -> `binary`, the maximum dropped; `decimal64` -> `decimal(p, s)`.
+- `string(windows-1252)` or any other charset off text storage -> refused naming the datatype; only UTF-8 and US-ASCII strings are Iceberg's `string`.
+- `fixed_size_binary(n)` -> `fixed[n]`, and back; a UUID is `uuid`, never `fixed[16]`.
 - `unknown` (v3) -> `DataType::Null`, every value reads as null.
 - `Uuid` -> `DataType::Uuid`, spelled `uuid` on the way back.
 - map key -> always required; absent `element-required` or `value-required` -> required.

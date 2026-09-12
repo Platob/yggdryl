@@ -47,10 +47,13 @@ fn widths_and_datatypes_follow_the_algorithm() {
     assert_eq!(width(DigestAlgorithm::Xxh64), 16);
     assert_eq!(width(DigestAlgorithm::Xxh3), 16);
     assert_eq!(width(DigestAlgorithm::Xxh128), 24);
-    assert_eq!(dtype(DigestAlgorithm::Xxh32), DataType::FixedSizeBinary(12));
+    assert_eq!(
+        dtype(DigestAlgorithm::Xxh32),
+        DataType::fixed_size_binary(12).unwrap()
+    );
     assert_eq!(
         dtype(DigestAlgorithm::Xxh128),
-        DataType::FixedSizeBinary(24)
+        DataType::fixed_size_binary(24).unwrap()
     );
     assert_eq!(algorithm_of_width(12), Some(DigestAlgorithm::Xxh32));
     // Sixteen bytes answer the project default, not XXH64.
@@ -453,7 +456,10 @@ fn a_value_projects_to_a_datetime_and_a_fixed_byte_scalar() {
     );
     let scalar = value.into_scalar();
     assert_eq!(scalar.as_bytes(), Some(&*value.into_bytes()));
-    assert_eq!(scalar.dtype().unwrap(), DataType::FixedSizeBinary(16));
+    assert_eq!(
+        scalar.dtype().unwrap(),
+        DataType::fixed_size_binary(16).unwrap()
+    );
     assert_eq!(
         TxHash::from_scalar(DEFAULT_UNIT, DigestAlgorithm::Xxh3, &scalar).unwrap(),
         value
@@ -533,7 +539,7 @@ fn a_hasher_carries_unit_seed_and_secret() {
     assert_eq!(plain.unit(), DEFAULT_UNIT);
     assert_eq!(plain.algorithm(), DigestAlgorithm::Xxh3);
     assert_eq!(plain.width(), 16);
-    assert_eq!(plain.dtype(), DataType::FixedSizeBinary(16));
+    assert_eq!(plain.dtype(), DataType::fixed_size_binary(16).unwrap());
     assert_eq!(plain.digest(b"AAPL", INSTANT), txh3(b"AAPL", INSTANT));
     assert_eq!(
         plain.digest_scalar(&Scalar::from("AAPL"), INSTANT),
@@ -624,7 +630,7 @@ fn coupled_holder(dtype: DataType) -> Field {
 
 #[test]
 fn the_digest_protocol_couples_a_holder_with_an_instant() {
-    let mut holder = coupled_holder(DataType::FixedSizeBinary(16));
+    let mut holder = coupled_holder(DataType::fixed_size_binary(16).unwrap());
     assert!(!holder.as_digest().is_coupled());
     assert_eq!(holder.as_digest().time(), None);
     assert_eq!(holder.as_digest().unit().unwrap(), None);
@@ -691,13 +697,13 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
     );
 
     // A declared algorithm pins the coupled width.
-    let mut pinned = coupled_holder(DataType::FixedSizeBinary(16));
+    let mut pinned = coupled_holder(DataType::fixed_size_binary(16).unwrap());
     pinned
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh128)
         .unwrap();
     assert!(pinned.as_digest_mut().set_time("event").is_err());
-    let mut widened = coupled_holder(DataType::FixedSizeBinary(24));
+    let mut widened = coupled_holder(DataType::fixed_size_binary(24).unwrap());
     assert!(
         widened
             .as_digest_mut()
@@ -711,16 +717,16 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
         .unwrap();
 
     // Twenty bytes are no coupled width.
-    let mut odd = coupled_holder(DataType::FixedSizeBinary(20));
+    let mut odd = coupled_holder(DataType::fixed_size_binary(20).unwrap());
     assert!(odd.as_digest_mut().set_time("event").is_err());
 
     // Not a holder at all.
-    let mut plain = Field::new("event", DataType::FixedSizeBinary(16), false);
+    let mut plain = Field::new("event", DataType::fixed_size_binary(16).unwrap(), false);
     assert!(plain.as_digest_mut().set_time("event").is_err());
     assert!(plain.as_digest_mut().set_unit(TimeUnit::Second).is_err());
 
     // The unit needs the instant, and only a clock resolution is one.
-    let mut holder = coupled_holder(DataType::FixedSizeBinary(12));
+    let mut holder = coupled_holder(DataType::fixed_size_binary(12).unwrap());
     assert!(holder.as_digest_mut().set_unit(TimeUnit::Second).is_err());
     holder.as_digest_mut().set_time("event").unwrap();
     assert!(holder.as_digest_mut().set_unit(TimeUnit::Day).is_err());
@@ -740,7 +746,7 @@ fn coupling_refuses_the_wrong_storage_role_and_spelling() {
 
 #[test]
 fn stored_coupling_metadata_is_validated_and_canonicalized_on_write() {
-    let mut holder = coupled_holder(DataType::FixedSizeBinary(16));
+    let mut holder = coupled_holder(DataType::fixed_size_binary(16).unwrap());
     holder.as_digest_mut().set_time("event").unwrap();
     // The raw property route canonicalizes a unit spelling the way every
     // typed key is, and refuses what is no clock resolution.

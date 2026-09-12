@@ -63,8 +63,8 @@ impl Scalar {
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
             Self::Null | Self::Nested(_) | Self::Version(_) | Self::Url(_) => return None,
-            Self::Text(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
-            Self::Ascii(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::Code(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
             Self::Geospatial(value) => {
@@ -169,9 +169,10 @@ impl Scalar {
     /// The tag is the value's own [`DataTypeId`], except where a family
     /// compares equal across its members and one member's tag then stands for
     /// all of them: integers feed `int128` or `uint128` by sign, floats and
-    /// decimals feed their widest member, the six ASCII datatypes - `ascii`,
-    /// `ascii(n)`, `country`, `currency`, `mic`, `cfi` - all feed `ascii`, and
-    /// a geography feeds `geometry`.
+    /// decimals feed their widest member, every string feeds `string`
+    /// whatever its layout or charset, and a geography feeds `geometry`. A
+    /// code feeds its own identifier, because a currency and a country whose
+    /// bytes agree are two values.
     ///
     /// | Variant | Tag | Feed after the tag |
     /// | --- | --- | --- |
@@ -180,8 +181,8 @@ impl Scalar {
     /// | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
     /// | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
     /// | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-    /// | `Text` | `utf8` | length `u64` little-endian, then UTF-8 |
-    /// | `Ascii` | `ascii` | length `u64` little-endian, then the trimmed text |
+    /// | `String` | `string` | length `u64` little-endian, then UTF-8 |
+    /// | `Code` | the code's own id | length `u64` little-endian, then the trimmed text |
     /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
     /// | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
@@ -268,9 +269,9 @@ impl Scalar {
         match self {
             Self::Null => write_null(sink),
             Self::Boolean(value) => write_bool(sink, value.get()),
-            Self::Text(value) => write_string(sink, value.as_str()),
-            Self::Ascii(value) => {
-                write_tag(sink, DataTypeId::Ascii);
+            Self::String(value) => write_string(sink, value.as_str()),
+            Self::Code(value) => {
+                write_tag(sink, value.identifier());
                 write_text(sink, value.as_str());
             }
             Self::Uuid(value) => {
@@ -461,7 +462,7 @@ pub(super) fn write_temporal(
 
 /// Write UTF-8 text as a string value.
 pub(super) fn write_string(sink: &mut impl Hasher, text: &str) {
-    write_tag(sink, DataTypeId::Utf8);
+    write_tag(sink, DataTypeId::String);
     write_text(sink, text);
 }
 

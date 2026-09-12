@@ -26,7 +26,7 @@ Every child-bearing type answers length and item access alike.
     use yggdryl::{DataType, Field};
 
     let quote = DataType::from_fields([
-        Field::new("symbol", DataType::Utf8, false),
+        Field::new("symbol", DataType::utf8(), false),
         Field::new("levels", DataType::list(DataType::Float64.nullable_field("item")), true),
     ])?;
 
@@ -36,7 +36,7 @@ Every child-bearing type answers length and item access alike.
     assert!(quote.get_field_by_path("missing").is_none());
 
     // Every child-bearing type answers the same two questions.
-    let lookup = DataType::map_of(DataType::Utf8, DataType::Int64, true)?;
+    let lookup = DataType::map_of(DataType::utf8(), DataType::Int64, true)?;
     assert_eq!(lookup.field_len(), 1);
     assert_eq!(lookup.get_field(0).map(Field::name), Some("entries"));
     assert!(lookup.as_fields().is_none() && quote.as_fields().is_some());
@@ -96,10 +96,10 @@ A wrapper is a storage decision, so `is_nested` resolves through it.
     ```rust
     use yggdryl::{DataType, DataTypeKind, Field};
 
-    let codes = DataType::dictionary(DataType::Int16, DataType::Utf8)?;
+    let codes = DataType::dictionary(DataType::Int16, DataType::utf8())?;
     let runs = DataType::run_end_encoded(
         Field::new("run_ends", DataType::Int32, false),
-        Field::new("values", DataType::Utf8, true),
+        Field::new("values", DataType::utf8(), true),
     )?;
 
     assert_eq!(codes.kind(), DataTypeKind::Nested);
@@ -109,13 +109,13 @@ A wrapper is a storage decision, so `is_nested` resolves through it.
 
     let DataType::Dictionary(dictionary) = &codes else { panic!("dictionary") };
     assert_eq!(dictionary.key(), &DataType::Int16);
-    assert_eq!(dictionary.value(), &DataType::Utf8);
+    assert_eq!(dictionary.value(), &DataType::utf8());
 
     // The key must be an integer; run ends must be a non-null int16, int32, or int64.
-    assert!(DataType::dictionary(DataType::Utf8, DataType::Utf8).is_err());
+    assert!(DataType::dictionary(DataType::utf8(), DataType::utf8()).is_err());
     assert!(DataType::run_end_encoded(
         Field::new("run_ends", DataType::UInt32, false),
-        Field::new("values", DataType::Utf8, true),
+        Field::new("values", DataType::utf8(), true),
     ).is_err());
     ```
 
@@ -181,7 +181,7 @@ The sugar spells `DataType::dense_union`, `DataType.variant(fields)`, or `fields
 
     let members = [
         Field::new("number", DataType::Int64, false),
-        Field::new("text", DataType::Utf8, true),
+        Field::new("text", DataType::utf8(), true),
     ];
     let members_union = DataType::dense_union(members.clone())?;
 

@@ -158,7 +158,7 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     // Each field carries its enum metadata over the scalar datatype. Message codes
     // remain unrestricted text; Side keeps its generic ASCII datatype.
     let msgtype = registry.field_by_tag(35).expect("tag 35");
-    assert_eq!(msgtype.dtype(), &DataType::Utf8);
+    assert_eq!(msgtype.dtype(), &DataType::utf8());
     assert_eq!(msgtype.as_fix().code_name("D"), Some("NewOrderSingle"));
     assert_eq!(msgtype.as_fix().code_value("NewOrderSingle"), Some("D"));
 
@@ -182,7 +182,7 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     // Every other code set keeps its base type, and one code set declared by
     // two fields is stored whole on each.
     let ord_type = registry.field_by_tag(40).expect("tag 40");
-    assert_eq!(ord_type.dtype(), &DataType::Utf8);
+    assert_eq!(ord_type.dtype(), &DataType::utf8());
     assert!(ord_type.as_fix().codes().count() > 5);
     let source = registry.field_by_tag(22).expect("SecurityIDSource");
     let alternative = registry.field_by_tag(456).expect("SecurityAltIDSource");
@@ -200,7 +200,10 @@ fn the_standard_declares_its_code_sets_and_the_generator_honours_them() {
     }
     // And the ones it types otherwise keep those types.
     assert_eq!(registry.field_by_tag(34).unwrap().dtype(), &DataType::Int64);
-    assert_eq!(registry.field_by_tag(10).unwrap().dtype(), &DataType::Utf8);
+    assert_eq!(
+        registry.field_by_tag(10).unwrap().dtype(),
+        &DataType::utf8()
+    );
     assert_eq!(registry.field_by_tag(9).unwrap().dtype(), &DataType::Int32);
 }
 

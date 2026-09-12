@@ -540,6 +540,25 @@ impl JsMediaType {
         self.inner.extensions().map(ToOwned::to_owned).collect()
     }
 
+    /// The declared charset, or `null` where the media type declares none.
+    #[napi(getter)]
+    pub fn charset(&self) -> Option<String> {
+        self.inner
+            .charset()
+            .map(|charset| charset.as_str().to_owned())
+    }
+
+    /// Declare, or clear with `null`, the charset these bytes are in.
+    #[napi]
+    pub fn set_charset(&mut self, value: Option<String>) -> Result<()> {
+        let charset = value
+            .map(|value| yggdryl::Charset::from_str(&value))
+            .transpose()
+            .map_err(napi_error)?;
+        self.inner.set_charset(charset);
+        Ok(())
+    }
+
     /// Replace the base MIME type.
     #[napi]
     pub fn set_base(&mut self, value: MimeTypeInput<'_>) -> Result<()> {

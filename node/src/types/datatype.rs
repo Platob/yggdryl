@@ -6,13 +6,19 @@ use napi::bindgen_prelude::{
     BigInt, ClassInstance, Either, Either3, Env, Error, Object, Result, Unknown,
 };
 use napi_derive::napi;
+use yggdryl::types::{
+    BytesLayout, BytesParameters as CoreBytesParameters, StringLayout,
+    StringParameters as CoreStringParameters,
+};
 use yggdryl::{
-    AsciiEnum as CoreAsciiEnum, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Field as CoreField, Scheme as CoreScheme, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
+    Charset, DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
+    Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
+    UnionMode as CoreUnionMode,
 };
 
 use crate::{
-    JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8, napi_error, ordering_value,
+    JsDifferenceIterator, exact_i8, exact_i32, exact_i128, exact_u8, exact_u32, napi_error,
+    ordering_value,
     types::field::JsField,
     types::value::arrow_scalar_to_ipc,
     types::value::{JsValueHint, dtype_js_hint, field_value_to_js},
@@ -102,18 +108,22 @@ impl JsDataType {
             "float64" => CoreDataType::Float64,
             "date32" => CoreDataType::Date32,
             "date64" => CoreDataType::Date64,
-            "binary" => CoreDataType::Binary,
-            "large_binary" => CoreDataType::LargeBinary,
-            "binary_view" => CoreDataType::BinaryView,
-            "utf8" => CoreDataType::Utf8,
-            "large_utf8" => CoreDataType::LargeUtf8,
-            "utf8_view" => CoreDataType::Utf8View,
-            "ascii" => CoreDataType::Ascii,
+            "binary" => CoreDataType::binary(),
+            "large_binary" => CoreDataType::large_binary(),
+            "binary_view" => CoreDataType::binary_view(),
+            "utf8" => CoreDataType::utf8(),
+            "large_utf8" => CoreDataType::large_utf8(),
+            "utf8_view" => CoreDataType::utf8_view(),
+            "ascii" => CoreDataType::ascii(),
             "country" => CoreDataType::Country,
             "currency" => CoreDataType::Currency,
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
             "isin" => CoreDataType::Isin,
+            "side" => CoreDataType::Side,
+            "msgdirection" => CoreDataType::MsgDirection,
+            "state" => CoreDataType::State,
+            "timeinforce" => CoreDataType::TimeInForce,
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
@@ -179,19 +189,98 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Internal direct fixed-size-binary constructor.
-    #[napi(factory, js_name = "_fixedSizeBinary", skip_typescript)]
-    pub fn fixed_size_binary(byte_width: f64) -> Result<Self> {
-        let inner = CoreDataType::fixed_size_binary(exact_i32(byte_width, "byteWidth")?)
-            .map_err(napi_error)?;
-        Ok(Self::from_core(inner))
+    /// The string datatype these parameters name: a layout, the charset its
+    /// bytes are written in, and a byte bound.
+    ///
+    /// Every string is this one datatype; `utf8`, `ascii`, `fixedUtf8` and
+    /// `fixedAscii` are it with a layout and charset picked once. The bound
+    /// is one number read the way the layout reads it: `fixed` is the exact
+    /// width on the fixed layout, `max` the most bytes on any other, and
+    /// `bound` is whichever the layout takes.
+    #[napi(factory)]
+    pub fn string(parameters: Option<StringParametersInput>) -> Result<Self> {
+        CoreDataType::string(string_parameters_from_input(
+            parameters.unwrap_or_default(),
+        )?)
+        .map(Self::from_core)
+        .map_err(napi_error)
     }
 
-    /// Creates the fixed ASCII datatype storing exactly `width` bytes,
-    /// padding shorter values with trailing NUL.
+    /// The byte datatype these parameters name: a layout and a byte bound.
+    ///
+    /// Every byte column is this one datatype; `binary`, `largeBinary`,
+    /// `binaryView` and `fixedSizeBinary` are it with a layout picked once.
+    /// `fixed` is the exact width on the fixed layout, `max` the most bytes
+    /// on any other, and `bound` is whichever the layout takes.
     #[napi(factory)]
-    pub fn ascii(width: f64) -> Result<Self> {
-        CoreDataType::ascii(exact_i32(width, "width")?)
+    pub fn bytes(parameters: Option<BytesParametersInput>) -> Result<Self> {
+        CoreDataType::bytes(bytes_parameters_from_input(parameters.unwrap_or_default())?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
+    #[napi(factory)]
+    pub fn utf8() -> Self {
+        Self::from_core(CoreDataType::utf8())
+    }
+
+    /// Unbounded UTF-8 with 64-bit offsets - Arrow's `LargeUtf8`.
+    #[napi(factory)]
+    pub fn large_utf8() -> Self {
+        Self::from_core(CoreDataType::large_utf8())
+    }
+
+    /// Unbounded UTF-8 in the view layout - Arrow's `Utf8View`.
+    #[napi(factory)]
+    pub fn utf8_view() -> Self {
+        Self::from_core(CoreDataType::utf8_view())
+    }
+
+    /// Unbounded US-ASCII with 32-bit offsets.
+    #[napi(factory)]
+    pub fn ascii() -> Self {
+        Self::from_core(CoreDataType::ascii())
+    }
+
+    /// UTF-8 of exactly `width` stored bytes, padded with trailing NUL.
+    #[napi(factory)]
+    pub fn fixed_utf8(width: f64) -> Result<Self> {
+        CoreDataType::fixed_utf8(exact_u32(width, "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// US-ASCII of exactly `width` stored bytes, padded with trailing NUL.
+    #[napi(factory)]
+    pub fn fixed_ascii(width: f64) -> Result<Self> {
+        CoreDataType::fixed_ascii(exact_u32(width, "width")?)
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Unbounded bytes with 32-bit offsets - Arrow's `Binary`.
+    #[napi(factory)]
+    pub fn binary() -> Self {
+        Self::from_core(CoreDataType::binary())
+    }
+
+    /// Unbounded bytes with 64-bit offsets - Arrow's `LargeBinary`.
+    #[napi(factory)]
+    pub fn large_binary() -> Self {
+        Self::from_core(CoreDataType::large_binary())
+    }
+
+    /// Unbounded bytes in the view layout - Arrow's `BinaryView`.
+    #[napi(factory)]
+    pub fn binary_view() -> Self {
+        Self::from_core(CoreDataType::binary_view())
+    }
+
+    /// Exactly `byteWidth` bytes per value - Arrow's `FixedSizeBinary`.
+    #[napi(factory)]
+    pub fn fixed_size_binary(byte_width: f64) -> Result<Self> {
+        CoreDataType::fixed_size_binary(exact_u32(byte_width, "byteWidth")?)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -439,18 +528,54 @@ impl JsDataType {
         self.inner.kind().as_str().to_owned()
     }
 
-    /// The storage width of an ASCII datatype in bytes, `null` for every other.
+    /// The parameters a string datatype declares, `null` for every other.
+    ///
+    /// The registered codes are not strings - a currency is three ASCII
+    /// bytes with an identity - so they answer `null` here and
+    /// `fixedByteWidth` instead.
     #[napi(getter)]
-    pub fn ascii_width(&self) -> Option<i32> {
-        self.inner.ascii_width()
+    pub fn string_parameters(&self) -> Option<StringParameters> {
+        self.inner
+            .string_parameters()
+            .map(StringParameters::from_core)
+    }
+
+    /// The parameters a byte datatype declares, `null` for every other.
+    ///
+    /// A UUID and a geospatial value are bytes with an identity, so they
+    /// answer `null` here exactly as a code answers no `stringParameters`.
+    #[napi(getter)]
+    pub fn bytes_parameters(&self) -> Option<BytesParameters> {
+        self.inner
+            .bytes_parameters()
+            .map(BytesParameters::from_core)
+    }
+
+    /// The charset a string column's bytes are written in, `null` for a
+    /// datatype that is not a string.
+    #[napi(getter)]
+    pub fn charset(&self) -> Option<String> {
+        self.inner
+            .charset()
+            .map(|charset| charset.as_str().to_owned())
+    }
+
+    /// The fixed byte width of one value, `null` when the width varies: a
+    /// fixed string or fixed bytes answer their declared width, the numbers,
+    /// the codes and a UUID their storage width.
+    #[napi(getter)]
+    pub fn fixed_byte_width(&self) -> Option<u32> {
+        self.inner
+            .fixed_byte_width()
+            .map(|width| u32::try_from(width).unwrap_or(u32::MAX))
     }
 
     /// The integer an ASCII value packs into: its storage bytes, big-endian.
     ///
     /// The packed integer is the same in every process, so it is what an enum
-    /// member and a stable hash are, and it is exactly the bytes an ASCII
-    /// column stores. It reaches 128 bits at the widest packable width, so it
-    /// crosses as a `bigint` at every width.
+    /// member and a stable hash are, and it is exactly the bytes a fixed
+    /// US-ASCII column or a code stores. It reaches 128 bits at the widest
+    /// packable width, so it crosses as a `bigint` at every width.
     #[napi]
     pub fn ascii_packed(&self, value: String) -> Result<BigInt> {
         self.inner
@@ -464,7 +589,7 @@ impl JsDataType {
     pub fn ascii_value(&self, packed: BigInt) -> Result<String> {
         self.inner
             .ascii_value(exact_i128(&packed, "packed")?)
-            .map(|value| value.to_string())
+            .map(|value| value.as_str().to_owned())
             .map_err(napi_error)
     }
 
@@ -788,34 +913,186 @@ impl JsDataType {
     }
 }
 
-/// The enum an ASCII field's values name: one value per member name.
+/// What a string datatype declares: its layout, its charset, and its bound.
+///
+/// `bound` is the one declared number; `fixed` and `max` are its two
+/// readings, and exactly one of them answers - the exact width on the fixed
+/// layout, the maximum on every other.
+#[napi(object, object_from_js = false)]
+pub struct StringParameters {
+    /// The layout, under its general name: `string`, `fixed_string`,
+    /// `string_view`, `large_string` or `large_string_view`.
+    pub layout: String,
+    /// The canonical charset name the stored bytes are written in.
+    pub charset: String,
+    /// The declared byte bound, whichever shape the layout gives it.
+    pub bound: Option<u32>,
+    /// The exact bytes every value fills, on the fixed layout.
+    pub fixed: Option<u32>,
+    /// The most bytes a value may hold, on a variable layout.
+    pub max: Option<u32>,
+}
+
+impl StringParameters {
+    fn from_core(parameters: CoreStringParameters) -> Self {
+        Self {
+            layout: parameters.layout().as_str().to_owned(),
+            charset: parameters.charset().as_str().to_owned(),
+            bound: parameters.bound(),
+            fixed: parameters.fixed(),
+            max: parameters.max(),
+        }
+    }
+}
+
+/// What `DataType.string` and `fields.string` read; every key is optional.
+///
+/// The layout defaults to `string` and the charset to `utf-8`. At most one
+/// of `bound`, `fixed` and `max` is given: `fixed` needs the fixed layout,
+/// `max` a variable one, and `bound` is read the way the layout reads it.
+#[napi(object, object_to_js = false)]
+#[derive(Default)]
+pub struct StringParametersInput {
+    /// A layout name in any of its spellings - `fixed_string`, `fixed_utf8`
+    /// and `fixed_ascii` are one layout - naming the layout alone; the
+    /// charset is its own key.
+    pub layout: Option<String>,
+    /// A charset name or alias.
+    pub charset: Option<String>,
+    pub bound: Option<f64>,
+    pub fixed: Option<f64>,
+    pub max: Option<f64>,
+}
+
+/// What a byte datatype declares: its layout and its bound.
+#[napi(object, object_from_js = false)]
+pub struct BytesParameters {
+    /// The layout: `binary`, `fixed_size_binary`, `large_binary` or
+    /// `binary_view`.
+    pub layout: String,
+    /// The declared byte bound, whichever shape the layout gives it.
+    pub bound: Option<u32>,
+    /// The exact bytes every value fills, on the fixed layout.
+    pub fixed: Option<u32>,
+    /// The most bytes a value may hold, on a variable layout.
+    pub max: Option<u32>,
+}
+
+impl BytesParameters {
+    fn from_core(parameters: CoreBytesParameters) -> Self {
+        Self {
+            layout: parameters.layout().as_str().to_owned(),
+            bound: parameters.bound(),
+            fixed: parameters.fixed(),
+            max: parameters.max(),
+        }
+    }
+}
+
+/// What `DataType.bytes` and `fields.bytes` read; every key is optional.
+///
+/// The layout defaults to `binary`. At most one of `bound`, `fixed` and
+/// `max` is given, under the same rule as a string's.
+#[napi(object, object_to_js = false)]
+#[derive(Default)]
+pub struct BytesParametersInput {
+    /// A layout name, such as `fixed_size_binary` or `fixed_binary`.
+    pub layout: Option<String>,
+    pub bound: Option<f64>,
+    pub fixed: Option<f64>,
+    pub max: Option<f64>,
+}
+
+/// The one bound a parameter object declares, read the way its layout reads
+/// it: `fixed` only on a fixed layout, `max` only on a variable one, `bound`
+/// on either, and never two of them.
+fn declared_bound(
+    is_fixed: bool,
+    bound: Option<f64>,
+    fixed: Option<f64>,
+    max: Option<f64>,
+) -> Result<Option<u32>> {
+    let (name, declared) = match (bound, fixed, max) {
+        (None, None, None) => return Ok(None),
+        (Some(bound), None, None) => ("bound", bound),
+        (None, Some(fixed), None) if is_fixed => ("fixed", fixed),
+        (None, Some(fixed), None) => {
+            return Err(Error::from_reason(format!(
+                "expected a maximum on a variable layout, got fixed={fixed}"
+            )));
+        }
+        (None, None, Some(max)) if !is_fixed => ("max", max),
+        (None, None, Some(max)) => {
+            return Err(Error::from_reason(format!(
+                "expected a fixed width on a fixed layout, got max={max}"
+            )));
+        }
+        _ => {
+            return Err(Error::from_reason(
+                "expected one of bound, fixed and max, got more than one",
+            ));
+        }
+    };
+    exact_u32(declared, name).map(Some)
+}
+
+fn string_parameters_from_input(input: StringParametersInput) -> Result<CoreStringParameters> {
+    let layout = match input.layout {
+        Some(layout) => StringLayout::from_str(&layout).map_err(napi_error)?,
+        None => StringLayout::String,
+    };
+    let charset = match input.charset {
+        Some(charset) => Charset::from_str(&charset).map_err(napi_error)?,
+        None => Charset::Utf8,
+    };
+    let parameters = CoreStringParameters::new(layout, charset);
+    match declared_bound(layout.is_fixed(), input.bound, input.fixed, input.max)? {
+        Some(bound) => parameters.try_with_bound(bound).map_err(napi_error),
+        None => Ok(parameters),
+    }
+}
+
+fn bytes_parameters_from_input(input: BytesParametersInput) -> Result<CoreBytesParameters> {
+    let layout = match input.layout {
+        Some(layout) => BytesLayout::from_str(&layout).map_err(napi_error)?,
+        None => BytesLayout::Binary,
+    };
+    let parameters = CoreBytesParameters::new(layout);
+    match declared_bound(layout.is_fixed(), input.bound, input.fixed, input.max)? {
+        Some(bound) => parameters.try_with_bound(bound).map_err(napi_error),
+        None => Ok(parameters),
+    }
+}
+
+/// The enum a string field's values name: one value per member name.
 ///
 /// A dictionary is a vocabulary and derives its member names; this is the
 /// vocabulary a declaration named itself, and it is what a `Field` stores
 /// under `field:enum` so the enum crosses Arrow, a file, and another runtime
-/// intact. The width lives in the field's datatype, so a member's code is its
-/// packed ASCII value under that width and never a position.
-#[napi(js_name = "AsciiEnum")]
-pub struct JsAsciiEnum {
-    inner: CoreAsciiEnum,
+/// intact. The width lives in the field's datatype - a fixed US-ASCII string
+/// of at most sixteen bytes or a code - so a member's code is its packed
+/// ASCII value under that width and never a position.
+#[napi(js_name = "StringEnum")]
+pub struct JsStringEnum {
+    inner: CoreStringEnum,
 }
 
-impl JsAsciiEnum {
-    pub(crate) const fn from_core(inner: CoreAsciiEnum) -> Self {
+impl JsStringEnum {
+    pub(crate) const fn from_core(inner: CoreStringEnum) -> Self {
         Self { inner }
     }
 
-    pub(crate) const fn as_core(&self) -> &CoreAsciiEnum {
+    pub(crate) const fn as_core(&self) -> &CoreStringEnum {
         &self.inner
     }
 }
 
 #[napi]
-impl JsAsciiEnum {
+impl JsStringEnum {
     /// Create an enum from its members, one ASCII value per member name.
     #[napi(constructor)]
     pub fn new(name: String, members: Option<HashMap<String, String>>) -> Result<Self> {
-        CoreAsciiEnum::from_members(name, members.unwrap_or_default())
+        CoreStringEnum::from_members(name, members.unwrap_or_default())
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -823,7 +1100,7 @@ impl JsAsciiEnum {
     /// Parse the `field:enum` document.
     #[napi(factory)]
     pub fn from_json(document: String) -> Result<Self> {
-        CoreAsciiEnum::from_json(&document)
+        CoreStringEnum::from_json(&document)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -877,7 +1154,8 @@ impl JsAsciiEnum {
         self.inner.remove(&member).map(|value| value.to_string())
     }
 
-    /// The members paired with their packed codes under one ASCII width.
+    /// The members paired with their packed codes under one fixed US-ASCII
+    /// width or code datatype.
     #[napi]
     #[allow(clippy::wrong_self_convention)]
     pub fn into_members(
@@ -898,7 +1176,7 @@ impl JsAsciiEnum {
     /// The enum a registered logical name prebuilds, named for it.
     #[napi(factory)]
     pub fn from_logical_name(name: String) -> Result<Self> {
-        CoreAsciiEnum::from_logical_name(&name)
+        CoreStringEnum::from_logical_name(&name)
             .map(Self::from_core)
             .map_err(napi_error)
     }
@@ -907,7 +1185,7 @@ impl JsAsciiEnum {
     #[napi(ts_return_type = "Record<string, string[]>")]
     pub fn prebuilt(env: &Env) -> Result<Object<'_>> {
         let mut lists = Object::new(env)?;
-        for (name, values) in CoreAsciiEnum::PREBUILT {
+        for (name, values) in CoreStringEnum::PREBUILT {
             lists.set(*name, values.to_vec())?;
         }
         Ok(lists)
@@ -916,7 +1194,7 @@ impl JsAsciiEnum {
     /// The enum member name one ASCII value takes.
     #[napi]
     pub fn member_name(value: String) -> String {
-        CoreAsciiEnum::member_name(&value).to_string()
+        CoreStringEnum::member_name(&value).to_string()
     }
 
     /// The number of members.
@@ -927,7 +1205,7 @@ impl JsAsciiEnum {
 
     /// Native equality: the enum name and every member it names.
     #[napi]
-    pub fn equals(&self, other: &JsAsciiEnum) -> bool {
+    pub fn equals(&self, other: &JsStringEnum) -> bool {
         self.inner == other.inner
     }
 

@@ -11,7 +11,9 @@ use crate::path::{Path, Segment};
 use crate::text::{elide_display, expected_got};
 use crate::{Error, Field, Result, Scheme, TimeUnit};
 
-use super::{DataType, preflight_schema, preflight_schema_shape};
+use super::{
+    BytesParameters, DataType, StringParameters, preflight_schema, preflight_schema_shape,
+};
 
 const ARROW_EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 const ARROW_EXTENSION_METADATA_KEY: &str = "ARROW:extension:metadata";
@@ -299,9 +301,15 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Int64
         | D::Float32
         | D::Float64
-        | D::Date32
-        | D::Binary
-        | D::Utf8 => Ok((dtype.clone(), false)),
+        | D::Date32 => Ok((dtype.clone(), false)),
+        // Plain `binary` and plain `utf8` are the one byte and the one
+        // string a foreign engine names.
+        D::Bytes(parameters) if *parameters == BytesParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
+        D::String(parameters) if *parameters == StringParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
         D::UInt8 => Ok((D::Int16, true)),
         D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
@@ -347,22 +355,17 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
             path,
             format_smolstr!("expected an interval layout, got {unit}"),
         ),
-        D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
-        // and the cast trims the padding.
-        D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
-        | D::Country
-        | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin => Ok((D::Utf8, true)),
+        D::Bytes(_) => Ok((D::binary(), true)),
+        // No fixed-width text and no charset to declare here, so a string
+        // exchanges as the characters it holds, the cast encodes them as
+        // UTF-8 and trims a fixed width's padding.
+        D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
+            Ok((D::utf8(), true))
+        }
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Uuid => Ok((D::Utf8, true)),
-        D::Version | D::Url => Ok((D::Utf8, true)),
+        D::Uuid => Ok((D::utf8(), true)),
+        D::Version | D::Url => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -415,9 +418,15 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::UInt64
         | D::Float32
         | D::Float64
-        | D::Date32
-        | D::Binary
-        | D::Utf8 => Ok((dtype.clone(), false)),
+        | D::Date32 => Ok((dtype.clone(), false)),
+        // Plain `binary` and plain `utf8` are the one byte and the one
+        // string a foreign engine names.
+        D::Bytes(parameters) if *parameters == BytesParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
+        D::String(parameters) if *parameters == StringParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
         D::Float16 => Ok((D::Float32, true)),
         // Polars datetimes are millisecond, microsecond, or nanosecond.
         D::DateTime64 {
@@ -449,22 +458,17 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
             path,
             format_smolstr!("Polars has no calendar interval type, got interval({unit})"),
         ),
-        D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
-        // and the cast trims the padding.
-        D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
-        | D::Country
-        | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin => Ok((D::Utf8, true)),
+        D::Bytes(_) => Ok((D::binary(), true)),
+        // No fixed-width text and no charset to declare here, so a string
+        // exchanges as the characters it holds, the cast encodes them as
+        // UTF-8 and trims a fixed width's padding.
+        D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
+            Ok((D::utf8(), true))
+        }
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Uuid => Ok((D::Utf8, true)),
-        D::Version | D::Url => Ok((D::Utf8, true)),
+        D::Uuid => Ok((D::utf8(), true)),
+        D::Version | D::Url => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -506,9 +510,15 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::UInt64
         | D::Float32
         | D::Float64
-        | D::Date32
-        | D::Binary
-        | D::Utf8 => Ok((dtype.clone(), false)),
+        | D::Date32 => Ok((dtype.clone(), false)),
+        // Plain `binary` and plain `utf8` are the one byte and the one
+        // string a foreign engine names.
+        D::Bytes(parameters) if *parameters == BytesParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
+        D::String(parameters) if *parameters == StringParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
         D::Float16 => Ok((D::Float32, true)),
         // `datetime64[ns]` is the pandas timestamp representation.
         D::DateTime64 {
@@ -543,22 +553,17 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
                 "a pandas IntervalDtype describes value bounds, not an Arrow calendar interval, got interval({unit})"
             ),
         ),
-        D::FixedSizeBinary(_) | D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        // No fixed-width text here; ASCII is text, so it exchanges as `utf8`
-        // and the cast trims the padding.
-        D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
-        | D::Country
-        | D::Currency
-        | D::Mic
-        | D::Cfi
-        | D::Isin => Ok((D::Utf8, true)),
+        D::Bytes(_) => Ok((D::binary(), true)),
+        // No fixed-width text and no charset to declare here, so a string
+        // exchanges as the characters it holds, the cast encodes them as
+        // UTF-8 and trims a fixed width's padding.
+        D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
+            Ok((D::utf8(), true))
+        }
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
-        D::Uuid => Ok((D::Utf8, true)),
-        D::Version | D::Url => Ok((D::Utf8, true)),
+        D::Uuid => Ok((D::utf8(), true)),
+        D::Version | D::Url => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -604,13 +609,19 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Float32
         | D::Float64
         | D::Date32
-        | D::Binary
-        | D::Utf8
-        // `fixed[n]`, which is also how `uuid` is stored.
-        | D::FixedSizeBinary(_)
         // Iceberg is the one target that names an identifier type.
         | D::Uuid => Ok((dtype.clone(), false)),
-        D::Version | D::Url => Ok((D::Utf8, true)),
+        // Plain `binary`, and `fixed[n]`, which is also how `uuid` is
+        // stored; plain `utf8` is the one string a foreign engine names.
+        D::Bytes(parameters)
+            if *parameters == BytesParameters::default() || parameters.is_fixed() =>
+        {
+            Ok((dtype.clone(), false))
+        }
+        D::String(parameters) if *parameters == StringParameters::default() => {
+            Ok((dtype.clone(), false))
+        }
+        D::Version | D::Url => Ok((D::utf8(), true)),
         D::Int8 | D::Int16 | D::UInt8 | D::UInt16 => Ok((D::Int32, true)),
         D::UInt32 => Ok((D::Int64, true)),
         D::UInt64 => Ok((D::decimal128(20, 0)?, true)),
@@ -645,18 +656,16 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
             path,
             format_smolstr!("Iceberg has no calendar interval type, got interval({unit})"),
         ),
-        D::LargeBinary | D::BinaryView => Ok((D::Binary, true)),
-        // Iceberg has `string` and `fixed[n]`; an ASCII column is text, so
-        // every Iceberg reader must see `USD`, never the padded bytes.
-        D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
+        D::Bytes(_) => Ok((D::binary(), true)),
+        // Iceberg has `string` and `fixed[n]` and no charset to declare, so a
+        // string exchanges as the characters it holds: every Iceberg reader
+        // must see `USD`, never the padded bytes.
+        D::String(_)
         | D::Country
         | D::Currency
         | D::Mic
         | D::Cfi
-        | D::Isin => Ok((D::Utf8, true)),
+        | D::Isin => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {
@@ -733,9 +742,9 @@ fn field_with_dtype(
 /// Reports whether a field still carries a *foreign* Arrow extension label.
 ///
 /// The extensions this workspace owns never reach here: `arrow.parquet.variant`,
-/// `geoarrow.wkb`, `yggdryl.ascii`, `arrow.uuid`, and each registered code's
+/// `geoarrow.wkb`, `yggdryl.string`, `arrow.uuid`, and each registered code's
 /// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
-/// `variant`, `geometry`, `geography`, ASCII-width, `uuid` and code datatypes
+/// `variant`, `geometry`, `geography`, string, `uuid` and code datatypes
 /// with their `ARROW:extension:*` keys stripped, so a field carrying these
 /// keys names an extension the workspace does not model.
 /// Rewriting its storage would silently relabel that foreign type, so the

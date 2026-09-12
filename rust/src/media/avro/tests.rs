@@ -705,7 +705,10 @@ mod logical {
             Scalar::from([1_u8, 2, 3].as_slice()),
         );
         assert_eq!(fixed.id(), DataTypeId::FixedSizeBinary);
-        assert_eq!(fixed.dtype().unwrap(), DataType::FixedSizeBinary(3));
+        assert_eq!(
+            fixed.dtype().unwrap(),
+            DataType::fixed_size_binary(3).unwrap()
+        );
 
         for (precision, expected) in [
             (9, DataTypeId::Decimal32),
@@ -1435,7 +1438,7 @@ mod records {
             "trades",
             DataType::from_fields([
                 DataType::Int64.required_field("id"),
-                DataType::Utf8.nullable_field("symbol"),
+                DataType::utf8().nullable_field("symbol"),
                 DataType::Float64.nullable_field("price"),
                 DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
             ])
@@ -1654,7 +1657,9 @@ mod records {
             DataType::Uuid.required_field("id"),
             DataType::decimal32(9, 2).unwrap().required_field("small"),
             DataType::decimal64(18, 2).unwrap().required_field("large"),
-            DataType::FixedSizeBinary(3).required_field("raw"),
+            DataType::fixed_size_binary(3)
+                .unwrap()
+                .required_field("raw"),
             DataType::Interval(TimeUnit::MonthDayNano).required_field("span"),
         ])
         .unwrap()
@@ -1832,7 +1837,7 @@ mod records {
 
     #[test]
     fn dimensions_skip_a_large_avro_payload_without_decoding_it() {
-        let field = DataType::from_fields([DataType::Utf8.required_field("payload")])
+        let field = DataType::from_fields([DataType::utf8().required_field("payload")])
             .unwrap()
             .required_field("rows");
         let payload = "0123456789abcdef".repeat(65_536);
@@ -1960,8 +1965,8 @@ mod records {
     #[test]
     fn an_ascii_column_is_an_avro_string() {
         let root = DataType::from_fields([
-            DataType::FixedAscii(4).required_field("ccy"),
-            DataType::FixedAscii(16).nullable_field("code"),
+            DataType::fixed_ascii(4).unwrap().required_field("ccy"),
+            DataType::fixed_ascii(16).unwrap().nullable_field("code"),
         ])
         .unwrap()
         .required_field("row");
@@ -1989,37 +1994,59 @@ mod records {
     }
 
     #[test]
+    fn a_string_in_another_charset_is_not_an_avro_string() {
+        // Avro's string is UTF-8; bytes in another charset are not, so the
+        // column is refused by name rather than written as mojibake.
+        let latin = DataType::string(crate::Charset::Cp1252).unwrap();
+        let root = DataType::from_fields([latin.required_field("label")])
+            .unwrap()
+            .required_field("row");
+        let message = crate::media::avro::arrow::schema_json_from_field(&root)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains("expected a datatype Avro can spell"),
+            "{message}"
+        );
+        assert!(message.contains("string(windows-1252)"), "{message}");
+    }
+
+    #[test]
     fn a_code_column_is_an_avro_string_and_a_code_key_is_spellable() {
         // Avro has no fixed-width text, so a code spells `string` with no
         // logical type - the contrast with a UUID, which annotates `uuid`.
-        let root = DataType::from_fields([
-            DataType::Country.required_field("iso"),
-            DataType::Currency.required_field("ccy"),
-            DataType::Mic.required_field("venue"),
-            DataType::Cfi.required_field("classification"),
-            // A map key gate that nothing else in the tree exercises for a
-            // non-Utf8 key.
+        // Every registered code, read from the one listing: this used to name
+        // four of them, and `side`, `state`, `timeinforce` and `msgdirection`
+        // were refused as unspellable by a column spelling that had drifted
+        // behind the family.
+        let mut fields: Vec<_> = DataType::CODES
+            .iter()
+            .map(|(name, dtype, _)| dtype.clone().required_field(*name))
+            .collect();
+        // A map key gate that nothing else in the tree exercises for a
+        // non-Utf8 key.
+        fields.push(
             DataType::map_of(DataType::Mic, DataType::Int64, true)
                 .unwrap()
                 .required_field("by_venue"),
-        ])
-        .unwrap()
-        .required_field("row");
+        );
+        let codes = DataType::CODES.len();
+        let root = DataType::from_fields(fields).unwrap().required_field("row");
         let schema = crate::media::avro::arrow::schema_json_from_field(&root).unwrap();
         let fields = schema
             .get_key_str("fields")
             .and_then(crate::Scalar::as_sequence)
             .unwrap();
 
-        for (index, field) in fields.iter().take(4).enumerate() {
+        for ((name, ..), field) in DataType::CODES.iter().zip(fields.iter()) {
             assert_eq!(
                 field.get_key_str("type").and_then(crate::Scalar::as_str),
                 Some("string"),
-                "{index}"
+                "{name}"
             );
         }
         assert_eq!(
-            fields[4]
+            fields[codes]
                 .get_key_str("type")
                 .and_then(|value| value.get_key_str("type"))
                 .and_then(|value| value.as_str().map(str::to_owned)),
@@ -2031,7 +2058,7 @@ mod records {
     fn an_open_cache_tracks_the_final_avro_field_after_casting() {
         let stored = DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
         ])
         .unwrap()
         .required_field("trades");
@@ -2054,8 +2081,8 @@ mod records {
         media.open().unwrap();
 
         let loose = DataType::from_fields([
-            DataType::Utf8.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().required_field("id"),
+            DataType::utf8().nullable_field("symbol"),
         ])
         .unwrap()
         .required_field("trades");

@@ -196,81 +196,81 @@ fn build() -> Result<Vec<Field>> {
         (
             SESSIONINTERFACE_NAME,
             20_010,
-            DataType::Utf8,
+            DataType::utf8(),
             "The ObjectName of the MBean this occurrence answers for.",
         ),
         (
             "MBeanType",
             20_011,
-            DataType::Utf8,
+            DataType::utf8(),
             "The ObjectName's own type property: what this MBean is.",
         ),
         (
             "PluginType",
             20_012,
-            DataType::Utf8,
+            DataType::utf8(),
             "The ObjectName's plugin-type property: the protocol the plugin speaks.",
         ),
         (
             "Name",
             20_013,
-            DataType::Utf8,
+            DataType::utf8(),
             "The name the bridge knows this session interface by.",
         ),
         (
             "Category",
             20_014,
-            DataType::Utf8,
+            DataType::utf8(),
             "The category the bridge files this session interface under.",
         ),
         (
             "Guid",
             20_015,
-            DataType::Utf8,
+            DataType::utf8(),
             "The identifier the bridge holds this session interface under.",
         ),
         (
             "Prefix",
             20_016,
-            DataType::Utf8,
+            DataType::utf8(),
             "Prepended to every identifier this session interface issues.",
         ),
         (
             "Suffix",
             20_017,
-            DataType::Utf8,
+            DataType::utf8(),
             "Appended to every identifier this session interface issues.",
         ),
         (
             "Comment",
             20_018,
-            DataType::Utf8,
+            DataType::utf8(),
             "Whatever an operator wrote about this session interface.",
         ),
         (
             "PluginState",
             20_019,
-            DataType::Utf8,
+            DataType::utf8(),
             "What the session is doing now: logged, stopped, and the rest; \
              the document spells it State.",
         ),
         (
             "Type",
             20_020,
-            DataType::Utf8,
+            DataType::utf8(),
             "Which side of the connection this is: A accepts, I initiates.",
         ),
         (
             "PluginVersion",
             20_021,
-            DataType::Utf8,
+            DataType::utf8(),
             "The plugin version this session interface runs; the document \
              spells it Version.",
         ),
         (
             "PrimaryHost",
             20_022,
-            DataType::Utf8,
+            DataType::utf8(),
             "The host the session connects to first.",
         ),
         (
@@ -282,7 +282,7 @@ fn build() -> Result<Vec<Field>> {
         (
             "BackupHost",
             20_024,
-            DataType::Utf8,
+            DataType::utf8(),
             "The host the session falls back to.",
         ),
         (
@@ -294,7 +294,7 @@ fn build() -> Result<Vec<Field>> {
         (
             "CurrentHost",
             20_026,
-            DataType::Utf8,
+            DataType::utf8(),
             "The host the session is connected to now.",
         ),
         (
@@ -348,31 +348,31 @@ fn build() -> Result<Vec<Field>> {
         (
             "BinaryName",
             20_035,
-            DataType::Utf8,
+            DataType::utf8(),
             "The jar the plugin class was loaded from.",
         ),
         (
             "ClassName",
             20_036,
-            DataType::Utf8,
+            DataType::utf8(),
             "The plugin class this session interface runs.",
         ),
         (
             "RevisionInformation",
             20_037,
-            DataType::Utf8,
+            DataType::utf8(),
             "The revision string the plugin build carries.",
         ),
         (
             "MinimumBridgeRevision",
             20_038,
-            DataType::Utf8,
+            DataType::utf8(),
             "The oldest bridge revision this plugin will run on.",
         ),
         (
             "InitFileContent",
             20_039,
-            DataType::Utf8,
+            DataType::utf8(),
             "The session's init file, as the INI text it is.",
         ),
         // The four arrays a session interface carries. Declared as the text
@@ -381,25 +381,25 @@ fn build() -> Result<Vec<Field>> {
         (
             "ExtendedActions",
             20_040,
-            DataType::Utf8,
+            DataType::utf8(),
             "The actions this session interface offers, as the JSON array it is.",
         ),
         (
             "Enrichments",
             20_041,
-            DataType::Utf8,
+            DataType::utf8(),
             "The enrichment chain attached to this session interface, as the JSON array it is.",
         ),
         (
             "ClassHierarchy",
             20_042,
-            DataType::Utf8,
+            DataType::utf8(),
             "The plugin's class hierarchy and revisions, as the JSON array it is.",
         ),
         (
             "Resources",
             20_043,
-            DataType::Utf8,
+            DataType::utf8(),
             "The extensions this session interface declares, as the JSON array it is.",
         ),
         // What a plugin says about the configuration it was built from. A
@@ -414,19 +414,19 @@ fn build() -> Result<Vec<Field>> {
         (
             "CFBInfos",
             20_045,
-            DataType::Utf8,
+            DataType::utf8(),
             "The CBlocks this session interface loaded and their revisions, as the JSON array it is.",
         ),
         (
             "targetProducts",
             20_046,
-            DataType::Utf8,
+            DataType::utf8(),
             "The products this plugin is built for, as the JSON array it is.",
         ),
         (
             "cm-extension",
             20_047,
-            DataType::Utf8,
+            DataType::utf8(),
             "The configuration-manager extension version this plugin declares.",
         ),
     ]
@@ -438,13 +438,13 @@ fn build() -> Result<Vec<Field>> {
         attribute(
             MBEAN_TAG_NAME.1,
             MBEAN_TAG_NAME.0,
-            DataType::Utf8,
+            DataType::utf8(),
             "The MBean the request named, which is a pattern where it named many.",
         )?,
         attribute(
             OPERATION_TAG_NAME.1,
             OPERATION_TAG_NAME.0,
-            DataType::Utf8,
+            DataType::utf8(),
             "The Jolokia operation the document asked for: read, write, exec, list, search.",
         )?,
         attribute(
@@ -456,7 +456,7 @@ fn build() -> Result<Vec<Field>> {
         attribute(
             ERROR_TAG_NAME.1,
             ERROR_TAG_NAME.0,
-            DataType::Utf8,
+            DataType::utf8(),
             "What the answer failed with, where it failed.",
         )?,
     ];

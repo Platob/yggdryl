@@ -52,11 +52,11 @@ fn parser_accepts_flexible_sql_whitespace_and_doubled_quotes() {
 
     let single_quoted = Field::from_str("'owner''s code'   VARCHAR(32)").unwrap();
     assert_eq!(single_quoted.name(), "owner's code");
-    assert_eq!(single_quoted.dtype(), &DataType::Utf8);
+    assert_eq!(single_quoted.dtype().to_string(), "utf8(32)");
 
     let double_quoted = Field::from_str(r#""desk""label" STRING"#).unwrap();
     assert_eq!(double_quoted.name(), "desk\"label");
-    assert_eq!(double_quoted.dtype(), &DataType::Utf8);
+    assert_eq!(double_quoted.dtype(), &DataType::utf8());
 }
 
 #[test]
@@ -256,13 +256,13 @@ fn no_op_metadata_update_retains_arrow_cache_effective_update_invalidates_it() {
 
 #[test]
 fn invalid_dtype_replacement_is_transactional() {
-    let mut field = Field::new("value", DataType::Utf8, true);
+    let mut field = Field::new("value", DataType::utf8(), true);
     assert!(
         field
             .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
             .is_err()
     );
-    assert_eq!(field.dtype(), &DataType::Utf8);
+    assert_eq!(field.dtype(), &DataType::utf8());
 }
 
 #[test]
@@ -294,7 +294,7 @@ fn metadata_is_a_deterministic_shared_native_value() {
 #[test]
 fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
     let location = Url::from_str("HTTPS://example.com/warehouse/table").unwrap();
-    let mut field = Field::new("trade", DataType::Utf8, false);
+    let mut field = Field::new("trade", DataType::utf8(), false);
     field.set_alias("latest_trade").unwrap();
     field.set_comment("the latest trade").unwrap();
     field.set_display("Latest trade").unwrap();
@@ -379,7 +379,7 @@ fn typed_names_location_and_protocol_properties_share_one_metadata_map() {
 fn http_metadata_is_canonical_typed_and_cache_aware() {
     let field = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [
             ("HTTP:Content-Type", "text/plain; charset=utf-8"),
@@ -448,7 +448,7 @@ fn http_metadata_is_canonical_typed_and_cache_aware() {
 
 #[test]
 fn http_case_collisions_and_typed_location_are_transactional() {
-    let mut field = Field::new("payload", DataType::Binary, false);
+    let mut field = Field::new("payload", DataType::binary(), false);
     field.as_http_mut().set_accept("application/json").unwrap();
     let snapshot = field.clone();
     let cached = Arc::new(field.clone().into_arrow().unwrap());
@@ -494,7 +494,7 @@ fn http_case_collisions_and_typed_location_are_transactional() {
 
 #[test]
 fn https_properties_share_the_canonical_http_namespace() {
-    let mut field = Field::new("payload", DataType::Binary, false);
+    let mut field = Field::new("payload", DataType::binary(), false);
     assert_eq!(
         field
             .set_property(&Scheme::HTTPS, "Content-Type", "application/json")
@@ -556,7 +556,7 @@ fn https_properties_share_the_canonical_http_namespace() {
     assert!(
         Field::from_parts(
             "collision",
-            DataType::Binary,
+            DataType::binary(),
             false,
             [
                 ("HTTPS:Content-Type", "application/json"),
@@ -571,7 +571,7 @@ fn https_properties_share_the_canonical_http_namespace() {
 fn typed_http_media_preserves_raw_parameters_and_encoding_order() {
     let field = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [
             ("HTTP:Content-Type", "Application/JSON; Charset=utf-8"),
@@ -588,8 +588,15 @@ fn typed_http_media_preserves_raw_parameters_and_encoding_order() {
     let media = field.as_http().media_type().unwrap();
     assert_eq!(media.base(), &MimeType::JSON);
     assert_eq!(media.encodings(), &[MimeType::GZIP, MimeType::BROTLI]);
+    // The charset the header declared rides on the media type rather than
+    // being dropped with the rest of the parameters.
+    assert_eq!(media.charset(), Some(yggdryl::Charset::Utf8));
     assert_eq!(
-        Field::new("empty", DataType::Binary, true)
+        field.as_http().charset().unwrap(),
+        Some(yggdryl::Charset::Utf8)
+    );
+    assert_eq!(
+        Field::new("empty", DataType::binary(), true)
             .as_http()
             .mime_type()
             .unwrap(),
@@ -604,7 +611,7 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
         [MimeType::GZIP, MimeType::COMPRESS, MimeType::ZSTD],
     )
     .unwrap();
-    let mut field = Field::new("payload", DataType::Binary, false);
+    let mut field = Field::new("payload", DataType::binary(), false);
     field.as_http_mut().set_media_type(media.clone()).unwrap();
     assert_eq!(field.as_http().content_type(), Some("text/csv"));
     assert_eq!(
@@ -657,7 +664,7 @@ fn typed_http_media_pair_updates_once_and_rejects_unmappable_encodings() {
 fn malformed_typed_http_media_removal_is_transactional() {
     let field = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [
             ("http:content-type", "application/json; charset=utf-8"),
@@ -678,7 +685,7 @@ fn malformed_typed_http_media_removal_is_transactional() {
 
     let duplicate = Field::from_parts(
         "duplicate",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [("http:content-encoding", " gzip ,\tGZIP ")],
     )
@@ -695,7 +702,7 @@ fn malformed_typed_http_media_removal_is_transactional() {
     for coding in ["", "identity", "gzip,", "unknown-coding"] {
         let raw = Field::from_parts(
             "invalid",
-            DataType::Binary,
+            DataType::binary(),
             false,
             [("http:content-encoding", coding)],
         )
@@ -736,7 +743,7 @@ fn typed_field_id_uses_canonical_arrow_parquet_metadata() {
 
     let field = Field::from_parts(
         "trade",
-        DataType::Utf8,
+        DataType::utf8(),
         false,
         [("PARQUET:field_id", "+00017")],
     )
@@ -783,7 +790,7 @@ fn typed_field_id_rejects_non_i32_metadata_transactionally() {
         assert!(
             Field::from_parts(
                 "trade",
-                DataType::Utf8,
+                DataType::utf8(),
                 false,
                 [("PARQUET:field_id", value)],
             )
@@ -799,7 +806,7 @@ fn typed_field_id_rejects_non_i32_metadata_transactionally() {
     .unwrap();
     assert_eq!(metadata.get("PARQUET:field_id"), Some("-7"));
 
-    let mut field = Field::new("trade", DataType::Utf8, false).with_parquet_field_id(7);
+    let mut field = Field::new("trade", DataType::utf8(), false).with_parquet_field_id(7);
     let snapshot = field.clone();
     assert!(
         field
@@ -1019,16 +1026,16 @@ fn datatype_builds_fields_in_schema_reading_order() {
     assert_eq!(id, Field::new("id", DataType::Int64, false));
 
     assert_eq!(
-        DataType::Utf8.nullable_field("note"),
-        Field::new("note", DataType::Utf8, true)
+        DataType::utf8().nullable_field("note"),
+        Field::new("note", DataType::utf8(), true)
     );
     assert_eq!(
-        DataType::Utf8.required_field("symbol"),
-        Field::new("symbol", DataType::Utf8, false)
+        DataType::utf8().required_field("symbol"),
+        Field::new("symbol", DataType::utf8(), false)
     );
 
     // A nested type composes without naming the inner type twice.
-    let tags = DataType::list(DataType::Utf8.nullable_field("item")).nullable_field("tags");
+    let tags = DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags");
     assert!(tags.dtype().is_nested());
     assert_eq!(tags.name(), "tags");
 }
@@ -1037,7 +1044,7 @@ fn datatype_builds_fields_in_schema_reading_order() {
 fn a_struct_field_is_usable_as_a_schema_root() {
     let root = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])
     .unwrap()
     .required_field("row");
@@ -1133,13 +1140,13 @@ fn one_straight_display_name_is_what_every_protocol_reads() {
     assert_eq!(metadata.display(), Some("Ticker symbol"));
     assert_eq!(metadata.as_iceberg().display(), Some("Ticker symbol"));
 
-    let named = DataType::Utf8
+    let named = DataType::utf8()
         .required_field("symbol")
         .try_with_display("Ticker symbol")
         .unwrap();
     assert_eq!(named.display(), Some("Ticker symbol"));
     assert!(
-        DataType::Utf8
+        DataType::utf8()
             .required_field("symbol")
             .try_with_display("bad\nname")
             .is_err()
@@ -1213,7 +1220,7 @@ fn a_protocol_view_reads_and_writes_by_bare_name_over_one_shared_map() {
 
 #[test]
 fn identity_and_partition_views_hold_independent_generic_metadata() {
-    let mut field = DataType::Utf8.required_field("venue");
+    let mut field = DataType::utf8().required_field("venue");
 
     field
         .as_identity_mut()
@@ -1488,7 +1495,9 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
         Some("holder")
     );
 
-    let mut wide = DataType::FixedSizeBinary(16).required_field("wide_digest");
+    let mut wide = DataType::fixed_size_binary(16)
+        .unwrap()
+        .required_field("wide_digest");
     wide.as_digest_mut().set_holder().unwrap();
     wide.as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh128)
@@ -1512,7 +1521,7 @@ fn digest_holder_algorithm_is_canonical_typed_and_role_owned() {
 
 #[test]
 fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() {
-    let symbol = DataType::Utf8.required_field("symbol");
+    let symbol = DataType::utf8().required_field("symbol");
     let quantity = DataType::Int64.required_field("quantity");
     let mut holder = DataType::UInt64.required_field("row_digest");
     holder.as_digest_mut().set_holder().unwrap();
@@ -1568,7 +1577,7 @@ fn digest_field_selection_defaults_to_every_non_holder_then_honors_components() 
 
 #[test]
 fn a_protocol_view_shares_http_between_the_two_schemes_and_stays_case_insensitive() {
-    let mut field = DataType::Utf8.required_field("body");
+    let mut field = DataType::utf8().required_field("body");
     field
         .as_http_mut()
         .insert("Content-Type", "text/plain")
@@ -1652,7 +1661,7 @@ fn a_typed_read_outlives_the_view_it_was_read_through() {
 fn indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child() {
     let mut row = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .unwrap()
     .required_field("row");
@@ -1678,7 +1687,7 @@ fn indexing_a_view_reads_a_property_where_indexing_a_field_reads_a_child() {
 #[test]
 fn a_typed_protocol_write_invalidates_a_populated_projection_exactly_once() {
     let media = MediaType::from_parts(MimeType::CSV, [MimeType::GZIP]).unwrap();
-    let field = Field::new("payload", DataType::Binary, false);
+    let field = Field::new("payload", DataType::binary(), false);
     let cached = Arc::new(field.clone().into_arrow().unwrap());
     let mut field = Field::from_arrow_ref(Arc::clone(&cached)).unwrap();
 
@@ -1721,7 +1730,7 @@ fn a_typed_protocol_write_invalidates_a_populated_projection_exactly_once() {
 fn a_field_can_act_as_a_partition_column_and_a_root_reports_only_those() {
     let schema = DataType::from_fields([
         DataType::Int32.required_field("year"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("price"),
     ])
     .unwrap()
@@ -1818,7 +1827,7 @@ fn unmarking_a_partition_column_removes_the_marker_rather_than_storing_a_default
 fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::list(DataType::Utf8.nullable_field("item")).nullable_field("tags"),
+        DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
         DataType::from_fields([DataType::Int32.required_field("depth")])
             .unwrap()
             .nullable_field("book"),
@@ -1854,7 +1863,7 @@ fn one_walk_numbers_finds_and_bounds_every_identifier_in_a_tree() {
                     .fields()
                     .iter()
                     .cloned()
-                    .chain([DataType::Utf8.nullable_field("venue")]),
+                    .chain([DataType::utf8().nullable_field("venue")]),
             )
             .unwrap(),
         )
@@ -1888,7 +1897,7 @@ fn a_datatype_rebuilds_any_layout_from_replacement_children() {
     let union = DataType::union(
         [
             (7_i8, DataType::Int64.nullable_field("number")),
-            (9_i8, DataType::Utf8.nullable_field("text")),
+            (9_i8, DataType::utf8().nullable_field("text")),
         ],
         yggdryl::UnionMode::Dense,
     )
@@ -1896,7 +1905,7 @@ fn a_datatype_rebuilds_any_layout_from_replacement_children() {
     let rebuilt = union
         .with_fields([
             DataType::Int32.nullable_field("number"),
-            DataType::Utf8.nullable_field("text"),
+            DataType::utf8().nullable_field("text"),
         ])
         .unwrap();
     assert_eq!(
@@ -1930,8 +1939,8 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     let mut order = DataType::from_fields([
         DataType::Int64.required_field("id"),
         line.clone(),
-        DataType::list(DataType::Utf8.nullable_field("tag")).nullable_field("tags"),
-        DataType::map_of(DataType::Utf8, DataType::Int64, false)
+        DataType::list(DataType::utf8().nullable_field("tag")).nullable_field("tags"),
+        DataType::map_of(DataType::utf8(), DataType::Int64, false)
             .unwrap()
             .nullable_field("counts"),
     ])
@@ -1948,7 +1957,7 @@ fn subscripting_a_schema_node_reaches_a_nested_child() {
     // Chained descent, two levels and through a List and a Map.
     assert_eq!(order["line"]["price"].dtype(), &DataType::Float64);
     assert_eq!(order["tags"][0].name(), "tag");
-    assert_eq!(order["counts"]["entries"]["key"].dtype(), &DataType::Utf8);
+    assert_eq!(order["counts"]["entries"]["key"].dtype(), &DataType::utf8());
     assert_eq!(order["counts"][0]["value"].dtype(), &DataType::Int64);
 
     // Metadata is not reachable by subscript any more, and is still reachable
@@ -1986,17 +1995,17 @@ fn subscripting_a_scalar_datatype_panics() {
 fn child_mutation_replaces_by_position_and_appends_by_unknown_name() {
     let mut row = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
     ])
     .unwrap()
     .required_field("row");
 
     // A known name replaces in place, keeping its position.
-    row.set_field_by_path("id", DataType::Utf8.required_field("id"))
+    row.set_field_by_path("id", DataType::utf8().required_field("id"))
         .unwrap();
     assert_eq!(row.field_len(), 2);
     assert_eq!(row[0].name(), "id");
-    assert_eq!(row["id"].dtype(), &DataType::Utf8);
+    assert_eq!(row["id"].dtype(), &DataType::utf8());
 
     // An unknown name appends.
     row.set_field_by_path("price", DataType::Float64.nullable_field("price"))
@@ -2040,7 +2049,7 @@ fn child_mutation_invalidates_the_arrow_cache_exactly_once() {
     assert!(before.data_type().to_string().contains("id"));
     assert!(!before.data_type().to_string().contains("venue"));
 
-    row.set_field_by_path("venue", DataType::Utf8.nullable_field("venue"))
+    row.set_field_by_path("venue", DataType::utf8().nullable_field("venue"))
         .unwrap();
 
     // The projection is rebuilt from the mutated field, never served stale.

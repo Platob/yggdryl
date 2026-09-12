@@ -7,12 +7,15 @@ use crate::types::budget::{
     MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value,
     physical_limit_error, physical_union_branch, unsupported,
 };
+use crate::types::string::is_text_storage;
 use crate::types::{
-    AsciiFamily, Bytes, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, Decimal,
-    ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, Temporal, Text, ascii_bytes,
-    ascii_free_text, ascii_padded, ascii_text, code_cell_text, uuid_bytes, uuid_parse,
+    Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Code,
+    DIRECTION_WIDTH, Decimal, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout,
+    StringParameters, TIMEINFORCE_WIDTH, Temporal, ascii_bytes, ascii_padded, code_cell_text,
+    uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
+use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
@@ -21,14 +24,14 @@ use arrow_array::{
     Decimal32Array, Decimal64Array, Decimal128Array, Decimal256Array, DictionaryArray,
     DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
     DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array,
-    Float64Array, Int8Array, Int16Array, Int16RunArray, Int32Array, Int32RunArray, Int64Array,
-    Int64RunArray, IntervalDayTimeArray, IntervalMonthDayNanoArray, IntervalYearMonthArray,
-    LargeBinaryArray, LargeListArray, LargeListViewArray, LargeStringArray, ListArray,
-    ListViewArray, MapArray, NullArray, PrimitiveArray, StringArray, StringViewArray, StructArray,
-    Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray,
-    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
-    TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array, UnionArray,
-    make_array, new_empty_array,
+    Float64Array, GenericBinaryArray, Int8Array, Int16Array, Int16RunArray, Int32Array,
+    Int32RunArray, Int64Array, Int64RunArray, IntervalDayTimeArray, IntervalMonthDayNanoArray,
+    IntervalYearMonthArray, LargeBinaryArray, LargeListArray, LargeListViewArray, LargeStringArray,
+    ListArray, ListViewArray, MapArray, NullArray, PrimitiveArray, StringArray, StringViewArray,
+    StructArray, Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray,
+    Time64NanosecondArray, TimestampMicrosecondArray, TimestampMillisecondArray,
+    TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
+    UInt64Array, UnionArray, make_array, new_empty_array,
 };
 use arrow_buffer::{
     Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer, i256,
@@ -157,24 +160,8 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
-        DataType::Binary => Arc::new(BinaryArray::from(
-            values
-                .iter()
-                .map(|value| optional_bytes(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::FixedSizeBinary(width) => {
-            let bytes = values
-                .iter()
-                .map(|value| optional_bytes(value))
-                .collect::<Result<Vec<_>>>()?;
-            Arc::new(FixedSizeBinaryArray::try_from_sparse_iter_with_size(
-                bytes.into_iter(),
-                *width,
-            )?)
-        }
-        DataType::Ascii => ascii_bytes_array(values)?,
-        DataType::FixedAscii(width) => ascii_array(*width, values)?,
+        DataType::Bytes(parameters) => bytes_array(*parameters, values)?,
+        DataType::String(parameters) => string_array(*parameters, values)?,
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
         DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
@@ -205,40 +192,6 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::LargeBinary => Arc::new(LargeBinaryArray::from(
-            values
-                .iter()
-                .map(|value| optional_bytes(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::BinaryView => Arc::new(
-            values
-                .iter()
-                .map(|value| optional_bytes(value))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .collect::<BinaryViewArray>(),
-        ),
-        DataType::Utf8 => Arc::new(StringArray::from(
-            values
-                .iter()
-                .map(|value| optional_str(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::LargeUtf8 => Arc::new(LargeStringArray::from(
-            values
-                .iter()
-                .map(|value| optional_str(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::Utf8View => Arc::new(
-            values
-                .iter()
-                .map(|value| optional_str(value))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .collect::<StringViewArray>(),
-        ),
         DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
         DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
         DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
@@ -418,14 +371,7 @@ pub(crate) fn value_from_array(
             )?))
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
-        // The cell is read straight into shared storage: a `Vec` on the way
-        // would allocate and copy the payload a second time for nothing.
-        DataType::Binary => Scalar::from(downcast::<BinaryArray>(array)?.value(index)),
-        DataType::FixedSizeBinary(_) => {
-            Scalar::Bytes(Bytes::FixedSizeBinary(crate::types::FixedSizeBinary::new(
-                Arc::<[u8]>::from(downcast::<FixedSizeBinaryArray>(array)?.value(index)),
-            )))
-        }
+        DataType::Bytes(parameters) => bytes_value(*parameters, array, index)?,
         // An identifier reads back as its exact packed scalar leaf.
         DataType::Uuid => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
@@ -443,97 +389,69 @@ pub(crate) fn value_from_array(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
-        // Fixed storage reads back trimmed: the padding is the layout, not
-        // the text. Variable storage holds the bytes it was given.
-        DataType::FixedAscii(width) => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::FixedAscii(crate::types::FixedAscii::new(
-                ascii_text(fixed.value_length(), fixed.value(index))?,
-                *width,
-            )?))
-        }
-        DataType::Ascii => {
-            let bytes = downcast::<BinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Ascii(crate::types::Ascii::new(
-                ascii_free_text(bytes.value(index))?,
-            )?))
-        }
-        // A code reads back the same way, at the width its own type fixes.
+        DataType::String(parameters) => string_value(*parameters, array, index)?,
+        // A code reads back trimmed, at the width its own type fixes: the
+        // padding is the layout, not the text.
         DataType::Country => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Country(crate::types::Country::new(
-                code_cell_text(dtype, fixed.value(index))?,
-            )?))
+            Scalar::Code(Code::Country(crate::types::Country::new(code_cell_text(
+                dtype,
+                fixed.value(index),
+            )?)?))
         }
         DataType::Currency => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Currency(crate::types::Currency::new(
+            Scalar::Code(Code::Currency(crate::types::Currency::new(
                 code_cell_text(dtype, fixed.value(index))?,
             )?))
         }
         DataType::Mic => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Mic(crate::types::Mic::new(code_cell_text(
+            Scalar::Code(Code::Mic(crate::types::Mic::new(code_cell_text(
                 dtype,
                 fixed.value(index),
             )?)?))
         }
         DataType::Cfi => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Cfi(crate::types::Cfi::new(code_cell_text(
+            Scalar::Code(Code::Cfi(crate::types::Cfi::new(code_cell_text(
                 dtype,
                 fixed.value(index),
             )?)?))
         }
         DataType::Isin => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Isin(crate::types::Isin::new(code_cell_text(
+            Scalar::Code(Code::Isin(crate::types::Isin::new(code_cell_text(
                 dtype,
                 fixed.value(index),
             )?)?))
         }
         DataType::Side => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::Side(crate::types::Side::new(code_cell_text(
+            Scalar::Code(Code::Side(crate::types::Side::new(code_cell_text(
                 dtype,
                 fixed.value(index),
             )?)?))
         }
         DataType::MsgDirection => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::MsgDirection(crate::types::MsgDirection::new(
+            Scalar::Code(Code::MsgDirection(crate::types::MsgDirection::new(
                 code_cell_text(dtype, fixed.value(index))?,
             )?))
         }
         DataType::State => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::State(crate::types::State::new(
-                code_cell_text(dtype, fixed.value(index))?,
-            )?))
+            Scalar::Code(Code::State(crate::types::State::new(code_cell_text(
+                dtype,
+                fixed.value(index),
+            )?)?))
         }
         DataType::TimeInForce => {
             let fixed = downcast::<FixedSizeBinaryArray>(array)?;
-            Scalar::Ascii(AsciiFamily::TimeInForce(crate::types::TimeInForce::new(
+            Scalar::Code(Code::TimeInForce(crate::types::TimeInForce::new(
                 code_cell_text(dtype, fixed.value(index))?,
             )?))
         }
-        DataType::LargeBinary => {
-            Scalar::Bytes(Bytes::LargeBinary(crate::types::LargeBinary::new(Arc::<
-                [u8],
-            >::from(
-                downcast::<LargeBinaryArray>(array)?.value(index),
-            ))))
-        }
-        DataType::BinaryView => Scalar::Bytes(Bytes::BinaryView(crate::types::BinaryView::new(
-            Arc::<[u8]>::from(downcast::<BinaryViewArray>(array)?.value(index)),
-        ))),
-        DataType::Utf8 => Scalar::from(downcast::<StringArray>(array)?.value(index)),
-        DataType::LargeUtf8 => Scalar::Text(Text::LargeUtf8(crate::types::LargeUtf8::new(
-            downcast::<LargeStringArray>(array)?.value(index),
-        ))),
-        DataType::Utf8View => Scalar::Text(Text::Utf8View(crate::types::Utf8View::new(
-            downcast::<StringViewArray>(array)?.value(index),
-        ))),
         DataType::List(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }
@@ -1388,6 +1306,48 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
     }
 }
 
+/// Build one byte column in the layout it declares.
+///
+/// The storage is the layout, so every value's bytes go in as they are: a
+/// maximum is the column's rule and was checked at the value door, and a
+/// fixed width is exactly what each value must hold, which Arrow checks as
+/// it builds the slots.
+fn bytes_array(parameters: BytesParameters, values: &[&Scalar]) -> Result<ArrayRef> {
+    parameters.validate()?;
+    let cells = values
+        .iter()
+        .map(|value| optional_bytes(value))
+        .collect::<Result<Vec<_>>>()?;
+    if let Some(width) = parameters.fixed() {
+        let width =
+            i32::try_from(width).map_err(|_| invalid_value("a byte width within i32", width))?;
+        return Ok(Arc::new(
+            FixedSizeBinaryArray::try_from_sparse_iter_with_size(cells.into_iter(), width)?,
+        ));
+    }
+    Ok(match parameters.layout() {
+        BytesLayout::LargeBinary => Arc::new(LargeBinaryArray::from(cells)),
+        BytesLayout::BinaryView => Arc::new(cells.into_iter().collect::<BinaryViewArray>()),
+        // The fixed layout answered above: `validate` gave it its width.
+        BytesLayout::Binary | BytesLayout::FixedSizeBinary => Arc::new(BinaryArray::from(cells)),
+    })
+}
+
+/// Read one cell of a byte column, under the parameters it declares.
+///
+/// The cell is the column's own storage, so it is adopted as it stands: a
+/// short payload is copied inline and a long one is shared once, with no
+/// `Vec` on the way.
+fn bytes_value(parameters: BytesParameters, array: &dyn Array, index: usize) -> Result<Scalar> {
+    let cell = match parameters.layout() {
+        BytesLayout::FixedSizeBinary => downcast::<FixedSizeBinaryArray>(array)?.value(index),
+        BytesLayout::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index),
+        BytesLayout::BinaryView => downcast::<BinaryViewArray>(array)?.value(index),
+        BytesLayout::Binary => downcast::<BinaryArray>(array)?.value(index),
+    };
+    Ok(Scalar::Bytes(Bytes::from_storage(cell, parameters)))
+}
+
 /// Build the sixteen-byte storage of a UUID column.
 ///
 /// Every present value passes the one UUID rule and stores as its sixteen
@@ -1420,8 +1380,8 @@ fn uuid_array(values: &[&Scalar]) -> Result<ArrayRef> {
 
 /// Build the padded fixed-width storage of a registered code column.
 ///
-/// The same rule as [`ascii_array`] with the width a constant: the slot is a
-/// compile-time length, so the per-row padding is a fixed-size copy.
+/// The slot is a compile-time length, so the per-row padding is a
+/// fixed-size copy.
 fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Result<ArrayRef> {
     let mut bytes = vec![0_u8; values.len() * WIDTH];
     let mut validity = Vec::with_capacity(values.len());
@@ -1443,52 +1403,202 @@ fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Resul
     )?))
 }
 
-/// Build the variable-width storage of an ASCII column.
+/// Build the storage of one string column, in the charset it declares.
 ///
-/// Every present value passes the one ASCII rule with no width to fit, so the
-/// array holds exactly the bytes the value is - there is nothing to pad.
-fn ascii_bytes_array(values: &[&Scalar]) -> Result<ArrayRef> {
-    let text = values
-        .iter()
-        .map(|value| -> Result<Option<&str>> {
-            match ascii_bytes(value) {
-                Some(raw) => Ok(Some(ascii_free_text(raw)?)),
-                None if matches!(value, Scalar::Null) => Ok(None),
-                None => Err(invalid_value_kind("ASCII text", value)),
+/// UTF-8 and US-ASCII text is stored as Arrow's own string layouts, because
+/// that is what they hold. Every other charset is stored as the matching
+/// *binary* layout: the bytes are not UTF-8, and an Arrow reader told
+/// otherwise would read mojibake and call it text.
+fn string_array(parameters: StringParameters, values: &[&Scalar]) -> Result<ArrayRef> {
+    let charset = parameters.charset();
+    // A fixed width pads into its slot, exactly as a code does.
+    if let Some(width) = parameters.fixed() {
+        let slot = usize::try_from(width)
+            .map_err(|_| invalid_value("a string width within usize", width))?;
+        let cells = values
+            .len()
+            .checked_mul(slot)
+            .ok_or_else(|| invalid_value("a string column within usize", width))?;
+        let mut bytes = vec![0_u8; cells];
+        let mut validity = Vec::with_capacity(values.len());
+        for (index, value) in values.iter().enumerate() {
+            match optional_str(value)? {
+                Some(text) => {
+                    let encoded = charset.encode(text)?;
+                    if encoded.len() > slot {
+                        return Err(invalid_value(
+                            &format!("at most {slot} bytes of {charset}"),
+                            encoded.len(),
+                        ));
+                    }
+                    bytes[index * slot..][..encoded.len()].copy_from_slice(&encoded);
+                    validity.push(true);
+                }
+                None => validity.push(false),
             }
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(Arc::new(BinaryArray::from_iter(
-        text.iter().map(|value| value.map(str::as_bytes)),
-    )))
-}
-
-/// Build the padded fixed-width storage of an ASCII column.
-///
-/// Every present value passes the one ASCII rule for `width` and is padded
-/// with trailing NUL into its slot, so the array is exactly what the field
-/// reads back trimmed.
-fn ascii_array(width: i32, values: &[&Scalar]) -> Result<ArrayRef> {
-    let slot =
-        usize::try_from(width).map_err(|_| invalid_value("an ASCII width within usize", width))?;
-    let mut bytes = vec![0_u8; values.len() * slot];
-    let mut validity = Vec::with_capacity(values.len());
-    for (index, value) in values.iter().enumerate() {
-        match ascii_bytes(value) {
-            Some(raw) => {
-                let text = ascii_text(width, raw)?;
-                ascii_padded(&mut bytes[index * slot..][..slot], text);
-                validity.push(true);
-            }
-            None if matches!(value, Scalar::Null) => validity.push(false),
-            None => return Err(invalid_value_kind("ASCII text", value)),
+        }
+        let width =
+            i32::try_from(width).map_err(|_| invalid_value("a string width within i32", width))?;
+        return Ok(Arc::new(FixedSizeBinaryArray::try_new(
+            width,
+            Buffer::from(bytes),
+            nulls(validity),
+        )?));
+    }
+    if is_text_storage(parameters) {
+        return utf8_array(parameters.layout(), values);
+    }
+    // The stored length is a property of the text and the charset, so the whole
+    // payload is measured before a byte of it is built: one buffer sized once,
+    // rather than a `Vec<u8>` per row - which `encode` would have had to build
+    // even where it borrows, which is every all-ASCII cell - and then an Arrow
+    // buffer that starts at a kilobyte and doubles its way up.
+    let mut payload = 0_usize;
+    for value in values {
+        if let Some(text) = optional_str(value)? {
+            payload = payload
+                .checked_add(charset.encoded_len(text))
+                .ok_or_else(|| invalid_value("a string column within usize", payload))?;
         }
     }
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        width,
-        Buffer::from(bytes),
-        nulls(validity),
-    )?))
+    let mut bytes = Vec::with_capacity(payload);
+    let mut validity = Vec::with_capacity(values.len());
+    let mut ends = Vec::with_capacity(values.len());
+    for value in values {
+        match optional_str(value)? {
+            Some(text) => {
+                charset.encode_into(text, &mut bytes)?;
+                validity.push(true);
+            }
+            None => validity.push(false),
+        }
+        ends.push(bytes.len());
+    }
+    let nulls = nulls(validity);
+    Ok(match parameters.layout() {
+        StringLayout::LargeString => Arc::new(binary_from_parts::<i64>(&ends, bytes, nulls)?),
+        // Arrow's view layout holds its own prefix per cell, so it is built
+        // from the finished payload rather than from offsets.
+        StringLayout::StringView | StringLayout::LargeStringView => {
+            Arc::new(binary_view_from_parts(&ends, &bytes, nulls.as_ref()))
+        }
+        _ => Arc::new(binary_from_parts::<i32>(&ends, bytes, nulls)?) as ArrayRef,
+    })
+}
+
+/// Build one UTF-8 column straight into a builder sized for its whole payload.
+///
+/// The bytes a UTF-8 column stores are the characters it already holds, so the
+/// payload can be measured before any of it is built and the array needs one
+/// buffer rather than one that starts at a kilobyte and doubles - and no
+/// intermediate `Vec` of borrowed cells to hand it.
+fn utf8_array(layout: StringLayout, values: &[&Scalar]) -> Result<ArrayRef> {
+    let mut payload = 0_usize;
+    for value in values {
+        if let Some(text) = optional_str(value)? {
+            payload = payload
+                .checked_add(text.len())
+                .ok_or_else(|| invalid_value("a string column within usize", payload))?;
+        }
+    }
+    macro_rules! filled {
+        ($builder:expr) => {{
+            let mut builder = $builder;
+            for value in values {
+                match optional_str(value)? {
+                    Some(text) => builder.append_value(text),
+                    None => builder.append_null(),
+                }
+            }
+            Arc::new(builder.finish()) as ArrayRef
+        }};
+    }
+    Ok(match layout {
+        StringLayout::LargeString => {
+            filled!(LargeStringBuilder::with_capacity(values.len(), payload))
+        }
+        // Arrow's view layout carries a prefix per cell rather than offsets,
+        // so it takes the row count and grows its own payload blocks.
+        StringLayout::StringView | StringLayout::LargeStringView => {
+            filled!(StringViewBuilder::with_capacity(values.len()))
+        }
+        _ => filled!(StringBuilder::with_capacity(values.len(), payload)),
+    })
+}
+
+/// One binary array from the payload and the end offset of every cell.
+fn binary_from_parts<O: arrow_array::OffsetSizeTrait>(
+    ends: &[usize],
+    bytes: Vec<u8>,
+    nulls: Option<NullBuffer>,
+) -> Result<GenericBinaryArray<O>> {
+    let mut offsets = Vec::with_capacity(ends.len() + 1);
+    offsets.push(O::zero());
+    for end in ends {
+        offsets.push(
+            O::from_usize(*end)
+                .ok_or_else(|| invalid_value("a string column within its offset width", *end))?,
+        );
+    }
+    Ok(GenericBinaryArray::try_new(
+        arrow_buffer::OffsetBuffer::new(offsets.into()),
+        arrow_buffer::Buffer::from_vec(bytes),
+        nulls,
+    )?)
+}
+
+/// One binary view array over the same payload.
+fn binary_view_from_parts(
+    ends: &[usize],
+    bytes: &[u8],
+    nulls: Option<&NullBuffer>,
+) -> BinaryViewArray {
+    let mut builder = arrow_array::builder::BinaryViewBuilder::with_capacity(ends.len());
+    let mut start = 0;
+    for (index, end) in ends.iter().enumerate() {
+        let present = nulls.is_none_or(|nulls| nulls.is_valid(index));
+        if present {
+            builder.append_value(&bytes[start..*end]);
+        } else {
+            builder.append_null();
+        }
+        start = *end;
+    }
+    builder.finish()
+}
+
+/// Read one cell of a string column, under the parameters it declares.
+///
+/// Text storage was validated when it was written, so the cell is adopted
+/// as it stands. Binary storage goes through [`Str::from_bytes`], the one
+/// door bytes take into a string value: a fixed slot is trimmed of its
+/// padding, and a legacy charset is transcribed rather than refused.
+fn string_value(parameters: StringParameters, array: &dyn Array, index: usize) -> Result<Scalar> {
+    let text = if parameters.is_fixed() {
+        Str::from_bytes(
+            downcast::<FixedSizeBinaryArray>(array)?.value(index),
+            parameters,
+        )?
+    } else if is_text_storage(parameters) {
+        let cell = match parameters.layout() {
+            StringLayout::LargeString => downcast::<LargeStringArray>(array)?.value(index),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                downcast::<StringViewArray>(array)?.value(index)
+            }
+            _ => downcast::<StringArray>(array)?.value(index),
+        };
+        Str::from_storage(cell, parameters)
+    } else {
+        let cell = match parameters.layout() {
+            StringLayout::LargeString => downcast::<LargeBinaryArray>(array)?.value(index),
+            StringLayout::StringView | StringLayout::LargeStringView => {
+                downcast::<BinaryViewArray>(array)?.value(index)
+            }
+            _ => downcast::<BinaryArray>(array)?.value(index),
+        };
+        Str::from_bytes(cell, parameters)?
+    };
+    Ok(Scalar::String(text))
 }
 
 /// Read the WKB a geospatial column stores, in either value spelling.
@@ -1505,7 +1615,7 @@ fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
 fn optional_str(value: &Scalar) -> Result<Option<&str>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Text(text) => Ok(Some(text.as_str())),
+        Scalar::String(text) => Ok(Some(text.as_str())),
         _ => Err(invalid_value_kind("string", value)),
     }
 }

@@ -2,9 +2,10 @@ use yggdryl::{DataType, Field, TimeUnit, Timezone, UnionMode};
 
 #[test]
 fn equals_can_ignore_only_metadata_recursively() {
-    let left_child = Field::from_parts("item", DataType::Utf8, true, [("source", "left")]).unwrap();
+    let left_child =
+        Field::from_parts("item", DataType::utf8(), true, [("source", "left")]).unwrap();
     let right_child =
-        Field::from_parts("item", DataType::Utf8, true, [("source", "right")]).unwrap();
+        Field::from_parts("item", DataType::utf8(), true, [("source", "right")]).unwrap();
     let left = DataType::list(left_child);
     let right = DataType::list(right_child);
 
@@ -19,7 +20,7 @@ fn equals_can_ignore_only_metadata_recursively() {
 
     let mut left_dictionary = Field::new(
         "code",
-        DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+        DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
         false,
     );
     let mut right_dictionary = left_dictionary.clone();
@@ -33,7 +34,7 @@ fn show_diff_reports_deep_physical_and_metadata_changes() {
     let left = Field::from_parts(
         "payload",
         DataType::fixed_size_list(
-            Field::from_parts("item", DataType::Utf8, false, [("side", "left")]).unwrap(),
+            Field::from_parts("item", DataType::utf8(), false, [("side", "left")]).unwrap(),
             2,
         )
         .unwrap(),
@@ -46,7 +47,7 @@ fn show_diff_reports_deep_physical_and_metadata_changes() {
         DataType::fixed_size_list(
             Field::from_parts(
                 "item",
-                DataType::Utf8,
+                DataType::utf8(),
                 true,
                 [("added", "yes"), ("side", "right")],
             )
@@ -87,9 +88,9 @@ fn show_diff_reports_deep_physical_and_metadata_changes() {
 #[test]
 fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
     let private_child =
-        Field::from_parts("private", DataType::Utf8, true, [("secret", "left")]).unwrap();
+        Field::from_parts("private", DataType::utf8(), true, [("secret", "left")]).unwrap();
     let left = DataType::list(private_child);
-    let right = DataType::from_fields([Field::new("public", DataType::Utf8, true)]).unwrap();
+    let right = DataType::from_fields([Field::new("public", DataType::utf8(), true)]).unwrap();
     let changed_kind = left.show_diff(&right, false, true);
     assert_eq!(changed_kind, "≠ $.kind: list → struct");
     assert!(!changed_kind.contains("secret"));
@@ -98,7 +99,7 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
     let right = DataType::from_fields([Field::from_parts(
         "added",
         DataType::list(
-            Field::from_parts("item", DataType::Utf8, true, [("secret", "right")]).unwrap(),
+            Field::from_parts("item", DataType::utf8(), true, [("secret", "right")]).unwrap(),
         ),
         true,
         [("secret", "root")],
@@ -112,7 +113,7 @@ fn differences_without_metadata_do_not_render_nested_metadata_as_context() {
 
 #[test]
 fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
-    let item = || Field::new("item", DataType::Utf8, true);
+    let item = || Field::new("item", DataType::utf8(), true);
     let pairs = vec![
         (
             DataType::DateTime64 {
@@ -161,21 +162,21 @@ fn empty_diff_exactly_matches_equality_for_parameterized_and_nested_types() {
             DataType::union([(0, item())], UnionMode::Dense).unwrap(),
         ),
         (
-            DataType::dictionary(DataType::Int8, DataType::Utf8).unwrap(),
-            DataType::dictionary(DataType::Int16, DataType::Utf8).unwrap(),
+            DataType::dictionary(DataType::Int8, DataType::utf8()).unwrap(),
+            DataType::dictionary(DataType::Int16, DataType::utf8()).unwrap(),
         ),
         (
             DataType::decimal128(10, 2).unwrap(),
             DataType::decimal128(11, 2).unwrap(),
         ),
         (
-            DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap(),
-            DataType::map_of(DataType::Utf8, DataType::Int64, true).unwrap(),
+            DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
+            DataType::map_of(DataType::utf8(), DataType::Int64, true).unwrap(),
         ),
         (
             DataType::run_end_encoded(
                 Field::new("run_ends", DataType::Int32, false),
-                Field::new("values", DataType::Utf8, true),
+                Field::new("values", DataType::utf8(), true),
             )
             .unwrap(),
             DataType::run_end_encoded(
@@ -210,8 +211,8 @@ fn wide_metadata_differences_stream_in_lexical_order_and_fuse() {
             .map(|index| (format!("key-{index:04}"), format!("{side}-{index:04}")))
             .collect::<Vec<_>>()
     };
-    let left = Field::from_parts("value", DataType::Utf8, true, entries("left")).unwrap();
-    let right = Field::from_parts("value", DataType::Utf8, true, entries("right")).unwrap();
+    let left = Field::from_parts("value", DataType::utf8(), true, entries("left")).unwrap();
+    let right = Field::from_parts("value", DataType::utf8(), true, entries("right")).unwrap();
     let mut differences = left.show_diffs(&right, true, false);
 
     assert_eq!(
@@ -230,7 +231,7 @@ fn union_difference_cursor_preserves_type_id_extra_and_child_order() {
     let left = DataType::union(
         [
             (0, Field::new("number", DataType::Int64, false)),
-            (1, Field::new("text", DataType::Utf8, true)),
+            (1, Field::new("text", DataType::utf8(), true)),
         ],
         UnionMode::Dense,
     )
@@ -238,7 +239,7 @@ fn union_difference_cursor_preserves_type_id_extra_and_child_order() {
     let right = DataType::union(
         [
             (2, Field::new("number", DataType::Int64, false)),
-            (1, Field::new("text", DataType::Utf8, true)),
+            (1, Field::new("text", DataType::utf8(), true)),
             (3, Field::new("flag", DataType::Boolean, false)),
         ],
         UnionMode::Dense,
@@ -280,7 +281,7 @@ fn return_equal_controls_what_an_equal_comparison_reports() {
 #[test]
 fn return_equal_never_appears_when_values_differ() {
     let left = Field::new("value", DataType::Int64, true);
-    let right = Field::new("value", DataType::Utf8, true);
+    let right = Field::new("value", DataType::utf8(), true);
 
     for return_equal in [false, true] {
         let lines: Vec<String> = left.show_diffs(&right, true, return_equal).collect();
@@ -294,7 +295,7 @@ fn return_equal_never_appears_when_values_differ() {
 
     // A datatype difference behaves the same way.
     let lines: Vec<String> = DataType::Int64
-        .show_diffs(&DataType::Utf8, true, true)
+        .show_diffs(&DataType::utf8(), true, true)
         .collect();
     assert!(
         !lines.iter().any(|line| line.contains("equal")),
@@ -321,7 +322,7 @@ fn geospatial_and_variant_differences_render_their_canonical_display() {
     assert!(diff.contains("EPSG:3857"), "{diff}");
 
     let variant = DataType::variant().nullable_field("payload");
-    let text = DataType::Utf8.nullable_field("payload");
+    let text = DataType::utf8().nullable_field("payload");
     let diff = variant.show_diff(&text, false, false);
     assert!(diff.contains("variant"), "{diff}");
     assert_eq!(

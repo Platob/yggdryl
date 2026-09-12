@@ -18,7 +18,7 @@ fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
 fn catalog_with(members: impl IntoIterator<Item = Field>) -> FixRegistry {
     let mut registry = FixRegistry::from_fields([
         tagged("NoPartyIDs", 453, DataType::Int32),
-        tagged("PartyID", 448, DataType::Utf8),
+        tagged("PartyID", 448, DataType::utf8()),
     ])
     .unwrap();
     let mut partyid = registry.field(448).unwrap().clone();
@@ -75,7 +75,7 @@ fn occurrence(group: &Field) -> &Field {
 
 #[test]
 fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
-    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_tags(&[65]).unwrap();
     symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     symbol.as_fix_mut().set_description("stored").unwrap();
@@ -84,7 +84,7 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
 
     // Another spelling of tag 55's field: its own tag, its own alternates and
     // aliases, one of which is the stored alias in another case.
-    let mut incoming = tagged("symbol", 9001, DataType::Utf8);
+    let mut incoming = tagged("symbol", 9001, DataType::utf8());
     incoming.as_fix_mut().set_tags(&[66]).unwrap();
     incoming
         .as_fix_mut()
@@ -141,13 +141,13 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
 
 #[test]
 fn a_name_that_is_a_stored_alias_folds_into_the_alias_holder() {
-    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     let mut registry = FixRegistry::from_fields([symbol]).unwrap();
 
     assert!(
         !registry
-            .add_field(tagged("ticker", 9001, DataType::Utf8))
+            .add_field(tagged("ticker", 9001, DataType::utf8()))
             .unwrap()
     );
     let stored = registry.field_by_tag(9001).unwrap();
@@ -163,12 +163,12 @@ fn a_tag_another_field_answers_is_not_taken_by_a_name_fold() {
     let mut price = tagged("Price", 44, DataType::Float64);
     price.as_fix_mut().set_tags(&[9001]).unwrap();
     let mut registry =
-        FixRegistry::from_fields([price, tagged("Symbol", 55, DataType::Utf8)]).unwrap();
+        FixRegistry::from_fields([price, tagged("Symbol", 55, DataType::utf8())]).unwrap();
 
     // The name folds, the tag is `Price`'s: the field merges, the tag stays.
     assert!(
         !registry
-            .add_field(tagged("SYMBOL", 9001, DataType::Utf8))
+            .add_field(tagged("SYMBOL", 9001, DataType::utf8()))
             .unwrap()
     );
     assert_eq!(registry.field_by_tag(9001).unwrap().name(), "Price");
@@ -185,7 +185,7 @@ fn a_tag_another_field_answers_is_not_taken_by_a_name_fold() {
     // An alternate tag another field holds as its alternate is the conflict
     // `update` raises.
     let before = registry.clone();
-    let mut clash = tagged("symbol", 9002, DataType::Utf8);
+    let mut clash = tagged("symbol", 9002, DataType::utf8());
     clash.as_fix_mut().set_tags(&[9001]).unwrap();
     let error = registry.add_field(clash).unwrap_err();
     assert!(error.is_conflict(), "{error}");
@@ -196,7 +196,7 @@ fn a_tag_another_field_answers_is_not_taken_by_a_name_fold() {
     // `Symbol`'s canonical one, and a canonical name is one field's: the
     // conflict names the holder of the name, not the holder of the tag.
     let error = registry
-        .add_field(tagged("symbol", 44, DataType::Utf8))
+        .add_field(tagged("symbol", 44, DataType::utf8()))
         .unwrap_err();
     assert!(error.is_conflict(), "{error}");
     assert!(error.to_string().contains("Symbol"), "{error}");
@@ -205,7 +205,7 @@ fn a_tag_another_field_answers_is_not_taken_by_a_name_fold() {
 
 #[test]
 fn a_datatype_disagreement_by_name_is_refused_and_writes_nothing() {
-    let mut registry = FixRegistry::from_fields([tagged("Symbol", 55, DataType::Utf8)]).unwrap();
+    let mut registry = FixRegistry::from_fields([tagged("Symbol", 55, DataType::utf8())]).unwrap();
     let before = registry.clone();
     let error = registry
         .add_field(tagged("symbol", 9001, DataType::Int32))
@@ -239,7 +239,7 @@ fn nested_fields_redirect_to_the_category_their_shape_names() {
     assert!(registry.add_field(message).unwrap());
     assert_eq!(registry.msgtype("D").unwrap().name(), "Order");
 
-    let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])
+    let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .unwrap()
         .required_field("Party");
     assert!(registry.add_field(item.clone()).unwrap());
@@ -273,7 +273,7 @@ fn nested_fields_redirect_to_the_category_their_shape_names() {
     assert!(registry.get_field("Party").is_none());
     assert!(
         registry
-            .add_definition(FixCategory::Fields, tagged("Symbol", 55, DataType::Utf8))
+            .add_definition(FixCategory::Fields, tagged("Symbol", 55, DataType::utf8()))
             .unwrap()
     );
     assert_eq!(registry.field(55).unwrap().name(), "Symbol");
@@ -283,7 +283,7 @@ fn nested_fields_redirect_to_the_category_their_shape_names() {
     let nullable = DataType::from_fields([]).unwrap().nullable_field("Loose");
     for refused in [
         DataType::list(nullable).nullable_field("Occurrences"),
-        DataType::list(DataType::Utf8.nullable_field("Text")).nullable_field("Texts"),
+        DataType::list(DataType::utf8().nullable_field("Text")).nullable_field("Texts"),
     ] {
         let error = registry.add_field(refused).unwrap_err();
         assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
@@ -297,7 +297,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
     let mut registry = catalog();
     assert!(
         registry
-            .add_field(tagged("PartyNote", 9002, DataType::Utf8))
+            .add_field(tagged("PartyNote", 9002, DataType::utf8()))
             .unwrap()
     );
     let mut note = registry.field(9002).unwrap().clone();
@@ -371,7 +371,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
                     .fields()
                     .iter()
                     .cloned()
-                    .chain([DataType::Utf8.nullable_field("Text")]),
+                    .chain([DataType::utf8().nullable_field("Text")]),
             )
             .unwrap(),
         )
@@ -393,7 +393,7 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
     // A bare list stating one more member of the occurrence: the stored
     // occurrence is the component's, so the member lands there and the
     // group keeps its markers.
-    let member = DataType::from_fields([DataType::Utf8.nullable_field("PartyNote")])
+    let member = DataType::from_fields([DataType::utf8().nullable_field("PartyNote")])
         .unwrap()
         .required_field("party");
     let mut group = DataType::list(member).nullable_field("parties");
@@ -408,7 +408,7 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
             .field_by_path(&fpath("NewOrderSingle.Parties.PartyNote"))
             .unwrap()
             .dtype(),
-        &DataType::Utf8
+        &DataType::utf8()
     );
     let parties = registry.definition(FixCategory::Groups, "Parties").unwrap();
     assert_eq!(parties.name(), "Parties");
@@ -420,7 +420,7 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
     registry
         .add_field(tagged("NoHops", 627, DataType::Int32))
         .unwrap();
-    let hop = DataType::from_fields([DataType::Utf8.nullable_field("HopID")])
+    let hop = DataType::from_fields([DataType::utf8().nullable_field("HopID")])
         .unwrap()
         .required_field("Hop");
     let mut hops = DataType::list(hop).nullable_field("Hops");
@@ -431,8 +431,8 @@ fn a_group_occurrence_is_extended_where_its_members_live() {
             .unwrap()
     );
     let more = DataType::from_fields([
-        DataType::Utf8.nullable_field("HopNote"),
-        DataType::Utf8.nullable_field("hopid"),
+        DataType::utf8().nullable_field("HopNote"),
+        DataType::utf8().nullable_field("hopid"),
     ])
     .unwrap()
     .required_field("Hop");
@@ -509,7 +509,7 @@ fn definition_merges_refuse_a_member_that_disagrees_atomically() {
 
 #[test]
 fn add_fields_counts_what_arrived_and_what_folded() {
-    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     let mut registry =
         FixRegistry::from_fields([symbol, tagged("Price", 44, DataType::Float64)]).unwrap();
@@ -522,12 +522,12 @@ fn add_fields_counts_what_arrived_and_what_folded() {
         )
         .unwrap();
 
-    let mut described = tagged("SYMBOL", 55, DataType::Utf8);
+    let mut described = tagged("SYMBOL", 55, DataType::utf8());
     described
         .as_fix_mut()
         .set_description("by identity")
         .unwrap();
-    let mut extended = DataType::from_fields([DataType::Utf8.nullable_field("Symbol")])
+    let mut extended = DataType::from_fields([DataType::utf8().nullable_field("Symbol")])
         .unwrap()
         .required_field("instrument");
     extended.as_fix_mut().set_description("by name").unwrap();
@@ -535,8 +535,8 @@ fn add_fields_counts_what_arrived_and_what_folded() {
         .add_fields([
             yggdryl::fix_crate_fields().unwrap()[0].clone(),
             described,
-            tagged("ticker", 9001, DataType::Utf8),
-            tagged("TransactTime", 60, DataType::Utf8),
+            tagged("ticker", 9001, DataType::utf8()),
+            tagged("TransactTime", 60, DataType::utf8()),
             DataType::from_fields([]).unwrap().required_field("Header"),
             extended,
         ])
@@ -559,9 +559,9 @@ fn add_fields_counts_what_arrived_and_what_folded() {
     let before = registry.clone();
     let error = registry
         .add_fields([
-            tagged("Text", 58, DataType::Utf8),
+            tagged("Text", 58, DataType::utf8()),
             tagged("symbol", 9002, DataType::Int32),
-            tagged("Account", 1, DataType::Utf8),
+            tagged("Account", 1, DataType::utf8()),
         ])
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
@@ -585,7 +585,7 @@ fn merging_a_dictionary_folds_its_definitions_rather_than_replacing_them() {
 
     let mut source = catalog();
     source
-        .add_field(tagged("PartyNote", 9002, DataType::Utf8))
+        .add_field(tagged("PartyNote", 9002, DataType::utf8()))
         .unwrap();
     let mut note = source.field(9002).unwrap().clone();
     note.as_fix_mut().set_field_ref("PartyNote").unwrap();
@@ -634,7 +634,7 @@ fn merging_a_dictionary_folds_its_definitions_rather_than_replacing_them() {
 
 #[test]
 fn the_strict_verbs_keep_refusing_and_replacing() {
-    let mut registry = FixRegistry::from_fields([tagged("Symbol", 55, DataType::Utf8)]).unwrap();
+    let mut registry = FixRegistry::from_fields([tagged("Symbol", 55, DataType::utf8())]).unwrap();
     registry
         .create_definition(
             FixCategory::Components,
@@ -646,12 +646,12 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
     let before = registry.clone();
 
     let error = registry
-        .insert(tagged("symbol", 9001, DataType::Utf8))
+        .insert(tagged("symbol", 9001, DataType::utf8()))
         .unwrap_err();
     assert!(error.is_conflict(), "{error}");
     assert_eq!(registry, before);
     let error = registry
-        .update(tagged("symbol", 9001, DataType::Utf8))
+        .update(tagged("symbol", 9001, DataType::utf8()))
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
     assert_eq!(registry, before);
@@ -669,7 +669,7 @@ fn the_strict_verbs_keep_refusing_and_replacing() {
     registry
         .insert_definition(
             FixCategory::Components,
-            DataType::from_fields([DataType::Utf8.nullable_field("Other")])
+            DataType::from_fields([DataType::utf8().nullable_field("Other")])
                 .unwrap()
                 .required_field("Plain"),
         )
@@ -692,8 +692,8 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
     // one references it: both describe tag 448 as utf8, so the stored
     // reference stays and only the new member arrives.
     let inline = DataType::from_fields([
-        tagged("partyid", 448, DataType::Utf8),
-        DataType::Utf8.nullable_field("PartyNote"),
+        tagged("partyid", 448, DataType::utf8()),
+        DataType::utf8().nullable_field("PartyNote"),
     ])
     .unwrap()
     .required_field("Party");
@@ -712,19 +712,19 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
             .field_by_path(&fpath("NewOrderSingle.Parties.PartyNote"))
             .unwrap()
             .dtype(),
-        &DataType::Utf8
+        &DataType::utf8()
     );
 
     // The other way round: a stored inline member, restated by a reference
     // to the field of that datatype, is kept inline; a reference to a field
     // of another datatype is refused.
     registry
-        .add_field(tagged("Symbol", 55, DataType::Utf8))
+        .add_field(tagged("Symbol", 55, DataType::utf8()))
         .unwrap();
     registry
         .create_definition(
             FixCategory::Components,
-            DataType::from_fields([DataType::Utf8.nullable_field("Symbol")])
+            DataType::from_fields([DataType::utf8().nullable_field("Symbol")])
                 .unwrap()
                 .required_field("Instrument"),
         )
@@ -764,7 +764,7 @@ fn a_member_stated_inline_agrees_with_the_reference_stored_for_it() {
 #[test]
 fn a_required_spelling_folds_into_a_nullable_referenced_field_keeping_its_shape() {
     let mut registry = catalog();
-    let mut respelled = DataType::Utf8.required_field("partyid");
+    let mut respelled = DataType::utf8().required_field("partyid");
     respelled.as_fix_mut().set_tag(9001).unwrap();
     assert!(!registry.add_field(respelled).unwrap());
 
@@ -790,7 +790,7 @@ fn a_required_spelling_folds_into_a_nullable_referenced_field_keeping_its_shape(
 
 #[test]
 fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
-    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     let mut registry = FixRegistry::from_fields([symbol]).unwrap();
 
@@ -799,7 +799,7 @@ fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
     // as `Symbol` and `Tick-er` as `Ticker`.
     assert_eq!(registry.field("sym_bol").unwrap().name(), "Symbol");
     assert_eq!(registry.field("Tick-er").unwrap().name(), "Symbol");
-    let mut respelled = tagged("Sym_bol", 9001, DataType::Utf8);
+    let mut respelled = tagged("Sym_bol", 9001, DataType::utf8());
     respelled
         .as_fix_mut()
         .set_aliases(["Tick-er", "SYM"])
@@ -815,7 +815,7 @@ fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
     assert_eq!(registry.len(), 1 + super::crated());
 
     // By identity the same respelling is the stored name too.
-    let mut described = tagged("sym-bol", 55, DataType::Utf8);
+    let mut described = tagged("sym-bol", 55, DataType::utf8());
     described.as_fix_mut().set_description("respelled").unwrap();
     assert!(!registry.add_field(described.clone()).unwrap());
     assert_eq!(registry.field(55).unwrap().description(), Some("respelled"));
@@ -828,7 +828,7 @@ fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
     assert_eq!(registry.field(55).unwrap().name(), "Symbol");
     assert_eq!(
         registry
-            .insert(tagged("SYM_BOL", 55, DataType::Utf8))
+            .insert(tagged("SYM_BOL", 55, DataType::utf8()))
             .unwrap()
             .unwrap()
             .name(),
@@ -837,7 +837,7 @@ fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
     assert_eq!(registry.field(55).unwrap().name(), "Symbol");
     let before = registry.clone();
     let error = registry
-        .insert(tagged("Sym_bol", 9002, DataType::Utf8))
+        .insert(tagged("Sym_bol", 9002, DataType::utf8()))
         .unwrap_err();
     assert!(error.is_conflict(), "{error}");
     assert_eq!(registry, before);
@@ -854,7 +854,7 @@ fn a_canonical_identity_supersedes_the_alternate_another_field_lists() {
     let mut registry = FixRegistry::from_fields([price]).unwrap();
     assert!(
         registry
-            .add_field(tagged("Symbol", 9001, DataType::Utf8))
+            .add_field(tagged("Symbol", 9001, DataType::utf8()))
             .unwrap()
     );
     assert_eq!(registry.field(9001).unwrap().name(), "Symbol");
@@ -867,7 +867,7 @@ fn a_canonical_identity_supersedes_the_alternate_another_field_lists() {
     );
     assert_eq!(registry.field(44).unwrap().as_fix().tags().unwrap(), [9001]);
 
-    let mut ticker = tagged("Ticker", 55, DataType::Utf8);
+    let mut ticker = tagged("Ticker", 55, DataType::utf8());
     ticker.as_fix_mut().set_tags(&[44]).unwrap();
     assert!(registry.add_field(ticker).unwrap());
     assert_eq!(registry.field(44).unwrap().name(), "Price");
@@ -885,7 +885,7 @@ fn a_canonical_identity_supersedes_the_alternate_another_field_lists() {
 #[test]
 fn a_group_occurrence_folds_its_members_into_the_component_and_nothing_else() {
     let mut registry = catalog();
-    let mut member = DataType::from_fields([DataType::Utf8.nullable_field("PartyNote")])
+    let mut member = DataType::from_fields([DataType::utf8().nullable_field("PartyNote")])
         .unwrap()
         .required_field("party");
     member
@@ -918,9 +918,9 @@ fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_mem
     // the reference to it, after the components in category order.
     let fields = [
         tagged("NoHops", 627, DataType::Int32),
-        tagged("HopID", 628, DataType::Utf8),
+        tagged("HopID", 628, DataType::utf8()),
     ];
-    let hop = DataType::from_fields([DataType::Utf8.nullable_field("HopID")])
+    let hop = DataType::from_fields([DataType::utf8().nullable_field("HopID")])
         .unwrap()
         .required_field("Hop");
     let mut target = FixRegistry::from_fields(fields.clone()).unwrap();
@@ -945,7 +945,7 @@ fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_mem
     source
         .create_definition(
             FixCategory::Components,
-            DataType::from_fields([restated, DataType::Utf8.nullable_field("RouteID")])
+            DataType::from_fields([restated, DataType::utf8().nullable_field("RouteID")])
                 .unwrap()
                 .required_field("Route"),
         )
@@ -973,12 +973,12 @@ fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_mem
 /// The registry a fold-table fixture starts from: `Symbol` on 55, spoken by
 /// `fix44`, `Price` on 44 and `MsgType` on 35.
 fn holders() -> FixRegistry {
-    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_branches(["fix44"]).unwrap();
     FixRegistry::from_fields([
         symbol,
         tagged("Price", 44, DataType::Float64),
-        tagged("MsgType", 35, DataType::Utf8),
+        tagged("MsgType", 35, DataType::utf8()),
     ])
     .unwrap()
 }
@@ -987,13 +987,13 @@ fn holders() -> FixRegistry {
 /// by `venue`: the same identity respelled, a held tag under another name,
 /// a held name under another tag, and a field nothing holds.
 fn arrivals() -> [Field; 4] {
-    let mut respelled = tagged("Msg_Type", 35, DataType::Utf8);
+    let mut respelled = tagged("Msg_Type", 35, DataType::utf8());
     respelled.as_fix_mut().set_description("respelled").unwrap();
     let mut arrivals = [
         respelled,
-        tagged("VenueSymbol", 55, DataType::Utf8),
+        tagged("VenueSymbol", 55, DataType::utf8()),
         tagged("price", 9001, DataType::Float64),
-        tagged("Account", 1, DataType::Utf8),
+        tagged("Account", 1, DataType::utf8()),
     ];
     for arrival in &mut arrivals {
         arrival.as_fix_mut().set_branches(["venue"]).unwrap();
@@ -1219,19 +1219,19 @@ fn the_fold_table_holds_through_merge_with() {
 
 #[test]
 fn a_merged_membership_is_the_union_of_what_each_side_spoke() {
-    let mut symbol = tagged("Symbol", 55, DataType::Utf8);
+    let mut symbol = tagged("Symbol", 55, DataType::utf8());
     symbol.as_fix_mut().set_branches(["fix44"]).unwrap();
     let mut registry = FixRegistry::from_fields([symbol.clone()]).unwrap();
 
     // By identity, by name and by tag, the dialects union, folded once,
     // deduplicated and sorted, however they were spelled.
-    let mut respelled = tagged("SYMBOL", 55, DataType::Utf8);
+    let mut respelled = tagged("SYMBOL", 55, DataType::utf8());
     respelled
         .as_fix_mut()
         .set_branches(["Venue", "FIX44"])
         .unwrap();
     assert!(!registry.add_field(respelled).unwrap());
-    let mut alternate = tagged("symbol", 9001, DataType::Utf8);
+    let mut alternate = tagged("symbol", 9001, DataType::utf8());
     alternate.as_fix_mut().set_branches(["other"]).unwrap();
     assert!(!registry.add_field(alternate).unwrap());
     let stored = registry.field_by_tag(55).unwrap();
@@ -1288,7 +1288,7 @@ fn message_codes_live_in_one_namespace() {
     // A second message on a held code under another name is a second
     // message: the bare code keeps answering the first holder, the newcomer
     // is reached by its name, and its code is the held one.
-    let mut venue = DataType::from_fields([DataType::Utf8.nullable_field("VenueID")])
+    let mut venue = DataType::from_fields([DataType::utf8().nullable_field("VenueID")])
         .unwrap()
         .required_field("VenueOrder");
     venue.as_fix_mut().set_msgtype("D").unwrap();
@@ -1315,7 +1315,7 @@ fn message_codes_live_in_one_namespace() {
 
     // A re-declaration under the same folded name folds into the stored
     // message, keeping its spelling and its code.
-    let mut restated = DataType::from_fields([DataType::Utf8.nullable_field("Text")])
+    let mut restated = DataType::from_fields([DataType::utf8().nullable_field("Text")])
         .unwrap()
         .required_field("new_order_single");
     restated.as_fix_mut().set_msgtype("D").unwrap();
@@ -1357,7 +1357,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     // `D`, name order decides: `AlgoOrder` sorts before `NewOrderSingle`
     // however late it arrives.
     let mut registry = catalog();
-    let mut algo = DataType::from_fields([DataType::Utf8.nullable_field("AlgoID")])
+    let mut algo = DataType::from_fields([DataType::utf8().nullable_field("AlgoID")])
         .unwrap()
         .required_field("AlgoOrder");
     algo.as_fix_mut().set_msgtype("D").unwrap();
@@ -1374,7 +1374,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     // Tag 35's code set names `D` `NewOrderSingle`: that message answers the
     // bare code, whichever name sorts first and whichever arrived first, and
     // the code set arriving after both re-decides it.
-    let mut msgtype = tagged("MsgType", 35, DataType::Utf8);
+    let mut msgtype = tagged("MsgType", 35, DataType::utf8());
     msgtype
         .as_fix_mut()
         .set_codes(&[yggdryl::FixCode::new("NewOrderSingle", "D")])

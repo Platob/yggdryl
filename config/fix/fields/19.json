@@ -2,7 +2,7 @@
   {
     "name": "sideexecrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -14,7 +14,7 @@
   {
     "name": "legexecrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -38,7 +38,7 @@
   {
     "name": "regulatorytradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -63,7 +63,7 @@
   {
     "name": "regulatorytradeidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -113,7 +113,7 @@
   {
     "name": "allocregulatorytradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -125,7 +125,7 @@
   {
     "name": "allocregulatorytradeidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -415,7 +415,7 @@
   {
     "name": "irsdirection",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -505,7 +505,7 @@
   {
     "name": "assettype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -517,7 +517,7 @@
   {
     "name": "swapclass",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -554,7 +554,7 @@
   {
     "name": "settledentitymatrixsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -616,7 +616,7 @@
   {
     "name": "couponfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -642,7 +642,7 @@
   {
     "name": "convertiblebondequityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -654,7 +654,7 @@
   {
     "name": "convertiblebondequityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -667,8 +667,10 @@
   {
     "name": "contractpricerefmonth",
     "dtype": {
-      "type": "fixed_ascii",
-      "width": 8
+      "type": "string",
+      "layout": "fixed_string",
+      "charset": "us-ascii",
+      "fixed": 8
     },
     "nullable": true,
     "metadata": {
@@ -756,7 +758,7 @@
   {
     "name": "indexannexsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -768,7 +770,7 @@
   {
     "name": "agreementversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -780,7 +782,7 @@
   {
     "name": "masterconfirmationdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -805,7 +807,7 @@
   {
     "name": "masterconfirmationannexdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -830,7 +832,7 @@
   {
     "name": "brokerconfirmationdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -842,7 +844,7 @@
   {
     "name": "creditsupportagreementdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -867,7 +869,7 @@
   {
     "name": "creditsupportagreementid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -879,7 +881,7 @@
   {
     "name": "governinglaw",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -903,7 +905,7 @@
   {
     "name": "sideregulatorytradeid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -915,7 +917,7 @@
   {
     "name": "sideregulatorytradeidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -992,7 +994,7 @@
   {
     "name": "secondaryassettype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1069,7 +1071,7 @@
   {
     "name": "underlyingeventtimeunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1154,7 +1156,7 @@
   {
     "name": "underlyingcouponfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1180,7 +1182,7 @@
   {
     "name": "underlyingobligationid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1192,7 +1194,7 @@
   {
     "name": "underlyingobligationidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1205,7 +1207,7 @@
   {
     "name": "underlyingequityid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1217,7 +1219,7 @@
   {
     "name": "underlyingequityidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

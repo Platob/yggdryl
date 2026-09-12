@@ -34,7 +34,7 @@
     use yggdryl::arrow::scalar_value;
     use yggdryl::{DataType, Field};
 
-    let field = Field::new("symbol", DataType::Utf8, false);
+    let field = Field::new("symbol", DataType::utf8(), false);
     let array = field.default_arrow_array()?;
 
     // A scalar is one Arrow row; the exact Field beside it says what it means.
@@ -83,7 +83,7 @@ Only the `Field` method can return a logical null.
     assert_eq!(scalar_value(&value, array.as_ref())?.as_i128(), Some(0));
 
     // A nullable Field defaults to a logical null under its own identity.
-    let optional = Field::new("symbol", DataType::Utf8, true);
+    let optional = Field::new("symbol", DataType::utf8(), true);
     let array = optional.default_arrow_array()?;
     assert!(array.is_null(0));
     assert_eq!(scalar_value(&optional, array.as_ref())?, Scalar::Null);
@@ -144,7 +144,7 @@ A Rust struct row is positional; Python and JavaScript key it by name.
         "row",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
         ])?,
         false,
     );

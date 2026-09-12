@@ -54,7 +54,7 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
         .join(format!("yggdryl-fix-root-calls-{}", std::process::id()));
     let mut folder = Counted::new(Folder::new(&path).unwrap());
     let calls = Arc::clone(folder.calls());
-    let mut field = DataType::Utf8.nullable_field("Symbol");
+    let mut field = DataType::utf8().nullable_field("Symbol");
     field.as_fix_mut().set_tag(55).unwrap();
     let registry = FixRegistry::from_fields([field]).unwrap();
     // Counted measures navigation at this root; child handles own the
@@ -803,4 +803,69 @@ mod zip {
             .expect("the member streams in");
         assert_eq!(root.archive().handle_writes() - before, 1);
     }
+}
+
+/// A random read through a decoding handle costs a seek, not a prefix.
+///
+/// A charset has no seek of its own, so the naive answer is to decode
+/// everything before the byte a caller asked for - which turns reading the
+/// tail of a file into reading the file, and reading it at ten offsets into
+/// reading it ten times. `Transcoded` instead records where a decode may
+/// resume, once, and then seeks. The count is what says so: the index costs
+/// one bounded stream whatever the payload, and every read after it costs one
+/// more stream that starts *at* a resume point rather than at the beginning.
+#[test]
+fn a_random_read_through_a_charset_seeks_rather_than_re_decoding() {
+    use yggdryl::Charset;
+    use yggdryl::charset::Transcoded;
+
+    /// Sixteen strides of payload, so a naive read of the tail would walk
+    /// fifteen of them and a seeking one walks at most one.
+    const ROWS: usize = 16 * 1024;
+
+    let wire = Charset::Cp1252
+        .encode(&"symbol,désk,price\nAAPL,London,187.23\n".repeat(ROWS))
+        .expect("windows-1252 holds it")
+        .into_owned();
+    let handle = source(&wire, "file:///trades.csv");
+    let calls = Arc::clone(handle.calls());
+    let decoded = Transcoded::new(handle, Charset::Cp1252);
+
+    // The first question that needs the index pays for it, once: one
+    // streamed pass over the whole value, which is also what measures the
+    // decoded size.
+    calls.reset();
+    let size = decoded.size();
+    assert_eq!(calls.snapshot().to_string(), "pstream_bytes=1");
+    assert!(size > 0);
+
+    // Every read after it is one stream and nothing else, wherever it lands.
+    for offset in [0_u64, 7, size / 3, size / 2, size - 64, size - 1] {
+        costs(
+            &format!("a 32-byte read at {offset}"),
+            &calls,
+            "pstream_bytes=1",
+            || {
+                let _ = decoded.read_range_bytes(offset, 32).unwrap();
+            },
+        );
+    }
+
+    // And the bytes are the bytes: a seeking read answers what a whole read
+    // answers at the same offset.
+    let whole = decoded.read_all_bytes().unwrap();
+    assert_eq!(whole.len() as u64, size);
+    assert_eq!(
+        decoded.read_range_bytes(size - 32, 32).unwrap(),
+        whole[whole.len() - 32..]
+    );
+    for offset in [0_usize, 1, 5_000, whole.len() - 100] {
+        let window = decoded.read_range_bytes(offset as u64, 64).unwrap();
+        assert_eq!(window, &whole[offset..offset + window.len()], "{offset}");
+    }
+
+    // Asking the size again answers from the index rather than walking again.
+    costs("a second size", &calls, "none", || {
+        assert_eq!(decoded.size(), whole.len() as u64);
+    });
 }

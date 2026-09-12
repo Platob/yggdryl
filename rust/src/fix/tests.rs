@@ -13,6 +13,7 @@ use crate::fix::{
     FixCodes, FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
 };
 use crate::holder::local::Folder;
+use crate::types::BytesParameters;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixLineage,
     FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MimeType, Scalar, Version,
@@ -25,7 +26,7 @@ fn fpath(spelling: &str) -> crate::FieldPath {
 
 /// A nullable text field carrying one canonical tag.
 fn tagged(name: &str, tag: i32) -> Field {
-    let mut field = DataType::Utf8.nullable_field(name);
+    let mut field = DataType::utf8().nullable_field(name);
     field.as_fix_mut().set_tag(tag).unwrap();
     field
 }
@@ -422,7 +423,7 @@ fn a_bridge_configuration_states_its_own_half_of_the_exchange() {
         FixCodec::infer_msgtype_bytes(named),
         Some(b"ConfigurationPlugin".as_slice()),
     );
-    let stored = DataType::Utf8
+    let stored = DataType::utf8()
         .scalar(Scalar::from("ConfigurationPlugin"))
         .expect("message names remain complete text");
     assert_eq!(stored.as_str(), Some("ConfigurationPlugin"));
@@ -836,7 +837,7 @@ fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
     refusing
         .insert({
             let mut widened = tagged("SYMBOL", 55);
-            widened.set_dtype(DataType::LargeUtf8).unwrap();
+            widened.set_dtype(DataType::large_utf8()).unwrap();
             widened
         })
         .unwrap();
@@ -1000,7 +1001,7 @@ fn a_property_write_rejects_bad_elements_and_leaves_the_field_unchanged() {
 
 #[test]
 fn membership_round_trips_and_is_no_half_of_the_identity() {
-    let mut field = DataType::Utf8.nullable_field("TradeID");
+    let mut field = DataType::utf8().nullable_field("TradeID");
 
     // Absent means the specification alone, and no identity without a tag.
     assert_eq!(field.as_fix().branches().count(), 0);
@@ -1482,7 +1483,7 @@ fn a_corrupt_stored_property_is_reported_under_its_full_key() {
 #[test]
 fn a_field_without_a_tag_never_enters() {
     let error = FixRegistry::new()
-        .insert(DataType::Utf8.nullable_field("Symbol"))
+        .insert(DataType::utf8().nullable_field("Symbol"))
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
     let message = error.to_string();
@@ -1490,7 +1491,7 @@ fn a_field_without_a_tag_never_enters() {
     assert!(message.contains("Symbol"), "{message}");
 
     let error = FixRegistry::new()
-        .update(DataType::Utf8.nullable_field("Symbol"))
+        .update(DataType::utf8().nullable_field("Symbol"))
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
 }
@@ -1676,7 +1677,7 @@ fn a_merge_follows_the_truth_table() {
     stored.insert_metadata("owner", "stored").unwrap();
     let mut registry = FixRegistry::from_fields([stored]).unwrap();
 
-    let mut incoming = DataType::Utf8.required_field("SYMBOL");
+    let mut incoming = DataType::utf8().required_field("SYMBOL");
     incoming.as_fix_mut().set_tag(55).unwrap();
     incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
     incoming
@@ -1744,7 +1745,7 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
 
     // A datatype disagreement names both datatypes and never widens.
     let mut widened = tagged("Symbol", 55);
-    widened.set_dtype(DataType::LargeUtf8).unwrap();
+    widened.set_dtype(DataType::large_utf8()).unwrap();
     let error = registry.update(widened).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     let message = error.to_string();
@@ -1869,7 +1870,7 @@ fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
 
     // No `fix:tag` is no identity, so there is nothing to add or fold under.
     let error = registry
-        .add_fields([DataType::Utf8.nullable_field("Nameless")])
+        .add_fields([DataType::utf8().nullable_field("Nameless")])
         .unwrap_err();
     assert!(error.is_absent(), "{error}");
     assert!(error.to_string().contains("fix:tag"), "{error}");
@@ -1878,7 +1879,7 @@ fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
     // widened - the shape a CBlock's generic `float` takes against a stored
     // `float64`.
     let mut widened = tagged("Symbol", 55);
-    widened.set_dtype(DataType::LargeUtf8).unwrap();
+    widened.set_dtype(DataType::large_utf8()).unwrap();
     let error = registry.add_fields([widened]).unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
 
@@ -1887,7 +1888,7 @@ fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
     // after arrives.
     let before = registry.clone();
     let mut clash = tagged("Symbol", 55);
-    clash.set_dtype(DataType::LargeUtf8).unwrap();
+    clash.set_dtype(DataType::large_utf8()).unwrap();
     let error = registry
         .add_fields([tagged("Price", 44), clash, tagged("TransactTime", 60)])
         .unwrap_err();
@@ -2017,7 +2018,7 @@ fn specialized_and_generic_accessors_answer_alike_for_every_key() {
 
 #[test]
 fn a_path_reaches_a_component_member_and_a_repeating_group_member() {
-    let mut party_id = DataType::Utf8.nullable_field("PartyID");
+    let mut party_id = DataType::utf8().nullable_field("PartyID");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452).unwrap();
@@ -2339,7 +2340,7 @@ fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
     let original = registry.clone();
     for dtype in [
         DataType::from_fields([tagged("Member", 9_001)]).unwrap(),
-        DataType::list(DataType::Utf8.required_field("item")),
+        DataType::list(DataType::utf8().required_field("item")),
         DataType::dictionary(
             DataType::Int32,
             DataType::from_fields([tagged("Member", 9_002)]).unwrap(),
@@ -2352,7 +2353,7 @@ fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
         assert!(error.to_string().contains("scalar"), "{error}");
         assert_eq!(registry, original);
     }
-    let mut encoded = DataType::dictionary(DataType::Int32, DataType::Utf8)
+    let mut encoded = DataType::dictionary(DataType::Int32, DataType::utf8())
         .unwrap()
         .nullable_field("Coded");
     encoded.as_fix_mut().set_tag(60).unwrap();
@@ -2585,7 +2586,7 @@ fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
 
 /// A registry, a root and a value the message tests share.
 fn order() -> (Arc<FixRegistry>, Field, Scalar) {
-    let mut party_id = DataType::Utf8.nullable_field("PartyID");
+    let mut party_id = DataType::utf8().nullable_field("PartyID");
     party_id.as_fix_mut().set_tag(448).unwrap();
     let mut role = DataType::Int32.nullable_field("PartyRole");
     role.as_fix_mut().set_tag(452).unwrap();
@@ -2615,7 +2616,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         instrument,
         count,
         group,
-        DataType::Utf8.nullable_field("9999"),
+        DataType::utf8().nullable_field("9999"),
     ])
     .unwrap()
     .required_field("NewOrderSingle");
@@ -2650,8 +2651,8 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
 #[test]
 fn folded_message_child_lookup_does_not_choose_between_colliding_names() {
     let field = DataType::from_fields([
-        DataType::Utf8.required_field("A"),
-        DataType::Utf8.required_field("a"),
+        DataType::utf8().required_field("A"),
+        DataType::utf8().required_field("a"),
     ])
     .unwrap()
     .required_field("message");
@@ -2948,7 +2949,7 @@ fn a_lineage_answers_the_name_and_datatype_of_every_version_it_holds() {
 
 #[test]
 fn two_entries_at_one_version_order_by_extension_pack() {
-    let mut field = DataType::Utf8.nullable_field("BasisPoints");
+    let mut field = DataType::utf8().nullable_field("BasisPoints");
     field.as_fix_mut().set_tag(9999).unwrap();
     field
         .as_fix_mut()
@@ -3029,7 +3030,7 @@ fn a_version_filters_the_read_and_the_registry_stays_version_agnostic() {
 
 #[test]
 fn a_removed_entry_ends_the_field_and_a_field_with_no_lineage_answers_everywhere() {
-    let mut retired = DataType::Utf8.nullable_field("Retired");
+    let mut retired = DataType::utf8().nullable_field("Retired");
     retired.as_fix_mut().set_tag(9998).unwrap();
     retired
         .as_fix_mut()
@@ -3057,7 +3058,7 @@ fn a_removed_entry_ends_the_field_and_a_field_with_no_lineage_answers_everywhere
 
 #[test]
 fn a_lineage_disagreeing_with_its_own_field_is_refused_naming_both_sides() {
-    let mut field = DataType::Utf8.nullable_field("LastQty");
+    let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).unwrap();
 
     let error = field
@@ -3086,7 +3087,7 @@ fn a_lineage_disagreeing_with_its_own_field_is_refused_naming_both_sides() {
 
 #[test]
 fn two_entries_sharing_one_pedigree_are_refused() {
-    let mut field = DataType::Utf8.nullable_field("Twice");
+    let mut field = DataType::utf8().nullable_field("Twice");
     field.as_fix_mut().set_tag(9997).unwrap();
 
     let error = field
@@ -3138,7 +3139,7 @@ fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
     // Keys follow the document's declared order, so a reordered one is
     // refused rather than mis-scanned.
     let reordered = r#"{"entries":[{"name":"LastShares","since":"2.7"}]}"#;
-    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    let mut edited = DataType::utf8().nullable_field("LastShares");
     edited.set_metadata([("fix:lineage", reordered)]).unwrap();
     let error = edited.as_fix().dtype_at(version("4.2")).unwrap_err();
     assert!(
@@ -3335,7 +3336,7 @@ fn a_field_states_the_spellings_that_mean_nothing_was_sent() {
 
 #[test]
 fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
-    let mut field = DataType::Utf8.nullable_field("Account");
+    let mut field = DataType::utf8().nullable_field("Account");
     field.as_fix_mut().set_tag(1).unwrap();
 
     let error = field.as_fix_mut().set_nulls(["a,b"]).unwrap_err();
@@ -3353,10 +3354,10 @@ fn a_null_spelling_is_refused_when_it_carries_the_separator_or_repeats() {
 
 #[test]
 fn a_lineage_stores_the_type_a_spelling_resolves_to_and_drops_a_rename_of_it() {
-    let mut field = DataType::Utf8.nullable_field("account");
+    let mut field = DataType::utf8().nullable_field("account");
     field.as_fix_mut().set_tag(1).unwrap();
     // The specification renamed the type without changing it: `char` and
-    // `String` are one `utf8`.
+    // `String` are one `string`.
     field
         .as_fix_mut()
         .set_lineage(&[
@@ -3370,14 +3371,14 @@ fn a_lineage_stores_the_type_a_spelling_resolves_to_and_drops_a_rename_of_it() {
         .unwrap();
     assert_eq!(
         field.as_metadata().get("fix:lineage"),
-        Some(r#"{"entries":[{"since":"2.7","name":"account","type":{"type":"utf8"}}]}"#)
+        Some(r#"{"entries":[{"since":"2.7","name":"account","type":{"type":"string"}}]}"#)
     );
     // The oldest entry survives, so `since` still dates the field.
     assert_eq!(field.as_fix().since(), Some(version("2.7")));
     // And the type is answered at both versions, from the one entry left.
     assert_eq!(
         field.as_fix().dtype_at(version("4.4")).unwrap(),
-        Some(DataType::Utf8)
+        Some(DataType::utf8())
     );
 }
 
@@ -3418,7 +3419,7 @@ fn only_a_type_equivalent_entry_collapses() {
             FixLineageEntry::new(FixPedigree::new(version("4.2"), None)).with_dtype("Qty"),
         ],
     ] {
-        let mut field = DataType::Utf8.nullable_field("kept");
+        let mut field = DataType::utf8().nullable_field("kept");
         // The last two cases retype to something the field is not, so the
         // lineage is rendered directly rather than through the agreement
         // check `set_lineage` makes.
@@ -3439,7 +3440,7 @@ fn only_a_type_equivalent_entry_collapses() {
     .expect("the entries render");
     assert_eq!(
         rendered,
-        r#"{"entries":[{"since":"5.0.2","type":{"type":"utf8"}}]}"#
+        r#"{"entries":[{"since":"5.0.2","type":{"type":"string"}}]}"#
     );
 }
 
@@ -3456,7 +3457,7 @@ fn an_empty_lineage_removes_the_document_and_the_aliases_it_derived() {
 
 /// Fixture A: the standard `SideCodeSet`, dated as the specification dates it.
 fn side() -> Field {
-    let mut field = DataType::Utf8.nullable_field("Side");
+    let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
     field
         .as_fix_mut()
@@ -3473,7 +3474,7 @@ fn side() -> Field {
 
 /// Fixture B: `CommTypeCodeSet`, whose long names are what tier 2 folds.
 fn comm_type() -> Field {
-    let mut field = DataType::Utf8.nullable_field("CommType");
+    let mut field = DataType::utf8().nullable_field("CommType");
     field.as_fix_mut().set_tag(13).unwrap();
     field
         .as_fix_mut()
@@ -3521,7 +3522,7 @@ fn a_code_set_resolves_by_value_by_name_and_by_every_folding_of_a_name() {
 
 #[test]
 fn an_alias_shares_a_value_and_an_unknown_spelling_falls_through() {
-    let mut field = DataType::Utf8.nullable_field("Side");
+    let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
     field
         .as_fix_mut()
@@ -3558,7 +3559,7 @@ fn a_reader_meeting_one_spelling_at_a_time_grows_a_code_rather_than_dropping_it(
     assert!(buy.is_spelled("bought"));
     assert_eq!(buy.aliases(), ["Bought"]);
 
-    let mut field = DataType::Utf8.nullable_field("Side");
+    let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
     field
         .as_fix_mut()
@@ -3574,7 +3575,7 @@ fn a_reader_meeting_one_spelling_at_a_time_grows_a_code_rather_than_dropping_it(
 
 #[test]
 fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
-    let mut field = DataType::Utf8.nullable_field("Side");
+    let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
     field
         .as_fix_mut()
@@ -3591,7 +3592,7 @@ fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
     // Tier 1 still answers, because a legal wire value is never a spelling.
     assert_eq!(view.code_value("8"), Some("8"));
     // Two names sharing one value are an alias, not an ambiguity.
-    let mut aliased = DataType::Utf8.nullable_field("Side");
+    let mut aliased = DataType::utf8().nullable_field("Side");
     aliased.as_fix_mut().set_tag(54).unwrap();
     aliased
         .as_fix_mut()
@@ -3605,7 +3606,7 @@ fn an_ambiguous_spelling_resolves_to_nothing_rather_than_the_first_match() {
 
 #[test]
 fn tier_three_reads_a_leading_abbreviation_and_leaves_both_traps_alone() {
-    let mut field = DataType::Utf8.nullable_field("TimeInForce");
+    let mut field = DataType::utf8().nullable_field("TimeInForce");
     field.as_fix_mut().set_tag(59).unwrap();
     field
         .as_fix_mut()
@@ -3653,7 +3654,7 @@ fn a_version_prefers_the_codes_it_knows_and_still_reads_the_rest() {
     );
     assert_eq!(comm.code("7").unwrap().ep(), Some(208));
 
-    let mut retired = DataType::Utf8.nullable_field("OldFlag");
+    let mut retired = DataType::utf8().nullable_field("OldFlag");
     retired.as_fix_mut().set_tag(9996).unwrap();
     retired
         .as_fix_mut()
@@ -3708,7 +3709,7 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     // Keys follow the document's declared order, so a reordered one is
     // refused rather than mis-scanned.
     let reordered = r#"{"codes":[{"name":"Buy","value":"1"}]}"#;
-    let mut edited = DataType::Utf8.nullable_field("Side");
+    let mut edited = DataType::utf8().nullable_field("Side");
     edited.set_metadata([("fix:codes", reordered)]).unwrap();
     let error = edited.as_fix().codes().next().unwrap().unwrap_err();
     assert!(
@@ -3723,7 +3724,7 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
 
 #[test]
 fn two_codes_may_share_a_value_but_never_a_name_and_neither_may_be_empty() {
-    let mut field = DataType::Utf8.nullable_field("Side");
+    let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
 
     let error = field
@@ -3750,7 +3751,7 @@ fn two_codes_may_share_a_value_but_never_a_name_and_neither_may_be_empty() {
 
 #[test]
 fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
-    let mut field = DataType::Utf8.nullable_field("Side");
+    let mut field = DataType::utf8().nullable_field("Side");
     field.as_fix_mut().set_tag(54).unwrap();
     field
         .as_fix_mut()
@@ -3788,7 +3789,7 @@ fn a_code_set_carries_every_fact_the_specification_states_about_a_member() {
 #[test]
 fn a_field_merge_folds_every_key_by_its_own_rule() {
     // Stored: the older, lower-priority source.
-    let mut stored = DataType::Utf8.nullable_field("LastQty");
+    let mut stored = DataType::utf8().nullable_field("LastQty");
     stored.as_fix_mut().set_tag(32).unwrap();
     stored.as_fix_mut().set_tags(&[65, 66]).unwrap();
     stored
@@ -3811,7 +3812,7 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
         .unwrap();
 
     // Incoming: the newer, higher-priority source.
-    let mut incoming = DataType::Utf8.nullable_field("LastQty");
+    let mut incoming = DataType::utf8().nullable_field("LastQty");
     incoming.as_fix_mut().set_tag(32).unwrap();
     incoming.as_fix_mut().set_tags(&[67, 66]).unwrap();
     incoming
@@ -3869,14 +3870,14 @@ fn a_field_merge_folds_every_key_by_its_own_rule() {
 
 #[test]
 fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
-    let mut stored = DataType::Utf8.nullable_field("Symbol");
+    let mut stored = DataType::utf8().nullable_field("Symbol");
     stored.as_fix_mut().set_tag(55).unwrap();
     stored
         .as_fix_mut()
         .set_description("a very long stored wording nobody wants compared")
         .unwrap();
 
-    let mut incoming = DataType::Utf8.nullable_field("Symbol");
+    let mut incoming = DataType::utf8().nullable_field("Symbol");
     incoming.as_fix_mut().set_tag(55).unwrap();
     incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
 
@@ -3914,12 +3915,12 @@ fn a_merge_keeps_a_stored_description_the_incoming_does_not_state() {
 
 #[test]
 fn a_merge_of_disagreeing_identities_is_refused_and_changes_nothing() {
-    let mut incoming = DataType::Utf8.nullable_field("Symbol");
+    let mut incoming = DataType::utf8().nullable_field("Symbol");
     incoming.as_fix_mut().set_tag(55).unwrap();
     incoming.as_fix_mut().set_aliases(["Ticker"]).unwrap();
     let before = incoming.clone();
 
-    let mut other = DataType::Utf8.nullable_field("Symbol");
+    let mut other = DataType::utf8().nullable_field("Symbol");
     other.as_fix_mut().set_tag(56).unwrap();
     let error = incoming
         .as_fix_mut()
@@ -3936,7 +3937,7 @@ fn a_merge_of_disagreeing_identities_is_refused_and_changes_nothing() {
     // Membership is no half of the identity: the same tag spoken by a venue
     // merges, and the merge records who spoke it.
     let vendor = member("Symbol", "cme", 5055);
-    let mut mine = DataType::Utf8.nullable_field("Symbol");
+    let mut mine = DataType::utf8().nullable_field("Symbol");
     mine.as_fix_mut().set_tag(5055).unwrap();
     mine.as_fix_mut().merge_with(&vendor.as_fix()).unwrap();
     assert_eq!(mine.as_fix().branches().collect::<Vec<_>>(), ["cme"]);
@@ -3953,7 +3954,7 @@ fn a_merge_of_disagreeing_identities_is_refused_and_changes_nothing() {
 
 #[test]
 fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
-    let mut field = DataType::Utf8.nullable_field("LastQty");
+    let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).unwrap();
     field.as_fix_mut().set_tags(&[65]).unwrap();
     field.as_fix_mut().set_description("wording").unwrap();
@@ -3974,7 +3975,7 @@ fn a_merge_adding_nothing_leaves_the_field_byte_identical() {
     field.as_fix_mut().merge_with(&other.as_fix()).unwrap();
     assert_eq!(field, before);
     // Merging a bare field into a full one is also a no-op.
-    let mut bare = DataType::Utf8.nullable_field("LastQty");
+    let mut bare = DataType::utf8().nullable_field("LastQty");
     bare.as_fix_mut().set_tag(32).unwrap();
     field.as_fix_mut().merge_with(&bare.as_fix()).unwrap();
     assert_eq!(field, before);
@@ -4045,7 +4046,7 @@ const RULE80A_DOCUMENT: &str = concat!(
 );
 
 fn rule80a() -> Field {
-    let mut field = DataType::Utf8.nullable_field("rule80a");
+    let mut field = DataType::utf8().nullable_field("rule80a");
     field.as_fix_mut().set_tag(47).unwrap();
     field
         .as_fix_mut()
@@ -4056,7 +4057,7 @@ fn rule80a() -> Field {
 
 /// A field carrying one hand-written `fix:replacements` text, unvalidated.
 fn replacing(document: &str) -> Field {
-    let mut field = DataType::Utf8.nullable_field("rule80a");
+    let mut field = DataType::utf8().nullable_field("rule80a");
     field
         .set_metadata([("fix:replacements", document)])
         .unwrap();
@@ -4257,7 +4258,7 @@ fn the_replacement_writer_refuses_what_the_document_cannot_state() {
             "at least one fill",
         ),
     ] {
-        let mut field = DataType::Utf8.nullable_field("rule80a");
+        let mut field = DataType::utf8().nullable_field("rule80a");
         field.as_fix_mut().set_tag(47).unwrap();
         let error = field.as_fix_mut().set_replacements(&rules).unwrap_err();
         assert!(error.to_string().contains(names), "{names}: {error}");
@@ -4415,7 +4416,7 @@ fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
 
 #[test]
 fn a_merge_lets_the_incoming_replacements_win_whole() {
-    let mut stored = DataType::Utf8.nullable_field("rule80a");
+    let mut stored = DataType::utf8().nullable_field("rule80a");
     stored.as_fix_mut().set_tag(47).unwrap();
     stored
         .as_fix_mut()
@@ -4438,7 +4439,7 @@ fn a_merge_lets_the_incoming_replacements_win_whole() {
     );
 
     // The stored one keeps what only it has.
-    let mut bare = DataType::Utf8.nullable_field("rule80a");
+    let mut bare = DataType::utf8().nullable_field("rule80a");
     bare.as_fix_mut().set_tag(47).unwrap();
     bare.as_fix_mut().merge_with(&stored.as_fix()).unwrap();
     assert_eq!(
@@ -5040,7 +5041,9 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
             assert!(!tail.is_nullable(), "{column} level {level} tail");
             match tail.dtype() {
                 DataType::List(deeper) if level < 3 => held = deeper,
-                DataType::Binary if level == 3 => break,
+                DataType::Bytes(bytes) if level == 3 && *bytes == BytesParameters::default() => {
+                    break;
+                }
                 other => panic!("{column} level {level}: {other}"),
             }
         }
@@ -5072,7 +5075,7 @@ fn nested_entries(depth: usize, value: &str) -> Vec<FixEntry> {
 #[test]
 fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     let registry = committed();
-    let root = DataType::from_fields([DataType::Utf8.nullable_field("35")])
+    let root = DataType::from_fields([DataType::utf8().nullable_field("35")])
         .unwrap()
         .required_field("D");
     let message = |value: &str| {

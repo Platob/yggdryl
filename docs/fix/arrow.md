@@ -39,9 +39,9 @@ One column of frames in, batches out, the capture's own columns still in front o
     // A capture shaped the way a log reader shapes one: where the line was
     // read from, which line it was, and the frame itself.
     let capture = DataType::from_fields([
-        DataType::Utf8.required_field("url"),
+        DataType::utf8().required_field("url"),
         DataType::Int64.required_field("rownum"),
-        DataType::Utf8.required_field("body"),
+        DataType::utf8().required_field("body"),
     ])?
     .required_field("line");
     let values = Scalar::from_sequence([Scalar::from_sequence([
@@ -337,7 +337,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
     let body = r#"[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
     let field = DataType::from_fields([
         DataType::Int64.required_field("rownum"),
-        DataType::Utf8.required_field("body"),
+        DataType::utf8().required_field("body"),
     ])?.required_field("capture");
     let rows = Scalar::from_sequence([Scalar::from_sequence([
         Scalar::from(7_i64), Scalar::from(body),
@@ -510,7 +510,7 @@ Ordinary frames produce one row each. Bulk configuration arrays emit every respo
 
     // A report stating what was done and what was left: the rest is implied.
     let report = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
-    let capture = DataType::from_fields([DataType::Utf8.required_field("body")])?.required_field("line");
+    let capture = DataType::from_fields([DataType::utf8().required_field("body")])?.required_field("line");
     let source = || -> yggdryl::Result<_> {
         let batch = yggdryl::arrow::batch_from_value(
             &capture,

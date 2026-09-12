@@ -30,7 +30,7 @@
         .required_field("row");
     let right_root = DataType::from_fields([
         DataType::Int64.nullable_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
 
@@ -117,7 +117,7 @@ let schema = Field::new(
     "row",
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])?,
     false,
 );

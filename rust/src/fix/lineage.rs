@@ -194,7 +194,7 @@ impl<'field> FixLineageEntry<'field> {
     /// Returns the datatype from this version on, as text, unparsed.
     ///
     /// A *stored* entry states the crate's serialized datatype - the same
-    /// `{"type":"utf8"}` document the field's own datatype is stored as - so
+    /// `{"type":"string"}` document the field's own datatype is stored as - so
     /// a parameterized type carries its parameters where every other reader
     /// of a datatype expects them. A *built* entry may state a FIX datatype
     /// name instead, because [`Self::with_dtype`] takes whatever spelling the
@@ -403,7 +403,7 @@ impl<'field> FixLineage<'field> {
     /// reader has to repeat them:
     ///
     /// - each entry's datatype is resolved and stored as the crate datatype
-    ///   it names, so `char` and `String` become one `utf8`;
+    ///   it names, so `char` and `String` become one `string`;
     /// - an entry that then states nothing its predecessor did not is
     ///   dropped, because a dated point saying what was already true is not
     ///   a point in a history.

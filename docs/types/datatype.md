@@ -6,14 +6,15 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 60 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, ASCII, codes |
+| Owns | 52 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the nine [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
-| Identity | `id()`, `kind()`: 60 ids, 12 kinds, parameter-free |
+| Identity | `id()`, `kind()`: 61 ids, 12 kinds, parameter-free; a string's id is its layout, a byte column's its layout |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
 | Rust only | the enum itself; YAML, TOML, `pretty` pending in JavaScript |
+| Serializes strings, bytes | one `string` tag and one `binary` tag with `layout`, `charset`, `fixed` or `max` ([Strings & bytes](text.md#serialized-shape)) |
 
 ## Use
 
@@ -67,7 +68,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 === "Rust"
 
     ```rust
-    use yggdryl::{AsciiEnum, DataType, TimeUnit, Timezone};
+    use yggdryl::{DataType, StringEnum, TimeUnit, Timezone};
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     let price = DataType::from_logical_name("Price")?;
@@ -97,8 +98,10 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
 
     // Three of the names also prebuild the vocabulary their codes come from.
-    assert_eq!(AsciiEnum::prebuilt_values("MIC"), AsciiEnum::MICS);
-    assert!(AsciiEnum::prebuilt_values("tenor").is_empty());
+    assert_eq!(StringEnum::prebuilt_values("MIC"), StringEnum::MICS);
+    assert!(StringEnum::prebuilt_values("tenor").is_empty());
+    // A name that is a width rather than a code resolves to the fixed string.
+    assert_eq!(DataType::from_logical_name("Language")?, DataType::fixed_ascii(2)?);
 
     // The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert_eq!(DataType::from_str("int")?, DataType::Int32);
@@ -108,7 +111,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 === "Python"
 
     ```python
-    from yggdryl import AsciiEnum, DataType
+    from yggdryl import DataType, StringEnum
 
     # A name is one more spelling of a datatype, so it displays as that datatype.
     price = DataType.from_logical_name("Price")
@@ -126,8 +129,10 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert DataType.logical_names()["currency"] == DataType("currency")
 
     # Three of the names also prebuild the vocabulary their codes come from.
-    assert AsciiEnum.prebuilt()["mic"] == AsciiEnum.prebuilt()["exchange"]
-    assert "tenor" not in AsciiEnum.prebuilt()
+    assert StringEnum.prebuilt()["mic"] == StringEnum.prebuilt()["exchange"]
+    assert "tenor" not in StringEnum.prebuilt()
+    # A name that is a width rather than a code resolves to the fixed string.
+    assert DataType.from_logical_name("Language") == DataType.fixed_ascii(2)
 
     # The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert DataType("int") == DataType("int32")
@@ -138,7 +143,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { AsciiEnum, DataType } = require('yggdryl')
+    const { DataType, StringEnum } = require('yggdryl')
 
     // A name is one more spelling of a datatype, so it displays as that datatype.
     const price = DataType.fromLogicalName('Price')
@@ -156,15 +161,17 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.logicalNames().currency.id, 'currency')
 
     // Three of the names also prebuild the vocabulary their codes come from.
-    assert.deepEqual(AsciiEnum.prebuilt().mic, AsciiEnum.prebuilt().exchange)
-    assert.equal(AsciiEnum.prebuilt().tenor, undefined)
+    assert.deepEqual(StringEnum.prebuilt().mic, StringEnum.prebuilt().exchange)
+    assert.equal(StringEnum.prebuilt().tenor, undefined)
+    // A name that is a width rather than a code resolves to the fixed string.
+    assert.ok(DataType.fromLogicalName('Language').equals(DataType.fixedAscii(2)))
 
     // The five base-type spellings the Arrow/SQL grammar owns keep their meaning.
     assert.equal(DataType.from('int').id, 'int32')
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](ascii.md).
+The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -173,9 +180,9 @@ The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
 | `isin` | - | `isin` | ISO 6166, exactly 12 bytes closed by a check digit |
-| `Language` | String | `ascii(2)` | ISO 639-1 alpha-2 |
-| `MonthYear` | String | `ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
-| `Tenor` | Pattern | `ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
+| `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
+| `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
+| `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
 | `Pattern` | - | `utf8` | the abstract base of `Tenor` and the reserved ranges |
 | `Length` | int | `int32` | a byte count |
 | `TagNum` | int | `int32` | a FIX tag |
@@ -341,7 +348,7 @@ The core computes one default; each binding projects it.
 
     let value = DataType::from_fields([
         Field::new("id", DataType::Int32, false),
-        Field::new("note", DataType::Utf8, true),
+        Field::new("note", DataType::utf8(), true),
     ])?;
 
     // One positional slot per child, each honoring its own nullability.
@@ -350,10 +357,10 @@ The core computes one default; each binding projects it.
         &[Scalar::from(0_i64), Scalar::Null]
     );
     assert!(value.is_default_value(&value.default_value()?)?);
-    assert_eq!(DataType::Utf8.default_value()?, Scalar::from(""));
+    assert_eq!(DataType::utf8().default_value()?, Scalar::from(""));
 
     // A default is bounded: a layout too large to materialize is an error, not a null.
-    assert!(DataType::FixedSizeBinary(64 * 1024 * 1024 + 1).default_value().is_err());
+    assert!(DataType::fixed_size_binary(64 * 1024 * 1024 + 1)?.default_value().is_err());
     ```
 
 === "Python"
@@ -415,7 +422,7 @@ Nesting is carried, not flattened, so every format round-trips it.
     assert_eq!(DataType::from_toml(&dtype.clone().into_toml()?)?, dtype);
 
     let shape = dtype.into_value();
-    assert_eq!(shape.get_key_str("type").and_then(Scalar::as_utf8), Some("decimal32"));
+    assert_eq!(shape.get_key_str("type").and_then(Scalar::as_str), Some("decimal32"));
     ```
 
 === "Python"
@@ -455,7 +462,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     use yggdryl::DataType;
 
     let rows = DataType::list(
-        DataType::from_fields([DataType::Utf8.nullable_field("venue")])?.nullable_field("item"),
+        DataType::from_fields([DataType::utf8().nullable_field("venue")])?.nullable_field("item"),
     );
 
     // Compact still round-trips.
@@ -502,7 +509,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
         Field::new("wide", DataType::UInt64, true),
         Field::new(
             "text",
-            DataType::large_list(DataType::Utf8View.nullable_field("item")),
+            DataType::large_list(DataType::utf8_view().nullable_field("item")),
             false,
         ),
     ])?;
@@ -513,7 +520,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(rewritten[1].dtype(), &DataType::decimal128(20, 0)?);
     assert_eq!(
         rewritten[2].dtype(),
-        &DataType::list(DataType::Utf8.nullable_field("item"))
+        &DataType::list(DataType::utf8().nullable_field("item"))
     );
 
     // Arrow is a validated clone; Polars keeps the unsigned integers Spark has to widen.
@@ -618,7 +625,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 ## Edges
 
 - `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
-- `FixedSizeBinary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a fixed-size list default over that byte limit fails the same way.
+- `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a fixed-size list default over that byte limit fails the same way.
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
@@ -627,9 +634,9 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
 - `TZTimeOnly` -> the same instant under the date it does not state: the epoch day supplies one, so `07:39+05:30` is `1970-01-01T02:09:00Z` and `00:30+05:30` is the evening of 1969-12-31. The date is not data and a reading is not confined to one day, so a day filter is the wrong tool on the column; two readings still subtract.
 - A `TZTimeOnly` stating no offset -> null, not a guess. FIX means local time by omitting one and an instant cannot hold that; the text stays in the message's own entries. It is also what keeps a dateless `UTCTimestamp` - a malformed one - from reading as an instant on the epoch day.
-- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `ascii(16)` and is null now, which is the cost of being typed.
+- A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
-- `DataType::from_arrow(currency.into_arrow())` -> `ascii(3)`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
+- `DataType::from_arrow(currency.into_arrow())` -> `fixed_size_binary(3)`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
 - prebuilt `currency`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
 - prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.

@@ -16,7 +16,7 @@ use crate::text::codec::{
     codec_encode_all_writer, codec_encode_path, codec_encode_writer, codec_infer, codec_infer_path,
     codec_infer_text, codec_normalize_format,
 };
-use crate::types::datatype::{PyAsciiEnum, PyDataType, PyDataTypeIterator};
+use crate::types::datatype::{PyDataType, PyDataTypeIterator, PyStringEnum};
 use crate::types::field::{
     PyField, PyFieldMetadata, PyFieldMetadataIterator, PyFieldPropertyIterator, PyProtocolField,
 };
@@ -24,6 +24,7 @@ use crate::types::scalar::PyScalar;
 use crate::uri::{PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn};
 
 mod arrow;
+mod charset;
 mod coding;
 mod enums;
 mod expression;
@@ -252,8 +253,8 @@ impl PyDifferenceIterator {
 fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
     use pyo3::types::PyDict;
     use yggdryl::{
-        Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, PythonKind, Scheme,
-        TimeUnit, UnionMode,
+        Charset, Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, PythonKind,
+        Scheme, TimeUnit, UnionMode,
     };
 
     let listing = PyDict::new(py);
@@ -279,6 +280,7 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
             .to_vec(),
     )?;
     listing.set_item("codecs", Codec::ALL.map(Codec::as_str).to_vec())?;
+    listing.set_item("charsets", Charset::ALL.map(Charset::as_str).to_vec())?;
     listing.set_item(
         "digest_algorithms",
         DigestAlgorithm::ALL.map(DigestAlgorithm::as_str).to_vec(),
@@ -394,7 +396,9 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Register the native value and iterator classes.
 fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
-    module.add_class::<PyAsciiEnum>()?;
+    module.add_class::<PyStringEnum>()?;
+    module.add_class::<types::parameters::PyStringParameters>()?;
+    module.add_class::<types::parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
     module.add_class::<crate::arrow::PyArrowValue>()?;
@@ -489,6 +493,12 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Register the native free functions.
 fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(refresh_logging, module)?)?;
+    module.add_function(wrap_pyfunction!(charset::charset_decode, module)?)?;
+    module.add_function(wrap_pyfunction!(charset::charset_decode_lossy, module)?)?;
+    module.add_function(wrap_pyfunction!(charset::charset_encode, module)?)?;
+    module.add_function(wrap_pyfunction!(charset::charset_from_bom, module)?)?;
+    module.add_function(wrap_pyfunction!(charset::charset_bom, module)?)?;
+    module.add_function(wrap_pyfunction!(charset::charset_canonical_name, module)?)?;
     module.add_function(wrap_pyfunction!(coding::gzip_loads, module)?)?;
     module.add_function(wrap_pyfunction!(coding::gzip_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zlib_loads, module)?)?;

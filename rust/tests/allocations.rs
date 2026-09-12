@@ -26,11 +26,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use std::sync::Arc;
 
-use yggdryl::media::text::{TextBytes, TextLine};
-use yggdryl::types::{MsgDirection, UncheckedFieldScalar};
+use yggdryl::holder::Buffer;
+use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+use yggdryl::types::{
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, MsgDirection, Str, StringLayout, StringParameters,
+    UncheckedFieldScalar,
+};
 use yggdryl::{
-    DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId,
-    FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
+    Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
+    FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
     PythonMetadata, Scalar, TimeUnit, Timezone, Version,
 };
 
@@ -176,7 +180,7 @@ fn version_parse_compare_and_render_allocate_nothing() {
 fn http_field(extra: usize) -> Field {
     let mut field = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [
             ("http:content-type", "application/json"),
@@ -245,7 +249,7 @@ const VENUE: &str = "venue";
 /// ones are what every hit lands on. The group keeps a nested shape in the
 /// same index corpus.
 fn fix_registry(extra: usize) -> FixRegistry {
-    let item = DataType::from_fields([DataType::Utf8.nullable_field("PartyID")])
+    let item = DataType::from_fields([DataType::utf8().nullable_field("PartyID")])
         .expect("a struct item")
         .required_field("item");
     let mut parties = DataType::list(item).nullable_field("Parties");
@@ -255,7 +259,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .expect("a static counter");
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453).expect("a static tag");
-    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    let mut symbol = DataType::utf8().nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
     symbol
         .as_fix_mut()
@@ -265,9 +269,9 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .as_fix_mut()
         .set_aliases(["Ticker", "SecuritySymbolIdentifier"])
         .expect("static aliases");
-    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    let mut trade = DataType::utf8().nullable_field("TradeID");
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
@@ -512,7 +516,7 @@ fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
     for size in [1, 32, 512] {
         let mut registry = FixRegistry::new();
         for index in 0..size {
-            let mut field = DataType::Utf8.nullable_field(format!("Code{index}"));
+            let mut field = DataType::utf8().nullable_field(format!("Code{index}"));
             field.as_fix_mut().set_tag(index).unwrap();
             field
                 .as_fix_mut()
@@ -554,7 +558,7 @@ fn a_fix_lineage_read_allocates_nothing() {
     // Every spelling a lineage answers is a slice of the field's own stored
     // document, so a version filter costs the walk and nothing else. Only
     // `dtype_at` allocates, because building a `DataType` is what it answers.
-    let mut field = DataType::Utf8.nullable_field("LastQty");
+    let mut field = DataType::utf8().nullable_field("LastQty");
     field.as_fix_mut().set_tag(32).expect("a static tag");
     let entries = [
         FixLineageEntry::new(FixPedigree::new(
@@ -606,7 +610,7 @@ fn a_fix_lineage_read_allocates_nothing() {
     });
     // A document the scan refuses costs no allocation either: the byte
     // position is carried by the borrowed cursor, not by a rendered copy.
-    let mut edited = DataType::Utf8.nullable_field("LastShares");
+    let mut edited = DataType::utf8().nullable_field("LastShares");
     edited
         .set_metadata([("fix:lineage", r#"{"entries":[{"name":"x","since":"2.7"}]}"#)])
         .expect("a hand-edited document");
@@ -626,7 +630,7 @@ fn a_fix_code_lookup_allocates_nothing() {
                 .with_description(format!("Member number {index} (M{index:04})"))
         })
         .collect();
-    let mut field = DataType::Utf8.nullable_field("Vocabulary");
+    let mut field = DataType::utf8().nullable_field("Vocabulary");
     field.as_fix_mut().set_tag(9995).expect("a static tag");
     field
         .as_fix_mut()
@@ -672,15 +676,15 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     let registry = Arc::new(fix_registry(64));
     let vendor = FixId::of(5_001, "TradeID").expect("a vendor identifier");
     let foreign = FixId::of(5_001, "OtherTradeID").expect("a foreign identifier");
-    let mut symbol = DataType::Utf8.nullable_field("Symbol");
+    let mut symbol = DataType::utf8().nullable_field("Symbol");
     symbol.as_fix_mut().set_tag(55).expect("a static tag");
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    let mut trade = DataType::utf8().nullable_field("TradeID");
     trade.as_fix_mut().set_tag(5_001).expect("a static tag");
     trade
         .as_fix_mut()
         .set_branches([VENUE])
         .expect("a static membership");
-    let root = DataType::from_fields([symbol, trade, DataType::Utf8.nullable_field("9999")])
+    let root = DataType::from_fields([symbol, trade, DataType::utf8().nullable_field("9999")])
         .expect("three children")
         .required_field("row");
     let value = Scalar::from_sequence([
@@ -816,7 +820,7 @@ fn a_read_allocates_only_what_it_hands_back() {
     });
     let base_only = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [("http:content-type", "application/json")],
     )
@@ -1098,10 +1102,10 @@ fn borrowed_value_bytes_allocate_nothing() {
 /// thrown away once per row: the payload is unbounded, so the copy was too.
 fn payload_row() -> (Field, Scalar) {
     let root = DataType::from_fields([
-        Field::new("symbol", DataType::Utf8, false),
-        Field::new("payload", DataType::Binary, false),
+        Field::new("symbol", DataType::utf8(), false),
+        Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
-        Field::new("venue", DataType::Ascii, false),
+        Field::new("venue", DataType::ascii(), false),
     ])
     .expect("the row schema is valid")
     .required_field("row");
@@ -1149,7 +1153,7 @@ fn rewriting_a_layout_shares_the_storage_it_rewrites() {
     let source = Scalar::from(payload);
     let address = |value: &Scalar| value.as_bytes().expect("the payload is there").as_ptr();
     let from = address(&source);
-    for dtype in [DataType::LargeBinary, DataType::BinaryView] {
+    for dtype in [DataType::large_binary(), DataType::binary_view()] {
         let field = Field::new("payload", dtype, false);
         let rewritten = field.scalar(source.clone()).expect("the payload is bytes");
         assert_ne!(rewritten.id(), source.id());
@@ -1159,12 +1163,64 @@ fn rewriting_a_layout_shares_the_storage_it_rewrites() {
     let text = Scalar::from("a symbol far longer than any inline string buffer can hold");
     let characters = |value: &Scalar| value.as_str().expect("the text is there").as_ptr();
     let from = characters(&text);
-    for dtype in [DataType::LargeUtf8, DataType::Utf8View] {
+    for dtype in [DataType::large_utf8(), DataType::utf8_view()] {
         let field = Field::new("symbol", dtype, false);
         let rewritten = field.scalar(text.clone()).expect("the value is text");
         assert_ne!(rewritten.id(), text.id());
         assert_eq!(characters(&rewritten), from, "a rewrite copied the text");
     }
+}
+
+#[test]
+fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
+    // `Str` wraps the compact string, so its threshold is that string's: a
+    // value of `INLINE_CAPACITY` bytes lives in the value and one byte more
+    // costs exactly the shared handle. Restating a value under other
+    // parameters retags the handle, so the characters are never copied.
+    let inline = "s".repeat(INLINE_CAPACITY);
+    free("building a string value at the inline capacity", || {
+        let value = Str::new(black_box(inline.as_str()));
+        assert!(value.is_inline());
+        black_box(value);
+    });
+    let shared = "s".repeat(INLINE_CAPACITY + 1);
+    costs("building a string value one byte past it", 1, || {
+        let value = Str::new(black_box(shared.as_str()));
+        assert!(!value.is_inline());
+        black_box(value);
+    });
+    let source = Str::new(&shared);
+    let large = StringParameters::utf8(StringLayout::LargeString);
+    free(
+        "restating a shared string value under another layout",
+        || {
+            let restated = black_box(&source)
+                .clone()
+                .try_with_parameters(large)
+                .expect("the layout holds it");
+            assert!(std::ptr::eq(source.as_str(), restated.as_str()));
+            black_box(restated);
+        },
+    );
+}
+
+#[test]
+fn a_byte_value_is_inline_to_its_capacity_and_one_handle_past_it() {
+    // The byte value keeps its own buffer: `INLINE_BYTES` fit in the value
+    // with no heap behind them, and one byte more costs exactly the shared
+    // handle.
+    let inline = vec![0x42_u8; INLINE_BYTES];
+    free("building a byte value at the inline capacity", || {
+        let value = Bytes::new(black_box(inline.as_slice()));
+        assert!(value.is_inline());
+        black_box(value);
+    });
+    let shared = vec![0x42_u8; INLINE_BYTES + 1];
+    costs("building a byte value one byte past it", 1, || {
+        let value = Bytes::new(black_box(shared.as_slice()));
+        assert!(!value.is_inline());
+        black_box(value);
+    });
 }
 
 #[test]
@@ -1217,8 +1273,8 @@ fn cast_corpus() -> (
         "row",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
-            DataType::Utf8.required_field("venue"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::utf8().required_field("venue"),
         ])
         .expect("the root fields are valid"),
         false,
@@ -1313,7 +1369,9 @@ fn coupled_value_bytes_allocate_nothing() {
     free("projecting the instant as a datetime", || {
         black_box(value.into_datetime());
     });
-    costs("projecting the whole value as a byte scalar", 1, || {
+    // Twenty-four bytes fit the byte value's inline buffer, so the scalar
+    // costs nothing where it used to cost its one shared handle.
+    free("projecting the whole value as a byte scalar", || {
         black_box(value.into_scalar());
     });
 }
@@ -1386,7 +1444,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 33] = [
+    let seeds: [(DataTypeId, Scalar); 32] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1405,10 +1463,9 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
-        (DataTypeId::Utf8, Scalar::from("AAPL")),
-        (DataTypeId::LargeUtf8, Scalar::from("AAPL")),
-        (DataTypeId::Utf8View, Scalar::from("AAPL")),
-        (DataTypeId::Ascii, Scalar::from("AAPL")),
+        (DataTypeId::String, Scalar::from("AAPL")),
+        (DataTypeId::LargeString, Scalar::from("AAPL")),
+        (DataTypeId::StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
         (DataTypeId::Mic, Scalar::from("XNAS")),
@@ -1461,11 +1518,18 @@ fn inferring_a_field_scalar_borrows_a_prebuilt_field_and_allocates_nothing() {
             black_box(FieldScalar::infer(black_box(&value).clone()).expect("the value infers"));
         });
     }
+    // The plain string and the plain byte value name the family's default
+    // layout, whose field the crate keeps beside the other prebuilt ones.
+    for value in [Scalar::from("x"), Scalar::from(vec![1_u8])] {
+        free(&format!("inferring a typed {}", value.kind()), || {
+            black_box(FieldScalar::infer(black_box(&value).clone()).expect("the value infers"));
+        });
+    }
     // A parameterized leaf is interned on its first ask and borrowed after.
     for dtype in [
         DataType::decimal128(10, 2).expect("a valid decimal"),
         DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).expect("a valid instant"),
-        DataType::FixedAscii(4),
+        DataType::fixed_ascii(4).unwrap(),
     ] {
         free(&format!("looking up the shared field of {dtype}"), || {
             black_box(black_box(&dtype).shared_field().expect("an interned field"));
@@ -1493,7 +1557,7 @@ fn typing_a_value_a_field_already_holds_allocates_nothing() {
             },
         );
     }
-    let text = Field::new("symbol", DataType::Utf8, false);
+    let text = Field::new("symbol", DataType::utf8(), false);
     let unchecked = UncheckedFieldScalar::from_str(
         &text,
         "a symbol far longer than any inline string buffer can hold",
@@ -1622,10 +1686,10 @@ const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 26), (16, 41), (64, 91)];
 /// *value's width*: a field that only types a number never carries three
 /// kilobytes, so a numeric dictionary could not state the case at all.
 fn fix_text_registry(count: usize) -> FixRegistry {
-    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let generated = (0..count).map(|index| {
-        let mut field = DataType::Utf8.nullable_field(format!("Text{index:04}"));
+        let mut field = DataType::utf8().nullable_field(format!("Text{index:04}"));
         let tag = i32::try_from(2_000 + index).expect("a small tag");
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
@@ -1703,7 +1767,7 @@ fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
 /// becomes - which is the number the case below grows against.
 fn fix_group_registry(members: usize) -> FixRegistry {
     let declared = (0..members).map(|index| {
-        let mut field = DataType::Utf8.nullable_field(format!("Member{index:04}"));
+        let mut field = DataType::utf8().nullable_field(format!("Member{index:04}"));
         let tag = i32::try_from(3_000 + index).expect("a small tag");
         field.as_fix_mut().set_tag(tag).expect("a generated tag");
         field
@@ -1718,7 +1782,7 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         .expect("a static counter");
     let mut counter = DataType::Int32.nullable_field("NoPartyIDs");
     counter.as_fix_mut().set_tag(453).expect("a static tag");
-    let mut msgtype = DataType::Utf8.nullable_field("MsgType");
+    let mut msgtype = DataType::utf8().nullable_field("MsgType");
     msgtype.as_fix_mut().set_tag(35).expect("a static tag");
     let mut registry = FixRegistry::from_fields([msgtype, counter])
         .expect("the generated dictionary has no conflict");
@@ -1841,4 +1905,274 @@ fn a_fix_message_read_from_a_line_costs_what_its_pairs_cost() {
             },
         );
     }
+}
+
+/// `rows` lines of the shape a bridge writes - [`fix_packed_line`]'s
+/// occurrence and a trailing text value - each holding one Latin-1 letter.
+///
+/// One high byte per line, because the declared read below is measured
+/// against this same text: a line the transport decoded must cost exactly
+/// what the same line arriving as UTF-8 costs, and an all-ASCII line would
+/// not exercise the transcode at all.
+fn bridge_lines(rows: usize) -> String {
+    let occurrence = String::from_utf8(fix_packed_line(4)).expect("the bridge shape is ASCII");
+    let mut text = String::new();
+    for index in 0..rows {
+        let _ = writeln!(text, "{occurrence}|TEXT=Z\u{fc}rich {index:04}");
+    }
+    text
+}
+
+/// What reading `rows` lines through [`read_text_lines`] allocates.
+fn text_lines_cost(source: &Buffer, rows: usize) -> usize {
+    let options = TextOptions::new();
+    // A buffer builds the location it answers `url` with once, on the first
+    // ask; that is the handle's own first read, two allocations, and not
+    // the reader's, so it is asked for before the count.
+    black_box(yggdryl::IOBase::url(source));
+    let (allocations, read) = counted(|| {
+        read_text_lines(black_box(source), black_box(&options))
+            .expect("a reader")
+            .fold(0, |seen, line| {
+                line.expect("a line");
+                seen + 1
+            })
+    });
+    assert_eq!(read, rows, "every line was read");
+    allocations
+}
+
+/// What `owned_handle`'s copy of a buffer costs, by how many rows it holds.
+///
+/// A text read over a buffer with no location re-opens it as a copy, staged
+/// through the memory filesystem, and that staging grows with the object:
+/// twenty-three allocations for anything under one 64 KiB window, three
+/// more for the 114 KiB that 1 024 rows are. It is measured beside the read
+/// and taken off it, because it is `main`'s and the transport's, not the
+/// reader's: the reader's own cost is what is left, and that is linear.
+const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
+
+/// What the read itself costs past the copy: eight once, and four a line.
+///
+/// Six of the eight are built before a byte is read - the cursor over the
+/// owned handle and the transport boxed around it, the options and the
+/// location each shared once, and the splitter's window - and two on the
+/// first pull, where the transport opens: the fetch buffer and the box the
+/// coding chain ends in. The four a line are the line's own vector as the
+/// splitter assembles it from the window it lends, the retained body cut
+/// from that, the record's copy of the body, and the shared box around it;
+/// a capture would be one more each, and this read declares none. The page
+/// the line is made on is the record's box, so the line adds nothing of its
+/// own, and the pull that finds the end adds nothing either. With the copy,
+/// the assertion below counts 95 for 16 rows and 4 130 for 1 024 - after the
+/// two the buffer's first `url` costs, which [`text_lines_cost`] asks for
+/// before the counter is armed and which are not in either number.
+const TEXT_LINES_ONCE: usize = 8;
+const TEXT_LINES_EACH: usize = 4;
+
+/// What a declared `windows-1252` read costs over the UTF-8 read of the same
+/// lines: the transport, and nothing a line.
+///
+/// Three for anything under one window - the reader's two 64 KiB buffers and
+/// the box around the reader - and one more for 1 024 rows, where the first
+/// chunk decodes to more than the 64 KiB its decoded buffer was reserved at
+/// and the buffer grows once. Once per reader, whatever the object's length
+/// past that: the buffer keeps its capacity across chunks.
+const DECLARED_COSTS: [(usize, usize); 2] = [(16, 3), (1_024, 4)];
+
+#[test]
+fn reading_text_lines_costs_a_constant_and_four_a_line() {
+    for (rows, copy) in OWNED_COPY_COSTS {
+        let text = bridge_lines(rows);
+        let source = Buffer::from_bytes(text.into_bytes())
+            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        let (staged, _) = counted(|| {
+            let mut staged = Buffer::new();
+            yggdryl::IOBase::copy_into(black_box(&source), &mut staged).expect("a copy");
+            black_box(staged);
+        });
+        assert_eq!(staged, copy, "the owned copy of {rows} rows");
+        assert_eq!(
+            text_lines_cost(&source, rows),
+            copy + TEXT_LINES_ONCE + TEXT_LINES_EACH * rows,
+            "reading {rows} UTF-8 rows"
+        );
+    }
+}
+
+#[test]
+fn a_declared_charset_costs_its_transport_and_nothing_a_line() {
+    // The claim decision 12 makes for the transport: nothing per line. The
+    // same lines, once as the UTF-8 they are and once as windows-1252 under
+    // a handle that declares it, differ by the transport alone.
+    for (rows, each) in DECLARED_COSTS {
+        let text = bridge_lines(rows);
+        let utf8 = Buffer::from_bytes(text.clone().into_bytes())
+            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        let declared = Buffer::from_bytes(
+            Charset::Cp1252
+                .encode(&text)
+                .expect("windows-1252 holds it")
+                .into_owned(),
+        )
+        .with_media_type(
+            MediaType::from_str("text/plain;charset=windows-1252").expect("a media type"),
+        );
+        assert_eq!(
+            text_lines_cost(&declared, rows) - text_lines_cost(&utf8, rows),
+            each,
+            "the transport over {rows} declared rows"
+        );
+    }
+}
+
+/// The charsets that agree with US-ASCII, which is what lets a decode borrow.
+const ASCII_COMPATIBLE: [Charset; 8] = [
+    Charset::Utf8,
+    Charset::Ascii,
+    Charset::Latin1,
+    Charset::Latin2,
+    Charset::Latin9,
+    Charset::Cp1252,
+    Charset::Cp437,
+    Charset::MacRoman,
+];
+
+#[test]
+fn an_ascii_payload_is_read_in_any_charset_without_allocating() {
+    // The claim `crate::charset` makes under its `# Borrowing` heading: a
+    // legacy export is mostly ASCII, and the ASCII part must cost a borrow.
+    // Several sizes, because one buffer could be short enough to hide a copy.
+    for rows in [1_usize, 16, 1_024] {
+        let text = "symbol,price\nAAPL,187.23\n".repeat(rows);
+        let payload = text.clone().into_bytes();
+        for charset in ASCII_COMPATIBLE {
+            free(&format!("decoding {rows} ASCII rows as {charset}"), || {
+                let decoded = charset
+                    .decode(black_box(payload.as_slice()))
+                    .expect("US-ASCII under every charset here");
+                assert!(matches!(decoded, std::borrow::Cow::Borrowed(_)));
+                black_box(decoded);
+            });
+            free(&format!("encoding {rows} ASCII rows as {charset}"), || {
+                let encoded = charset
+                    .encode(black_box(text.as_str()))
+                    .expect("US-ASCII under every charset here");
+                assert!(matches!(encoded, std::borrow::Cow::Borrowed(_)));
+                black_box(encoded);
+            });
+        }
+    }
+}
+
+#[test]
+fn resolving_a_charset_name_allocates_nothing() {
+    // Intake runs once per read, but it runs on every read; a name that
+    // allocated to resolve would be a cost on the first byte of every file.
+    for name in ["utf-8", "UTF-8", "  windows-1252 ", "latin1", "cp437"] {
+        free(&format!("resolving {name:?}"), || {
+            black_box(Charset::from_str(black_box(name)).expect("a known charset"));
+        });
+    }
+    free("reading a declared charset off a media type", || {
+        black_box(Charset::from_media_type(black_box(&MediaType::default())));
+    });
+}
+
+#[test]
+fn a_transcode_pays_for_the_text_it_builds() {
+    // The borrow above is only meaningful beside the case that does not
+    // borrow: bytes that are not already UTF-8 become a string that is.
+    let wire = Charset::Cp1252
+        .encode("symbol,désk\nAAPL,€1\n")
+        .expect("windows-1252 holds it")
+        .into_owned();
+    let (allocations, decoded) = counted(|| {
+        Charset::Cp1252
+            .decode(black_box(wire.as_slice()))
+            .expect("windows-1252")
+            .into_owned()
+    });
+    assert!(
+        allocations > 0,
+        "a transcode reported a borrow of bytes it does not own"
+    );
+    assert_eq!(decoded, "symbol,désk\nAAPL,€1\n");
+}
+
+/// One column of `n` values of `width` bytes, every one of them US-ASCII.
+fn ascii_cells(count: usize, width: usize) -> Scalar {
+    Scalar::from_sequence((0..count).map(|index| Scalar::from(format!("{index:0width$}"))))
+}
+
+#[test]
+fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
+    // The write path measures the whole payload with `Charset::encoded_len`
+    // before it builds a byte of it, so the cost of a column is the buffers it
+    // publishes and nothing per row. Before that it encoded each cell into its
+    // own `Vec<u8>` - even for an all-ASCII cell, where the encode borrows -
+    // and the count grew with the row count.
+    for dtype in [
+        DataType::from_str("string(windows-1252)").expect("a charset string"),
+        DataType::from_str("large_string(windows-1252)").expect("a charset string"),
+        DataType::utf8(),
+    ] {
+        let field = dtype.clone().nullable_field("value");
+        let mut counts = Vec::new();
+        for rows in [16_usize, 1_024, 16_384] {
+            let column = ascii_cells(rows, 32);
+            let (allocations, _) = counted(|| {
+                yggdryl::arrow::array_from_value(black_box(&field), black_box(&column))
+                    .expect("a string column")
+            });
+            counts.push(allocations);
+        }
+        assert!(
+            counts.windows(2).all(|pair| pair[0] == pair[1]),
+            "{dtype} built {counts:?} allocations at 16, 1024 and 16384 rows; \
+             a column's cost must not grow with its rows"
+        );
+    }
+}
+
+#[test]
+fn an_ascii_payload_in_a_declared_charset_column_transcribes_by_borrowing() {
+    // Every charset with a byte to transcribe is still ASCII-compatible, so an
+    // all-ASCII payload is already its own answer. `decode`, `decode_lossy`
+    // and `encode` all take this borrow at their first line; `transcribe` used
+    // to be the one door that did not, and allocated for text it never touched.
+    free("transcribing an all-ASCII payload", || {
+        black_box(Charset::Cp1252.transcribe(black_box(b"symbol,price")));
+    });
+    free(
+        "transcribing a short all-ASCII payload into compact storage",
+        || {
+            black_box(Charset::Cp1252.transcribe_smol(black_box(b"AAPL")));
+        },
+    );
+}
+
+#[test]
+fn a_short_transcoded_cell_fits_the_inline_buffer() {
+    // A payload that transcribes to twenty-three bytes or fewer is the case
+    // compact storage exists for, and it reaches the heap only if something
+    // built an intermediate first. `0x81` is unassigned in windows-1252 and
+    // reads as its ISO 8859-1 scalar, so this is the transcoding path.
+    free("transcribing a short cell into compact storage", || {
+        black_box(Charset::Cp1252.transcribe_smol(black_box(b"ok\x81 caf\xe9")));
+    });
+}
+
+#[test]
+fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
+    // Above the inline buffer there is no saving to claim: the text is built
+    // once into a sized buffer and copied once into the shared handle, and
+    // `String` and `Arc<str>` have different layouts, so no conversion between
+    // them is free. Two is the floor, and this pins it as the floor rather
+    // than leaving a later change room to quietly reach three.
+    let mut wire = b"caf\xe9 ".repeat(12);
+    wire.truncate(60);
+    costs("transcribing a long cell into compact storage", 2, || {
+        black_box(Charset::Cp1252.transcribe_smol(black_box(wire.as_slice())));
+    });
 }

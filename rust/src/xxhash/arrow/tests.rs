@@ -177,7 +177,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::d128(18_723, 3), Scalar::d128(-1, 3), Scalar::Null]),
         ),
         (
-            Field::new("utf8", DataType::Utf8, true),
+            Field::new("utf8", DataType::utf8(), true),
             Scalar::from_sequence([
                 Scalar::from(""),
                 Scalar::from("AAPL"),
@@ -186,23 +186,65 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("large_utf8", DataType::LargeUtf8, true),
+            Field::new("large_utf8", DataType::large_utf8(), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::Null]),
         ),
         (
-            Field::new("utf8_view", DataType::Utf8View, true),
+            Field::new("utf8_view", DataType::utf8_view(), true),
             Scalar::from_sequence([
                 Scalar::from("a short one"),
                 Scalar::from("a long one that will not fit inline in a view buffer"),
                 Scalar::Null,
             ]),
         ),
+        // The five string layouts, each declaring something Arrow cannot:
+        // a charset, a width, or which view layout it is.
         (
-            Field::new("ascii(4)", DataType::FixedAscii(4), true),
+            Field::new(
+                "string",
+                DataType::from_str("string(windows-1252)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("Grüße"), Scalar::from("AAPL"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "fixed_string",
+                DataType::from_str("fixedstring(windows-1252,8)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("café"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "string_view",
+                DataType::from_str("utf8view(32)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "large_string",
+                DataType::from_str("largestring(iso-8859-15)").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("20 €"), Scalar::Null]),
+        ),
+        (
+            Field::new(
+                "large_string_view",
+                DataType::from_str("largeutf8view").unwrap(),
+                true,
+            ),
+            Scalar::from_sequence([Scalar::from("a short one"), Scalar::Null]),
+        ),
+        (
+            Field::new("fixed_ascii(4)", DataType::fixed_ascii(4).unwrap(), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("F"), Scalar::Null]),
         ),
         (
-            Field::new("ascii", DataType::Ascii, true),
+            Field::new("ascii", DataType::ascii(), true),
             Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(""), Scalar::Null]),
         ),
         (
@@ -230,7 +272,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("1"), Scalar::from("2"), Scalar::Null]),
         ),
         (
-            Field::new("msgtype", DataType::Utf8, true),
+            Field::new("msgtype", DataType::utf8(), true),
             Scalar::from_sequence([Scalar::from("D"), Scalar::from("AE"), Scalar::Null]),
         ),
         (
@@ -275,7 +317,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("binary", DataType::Binary, true),
+            Field::new("binary", DataType::binary(), true),
             Scalar::from_sequence([
                 Scalar::from(Arc::from(b"".as_slice())),
                 Scalar::from(Arc::from(b"\x00\xff".as_slice())),
@@ -283,15 +325,19 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
-            Field::new("large_binary", DataType::LargeBinary, true),
+            Field::new("large_binary", DataType::large_binary(), true),
             Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
-            Field::new("binary_view", DataType::BinaryView, true),
+            Field::new("binary_view", DataType::binary_view(), true),
             Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
-            Field::new("fixed_size_binary", DataType::FixedSizeBinary(4), true),
+            Field::new(
+                "fixed_size_binary",
+                DataType::fixed_size_binary(4).unwrap(),
+                true,
+            ),
             Scalar::from_sequence([Scalar::from(Arc::from(b"AAPL".as_slice())), Scalar::Null]),
         ),
         (
@@ -533,7 +579,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "large_list",
-                DataType::large_list(Field::new("item", DataType::Utf8, true)),
+                DataType::large_list(Field::new("item", DataType::utf8(), true)),
                 true,
             ),
             Scalar::from_sequence([
@@ -545,7 +591,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "large_list_view",
-                DataType::large_list_view(Field::new("item", DataType::Utf8, true)),
+                DataType::large_list_view(Field::new("item", DataType::utf8(), true)),
                 true,
             ),
             Scalar::from_sequence([
@@ -558,7 +604,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Field::new(
                 "struct",
                 DataType::from_fields([
-                    Field::new("symbol", DataType::Utf8, false),
+                    Field::new("symbol", DataType::utf8(), false),
                     Field::new("quantity", DataType::Int64, true),
                 ])
                 .unwrap(),
@@ -573,7 +619,7 @@ fn columns() -> Vec<(Field, Scalar)> {
         (
             Field::new(
                 "map",
-                DataType::map_of(DataType::Utf8, DataType::Int64, false).unwrap(),
+                DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap(),
                 true,
             ),
             Scalar::from_sequence([
@@ -614,7 +660,7 @@ fn columns() -> Vec<(Field, Scalar)> {
                 "run_end_encoded",
                 DataType::run_end_encoded(
                     Field::new("run_ends", DataType::Int32, false),
-                    Field::new("values", DataType::Utf8, true),
+                    Field::new("values", DataType::utf8(), true),
                 )
                 .unwrap(),
                 true,
@@ -818,7 +864,7 @@ fn a_column_digest_reconciles_the_array_to_the_field_it_is_given() {
     );
 
     // The three text layouts are one value, and answer one digest.
-    let declared = Field::new("symbol", DataType::Utf8, true);
+    let declared = Field::new("symbol", DataType::utf8(), true);
     let expected = digests(
         &column_digests(
             Arc::new(StringArray::from(vec![Some("AAPL"), None])) as ArrayRef,
@@ -975,7 +1021,7 @@ fn rows_with_only_digest_holders_hash_as_empty_sequences() {
 
 #[test]
 fn a_null_never_collides_with_an_empty_value() {
-    let field = Field::new("symbol", DataType::Utf8, true);
+    let field = Field::new("symbol", DataType::utf8(), true);
     let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
     let array = crate::arrow::array_from_value(&field, &values).unwrap();
     let column = digests(
@@ -1122,7 +1168,7 @@ fn holder_sources_are_ordered_and_preserve_explicit_empty() {
     // columns, and only the holder carries metadata.
     let a = DataType::Int64.required_field("a");
     assert!(a.as_digest().is_empty());
-    let b = DataType::Utf8.required_field("b");
+    let b = DataType::utf8().required_field("b");
     let mut ordered = holder("ordered", DataType::UInt64);
     ordered.as_digest_mut().set_sources(["b", "a"]).unwrap();
     let mut empty = holder("empty", DataType::UInt64);
@@ -1239,7 +1285,7 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
 
 #[test]
 fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
-    let value = DataType::Utf8.required_field("value");
+    let value = DataType::utf8().required_field("value");
     let signed32 = holder("signed32", DataType::Int32);
     let unsigned32 = holder("unsigned32", DataType::UInt32);
     let signed64 = holder("signed64", DataType::Int64);
@@ -1271,7 +1317,7 @@ fn signed_and_unsigned_holders_store_the_same_full_width_digest_bits() {
     assert!(signed32.value(1) < 0, "the XXH32 high bit is retained");
     assert!(signed64.value(0) < 0, "the XXH3-64 high bit is retained");
 
-    let value = DataType::Utf8.required_field("value");
+    let value = DataType::utf8().required_field("value");
     let signed = holder("digest", DataType::Int64);
     let root = root([value.clone(), signed.clone()]);
     let source = batch(
@@ -1313,7 +1359,7 @@ fn mixed_holder_widths_resolve_algorithms_per_holder() {
         .as_digest_mut()
         .set_algorithm(DigestAlgorithm::Xxh3)
         .unwrap();
-    let h128 = holder("h128", DataType::FixedSizeBinary(16));
+    let h128 = holder("h128", DataType::fixed_size_binary(16).unwrap());
     let root = root([value.clone(), h32, h64, explicit, h128]);
     let source = batch(
         std::slice::from_ref(&value),
@@ -1414,7 +1460,7 @@ fn a_holder_under_a_collection_is_refused_rather_than_left_unfilled() {
         DataType::large_list(item.clone()),
         DataType::large_list_view(item.clone()),
         DataType::fixed_size_list(item.clone(), 1).unwrap(),
-        DataType::map_of(DataType::Utf8, element.clone(), false).unwrap(),
+        DataType::map_of(DataType::utf8(), element.clone(), false).unwrap(),
         DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), item.clone())
             .unwrap(),
         DataType::dictionary(DataType::Int32, element.clone()).unwrap(),
@@ -1650,7 +1696,7 @@ fn the_digest_view_answers_the_seedless_state_and_walks_nested_holders() {
 #[test]
 fn the_star_source_is_the_same_selection_as_naming_none() {
     let a = DataType::Int64.required_field("a");
-    let b = DataType::Utf8.required_field("b");
+    let b = DataType::utf8().required_field("b");
     let mut starred = holder("digest", DataType::UInt64);
     starred.as_digest_mut().set_sources(["*"]).unwrap();
     let implied = holder("digest", DataType::UInt64);

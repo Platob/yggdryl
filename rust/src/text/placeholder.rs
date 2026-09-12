@@ -66,7 +66,7 @@ use std::hash::{Hash, Hasher};
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::ascii::iso;
+use crate::types::temporal::iso;
 use crate::{Error, Result, Scalar};
 
 /// The two bytes that open a placeholder.
@@ -92,7 +92,7 @@ const OPEN: &[u8; 2] = b"{{";
 /// let value = yggdryl::text::from_utf8_with(document, Format::Yaml, &loading)?;
 ///
 /// // Embedded: textual, and the result is a string.
-/// assert_eq!(value.get_key_str("path").and_then(Scalar::as_utf8), Some("/var/log/app"));
+/// assert_eq!(value.get_key_str("path").and_then(Scalar::as_str), Some("/var/log/app"));
 /// // Whole-scalar: the resolved value's own type.
 /// assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080)));
 /// # Ok(())
@@ -277,7 +277,7 @@ pub(crate) fn substitute(value: Scalar, placeholders: &Placeholders) -> Result<S
 /// Substitute through one node, tracking where it sits for diagnostics.
 fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result<Scalar> {
     match value {
-        Scalar::Text(text) => scalar(text.as_str(), placeholders, path),
+        Scalar::String(text) => scalar(text.as_str(), placeholders, path),
         Scalar::Nested(crate::types::Nested::Sequence(values)) => {
             let mut replaced = Vec::with_capacity(values.as_slice().len());
             for (index, held) in values.as_slice().iter().enumerate() {
@@ -482,8 +482,8 @@ fn named(name: &str) -> bool {
 /// sensible text form inside a path, so it has none here.
 fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
-        Scalar::Text(text) => return Some(Cow::Borrowed(text.as_str())),
-        Scalar::Ascii(text) => return Some(Cow::Borrowed(text.as_str())),
+        Scalar::String(text) => return Some(Cow::Borrowed(text.as_str())),
+        Scalar::Code(text) => return Some(Cow::Borrowed(text.as_str())),
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
         Scalar::Boolean(held) => held.to_string(),

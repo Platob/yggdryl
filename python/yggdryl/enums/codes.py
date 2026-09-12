@@ -11,12 +11,12 @@ behind them are registries, not fixed sets - ISO 4217 retires codes, ISO 10383
 adds venues monthly - so every vocabulary here is open exactly as any other
 declared one is: a valid code that is not declared reads back as a member under
 its own packed code, registered once and announced once on the
-`yggdryl.enums.ascii` logger. Nothing needs a release to read a new venue.
+`yggdryl.enums.string` logger. Nothing needs a release to read a new venue.
 """
 
 from __future__ import annotations
 
-from .ascii import CfiCode, CountryCode, CurrencyCode, MicCode
+from .string import CfiCode, CountryCode, CurrencyCode, MicCode
 
 
 class Country(CountryCode):

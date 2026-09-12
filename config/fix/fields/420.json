@@ -2,7 +2,7 @@
   {
     "name": "underlyingstreamcommoditysettlstart",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -14,7 +14,7 @@
   {
     "name": "underlyingstreamcommoditysettlend",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -50,7 +50,7 @@
   {
     "name": "underlyingstreamcommoditysettltimezone",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -87,7 +87,7 @@
   {
     "name": "underlyingstreamcommoditysettlperiodnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -112,7 +112,7 @@
   {
     "name": "underlyingstreamcommoditysettlperiodfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -137,7 +137,7 @@
   {
     "name": "underlyingstreamcommoditysettlperiodpriceunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -175,46 +175,46 @@
   {
     "name": "underlyingstreamcommoditysettlperiodxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this settlement period for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamCommoditySettlPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommoditysettlperiodxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommoditysettlperiodxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42014"
     }
   },
   {
     "name": "underlyingstreamcommoditysettlperiodxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another settlement period for duplicating its properties.",
       "display": "UnderlyingStreamCommoditySettlPeriodXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommoditysettlperiodxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamcommoditysettlperiodxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42015"
     }
   },
   {
     "name": "underlyingstreamxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Identifier of this UnderlyingStream for cross referencing elsewhere in the message.",
       "display": "UnderlyingStreamXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42016"
     }
   },
   {
     "name": "underlyingadditionaltermbondissuer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -226,13 +226,13 @@
   {
     "name": "underlyingstreamnotionalxidref",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Cross reference to another UnderlyingStream notional for duplicating its properties.",
       "display": "UnderlyingStreamNotionalXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamnotionalxidref\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingstreamnotionalxidref\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42018"
     }
   },
@@ -251,7 +251,7 @@
   {
     "name": "underlyingstreamnotionalfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -277,7 +277,7 @@
   {
     "name": "underlyingstreamnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -302,7 +302,7 @@
   {
     "name": "underlyingstreamtotalnotionalunitofmeasure",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -339,7 +339,7 @@
   {
     "name": "underlyingadditionaltermbondseniority",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -426,7 +426,7 @@
   {
     "name": "underlyingadditionaltermbondcouponfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -500,7 +500,7 @@
   {
     "name": "underlyingcashsettldealer",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -586,7 +586,7 @@
   {
     "name": "underlyingcashsettlbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -732,13 +732,13 @@
   {
     "name": "underlyingcashsettltermxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "Name referenced from UnderlyingSettlementTermXIDRef(41315).",
       "display": "UnderlyingCashSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingcashsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingcashsettltermxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42059"
     }
   },
@@ -793,13 +793,13 @@
   {
     "name": "underlyingphysicalsettltermxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A named string value referenced by UnderlyingSettlTermXIDRef(41315).",
       "display": "UnderlyingPhysicalSettlTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingphysicalsettltermxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingphysicalsettltermxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42064"
     }
   },
@@ -818,7 +818,7 @@
   {
     "name": "underlyingphysicalsettldeliverableobligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -830,7 +830,7 @@
   {
     "name": "underlyingphysicalsettldeliverableobligationvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -902,7 +902,7 @@
   {
     "name": "underlyingprotectiontermeventbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -938,13 +938,13 @@
   {
     "name": "underlyingprotectiontermxid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
       "description": "A named string value referenced by UnderlyingProtectionTermXIDRef(41314).",
       "display": "UnderlyingProtectionTermXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingprotectiontermxid\",\"type\":{\"type\":\"utf8\"}}]}",
+      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingprotectiontermxid\",\"type\":{\"type\":\"string\"}}]}",
       "fix:tag": "42076"
     }
   },
@@ -963,7 +963,7 @@
   {
     "name": "underlyingprotectiontermeventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -975,7 +975,7 @@
   {
     "name": "underlyingprotectiontermeventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1011,7 +1011,7 @@
   {
     "name": "underlyingprotectiontermeventunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1037,7 +1037,7 @@
   {
     "name": "underlyingprotectiontermeventratesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1061,7 +1061,7 @@
   {
     "name": "underlyingprotectiontermeventqualifier",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1086,7 +1086,7 @@
   {
     "name": "underlyingprotectiontermobligationtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1098,7 +1098,7 @@
   {
     "name": "underlyingprotectiontermobligationvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1122,7 +1122,7 @@
   {
     "name": "underlyingprotectiontermeventnewssource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1171,7 +1171,7 @@
   {
     "name": "underlyingprovisioncashsettlpaymentdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

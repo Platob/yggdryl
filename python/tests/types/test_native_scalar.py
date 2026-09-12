@@ -124,13 +124,13 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
         (Scalar.float(1.5, 32), "float32", "floating"),
         (Scalar.decimal(150, 2), "decimal128", "decimal"),
         (Scalar.date(1), "date32", "temporal"),
-        (Scalar.from_py("AAPL"), "utf8", "text"),
+        (Scalar.from_py("AAPL"), "string", "text"),
         (
             json.loads(
                 '"USD"', field=Field("value", "currency", False), cls=Scalar
             ),
             "currency",
-            "ascii",
+            "code",
         ),
         (
             json.loads(
@@ -195,7 +195,7 @@ def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
     assert value.enum_value == "append"
     assert value.enum_ordinal == 1
     assert value.as_py() == "append"
-    assert value.as_utf8() == "append"
+    assert value.as_str() == "append"
     assert hash(value) == hash(copy.copy(value))
     assert pickle.loads(pickle.dumps(value)) == value
     with pytest.raises(ValueError, match="unknown"):
@@ -205,10 +205,10 @@ def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
 def test_value_is_hashable_and_has_typed_byte_accessors() -> None:
     assert Scalar.float(1.0, 32) == Scalar.float(1.0)
     assert hash(Scalar.float(1.0, 32)) == hash(Scalar.float(1.0))
-    assert Scalar.from_py("text").as_utf8() == "text"
+    assert Scalar.from_py("text").as_str() == "text"
     assert Scalar.from_py("text").as_bytes() is None
     assert Scalar.from_py(b"bytes").as_bytes() == b"bytes"
-    assert Scalar.from_py(b"bytes").as_utf8() is None
+    assert Scalar.from_py(b"bytes").as_str() is None
     value = Scalar.from_py({"answer": 42})
     assert value.as_json_bytes() == b'{"answer":42}'
     assert value.as_json_utf8() == '{"answer":42}'
@@ -308,7 +308,7 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
     removed = updated.remove("symbol")
 
     assert mapping["venue"].kind == "null"
-    assert updated["venue"].as_utf8() == "XNAS"
+    assert updated["venue"].as_str() == "XNAS"
     assert updated["price"].kind == "f32"
     assert removed.get("symbol") is None
     assert [key.as_py() for key in updated.keys()] == [
@@ -325,8 +325,8 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
 
     record = Scalar.from_py(Quote("AAPL", 12.5))
     moved = record.set("symbol", "MSFT").remove("price")
-    assert record["symbol"].as_utf8() == "AAPL"
-    assert moved["symbol"].as_utf8() == "MSFT"
+    assert record["symbol"].as_str() == "AAPL"
+    assert moved["symbol"].as_str() == "MSFT"
     assert moved.get("price") is None
     assert [key.as_py() for key in moved.keys()] == ["symbol"]
     assert [child.kind for child in record] == ["f64", "string"]
@@ -375,8 +375,16 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
             ),
         ),
         ("string", "naïve"),
+        # A layout, a charset, or a fixed width pickles the whole declaration;
+        # a maximum is the column's rule and never the value's.
+        ("string", ("fixed_string", "us-ascii", 4, "USD")),
+        ("string", ("large_string_view", "windows-1252", None, "café")),
+        ("currency", "USD"),
+        ("side", "1"),
         ("version", "5.0.1"),
         ("bytes", b"\x00\xff"),
+        ("bytes", ("fixed_size_binary", 4, b"\x00\x01\x02\x03")),
+        ("bytes", ("binary_view", None, b"\xff" * 40)),
         ("geospatial", b"\x01\x01\x00\x00\x00" + struct.pack("<dd", 0.0, 0.0)),
         ("date32", (1, "d", "NAIVE")),
         ("date64", (86_400_000, "ms", "NAIVE")),
@@ -386,11 +394,27 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("duration32", (1, "ms", "NAIVE")),
         ("duration64", (1, "ns", "NAIVE")),
     ]
+    # Every registered code, because "every native scalar variant" is what this
+    # test claims: `state` and `timeinforce` used to raise "unsupported Scalar
+    # representation in pickle state" here, being the two the pickle listing
+    # had been left out of. Kept after the list above so the positional
+    # references into it below stay pinned to what they name.
+    code_states: list[tuple[object, ...]] = [
+        ("country", "FR"),
+        ("currency", "USD"),
+        ("mic", "XPAR"),
+        ("cfi", "ESVUFR"),
+        ("isin", "US0378331005"),
+        ("side", "1"),
+        ("msgdirection", "SENT"),
+        ("state", "20NEW"),
+        ("timeinforce", "GTC"),
+    ]
     record_state = (
         "record",
         (
             ("amount", scalar_states[16]),
-            ("when", scalar_states[25]),
+            ("when", scalar_states[31]),
         ),
     )
     mapping_state = (
@@ -400,7 +424,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
             (("i16", 7), ("sequence", (("f32", 0x3FC0_0000), ("null",)))),
         ),
     )
-    states = [*scalar_states, record_state, mapping_state]
+    states = [*scalar_states, *code_states, record_state, mapping_state]
 
     for state in states:
         value = Scalar._from_pickle(state)

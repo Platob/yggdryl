@@ -193,7 +193,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     ```rust
     use yggdryl::{DataType, FixId, FixRegistry};
 
-    let mut trade = DataType::Utf8.nullable_field("TradeID");
+    let mut trade = DataType::utf8().nullable_field("TradeID");
     // No membership means the specification alone, and there is no
     // identity without a tag.
     assert_eq!(trade.as_fix().branches().count(), 0);

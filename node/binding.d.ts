@@ -1,5 +1,4 @@
 export {
-  AsciiEnum,
   BatchReader,
   Bound,
   BoundStatement,
@@ -16,6 +15,7 @@ export {
   ProtocolField,
   RecordOptions,
   Statement,
+  StringEnum,
   TextLine,
   TextOptions,
   Timezone,
@@ -30,11 +30,15 @@ export {
   Xxh128,
   Xxh32,
   Xxh64,
+  type BytesParameters,
+  type BytesParametersInput,
   type FieldBound,
   type FieldCount,
   type FieldSummaryView,
   type MetadataEntry,
   type PartitionEntry,
+  type StringParameters,
+  type StringParametersInput,
   type TimezoneAlias,
 } from './index'
 
@@ -42,6 +46,7 @@ import type {
   BatchReader,
   BoundStatement,
   ByteIterator,
+  BytesParametersInput,
   DataType,
   Digest,
   Field,
@@ -55,6 +60,7 @@ import type {
   ProtocolField,
   RecordOptions,
   Statement,
+  StringParametersInput,
   TextLine,
   TextOptions,
   Timezone,
@@ -216,16 +222,20 @@ export type DataTypeId =
   | 'fixed_size_binary'
   | 'large_binary'
   | 'binary_view'
-  | 'utf8'
-  | 'large_utf8'
-  | 'utf8_view'
-  | 'ascii'
-  | 'fixed_ascii'
+  | 'string'
+  | 'fixed_string'
+  | 'string_view'
+  | 'large_string'
+  | 'large_string_view'
   | 'country'
   | 'currency'
   | 'mic'
   | 'cfi'
   | 'isin'
+  | 'side'
+  | 'state'
+  | 'timeinforce'
+  | 'msgdirection'
   | 'uuid'
   | 'version'
   | 'url'
@@ -261,7 +271,7 @@ export type DataTypeKind =
   | 'decimal'
   | 'temporal'
   | 'text'
-  | 'ascii'
+  | 'code'
   | 'bytes'
   | 'nested'
   | 'geospatial'
@@ -295,16 +305,20 @@ interface DataTypeKindById {
   fixed_size_binary: 'bytes'
   large_binary: 'bytes'
   binary_view: 'bytes'
-  utf8: 'text'
-  large_utf8: 'text'
-  utf8_view: 'text'
-  ascii: 'ascii'
-  fixed_ascii: 'ascii'
-  country: 'ascii'
-  currency: 'ascii'
-  mic: 'ascii'
-  cfi: 'ascii'
-  isin: 'ascii'
+  string: 'text'
+  fixed_string: 'text'
+  string_view: 'text'
+  large_string: 'text'
+  large_string_view: 'text'
+  country: 'code'
+  currency: 'code'
+  mic: 'code'
+  cfi: 'code'
+  isin: 'code'
+  side: 'code'
+  state: 'code'
+  timeinforce: 'code'
+  msgdirection: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -329,6 +343,20 @@ interface DataTypeKindById {
 
 /** The family a variant identity belongs to, as the native core reports it. */
 export type DataTypeKindOf<K extends DataTypeId> = DataTypeKindById[K]
+
+/** The five layouts of the one string datatype, by identity. */
+export type StringDataTypeId =
+  | 'string'
+  | 'fixed_string'
+  | 'string_view'
+  | 'large_string'
+  | 'large_string_view'
+/** The four layouts of the one byte datatype, by identity. */
+export type BytesDataTypeId =
+  | 'binary'
+  | 'fixed_size_binary'
+  | 'large_binary'
+  | 'binary_view'
 
 /** Core compatibility targets supported by DataType and Field projection. */
 export type CompatibilityScheme =
@@ -415,14 +443,15 @@ declare module './index' {
     sortArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
   }
 
-  interface AsciiEnum {
+  interface StringEnum {
     /**
      * Build the generated enum: a frozen object mapping each member name to
-     * the code its ASCII value packs to under one width, tagged with the
-     * enum's own name. It is name to code only, because a numeric reverse map
-     * would collide with values that render as digits; `members` already
-     * answers the name to value direction. A code reaches 128 bits at the
-     * widest packable width, so every one of them is a `bigint`.
+     * the code its ASCII value packs to under one fixed US-ASCII width or
+     * code datatype, tagged with the enum's own name. It is name to code
+     * only, because a numeric reverse map would collide with values that
+     * render as digits; `members` already answers the name to value
+     * direction. A code reaches 128 bits at the widest packable width, so
+     * every one of them is a `bigint`.
      */
     intoEnum(width: DataType | string): Readonly<Record<string, bigint>>
   }
@@ -634,17 +663,23 @@ export type IntervalValue =
   | readonly [days: number, milliseconds: number]
   | readonly [months: number, days: number, nanoseconds: bigint]
 export type IntervalField = FieldOf<'interval', IntervalValue>
+/** The one byte datatype in whichever layout its parameters declare. */
+export type BytesField = FieldOf<BytesDataTypeId, Uint8Array>
 export type BinaryField = FieldOf<'binary', Uint8Array>
 export type FixedSizeBinaryField = FieldOf<'fixed_size_binary', Uint8Array>
 export type LargeBinaryField = FieldOf<'large_binary', Uint8Array>
 export type BinaryViewField = FieldOf<'binary_view', Uint8Array>
-export type Utf8Field = FieldOf<'utf8', string>
-export type LargeUtf8Field = FieldOf<'large_utf8', string>
-export type Utf8ViewField = FieldOf<'utf8_view', string>
-/** Variable-width ASCII text: any length, stored as the bytes it is. */
-export type AsciiField = FieldOf<'ascii', string>
-/** ASCII text padded with trailing NUL to a fixed width; read back trimmed. */
-export type FixedAsciiField = FieldOf<'fixed_ascii', string>
+/** The one string datatype in whichever layout and charset it declares. */
+export type StringField = FieldOf<StringDataTypeId, string>
+export type Utf8Field = FieldOf<'string', string>
+export type LargeUtf8Field = FieldOf<'large_string', string>
+export type Utf8ViewField = FieldOf<'string_view', string>
+/** UTF-8 padded with trailing NUL to a fixed width; read back trimmed. */
+export type FixedUtf8Field = FieldOf<'fixed_string', string>
+/** Variable-width US-ASCII text: any length, stored as the bytes it is. */
+export type AsciiField = FieldOf<'string', string>
+/** US-ASCII padded with trailing NUL to a fixed width; read back trimmed. */
+export type FixedAsciiField = FieldOf<'fixed_string', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, in its own two bytes. */
 export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, in its own three bytes. */
@@ -655,6 +690,14 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
+/** FIX Side(54), the one-character order side, in four bytes. */
+export type SideField = FieldOf<'side', string>
+/** The verb in front of a FIX payload - SENT or RECV - in four bytes. */
+export type MsgDirectionField = FieldOf<'msgdirection', string>
+/** An order state ranked from the first to the terminal ones, in ten bytes. */
+export type StateField = FieldOf<'state', string>
+/** FIX TimeInForce(59), the spelled instruction, in eight bytes. */
+export type TimeInForceField = FieldOf<'timeinforce', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<
   'list_view',
@@ -728,6 +771,11 @@ export interface FieldOptions {
   nullable?: boolean
   metadata?: FieldMetadataInput
 }
+
+/** A string field's options: the datatype's parameters beside the field's. */
+export type StringFieldOptions = FieldOptions & StringParametersInput
+/** A byte field's options: the datatype's parameters beside the field's. */
+export type BytesFieldOptions = FieldOptions & BytesParametersInput
 
 type TypedFieldValue<F extends Field> = F extends {
   readonly [yggdrylValueType]: infer V
@@ -833,6 +881,7 @@ export interface FieldsNamespace {
   duration64(name: string, options: FieldOptions): Duration64Field
   interval(name: string, unit?: string, options?: FieldOptions): IntervalField
   interval(name: string, options: FieldOptions): IntervalField
+  bytes(name: string, options?: BytesFieldOptions): BytesField
   binary(name: string, options?: FieldOptions): BinaryField
   fixedSizeBinary(
     name: string,
@@ -841,9 +890,11 @@ export interface FieldsNamespace {
   ): FixedSizeBinaryField
   largeBinary(name: string, options?: FieldOptions): LargeBinaryField
   binaryView(name: string, options?: FieldOptions): BinaryViewField
+  string(name: string, options?: StringFieldOptions): StringField
   utf8(name: string, options?: FieldOptions): Utf8Field
   largeUtf8(name: string, options?: FieldOptions): LargeUtf8Field
   utf8View(name: string, options?: FieldOptions): Utf8ViewField
+  fixedUtf8(name: string, width: number, options?: FieldOptions): FixedUtf8Field
   ascii(name: string, options?: FieldOptions): AsciiField
   fixedAscii(
     name: string,
@@ -906,6 +957,10 @@ export interface FieldsNamespace {
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
   isin(name: string, options?: FieldOptions): IsinField
+  side(name: string, options?: FieldOptions): SideField
+  msgdirection(name: string, options?: FieldOptions): MsgDirectionField
+  state(name: string, options?: FieldOptions): StateField
+  timeinforce(name: string, options?: FieldOptions): TimeInForceField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -1212,6 +1267,13 @@ export interface FieldsNamespace {
     name: N,
     options: O,
   ): NamedField<'interval', IntervalValue, N, O>
+  bytes<
+    const N extends string,
+    const O extends BytesFieldOptions | undefined = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<BytesDataTypeId, Uint8Array, N, O>
   binary<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -1238,28 +1300,43 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'binary_view', Uint8Array, N, O>
+  string<
+    const N extends string,
+    const O extends StringFieldOptions | undefined = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<StringDataTypeId, string, N, O>
   utf8<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'utf8', string, N, O>
+  ): NamedField<'string', string, N, O>
   largeUtf8<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'large_utf8', string, N, O>
+  ): NamedField<'large_string', string, N, O>
   utf8View<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'utf8_view', string, N, O>
+  ): NamedField<'string_view', string, N, O>
+  fixedUtf8<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    width: number,
+    options?: O,
+  ): NamedField<'fixed_string', string, N, O>
   ascii<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'ascii', string, N, O>
+  ): NamedField<'string', string, N, O>
   fixedAscii<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -1267,7 +1344,7 @@ export interface FieldsNamespace {
     name: N,
     width: number,
     options?: O,
-  ): NamedField<'fixed_ascii', string, N, O>
+  ): NamedField<'fixed_string', string, N, O>
   list<
     const N extends string,
     F extends Field,
@@ -1406,6 +1483,28 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'isin', string, N, O>
+  side<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'side', string, N, O>
+  msgdirection<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'msgdirection', string, N, O>
+  state<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'state', string, N, O>
+  timeinforce<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'timeinforce', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -2077,6 +2176,8 @@ export declare const enums: {
   readonly ioModes: readonly IOMode[]
   /** Every content coding, e.g. `'identity'`, `'gzip'`, `'zstd'`. */
   readonly codecs: readonly string[]
+  /** Every character encoding, e.g. `'utf-8'`, `'windows-1252'`. */
+  readonly charsets: readonly Charset[]
   /** Every answer a handle gives about what it addresses, e.g. `'file'`. */
   readonly ioKinds: readonly string[]
   /** Every Python form a `python:kind` declaration names, e.g. `'dataclass'`. */
@@ -2095,6 +2196,56 @@ export declare const enums: {
 }
 /** Generic format-inferred byte codec. */
 export declare const codec: GenericCodec
+
+/** One character encoding, spelled the same way in every language. */
+export type Charset =
+  | 'utf-8'
+  | 'utf-16le'
+  | 'utf-16be'
+  | 'us-ascii'
+  | 'iso-8859-1'
+  | 'iso-8859-2'
+  | 'iso-8859-15'
+  | 'windows-1250'
+  | 'windows-1251'
+  | 'windows-1252'
+  | 'ibm437'
+  | 'ibm850'
+  | 'macintosh'
+
+/** What a byte-order mark declares, and how many bytes it occupies. */
+export interface CharsetMark {
+  /** The canonical charset name the mark declares. */
+  readonly charset: Charset
+  /** How many bytes the mark itself occupies. */
+  readonly length: number
+}
+
+/**
+ * Character encodings over bytes.
+ *
+ * `decode` answers what `new TextDecoder(name).decode(bytes)` answers over the
+ * same names; `encode` is the direction the runtime does not have, since
+ * `TextEncoder` writes UTF-8 and nothing else. Both refuse with the charset,
+ * the byte position, and the byte or scalar found there. A whole resource is
+ * read by naming the charset on its media type instead of calling these.
+ */
+export declare const charset: {
+  /** Every character encoding, the same listing `enums.charsets` carries. */
+  readonly CHARSETS: readonly Charset[]
+  /** Decode bytes in one charset, throwing on what it cannot read. */
+  readonly decode: (charset: Charset | string, data: Uint8Array) => string
+  /** Decode bytes in one charset, replacing what it cannot read. */
+  readonly decodeLossy: (charset: Charset | string, data: Uint8Array) => string
+  /** Encode text in one charset, throwing on a scalar it has no byte for. */
+  readonly encode: (charset: Charset | string, text: string) => Buffer
+  /** The charset a leading byte-order mark names, or `null`. */
+  readonly fromBom: (data: Uint8Array) => CharsetMark | null
+  /** The byte-order mark a charset is written with, or `null`. */
+  readonly bom: (charset: Charset | string) => Buffer | null
+  /** The canonical name a charset name or alias resolves to. */
+  readonly canonicalName: (charset: Charset | string) => Charset
+}
 
 /** One xxHash algorithm, spelled the same way in every language. */
 export type DigestAlgorithm = 'xxh32' | 'xxh64' | 'xxh3-64' | 'xxh3-128'

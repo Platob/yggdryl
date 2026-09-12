@@ -43,7 +43,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let wide_property_field = Field::from_parts(
         "value",
-        DataType::Utf8,
+        DataType::utf8(),
         true,
         (0..1_024)
             .map(|index| (format!("key-{index:04}"), index.to_string()))
@@ -61,7 +61,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     let protocol_properties = Field::from_parts(
         "value",
-        DataType::Utf8,
+        DataType::utf8(),
         true,
         (0..1_024).map(|index| (format!("postgres:key-{index:04}"), index.to_string())),
     )
@@ -198,7 +198,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     .expect("the static media type is valid");
     let mut http_field = Field::from_parts(
         "payload",
-        DataType::Binary,
+        DataType::binary(),
         false,
         [
             ("http:content-type", "application/json"),
@@ -417,7 +417,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("metadata_overlay_32", |bencher| {
         bencher.iter_batched(
-            || Field::new("value", DataType::Utf8, true),
+            || Field::new("value", DataType::utf8(), true),
             |mut field| {
                 field
                     .update_metadata(
@@ -434,7 +434,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         let pairs = (0..32)
             .map(|index| (format!("key-{index:02}"), format!("value-{index:02}")))
             .collect::<Vec<_>>();
-        let mut field = Field::new("value", DataType::Utf8, true);
+        let mut field = Field::new("value", DataType::utf8(), true);
         field
             .update_metadata(
                 pairs
@@ -463,15 +463,15 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // same at both, because deciding a row is canonical never reads or copies
     // what it holds, while a layout rewrite shares the storage it retags.
     let payload_root = DataType::from_fields([
-        Field::new("symbol", DataType::Utf8, false),
-        Field::new("payload", DataType::Binary, false),
+        Field::new("symbol", DataType::utf8(), false),
+        Field::new("payload", DataType::binary(), false),
         Field::new("ccy", DataType::Currency, false),
     ])
     .expect("the payload row schema is valid")
     .required_field("row");
     let large_root = DataType::from_fields([
-        Field::new("symbol", DataType::LargeUtf8, false),
-        Field::new("payload", DataType::LargeBinary, false),
+        Field::new("symbol", DataType::large_utf8(), false),
+        Field::new("payload", DataType::large_binary(), false),
         Field::new("ccy", DataType::Currency, false),
     ])
     .expect("the wide-layout row schema is valid")

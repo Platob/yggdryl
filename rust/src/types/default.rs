@@ -220,15 +220,8 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Duration32(_)
             | DataType::Duration64(_)
             | DataType::Interval(_)
-            | DataType::Binary
-            | DataType::FixedSizeBinary(_)
-            | DataType::LargeBinary
-            | DataType::BinaryView
-            | DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
+            | DataType::Bytes(_)
+            | DataType::String(_)
             | DataType::Country
             | DataType::Currency
             | DataType::Mic
@@ -312,7 +305,11 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Float16 | D::Float32 | D::Float64 => scalar(DefaultPlan::Float, false),
         D::Interval(unit) if unit.is_interval() => scalar(DefaultPlan::Interval(*unit), false),
         D::Interval(_) => fatal(path, "invalid interval layout"),
-        D::Binary | D::LargeBinary | D::BinaryView => plan_bytes(0, path),
+        // The empty payload, or on the fixed layout the zero-filled slot of
+        // its width: bytes are never padded, so the width is the value.
+        D::Bytes(parameters) => {
+            plan_bytes(parameters.fixed().map_or(0, |width| width as usize), path)
+        }
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
         // spelling like every other UUID value.
         D::Uuid => scalar(DefaultPlan::Uuid, false),
@@ -320,18 +317,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // A location has no zero, so the default is the shortest one the
         // validator accepts: the filesystem root.
         D::Url => scalar(DefaultPlan::Url, false),
-        D::FixedSizeBinary(width) => {
-            let width = usize::try_from(*width)
-                .map_err(|_| fatal_error(path, "fixed binary width is negative"))?;
-            plan_bytes(width, path)
-        }
-        // An ASCII width, and a code over one, defaults to the empty string;
-        // storage pads it to all-NUL.
-        D::Utf8
-        | D::LargeUtf8
-        | D::Utf8View
-        | D::Ascii
-        | D::FixedAscii(_)
+        // A string defaults to the empty one, restated under its parameters
+        // by the value door; on a fixed layout, and for a code, storage pads
+        // it to all-NUL.
+        D::String(_)
         | D::Country
         | D::Currency
         | D::Mic

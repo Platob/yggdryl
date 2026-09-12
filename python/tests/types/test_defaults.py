@@ -341,7 +341,7 @@ def test_a_default_scalar_reads_as_generic_python_values() -> None:
         "00000000-0000-0000-0000-000000000000"
     )
     assert Field("release", "version", nullable=False).default_scalar().as_py() == Version(0)
-    assert DataType.ascii(3).default_scalar().as_py() == ""
+    assert DataType.fixed_ascii(3).default_scalar().as_py() == ""
 
 
 @pytest.mark.parametrize(

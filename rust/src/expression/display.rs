@@ -355,7 +355,7 @@ pub(super) fn write_literal(formatter: &mut fmt::Formatter<'_>, held: &Literal) 
     let value = held.value();
     // Text is the one bare spelling that is not a word: it prints as the
     // quoted literal the grammar reads back as `utf8`.
-    if matches!(dtype, DataType::Utf8) {
+    if *dtype == DataType::utf8() {
         if let Some(text) = value.as_str() {
             return write_text_literal(formatter, text);
         }
@@ -407,8 +407,8 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Integer(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Floating(held) => Some(SmolStr::new(float_text(held.as_f64()))),
         Scalar::Decimal(_) => value.into_decimal_utf8().map(SmolStr::new),
-        Scalar::Text(held) => Some(SmolStr::new(held.as_str())),
-        Scalar::Ascii(held) => Some(SmolStr::new(held.as_str())),
+        Scalar::String(held) => Some(held.storage().clone()),
+        Scalar::Code(held) => Some(held.storage().clone()),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Uuid(held) => Some(SmolStr::new(held.to_string())),

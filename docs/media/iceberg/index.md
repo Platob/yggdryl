@@ -32,7 +32,7 @@ Create in a folder, append, and reopen with no catalog in between.
 
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
@@ -406,7 +406,7 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;
@@ -549,7 +549,7 @@ use yggdryl::{DataType, Scalar};
 
 let mut schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
-    DataType::Utf8.nullable_field("venue"),
+    DataType::utf8().nullable_field("venue"),
 ])?
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
@@ -597,7 +597,7 @@ use yggdryl::DataType;
 
 let mut schema = DataType::from_fields([
     DataType::Int64.required_field("id"),
-    DataType::Utf8.nullable_field("venue"),
+    DataType::utf8().nullable_field("venue"),
 ])?
 .required_field("row");
 assign_field_ids(&mut schema, 1)?;
@@ -635,7 +635,7 @@ A table marks its stored schema on create and on open, so `Table::schema` report
 
     let mut schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("venue"),
     ])?
     .required_field("row");
     assign_field_ids(&mut schema, 1)?;

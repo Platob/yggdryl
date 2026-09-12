@@ -1,13 +1,18 @@
-//! An ASCII width crosses the exchange formats as its trimmed text.
+//! US-ASCII is a charset of the one string family: `ascii` is a string whose
+//! bytes are US-ASCII, `ascii(n)` bounds it, `fixed_ascii(n)` pads it, and
+//! every one of them is `Scalar::String` in memory and Arrow text on the wire.
 
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, Int64Array, RecordBatch, StringArray};
-use yggdryl::arrow::batch_reader;
+use arrow_schema::DataType as ArrowDataType;
+use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
+use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
 use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::{DataType, Expression, Field, Scalar, Url};
+use yggdryl::types::{Str, StringLayout, StringParameters};
+use yggdryl::{Charset, DataType, DataTypeId, Expression, Field, Scalar, StringEnum, Url};
 use yggdryl::{IOBase, IOMedia};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -28,7 +33,7 @@ fn currencies(codes: &[&[u8; 4]]) -> ArrayRef {
 #[test]
 fn a_filter_over_an_ascii_column_binds_and_evaluates() {
     let schema = root([
-        DataType::FixedAscii(4).required_field("ccy"),
+        DataType::fixed_ascii(4).unwrap().required_field("ccy"),
         DataType::Int64.required_field("qty"),
     ]);
     let batch = RecordBatch::try_new(
@@ -65,8 +70,8 @@ fn a_filter_over_an_ascii_column_binds_and_evaluates() {
 #[test]
 fn two_ascii_columns_compare_at_both_tiers() {
     let schema = root([
-        DataType::FixedAscii(4).required_field("a"),
-        DataType::FixedAscii(4).required_field("b"),
+        DataType::fixed_ascii(4).unwrap().required_field("a"),
+        DataType::fixed_ascii(4).unwrap().required_field("b"),
     ]);
     let batch = RecordBatch::try_new(
         schema.clone().into_arrow_schema().unwrap(),
@@ -119,7 +124,7 @@ fn two_ascii_columns_compare_at_both_tiers() {
 
 #[test]
 fn string_functions_read_an_ascii_column_as_text() {
-    let schema = root([DataType::FixedAscii(4).required_field("ccy")]);
+    let schema = root([DataType::fixed_ascii(4).unwrap().required_field("ccy")]);
     let batch = RecordBatch::try_new(
         schema.clone().into_arrow_schema().unwrap(),
         vec![currencies(&[b"USD\0", b"EUR\0"])],
@@ -141,8 +146,8 @@ fn string_functions_read_an_ascii_column_as_text() {
 }
 
 #[test]
-fn a_cast_to_an_ascii_width_obeys_the_width_rule_on_rows() {
-    let schema = root([DataType::Utf8.required_field("ccy")]);
+fn a_cast_to_a_bounded_ascii_obeys_the_bound_on_rows() {
+    let schema = root([DataType::utf8().required_field("ccy")]);
     let batch = RecordBatch::try_new(
         schema.clone().into_arrow_schema().unwrap(),
         vec![Arc::new(StringArray::from(vec!["USD", "EUR"]))],
@@ -161,7 +166,7 @@ fn a_cast_to_an_ascii_width_obeys_the_width_rule_on_rows() {
             .unwrap()
     );
 
-    // The row tier refuses what the column tier refuses, naming the width.
+    // The row tier refuses what the column tier refuses, naming the bound.
     let message = bound
         .matches(&Scalar::from_sequence([Scalar::from("EURO!")]))
         .unwrap_err()
@@ -183,7 +188,7 @@ fn a_cast_to_an_ascii_width_obeys_the_width_rule_on_rows() {
 
 #[test]
 fn a_cast_into_a_securities_number_holds_the_column_to_the_canonical_spelling() {
-    let schema = root([DataType::Utf8.required_field("sid")]);
+    let schema = root([DataType::utf8().required_field("sid")]);
     let batch = |values: Vec<&str>| {
         RecordBatch::try_new(
             schema.clone().into_arrow_schema().unwrap(),
@@ -230,9 +235,10 @@ fn an_ascii_literal_has_a_text_form() {
     let Expression::Compare(_, _, literal) = &parsed else {
         panic!("a comparison, got {parsed}");
     };
+    // `ascii(4)` is the bounded string, not the padded one.
     assert_eq!(
         **literal,
-        Expression::Literal(Literal::new(DataType::FixedAscii(4), "USD").unwrap())
+        Expression::Literal(Literal::new(DataType::from_str("ascii(4)").unwrap(), "USD").unwrap())
     );
     // The literal prints in its own datatype and re-parses; a registered code
     // spells a literal of its own, which is not the literal of the width that
@@ -264,7 +270,7 @@ fn an_ascii_literal_has_a_text_form() {
 
 #[test]
 fn an_ascii_column_round_trips_through_avro_as_text() {
-    let schema = root([DataType::FixedAscii(4).required_field("ccy")]);
+    let schema = root([DataType::fixed_ascii(4).unwrap().required_field("ccy")]);
     let batch = RecordBatch::try_new(
         schema.into_arrow_schema().unwrap(),
         vec![currencies(&[b"USD\0", b"EU\0\0"])],
@@ -280,7 +286,7 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
     // Avro has no fixed-width text, so the column is a string and every
     // reader sees the trimmed code rather than the padded storage.
     let stored = handle.read_arrow_field(&options).unwrap();
-    assert_eq!(stored.fields()[0].dtype(), &DataType::Utf8);
+    assert_eq!(stored.fields()[0].dtype(), &DataType::utf8());
     let read: Vec<RecordBatch> = handle
         .read_arrow_reader(&options)
         .unwrap()
@@ -298,7 +304,7 @@ fn an_ascii_column_round_trips_through_avro_as_text() {
 #[cfg(feature = "iceberg")]
 #[test]
 fn an_ascii_column_is_an_iceberg_string() {
-    let mut schema = root([DataType::FixedAscii(4).required_field("ccy")]);
+    let mut schema = root([DataType::fixed_ascii(4).unwrap().required_field("ccy")]);
     yggdryl::media::iceberg::assign_field_ids(&mut schema, 1).unwrap();
     let json = yggdryl::media::iceberg::schema_into_json(&schema).unwrap();
     let fields = json
@@ -312,173 +318,260 @@ fn an_ascii_column_is_an_iceberg_string() {
 }
 
 #[test]
-fn a_state_sorts_from_the_first_state_to_the_terminal_ones() {
-    use yggdryl::types::State;
-
-    // The stored bytes, sorted by nothing but ASCII. This is the whole claim:
-    // whatever sorts the column - a Parquet row group's bounds, an external
-    // sort, an ORDER BY in something that never heard of this crate - puts
-    // every live state before every ended one.
-    let mut held: Vec<&str> = yggdryl::AsciiEnum::STATES.to_vec();
-    held.sort_unstable();
+fn ascii_is_one_charset_of_the_string_family() {
+    // The three shapes are one datatype under one charset, and each reads
+    // back from its own spelling.
+    let plain = DataType::ascii();
+    assert_eq!(plain.to_string(), "ascii");
+    assert_eq!(DataType::from_str("ascii").unwrap(), plain);
+    assert_eq!(DataType::from_str("string(us-ascii)").unwrap(), plain);
     assert_eq!(
-        held.as_slice(),
-        yggdryl::AsciiEnum::STATES,
-        "the vocabulary is declared in the order it sorts",
+        plain.string_parameters(),
+        Some(StringParameters::ascii(StringLayout::String))
     );
+    assert_eq!(plain.charset(), Some(Charset::Ascii));
+    assert_eq!(plain.id(), DataTypeId::String);
+    assert!(plain.is_string());
+    assert!(!plain.is_code());
+    assert_eq!(plain.fixed_byte_width(), None);
 
-    let ordered = [
-        "10PENDING",
-        "20NEW",
-        "40PARTFILL",
-        "60PENDCXL",
-        "80FILLED",
-        "90CANCELED",
-        "95REJECTED",
-    ];
-    let mut shuffled = [
-        "95REJECTED",
-        "80FILLED",
-        "20NEW",
-        "60PENDCXL",
-        "10PENDING",
-        "90CANCELED",
-        "40PARTFILL",
-    ];
-    shuffled.sort_unstable();
-    assert_eq!(shuffled, ordered);
+    // One number, one reading per layout: `ascii(4)` is a maximum and
+    // `fixed_ascii(4)` the width.
+    let bounded = DataType::from_str("ascii(4)").unwrap();
+    assert_eq!(bounded.to_string(), "ascii(4)");
+    assert_eq!(bounded, DataType::from_str("string(us-ascii,4)").unwrap());
+    let parameters = bounded.string_parameters().unwrap();
+    assert_eq!(parameters.max(), Some(4));
+    assert_eq!(parameters.fixed(), None);
+    assert_eq!(bounded.fixed_byte_width(), None);
+    assert_eq!(bounded.id(), DataTypeId::String);
 
-    // The rank is the two leading digits, read as the number they spell.
-    for (held, rank) in [
-        ("00UNKNOWN", 0),
-        ("10PENDING", 10),
-        ("40PARTFILL", 40),
-        ("80FILLED", 80),
-        ("90CANCELED", 90),
-        ("95REJECTED", 95),
-    ] {
-        assert_eq!(State::new(held).unwrap().rank(), Some(rank), "{held}");
-    }
+    let fixed = DataType::fixed_ascii(4).unwrap();
+    assert_eq!(fixed.to_string(), "fixed_ascii(4)");
+    assert_eq!(DataType::from_str("fixed_ascii(4)").unwrap(), fixed);
+    assert_eq!(
+        DataType::from_str("fixed_string(us-ascii,4)").unwrap(),
+        fixed
+    );
+    assert_eq!(fixed.string_parameters().unwrap().fixed(), Some(4));
+    assert_eq!(fixed.fixed_byte_width(), Some(4));
+    assert_eq!(fixed.id(), DataTypeId::FixedString);
+    assert_ne!(bounded, fixed);
 
-    // Every ending is told apart from every other without reading a name.
-    for held in [
-        "10PENDING",
-        "20NEW",
-        "40PARTFILL",
-        "60PENDCXL",
-        "70REPLACED",
-        "70RESTATED",
-    ] {
-        assert!(State::new(held).unwrap().is_live(), "{held}");
-    }
-    assert!(State::new("80FILLED").unwrap().is_done());
-    assert!(State::new("90CANCELED").unwrap().is_cancelled());
-    assert!(State::new("95REJECTED").unwrap().is_failed());
-    for held in ["80FILLED", "90CANCELED", "95REJECTED"] {
-        assert!(!State::new(held).unwrap().is_live(), "{held}");
-    }
-
-    // The digits between two shipped ranks are placeholders: a state that
-    // belongs between them takes one, and the predicates read the band it
-    // falls in rather than the exact rank.
-    let between = State::new("85ARCHIVED").unwrap();
-    assert_eq!(between.rank(), Some(85));
-    assert!(between.is_done());
-    assert!(!between.is_live());
-    assert!(State::new("92HALTED").unwrap().is_cancelled());
-    assert!(State::new("97ABORTED").unwrap().is_failed());
-
-    // A value that opens with anything but two digits has no rank, and so is
-    // neither live nor ended.
-    let unranked = State::new("FILLED").unwrap();
-    assert_eq!(unranked.rank(), None);
-    assert!(!unranked.is_live());
-    assert!(!unranked.is_done());
-    assert_eq!(State::new("8FILLED").unwrap().rank(), None);
+    // A charset-named spelling takes only a bound; a width is what makes a
+    // string fixed; a bound of no bytes is a column of one value.
+    assert!(DataType::from_str("ascii(utf-8)").is_err());
+    assert!(DataType::from_str("fixed_ascii").is_err());
+    assert!(DataType::fixed_ascii(0).is_err());
+    assert!(DataType::from_str("ascii(0)").is_err());
 }
 
 #[test]
-fn a_state_answers_a_fix_code_a_fix_name_and_a_scheduler_word_alike() {
-    use yggdryl::types::State;
+fn an_ascii_value_is_the_string_value_and_carries_no_maximum() {
+    // What comes out of an `ascii` column is the crate's one string value,
+    // equal to the plain spelling of the same characters.
+    let value = DataType::ascii().scalar("USD").unwrap();
+    let Scalar::String(held) = &value else {
+        panic!("an ascii value is a string, got {value:?}");
+    };
+    assert_eq!(held.charset(), Charset::Ascii);
+    assert_eq!(held.layout(), StringLayout::String);
+    assert_eq!(value, Scalar::from("USD"));
+    assert_eq!(value.as_str(), Some("USD"));
+    assert_eq!(value.id(), DataTypeId::String);
+    assert_eq!(value.dtype().unwrap(), DataType::ascii());
 
-    // One value, four vocabularies: the wire code an ExecutionReport carries,
-    // the specification's name for it, the word a scheduler uses, and the
-    // short name a FIX bridge logs.
-    for (spelling, expected) in [
-        ("0", "20NEW"),
-        ("1", "40PARTFILL"),
-        ("2", "80FILLED"),
-        ("8", "95REJECTED"),
-        ("F", "40TRADE"),
-        ("New", "20NEW"),
-        ("PartiallyFilled", "40PARTFILL"),
-        ("DoneForDay", "80DONEDAY"),
-        ("done_for_day", "80DONEDAY"),
-        ("DONE FOR DAY", "80DONEDAY"),
-        ("running", "30RUNNING"),
-        ("succeeded", "80SUCCESS"),
-        ("timed out", "95TIMEOUT"),
-        ("failed", "95FAILED"),
-        // The short names a FIX bridge logs fold to the same states.
-        ("PartFill", "40PARTFILL"),
-        ("PartFilled", "40PARTFILL"),
-        ("PendNew", "10PENDNEW"),
-        ("PendCancel", "60PENDCXL"),
-        ("PendReplace", "60PENDRPL"),
-        ("DoneDay", "80DONEDAY"),
-        ("Cancel", "90CANCELED"),
-        ("Reject", "95REJECTED"),
-        // A stored value names itself, so resolving one twice is resolving it
-        // once.
-        ("80FILLED", "80FILLED"),
+    // A maximum is the column's rule: a value read out of `ascii(4)` is an
+    // `ascii`, and one that outgrows the column is refused naming the bound.
+    let bounded = DataType::from_str("ascii(4)").unwrap();
+    assert_eq!(
+        bounded.scalar("USD").unwrap().dtype().unwrap(),
+        DataType::ascii()
+    );
+    let refused = bounded.scalar("EURO!").unwrap_err().to_string();
+    assert!(refused.contains("at most 4 bytes"), "{refused}");
+
+    // A fixed width is the value's shape: it is carried, its padding is
+    // trimmed on the way in, and it comes back padded on the way out.
+    let fixed = DataType::fixed_ascii(4).unwrap();
+    let padded = fixed.scalar("USD\0").unwrap();
+    assert_eq!(padded.as_str(), Some("USD"));
+    assert_eq!(padded.id(), DataTypeId::FixedString);
+    assert_eq!(padded.dtype().unwrap(), fixed);
+    let Scalar::String(held) = &padded else {
+        panic!("a fixed ascii value is a string, got {padded:?}");
+    };
+    assert_eq!(held.fixed(), Some(4));
+    assert_eq!(held.encode().unwrap().as_ref(), b"USD\0");
+    assert_eq!(held.encoded_len(), 4);
+    assert!(fixed.scalar("EURO!").is_err());
+}
+
+#[test]
+fn ascii_is_a_repertoire_and_refuses_what_it_never_holds() {
+    // A byte above 0x7F and a NUL are refused by name wherever the charset
+    // is US-ASCII, from text and from bytes alike.
+    for dtype in [
+        DataType::ascii(),
+        DataType::from_str("ascii(8)").unwrap(),
+        DataType::fixed_ascii(8).unwrap(),
     ] {
-        let held =
-            State::from_spelling(spelling).unwrap_or_else(|| panic!("{spelling} names no state"));
-        assert_eq!(held.as_str(), expected, "{spelling}");
+        let refused = dtype.scalar("caf\u{e9}").unwrap_err().to_string();
+        assert!(refused.contains("0xC3"), "{dtype}: {refused}");
+        assert!(
+            dtype
+                .scalar(Scalar::from(vec![0x63_u8, 0x61, 0x66, 0xE9]))
+                .is_err(),
+            "{dtype}"
+        );
+        assert!(
+            dtype.scalar(Scalar::from(vec![0x80_u8])).is_err(),
+            "{dtype}"
+        );
         assert_eq!(
-            State::from_spelling(held.as_str()).unwrap().as_str(),
-            expected,
-            "{spelling} resolves to itself",
+            dtype
+                .scalar(Scalar::from(b"USD".to_vec()))
+                .unwrap()
+                .as_str(),
+            Some("USD"),
+            "{dtype}"
+        );
+    }
+    // Trailing NUL is padding on the fixed layout alone: a variable string
+    // holds no NUL at all.
+    let refused = DataType::ascii().scalar("USD\0").unwrap_err().to_string();
+    assert!(refused.contains("NUL"), "{refused}");
+    assert!(
+        DataType::from_str("ascii(8)")
+            .unwrap()
+            .scalar(Scalar::from(b"USD\0".to_vec()))
+            .is_err()
+    );
+    assert_eq!(
+        DataType::fixed_ascii(8)
+            .unwrap()
+            .scalar(Scalar::from(b"USD\0\0\0\0\0".to_vec()))
+            .unwrap()
+            .as_str(),
+        Some("USD")
+    );
+    // The same rule under the value's own door.
+    let ascii = StringParameters::ascii(StringLayout::String);
+    assert!(Str::new("caf\u{e9}").try_with_parameters(ascii).is_err());
+    assert!(Str::from_bytes(&[0x80], ascii).is_err());
+}
+
+#[test]
+fn ascii_rides_arrow_text_storage_under_the_string_document() {
+    // ASCII bytes are UTF-8, so Arrow is told the truth about the bytes and
+    // the charset rides the `yggdryl.string` document beside them.
+    let cases: [(DataType, ArrowDataType, &str); 3] = [
+        (
+            DataType::ascii(),
+            ArrowDataType::Utf8,
+            r#"{"layout":"string","charset":"us-ascii"}"#,
+        ),
+        (
+            DataType::from_str("ascii(4)").unwrap(),
+            ArrowDataType::Utf8,
+            r#"{"layout":"string","charset":"us-ascii","max":4}"#,
+        ),
+        (
+            DataType::fixed_ascii(4).unwrap(),
+            ArrowDataType::FixedSizeBinary(4),
+            r#"{"layout":"fixed_string","charset":"us-ascii","fixed":4}"#,
+        ),
+    ];
+    for (dtype, storage, document) in cases {
+        assert_eq!(dtype.clone().into_arrow().unwrap(), storage, "{dtype}");
+        let field = dtype.clone().nullable_field("ccy");
+        let arrow = field.clone().into_arrow().unwrap();
+        assert_eq!(arrow.data_type(), &storage, "{dtype}");
+        assert_eq!(
+            arrow
+                .metadata()
+                .get(EXTENSION_TYPE_NAME_KEY)
+                .map(String::as_str),
+            Some("yggdryl.string"),
+            "{dtype}"
+        );
+        assert_eq!(
+            arrow
+                .metadata()
+                .get(EXTENSION_TYPE_METADATA_KEY)
+                .map(String::as_str),
+            Some(document),
+            "{dtype}"
+        );
+        assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{dtype}");
+
+        // A value crosses as itself in both directions.
+        let value = dtype.scalar("USD").unwrap();
+        let array = scalar_array(&field, &value).unwrap();
+        assert_eq!(array.data_type(), &storage, "{dtype}");
+        assert_eq!(
+            scalar_value(&field, array.as_ref()).unwrap(),
+            value,
+            "{dtype}"
         );
     }
 
-    // A wire code never folds: `A` is PendingNew and `a` is not a code at all.
-    assert_eq!(State::from_spelling("A").unwrap().as_str(), "10PENDNEW");
-    assert_eq!(State::from_spelling("a"), None);
-    assert_eq!(State::from_spelling("whatever"), None);
-    assert_eq!(State::from_spelling(""), None);
+    // A bare Utf8 column is plain UTF-8, and the retired `yggdryl.ascii`
+    // name is nobody's: a field wearing it imports as its storage.
+    let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, true);
+    assert_eq!(
+        Field::from_arrow(&plain).unwrap().dtype(),
+        &DataType::utf8()
+    );
+    let retired = plain.with_metadata(
+        [
+            (
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                "yggdryl.ascii".to_owned(),
+            ),
+            (EXTENSION_TYPE_METADATA_KEY.to_owned(), String::new()),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    assert_eq!(
+        Field::from_arrow(&retired).unwrap().dtype(),
+        &DataType::utf8()
+    );
 }
 
 #[test]
-fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
-    use yggdryl::{DataTypeKind, Scalar};
-
-    for (name, dtype, width) in [
-        ("state", DataType::State, 10),
-        ("timeinforce", DataType::TimeInForce, 8),
+fn a_string_enum_needs_a_fixed_ascii_width_its_members_pack_into() {
+    // The members pack into integers through `ascii_packed`, so the
+    // vocabulary is accepted on a fixed US-ASCII string of at most sixteen
+    // bytes or a code, and refused by name everywhere else.
+    let sides = StringEnum::from_logical_name("side").unwrap();
+    for accepted in [
+        DataType::fixed_ascii(4).unwrap(),
+        DataType::fixed_ascii(16).unwrap(),
+        DataType::Side,
     ] {
-        // Parsed, displayed and round-tripped by the grammar like any other.
-        assert_eq!(DataType::from_str(name).unwrap(), dtype);
-        assert_eq!(dtype.to_string(), name);
-        assert_eq!(dtype.kind(), DataTypeKind::Ascii);
-        assert!(dtype.is_code());
-        assert_eq!(dtype.ascii_width(), Some(width));
-
-        // And it crosses Arrow as the fixed width it is, extension name and
-        // all, so a column round-trips without becoming plain bytes.
-        let field = Field::new(name, dtype.clone(), true);
+        let field = Field::new("side", accepted.clone(), false)
+            .try_with_string_enum(&sides)
+            .unwrap_or_else(|error| panic!("{accepted}: {error}"));
+        assert_eq!(field.string_enum().unwrap().as_ref(), Some(&sides));
         let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
-        assert_eq!(recovered, field);
+        assert_eq!(recovered, field, "{accepted}");
     }
-
-    // A value wider than the storage is refused by the datatype rather than
-    // truncated into something that reads.
-    assert!(DataType::State.scalar(Scalar::from("20NEW")).is_ok());
-    assert!(DataType::State.scalar(Scalar::from("40PARTFILL")).is_ok());
-    assert!(
-        DataType::State
-            .scalar(Scalar::from("80CALCULATED"))
-            .is_err()
-    );
-    assert!(DataType::TimeInForce.scalar(Scalar::from("0")).is_ok());
+    for refused in [
+        DataType::ascii(),
+        DataType::from_str("ascii(4)").unwrap(),
+        DataType::fixed_ascii(17).unwrap(),
+        DataType::fixed_utf8(4).unwrap(),
+        DataType::utf8(),
+    ] {
+        let message = Field::new("side", refused.clone(), false)
+            .try_with_string_enum(&sides)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            message.contains(&refused.to_string()),
+            "{refused}: {message}"
+        );
+    }
 }

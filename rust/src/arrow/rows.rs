@@ -437,7 +437,7 @@ mod tests {
     fn field() -> Field {
         DataType::from_fields([
             DataType::Int32.required_field("id"),
-            DataType::Utf8.nullable_field("name"),
+            DataType::utf8().nullable_field("name"),
         ])
         .unwrap()
         .required_field("row")

@@ -108,6 +108,25 @@ function createFields(DataType, Field, native) {
       field(name, native.list(kind, item), value)
   }
 
+  // A factory whose options carry the datatype's own parameters beside the
+  // field's: the named keys build the datatype, every other key is a field
+  // option and is checked as one.
+  function parameterized(build, keys) {
+    return (name, value) => {
+      if (value === undefined) return field(name, build(undefined), undefined)
+      if (!isOptions(value)) {
+        throw new TypeError('field options must be a plain object')
+      }
+      const parameters = {}
+      const options = {}
+      for (const [key, held] of Object.entries(value)) {
+        if (keys.includes(key)) parameters[key] = held
+        else options[key] = held
+      }
+      return field(name, build(parameters), options)
+    }
+  }
+
   const fields = {
     null: simple('null'),
     boolean: simple('boolean'),
@@ -156,18 +175,31 @@ function createFields(DataType, Field, native) {
       return temporalField('interval', 'month_day_nano', name, unit, value)
     },
 
+    // The one byte datatype and the one string datatype, declared whole:
+    // the parameter keys go to the datatype and the rest stay field options.
+    bytes: parameterized(
+      (parameters) => DataType.bytes(parameters),
+      ['layout', 'bound', 'fixed', 'max'],
+    ),
     binary: simple('binary'),
     fixedSizeBinary(name, byteWidth, value) {
-      return field(name, native.fixedSizeBinary(byteWidth), value)
+      return field(name, DataType.fixedSizeBinary(byteWidth), value)
     },
     largeBinary: simple('large_binary'),
     binaryView: simple('binary_view'),
+    string: parameterized(
+      (parameters) => DataType.string(parameters),
+      ['layout', 'charset', 'bound', 'fixed', 'max'],
+    ),
     utf8: simple('utf8'),
     largeUtf8: simple('large_utf8'),
     utf8View: simple('utf8_view'),
+    fixedUtf8(name, width, value) {
+      return field(name, DataType.fixedUtf8(width), value)
+    },
     ascii: simple('ascii'),
     fixedAscii(name, width, value) {
-      return field(name, DataType.ascii(width), value)
+      return field(name, DataType.fixedAscii(width), value)
     },
     uuid: simple('uuid'),
     version: simple('version'),
@@ -179,6 +211,10 @@ function createFields(DataType, Field, native) {
     mic: simple('mic'),
     cfi: simple('cfi'),
     isin: simple('isin'),
+    side: simple('side'),
+    msgdirection: simple('msgdirection'),
+    state: simple('state'),
+    timeinforce: simple('timeinforce'),
 
     list: list('list'),
     listView: list('list_view'),

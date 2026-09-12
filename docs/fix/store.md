@@ -34,7 +34,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     let mut root = Folder::new(&path)?;
     let mut count = DataType::Int32.nullable_field("NoPartyIDs");
     count.as_fix_mut().set_tag(453)?;
-    let mut id = DataType::Utf8.nullable_field("PartyID");
+    let mut id = DataType::utf8().nullable_field("PartyID");
     id.as_fix_mut().set_tag(448)?;
     id.as_fix_mut().set_branches(["venue"])?;
     let mut registry = FixRegistry::from_fields([count, id])?;
@@ -287,6 +287,25 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // The whole published dictionary, not a sample of it.
     assert.ok(registry.size > 6_000)
     ```
+
+### Datatypes in the seed
+
+A field document stores the crate's own [datatype document](../types/datatype.md), so a FIX datatype resolves once when the seed is generated and the reader parses no spelling. Every text datatype is the one `string` tag with its parameters, and every byte datatype the one `binary` tag.
+
+| FIX datatype | Stored `dtype` | Reads as |
+| --- | --- | --- |
+| `String`, `char`, `MultipleCharValue`, `MultipleStringValue`, `XID`, `XIDREF`, `Pattern` | `{"type": "string"}` | `utf8` |
+| `MonthYear`, `Tenor` | `{"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8}` | `fixed_ascii(8)` |
+| `Language` | `{"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 2}` | `fixed_ascii(2)` |
+| `data`, `XMLData` | `{"type": "binary"}` | `binary` |
+| `Country`, `Currency`, `Exchange` | `{"type": "country"}`, `{"type": "currency"}`, `{"type": "mic"}` | the [code](../types/codes.md) |
+
+The same document is what a `fix:lineage` entry's `type` holds. Regenerate the seed from the repository root, and check it for drift without a network:
+
+```bash
+python scripts/generate_fix_dictionary.py
+python scripts/generate_fix_dictionary.py --check
+```
 
 ## Edges
 

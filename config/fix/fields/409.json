@@ -114,7 +114,7 @@
   {
     "name": "streameffectivedatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -150,7 +150,7 @@
   {
     "name": "streameffectivedateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -189,7 +189,7 @@
   {
     "name": "underlyingsettlratefallbackreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -277,7 +277,7 @@
   {
     "name": "daterollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -302,7 +302,7 @@
   {
     "name": "legbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -327,7 +327,7 @@
   {
     "name": "legdaterollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -772,7 +772,7 @@
   {
     "name": "underlyingbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -797,7 +797,7 @@
   {
     "name": "underlyingdaterollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1098,7 +1098,7 @@
   {
     "name": "legmarketdisruptionfallbackvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1110,7 +1110,7 @@
   {
     "name": "marketdisruptionvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1122,7 +1122,7 @@
   {
     "name": "marketdisruptionfallbackvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1195,7 +1195,7 @@
   {
     "name": "complexeventcrediteventtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1207,7 +1207,7 @@
   {
     "name": "complexeventcrediteventvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

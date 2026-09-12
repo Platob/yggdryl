@@ -86,7 +86,7 @@ pub(crate) fn render_temporal_text(
             &ArrowDataType::Utf8,
             true,
             exposure,
-            &Field::new(field.name(), DataType::Utf8, true),
+            &Field::new(field.name(), DataType::utf8(), true),
             budget,
         );
         match rendered {

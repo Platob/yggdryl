@@ -23,7 +23,7 @@ fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
 
 fn catalog() -> FixRegistry {
     let counter = tagged("NoPartyIDs", 453, DataType::Int32);
-    let mut partyid = tagged("PartyID", 448, DataType::Utf8);
+    let mut partyid = tagged("PartyID", 448, DataType::utf8());
     partyid
         .as_fix_mut()
         .set_codes(&[FixCode::new("Broker", "B")])
@@ -70,7 +70,7 @@ fn catalog() -> FixRegistry {
 #[test]
 fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     let mut registry = catalog();
-    let mut venue = tagged("VenueTrade", 5001, DataType::Utf8);
+    let mut venue = tagged("VenueTrade", 5001, DataType::utf8());
     venue
         .as_fix_mut()
         .set_branches(["CME", "merc", "cme"])
@@ -401,13 +401,16 @@ fn catalog_mutations_refuse_dangling_or_stale_resolved_references_atomically() {
     // number, which a creation refuses: only a merge folds it in.
     assert!(
         registry
-            .create_definition(FixCategory::Fields, tagged("PartyID", 5001, DataType::Utf8))
+            .create_definition(
+                FixCategory::Fields,
+                tagged("PartyID", 5001, DataType::utf8())
+            )
             .is_err()
     );
     assert_eq!(registry, before);
     assert!(
         registry
-            .insert(tagged("party_id", 5001, DataType::Utf8))
+            .insert(tagged("party_id", 5001, DataType::utf8()))
             .is_err()
     );
     assert_eq!(registry, before);
@@ -443,7 +446,7 @@ fn enum_codes_belong_to_each_field() {
     let mut registry = catalog();
     // A venue's field on the standard tag, under its own name: a second
     // field beside the holder, each with the codes it declared.
-    let mut field = tagged("VenuePartyID", 448, DataType::Utf8);
+    let mut field = tagged("VenuePartyID", 448, DataType::utf8());
     field.as_fix_mut().set_branches(["venue"]).unwrap();
     field
         .as_fix_mut()
@@ -480,7 +483,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     // field: it shares the holder's shard, the holder keeps the bare tag and
     // the alias it learnt, and both survive every order a store reads.
     let mut registry = catalog();
-    let mut venue = tagged("VenuePartyID", 448, DataType::Utf8);
+    let mut venue = tagged("VenuePartyID", 448, DataType::utf8());
     venue.as_fix_mut().set_branches(["venue"]).unwrap();
     registry.insert(venue).unwrap();
     let holder = FixId::of(448, "PartyID").unwrap();
@@ -621,7 +624,7 @@ fn store_removes_empty_shards_and_named_documents() {
     let mut folder = Folder::new(&root).unwrap();
     let mut registry = catalog();
     registry
-        .insert(tagged("Distant", 10000, DataType::Utf8))
+        .insert(tagged("Distant", 10000, DataType::utf8()))
         .unwrap();
     registry.write_into(&mut folder).unwrap();
     registry.remove(10000).unwrap();
@@ -672,7 +675,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
         yggdryl::text::json::into_bytes(&Scalar::from_sequence([tagged(
             "Misplaced",
             150,
-            DataType::Utf8,
+            DataType::utf8(),
         )
         .into_value()]))
         .unwrap(),
@@ -692,7 +695,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
         .unwrap();
     // A shard whose number disagrees with the tags inside is located by
     // its own name.
-    let field = tagged("Misplaced", 5001, DataType::Utf8);
+    let field = tagged("Misplaced", 5001, DataType::utf8());
     let bytes =
         yggdryl::text::json::into_bytes(&Scalar::from_sequence([field.clone().into_value()]))
             .unwrap();
@@ -1129,7 +1132,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
 fn folded_field_updates_keep_canonical_names_and_refresh_references() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let mut registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
-    let mut incoming = tagged("Symbol", 55, DataType::Utf8);
+    let mut incoming = tagged("Symbol", 55, DataType::utf8());
     incoming.as_fix_mut().set_tags(&[9001]).unwrap();
     incoming.as_fix_mut().set_aliases(["Sym"]).unwrap();
     registry.update(incoming.clone()).unwrap();
@@ -1161,7 +1164,7 @@ fn folded_field_updates_keep_canonical_names_and_refresh_references() {
 fn duplicate_persisted_field_declarations_are_refused() {
     let root = scratch("duplicates");
     let folder = Folder::new(&root).unwrap();
-    let field = tagged("Symbol", 55, DataType::Utf8);
+    let field = tagged("Symbol", 55, DataType::utf8());
     let bytes = yggdryl::text::json::into_bytes(&Scalar::from_sequence([
         field.clone().into_value(),
         field.into_value(),
@@ -1317,7 +1320,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
 #[test]
 fn message_code_aliases_reindex_after_field_enum_mutation() {
     let mut registry = catalog();
-    let mut field = tagged("MsgType", 35, DataType::Utf8);
+    let mut field = tagged("MsgType", 35, DataType::utf8());
     field
         .as_fix_mut()
         .set_codes(&[FixCode::new("Order", "D").with_aliases(["NOS"])])
@@ -1338,7 +1341,7 @@ fn message_code_aliases_reindex_after_field_enum_mutation() {
 fn field_enum_updates_refresh_component_and_message_references_atomically() {
     let mut registry = catalog();
     registry
-        .insert(tagged("MsgType", 35, DataType::Utf8))
+        .insert(tagged("MsgType", 35, DataType::utf8()))
         .unwrap();
     let mut member = registry.field(35).unwrap().clone();
     member.as_fix_mut().set_field_ref("MsgType").unwrap();

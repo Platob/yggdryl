@@ -76,7 +76,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let rows = DataType::list(
-    ///     DataType::from_fields([DataType::Utf8.nullable_field("venue")])?.nullable_field("item"),
+    ///     DataType::from_fields([DataType::utf8().nullable_field("venue")])?.nullable_field("item"),
     /// );
     ///
     /// assert_eq!(

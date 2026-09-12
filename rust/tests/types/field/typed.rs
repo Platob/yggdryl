@@ -149,7 +149,7 @@ fn the_extension_typed_markers_narrow_their_exact_variants() {
     assert_eq!(variant.dtype(), &DataType::Variant);
 
     // A marker refuses the storage type and its geospatial sibling alike.
-    assert!(yggdryl::types::GeometryField::try_new("bad", DataType::Binary, true).is_err());
+    assert!(yggdryl::types::GeometryField::try_new("bad", DataType::binary(), true).is_err());
     assert!(
         yggdryl::types::GeographyField::try_new("bad", DataType::geometry(None).unwrap(), true)
             .is_err()

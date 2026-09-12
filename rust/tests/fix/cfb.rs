@@ -412,8 +412,8 @@ fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
 fn the_eight_types_resolve_through_the_schema_grammars_own_names() {
     let (registry, _) = parse(CBLOCK);
     for (tag, dtype) in [
-        (35, DataType::Utf8),
-        (59, DataType::Utf8),
+        (35, DataType::utf8()),
+        (59, DataType::utf8()),
         (9, DataType::Int32),
         (6, DataType::Float32),
         (10001, DataType::Boolean),
@@ -1499,7 +1499,7 @@ fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
         message.contains("avgpx") && message.contains("float32"),
         "{message}"
     );
-    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::Utf8);
+    assert_eq!(seeded.field_by_tag(35).unwrap().dtype(), &DataType::utf8());
     assert_eq!(seeded.field_by_tag(6).unwrap().dtype(), &DataType::Float64);
 
     assert_eq!(seeded, before, "a refused fold writes nothing");

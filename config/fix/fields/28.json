@@ -38,7 +38,7 @@
   {
     "name": "payreportrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -63,7 +63,7 @@
   {
     "name": "replacetext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -88,7 +88,7 @@
   {
     "name": "canceltext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -124,7 +124,7 @@
   {
     "name": "payrequestrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -149,7 +149,7 @@
   {
     "name": "payrequestid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -198,7 +198,7 @@
   {
     "name": "posttradepaymentaccount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -247,7 +247,7 @@
   {
     "name": "posttradepaymentdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -259,7 +259,7 @@
   {
     "name": "posttradepaymentid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -271,7 +271,7 @@
   {
     "name": "posttradepaymentlinkid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -296,7 +296,7 @@
   {
     "name": "posttradepaymenttype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -372,7 +372,7 @@
   {
     "name": "eventinitiatortype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -435,7 +435,7 @@
   {
     "name": "orderoriginationfirmid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -511,7 +511,7 @@
   {
     "name": "underlyingrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -646,7 +646,7 @@
   {
     "name": "sideunderlyingrefid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -733,7 +733,7 @@
   {
     "name": "clearingportfolioid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -770,7 +770,7 @@
   {
     "name": "transactionattributevalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -782,7 +782,7 @@
   {
     "name": "underlyingid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -832,7 +832,7 @@
   {
     "name": "couponotherdaycount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -844,7 +844,7 @@
   {
     "name": "legcouponotherdaycount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -856,7 +856,7 @@
   {
     "name": "underlyingcouponotherdaycount",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -935,7 +935,7 @@
   {
     "name": "relatedorderid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -985,7 +985,7 @@
   {
     "name": "upicode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -997,7 +997,7 @@
   {
     "name": "derivativeupicode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1009,7 +1009,7 @@
   {
     "name": "legupicode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1021,7 +1021,7 @@
   {
     "name": "underlyingupicode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1033,7 +1033,7 @@
   {
     "name": "instrumentscopeupicode",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1058,7 +1058,7 @@
   {
     "name": "currencycodesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1071,7 +1071,7 @@
   {
     "name": "legcurrencycodesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1084,7 +1084,7 @@
   {
     "name": "settlcurrencycodesource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

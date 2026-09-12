@@ -16,7 +16,7 @@ GENERATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(GENERATOR)
 
 
-def wire_field(name: str, tag: int, dtype: str = "utf8") -> dict:
+def wire_field(name: str, tag: int, dtype: str = "string") -> dict:
     return {
         "name": name,
         "dtype": {"type": dtype},
@@ -153,8 +153,28 @@ class FixCatalogGeneration(unittest.TestCase):
         parsed = {source.source_id: {"fields": {}} for source in GENERATOR.SOURCES}
         parsed["orchestra-latest"] = latest
         field = GENERATOR.build(parsed)["fields"][0]
-        self.assertEqual({"type": "utf8"}, field["dtype"])
+        self.assertEqual({"type": "string"}, field["dtype"])
         self.assertIn('"name":"NewOrderSingle"', field["metadata"]["fix:codes"])
+
+    def test_datatypes_are_stored_as_the_crate_writes_them(self) -> None:
+        # One `string` tag for every string, stating only what it declares;
+        # the fixed US-ASCII slots carry layout, charset and width.
+        self.assertEqual({"type": "string"}, GENERATOR.dtype_document("char"))
+        self.assertEqual(GENERATOR.dtype_document("char"), GENERATOR.dtype_document("String"))
+        self.assertEqual(
+            {"type": "string", "layout": "fixed_string", "charset": "us-ascii", "fixed": 8},
+            GENERATOR.dtype_document("MonthYear"),
+        )
+        self.assertEqual({"type": "binary"}, GENERATOR.dtype_document("data"))
+
+    def test_a_string_yields_backward_to_a_later_temporal_type(self) -> None:
+        entries = [
+            {"since": "4.0", "type": {"type": "string"}},
+            {"since": "4.2", "type": GENERATOR.dtype_document("MonthYear")},
+            {"since": "4.4", "type": {"type": "datetime64", "unit": "nanosecond"}},
+        ]
+        GENERATOR.back_type(entries)
+        self.assertEqual([entries[2]["type"]] * 3, [entry["type"] for entry in entries])
 
     def test_invalid_graphs_fail_with_location(self) -> None:
         invalid = copy.deepcopy(self.latest)

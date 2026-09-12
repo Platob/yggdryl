@@ -45,7 +45,7 @@ A non-null struct field is the schema; its children are the columns.
         "trade",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::Utf8.nullable_field("symbol"),
+            DataType::utf8().nullable_field("symbol"),
             DataType::decimal(18, 4)?.required_field("price"),
         ])?,
         false,
@@ -105,7 +105,7 @@ Metadata belongs to the field and behaves like each language's mapping type.
     ```rust
     use yggdryl::{DataType, Field};
 
-    let mut field = Field::new("symbol", DataType::Utf8, true);
+    let mut field = Field::new("symbol", DataType::utf8(), true);
     field.insert_metadata("source", "book")?;
     field.set_parquet_field_id(7);
 

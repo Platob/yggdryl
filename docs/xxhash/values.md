@@ -95,7 +95,9 @@ The canonical [`Scalar`](../types/scalar.md) byte feed, the single `stable_hash`
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](../types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every ASCII datatype - `ascii`, `ascii(n)` and the registered codes `country`, `currency`, `mic`, `cfi`, `isin`, `side`, `msgtype`, `msgdirection`, `state`, `timeinforce` - feeds `ascii`, and a geography feeds `geometry`.
+The tag is the value's own [`DataTypeId`](../types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](../types/text.md) feeds `string` (27) whatever its layout, charset or bound, and a geography feeds `geometry`. A [code](../types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `side`, `msgdirection`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+
+This is where the one string family changed stored digests: a value read from an `ascii` or `ascii(n)` column used to feed the retired `ascii` tag (30) and now feeds `string` (27), the tag UTF-8 text always fed, and every code value used to feed that same `ascii` tag and now feeds its own id. Digests of UTF-8 text and of bytes did not change.
 
 | Variant | Tag | Feed after the tag |
 | --- | --- | --- |
@@ -104,8 +106,8 @@ The tag is the value's own [`DataTypeId`](../types/datatype.md), except where a 
 | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
 | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
 | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-| `Text` | `utf8` | length `u64` little-endian, then UTF-8 |
-| `Ascii` | `ascii` | length `u64` little-endian, then the trimmed text |
+| `String` | `string` | length `u64` little-endian, then the characters as UTF-8; the layout, charset and fixed width never feed |
+| `Code` | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
 | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
 | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
@@ -162,7 +164,7 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::xxhash::Xxh3;
 use yggdryl::{DataType, DigestAlgorithm, Field, Scalar};
 
-let symbol = Field::new("symbol", DataType::Utf8, false);
+let symbol = Field::new("symbol", DataType::utf8(), false);
 let mut holder = Field::new("row_digest", DataType::UInt64, false);
 holder.as_digest_mut().set_holder()?;
 holder.as_digest_mut().set_sources(["symbol"])?;
@@ -228,7 +230,7 @@ use arrow_schema::Schema;
 use yggdryl::{DataType, DigestAlgorithm, Field};
 use yggdryl::xxhash::arrow::row_digests;
 
-let symbol = Field::new("symbol", DataType::Utf8, false);
+let symbol = Field::new("symbol", DataType::utf8(), false);
 let quantity = Field::new("quantity", DataType::Int64, false);
 let mut stored = Field::new("row_digest", DataType::UInt64, false);
 stored.as_digest_mut().set_holder()?;
@@ -271,7 +273,8 @@ assert_ne!(digests.value(0), digests.value(1));
 - A `variant` column -> refused by name; its binary encoding lands with the Iceberg v3 layer, so there is no value to feed.
 - A `field` whose storage does not match the array given to `column_digests` -> reconciled to the field first, strictly, so a layout difference answers the same digest and a value the declaration cannot hold is named.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
-- A `country`, `currency`, `mic`, `cfi`, `isin`, `ascii(n)`, or `ascii` cell holding the same text -> one digest; every ASCII datatype compares equal and feeds the `ascii` tag.
+- An `ascii`, `ascii(n)`, `fixed_ascii(n)`, `utf8(n)` or `string(windows-1252)` cell holding the same characters -> one digest; every string is one value and feeds the `string` tag.
+- A `currency` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
 - Holder-local `digest:sources` or `digest:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#filling-digest-holders) only.
 - A path through a list, map, or union -> that value is selected whole, never traversed.

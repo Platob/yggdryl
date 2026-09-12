@@ -22,7 +22,7 @@
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut schema = DataType::from_fields([
 //!     DataType::Int32.required_field("id"),
-//!     DataType::Utf8.nullable_field("symbol"),
+//!     DataType::utf8().nullable_field("symbol"),
 //! ])?
 //! .required_field("row");
 //! assign_field_ids(&mut schema, 1)?;

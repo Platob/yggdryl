@@ -1529,7 +1529,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
       ['state', 'State', 65015, 'state'],
     ],
   )
-  assert.equal(derived[2].dtype.asciiWidth, 10)
+  assert.equal(derived[2].dtype.fixedByteWidth, 10)
 
   // And the three identities a lifecycle pass stamps - the instrument, the
   // message and the order chain - sixteen bytes each, so a monitor joins on

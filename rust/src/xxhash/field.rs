@@ -33,7 +33,9 @@ pub(crate) fn holder_accepts(field: &Field, algorithm: DigestAlgorithm) -> bool 
         DigestAlgorithm::Xxh64 | DigestAlgorithm::Xxh3 => {
             matches!(field.dtype(), DataType::Int64 | DataType::UInt64)
         }
-        DigestAlgorithm::Xxh128 => matches!(field.dtype(), DataType::FixedSizeBinary(16)),
+        DigestAlgorithm::Xxh128 => {
+            matches!(field.dtype(), DataType::Bytes(parameters) if parameters.fixed() == Some(16))
+        }
     }
 }
 

@@ -367,7 +367,7 @@ fn carries_payload(dtype: &DataType) -> bool {
         DataType::RunEndEncoded(held) => carries_payload(held.values.dtype()),
         other => matches!(
             other.kind(),
-            DataTypeKind::Text | DataTypeKind::Bytes | DataTypeKind::Ascii
+            DataTypeKind::Text | DataTypeKind::Bytes | DataTypeKind::Code
         ),
     }
 }

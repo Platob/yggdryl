@@ -14,7 +14,7 @@
   {
     "name": "underlyingpaymentstubstartdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -149,7 +149,7 @@
   {
     "name": "underlyingreturnratevaluationdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -212,7 +212,7 @@
   {
     "name": "underlyingreturnratevaluationstartdateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -288,7 +288,7 @@
   {
     "name": "underlyingreturnratevaluationenddateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -339,7 +339,7 @@
   {
     "name": "underlyingreturnratevaluationfrequencyunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -352,7 +352,7 @@
   {
     "name": "underlyingreturnratevaluationfrequencyrollconvention",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -390,7 +390,7 @@
   {
     "name": "underlyingreturnratefxcurrencysymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -414,7 +414,7 @@
   {
     "name": "underlyingreturnratefxratecalc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -452,7 +452,7 @@
   {
     "name": "underlyingreturnratecommissionbasis",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -501,7 +501,7 @@
   {
     "name": "underlyingreturnratedeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -525,7 +525,7 @@
   {
     "name": "underlyingreturnratequotemeasuretype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -537,7 +537,7 @@
   {
     "name": "underlyingreturnratequoteunits",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -574,7 +574,7 @@
   {
     "name": "underlyingreturnratequotecurrencytype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -639,7 +639,7 @@
   {
     "name": "underlyingreturnratequotebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -663,7 +663,7 @@
   {
     "name": "underlyingreturnratequotepricingmodel",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -675,7 +675,7 @@
   {
     "name": "underlyingreturnratecashflowtype",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -714,7 +714,7 @@
   {
     "name": "underlyingreturnratevaluationtimebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -777,7 +777,7 @@
   {
     "name": "underlyingreturnratereferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -789,7 +789,7 @@
   {
     "name": "underlyingreturnratereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -875,7 +875,7 @@
   {
     "name": "underlyingreturnratevaluationdatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -937,7 +937,7 @@
   {
     "name": "underlyingsettlmethodelectiondatebusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -999,7 +999,7 @@
   {
     "name": "underlyingsettlmethodelectiondateoffsetunit",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1038,7 +1038,7 @@
   {
     "name": "underlyingstreamversion",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1063,7 +1063,7 @@
   {
     "name": "underlyingstreamnotionaldeterminationmethod",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1088,7 +1088,7 @@
   {
     "name": "paymentdesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1100,7 +1100,7 @@
   {
     "name": "legpaymentstreamrateindexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1112,7 +1112,7 @@
   {
     "name": "legpaymentstreamrateindexidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1125,7 +1125,7 @@
   {
     "name": "paymentstreamrateindexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1137,7 +1137,7 @@
   {
     "name": "paymentstreamrateindexidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1150,7 +1150,7 @@
   {
     "name": "underlyingpaymentstreamrateindexid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1162,7 +1162,7 @@
   {
     "name": "underlyingpaymentstreamrateindexidsource",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1175,7 +1175,7 @@
   {
     "name": "deliverystreamrouteorcharter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1187,7 +1187,7 @@
   {
     "name": "legdeliverystreamrouteorcharter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1199,7 +1199,7 @@
   {
     "name": "underlyingdeliverystreamrouteorcharter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -1223,7 +1223,7 @@
   {
     "name": "paymentfloatingrateindex",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

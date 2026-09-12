@@ -15,7 +15,7 @@
   {
     "name": "individualallocsubqtyvalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -89,7 +89,7 @@
   {
     "name": "mdentrystatustext",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -125,7 +125,7 @@
   {
     "name": "mdmsgid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -137,7 +137,7 @@
   {
     "name": "securitystatusreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -149,7 +149,7 @@
   {
     "name": "tradingsessionstatusreportid",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -236,7 +236,7 @@
   {
     "name": "legreferencepage",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -248,7 +248,7 @@
   {
     "name": "legratesourcereferencepageheading",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -260,7 +260,7 @@
   {
     "name": "legratesourcesymbol",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -311,7 +311,7 @@
   {
     "name": "legfxbenchmarkbusinesscenter",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -335,7 +335,7 @@
   {
     "name": "testsuiteparametername",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -360,7 +360,7 @@
   {
     "name": "testsuiteparametervalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -384,7 +384,7 @@
   {
     "name": "testscenarioparametername",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -409,7 +409,7 @@
   {
     "name": "testscenarioparametervalue",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -446,7 +446,7 @@
   {
     "name": "tradingservicedesc",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
@@ -484,7 +484,7 @@
   {
     "name": "tradingsessionenvironment",
     "dtype": {
-      "type": "utf8"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {

@@ -635,10 +635,10 @@ impl TextOptions {
             return mtime_dtype();
         }
         let Some(capture) = self.captures.get(index) else {
-            return DataType::Utf8;
+            return DataType::utf8();
         };
         if !self.autotype {
-            return DataType::Utf8;
+            return DataType::utf8();
         }
         match (capture.dtype(), self.timezone) {
             (DataType::DateTime64 { unit, timezone }, Some(configured)) if timezone.is_naive() => {

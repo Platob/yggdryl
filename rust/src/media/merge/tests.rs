@@ -15,7 +15,7 @@ use crate::{IOBase, IOMedia};
 fn schema() -> Field {
     DataType::from_fields([
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])
     .unwrap()
     .required_field("row")
@@ -306,7 +306,7 @@ fn an_empty_target_appends_every_row() {
 fn a_null_key_matches_another_null_key() {
     let field = DataType::from_fields([
         DataType::Int64.nullable_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])
     .unwrap()
     .required_field("row");
@@ -354,9 +354,9 @@ fn a_null_key_matches_another_null_key() {
 #[test]
 fn a_composite_key_matches_on_every_column() {
     let field = DataType::from_fields([
-        DataType::Utf8.required_field("venue"),
+        DataType::utf8().required_field("venue"),
         DataType::Int64.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
     ])
     .unwrap()
     .required_field("row");
@@ -430,9 +430,9 @@ fn an_incoming_schema_that_disagrees_is_cast_to_the_target_first() {
     // at all: the cast to the target reorders, converts, and drops before a
     // single key is compared.
     let loose = DataType::from_fields([
-        DataType::Utf8.nullable_field("symbol"),
-        DataType::Utf8.required_field("id"),
-        DataType::Utf8.nullable_field("venue"),
+        DataType::utf8().nullable_field("symbol"),
+        DataType::utf8().required_field("id"),
+        DataType::utf8().nullable_field("venue"),
     ])
     .unwrap()
     .required_field("row");

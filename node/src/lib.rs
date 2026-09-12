@@ -9,6 +9,7 @@
     clippy::return_self_not_must_use
 )]
 
+pub mod charset;
 pub mod coding;
 // Discovered through NAPI's generated registration inventory rather than
 // ordinary Rust call sites, like `uri` below.
@@ -216,6 +217,16 @@ pub(crate) fn exact_f64(value: u64, name: &str) -> napi::Result<f64> {
     }
     #[allow(clippy::cast_precision_loss)]
     Ok(value as f64)
+}
+
+pub(crate) fn exact_u32(value: f64, name: &str) -> napi::Result<u32> {
+    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 || value > f64::from(u32::MAX) {
+        return Err(Error::from_reason(format!(
+            "{name} must be an unsigned 32-bit integer"
+        )));
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Ok(value as u32)
 }
 
 pub(crate) fn exact_u8(value: f64, name: &str) -> napi::Result<u8> {

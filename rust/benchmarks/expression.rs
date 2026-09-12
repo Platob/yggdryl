@@ -73,10 +73,10 @@ fn schema() -> Field {
     Field::new(
         "trades",
         DataType::from_fields([
-            Field::new("ccy", DataType::Utf8, true),
+            Field::new("ccy", DataType::utf8(), true),
             Field::new("price", DataType::decimal128(9, 2).unwrap(), true),
             Field::new("size", DataType::Int64, true),
-            Field::new("venue", DataType::Utf8, true),
+            Field::new("venue", DataType::utf8(), true),
         ])
         .unwrap(),
         false,

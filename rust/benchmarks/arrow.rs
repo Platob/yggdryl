@@ -56,7 +56,7 @@ const EPOCH: i64 = 1_767_225_600_000_000;
 /// The trade root: what one commodity tick carries.
 fn root() -> Field {
     DataType::from_fields([
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::decimal128(12, 4)
             .expect("the price width is valid")
             .required_field("price"),
@@ -361,7 +361,7 @@ fn cast_target() -> Field {
             timezone: Timezone::UTC,
         }
         .required_field("timestamp"),
-        DataType::Utf8.required_field("symbol"),
+        DataType::utf8().required_field("symbol"),
         DataType::decimal128(18, 6)
             .expect("the widened price width is valid")
             .required_field("price"),

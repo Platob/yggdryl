@@ -16,7 +16,7 @@ use crate::{DataType, Field};
 fn quote_schema() -> Field {
     let mut schema = DataType::from_fields([
         DataType::Int32.required_field("id"),
-        DataType::Utf8.nullable_field("symbol"),
+        DataType::utf8().nullable_field("symbol"),
         DataType::from_fields([
             DataType::Float32.required_field("price"),
             DataType::Int32.nullable_field("size"),
@@ -99,7 +99,7 @@ mod promotions {
         )
         .unwrap();
         // Identical types always pass, whatever they are.
-        can_promote(&DataType::Utf8, &DataType::Utf8).unwrap();
+        can_promote(&DataType::utf8(), &DataType::utf8()).unwrap();
         can_promote(&DataType::Int64, &DataType::Int64).unwrap();
         can_promote(
             &DataType::decimal128(20, 4).unwrap(),
@@ -121,7 +121,7 @@ mod promotions {
                 DataType::decimal64(10, 2).unwrap(),
                 DataType::decimal64(9, 2).unwrap(),
             ),
-            (DataType::Utf8, DataType::Int32),
+            (DataType::utf8(), DataType::Int32),
             (
                 DataType::decimal128(38, 2).unwrap(),
                 DataType::decimal256(40, 2).unwrap(),
@@ -407,7 +407,7 @@ mod schema_updates {
         metadata.set_current_schema(schema_id).unwrap();
 
         let mut reused = metadata.current_schema().unwrap().clone();
-        let mut replacement = DataType::Utf8.nullable_field("replacement");
+        let mut replacement = DataType::utf8().nullable_field("replacement");
         replacement.set_parquet_field_id(2);
         reused
             .set_field_by_path("replacement", replacement)

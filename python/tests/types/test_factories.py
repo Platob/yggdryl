@@ -49,11 +49,11 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "fixed_size_binary": types.fixed_size_binary("value", 16),
         "large_binary": types.large_binary("value"),
         "binary_view": types.binary_view("value"),
-        "utf8": types.utf8("value"),
-        "large_utf8": types.large_utf8("value"),
-        "utf8_view": types.utf8_view("value"),
-        "ascii": types.ascii("value"),
-        "fixed_ascii": types.fixed_ascii("value", 4),
+        "string": types.utf8("value"),
+        "large_string": types.large_utf8("value"),
+        "string_view": types.utf8_view("value"),
+        "fixed_string": types.fixed_ascii("value", 4),
+        "large_string_view": types.string("value", layout="large_string_view"),
         "list": types.list("value", item),
         "list_view": types.list_view("value", item),
         "fixed_size_list": types.fixed_size_list("value", item, 3),
@@ -100,6 +100,30 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
     assert types.VersionField is Field
     assert types.UrlField is Field
     assert types.TypedField is Field
+
+
+def test_the_string_and_bytes_factories_take_the_whole_declaration() -> None:
+    # One factory per family takes the layout, the charset, and the bound;
+    # the charset-named factories are that one with a layout picked once.
+    latin = types.string("name", layout="large_string", charset="cp1252", max=32)
+    assert latin.dtype == DataType.string("large_string", "windows-1252", 32)
+    assert str(latin.dtype) == "large_string(windows-1252,32)"
+    assert latin.dtype.string_parameters.max == 32
+    fixed = types.string("code", layout="fixed_string", charset="us-ascii", fixed=4)
+    assert fixed.dtype == DataType.fixed_ascii(4)
+    assert types.string("text").dtype == DataType.utf8() == types.utf8("text").dtype
+    assert types.string("text", nullable=False, metadata={"k": "v"}).metadata["k"] == "v"
+    assert types.StringField is Field
+
+    bounded = types.bytes("blob", max=16)
+    assert bounded.dtype == DataType.bytes(bound=16) == DataType("binary(16)")
+    assert bounded.dtype.bytes_parameters.max == 16
+    digest = types.bytes("digest", layout="fixed_size_binary", fixed=16)
+    assert digest.dtype == DataType.fixed_size_binary(16)
+    assert digest.dtype == types.fixed_size_binary("digest", 16).dtype
+    assert types.bytes("blob").dtype == DataType.binary() == types.binary("blob").dtype
+    assert types.bytes("blob", layout="binary_view").dtype == DataType.binary_view()
+    assert types.BytesField is Field
 
 
 def test_nested_factories_preserve_exact_child_field_state() -> None:
@@ -151,10 +175,12 @@ def test_typed_factory_parameters_use_native_validation() -> None:
     assert types.decimal("small", 38).dtype.id == "decimal128"
     assert types.decimal("wide", 39).dtype.id == "decimal256"
     assert types.ascii("note").dtype == DataType("ascii")
-    assert types.fixed_ascii("iso", 2).dtype == DataType.ascii(2)
-    assert types.fixed_ascii("ccy", 3).dtype == DataType.ascii(3)
+    assert types.fixed_ascii("iso", 2).dtype == DataType.fixed_ascii(2)
+    assert types.fixed_ascii("ccy", 3).dtype == DataType.fixed_ascii(3)
     # A fixed width past the packed integer is still storage, so it builds.
-    assert types.fixed_ascii("isin", 64, nullable=False).dtype.ascii_width == 64
+    assert types.fixed_ascii("isin", 64, nullable=False).dtype.fixed_byte_width == 64
+    assert types.fixed_utf8("name", 8).dtype == DataType.fixed_utf8(8)
+    assert types.fixed_utf8("name", 8).dtype.string_parameters.fixed == 8
     assert types.currency("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
         "ISO 4217"
     )
@@ -172,8 +198,16 @@ def test_typed_factory_parameters_use_native_validation() -> None:
         types.interval("window", "us")
     with pytest.raises(ValueError, match="precision"):
         types.decimal32("amount", 10)
-    with pytest.raises(ValueError, match="at least 1 byte"):
+    with pytest.raises(ValueError, match="at least one byte"):
         types.fixed_ascii("narrow", 0)
+    with pytest.raises(ValueError, match="at least one byte"):
+        types.fixed_size_binary("narrow", 0)
+    with pytest.raises(ValueError, match="fixed_string"):
+        types.string("narrow", layout="fixed_string")
+    with pytest.raises(TypeError, match="not both"):
+        types.string("narrow", fixed=4, max=8)
+    with pytest.raises(TypeError, match="not both"):
+        types.bytes("narrow", fixed=4, max=8)
     with pytest.raises(ValueError, match="run_ends"):
         types.run_end_encoded(
             "encoded",
@@ -282,4 +316,4 @@ def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
     assert str(dictionary.dtype) == "dictionary(int64,utf8)"
     assert mapping.dtype.id == "map"
     entries = mapping.dtype[0].dtype
-    assert [field.dtype.id for field in entries] == ["utf8", "int16"]
+    assert [field.dtype.id for field in entries] == ["string", "int16"]

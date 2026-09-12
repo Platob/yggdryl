@@ -45,7 +45,7 @@ pub(crate) fn typed() -> (Scalar, Field) {
                 },
                 false,
             ),
-            Field::new("payload", DataType::Binary, false),
+            Field::new("payload", DataType::binary(), false),
         ])
         .unwrap(),
         false,
