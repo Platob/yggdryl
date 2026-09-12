@@ -280,18 +280,25 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. }
-            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Currency => self.add_fixed_rows(rows, 3)?,
-            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Isin => self.add_fixed_rows(rows, 12)?,
-            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
-            DataType::State => self.add_fixed_rows(rows, 10)?,
-            DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
-            // A fixed ASCII column charges the width it stores, whatever it is.
-            DataType::FixedAscii(width) => {
-                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
+            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            // A fixed ASCII column charges the width it stores, and a
+            // registered code is that same storage at the width its standard
+            // fixes. The variants stay spelled out so this match keeps
+            // refusing to compile when a datatype is added; the number they
+            // charge is read from `ascii_width`, which owns it, rather than
+            // restated here.
+            DataType::FixedAscii(_)
+            | DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Isin
+            | DataType::Side
+            | DataType::MsgDirection
+            | DataType::State
+            | DataType::TimeInForce => {
+                let width = dtype.ascii_width().unwrap_or_default();
+                self.add_fixed_rows(rows, usize::try_from(width).unwrap_or(0))?;
             }
             DataType::Int64
             | DataType::UInt64
@@ -396,18 +403,25 @@ impl MaterializationBudget {
             | DataType::Date32
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
-            | DataType::Decimal32 { .. }
-            | DataType::Mic => self.add_fixed_rows(rows, 4)?,
-            DataType::Country => self.add_fixed_rows(rows, 2)?,
-            DataType::Currency => self.add_fixed_rows(rows, 3)?,
-            DataType::Cfi => self.add_fixed_rows(rows, 6)?,
-            DataType::Isin => self.add_fixed_rows(rows, 12)?,
-            DataType::Side | DataType::MsgDirection => self.add_fixed_rows(rows, 4)?,
-            DataType::State => self.add_fixed_rows(rows, 10)?,
-            DataType::TimeInForce => self.add_fixed_rows(rows, 8)?,
-            // A fixed ASCII column charges the width it stores, whatever it is.
-            DataType::FixedAscii(width) => {
-                self.add_fixed_rows(rows, usize::try_from(*width).unwrap_or(0))?;
+            | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
+            // A fixed ASCII column charges the width it stores, and a
+            // registered code is that same storage at the width its standard
+            // fixes. The variants stay spelled out so this match keeps
+            // refusing to compile when a datatype is added; the number they
+            // charge is read from `ascii_width`, which owns it, rather than
+            // restated here.
+            DataType::FixedAscii(_)
+            | DataType::Country
+            | DataType::Currency
+            | DataType::Mic
+            | DataType::Cfi
+            | DataType::Isin
+            | DataType::Side
+            | DataType::MsgDirection
+            | DataType::State
+            | DataType::TimeInForce => {
+                let width = dtype.ascii_width().unwrap_or_default();
+                self.add_fixed_rows(rows, usize::try_from(width).unwrap_or(0))?;
             }
             DataType::Int64
             | DataType::UInt64

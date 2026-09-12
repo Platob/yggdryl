@@ -24,15 +24,12 @@ fn text(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-/// Coded datatypes with their fixed widths and published vocabulary.
-const CODED: [(&str, DataType, i32); 2] = [
-    ("side", DataType::Side, 4),
-    ("msgdirection", DataType::MsgDirection, 4),
-];
-
 #[test]
 fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
-    for (name, dtype, width) in &CODED {
+    // Over the family's own listing, not a copy of two of its members: a code
+    // added to `DataType::CODES` is held to every invariant here without being
+    // named again, which is the only way a wildcard arm gets caught.
+    for (name, dtype, width) in DataType::CODES {
         // Naming: one canonical spelling, and the grammar round-trips it.
         assert_eq!(dtype.to_string(), *name, "{name}");
         assert_eq!(DataType::from_str(name).unwrap(), *dtype, "{name}");
@@ -67,10 +64,27 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         assert!(!dtype.is_nested(), "{name}");
         assert!(!dtype.id().is_parameterized(), "{name}");
 
-        // Default: it answers one rather than falling through to one.
-        let default = dtype.default_value().unwrap();
-        assert!(!default.is_null(), "{name}");
-        dtype.scalar(default.clone()).unwrap();
+        // Default: a code defaults to the empty text its ASCII storage does,
+        // and answers it as its own scalar. The two codes whose value door
+        // gates the space rather than holding it - `isin`, closed by a check
+        // digit, and `state`, which only its own vocabulary spells - have no
+        // neutral member, so they refuse rather than answer a value no
+        // registry issued. This pins which of the two each code does, and
+        // names the refusal so it stays a stated exception.
+        match dtype.default_value() {
+            Ok(default) => {
+                assert!(!default.is_null(), "{name}");
+                assert_eq!(default.as_str(), Some(""), "{name}");
+                dtype.scalar(default.clone()).unwrap();
+            }
+            Err(error) => {
+                assert!(
+                    matches!(dtype, DataType::Isin | DataType::State),
+                    "{name} answered no default: {error}"
+                );
+                assert!(error.to_string().contains(*name), "{error}");
+            }
+        }
 
         // Serde: the serialized shape is the canonical spelling, and it
         // round-trips.
@@ -88,13 +102,23 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         let arrow = field.clone().into_arrow().unwrap();
         assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
 
-        // Merge and compatibility: with itself is itself, and a foreign
-        // datatype refuses naming both.
+        // Merge and compatibility: with itself is itself.
         assert_eq!(dtype.merge_with(dtype, false).unwrap(), *dtype, "{name}");
-        let refused = dtype.merge_with(&DataType::Int64, false).unwrap_err();
+        // A scalar that has a text form meets a code as the text both fit,
+        // exactly as it meets `ascii(n)` - a code is that same storage under
+        // a name, and `side` and `msgdirection` used to refuse here only
+        // because they were the two the text ranking had been left out of.
+        assert_eq!(
+            dtype.merge_with(&DataType::Int64, false).unwrap(),
+            DataType::Utf8,
+            "{name}"
+        );
+        // A datatype with no text form refuses, naming both.
+        let nested = DataType::list(DataType::Int64.nullable_field("item"));
+        let refused = dtype.merge_with(&nested, false).unwrap_err();
         let message = refused.to_string();
         assert!(message.contains(name), "{message}");
-        assert!(message.contains("int64"), "{message}");
+        assert!(message.contains("list"), "{message}");
     }
 }
 
@@ -468,4 +492,97 @@ fn a_dictionary_encoded_code_keeps_its_identity_across_arrow() {
         Field::from_arrow(&plain.clone().into_arrow().unwrap()).unwrap(),
         plain
     );
+}
+
+#[test]
+fn every_registered_code_ingests_text_at_the_width_its_standard_fixes() {
+    // The cast planner used to name five codes where the family has nine.
+    // `side`, `msgdirection`, `state` and `timeinforce` fell past that arm to
+    // the kernel, which cast text straight to fixed binary without padding it
+    // and answered Arrow's own "byte slice does not have the same length as
+    // FixedSizeBinaryBuilder value lengths" - not a refusal naming the
+    // datatype, and not a column. The plan now asks `is_code`, so a code
+    // added to the listing is planned without being named again here.
+    let values = [
+        (DataType::Country, "FR"),
+        (DataType::Currency, "USD"),
+        (DataType::Mic, "XPAR"),
+        (DataType::Cfi, "ESVUFR"),
+        (DataType::Isin, "US0378331005"),
+        (DataType::Side, "1"),
+        (DataType::MsgDirection, "SENT"),
+        (DataType::State, "0"),
+        (DataType::TimeInForce, "GTC"),
+    ];
+    // Every code the family registers is exercised, not a subset of it, and
+    // each one named here is one the listing holds.
+    assert_eq!(values.len(), DataType::CODES.len());
+    for (dtype, _) in &values {
+        assert!(
+            DataType::CODES.iter().any(|(_, held, _)| held == dtype),
+            "{dtype} is not a registered code"
+        );
+    }
+
+    for (dtype, value) in values {
+        let width = dtype.ascii_width().unwrap();
+        let field = dtype.clone().required_field("c");
+        // A column ingest validates the ASCII contract at the code's width
+        // and pads; the bytes it stores are the bytes the source held.
+        let mut padded = value.as_bytes().to_vec();
+        padded.resize(width as usize, 0);
+
+        // From text, which is the path that was broken: one fixed binary
+        // column, padded to the code's own width.
+        let ingested = field
+            .cast_arrow_array(text(&[value]), ArrowCastOptions::new().with_safe(false))
+            .unwrap_or_else(|error| panic!("{dtype} did not ingest text: {error}"));
+        assert_eq!(
+            ingested.data_type(),
+            &ArrowDataType::FixedSizeBinary(width),
+            "{dtype}"
+        );
+        let bytes = ingested
+            .as_any()
+            .downcast_ref::<FixedSizeBinaryArray>()
+            .unwrap();
+        assert_eq!(bytes.value(0), padded.as_slice(), "{dtype}");
+
+        // And from the column's own storage, which must not re-pad or refuse.
+        let again = field
+            .cast_arrow_array(
+                Arc::clone(&ingested),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_or_else(|error| panic!("{dtype} did not ingest its own bytes: {error}"));
+        assert_eq!(
+            again
+                .as_any()
+                .downcast_ref::<FixedSizeBinaryArray>()
+                .unwrap()
+                .value(0),
+            padded.as_slice(),
+            "{dtype}"
+        );
+
+        // A value past the width is refused at the code's own width, naming
+        // the row it was in - one refusal shape for all nine, where four of
+        // them used to answer Arrow's builder complaint instead.
+        let over = "X".repeat(width as usize + 1);
+        let refused = field
+            .cast_arrow_array(
+                text(&[over.as_str()]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refused.contains(&format!(
+                "expected ASCII text of at most {width} bytes, got {} bytes",
+                over.len()
+            )),
+            "{dtype}: {refused}"
+        );
+        assert!(refused.contains("row 0 of column c"), "{dtype}: {refused}");
+    }
 }

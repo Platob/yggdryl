@@ -58,35 +58,32 @@ pub(super) fn scalar_text(value: &Scalar) -> SmolStr {
 /// column gets counts but no bounds. A missing statistic costs a planner one
 /// file read; a wrong one costs correctness.
 pub(super) const fn is_portable(dtype: &DataType) -> bool {
-    matches!(
-        dtype,
-        DataType::Boolean
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::Float32
-            | DataType::Float64
-            | DataType::Date32
-            | DataType::Time64(TimeUnit::Microsecond)
-            | DataType::DateTime64 {
-                unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
-                ..
-            }
-            | DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
-            | DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
-            | DataType::Uuid
-            | DataType::Binary
-            | DataType::LargeBinary
-            | DataType::BinaryView
-            | DataType::FixedSizeBinary(_)
-    )
+    // Every ASCII storage is portable, because Iceberg has `string` and an
+    // ASCII value is text: the variable one, every width, and all nine
+    // registered codes. `is_ascii` is what says which those are.
+    dtype.is_ascii()
+        || matches!(
+            dtype,
+            DataType::Boolean
+                | DataType::Int32
+                | DataType::Int64
+                | DataType::Float32
+                | DataType::Float64
+                | DataType::Date32
+                | DataType::Time64(TimeUnit::Microsecond)
+                | DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond | TimeUnit::Nanosecond,
+                    ..
+                }
+                | DataType::Utf8
+                | DataType::LargeUtf8
+                | DataType::Utf8View
+                | DataType::Uuid
+                | DataType::Binary
+                | DataType::LargeBinary
+                | DataType::BinaryView
+                | DataType::FixedSizeBinary(_)
+        )
 }
 
 /// Encode one scalar as the single value a manifest bound carries.
@@ -125,16 +122,11 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         } => OfficialDatum::timestamptz_nanos(count(value)?),
         // A bound over an ASCII column is a string bound: the value is the
         // trimmed text.
-        DataType::Utf8
-        | DataType::LargeUtf8
-        | DataType::Utf8View
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin => OfficialDatum::string(value.as_str()?),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
+            OfficialDatum::string(value.as_str()?)
+        }
+        // An ASCII storage is text too, at every width and under every code.
+        dtype if dtype.is_ascii() => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
         DataType::Uuid => {
@@ -193,18 +185,12 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
             Scalar::from(crate::Float64::from_f64((*value).into_inner()))
         }
         (
-            DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
-            | DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin,
+            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View,
             OfficialPrimitiveLiteral::String(value),
         ) => Scalar::from(value.as_str()),
+        (dtype, OfficialPrimitiveLiteral::String(value)) if dtype.is_ascii() => {
+            Scalar::from(value.as_str())
+        }
         (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
             Scalar::from(crate::types::uuid_text(&value.to_be_bytes()))
         }
@@ -251,16 +237,8 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
             unit: TimeUnit::Nanosecond,
             ..
         } if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
-        DataType::Utf8
-        | DataType::LargeUtf8
-        | DataType::Utf8View
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin => OfficialPrimitiveType::String,
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => OfficialPrimitiveType::String,
+        dtype if dtype.is_ascii() => OfficialPrimitiveType::String,
         DataType::Uuid => OfficialPrimitiveType::Uuid,
         DataType::Binary | DataType::LargeBinary | DataType::BinaryView => {
             OfficialPrimitiveType::Binary

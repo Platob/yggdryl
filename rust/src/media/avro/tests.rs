@@ -1992,34 +1992,38 @@ mod records {
     fn a_code_column_is_an_avro_string_and_a_code_key_is_spellable() {
         // Avro has no fixed-width text, so a code spells `string` with no
         // logical type - the contrast with a UUID, which annotates `uuid`.
-        let root = DataType::from_fields([
-            DataType::Country.required_field("iso"),
-            DataType::Currency.required_field("ccy"),
-            DataType::Mic.required_field("venue"),
-            DataType::Cfi.required_field("classification"),
-            // A map key gate that nothing else in the tree exercises for a
-            // non-Utf8 key.
+        // Every registered code, read from the one listing: this used to name
+        // four of them, and `side`, `state`, `timeinforce` and `msgdirection`
+        // were refused as unspellable by a column spelling that had drifted
+        // behind the family.
+        let mut fields: Vec<_> = DataType::CODES
+            .iter()
+            .map(|(name, dtype, _)| dtype.clone().required_field(*name))
+            .collect();
+        // A map key gate that nothing else in the tree exercises for a
+        // non-Utf8 key.
+        fields.push(
             DataType::map_of(DataType::Mic, DataType::Int64, true)
                 .unwrap()
                 .required_field("by_venue"),
-        ])
-        .unwrap()
-        .required_field("row");
+        );
+        let codes = DataType::CODES.len();
+        let root = DataType::from_fields(fields).unwrap().required_field("row");
         let schema = crate::media::avro::arrow::schema_json_from_field(&root).unwrap();
         let fields = schema
             .get_key_str("fields")
             .and_then(crate::Scalar::as_sequence)
             .unwrap();
 
-        for (index, field) in fields.iter().take(4).enumerate() {
+        for ((name, ..), field) in DataType::CODES.iter().zip(fields.iter()) {
             assert_eq!(
                 field.get_key_str("type").and_then(crate::Scalar::as_str),
                 Some("string"),
-                "{index}"
+                "{name}"
             );
         }
         assert_eq!(
-            fields[4]
+            fields[codes]
                 .get_key_str("type")
                 .and_then(|value| value.get_key_str("type"))
                 .and_then(|value| value.as_str().map(str::to_owned)),

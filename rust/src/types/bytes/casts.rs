@@ -103,14 +103,15 @@ pub(crate) fn projected_byte_len(
         DataType::Binary | DataType::Ascii => downcast::<BinaryArray>(array)?.value(index).len(),
         DataType::LargeBinary => downcast::<LargeBinaryArray>(array)?.value(index).len(),
         DataType::BinaryView => downcast::<BinaryViewArray>(array)?.value(index).len(),
-        DataType::FixedSizeBinary(_)
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Uuid => downcast::<FixedSizeBinaryArray>(array)?.value(index).len(),
+        // Every fixed ASCII storage is one fixed binary column, the widths and
+        // all nine codes alike, so the width accessor is what decides rather
+        // than a list of variants that has to be extended with each code.
+        dtype
+            if dtype.ascii_width().is_some()
+                || matches!(dtype, DataType::FixedSizeBinary(_) | DataType::Uuid) =>
+        {
+            downcast::<FixedSizeBinaryArray>(array)?.value(index).len()
+        }
         DataType::Utf8 => downcast::<StringArray>(array)?.value(index).len(),
         DataType::LargeUtf8 => downcast::<LargeStringArray>(array)?.value(index).len(),
         DataType::Utf8View => downcast::<StringViewArray>(array)?.value(index).len(),
@@ -261,14 +262,12 @@ pub(crate) fn byte_array_storage_ptr_eq(
         DataType::LargeBinary => shared!(LargeBinaryArray),
         DataType::Utf8 => shared!(StringArray),
         DataType::LargeUtf8 => shared!(LargeStringArray),
-        DataType::FixedSizeBinary(_)
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin
-        | DataType::Uuid => {
+        // As above: one fixed binary column, whether the width is a number in
+        // the datatype or the one a code's standard fixes.
+        dtype
+            if dtype.ascii_width().is_some()
+                || matches!(dtype, DataType::FixedSizeBinary(_) | DataType::Uuid) =>
+        {
             let left = downcast::<FixedSizeBinaryArray>(left)?;
             let right = downcast::<FixedSizeBinaryArray>(right)?;
             byte_slices_ptr_eq(left.value_data(), right.value_data())

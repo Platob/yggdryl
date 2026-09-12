@@ -415,6 +415,16 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "msgdirection",
             Some(PyString::new(py, value.as_str()).into_any().unbind()),
         ),
+        Scalar::Ascii(AsciiFamily::State(value)) => tagged_pickle_state(
+            py,
+            "state",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::Ascii(AsciiFamily::TimeInForce(value)) => tagged_pickle_state(
+            py,
+            "timeinforce",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
         Scalar::Uuid(value) => tagged_pickle_state(
             py,
             "uuid",
@@ -719,6 +729,12 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "msgdirection" => yggdryl::types::MsgDirection::new(payload()?.extract::<String>()?)
             .map(|value| Scalar::Ascii(AsciiFamily::MsgDirection(value)))
+            .map_err(value_error),
+        "state" => yggdryl::types::State::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Ascii(AsciiFamily::State(value)))
+            .map_err(value_error),
+        "timeinforce" => yggdryl::types::TimeInForce::new(payload()?.extract::<String>()?)
+            .map(|value| Scalar::Ascii(AsciiFamily::TimeInForce(value)))
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;

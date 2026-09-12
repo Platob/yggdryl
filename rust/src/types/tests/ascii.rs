@@ -254,17 +254,15 @@ fn ordering_and_hashing_are_consistent_for_every_width() {
         DataType::FixedAscii(4).stable_hash(),
         DataType::FixedAscii(8).stable_hash()
     );
-    // A code and the width that holds it are two identities over one
-    // storage, and the hash is the only thing telling three of the four
-    // pairs apart at all.
-    for (code, width) in [
-        (DataType::Country, DataType::FixedAscii(2)),
-        (DataType::Currency, DataType::FixedAscii(3)),
-        (DataType::Mic, DataType::FixedAscii(4)),
-        (DataType::Cfi, DataType::FixedAscii(8)),
-    ] {
-        assert_ne!(code.stable_hash(), width.stable_hash(), "{code}");
-        assert_eq!(code.stable_hash(), code.clone().stable_hash(), "{code}");
+    // A code and the width that actually holds it are two identities over one
+    // storage - the same bytes, the same length - and the hash is the only
+    // thing telling them apart. Every registered code is checked against its
+    // own width, read from the listing rather than paired by hand.
+    for (name, code, width) in DataType::CODES {
+        let storage = DataType::FixedAscii(*width);
+        assert_eq!(code.ascii_width(), Some(*width), "{name}");
+        assert_ne!(code.stable_hash(), storage.stable_hash(), "{name}");
+        assert_eq!(code.stable_hash(), code.clone().stable_hash(), "{name}");
     }
 }
 

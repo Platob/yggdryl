@@ -164,6 +164,11 @@ test('a registered code is its own datatype over its standard width', () => {
     ['cfi', 6],
     // Twelve: two letters of prefix, nine of national number, one check digit.
     ['isin', 12],
+    // The four FIX vocabularies take the width their longest member needs.
+    ['side', 4],
+    ['msgdirection', 4],
+    ['state', 10],
+    ['timeinforce', 8],
   ]) {
     const dtype = new DataType(name)
     assert.equal(dtype.id, name)

@@ -386,6 +386,22 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("duration32", (1, "ms", "NAIVE")),
         ("duration64", (1, "ns", "NAIVE")),
     ]
+    # Every registered code, because "every native scalar variant" is what this
+    # test claims: `state` and `timeinforce` used to raise "unsupported Scalar
+    # representation in pickle state" here, being the two the pickle listing
+    # had been left out of. Kept after the list above so the positional
+    # references into it below stay pinned to what they name.
+    code_states: list[tuple[object, ...]] = [
+        ("country", "FR"),
+        ("currency", "USD"),
+        ("mic", "XPAR"),
+        ("cfi", "ESVUFR"),
+        ("isin", "US0378331005"),
+        ("side", "1"),
+        ("msgdirection", "SENT"),
+        ("state", "20NEW"),
+        ("timeinforce", "GTC"),
+    ]
     record_state = (
         "record",
         (
@@ -400,7 +416,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
             (("i16", 7), ("sequence", (("f32", 0x3FC0_0000), ("null",)))),
         ),
     )
-    states = [*scalar_states, record_state, mapping_state]
+    states = [*scalar_states, *code_states, record_state, mapping_state]
 
     for state in states:
         value = Scalar._from_pickle(state)

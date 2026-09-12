@@ -204,16 +204,10 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Float64 => plain("double"),
         // An ASCII width, and a code over one, is text on the wire; the cast
         // plan trims the padding before the encoder sees a value.
-        DataType::Utf8
-        | DataType::LargeUtf8
-        | DataType::Utf8View
-        | DataType::Ascii
-        | DataType::FixedAscii(_)
-        | DataType::Country
-        | DataType::Currency
-        | DataType::Mic
-        | DataType::Cfi
-        | DataType::Isin => plain("string"),
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => plain("string"),
+        // An ASCII storage is Avro's `string` at every width and under every
+        // code, which is what `is_ascii` answers.
+        dtype if dtype.is_ascii() => plain("string"),
         // Avro's `uuid` annotates a string with the hyphenated spelling,
         // which is what a UUID value already is.
         DataType::Uuid => logical("string", "uuid"),
@@ -280,19 +274,14 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             let entries = map.entries().fields();
             let key = entries.first().ok_or_else(|| unspellable(dtype))?;
             let value = entries.get(1).ok_or_else(|| unspellable(dtype))?;
-            if !matches!(
-                key.dtype(),
-                DataType::Utf8
-                    | DataType::LargeUtf8
-                    | DataType::Utf8View
-                    | DataType::Ascii
-                    | DataType::FixedAscii(_)
-                    | DataType::Country
-                    | DataType::Currency
-                    | DataType::Mic
-                    | DataType::Cfi
-                    | DataType::Isin
-            ) {
+            // Avro map keys are strings, so the key has to be one: UTF-8, or
+            // an ASCII storage at any width and under any code.
+            let key_is_text = key.dtype().is_ascii()
+                || matches!(
+                    key.dtype(),
+                    DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
+                );
+            if !key_is_text {
                 return Err(unspellable(dtype));
             }
             let mut values = node_json(value.dtype(), value.name(), counter)?;

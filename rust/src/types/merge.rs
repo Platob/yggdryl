@@ -45,7 +45,6 @@ use smol_str::format_smolstr;
 use crate::{DataType, Error, Field, Result};
 use crate::{TimeUnit, UnionMode};
 
-use super::string::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH};
 use super::uuid::UUID_BYTES;
 
 /// Whether a pair with no shared family may meet by being re-encoded.
@@ -558,13 +557,15 @@ enum TextRank {
 /// [`merge_text`] is what says when the code identity survives the rank.
 fn text_rank(dtype: &DataType) -> Option<TextRank> {
     match dtype {
-        DataType::FixedAscii(width) => Some(TextRank::Fixed(*width)),
-        DataType::Country => Some(TextRank::Fixed(COUNTRY_WIDTH as i32)),
-        DataType::Currency => Some(TextRank::Fixed(CURRENCY_WIDTH as i32)),
-        DataType::Mic => Some(TextRank::Fixed(MIC_WIDTH as i32)),
-        DataType::Cfi => Some(TextRank::Fixed(CFI_WIDTH as i32)),
-        DataType::Isin => Some(TextRank::Fixed(ISIN_WIDTH as i32)),
         DataType::Ascii => Some(TextRank::Ascii),
+        // Every fixed ASCII storage ranks as the width it stores, whether the
+        // number is in the datatype or the one a code's standard fixes. This
+        // named five of the nine codes, so `side`, `msgdirection`, `state` and
+        // `timeinforce` ranked as nothing and a schema carrying one would not
+        // widen against text at all.
+        dtype if dtype.ascii_width().is_some() => {
+            Some(TextRank::Fixed(dtype.ascii_width().unwrap_or_default()))
+        }
         DataType::Utf8 => Some(TextRank::Utf8),
         DataType::Utf8View => Some(TextRank::Utf8View),
         DataType::LargeUtf8 => Some(TextRank::LargeUtf8),

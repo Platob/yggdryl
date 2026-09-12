@@ -185,24 +185,18 @@ impl PrimitiveType {
                 }
             }
             DataType::Null => Self::Unknown,
-            // An ASCII width is text; the padding is storage, never a value.
-            DataType::Utf8
-            | DataType::LargeUtf8
-            | DataType::Utf8View
-            | DataType::Ascii
-            | DataType::FixedAscii(_)
-            // Iceberg has `string` and `fixed[n]` and nothing that carries a
-            // code's identity, so a code writes as the text it is.
-            | DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin
             // A URL orders by its canonical text, so writing it as text loses
             // nothing but the name of the type - unlike `version`, whose
             // numeric ordering text cannot carry, and which Iceberg therefore
             // still refuses.
-            | DataType::Url => Self::String,
+            DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View | DataType::Url => {
+                Self::String
+            }
+            // An ASCII width is text; the padding is storage, never a value.
+            // Iceberg has `string` and `fixed[n]` and nothing that carries a
+            // code's identity, so a code writes as the text it is - every
+            // code, asked through the accessor that knows which they are.
+            dtype if dtype.is_ascii() => Self::String,
             DataType::Uuid => Self::Uuid,
             DataType::FixedSizeBinary(width) => Self::Fixed(*width),
             DataType::Binary | DataType::LargeBinary | DataType::BinaryView => Self::Binary,

@@ -52,7 +52,10 @@ use crate::types::temporal::casts::{
 };
 use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
 use crate::types::version::casts::{ingest_version_array, is_text_storage};
-use crate::types::{CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, code_refusal};
+use crate::types::{
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, DIRECTION_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH,
+    STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
+};
 use crate::types::{RecognizedExtension, recognized_arrow_extension};
 use crate::{DataType, Field, Scalar};
 use arrow_array::{Array, ArrayRef, RecordBatch, Scalar as ArrowScalar, StructArray};
@@ -489,12 +492,9 @@ impl ArrayCastPlan {
             ),
             // The same rule for a code, over its own extension: a currency
             // column written as a currency is already validated, and one
-            // written as three anonymous bytes is not.
-            DataType::Country
-            | DataType::Currency
-            | DataType::Mic
-            | DataType::Cfi
-            | DataType::Isin => !matches!(
+            // written as three anonymous bytes is not. Every code asks this,
+            // through the accessor that says which datatypes are codes.
+            dtype if dtype.is_code() => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Code(source)) if source == field.dtype()
             ),
@@ -633,15 +633,13 @@ impl ArrayCastPlan {
                 }
             }
             // A code takes the same two sources as a width, and refuses the
-            // same third, at the width its own type fixes.
-            (
-                DataType::Country
-                | DataType::Currency
-                | DataType::Mic
-                | DataType::Cfi
-                | DataType::Isin,
-                source,
-            ) => {
+            // same third, at the width its own type fixes. Every registered
+            // code, not the five this arm used to name: `side`, `state`,
+            // `timeinforce` and `msgdirection` fell through to the kernel,
+            // which cast text to fixed binary without padding it and answered
+            // Arrow's own "byte slice does not have the same length" instead
+            // of a refusal naming the datatype.
+            (dtype, source) if dtype.is_code() => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
@@ -1166,6 +1164,34 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::Isin => ingest_code_array::<ISIN_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Side => ingest_code_array::<SIDE_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::MsgDirection => ingest_code_array::<DIRECTION_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::State => ingest_code_array::<STATE_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::TimeInForce => ingest_code_array::<TIMEINFORCE_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

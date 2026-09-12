@@ -1,11 +1,15 @@
 //! The registered codes: the identifiers of a trade, each its own datatype.
 //!
 //! A country, a currency, a market identifier and a CFI classification are
-//! not four names for an ASCII width. Each is a distinct logical type over a
-//! published registry, each has exactly one storage width, and a column of
-//! one is never a column of another however alike their bytes look. So each
-//! is a [`DataType`] variant of its own, with its own Arrow extension name,
-//! its own typed field and scalar, and its own fixed-width cast path.
+//! not four names for an ASCII width, and neither are the securities number,
+//! the side of a trade, a captured line's direction, a thing's state and how
+//! long an order stands. Each is a distinct logical type over a published
+//! registry, each has exactly one storage width, and a column of one is never
+//! a column of another however alike their bytes look. So each is a
+//! [`DataType`] variant of its own, with its own Arrow extension name, its own
+//! typed field and scalar, and its own fixed-width cast path. [`DataType::CODES`]
+//! is the listing of them, and [`DataType::is_code`] is what every path that
+//! treats them alike asks instead of naming nine variants again.
 //!
 //! The value contract is the ASCII contract, unchanged and stated once in
 //! [`the ASCII family`]: a value is ASCII text - every byte at most `0x7F` - of
@@ -25,9 +29,11 @@
 //!
 //! The widths are the ones the standards fix: two bytes for ISO 3166-1's
 //! country code, three for ISO 4217's currency, four for ISO 10383's market
-//! identifier, and six for ISO 10962's classification. Six is a width no
-//! ASCII variant has, which is the point: `cfi` stores the six bytes it is
-//! rather than the eight the next width up would pad it to.
+//! identifier, six for ISO 10962's classification and twelve for ISO 6166's
+//! securities number; the four FIX vocabularies take the width their longest
+//! member needs. Six is a width no ASCII variant has, which is the point:
+//! `cfi` stores the six bytes it is rather than the eight the next width up
+//! would pad it to.
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -106,7 +112,7 @@ impl DataType {
     /// Every registered code, with its canonical name and storage width.
     ///
     /// The one listing: the parser, the Arrow extension table and every
-    /// binding read the codes from here rather than repeating four arms.
+    /// binding read the codes from here rather than restating nine arms.
     pub const CODES: &'static [(&'static str, DataType, i32)] = &[
         ("country", DataType::Country, COUNTRY_WIDTH as i32),
         ("currency", DataType::Currency, CURRENCY_WIDTH as i32),

@@ -951,11 +951,11 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 Err(error) => Err(error),
             }
         }
-        DataType::Ascii | DataType::FixedAscii(_) => canonical(value.clone()),
-        // A code takes the same tier at the width its own type fixes.
-        DataType::Country | DataType::Currency | DataType::Mic | DataType::Cfi | DataType::Isin => {
-            canonical(value.clone())
-        }
+        // A code takes the same tier as a width, at the width its own type
+        // fixes, so one arm answers for every ASCII storage rather than
+        // naming five of the nine codes and letting the rest fall through to
+        // the text tier below.
+        dtype if dtype.is_ascii() => canonical(value.clone()),
         DataType::Version => match value {
             Scalar::Version(_) | Scalar::Text(_) => canonical(value.clone()),
             _ => refuse("version text"),
