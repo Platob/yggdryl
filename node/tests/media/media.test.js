@@ -21,7 +21,6 @@ const knownMimeTypes = Object.freeze({
   PUFFIN: 'application/vnd.apache.puffin',
   PLAIN_TEXT: 'text/plain',
   ULLINK: 'text/ullink',
-  ULCONFIG: 'text/ulconfig',
   FIX: 'text/fix',
   FIXUL: 'text/fixul',
   FIXML: 'text/fixml',
@@ -71,7 +70,7 @@ const knownMimeTypes = Object.freeze({
 })
 
 test('MimeType exposes the complete immutable known vocabulary and default', () => {
-  assert.equal(Object.keys(knownMimeTypes).length, 62)
+  assert.equal(Object.keys(knownMimeTypes).length, 61)
   assert.ok(new MimeType().equals(MimeType.OCTET_STREAM))
   const values = []
   for (const [name, canonical] of Object.entries(knownMimeTypes)) {
@@ -84,6 +83,12 @@ test('MimeType exposes the complete immutable known vocabulary and default', () 
     values.push(value.toString())
   }
   assert.equal(new Set(values).size, values.length)
+  // `text/ulconfig` is deleted: a bridge configuration document is
+  // `application/json`, which is what it is, and the constant is gone with
+  // the name. The old spelling still parses, as any stranger's name does,
+  // and this crate does not know it.
+  assert.equal('ULCONFIG' in MimeType, false)
+  assert.equal(MimeType.fromString('text/ulconfig').isKnown(), false)
   assert.equal('_known' in MimeType, false)
   assert.equal('_fromParts' in MediaType, false)
   assert.equal('_fromExtensions' in MediaType, false)

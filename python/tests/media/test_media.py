@@ -25,7 +25,6 @@ KNOWN_MIME_TYPES = {
     "PUFFIN": "application/vnd.apache.puffin",
     "PLAIN_TEXT": "text/plain",
     "ULLINK": "text/ullink",
-    "ULCONFIG": "text/ulconfig",
     "FIX": "text/fix",
     "FIXUL": "text/fixul",
     "FIXML": "text/fixml",
@@ -76,7 +75,7 @@ KNOWN_MIME_TYPES = {
 
 
 def test_mime_type_complete_known_constants_and_default() -> None:
-    assert len(KNOWN_MIME_TYPES) == 62
+    assert len(KNOWN_MIME_TYPES) == 61
     assert MimeType() == MimeType.OCTET_STREAM
     values = []
     for name, canonical in KNOWN_MIME_TYPES.items():
@@ -87,6 +86,12 @@ def test_mime_type_complete_known_constants_and_default() -> None:
         assert MimeType.from_str(canonical) == value
         values.append(value)
     assert len(set(values)) == len(values)
+    # `text/ulconfig` is deleted: a bridge configuration document is
+    # `application/json`, which is what it is, and the constant is gone with
+    # the name. The old spelling still parses, as any stranger's name does,
+    # and this crate does not know it.
+    assert not hasattr(MimeType, "ULCONFIG")
+    assert not MimeType.from_str("text/ulconfig").is_known()
 
 
 def test_io_identity_is_derived_from_the_unencoded_mime_value() -> None:

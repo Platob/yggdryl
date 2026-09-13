@@ -1247,3 +1247,61 @@ marked `#8=`/`#10=` inside a bridge row opening and closing nothing; a prose
 line answering nothing through every door; the four doors refusing a second
 frame by byte; the corpus lines whose `.messages` moves from 1 to 0, named in
 the regeneration commit; `one_line` renamed to what it asserts and kept.
+
+## 17. The envelope is transport, and a body FIX cannot read is silence
+
+**Rule.** A configuration message is the plugin's attributes and nothing the
+Jolokia answer wrapped them in. `MBean`, `Operation`, `Status` and `Error` -
+tags 20001 to 20004 - are deleted with the four constants naming them; the
+ObjectName a read answered for stays where it always belonged, on the
+`SessionInterface` attribute (20010). The four tags are retired rather than
+reused, exactly as decision 14 retired a discriminant: a capture written last
+year holds `MBean` on 20001, and a dictionary that gave 20001 to something
+else would read that column as the new field rather than as the old one.
+`ULBRIDGE_TAG_MIN` therefore stays 20001 - it is the floor of the range this
+dictionary claims, not the smallest tag it happens to define.
+
+A read that answers no plugin answers no message: an error-only answer, a
+wildcard selecting nothing. Decision 16 gave a row that ability, and this is
+the same fact one layer down - a document that named no configuration states
+none, and the row is silent rather than carrying an envelope with nothing
+inside it.
+
+A JSON body that is not a Jolokia answer - a `request` beside a `value` whose
+ObjectNames name the ULBridge namespace - yields nothing, through every door,
+and refuses nothing: `{"a":1}` is a row's own bytes and the row said nothing
+FIX can read. That is what the codec is for, and being unable to read a body
+is not an error in it, so `parse_ulconfig_line` answers `FixMessages` rather
+than a `Result` of one: the door has no refusal left to spell, and a
+conversion's own is still an item of the iterator. Bytes that are not JSON at
+all are the same silence, because a body this reader cannot read is a body
+that named no configuration however it failed to be one.
+
+`MimeType::ULCONFIG` is deleted with the media type `text/ulconfig`. A JSON
+body is `application/json`, which is what it is; what makes one *this*
+reader's is a shape, and a shape is the codec's to recognize rather than a
+classifier's to name. The codec probes it once, at the offset the namespace
+scan already finds, so the reading costs what the classification cost and
+nothing is looked for twice. `UlPlugin` and `UlPlugins` stay the public
+reading of a document, minus the envelope, until decision 18 renames them.
+
+**Why.** `MBean` and `Operation` are what the transport asked, `Status` and
+`Error` how the asking went; none of them is a fact about the plugin the
+answer carried, and a message that states them makes a column out of the
+question rather than the answer. The ObjectName is different - it names the
+configuration itself - and it was already the `SessionInterface` attribute,
+so the envelope was restating it. The media type went the same way: a
+classifier that answers `text/ulconfig` has parsed the body far enough to
+know it is a Jolokia answer, which is a reading, and the crate already holds
+that reading in one place. `application/json` is what a stranger to this
+bridge sees, and it is true.
+
+**Written in:** `fix/ulbridge.rs`, on `UlPlugin`; `fix/codec.rs`, where a
+document reaches a door; `mime_type.rs`; `docs/fix/capture.md`.
+**Fixtures:** the corpus exchange - its four prose lines yielding nothing
+(decision 16 already), the single read one message carrying no 20001-20004,
+the wildcard read two, the error read none; a bare `{"a":1}` yielding nothing
+through `parse_line`, `parse_text_line`, `parse_ulconfig_line` and the batch
+door, and refusing nothing; a JSON body classifying as `application/json`;
+the byte-for-byte re-emission of a configuration message unchanged, because
+the entries are what arrived and the envelope was never one of them.

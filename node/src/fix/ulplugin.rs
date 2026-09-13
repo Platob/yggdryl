@@ -8,7 +8,7 @@ use super::{JsFixCodec, JsFixMsg};
 use crate::napi_error;
 use crate::text::codec::JsScalar;
 
-/// One selected configuration; its shared source response remains native.
+/// One configuration: the `ObjectName` naming it and the attributes it states.
 #[napi(js_name = "UlPlugin")]
 pub struct JsUlPlugin {
     inner: UlPlugin,
@@ -16,35 +16,40 @@ pub struct JsUlPlugin {
 
 #[napi]
 impl JsUlPlugin {
-    /// Construct from a selected `ObjectName`, attributes, and source response.
-    #[napi(
-        constructor,
-        ts_args_type = "mbean: string | null, attributes: Scalar, envelope: Scalar"
-    )]
-    pub fn new(mbean: Option<String>, attributes: &JsScalar, envelope: &JsScalar) -> Self {
+    /// Construct from the parts a document states: the selected `ObjectName`
+    /// and the attributes.
+    ///
+    /// What the Jolokia exchange wrapped them in is the transport's and no
+    /// part of the configuration.
+    #[napi(constructor, ts_args_type = "mbean: string | null, attributes: Scalar")]
+    pub fn new(mbean: Option<String>, attributes: &JsScalar) -> Self {
         Self {
-            inner: UlPlugin::new(
-                mbean.as_deref(),
-                attributes.inner.clone(),
-                envelope.inner.clone(),
-            ),
+            inner: UlPlugin::new(mbean.as_deref(), attributes.inner.clone()),
         }
     }
 
-    /// Parse and validate a response before returning its lazy configurations.
+    /// Every configuration a body names, lazily.
+    ///
+    /// Bytes that are not a Jolokia answer name none, and naming none is what
+    /// they answer: reading is not refusing, so bytes that are not JSON at all
+    /// iterate empty rather than throwing.
     #[napi]
-    pub fn from_json_bytes(body: Buffer) -> Result<JsUlPlugins> {
-        UlPlugin::from_json_bytes(&body)
-            .map(|inner| JsUlPlugins { inner })
-            .map_err(napi_error)
+    pub fn from_json_bytes(body: Buffer) -> JsUlPlugins {
+        JsUlPlugins {
+            inner: UlPlugin::from_json_bytes(&body),
+        }
     }
 
-    /// Validate a native response and iterate its selected configurations.
+    /// The same, over a document a caller already parsed.
+    ///
+    /// A document that is not a Jolokia answer, an answer that came back
+    /// empty and an error-only answer all name no configuration, which is
+    /// what they answer.
     #[napi]
-    pub fn from_json_scalar(document: &JsScalar) -> Result<JsUlPlugins> {
-        UlPlugin::from_json_scalar(&document.inner)
-            .map(|inner| JsUlPlugins { inner })
-            .map_err(napi_error)
+    pub fn from_json_scalar(document: &JsScalar) -> JsUlPlugins {
+        JsUlPlugins {
+            inner: UlPlugin::from_json_scalar(&document.inner),
+        }
     }
 
     /// Recover one configuration from a flat native message.
@@ -117,13 +122,7 @@ impl JsUlPlugin {
         JsScalar::from_core(self.inner.as_attributes().clone())
     }
 
-    /// Shares the complete source response, which may contain sibling values.
-    #[napi]
-    pub fn as_envelope(&self) -> JsScalar {
-        JsScalar::from_core(self.inner.as_envelope().clone())
-    }
-
-    /// Compare the complete native values.
+    /// Two configurations are equal with the same `ObjectName` and attributes.
     #[napi]
     pub fn equals(&self, other: &JsUlPlugin) -> bool {
         self.inner == other.inner
@@ -144,7 +143,7 @@ impl JsUlPlugin {
     }
 }
 
-/// A lazy iterator of validated native configurations.
+/// A lazy iterator over the configurations a document names.
 #[napi(iterator, js_name = "UlPlugins")]
 pub struct JsUlPlugins {
     inner: UlPlugins,

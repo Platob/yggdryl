@@ -99,7 +99,6 @@ impl JsMimeType {
             "PUFFIN" => CoreMimeType::PUFFIN,
             "PLAIN_TEXT" => CoreMimeType::PLAIN_TEXT,
             "ULLINK" => CoreMimeType::ULLINK,
-            "ULCONFIG" => CoreMimeType::ULCONFIG,
             "FIX" => CoreMimeType::FIX,
             "FIXUL" => CoreMimeType::FIXUL,
             "KEYVALUE" => CoreMimeType::KEYVALUE,

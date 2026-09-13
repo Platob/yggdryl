@@ -217,7 +217,8 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
 /// monitor orders and joins on: the object's URL, the line number in it, the
 /// clock the line was stamped with, the thread that wrote it. None of that is
 /// FIX and all of it leads the row. A bulk configuration produces one output
-/// row per selected MBean, repeating these source values for each message.
+/// row per configuration it named, repeating these source values for each
+/// message, and no row at all where it named none.
 ///
 /// A carried column whose name a FIX column already takes - under the fold
 /// every name here resolves by, so `sessionId` and `sessionid` are one name -

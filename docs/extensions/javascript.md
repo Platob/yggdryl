@@ -1025,9 +1025,12 @@ assert.equal(direction.has('fix:directions'), false)
 and validates a plain object. Resolution and merging are the core's, on the
 [fix](../fix/index.md) pages.
 
-Bulk configuration responses stream one flat message per selected plugin. Each
-message retains its selected MBean and source envelope, with the plugin's
-fields directly addressable on the message. The bridge's fields are members of
+Bulk configuration responses stream one flat message per configuration a
+response named, and none for a response that named none - so an error-only
+answer and a request with no value are silent. Each message retains the
+ObjectName the read named it by, on `SessionInterface`; what the Jolokia
+exchange wrapped it in reaches no column, and the plugin's fields are directly
+addressable on the message. The bridge's fields are members of
 the `ulbridge` dictionary and resolve in the one namespace like any other; the
 document's `State` and `Version` attributes are held under `PluginState` and
 `PluginVersion`, because every registry already holds the crate's own `state`
@@ -1042,15 +1045,24 @@ registry.withUlbridgeFields()
 // The bridge's fields are members of the `ulbridge` dictionary; no codec pin
 // names one, since the dictionary is one namespace.
 assert.deepEqual(registry.dialects(), ['ulbridge'])
-assert.deepEqual(registry.fieldByName('MBean').fix.branches, ['ulbridge'])
+assert.deepEqual(registry.fieldByName('SessionInterface').fix.branches, ['ulbridge'])
+assert.equal(registry.fieldByName('SessionInterface').fix.tag, 20010)
 assert.equal(registry.fieldByName('PluginState').fix.tag, 20019)
 assert.equal(registry.fieldByName('PluginVersion').fix.tag, 20021)
+// 20001 to 20004 held the Jolokia envelope and are retired, not reused.
+for (const retired of [20001, 20002, 20003, 20004]) {
+  assert.equal(registry.getFieldByTag(retired), null)
+}
 const codec = new fix.FixCodec(registry)
+const plugins = 'com.ullink.ulbridge.sessioninterfaces.plugins'
 const document = [
-  { request: { type: 'read', mbean: 'bridge:type=Plugin,name=Orders' },
+  { request: { type: 'read', mbean: `${plugins}:name=Orders,plugin-type=FIX,type=Plugin` },
     status: 200, value: { Name: 'Orders', State: 'Running', Version: '1.2' } },
-  { request: { type: 'read', mbean: 'bridge:type=Plugin,name=Prices' },
+  { request: { type: 'read', mbean: `${plugins}:name=Prices,plugin-type=FIX,type=Plugin` },
     status: 200, value: { Name: 'Prices' } },
+  // An error-only answer names no configuration and states no message.
+  { request: { type: 'read', mbean: `${plugins}:name=Gone,plugin-type=FIX,type=Plugin` },
+    status: 404, error: 'missing' },
 ]
 const messages = codec.parseUlconfigLine(Buffer.from(JSON.stringify(document)))
 assert.ok(messages instanceof fix.FixMessages)
@@ -1067,6 +1079,9 @@ assert.deepEqual(
 assert.equal(messages.next().done, true)
 const selected = fix.UlPlugin.fromJsonScalar(document).next().value
 assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
+// A body that is not a Jolokia answer names no configuration, and answering
+// none is what it answers: reading is not refusing.
+assert.equal(codec.parseUlconfigLine(Buffer.from('{"a":1}')).next().done, true)
 ```
 
 ## Edges

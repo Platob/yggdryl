@@ -2384,7 +2384,6 @@ declare module './index' {
     const PUFFIN: MimeType
     const PLAIN_TEXT: MimeType
     const ULLINK: MimeType
-    const ULCONFIG: MimeType
     const FIX: MimeType
     const FIXUL: MimeType
     const KEYVALUE: MimeType
@@ -2989,7 +2988,7 @@ export interface FixMsgConstructor {
 
 /** One native configuration with ordinary JavaScript scalar intake. */
 export interface UlPluginConstructor {
-  new (mbean: string | null, attributes: unknown, envelope: unknown): UlPlugin
+  new (mbean: string | null, attributes: unknown): UlPlugin
   readonly prototype: UlPlugin
   fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): UlPlugins
   fromJsonScalar(document: unknown): UlPlugins

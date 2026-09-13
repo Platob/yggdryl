@@ -44,7 +44,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .expect("UL fields");
     assert!(
         registry
-            .field(yggdryl::MBEAN_TAG_NAME.0)
+            .field("SessionInterface")
             .expect("the bridge's first field")
             .as_fix()
             .has_branch(yggdryl::ULBRIDGE_DIALECT)
@@ -53,14 +53,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("fix/ulconfig");
     for count in [1, 32, crate::bench_profile::corpus(256, 64)] {
         let document = document(count);
-        assert_eq!(
-            UlPlugin::from_json_scalar(&document).unwrap().count(),
-            count
-        );
+        assert_eq!(UlPlugin::from_json_scalar(&document).count(), count);
         let first = UlPlugin::from_json_scalar(&document)
-            .unwrap()
             .next()
-            .unwrap();
+            .expect("one plugin at least");
         assert!(
             first
                 .into_fixmsg(&codec)
@@ -80,11 +76,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BenchmarkId::new("first", count),
             &document,
             |b, document| {
-                b.iter(|| {
-                    UlPlugin::from_json_scalar(black_box(document))
-                        .expect("valid wildcard response")
-                        .next()
-                });
+                b.iter(|| UlPlugin::from_json_scalar(black_box(document)).next());
             },
         );
         group.throughput(Throughput::Elements(count as u64));
@@ -94,7 +86,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
             |b, document| {
                 b.iter(|| {
                     UlPlugin::from_json_scalar(black_box(document))
-                        .expect("valid wildcard response")
                         .map(black_box)
                         .count()
                 });
@@ -105,9 +96,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             &document,
             |b, document| {
                 b.iter(|| {
-                    for configuration in UlPlugin::from_json_scalar(black_box(document))
-                        .expect("valid wildcard response")
-                    {
+                    for configuration in UlPlugin::from_json_scalar(black_box(document)) {
                         black_box(configuration.into_fixmsg(&codec).expect("flat UL row"));
                     }
                 });

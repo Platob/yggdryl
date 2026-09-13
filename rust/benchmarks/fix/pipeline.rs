@@ -99,7 +99,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     );
     assert!(
         registry
-            .field(yggdryl::MBEAN_TAG_NAME.0)
+            .field("SessionInterface")
             .expect("the bridge's first field")
             .as_fix()
             .has_branch(yggdryl::ULBRIDGE_DIALECT)

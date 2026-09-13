@@ -263,7 +263,7 @@ function wildcard(size = 2) {
   }
 }
 
-test('UlPlugin iterators own selected values and exchange identity', () => {
+test('UlPlugin iterators own selected values, named by ObjectName and attributes', () => {
   const document = wildcard()
   const cursor = fix.UlPlugin.fromJsonScalar(document)[Symbol.iterator]()
   const first = cursor.next().value
@@ -276,19 +276,35 @@ test('UlPlugin iterators own selected values and exchange identity', () => {
   const same = fix.UlPlugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
   assert.ok(same.equals(first))
   assert.equal(same.stableHash(), first.stableHash())
+  // The envelope is transport: how the asking went was never part of the
+  // configuration, so an answer that came back 503 states the same plugin.
   sibling.status = 503
   const changed = fix.UlPlugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
-  assert.equal(changed.equals(first), false)
-  assert.notEqual(changed.stableHash(), first.stableHash())
-  const rebuilt = new fix.UlPlugin(first.mbean, first.asAttributes(), first.asEnvelope())
+  assert.ok(changed.equals(first))
+  assert.equal(changed.stableHash(), first.stableHash())
+  // A plugin is its ObjectName and its attributes, which is all of it, so
+  // the two parts rebuild it and `asEnvelope` is gone with the third.
+  const rebuilt = new fix.UlPlugin(first.mbean, first.asAttributes())
   assert.ok(rebuilt.equals(first))
   assert.ok(first.clone().equals(first))
   assert.equal(rebuilt.stableHash(), first.stableHash())
-  assert.throws(() => fix.UlPlugin.fromJsonScalar([wildcard(), null]), /ulconfig\[1\]/)
+  assert.equal(new fix.UlPlugin(null, first.asAttributes()).equals(first), false)
+  assert.equal(typeof first.asEnvelope, 'undefined')
+  // An array element that is not an answer names no plugin, and naming none
+  // is what it answers: the walk continues past it and refuses nothing.
+  assert.deepEqual(
+    [...fix.UlPlugin.fromJsonScalar([wildcard(), null])].map(held => held.name),
+    ['Item0', 'Item1'],
+  )
   assert.equal([...fix.UlPlugin.fromJsonBytes(Buffer.from(JSON.stringify(wildcard())))].length, 2)
+  // Bytes that are not a Jolokia answer name none, through every door, and
+  // bytes that are not JSON at all are the same silence rather than a throw.
+  for (const silent of ['[]', '{}', '{"a":1}', 'null', 'true', '1', '"text"', 'not json at all']) {
+    assert.deepEqual([...fix.UlPlugin.fromJsonBytes(Buffer.from(silent))], [], silent)
+  }
 })
 
-test('bulk message streams preserve flat configuration rows and fuse', () => {
+test('bulk message streams drop answers naming no plugin and fuse', () => {
   const registry = new fix.FixRegistry()
   registry.withUlbridgeFields()
   const codec = new fix.FixCodec(registry)
@@ -299,20 +315,37 @@ test('bulk message streams preserve flat configuration rows and fuse', () => {
   assert.ok(cursor instanceof fix.FixMessages)
   assert.equal(cursor[Symbol.iterator](), cursor)
   const values = [...cursor]
-  assert.equal(values.length, 4)
-  assert.deepEqual(values.slice(0, 2).map(value => value.byName('Name').asJs()), ['Item0', 'Item1'])
-  assert.equal(values[2].byName('Status').asJs(), 404)
-  assert.equal(values[2].byName('Error').asJs(), 'missing')
-  assert.equal(values[3].byName('Operation').asJs(), 'read')
+  // The error-only answer and the request-only document each name no plugin,
+  // and a read that answers no plugin answers no message: what is left is
+  // the two the wildcard selected.
+  assert.equal(values.length, 2)
+  assert.deepEqual(values.map(value => value.byName('Name').asJs()), ['Item0', 'Item1'])
+  for (const retired of ['MBean', 'Operation', 'Status', 'Error']) {
+    assert.ok(values.every(value => value.getByName(retired) === null), retired)
+  }
+  // The entries are what arrived, and the envelope was never one of them:
+  // the re-emission opens on the ObjectName and states none of the four.
+  const wire = values[0].intoBytes(124).toString()
+  assert.ok(wire.startsWith('SessionInterface=com.ullink.ulbridge'), wire)
+  for (const retired of ['MBean=', 'Operation=', 'Status=', 'Error=']) {
+    assert.equal(wire.includes(retired), false, retired)
+  }
   assert.ok(values.every(value => value.getByName('SessionInterfaces') === null))
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
-  assert.equal([...codec.parseUlconfigLine(body)].length, 4)
-  assert.equal([...codec.parseTextLine(new TextLine(17, body))].length, 4)
+  assert.equal([...codec.parseUlconfigLine(body)].length, 2)
+  assert.equal([...codec.parseTextLine(new TextLine(17, body))].length, 2)
+  // A row's own bytes that are not a Jolokia answer say nothing FIX can
+  // read, through every door, and being unable to read a body is not an
+  // error in the codec.
+  const stranger = Buffer.from('{"a":1}')
+  assert.equal(codec.parseLine(stranger).next().done, true)
+  assert.equal(codec.parseUlconfigLine(stranger).next().done, true)
+  assert.equal(codec.parseTextLine(new TextLine(17, stranger)).next().done, true)
   const selected = fix.UlPlugin.fromFixmsg(values[0])
   assert.equal(selected.name, 'Item0')
   assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')
-  const invalid = new fix.UlPlugin(null, { CurrentPort: NaN }, {})
+  const invalid = new fix.UlPlugin(null, { CurrentPort: NaN })
   assert.throws(() => invalid.intoFixmsg(codec), /non-finite/)
   const schema = fix.schema(registry)
   assert.equal(values[0].intoRow(schema).asJs().length, schema.fieldLen)

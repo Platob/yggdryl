@@ -434,9 +434,12 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
         ),
         (b"level=INFO message=random", MimeType.KEYVALUE, None),
         (
+            # A bridge configuration document is JSON, which is what it is:
+            # `text/ulconfig` is deleted, and what makes one *this* reader's
+            # is a shape the codec reads rather than a name the scan gives it.
             b'{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
             b'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
-            MimeType.ULCONFIG,
+            MimeType.JSON,
             b"Plugin",
         ),
     )
@@ -462,16 +465,38 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
     # tag 385 by the rules the dictionary carries on that field.
     answered = (
         '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
-        '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
+        '"type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:'
+        'name=Router_TradeCapture,plugin-type=FIX,type=Plugin":'
+        '{"Name":"Router_TradeCapture"}},"status":200}'
     )
-    assert MimeType.infer_text(answered) == MimeType.ULCONFIG
-    assert FixCodec.infer_msgtype_text(answered) == "read"
+    assert MimeType.infer_text(answered) == MimeType.JSON
+    # The ObjectName the answer keys its `value` by states the type, and it
+    # is the first one the shallow scan reaches: the wildcard the request
+    # echoes names none.
+    assert FixCodec.infer_msgtype_text(answered) == "Plugin"
     codec = FixCodec(FixRegistry())
     assert next(codec.parse_line(answered.encode())).get_by_tag(385) is None
     assert next(codec.parse_line(("Response: " + answered).encode())).by_tag(385).as_py() == "R"
+    selected = (
+        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
+        'name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},'
+        '"value":{"Name":"Router_TradeCapture"},"status":200}'
+    )
+    assert next(codec.parse_line(selected.encode())).get_by_tag(385) is None
+    assert next(codec.parse_line(("Request: " + selected).encode())).by_tag(385).as_py() == "S"
+    # A direction is the line's and a message is the document's, read apart:
+    # a read that selected nothing and a request not yet answered both name
+    # no plugin, so neither states a message - there is no envelope left to
+    # make a row out of - and the prose in front of one makes it no more one.
+    empty = (
+        '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",'
+        '"type":"read"},"value":{},"status":200}'
+    )
     asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-    assert next(codec.parse_line(asked.encode())).get_by_tag(385) is None
-    assert next(codec.parse_line(("Request: " + asked).encode())).by_tag(385).as_py() == "S"
+    for body, verb in ((empty, "Response"), (asked, "Request")):
+        assert next(codec.parse_line(body.encode()), None) is None
+        prosed = f"[Jolokia] (DEBUG) {verb}: {body}"
+        assert next(codec.parse_line(prosed.encode()), None) is None
 
 
 def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> None:
@@ -1609,7 +1634,10 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     bridge: FixRegistry,
 ) -> None:
     """The reader reads to the document's own close, not to the line's end."""
-    assert MimeType.infer_bytes(LOGGED) == MimeType.ULCONFIG
+    # The document is JSON, which is what it is: what makes one a bridge
+    # configuration is a shape the codec reads, not a name the classifier
+    # gives it.
+    assert MimeType.infer_bytes(LOGGED) == MimeType.JSON
     assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
 
     reader = FixCodec(bridge)
@@ -1626,6 +1654,25 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     # The registered vocabulary types a port as a number and a flag as a flag.
     assert message.by_path("CurrentPort").as_py() == 9726
     assert message.by_path("NeedCFBReload").as_py() is False
+    # A configuration message is the plugin's attributes and nothing the
+    # Jolokia answer wrapped them in: `MBean`, `Operation`, `Status` and
+    # `Error` - tags 20001 to 20004 - are deleted, and the ObjectName the
+    # read named it by stays where it always belonged, on `SessionInterface`.
+    for retired in (20001, 20002, 20003, 20004):
+        assert message.get_by_tag(retired) is None
+    for retired_name in ("MBean", "Operation", "Status", "Error"):
+        assert message.get_by_name(retired_name) is None
+    assert message.by_name("SessionInterface").as_py().endswith("type=Plugin")
+    assert message.by_name("MBeanType").as_py() == "Plugin"
+    # The entries are what arrived, and the envelope was never one of them:
+    # the re-emission opens on the ObjectName and states none of the four.
+    wire = message.into_bytes(ord("|"))
+    assert wire.startswith(b"SessionInterface=com.ullink.ulbridge")
+    for retired_key in (b"MBean=", b"Operation=", b"Status=", b"Error="):
+        assert retired_key not in wire
+    # `ULBRIDGE_TAG_MIN` is 20001 still - the floor of the range this
+    # dictionary claims, not the smallest tag it defines, which is 20010.
+    assert min(field.fix.tag for field in fix_ulbridge_fields()) == 20010
     # `parse_line` finds the same document behind the same prose.
     assert next(reader.parse_line(LOGGED)) == message
 
@@ -1707,10 +1754,21 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     with pytest.raises(TypeError):
         UlPlugin({1: "not a name"})
 
-    # A document answering nothing answers no plugins rather than raising.
-    assert list(UlPlugin.from_json_bytes(b"[]")) == []
-    with pytest.raises(ValueError):
-        UlPlugin.from_json_bytes(b"no document here at all")
+    # A body that is not a Jolokia answer names no plugin, and answering
+    # none is what it answers: reading is not refusing, so every one of
+    # these iterates empty rather than raising - bytes that are not JSON at
+    # all included.
+    for silent in (
+        b"[]",
+        b"{}",
+        b'{"a":1}',
+        b"null",
+        b"true",
+        b"1",
+        b'"text"',
+        b"no document here at all",
+    ):
+        assert list(UlPlugin.from_json_bytes(silent)) == [], silent
 
 
 def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:

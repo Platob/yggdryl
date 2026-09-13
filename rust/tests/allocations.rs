@@ -387,7 +387,10 @@ fn a_fix_registry_lookup_allocates_nothing() {
     });
     // A bridge configuration is read the same way a frame is: the namespace,
     // the ObjectName's type and the answer keys are all found in the caller's
-    // bytes, so classifying a document costs no allocation either.
+    // bytes, so classifying a document costs no allocation either. It
+    // classifies as `application/json` now (decision 17) - what makes one a
+    // configuration is a shape the codec probes at the offset this scan
+    // already found, so nothing is looked for twice and the cost is the same.
     const ULCONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
     free("infer_bytes_protocol ULCONFIG", || {
         let _ = black_box(MimeType::infer_bytes(black_box(ULCONFIG)));
@@ -454,9 +457,11 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
         .unwrap();
         let document = Scalar::from_record([("value", values)]).unwrap();
 
+        // Reading a document cannot fail: one that names no plugin answers
+        // none, and answering none is what it answers (decision 17), so there
+        // is no validation pass in front of the walk and nothing to unwrap.
         let (first_allocations, first) = counted(|| {
             yggdryl::UlPlugin::from_json_scalar(black_box(&document))
-                .expect("validated wildcard response")
                 .next()
                 .expect("the wildcard has configurations")
         });
@@ -473,7 +478,6 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
 
         let (drain_allocations, read) = counted(|| {
             yggdryl::UlPlugin::from_json_scalar(black_box(&document))
-                .expect("validated wildcard response")
                 .inspect(|configuration| {
                     black_box(configuration.name());
                 })

@@ -1229,7 +1229,8 @@ export declare class FixCodec {
   parseFixmlLine(body: Buffer): FixMsg
   /**
    * One bridge configuration document, as a Jolokia answer states it:
-   * one message per `MBean`, lazily.
+   * one message per `ObjectName` it names, lazily, and none where it names
+   * no configuration.
    */
   parseUlconfigLine(body: Buffer): FixMessages
   /** Pairs a caller already holds, in the order they arrived. */
@@ -4459,13 +4460,31 @@ export declare class TxHasher {
 }
 export type JsTxHasher = TxHasher
 
-/** One selected configuration; its shared source response remains native. */
+/** One configuration: the `ObjectName` naming it and the attributes it states. */
 export declare class UlPlugin {
-  /** Construct from a selected `ObjectName`, attributes, and source response. */
-  constructor(mbean: string | null, attributes: Scalar, envelope: Scalar)
-  /** Parse and validate a response before returning its lazy configurations. */
+  /**
+   * Construct from the parts a document states: the selected `ObjectName`
+   * and the attributes.
+   *
+   * What the Jolokia exchange wrapped them in is the transport's and no
+   * part of the configuration.
+   */
+  constructor(mbean: string | null, attributes: Scalar)
+  /**
+   * Every configuration a body names, lazily.
+   *
+   * Bytes that are not a Jolokia answer name none, and naming none is what
+   * they answer: reading is not refusing, so bytes that are not JSON at all
+   * iterate empty rather than throwing.
+   */
   static fromJsonBytes(body: Buffer): JsUlPlugins
-  /** Validate a native response and iterate its selected configurations. */
+  /**
+   * The same, over a document a caller already parsed.
+   *
+   * A document that is not a Jolokia answer, an answer that came back
+   * empty and an error-only answer all name no configuration, which is
+   * what they answer.
+   */
   static fromJsonScalar(document: JsScalar): JsUlPlugins
   /** Recover one configuration from a flat native message. */
   static fromFixmsg(message: JsFixMsg): UlPlugin
@@ -4496,9 +4515,7 @@ export declare class UlPlugin {
   get(name: string): JsScalar | null
   /** Share the selected native attribute value. */
   asAttributes(): JsScalar
-  /** Shares the complete source response, which may contain sibling values. */
-  asEnvelope(): JsScalar
-  /** Compare the complete native values. */
+  /** Two configurations are equal with the same `ObjectName` and attributes. */
   equals(other: UlPlugin): boolean
   /** Deterministic hash bits from the native value. */
   stableHash(): bigint
@@ -4508,7 +4525,7 @@ export declare class UlPlugin {
 export type JsUlPlugin = UlPlugin
 
 /**
- * A lazy iterator of validated native configurations.
+ * A lazy iterator over the configurations a document names.
  *
  * This type implements JavaScript's iterable iterator protocol.
  * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.

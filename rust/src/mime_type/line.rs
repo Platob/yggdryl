@@ -20,10 +20,12 @@ const XML_DATA_TAG: i32 = 213;
 
 /// The namespace every ULBridge MBean is named under.
 ///
-/// One vendor string carries the whole reading: it is what makes a JSON
-/// document a bridge's configuration rather than any other object, so a
-/// document not naming it stays ordinary JSON. It has to be naming an MBean
-/// and not merely spelling a class, which is what [`object_names`] holds it to.
+/// One vendor string is what locates the payload: it is how a brace-heavy
+/// line full of `=` is known to be a document rather than pairs, and where
+/// inside the line that document opens and closes. It does not name a media
+/// type - a Jolokia answer and any other JSON are both `application/json`
+/// (decision 17) - and it has to be naming an MBean rather than merely
+/// spelling a class, which is what [`object_names`] holds it to.
 const ULBRIDGE_NAMESPACE: &[u8] = b"com.ullink.ulbridge";
 
 /// The ObjectName property naming what one MBean is.
@@ -83,7 +85,12 @@ pub(crate) struct LineInference<'line> {
     has_pairs: bool,
     has_symbolic: bool,
     has_xml: bool,
-    has_ulconfig: bool,
+    /// The line names the ULBridge namespace inside an object, which is how
+    /// a brace-heavy line full of `=` is known to be a document rather than
+    /// pairs. Every other JSON document reaches its media type through
+    /// [`document_type`] instead; what a document is *for* is not this
+    /// scan's to say either way (decision 17).
+    names_namespace: bool,
     tag_msgtype: Option<&'line [u8]>,
     name_msgtype: Option<&'line [u8]>,
     ulconfig_msgtype: Option<&'line [u8]>,
@@ -95,10 +102,10 @@ impl<'line> LineInference<'line> {
     /// A FIX frame is numeric tags; a bridge row is `#`-marked keys or a
     /// `MSGTYPE=` key; both together are the mixed form. An `XmlData(213)`
     /// payload that opens with a tag makes the frame FIXML. Failing every
-    /// frame rule, a JSON document naming the ULBridge namespace is that
-    /// bridge's configuration, a line that is still `key=value` throughout is
-    /// the generic key/value shape rather than nothing, and a document that
-    /// opens as XML or JSON is that document.
+    /// frame rule, a JSON document naming the ULBridge namespace is JSON
+    /// rather than the pairs its ObjectNames look like, a line that is still
+    /// `key=value` throughout is the generic key/value shape rather than
+    /// nothing, and a document that opens as XML or JSON is that document.
     pub(crate) const fn mime_type(&self) -> MimeType {
         if self.has_xml {
             return MimeType::FIXML;
@@ -109,8 +116,10 @@ impl<'line> LineInference<'line> {
             (false, true) => MimeType::ULLINK,
             // A document wins over the bare pair rules, exactly as the XML and
             // JSON readings do: what a bridge wrote inside its own
-            // configuration is that document's content, never a field.
-            (false, false) if self.has_ulconfig => MimeType::ULCONFIG,
+            // configuration is that document's content, never a field. What
+            // the document is *for* is the codec's reading and not a name
+            // this scan gives it (decision 17), so it answers the JSON it is.
+            (false, false) if self.names_namespace => MimeType::JSON,
             (false, false) if self.has_pairs => MimeType::KEYVALUE,
             (false, false) => MimeType::OCTET_STREAM,
         }
@@ -144,7 +153,7 @@ impl<'line> LineInference<'line> {
         let Some(at) = ulconfig_at(line) else {
             return;
         };
-        self.has_ulconfig = true;
+        self.names_namespace = true;
         self.ulconfig_msgtype = ulconfig_msgtype(&line[at..]);
     }
 }
@@ -750,8 +759,8 @@ pub(crate) fn classify(line: &[u8]) -> (MimeType, Option<&[u8]>) {
 /// `=` - a pair arriving first makes the `<` a value - and the line must
 /// close on the document's own last byte, so a sentence mentioning `<trade>`
 /// stays a sentence. A JSON document is not read this way: one naming the
-/// bridge's namespace is answered by the configuration rules, and prose
-/// closing on braces is prose.
+/// bridge's namespace is answered by the namespace scan, and prose closing on
+/// braces is prose.
 pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
     let trimmed = trim_ascii(line);
     let open = memchr::memchr(b'<', trimmed)?;
@@ -1108,15 +1117,6 @@ pub(crate) fn names_separator(line: &[u8]) -> bool {
     locate_frame(line).is_some_and(|frame| frame.separator.stated())
 }
 
-/// Where the message starts, given where a frame was already located.
-///
-/// The answer [`payload_at`] gives, for a caller whose scan already located
-/// the frame - or found none, in which case the one document that opens a
-/// payload is looked for here and nowhere earlier.
-pub(crate) fn payload_at_or_document(line: &[u8], frame_at: Option<usize>) -> Option<usize> {
-    frame_at.or_else(|| ulconfig_at(line))
-}
-
 /// Where the ULBridge configuration document one line carries opens.
 ///
 /// Two facts hold together and neither is enough alone: the line has to be a
@@ -1136,8 +1136,9 @@ fn ulconfig_at(line: &[u8]) -> Option<usize> {
 ///
 /// Two facts hold together and neither is enough alone: the line has to name
 /// the ULBridge namespace, and an object has to open in front of that name and
-/// close after it. The namespace is what makes the reading unambiguous, so a
-/// document not carrying it is ordinary JSON and stays that way.
+/// close after it. This is what locates the payload, not what names it: a
+/// document not carrying the namespace is JSON the same way one carrying it
+/// is, and is simply not found here.
 ///
 /// The close is found rather than assumed, so a transport writing prose on
 /// both sides of the document - a timestamp in front, a duration behind - is

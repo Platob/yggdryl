@@ -435,6 +435,12 @@ fn frames() -> Vec<Vec<u8>> {
 /// The bridge's own lines: a frame behind the prose its process printed, a
 /// row keyed by name with a group packed into it, a document, and the row
 /// header a real capture writes in front of all of them.
+///
+/// The last line is appended rather than filed beside the document, because
+/// the indices above are what the records are keyed by: a JSON body that is
+/// not a Jolokia answer, which names no plugin and so answers no message
+/// (decision 17). It is here so that a body this reader cannot read turning
+/// back into a row - or into a refusal - shows in the golden file.
 fn bridge() -> Vec<Vec<u8>> {
     owned(&[
         "sending >> 8=FIX.4.4|9=176|35=D|49=BUYSIDE|56=VENUE|11=ORDER-1|55=AAPL|54=1|38=100|44=10.5|59=0|60=20240102-10:15:30.000|10=203| << queued seq=1092",
@@ -452,6 +458,7 @@ fn bridge() -> Vec<Vec<u8>> {
         "2026-08-14 06:46:36.887 [653] [Spot_FX_TradeCapture] (INFO) Receiving : 8=FIX.4.2|9=0322|35=8|34=4507|49=VENUEADC|56=CLIENTFIS|52=20260814-04:46:36|1=client|6=547.771791547861|11=20260814_TP1_CLIENT_1003|14=982|15=INR|17=E-20260814-4507|31=547.77|32=982|37=O-20260814-1003|38=982|39=2|40=1|44=547.771791547861|48=XX0000000001|54=1|55=EXAMPLECO|58=Filled|59=0|60=20260814-04:46:36|75=20260814|150=2|151=0|10=197|",
         "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [Broker_DarkPool_TradeCapture] (DEBUG) RouteMessage : ACCOUNT=client|AVGPX=547.771791547861|CLORDID=20260814_TP1_CLIENT_1003|CUMQTY=982|CURRENCY=INR|EXECBROKER=BRKR|EXECTYPE=2|LASTPX=547.77|LASTQTY=982|LEAVESQTY=0|MSGTYPE=8|ORDERQTY=982|ORDSTATUS=2|ORDTYPE=1|SIDE=1|SYMBOL=EXAMPLECO|TRANSACTTIME=20260814-04:46:36|",
         "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Execution report (ClOrderID : 20260814_TP1_CLIENT_1003) without any route so using not persisted route: [UNDEFINED] --> [Broker_DarkPool_TradeCapture]",
+        r#"{"a":1}"#,
     ])
 }
 

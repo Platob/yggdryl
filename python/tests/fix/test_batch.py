@@ -134,7 +134,7 @@ def test_parse_lines_pulls_one_line_at_a_time_and_continues_past_a_refused_one()
     assert pulled == 0
     assert next(messages).by_name("Name").as_py() == "A"
     assert pulled == 1
-    # The second MBean comes out of the same line, without the next pull.
+    # The second plugin comes out of the same line, without the next pull.
     assert next(messages).by_name("Name").as_py() == "B"
     assert pulled == 1
     # An empty line is not a row at all: raised where it is met, and the

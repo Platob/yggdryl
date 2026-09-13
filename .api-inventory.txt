@@ -695,7 +695,7 @@ pub struct FixCodec
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
-  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per MBean of a bulk configuration, and none at all where the row opens no frame, states no bridge pair and carries no document; decision 16)
+  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per configuration a bulk answer named, and none at all where the row opens no frame, states no bridge pair and carries no document a Jolokia answer names a configuration in; decisions 16 and 17)
   pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item)
   pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>  (one frame; a body holding a second is refused at the byte it opens at - `invalid fix expression at byte N: expected one frame, got a second`; decision 16)
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
@@ -824,9 +824,9 @@ pub struct FixAnomalies<'msg>
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
 pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulbridge_fields)
   pub fn stable_hash(&self) -> u64
-  pub fn new(mbean: Option<&str>, attributes: Scalar, envelope: Scalar) -> Self
-  pub fn from_json_bytes(body: &[u8]) -> Result<UlPlugins>
-  pub fn from_json_scalar(document: &Scalar) -> Result<UlPlugins>
+  pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self
+  pub fn from_json_bytes(body: &[u8]) -> UlPlugins  (a body that is not a Jolokia answer names no configuration and answers none; decision 17)
+  pub fn from_json_scalar(document: &Scalar) -> UlPlugins
   pub fn from_fixmsg(message: &FixMsg) -> Result<UlPlugin>
   pub fn into_fixmsg(&self, codec: &FixCodec) -> Result<FixMsg>
   pub fn mbean(&self) -> Option<&str>
@@ -838,7 +838,6 @@ pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulb
   pub fn state(&self) -> Option<&str>
   pub fn get(&self, attribute: &str) -> Option<&Scalar>
   pub const fn as_attributes(&self) -> &Scalar
-  pub const fn as_envelope(&self) -> &Scalar
   pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)>
   impl Clone, Debug, PartialEq, Eq, Hash for UlPlugin
   pub struct UlPlugins
@@ -952,16 +951,12 @@ impl FixRegistry
 
 ### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
 pub const ULBRIDGE_DIALECT: &str = "ulbridge";  (the membership every field here carries in `fix:branches`)
-pub const ULBRIDGE_TAG_MIN: i32 = 20_001;
-pub const MBEAN_TAG_NAME: (i32, &str) = (20_001, "MBean");
-pub const OPERATION_TAG_NAME: (i32, &str) = (20_002, "Operation");
-pub const STATUS_TAG_NAME: (i32, &str) = (20_003, "Status");
-pub const ERROR_TAG_NAME: (i32, &str) = (20_004, "Error");
+pub const ULBRIDGE_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
 pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
 impl FixRegistry
   pub fn with_ulbridge_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn parse_ulconfig_line(&self, body: &[u8]) -> Result<FixMessages>
+  pub fn parse_ulconfig_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing; decision 17)
 
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer
@@ -2079,7 +2074,6 @@ pub struct MimeType(MimeTypeValue);
   pub const PLAIN_TEXT: Self = Self(MimeTypeValue::PlainText);
   pub const KEYVALUE: Self = Self(MimeTypeValue::KeyValue);
   pub const ULLINK: Self = Self(MimeTypeValue::Ullink);
-  pub const ULCONFIG: Self = Self(MimeTypeValue::Ulconfig);
   pub const FIX: Self = Self(MimeTypeValue::Fix);
   pub const FIXUL: Self = Self(MimeTypeValue::Fixul);
   pub const FIXML: Self = Self(MimeTypeValue::Fixml);

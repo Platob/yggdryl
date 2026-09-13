@@ -200,8 +200,8 @@ pub use replacements::{
     FixReplacementEntry, FixReplacements,
 };
 pub use ulbridge::{
-    ERROR_TAG_NAME, MBEAN_TAG_NAME, OPERATION_TAG_NAME, STATUS_TAG_NAME, ULBRIDGE_DIALECT,
-    ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins, fix_ulbridge_fields,
+    ULBRIDGE_DIALECT, ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins,
+    fix_ulbridge_fields,
 };
 
 pub use schema::{

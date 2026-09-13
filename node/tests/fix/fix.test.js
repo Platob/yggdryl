@@ -355,9 +355,12 @@ test('protocol and MsgType inference stays native and shallow', () => {
     ],
     ['level=INFO message=random', MimeType.KEYVALUE, null],
     [
+      // A bridge configuration document is JSON, which is what it is:
+      // `text/ulconfig` is deleted, and what makes one *this* reader's is a
+      // shape the codec reads rather than a name the scan gives it.
       '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
         'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
-      MimeType.ULCONFIG,
+      MimeType.JSON,
       'Plugin',
     ],
   ]
@@ -378,16 +381,37 @@ test('protocol and MsgType inference stays native and shallow', () => {
   // tag 385 by the rules the dictionary carries on that field.
   const answered =
     '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
-    '"type":"read"},"value":{"name":"send-test-request"},"status":200}'
-  assert.ok(MimeType.inferText(answered).equals(MimeType.ULCONFIG))
-  assert.equal(fix.FixCodec.inferMsgtypeText(answered), 'read')
+    '"type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:' +
+    'name=Router_TradeCapture,plugin-type=FIX,type=Plugin":' +
+    '{"Name":"Router_TradeCapture"}},"status":200}'
+  assert.ok(MimeType.inferText(answered).equals(MimeType.JSON))
+  // The ObjectName the answer keys its `value` by states the type, and it is
+  // the first one the shallow scan reaches: the wildcard the request echoes
+  // names none.
+  assert.equal(fix.FixCodec.inferMsgtypeText(answered), 'Plugin')
   const codec = new fix.FixCodec(new fix.FixRegistry())
   const read = (line) => codec.parseLine(Buffer.from(line)).next().value
   assert.equal(read(answered).getByTag(385), null)
   assert.equal(read('Response: ' + answered).byTag(385).asJs(), 'R')
+  const selected =
+    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
+    'name=Router_TradeCapture,plugin-type=FIX,type=Plugin","type":"read"},' +
+    '"value":{"Name":"Router_TradeCapture"},"status":200}'
+  assert.equal(read(selected).getByTag(385), null)
+  assert.equal(read('Request: ' + selected).byTag(385).asJs(), 'S')
+  // A direction is the line's and a message is the document's, read apart:
+  // a read that selected nothing and a request not yet answered both name
+  // no plugin, so neither states a message - there is no envelope left to
+  // make a row out of - and the prose in front of one makes it no more one.
+  const empty =
+    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*",' +
+    '"type":"read"},"value":{},"status":200}'
   const asked = '{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}'
-  assert.equal(read(asked).getByTag(385), null)
-  assert.equal(read('Request: ' + asked).byTag(385).asJs(), 'S')
+  for (const [body, verb] of [[empty, 'Response'], [asked, 'Request']]) {
+    assert.equal(codec.parseLine(Buffer.from(body)).next().done, true)
+    const prosed = `[Jolokia] (DEBUG) ${verb}: ${body}`
+    assert.equal(codec.parseLine(Buffer.from(prosed)).next().done, true)
+  }
 })
 
 test('one namespace: a reused name merges and a reused tag stands beside its holder', () => {

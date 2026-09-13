@@ -1635,13 +1635,11 @@ impl JsFixCodec {
     }
 
     /// One bridge configuration document, as a Jolokia answer states it:
-    /// one message per `MBean`, lazily.
+    /// one message per `ObjectName` it names, lazily, and none where it names
+    /// no configuration.
     #[napi]
-    pub fn parse_ulconfig_line(&self, body: Buffer) -> Result<JsFixMessages> {
-        self.inner
-            .parse_ulconfig_line(&body)
-            .map(JsFixMessages::over)
-            .map_err(napi_error)
+    pub fn parse_ulconfig_line(&self, body: Buffer) -> JsFixMessages {
+        JsFixMessages::over(self.inner.parse_ulconfig_line(&body))
     }
 
     /// Pairs a caller already holds, in the order they arrived.

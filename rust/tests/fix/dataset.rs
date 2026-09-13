@@ -36,23 +36,31 @@ const LOG: &[u8] = include_bytes!("ulbridge.log");
 const LINES: usize = 129;
 
 /// The lines that read as more than one row: the wildcard Jolokia reads,
-/// each answering for several MBeans and so yielding one message per MBean.
+/// each answering for several plugins and so yielding one message per
+/// configuration the answer named.
 /// Each is the line and how many rows it yields beyond its first.
 const WILDCARDS: [(usize, usize); 2] = [(98, 1), (128, 2)];
 
-/// The lines that read as no row at all: the bridge's own prose, which
-/// states no frame, no bridge pair and no document, so it carries no message
-/// (decision 16). A line is still a line - the text reader answers every one
-/// of them - and this is what the FIX reader answers for it.
-const SILENT: [usize; 48] = [
+/// The lines that read as no row at all.
+///
+/// Mostly the bridge's own prose, which states no frame, no bridge pair and
+/// no document, so it carries no message (decision 16). Line 99 is the one
+/// that is not prose: a Jolokia answer that came back with an error and no
+/// `value`, which names no plugin - and a read that answers no plugin answers
+/// no message, rather than an envelope with nothing inside it (decision 17).
+/// It used to be a row carrying `Error` on tag 20004 and nothing else.
+///
+/// A line is still a line - the text reader answers every one of them - and
+/// this is what the FIX reader answers for it.
+const SILENT: [usize; 49] = [
     0, 2, 12, 16, 17, 18, 19, 22, 28, 29, 31, 40, 41, 42, 46, 48, 49, 50, 54, 61, 65, 66, 67, 68,
-    71, 78, 79, 80, 84, 86, 87, 88, 92, 93, 94, 95, 96, 108, 109, 110, 115, 116, 117, 118, 120,
+    71, 78, 79, 80, 84, 86, 87, 88, 92, 93, 94, 95, 96, 99, 108, 109, 110, 115, 116, 117, 118, 120,
     124, 126, 127,
 ];
 
 /// How many rows the capture reads as: a row for every message, so a row a
-/// line but for the wildcards, which answer for each of their MBeans, and
-/// the prose, which answers for nothing.
+/// line but for the wildcards, which answer for each configuration they
+/// named, and the silent lines, which answer for nothing.
 const ROWS: usize = LINES - SILENT.len() + WILDCARDS[0].1 + WILDCARDS[1].1;
 
 /// Whether text line `line` carries no message.
@@ -283,7 +291,7 @@ fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema(
     assert_eq!(
         whole[0].num_rows(),
         ROWS,
-        "a row a line, and the wildcard line read once per MBean"
+        "a row a line, and the wildcard line read once per configuration"
     );
 
     // A target of one byte closes a batch after every row of raw capture.
@@ -898,14 +906,23 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     let document = find(
         r#"Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture"#,
     );
-    assert_eq!(
-        mimetype(document).as_deref(),
-        Some(MimeType::ULCONFIG.as_str())
-    );
+    // The line classifies as the JSON it is: `text/ulconfig` is deleted, and
+    // what makes a document *this* reader's is a shape the codec recognizes
+    // rather than a name the classifier gives it (decision 17).
+    assert_eq!(mimetype(document).as_deref(), Some(MimeType::JSON.as_str()));
     let message = read(document);
+    // The message is the plugin's attributes and nothing the Jolokia answer
+    // wrapped them in: the four envelope tags hold nothing, and the ObjectName
+    // the read answered for is the `SessionInterface` attribute.
+    super::states_no_envelope(&message);
     assert_eq!(
-        message.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
-        &Scalar::from(200_i64)
+        message
+            .by_tag(super::SESSIONINTERFACE_TAG)
+            .unwrap()
+            .as_str()
+            .unwrap_or_default(),
+        "com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture,\
+         plugin-type=FIX,type=Plugin"
     );
     assert_eq!(
         message.by_path(&path("CurrentPort")).unwrap(),
@@ -935,9 +952,22 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
             &Scalar::from(port)
         );
     }
-    // An error answer states its error.
+    // An error answer names no plugin, so it states no message: what failed
+    // is how the asking went and never a configuration, and a read that
+    // answers no plugin answers nothing rather than an envelope with nothing
+    // inside it (decision 17). The line is still a line, still classified as
+    // JSON, and it is the FIX reader that has nothing to say about it.
     let error = find(r#""error_type":"javax.management.InstanceNotFoundException""#);
-    assert!(read(error).get_by_tag(yggdryl::ERROR_TAG_NAME.0).is_some());
+    assert_eq!(mimetype(error).as_deref(), Some(MimeType::JSON.as_str()));
+    assert!(
+        codec
+            .enriched_line(&lines[error])
+            .expect("the error answer reads")
+            .next()
+            .is_none(),
+        "an error-only answer names no plugin",
+    );
+    assert!(silent(error), "and so it is no row of the batch");
 
     // FIXML behind a verb reads by its attributes.
     let out = find("<FIXML xmlns=");

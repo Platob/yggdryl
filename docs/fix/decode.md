@@ -80,8 +80,9 @@ line carries and nothing for a line that carries none.
 | two frames | two, each re-emitting only its own bytes |
 | a frame stating no checksum | one, ending where the next unmarked `8=` opens |
 | a bridge row, then a frame | two: the row is a message and the frame the next; a tag run behind a bridge row that opens no frame stays part of it, which is the mixed form a bridge writes |
-| a document | one, whatever prose a transport wrote in front of it |
-| a bulk [configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) | one per selected MBean |
+| a FIXML document | one, whatever prose a transport wrote in front of it |
+| a bulk [configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) | one per configuration a response named |
+| a document naming no configuration | none at all: an error-only answer, a request with no value, a wildcard that selected nothing, or a JSON body that is not a Jolokia answer |
 | a sentence | none at all |
 
 What opens a frame is the rule the scanner locates a line's first frame by, read

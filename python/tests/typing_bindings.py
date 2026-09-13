@@ -1428,16 +1428,27 @@ fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter(453)
 fix_msgtype_hash: int = fix_msgtype.stable_hash()
 fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
 fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
-fix_configuration: fix.UlPlugin = fix.UlPlugin({"Name": "Router"}, envelope={"status": 200})
-fix_configurations: fix.UlPlugins = fix.UlPlugin.from_json_scalar({"Name": "Router"})
-fix_configurations_bytes: fix.UlPlugins = fix.UlPlugin.from_json_bytes(b'{"Name":"Router"}')
+fix_configuration: fix.UlPlugin = fix.UlPlugin({"Name": "Router"}, mbean="ulbridge:name=Router")
+_JOLOKIA_TEXT = (
+    '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
+    'name=Router,type=Plugin","type":"read"},"value":{"Name":"Router"},"status":200}'
+)
+_JOLOKIA: dict[str, Any] = {
+    "request": {
+        "mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:name=Router,type=Plugin",
+        "type": "read",
+    },
+    "value": {"Name": "Router"},
+    "status": 200,
+}
+fix_configurations: fix.UlPlugins = fix.UlPlugin.from_json_scalar(_JOLOKIA)
+fix_configurations_bytes: fix.UlPlugins = fix.UlPlugin.from_json_bytes(_JOLOKIA_TEXT.encode())
 fix_configuration_item: fix.UlPlugin = next(fix_configurations)
 fix_configuration_message: fix.FixMsg = fix_configuration.into_fixmsg(fix_reader)
 fix_configuration_again: fix.UlPlugin = fix.UlPlugin.from_fixmsg(fix_configuration_message)
-fix_configuration_envelope: Scalar = fix_configuration.envelope
 fix_configuration_attributes: dict[str, Scalar] = fix_configuration.attributes
 fix_configuration_hash: int = fix_configuration.stable_hash()
-fix_configuration_pickle: tuple[Any, tuple[str, str | None, str]] = fix_configuration.__reduce__()
+fix_configuration_pickle: tuple[Any, tuple[str, str | None]] = fix_configuration.__reduce__()
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()

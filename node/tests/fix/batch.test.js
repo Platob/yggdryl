@@ -134,7 +134,7 @@ test('parseLines pulls one line at a time and continues past a refused one', () 
   assert.equal(pulled, 0)
   assert.equal(messages.next().value.byName('Name').asJs(), 'A')
   assert.equal(pulled, 1)
-  // The second MBean comes out of the same line, without the next pull.
+  // The second plugin comes out of the same line, without the next pull.
   assert.equal(messages.next().value.byName('Name').asJs(), 'B')
   assert.equal(pulled, 1)
   // An empty line is not a row at all: thrown where it is met, and the

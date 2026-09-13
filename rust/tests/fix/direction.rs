@@ -235,9 +235,19 @@ fn a_rule_added_through_the_registry_changes_what_a_line_answers() {
 
 #[test]
 fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_nothing() {
+    // A wildcard read that selected one plugin, so the document names one:
+    // an answer keys its `value` by the ObjectName of every plugin it
+    // selected, and that ObjectName is the only thing that names a
+    // configuration (decision 17).
     const ANSWERED: &str = concat!(
         r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"#,
-        r#""value":{"name":"send-test-request"},"status":200}"#,
+        r#""value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,"#,
+        r#"plugin-type=FIX,type=Plugin":{"Name":"Router_TradeCapture"}},"status":200}"#,
+    );
+    // The same read having selected nothing, which names no plugin.
+    const EMPTY: &str = concat!(
+        r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"#,
+        r#""value":{},"status":200}"#,
     );
     const ASKED: &str = r#"{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}"#;
     let reading = reading();
@@ -245,6 +255,7 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
     // like every other prose (decision 15); the echoed `request` key states
     // nothing.
     assert_eq!(reading.read_text(ANSWERED), None);
+    assert_eq!(reading.read_text(EMPTY), None);
     assert_eq!(reading.read_text(ASKED), None);
     let answered = format!("2026-08-14 03:03:13.314 [23] [Jolokia] (DEBUG) Response: {ANSWERED}");
     assert_eq!(reading.read_text(&answered), Some("R"));
@@ -287,6 +298,29 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
         .unwrap()
         .unwrap();
     assert_eq!(prosed.by_tag(385).unwrap().as_str(), Some("R"));
+
+    // A direction is the line's, and a message is the document's: the two
+    // are read apart, so a read that selected nothing and a request that
+    // has not been answered yet both state no message at all - there is no
+    // envelope left to make a row out of (decision 17) - while the prose in
+    // front of each still names the half it moved.
+    for (body, half) in [(EMPTY, "R"), (ASKED, "S")] {
+        assert!(
+            codec.parse_line(body.as_bytes()).unwrap().next().is_none(),
+            "{body} names no plugin",
+        );
+        let verb = if half == "R" { "Response" } else { "Request" };
+        let prosed = format!("[Jolokia] (DEBUG) {verb}: {body}");
+        assert_eq!(reading.read_text(&prosed), Some(half));
+        assert!(
+            codec
+                .parse_line(prosed.as_bytes())
+                .unwrap()
+                .next()
+                .is_none(),
+            "and the prose in front of it makes it no more a message",
+        );
+    }
 }
 
 #[test]

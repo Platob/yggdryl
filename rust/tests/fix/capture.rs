@@ -15,6 +15,7 @@
 
 use super::SoleMessage;
 use super::path;
+use super::{RETIRED_ENVELOPE_TAGS, SESSIONINTERFACE_TAG, states_no_envelope};
 
 use std::sync::Arc;
 
@@ -301,27 +302,39 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
 
     // A bridge configuration document, read as the document it is. The
     // bridge's own vocabulary lives in the one namespace beside the
-    // specification's, which is what gives its envelope fields somewhere to
-    // land; a name the specification publishes resolves the same way. The
-    // bridge's fields carry their dictionary as a membership, and a message
-    // root carries none, because a message is not a dictionary member.
+    // specification's, which is what gives its attributes somewhere to land;
+    // a name the specification publishes resolves the same way. The bridge's
+    // fields carry their dictionary as a membership, and a message root
+    // carries none, because a message is not a dictionary member.
     let bridge = FixCodec::new(Arc::clone(&registry));
     let config = bridge
         .sole_line(ULCONFIG.as_bytes(), true)
         .expect("a configuration document");
     assert!(
         registry
-            .field_by_tag(yggdryl::STATUS_TAG_NAME.0)
+            .field_by_tag(SESSIONINTERFACE_TAG)
             .unwrap()
             .as_fix()
             .has_branch(yggdryl::ULBRIDGE_DIALECT)
     );
     assert_eq!(config.as_field().as_fix().branches().count(), 0);
-    // The envelope is what the exchange was, and it types: a status is a
-    // number rather than the text it arrived as.
+    // A configuration message is the plugin's attributes and nothing the
+    // Jolokia answer wrapped them in (decision 17). `MBean`, `Operation`,
+    // `Status` and `Error` were the transport's question and how the asking
+    // went, so 20001 to 20004 name no field in the dictionary and hold no
+    // value on the message - and they stay retired rather than being reused.
+    for retired in RETIRED_ENVELOPE_TAGS {
+        assert!(registry.field_by_tag(retired).is_err(), "{retired}");
+    }
+    states_no_envelope(&config);
+    // What the read named this plugin by is the `SessionInterface` attribute,
+    // which is where it always belonged, so the envelope was restating it.
     assert_eq!(
-        config.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
-        &Scalar::from(200_i64)
+        config.by_tag(SESSIONINTERFACE_TAG).unwrap().as_str(),
+        Some(
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,\
+             plugin-type=FIX,type=Plugin"
+        ),
     );
     // One MBean produces one message, with standard FIX fields on their own tags.
     assert_eq!(
@@ -493,10 +506,13 @@ const WILDCARD: &str = concat!(
 fn a_document_is_read_out_of_the_line_that_carries_it() {
     // The classifier already read past the prose in front; the reader reads to
     // the document's own close rather than to the end of the line, so what a
-    // transport writes behind it is prose too.
+    // transport writes behind it is prose too. What the classifier answers is
+    // `application/json`, which is what the document is: what makes one *this*
+    // reader's is a shape, and a shape is the codec's to recognize rather than
+    // a classifier's to name (decision 17).
     assert_eq!(
         yggdryl::MimeType::infer_bytes(LOGGED.as_bytes()),
-        yggdryl::MimeType::ULCONFIG
+        yggdryl::MimeType::JSON
     );
     assert_eq!(
         FixCodec::infer_msgtype_bytes(LOGGED.as_bytes()),
@@ -537,17 +553,28 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
         "the arrival record keeps the document's spelling"
     );
     // A `[Jolokia]` in the prose opens no document: only an object whose first
-    // member is quoted, or an array of those, does.
-    assert!(message.get_by_tag(yggdryl::MBEAN_TAG_NAME.0).is_some());
+    // member is quoted, or an array of those, does - and the document that
+    // did open is the one this message came out of, which it says by naming
+    // the ObjectName its read selected. That name is the `SessionInterface`
+    // attribute now, and no envelope restates it (decision 17).
+    assert_eq!(
+        message
+            .get_by_tag(SESSIONINTERFACE_TAG)
+            .and_then(Scalar::as_str),
+        Some(
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_OrderRouting,\
+             plugin-type=FIX,type=Plugin"
+        )
+    );
+    states_no_envelope(&message);
 }
 
 #[test]
 fn every_plugin_a_document_answers_for_crosses_both_ways() {
     // A wildcard read answers a plugin per key; a single read answers one, and
     // the request's own MBean names it. Both are the same walk.
-    let held: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_json_bytes(WILDCARD.as_bytes())
-        .expect("a readable answer")
-        .collect();
+    let held: Vec<yggdryl::UlPlugin> =
+        yggdryl::UlPlugin::from_json_bytes(WILDCARD.as_bytes()).collect();
     assert_eq!(held.len(), 2);
     assert_eq!(held[0].name(), Some("ULMSG_BROKER_BDG_DMZ_PCO"));
     assert_eq!(held[0].mbean_type(), Some("ConfigurationPlugin"));
@@ -563,9 +590,8 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
         Some(5)
     );
 
-    let single: Vec<yggdryl::UlPlugin> = yggdryl::UlPlugin::from_json_bytes(LOGGED.as_bytes())
-        .expect("a readable line")
-        .collect();
+    let single: Vec<yggdryl::UlPlugin> =
+        yggdryl::UlPlugin::from_json_bytes(LOGGED.as_bytes()).collect();
     assert_eq!(single.len(), 1);
     assert_eq!(single[0].name(), Some("Router_OrderRouting"));
     assert_eq!(single[0].state(), Some("logged"));
@@ -584,6 +610,145 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
     assert_eq!(back.mbean(), held[0].mbean());
     assert_eq!(back.name(), held[0].name());
     assert_eq!(back.version(), held[0].version());
+
+    // And the wire it re-emits is byte for byte the ObjectName that named
+    // it, the two properties read out of that name, and the attributes the
+    // document stated that state something - an empty string states nothing
+    // and never did - in the order the dictionary holds them. Nothing the
+    // Jolokia answer wrapped them in is here, because the envelope was never
+    // one of the entries that arrived (decision 17).
+    let wire = String::from_utf8(message.into_bytes(b'|')).expect("the wire is text here");
+    assert_eq!(
+        wire,
+        concat!(
+            "SessionInterface=com.ullink.ulbridge.sessioninterfaces.plugins:",
+            "name=ULMSG_BROKER_BDG_DMZ_PCO,plugin-type=FIX,type=ConfigurationPlugin|",
+            "MBeanType=ConfigurationPlugin|PluginType=FIX|Category=InterBridge|",
+            "LoadIsolation=0|Name=ULMSG_BROKER_BDG_DMZ_PCO|PriorityLevel=5|",
+            "Version=2.0.3|",
+        ),
+        "the whole of it, and no more than it",
+    );
+}
+
+/// A JSON body that is not a Jolokia answer: a row's own bytes, and nothing
+/// in them a FIX reader can read.
+const STRANGER: &str = r#"{"a":1}"#;
+
+#[test]
+fn a_body_no_reader_here_can_read_is_silence_at_every_door() {
+    // What makes a JSON document *this* reader's is a shape - a `value`
+    // beside what was asked, keyed by ObjectNames in the ULBridge namespace -
+    // and a body that is not that names no plugin. Naming none is what it
+    // answers: being unable to read a body is not an error in the codec,
+    // which is what the codec is for (decision 17). The classifier says only
+    // what a stranger to this bridge would say, which is that it is JSON.
+    assert_eq!(
+        yggdryl::MimeType::infer_bytes(STRANGER.as_bytes()),
+        yggdryl::MimeType::JSON
+    );
+
+    let codec = FixCodec::new(registry());
+    let line =
+        TextLine::from_bytes(0, TextBytes::from_bytes(STRANGER.as_bytes()).unwrap()).unwrap();
+    assert!(
+        codec
+            .parse_line(STRANGER.as_bytes())
+            .expect("a readable line")
+            .next()
+            .is_none(),
+        "the byte door",
+    );
+    assert!(
+        codec
+            .parse_ulconfig_line(STRANGER.as_bytes())
+            .next()
+            .is_none(),
+        "the document door",
+    );
+    assert!(
+        codec
+            .parse_text_line(&line)
+            .expect("a readable row")
+            .next()
+            .is_none(),
+        "the line door",
+    );
+
+    // And on the batch door a row that carried nothing to read is no row at
+    // all, exactly as a prose line is (decision 16): the one configuration
+    // beside it is the only row that comes back.
+    let field = yggdryl::DataType::from_fields([
+        yggdryl::DataType::Int64.required_field("rownum"),
+        yggdryl::DataType::binary().required_field("body"),
+    ])
+    .unwrap()
+    .required_field("capture");
+    let value = Scalar::from_sequence([(1_i64, STRANGER), (2_i64, ULCONFIG)].map(
+        |(rownum, body)| {
+            Scalar::from_sequence([Scalar::from(rownum), Scalar::from(body.as_bytes().to_vec())])
+        },
+    ));
+    let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
+    let batch = codec
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
+        .expect("the batch door opens")
+        .next()
+        .expect("one batch")
+        .expect("a batch");
+    assert_eq!(batch.num_rows(), 1, "one row, for the one document read");
+    assert_eq!(column(&batch, "rownum"), [Scalar::from(2_i64)]);
+}
+
+#[test]
+fn a_document_that_names_no_plugin_answers_none_rather_than_refusing() {
+    // Reading is not refusing. Every one of these is a body a row really
+    // carried and no answer this reader knows, so each names no plugin -
+    // through the parsed door and the byte door alike, and neither has a
+    // `Result` left to unwrap (decision 17).
+    for body in [
+        "null",
+        "true",
+        "1",
+        r#""text""#,
+        "[]",
+        r#"{"a":1}"#,
+        // An array of answers whose element is not an object: a bulk read
+        // that refused this by index before.
+        "[1]",
+        r#"[{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}},2]"#,
+        // An error-only answer, and a request that has not been answered.
+        r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Gone,plugin-type=FIX,type=Plugin","type":"read"},"error":"InstanceNotFoundException","status":404}"#,
+        r#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
+        // A wildcard that selected nothing.
+        r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{},"status":200}"#,
+        // Bytes that are not JSON at all, which the row is entitled to hold.
+        "{not json at all",
+        "",
+    ] {
+        assert_eq!(
+            yggdryl::UlPlugin::from_json_bytes(body.as_bytes()).count(),
+            0,
+            "{body:?} names a plugin",
+        );
+    }
+    // The parsed door answers the same for a document that is not an object
+    // or an array of them, which it used to refuse by path.
+    for document in [
+        Scalar::Null,
+        Scalar::from(true),
+        Scalar::from(1_i64),
+        Scalar::from("text"),
+        Scalar::from_sequence([]),
+        Scalar::from_sequence([Scalar::from(1_i64)]),
+        Scalar::from_record([("a", Scalar::from(1_i64))]).unwrap(),
+    ] {
+        assert_eq!(
+            yggdryl::UlPlugin::from_json_scalar(&document).count(),
+            0,
+            "{document:?} names a plugin",
+        );
+    }
 }
 
 #[test]
@@ -595,27 +760,29 @@ fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .expect("each configuration converts");
     assert_eq!(messages.len(), 2);
-    for (message, expected) in messages
-        .iter()
-        .zip(["ULMSG_BROKER_BDG_DMZ_PCO", "ULMSG_BROKER_TO_DMZ"])
-    {
+    for (message, (expected, object_name)) in messages.iter().zip([
+        (
+            "ULMSG_BROKER_BDG_DMZ_PCO",
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_BDG_DMZ_PCO,\
+             plugin-type=FIX,type=ConfigurationPlugin",
+        ),
+        (
+            "ULMSG_BROKER_TO_DMZ",
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,\
+             plugin-type=FIX,type=Plugin",
+        ),
+    ]) {
         assert_eq!(message.by_name("Name").unwrap().as_str(), Some(expected));
+        // Each message names the plugin it carries, and only that: the
+        // pattern the request selected by and the status the answer came back
+        // with are the transport's, so the envelope that used to restate them
+        // on 20001 to 20004 is gone and the ObjectName stands where it always
+        // belonged, on `SessionInterface` (decision 17).
         assert_eq!(
-            message.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
-            &Scalar::from(200_i64)
+            message.by_name("SessionInterface").unwrap().as_str(),
+            Some(object_name),
         );
-        assert_eq!(
-            message.by_tag(yggdryl::MBEAN_TAG_NAME.0).unwrap().as_str(),
-            Some("com.ullink.ulbridge.sessioninterfaces.plugins:*"),
-        );
-        assert!(
-            message
-                .by_name("SessionInterface")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .contains(expected)
-        );
+        states_no_envelope(message);
         assert!(message.get_by_name("SessionInterfaces").is_none());
     }
 

@@ -19,7 +19,6 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
             "application/vnd.apache.puffin",
         ),
         ("TEXT/ULLINK", MimeType::ULLINK, "text/ullink"),
-        ("TEXT/ULCONFIG", MimeType::ULCONFIG, "text/ulconfig"),
         ("TEXT/FIX", MimeType::FIX, "text/fix"),
         ("TEXT/FIXUL", MimeType::FIXUL, "text/fixul"),
         ("TEXT/FIXML", MimeType::FIXML, "text/fixml"),
@@ -43,6 +42,14 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
             .unwrap()
             .is_known()
     );
+    // `text/ulconfig` is deleted (decision 17): a bridge configuration
+    // document is `application/json`, which is what it is, and the old
+    // spelling parses as any other stranger does - a custom name this crate
+    // does not know.
+    let retired = MimeType::from_str("TEXT/ULCONFIG").unwrap();
+    assert!(!retired.is_known());
+    assert_eq!(retired.as_str(), "text/ulconfig");
+    assert_ne!(retired, MimeType::JSON);
     assert_eq!(MimeType::default(), MimeType::OCTET_STREAM);
 }
 
@@ -165,7 +172,6 @@ fn content_type_parameters_are_validated_without_becoming_mime_state() {
 fn category_helpers_cover_known_and_structured_suffix_values() {
     for mime in [
         MimeType::ULLINK,
-        MimeType::ULCONFIG,
         MimeType::FIX,
         MimeType::FIXUL,
         MimeType::FIXML,
@@ -177,10 +183,10 @@ fn category_helpers_cover_known_and_structured_suffix_values() {
         // answers a preferred extension.
         assert_eq!(mime.extension(), None);
     }
-    // A bridge configuration is JSON and reads as JSON; a FIX frame carrying
-    // XML in a tag is not a document and does not.
-    assert_eq!(MimeType::ULCONFIG.format(), Some(Format::Json));
-    assert!(MimeType::ULCONFIG.is_structured());
+    // A bridge configuration is JSON and reads as JSON - it is named
+    // `application/json` now (decision 17), so it is the JSON row below that
+    // pins it and no line type of its own; a FIX frame carrying XML in a tag
+    // is not a document and does not read as one.
     assert_eq!(MimeType::FIXML.format(), None);
     assert!(!MimeType::FIXML.is_structured());
     assert!(MimeType::CSV.is_tabular());
@@ -192,6 +198,7 @@ fn category_helpers_cover_known_and_structured_suffix_values() {
     assert!(MimeType::JSON.is_textual());
     assert!(MimeType::JSON.is_structured());
     assert!(!MimeType::JSON.is_binary());
+    assert_eq!(MimeType::JSON.format(), Some(Format::Json));
     assert!(MimeType::PNG.is_image());
     assert!(MimeType::MP3.is_audio());
     assert!(MimeType::MP4.is_video());

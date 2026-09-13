@@ -327,7 +327,7 @@ The plugin is a fill and nothing more: it lands in the crate's own `pluginid` co
 
 ## One row per message
 
-A source row is read for every message it carries, so a capture answers one row per message and never one per line. One ordinary frame is one row, and a line carrying two frames is two, each re-emitting only its own bytes. Bulk configuration arrays emit every response, and wildcard responses emit every selected MBean, each repeating its source row's carried columns. Empty bulk and wildcard answers emit zero rows, and so does a line carrying no message at all - a bridge's own prose is a line and not a row. The one refusal that still yields a row is a payload that was there and would not parse: it holds an empty message, so a line's content never fails a batch. What a line carries is the codec's rule, stated in [decode](decode.md); a caller wanting one row per *line* reads the capture with the [text reader](../media/text.md#row-schema), which answers every line whether or not a message is in it. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_line` is the same reading of one line, and answers the iterator when expansion is wanted.
+A source row is read for every message it carries, so a capture answers one row per message and never one per line. One ordinary frame is one row, and a line carrying two frames is two, each re-emitting only its own bytes. Bulk configuration arrays emit one row per configuration a response named, and wildcard responses one per ObjectName they selected, each repeating its source row's carried columns. A response that named none emits zero rows - an error-only answer, a request with no value, an empty bulk or wildcard answer - and so does a line carrying no message at all: a bridge's own prose is a line and not a row. The one refusal that still yields a row is a payload that was there and would not parse: it holds an empty message, so a line's content never fails a batch. What a line carries is the codec's rule, stated in [decode](decode.md); a caller wanting one row per *line* reads the capture with the [text reader](../media/text.md#row-schema), which answers every line whether or not a message is in it. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_line` is the same reading of one line, and answers the iterator when expansion is wanted.
 
 === "Rust"
 
@@ -335,7 +335,7 @@ A source row is read for every message it carries, so a capture answers one row 
     use std::sync::Arc;
     use yggdryl::{DataType, FixCodec, FixRegistry, Scalar};
 
-    let body = r#"[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
+    let body = r#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Orders,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Orders"},"status":200},{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Prices,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Prices"},"status":200}]"#;
     let field = DataType::from_fields([
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("body"),
@@ -356,6 +356,21 @@ A source row is read for every message it carries, so a capture answers one row 
         }
     }
     assert_eq!(count, 2);
+
+    // Two request-only documents name no configuration between them, so the
+    // same row shape answers no row at all.
+    let silent = r#"[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from(7_i64), Scalar::from(silent),
+    ])]);
+    let batch = yggdryl::arrow::batch_from_value(&field, &rows)?;
+    let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+    let registry = Arc::new(FixRegistry::new().with_ulbridge_fields()?);
+    let mut silent_rows = 0;
+    for batch in FixCodec::new(registry).parse_text_arrow_reader(source)? {
+        silent_rows += batch?.num_rows();
+    }
+    assert_eq!(silent_rows, 0);
     ```
 
 === "Python"
@@ -364,7 +379,7 @@ A source row is read for every message it carries, so a capture answers one row 
     import pyarrow as pa
     from yggdryl.fix import FixCodec, FixRegistry
 
-    body = '[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    body = '[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Orders,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Orders"},"status":200},{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Prices,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Prices"},"status":200}]'
     source = pa.table({"rownum": pa.array([7], pa.int64()), "body": pa.array([body], pa.string())})
     registry = FixRegistry()
     registry.with_ulbridge_fields()
@@ -372,6 +387,12 @@ A source row is read for every message it carries, so a capture answers one row 
     assert result.num_rows == 2
     assert result.column("rownum").to_pylist() == [7, 7]
     assert result.column("body").to_pylist() == [body, body]
+
+    # Two request-only documents name no configuration between them, so the
+    # same row shape answers no row at all.
+    silent = '[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    source = pa.table({"rownum": pa.array([7], pa.int64()), "body": pa.array([silent], pa.string())})
+    assert FixCodec(registry).parse_text_arrow_reader(source.to_reader()).read_all().num_rows == 0
     ```
 
 === "JavaScript"
@@ -381,7 +402,7 @@ A source row is read for every message it carries, so a capture answers one row 
     const arrow = require('apache-arrow')
     const { BatchReader, fix } = require('yggdryl')
 
-    const body = '[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    const body = '[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Orders,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Orders"},"status":200},{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Prices,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Prices"},"status":200}]'
     const source = new arrow.Table({
       rownum: arrow.vectorFromArray([7n], new arrow.Int64()),
       body: arrow.vectorFromArray([body], new arrow.Utf8()),
@@ -392,6 +413,15 @@ A source row is read for every message it carries, so a capture answers one row 
     assert.equal(result.numRows, 2)
     assert.deepEqual([...result.getChild('rownum')], [7n, 7n])
     assert.deepEqual([...result.getChild('body')], [body, body])
+
+    // Two request-only documents name no configuration between them, so the
+    // same row shape answers no row at all.
+    const silent = '[{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]'
+    const quiet = new arrow.Table({
+      rownum: arrow.vectorFromArray([7n], new arrow.Int64()),
+      body: arrow.vectorFromArray([silent], new arrow.Utf8()),
+    })
+    assert.equal(new fix.FixCodec(registry).parseTextArrowReader(BatchReader.from(quiet)).intoTable().numRows, 0)
     ```
 
 ## Rows are messages again, and messages rows

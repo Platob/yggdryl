@@ -461,7 +461,6 @@ const knownMimeNames = Object.freeze([
   'PUFFIN',
   'PLAIN_TEXT',
   'ULLINK',
-  'ULCONFIG',
   'FIX',
   'FIXUL',
   'KEYVALUE',
@@ -3354,14 +3353,13 @@ NativeFixMsg.prototype.set = function set(key, value) {
 }
 
 const NativeUlPlugin = binding.UlPlugin
-function UlPlugin(mbean, attributes, envelope) {
+function UlPlugin(mbean, attributes) {
   if (new.target === undefined) {
     throw new TypeError("Class constructor UlPlugin cannot be invoked without 'new'")
   }
   return new NativeUlPlugin(
     mbean,
     attributes instanceof Scalar ? attributes : Scalar.fromJs(attributes),
-    envelope instanceof Scalar ? envelope : Scalar.fromJs(envelope),
   )
 }
 UlPlugin.prototype = NativeUlPlugin.prototype

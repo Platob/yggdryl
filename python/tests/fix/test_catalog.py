@@ -9,7 +9,7 @@ from typing import Any, Iterable
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, types
+from yggdryl import DataType, Field, TextLine, types
 from yggdryl.fix import FixCodec, FixMessages, FixRegistry, MsgType, UlPlugin, UlPlugins, fix_crate_fields, fix_ulbridge_fields
 
 
@@ -194,7 +194,7 @@ def _wildcard(size: int = 2) -> dict[str, Any]:
     return {"request": {"mbean": "com.ullink.ulbridge.sessioninterfaces.plugins:*", "type": "read"}, "value": {f"com.ullink.ulbridge.sessioninterfaces.plugins:name=Item{index},plugin-type=FIX,type=Plugin": {"Name": f"Item{index}", "CurrentPort": 9000 + index} for index in range(size)}, "status": 200}
 
 
-def test_wildcard_values_are_lazy_owned_views_with_envelope_identity() -> None:
+def test_wildcard_values_are_lazy_owned_views_named_by_objectname_and_attributes() -> None:
     document = _wildcard()
     iterator = UlPlugin.from_json_scalar(document)
     assert isinstance(iterator, UlPlugins)
@@ -210,21 +210,32 @@ def test_wildcard_values_are_lazy_owned_views_with_envelope_identity() -> None:
     assert same == first
     assert hash(same) == hash(first)
     assert same.stable_hash() == first.stable_hash()
+    # The envelope is transport: how the asking went was never part of the
+    # configuration, so an answer that came back 503 states the same plugin.
     sibling["status"] = 503
     changed = next(UlPlugin.from_json_scalar(sibling))
-    assert changed != first
-    assert changed.stable_hash() != first.stable_hash()
-    rebuilt = UlPlugin(first.attributes, mbean=first.mbean, envelope=first.envelope)
+    assert changed == first
+    assert changed.stable_hash() == first.stable_hash()
+    # A plugin is its ObjectName and its attributes, which is all of it, so
+    # the two parts rebuild it and pickle carries nothing else.
+    rebuilt = UlPlugin(first.attributes, mbean=first.mbean)
     assert rebuilt == first
     assert rebuilt.stable_hash() == first.stable_hash()
+    assert UlPlugin(first.attributes) != first
     restored = pickle.loads(pickle.dumps(first))
     assert restored == first
-    assert restored.envelope == first.envelope
-    with pytest.raises(ValueError, match=r"ulconfig\[1\]"):
-        UlPlugin.from_json_scalar([_wildcard(), None])
+    assert restored.mbean == first.mbean
+    assert restored.attributes == first.attributes
+    assert not hasattr(first, "envelope")
+    # An array element that is not an answer names no plugin, and naming
+    # none is what it answers: the walk continues past it and refuses nothing.
+    assert [held.name for held in UlPlugin.from_json_scalar([_wildcard(), None])] == [
+        "Item0",
+        "Item1",
+    ]
 
 
-def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None:
+def test_bulk_messages_drop_answers_naming_no_plugin_keep_source_columns_and_fuse() -> None:
     registry = FixRegistry()
     registry.with_ulbridge_fields()
     codec = FixCodec(registry)
@@ -236,21 +247,36 @@ def test_bulk_messages_preserve_error_requests_source_columns_and_fuse() -> None
     assert iter(messages) is messages
     del codec
     values = list(messages)
-    assert len(values) == 4
-    assert [value.by_name("Name").as_py() for value in values[:2]] == ["Item0", "Item1"]
-    assert values[2].by_name("Status").as_py() == 404
-    assert values[2].by_name("Error").as_py() == "missing"
-    assert values[3].by_name("Operation").as_py() == "read"
+    # The error-only answer and the request-only document each name no
+    # plugin, and a read that answers no plugin answers no message: what is
+    # left is the two the wildcard selected.
+    assert len(values) == 2
+    assert [value.by_name("Name").as_py() for value in values] == ["Item0", "Item1"]
+    assert all(value.get_by_name("Status") is None for value in values)
+    assert all(value.get_by_name("Error") is None for value in values)
+    assert all(value.get_by_name("Operation") is None for value in values)
+    assert all(value.get_by_name("MBean") is None for value in values)
     assert all(value.get_by_name("SessionInterfaces") is None for value in values)
     assert next(messages, None) is None
     assert next(messages, None) is None
     capture = pa.table({"url": ["capture.log"], "rownum": [17], "body": pa.array([raw], type=pa.binary())})
-    # One byte a batch is a batch a row; a bulk document is still one row per MBean.
+    # One byte a batch is a batch a row; a bulk document is still one row per
+    # plugin it names, and none for the answers that name none.
     output = FixCodec(registry, batch_byte_size=1).parse_text_arrow_reader(capture).read_all()
-    assert output.num_rows == 4
-    assert output.column("url").to_pylist() == ["capture.log"] * 4
-    assert output.column("rownum").to_pylist() == [17] * 4
-    assert output.column("body").to_pylist() == [raw] * 4
+    assert output.num_rows == 2
+    assert output.column("url").to_pylist() == ["capture.log"] * 2
+    assert output.column("rownum").to_pylist() == [17] * 2
+    assert output.column("body").to_pylist() == [raw] * 2
+    # A row's own bytes that are not a Jolokia answer say nothing FIX can
+    # read, through every door, and being unable to read a body is not an
+    # error in the codec.
+    stranger = b'{"a":1}'
+    reader = FixCodec(registry)
+    assert next(reader.parse_line(stranger), None) is None
+    assert next(reader.parse_ulconfig_line(stranger), None) is None
+    assert next(reader.parse_text_line(TextLine(17, stranger)), None) is None
+    strangers = pa.table({"body": pa.array([stranger], type=pa.binary())})
+    assert reader.parse_text_arrow_reader(strangers).read_all().num_rows == 0
     config = UlPlugin({"CurrentPort": float("nan")})
     with pytest.raises(ValueError, match="non-finite"):
         config.into_fixmsg(FixCodec(registry))

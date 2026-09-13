@@ -420,12 +420,15 @@ const groupRef: string | null = field.fix.group
 const fieldRef: string | null = field.fix.fieldRef
 const messageCode: string | null = field.fix.msgtype
 
-const selected: UlPlugin = new fix.UlPlugin('d:name=A,type=ConfigurationPlugin', { Name: 'A' }, {})
-const configurations: UlPlugins = fix.UlPlugin.fromJsonScalar({ value: { Name: 'A' } })
+const selected: UlPlugin = new fix.UlPlugin('d:name=A,type=ConfigurationPlugin', { Name: 'A' })
+const configurations: UlPlugins = fix.UlPlugin.fromJsonScalar({
+  request: { mbean: 'com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin', type: 'read' },
+  value: { Name: 'A' },
+  status: 200,
+})
 const parsedConfigurations: UlPlugins = fix.UlPlugin.fromJsonBytes(new Uint8Array())
 const nativeConfigurations: UlPlugin[] = [...configurations]
 const configAttributes: Scalar = selected.asAttributes()
-const configEnvelope: Scalar = selected.asEnvelope()
 const configMessage: FixMsg = selected.intoFixmsg(reader)
 const recovered: UlPlugin = fix.UlPlugin.fromFixmsg(configMessage)
 const configHash: bigint = selected.stableHash()
@@ -455,4 +458,4 @@ void [group, counter, component, definitions, previous, replaced, deleted, group
   requiredGroup, restored, order, optionalOrder, messageTypes, registered, wireCode,
   messageDefinition, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
   componentRef, groupRef, fieldRef, messageCode, parsedConfigurations, nativeConfigurations,
-  configAttributes, configEnvelope, recovered, configHash, nextMessage, allMessages, single]
+  configAttributes, recovered, configHash, nextMessage, allMessages, single]

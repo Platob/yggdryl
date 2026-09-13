@@ -12,7 +12,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | Non-null | `beginstring`, `version`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
-| Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a bulk configuration yields one per selected MBean, including every response; empty bulk or wildcard answers yield none |
+| Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a bulk configuration yields one per configuration a response named, and none for a response that named none - an error-only answer, a request-only document, an empty bulk or wildcard answer |
 | Refuses | nothing a row's content can do; a payload that was there and would not parse is a message with nothing in it, so a row's content never fails the batch it arrives in. The row count is the capture's messages rather than its lines |
 | Found | a column is `index_of("msgtype")` on the schema itself, and `fix_column_of(&schema, 35)` is the same position read off the column's own `fix:tag`; nothing is cached, resolved or invalidated |
 
@@ -104,12 +104,12 @@ The verb is `parse`, and no reader takes a flag: what happens to a message once 
 
 | Reader | Takes | Answers |
 | --- | --- | --- |
-| `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: [none, one or many](decode.md#a-line-yields-none-one-or-many-messages) - one per frame, one per MBean of a bulk configuration, none for a line that states no message |
+| `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: [none, one or many](decode.md#a-line-yields-none-one-or-many-messages) - one per frame, one per configuration a bulk answer named, none for a line that states no message |
 | `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
 | `parse_text_line` | one [decoded line](../media/text.md#row-schema), its body, clock and [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
 | `parse_text_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>` |
 | `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
-| `parse_ulconfig_line` | a bulk or wildcard configuration body | `FixMessages` |
+| `parse_ulconfig_line` | a bulk or wildcard configuration body | `FixMessages`; a body that is not a Jolokia answer names no configuration and answers none, refusing nothing |
 | `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg`; a body holding [a second frame](decode.md#a-line-yields-none-one-or-many-messages) is refused |
 
 A stream adapter owns a clone of the codec and borrows nothing, so `codec.arrow_reader(schema, codec.parse_lines(lines))` composes without the codec outliving the stream. Python exposes native iterators; JavaScript uses `IterableIterator<FixMsg>`. Errors propagate from the native cursor and fuse it. Schema construction and group-plan resolution happen before repeated values are processed.
@@ -190,7 +190,7 @@ Each is the core's own method under the same name in all three languages.
 
 ### Lines are a stream
 
-`parse_lines` is the line iterator everything else is built on: nothing is collected, and a line answers [every message it carries](decode.md#a-line-yields-none-one-or-many-messages) - two where a relay wrote two frames on one line, none where the line is a sentence, one per MBean where it is a bulk configuration. A line the reader refuses is an `Err` item the stream continues past: one corrupt line must not end a run over ten million.
+`parse_lines` is the line iterator everything else is built on: nothing is collected, and a line answers [every message it carries](decode.md#a-line-yields-none-one-or-many-messages) - two where a relay wrote two frames on one line, none where the line is a sentence, one per configuration where it is a bulk answer. A line the reader refuses is an `Err` item the stream continues past: one corrupt line must not end a run over ten million.
 
 === "Rust"
 
@@ -678,16 +678,28 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
 
 ## A bridge configuration is a dictionary of its own
 
-`UlPlugin` is one selected MBean with its attributes and shared source response.
-`UlPlugin::from_json_bytes` and `from_json_scalar` validate the input and return
-`UlPlugins`. Bulk responses retain array order; wildcard MBeans use canonical
-ObjectName order within each response. The cursor retains the source document
-and its current position, with no collected output messages.
+`UlPlugin` is one configuration: the ObjectName the read named it by and the
+attributes it stated, which is all of it. What the Jolokia exchange wrapped
+them in - what was asked, and how the asking went - is the transport's and no
+part of the configuration, so `MBean`, `Operation`, `Status` and `Error` are
+gone with it. `UlPlugin::from_json_bytes` and `from_json_scalar` answer
+`UlPlugins` and refuse nothing: a body that is not a Jolokia answer names no
+configuration, and answering none is what it answers - `{"a":1}` is a row's
+own bytes and the row said nothing FIX can read, and bytes that are not JSON
+at all are the same silence. Bulk responses retain array order; wildcard
+ObjectNames use canonical ObjectName order within each response. The cursor
+retains the source document and its current position, with no collected
+output messages.
 
 Each selected configuration converts to one flat `FixMsg`. `SenderCompID`,
 `TargetCompID` and `BeginString` retain standard FIX tags; the bridge's own
-fields, from `ULBRIDGE_TAG_MIN` (20001) up, type the configuration-specific
-attributes. `with_ulbridge_fields` / `withUlbridgeFields` registers them in the
+fields type the configuration-specific attributes. `ULBRIDGE_TAG_MIN` (20001)
+is the floor of the range this dictionary claims, not the smallest tag it
+defines: 20001 to 20004 held the envelope and are retired rather than reused -
+a capture written last year holds `MBean` on 20001, and a dictionary that gave
+20001 to something else would read that column as the new field rather than as
+the old one - so the smallest tag defined is `SessionInterface` (20010).
+`with_ulbridge_fields` / `withUlbridgeFields` registers them in the
 one namespace beside the standard ones, each carrying `fix:branches = ulbridge`
 - the membership `ULBRIDGE_DIALECT` names, which `dialects()` lists and no
 lookup consults - so a document's attributes reach them by name and the codec
@@ -700,34 +712,40 @@ document's spelling, exactly as a line keeps what it wrote.
 
 | Source | Flat message |
 | --- | --- |
-| selected ObjectName | `MBean`, `SessionInterface`, `MBeanType`, `PluginType` |
-| request operation | `Operation` |
-| response status or error | `Status`, `Error` |
+| selected ObjectName | `SessionInterface` (20010), `MBeanType`, `PluginType` |
 | selected attribute map | typed fields such as `Name`, `CurrentPort`, `NeedReload`; `State` and `Version` land in `PluginState` and `PluginVersion` |
+
+The ObjectName is the one part of the exchange that names the configuration
+itself, and it was always the `SessionInterface` attribute, so the envelope was
+restating it.
 
 ### One configuration, out of a bulk body and back
 
-The first response below contains two MBeans, the first of them stating its
-`State` and `Version`. The second is a request with no value. Parsing produces
-three messages; no response is discarded.
+The first response below names two configurations, the first of them stating
+its `State` and `Version`. The second member is a request with no value: it
+names no configuration and therefore states no message. Parsing produces two
+messages, one per configuration a response named.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{FixCodec, FixRegistry, MBEAN_TAG_NAME, Scalar, ULBRIDGE_DIALECT, UlPlugin};
+    use yggdryl::{FixCodec, FixRegistry, Scalar, ULBRIDGE_DIALECT, ULBRIDGE_TAG_MIN, UlPlugin};
 
     let body = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin":{"Name":"A","CurrentPort":7061,"State":"logged","Version":"4.7.0"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,type=Plugin":{"Name":"B","CurrentPort":7062}},"status":200},{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"}]"#;
     let registry = FixRegistry::new().with_ulbridge_fields()?;
     // The bridge's fields sit in the one namespace, each a member of `ulbridge`.
     assert_eq!(registry.dialects(), [ULBRIDGE_DIALECT]);
-    assert!(registry.field_by_tag(MBEAN_TAG_NAME.0)?.as_fix().has_branch(ULBRIDGE_DIALECT));
+    // 20001 is the floor of the range, not a tag: the four the envelope held
+    // are retired, and the smallest one defined is `SessionInterface`.
+    assert!(registry.get_field_by_tag(ULBRIDGE_TAG_MIN).is_none());
+    assert!(registry.field_by_tag(20_010)?.as_fix().has_branch(ULBRIDGE_DIALECT));
     let codec = FixCodec::new(Arc::new(registry));
-    let mut configurations = UlPlugin::from_json_bytes(body)?;
+    let mut configurations = UlPlugin::from_json_bytes(body);
     let first = configurations.next().expect("first configuration");
     assert_eq!(first.name(), Some("A"));
     assert_eq!(first.state(), Some("logged"));
-    assert_eq!(configurations.count(), 2);
+    assert_eq!(configurations.count(), 1, "the request-only member named no configuration");
 
     let message = first.into_fixmsg(&codec)?;
     assert_eq!(message.by_name("CurrentPort")?, &Scalar::from(7061_i64));
@@ -745,7 +763,9 @@ three messages; no response is discarded.
         message?;
         count += 1;
     }
-    assert_eq!(count, 3);
+    assert_eq!(count, 2, "the request-only member named no configuration");
+    // A body that is not a Jolokia answer names none, and refuses nothing.
+    assert_eq!(UlPlugin::from_json_bytes(br#"{"a":1}"#).count(), 0);
     ```
 
 === "Python"
@@ -758,13 +778,16 @@ three messages; no response is discarded.
     registry.with_ulbridge_fields()
     # The bridge's fields sit in the one namespace, each a member of `ulbridge`.
     assert registry.dialects() == [ULBRIDGE_DIALECT]
-    assert registry.field_by_tag(20_001).fix.branches == [ULBRIDGE_DIALECT]
+    # 20001 is the floor of the range, not a tag: the four the envelope held
+    # are retired, and the smallest one defined is `SessionInterface`.
+    assert registry.get_field_by_tag(20_001) is None
+    assert registry.field_by_tag(20_010).fix.branches == [ULBRIDGE_DIALECT]
     codec = FixCodec(registry)
     configurations = UlPlugin.from_json_bytes(body)
     first = next(configurations)
     assert first.name == "A"
     assert first.state == "logged"
-    assert sum(1 for _ in configurations) == 2
+    assert sum(1 for _ in configurations) == 1, "the request-only member named no configuration"
 
     message = first.into_fixmsg(codec)
     assert message.by_name("CurrentPort").as_py() == 7061
@@ -776,7 +799,9 @@ three messages; no response is discarded.
     assert (20_019, "State", "logged") in message.entries()
     assert UlPlugin.from_fixmsg(message).name == "A"
     assert UlPlugin.from_fixmsg(message).state == "logged"
-    assert sum(1 for _ in codec.parse_line(body)) == 3
+    assert sum(1 for _ in codec.parse_line(body)) == 2, "the request-only member named no configuration"
+    # A body that is not a Jolokia answer names none, and refuses nothing.
+    assert list(UlPlugin.from_json_bytes(b'{"a":1}')) == []
     ```
 
 === "JavaScript"
@@ -790,13 +815,16 @@ three messages; no response is discarded.
     registry.withUlbridgeFields()
     // The bridge's fields sit in the one namespace, each a member of `ulbridge`.
     assert.deepEqual(registry.dialects(), ['ulbridge'])
-    assert.deepEqual(registry.fieldByTag(20_001).fix.branches, ['ulbridge'])
+    // 20001 is the floor of the range, not a tag: the four the envelope held
+    // are retired, and the smallest one defined is `SessionInterface`.
+    assert.equal(registry.getFieldByTag(20_001), null)
+    assert.deepEqual(registry.fieldByTag(20_010).fix.branches, ['ulbridge'])
     const codec = new fix.FixCodec(registry)
     const configurations = fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]()
     const first = configurations.next().value
     assert.equal(first.name, 'A')
     assert.equal(first.state, 'logged')
-    assert.equal([...configurations].length, 2)
+    assert.equal([...configurations].length, 1, 'the request-only member named no configuration')
 
     const message = first.intoFixmsg(codec)
     assert.equal(message.byName('CurrentPort').asJs(), 7061)
@@ -808,20 +836,27 @@ three messages; no response is discarded.
     assert.ok(message.arrivals().some(([tag, key]) => tag === 20_019 && key === 'State'))
     assert.equal(fix.UlPlugin.fromFixmsg(message).name, 'A')
     assert.equal(fix.UlPlugin.fromFixmsg(message).state, 'logged')
-    assert.equal([...codec.parseLine(body)].length, 3)
+    assert.equal([...codec.parseLine(body)].length, 2, 'the request-only member named no configuration')
+    // A body that is not a Jolokia answer names none, and refuses nothing.
+    assert.equal([...fix.UlPlugin.fromJsonBytes(Buffer.from('{"a":1}'))].length, 0)
     ```
 
 ### Edges
 
 - An empty bulk array or empty wildcard response yields zero configurations.
-- A request-only document or an error response without a value yields one
-  envelope message. Status and error belong to each selected response.
+- A request-only document, an error-only response and any other body that is
+  not a Jolokia answer name no configuration and yield no message: a read that
+  answers no plugin answers none, and the row is silent rather than carrying an
+  envelope with nothing inside it.
 - Null attributes are absent. Numeric sentinels such as `-1` remain numbers.
-- The original response may contain sibling MBeans; equality and hashing of a
-  selected `UlPlugin` depend on that configuration and its exchange metadata,
-  not unrelated sibling attributes.
-- A malformed bulk member reports its location. Conversion errors stop and fuse
-  `FixMessages`; the iterator does not skip a failed message and continue.
+- The original response may contain sibling configurations; equality and
+  hashing of a selected `UlPlugin` are its ObjectName and its attributes and
+  nothing else, so sibling attributes do not reach it and neither does the
+  exchange - the same plugin answered under `"status":503` is the same value.
+- A bulk member that is not a Jolokia answer names no configuration and the
+  walk continues past it, reporting nothing: being unable to read a body is not
+  an error in the codec. Conversion errors stop and fuse `FixMessages`; the
+  iterator does not skip a failed message and continue.
 - [Arrow parsing](arrow.md#one-row-per-message) repeats each source row's carried
   columns for all configurations produced from its body.
 
@@ -936,7 +971,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 
 ## Performance
 
-`fix/ulconfig`, a bulk configuration document read as the dictionary of its own it is: one Jolokia wildcard answer holding 1, 32 and 256 configurations, walked into them and each read into a message. Release build, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit).
+`fix/ulconfig`, a bulk configuration document read as the dictionary of its own it is: one Jolokia wildcard answer holding 1, 32 and 256 configurations, walked into them and each read into a message. Release build, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB; rustc 1.94.1 release (thin LTO, one codegen unit). The run is from before a message stopped carrying the Jolokia envelope (decision 17) - a configuration is built from four fewer pairs than it was, and its stable hash is taken over two parts rather than three - so the `messages` and `stable_hash` rows are that reading's and the table is due the regeneration below.
 
 | case | estimate |
 | --- | --- |

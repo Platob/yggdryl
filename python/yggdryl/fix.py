@@ -24,10 +24,11 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
-:class:`UlPlugin` carries one bridge configuration's ObjectName, attributes,
-and response envelope. :class:`UlPlugins` lazily yields configurations from a
-single or bulk document, and :meth:`UlPlugin.into_fixmsg` converts one to a
-flat typed message. :func:`fix_ulbridge_fields` is the dictionary
+:class:`UlPlugin` carries one bridge configuration: the ObjectName the read
+named it by and the attributes it stated, which is all of it - what the Jolokia
+exchange wrapped them in is the transport's. :class:`UlPlugins` lazily yields
+the configurations a single or bulk document names, and none where it names
+none, and :meth:`UlPlugin.into_fixmsg` converts one to a flat typed message. :func:`fix_ulbridge_fields` is the dictionary
 those attributes type against, which
 :meth:`FixRegistry.with_ulbridge_fields` registers.
 

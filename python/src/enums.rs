@@ -206,12 +206,6 @@ impl PyMimeType {
     }
 
     #[classattr]
-    #[pyo3(name = "ULCONFIG")]
-    fn ulconfig_constant() -> Self {
-        Self::from_core(CoreMimeType::ULCONFIG)
-    }
-
-    #[classattr]
     #[pyo3(name = "FIX")]
     fn fix_constant() -> Self {
         Self::from_core(CoreMimeType::FIX)

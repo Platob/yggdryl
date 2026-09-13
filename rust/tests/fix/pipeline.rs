@@ -16,6 +16,8 @@
 
 use super::SoleMessage;
 use super::path as fpath;
+use super::states_no_envelope;
+use super::{RETIRED_ENVELOPE_NAMES, RETIRED_ENVELOPE_TAGS, SESSIONINTERFACE_TAG};
 
 use std::sync::Arc;
 
@@ -417,7 +419,11 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
 
     // What each line was, read once by the text reader and carried through.
     let mimetype = text_column(&read, "mimetype");
-    assert_eq!(mimetype[RESPONSE_ROW].as_deref(), Some("text/ulconfig"));
+    // A bridge configuration line is JSON, which is what it is: `text/ulconfig`
+    // is deleted (decision 17), because a classifier answering it had already
+    // read the body far enough to know it was a Jolokia answer, and that
+    // reading is the codec's rather than the classifier's.
+    assert_eq!(mimetype[RESPONSE_ROW].as_deref(), Some("application/json"));
     assert_eq!(mimetype[HEARTBEAT_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[FILL_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[RELAY_ROW].as_deref(), Some("text/fix"));
@@ -620,21 +626,44 @@ fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard()
     // the bridge speaks it, a standard field it never touched says nothing,
     // and both are reached by tag or by name from the one registry.
     assert_eq!(registry.dialects(), [yggdryl::ULBRIDGE_DIALECT.to_owned()]);
-    let (tag, name) = yggdryl::MBEAN_TAG_NAME;
-    assert_eq!(tag, yggdryl::ULBRIDGE_TAG_MIN);
-    let mbean = registry
+    // `ULBRIDGE_TAG_MIN` is the floor of the range this dictionary claims,
+    // not the smallest tag it happens to define: 20001 to 20004 carried the
+    // Jolokia envelope, which decision 17 deleted, and they are retired
+    // rather than reused - a capture written before it holds `MBean` on
+    // 20001, so nothing else may answer to that tag. The smallest tag defined
+    // is `SessionInterface` on 20010, above the floor and not equal to it.
+    let (tag, name) = (SESSIONINTERFACE_TAG, "SessionInterface");
+    assert!(tag > yggdryl::ULBRIDGE_TAG_MIN, "{tag}");
+    for retired in RETIRED_ENVELOPE_TAGS {
+        assert!(registry.field_by_tag(retired).is_err(), "{retired}");
+    }
+    for retired in RETIRED_ENVELOPE_NAMES {
+        assert!(registry.field_by_name(retired).is_err(), "{retired}");
+    }
+    let smallest = yggdryl::fix_ulbridge_fields()
+        .unwrap()
+        .iter()
+        .filter_map(|field| field.as_fix().tag().ok().flatten())
+        .min()
+        .expect("the bridge defines fields");
+    assert_eq!(smallest, tag);
+    assert!(
+        smallest >= yggdryl::ULBRIDGE_TAG_MIN,
+        "the floor is a floor: {smallest}"
+    );
+    let first = registry
         .field_by_tag(tag)
         .expect("the bridge's first field");
-    assert!(mbean.as_fix().has_branch(yggdryl::ULBRIDGE_DIALECT));
+    assert!(first.as_fix().has_branch(yggdryl::ULBRIDGE_DIALECT));
     assert_eq!(
-        mbean.as_fix().branches().collect::<Vec<_>>(),
+        first.as_fix().branches().collect::<Vec<_>>(),
         [yggdryl::ULBRIDGE_DIALECT]
     );
     assert_eq!(
-        mbean.as_fix().id().unwrap(),
+        first.as_fix().id().unwrap(),
         Some(yggdryl::FixId::of(tag, name).unwrap())
     );
-    assert_eq!(registry.field_by_name(name).unwrap().name(), mbean.name());
+    assert_eq!(registry.field_by_name(name).unwrap().name(), first.name());
     let msgtype = registry
         .field_by_tag(yggdryl::fix::MSGTYPE_TAG_NAME.0)
         .expect("MsgType");
@@ -684,14 +713,21 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
         .sole_line(body.as_bytes(), false)
         .expect("the document the line carries");
 
-    // The envelope is what the exchange was, and it types.
+    // A configuration message is the plugin's attributes and nothing the
+    // Jolokia answer wrapped them in: what the transport asked (`MBean`,
+    // `Operation`) and how the asking went (`Status`, `Error`) state nothing
+    // about the plugin, so their four tags hold nothing here (decision 17).
+    states_no_envelope(&message);
+    // What the read named this plugin by is the `SessionInterface` attribute,
+    // which is where it always belonged, and it types like every other one.
     assert_eq!(
-        message.by_tag(yggdryl::OPERATION_TAG_NAME.0).unwrap(),
-        &Scalar::from("read")
-    );
-    assert_eq!(
-        message.by_tag(yggdryl::STATUS_TAG_NAME.0).unwrap(),
-        &Scalar::from(200_i64)
+        message
+            .by_tag(SESSIONINTERFACE_TAG)
+            .unwrap()
+            .as_str()
+            .unwrap_or_default(),
+        "com.ullink.ulbridge.sessioninterfaces.plugins:name=Router_TradeCapture,\
+         plugin-type=FIX,type=Plugin"
     );
     // A session interface is one flat message. Standard and bridge attributes
     // retain their own tags and datatypes.
@@ -725,12 +761,15 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     // reader filtering the arrival record by tag finds them.
     let tags: Vec<i32> = message.entries().iter().map(FixEntry::tag).collect();
     assert!(tags.contains(&49), "{tags:?}");
-    assert!(tags.contains(&yggdryl::MBEAN_TAG_NAME.0), "{tags:?}");
+    assert!(tags.contains(&SESSIONINTERFACE_TAG), "{tags:?}");
     assert!(tags.contains(&20_027), "CurrentPort: {tags:?}");
+    for retired in RETIRED_ENVELOPE_TAGS {
+        assert!(!tags.contains(&retired), "{retired}: {tags:?}");
+    }
 
-    // In the batch the same document is the same row: the envelope on its
-    // tags, and the attributes in the arrival record, one entry per field
-    // under the key the document spelled it by.
+    // In the batch the same document is the same row: the attributes in the
+    // arrival record, one entry per field under the key the document spelled
+    // it by, and nothing the answer wrapped them in.
     let read = read(&CAPTURE);
     let entries = column(&read, "nofixentries");
     let held = entries[RESPONSE_ROW].as_sequence().expect("the entries");

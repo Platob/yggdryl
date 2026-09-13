@@ -707,8 +707,9 @@ impl FixCodec {
     /// selecting the dialect from its frame.
     ///
     /// A row yields none, one or many (decision 16): one per frame the line
-    /// holds, one per selected MBean of a bulk UL configuration, and none at
-    /// all for a line that states no message.
+    /// holds, one per configuration a bulk UL answer named, and none at all
+    /// for a line that states no message - which a document naming no
+    /// configuration is, as much as a sentence is (decision 17).
     ///
     /// # A message is the frame; the line is still the line
     ///
@@ -778,8 +779,9 @@ impl FixCodec {
     /// Parses a stream of log lines into a stream of messages, lazily.
     ///
     /// The line iterator everything else is built on: each line is read as
-    /// [`Self::parse_line`] reads it - one message per frame, one per MBean
-    /// of a bulk configuration, none for a line that states no message - and
+    /// [`Self::parse_line`] reads it - one message per frame, one per
+    /// configuration a bulk answer named, none for a line that states no
+    /// message - and
     /// a line that is not a row at all is an `Err` item; the stream
     /// continues past it, because one corrupt line must not end a run over
     /// ten million. Nothing is collected: the iterator is the
@@ -974,7 +976,17 @@ impl FixCodec {
         // reading gets nothing and the document readers below answer.
         let (entries, frame_at) = TextEntries::from_bytes_direct_located(page);
         let entries = entries.unwrap_or_default();
-        let opens = line::payload_at_or_document(row, frame_at).unwrap_or(row.len());
+        // A row that located no frame may carry a document instead, and the
+        // namespace scan that finds one is run here and nowhere else: the
+        // span is kept whole, so where the payload opens and where the
+        // document closes are the one answer (decision 17).
+        let document = frame_at
+            .is_none()
+            .then(|| line::ulconfig_span(row))
+            .flatten();
+        let opens = frame_at
+            .or_else(|| document.as_ref().map(|span| span.start))
+            .unwrap_or(row.len());
         // The row's stated direction, else the reading over the prose in
         // front of the payload, else the pin the door supplied (decisions 14
         // and 15). Resolved here, where the payload was located, so the
@@ -1015,14 +1027,13 @@ impl FixCodec {
         if let Some((_, open)) = line::document_behind_prefix(row) {
             return self.fixml_with(&row[open..], extras).map(FixMessages::one);
         }
-        let body = &row[opens..];
-        // A payload opening with `{` is a bridge configuration document, and
-        // nothing else is: the locator points at a key, which starts with a
-        // digit or a letter, and points at an object only where it found one.
-        // So the test costs one byte rather than a second classification.
-        if matches!(body.first(), Some(b'{' | b'[')) {
-            return self.ulconfig_with(body, extras);
+        // The document the scan above already bounded, handed over as the
+        // document: the namespace, the opener and the close are found once
+        // for the whole reading.
+        if let Some(span) = document {
+            return Ok(self.ulconfig_with(&row[span], extras));
         }
+        let body = &row[opens..];
         // A FIXML row states no `key=value` frame, so the locator finds none
         // and leaves nothing to read. The document is the payload, and it
         // opens at the first tag - which is also how a prefix is dropped from

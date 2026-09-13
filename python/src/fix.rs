@@ -1878,16 +1878,16 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// One bridge configuration document, as a Jolokia answer states it.
+    /// One bridge configuration document, as a Jolokia answer states it:
+    /// one message per `ObjectName` it names, and none where it names no
+    /// configuration.
     ///
     /// The document is read out of the line it arrived on: a transport writes
     /// a timestamp in front of one and sometimes a duration behind it, and
-    /// both are prose.
-    fn parse_ulconfig_line(&self, body: &[u8]) -> PyResult<PyFixMessages> {
-        self.inner
-            .parse_ulconfig_line(body)
-            .map(PyFixMessages::over)
-            .map_err(value_error)
+    /// both are prose. A body that is not a Jolokia answer names no
+    /// configuration, and answering none is what it answers.
+    fn parse_ulconfig_line(&self, body: &[u8]) -> PyFixMessages {
+        PyFixMessages::over(self.inner.parse_ulconfig_line(body))
     }
 
     /// Pairs a caller already holds, in the order they arrived.
@@ -2267,17 +2267,19 @@ fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
     Ok(held)
 }
 
-/// Pickle carries the attributes, `ObjectName`, and shared source envelope.
-type UlPluginPickle = (Py<PyAny>, (String, Option<String>, String));
+/// Pickle carries the attributes and the `ObjectName`, which is all of it.
+type UlPluginPickle = (Py<PyAny>, (String, Option<String>));
 
 /// One plugin a bridge configuration document answers for.
 ///
-/// A Jolokia read answers one `MBean`'s attributes or a map of them keyed by
+/// A Jolokia read answers one plugin's attributes or a map of them keyed by
 /// `ObjectName`, and both are the same statement made once or many times. This
 /// is one of those statements - the `ObjectName` the bridge holds the plugin
 /// under, beside the attributes it stated - which is what a monitor walking a
-/// hundred of them holds before it types any of them. `FixMsg` is the same
-/// facts typed against a dictionary, and the two cross both ways.
+/// hundred of them holds before it types any of them. What the read asked and
+/// how the asking went is the transport's, and no part of the configuration.
+/// `FixMsg` is the same facts typed against a dictionary, and the two cross
+/// both ways.
 ///
 /// A mapping crossing the boundary is folded into the record a parsed document
 /// holds, so a `dict` states one as well as bytes do.
@@ -2307,20 +2309,14 @@ impl PyUlPlugin {
     /// `attributes` is anything the `Scalar` boundary reads - a mapping of
     /// names, a native `Scalar`, a parsed document - and `mbean` is the
     /// `ObjectName` the bridge holds the plugin under, where one is known.
+    /// They are the two parts, because what the Jolokia exchange wrapped them
+    /// in is the transport's and no part of the configuration.
     #[new]
-    #[pyo3(signature = (attributes, mbean=None, envelope=None))]
-    fn new(
-        attributes: &Bound<'_, PyAny>,
-        mbean: Option<&str>,
-        envelope: Option<&Bound<'_, PyAny>>,
-    ) -> PyResult<Self> {
+    #[pyo3(signature = (attributes, mbean=None))]
+    fn new(attributes: &Bound<'_, PyAny>, mbean: Option<&str>) -> PyResult<Self> {
         Ok(Self::from_inner(CoreUlPlugin::new(
             mbean,
             stated_attributes(from_py(attributes)?)?,
-            envelope
-                .map(|value| from_py(value).map(stated_document))
-                .transpose()?
-                .unwrap_or(Scalar::Null),
         )))
     }
 
@@ -2328,26 +2324,29 @@ impl PyUlPlugin {
     ///
     /// The document is found inside the line the way the classifier finds it:
     /// a transport writes a timestamp in front of one and sometimes a duration
-    /// behind it, and both are prose. Bytes that name no `MBean` are read whole.
+    /// behind it, and both are prose.
+    ///
+    /// Bytes that are not a Jolokia answer name no plugin, and naming none is
+    /// what they answer: reading is not refusing, so bytes that are not JSON
+    /// at all iterate empty rather than raising.
     #[staticmethod]
-    fn from_json_bytes(body: &[u8]) -> PyResult<PyUlPlugins> {
-        CoreUlPlugin::from_json_bytes(body)
-            .map(PyUlPlugins::from_inner)
-            .map_err(value_error)
+    fn from_json_bytes(body: &[u8]) -> PyUlPlugins {
+        PyUlPlugins::from_inner(CoreUlPlugin::from_json_bytes(body))
     }
 
     /// The same, over a document a caller already parsed.
     ///
-    /// The envelope is optional: a `value` under a Jolokia answer, an array of
-    /// those answers for a bulk read, or a bare attribute map. A document that
-    /// answers nothing answers no plugins rather than raising - a Jolokia
-    /// error is a document too.
+    /// A Jolokia answer names one plugin per `ObjectName` its `value` keys, or
+    /// the one its request selected. A document that is neither, an answer
+    /// that came back empty and an error-only answer all name none, which is
+    /// what they answer rather than raising - a Jolokia error is a document
+    /// too, and so is `{"a": 1}`.
     #[staticmethod]
     fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyUlPlugins> {
         let document = stated_document(from_py(document)?);
-        CoreUlPlugin::from_json_scalar(&document)
-            .map(PyUlPlugins::from_inner)
-            .map_err(value_error)
+        Ok(PyUlPlugins::from_inner(CoreUlPlugin::from_json_scalar(
+            &document,
+        )))
     }
 
     /// Every plugin one typed message carries, one per occurrence.
@@ -2423,11 +2422,6 @@ impl PyUlPlugin {
             .collect()
     }
 
-    #[getter]
-    fn envelope(&self) -> PyScalar {
-        PyScalar::from_inner(self.inner.as_envelope().clone())
-    }
-
     /// One attribute as the document stated it, or `None`.
     ///
     /// The spelling is folded the way every other name in this crate is, so
@@ -2466,12 +2460,9 @@ impl PyUlPlugin {
 
     /// Rebuild a plugin from the two parts pickle carried.
     #[staticmethod]
-    fn _from_pickle(attributes: &str, mbean: Option<&str>, envelope: &str) -> PyResult<Self> {
+    fn _from_pickle(attributes: &str, mbean: Option<&str>) -> PyResult<Self> {
         let attributes = yggdryl::from_json_scalar(attributes.as_bytes()).map_err(value_error)?;
-        let envelope = yggdryl::from_json_scalar(envelope.as_bytes()).map_err(value_error)?;
-        Ok(Self::from_inner(CoreUlPlugin::new(
-            mbean, attributes, envelope,
-        )))
+        Ok(Self::from_inner(CoreUlPlugin::new(mbean, attributes)))
     }
 
     fn __reduce__(&self, py: Python<'_>) -> PyResult<UlPluginPickle> {
@@ -2479,11 +2470,7 @@ impl PyUlPlugin {
         let attributes = into_json_scalar(self.inner.as_attributes()).map_err(value_error)?;
         Ok((
             callable,
-            (
-                attributes,
-                self.inner.mbean().map(str::to_owned),
-                into_json_scalar(self.inner.as_envelope()).map_err(value_error)?,
-            ),
+            (attributes, self.inner.mbean().map(str::to_owned)),
         ))
     }
 

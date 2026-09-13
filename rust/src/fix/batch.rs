@@ -102,8 +102,9 @@ impl FixCodec {
     /// so no row copies the codec or asks the dictionary a question the row
     /// before it asked. A line the reader
     /// refuses is a row holding an empty message, never a row lost, so a row
-    /// in is a row out; a bulk configuration document is one row per MBean,
-    /// each repeating its source row's carried columns. Tag 385, the column
+    /// in is a row out; a bulk configuration document is one row per
+    /// configuration it named and no row where it named none, each repeating
+    /// its source row's carried columns. Tag 385, the column
     /// [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME) names, takes
     /// the row's stated `msgdirection`, else the reading over the prose in
     /// front of its payload, else [`Self::try_with_direction`]'s pin

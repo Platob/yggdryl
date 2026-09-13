@@ -244,29 +244,34 @@ fn protocol_and_msgtype_inference_are_shallow_borrowed_redirects() {
             None,
         ),
         (
-            // A bridge configuration document: JSON, and the namespace that
-            // says whose. The first ObjectName's `type=` is what the entry is,
-            // and `plugin-type=` shares its last five bytes without being it.
+            // A bridge configuration document is JSON, which is what it is:
+            // what makes one *this* reader's is a shape the codec recognizes
+            // and never a name the scan gives it (decision 17). The namespace
+            // still says whose, and the first ObjectName's `type=` is what the
+            // entry is - `plugin-type=` shares its last five bytes without
+            // being it.
             br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Category":"InterBridge"},"status":200}"#,
-            MimeType::ULCONFIG,
+            MimeType::JSON,
             Some(b"Plugin"),
         ),
         (
             // A wildcard read names no type in its own MBean, so the entry it
             // answers with names the document's.
             br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"X"}},"status":200}"#,
-            MimeType::ULCONFIG,
+            MimeType::JSON,
             Some(b"ConfigurationPlugin"),
         ),
         (
             // Neither MBean names a type, so the operation is what is left.
             br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#,
-            MimeType::ULCONFIG,
+            MimeType::JSON,
             Some(b"read"),
         ),
         (
-            // The namespace is the whole of what makes the reading: JSON
-            // without it is JSON.
+            // JSON either way: the namespace no longer separates one media
+            // type from another, and what it still separates is the message
+            // type the ObjectName names, which a document outside it does
+            // not name.
             br#"{"request":{"mbean":"java.lang:type=Memory","type":"read"},"status":200}"#,
             MimeType::JSON,
             None,
@@ -379,12 +384,14 @@ fn the_prose_in_front_of_a_configuration_document_names_its_half_and_the_documen
     // were the reading, and the prefix bound still holds them out of it.
     let write = br#"{"type":"write","mbean":"com.ullink.ulbridge:type=Bridge","attribute":"LogLevel","value":3}"#;
     assert_eq!(reading.read_bytes(write), None);
-    assert_eq!(MimeType::infer_bytes(write), MimeType::ULCONFIG);
+    // A configuration document classifies as the JSON it is: the reading that
+    // makes one a bridge's is the codec's, not a media type (decision 17).
+    assert_eq!(MimeType::infer_bytes(write), MimeType::JSON);
     assert_eq!(FixCodec::infer_msgtype_bytes(write), Some(&b"Bridge"[..]));
 
     // A bulk read answers an array of these, and an array closes with `]`.
     let bulk = br#"[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin","type":"read"},"status":200},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":200}]"#;
-    assert_eq!(MimeType::infer_bytes(bulk), MimeType::ULCONFIG);
+    assert_eq!(MimeType::infer_bytes(bulk), MimeType::JSON);
     assert_eq!(FixCodec::infer_msgtype_bytes(bulk), Some(&b"Plugin"[..]));
     assert_eq!(reading.read_bytes(bulk), None);
 
@@ -403,7 +410,7 @@ fn the_prose_in_front_of_a_configuration_document_names_its_half_and_the_documen
     ]
     .concat();
     assert_eq!(reading.read_bytes(&stamped), Some("R"));
-    assert_eq!(MimeType::infer_bytes(&stamped), MimeType::ULCONFIG);
+    assert_eq!(MimeType::infer_bytes(&stamped), MimeType::JSON);
     assert_eq!(
         FixCodec::infer_msgtype_bytes(&stamped),
         Some(&b"Plugin"[..])
@@ -457,6 +464,23 @@ const ULCONFIG_SINGLE: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sess
 /// One wildcard read, answering for two MBeans of different types.
 const ULCONFIG_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"CLIENT_BPAG"}},"status":200}"#;
 
+/// What no configuration message states: the Jolokia envelope, by either of
+/// the two ways a message can be asked for a field.
+///
+/// `MBean` and `Operation` were what the transport asked, `Status` and `Error`
+/// how the asking went, and none of them is a fact about the plugin the answer
+/// carried (decision 17). Tags 20001 to 20004 are retired rather than reused,
+/// so a message answering under one of them would be answering for a field
+/// this dictionary no longer defines.
+fn assert_states_no_envelope(message: &crate::FixMsg) {
+    for name in ["MBean", "Operation", "Status", "Error"] {
+        assert!(message.get_by_name(name).is_none(), "{name}");
+    }
+    for tag in 20_001..=20_004 {
+        assert!(message.get_by_tag(tag).is_none(), "{tag}");
+    }
+}
+
 /// A codec over the shipped dictionary, holding ULBridge's own fields too.
 fn ulbridge_codec() -> crate::FixCodec {
     static REGISTRY: std::sync::OnceLock<Arc<FixRegistry>> = std::sync::OnceLock::new();
@@ -475,21 +499,19 @@ fn a_bridge_configuration_reads_as_one_flat_message() {
     assert!(messages.next().is_none());
     assert!(msg.get_by_name("SessionInterfaces").is_none());
 
-    // The envelope is what the exchange was, and it types: a status is a
-    // number rather than the text it arrived as.
+    // The message is the plugin's attributes and nothing the answer wrapped
+    // them in: the read's own `mbean` and `type`, and the `200` it came back
+    // with, state how the asking went and not what the plugin is.
+    assert_states_no_envelope(&msg);
+
+    // The ObjectName the read named this plugin by is where it always
+    // belonged - the SessionInterface attribute - so nothing was lost with
+    // the envelope that restated it.
     assert_eq!(
-        msg.by_tag(crate::MBEAN_TAG_NAME.0).unwrap().as_str(),
+        msg.by_name("SessionInterface").unwrap().as_str(),
         Some(
             "com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin"
         ),
-    );
-    assert_eq!(
-        msg.by_tag(crate::OPERATION_TAG_NAME.0).unwrap(),
-        &Scalar::from("read")
-    );
-    assert_eq!(
-        msg.by_tag(crate::STATUS_TAG_NAME.0).unwrap(),
-        &Scalar::from(200_i64)
     );
 
     // A field the specification publishes keeps the specification's tag, and
@@ -543,9 +565,19 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
         .unwrap();
     assert_eq!(messages.len(), 2);
     for message in &messages {
-        assert_eq!(
-            message.by_tag(crate::MBEAN_TAG_NAME.0).unwrap(),
-            &Scalar::from("com.ullink.ulbridge.sessioninterfaces.plugins:*")
+        // The wildcard the read asked with is the question, and no message
+        // restates it: each answers for the one ObjectName its key named.
+        assert_states_no_envelope(message);
+        assert!(
+            message
+                .by_name("SessionInterface")
+                .unwrap()
+                .as_str()
+                .is_some_and(
+                    |name| name.starts_with("com.ullink.ulbridge.sessioninterfaces.plugins:name=")
+                ),
+            "{:?}",
+            message.get_by_name("SessionInterface"),
         );
         assert!(message.get_by_name("SessionInterfaces").is_none());
     }
@@ -567,14 +599,13 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     assert_eq!(recovered.name(), Some("B"));
     assert_eq!(recovered.get("CurrentPort"), Some(&Scalar::from(9905_i64)));
     let rebuilt = recovered.into_fixmsg(&codec).unwrap();
-    assert_eq!(
-        rebuilt.by_name("MBean").unwrap(),
-        messages[1].by_name("MBean").unwrap()
-    );
+    // The ObjectName survives the round trip on the attribute that carries
+    // it, and there is no second place it could come back in.
     assert_eq!(
         rebuilt.by_name("SessionInterface").unwrap(),
         messages[1].by_name("SessionInterface").unwrap()
     );
+    assert_states_no_envelope(&rebuilt);
     // A dictionary without ULBridge's fields keeps every key rather than
     // dropping it: a venue sends fields no dictionary has.
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
@@ -584,60 +615,84 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(plain.len(), 2);
-    assert!(plain[0].get_by_name("mbean").is_some());
-    assert!(plain[0].get_by_tag(crate::MBEAN_TAG_NAME.0).is_none());
+    assert!(plain[0].get_by_name("sessioninterface").is_some());
+    assert!(plain[0].get_by_name("Name").is_some());
+    // Kept, but explained by nothing: a dictionary without these fields
+    // names no tag for any key the document stated.
+    assert!(!plain[0].entries().is_empty());
+    assert!(
+        plain[0].entries().iter().all(|entry| entry.tag() == 0),
+        "{:?}",
+        plain[0].entries(),
+    );
+    assert_states_no_envelope(&plain[0]);
 }
 
 #[test]
-fn ulconfig_bulk_iteration_keeps_request_and_error_envelopes_and_fuses() {
+fn ulconfig_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
     let document = crate::from_json_scalar(br#"[{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":404,"error":"missing"},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Bridge","CurrentPort":9905}}]"#).unwrap();
-    let mut configurations = crate::UlPlugin::from_json_scalar(&document).unwrap();
+    let mut configurations = crate::UlPlugin::from_json_scalar(&document);
     assert_eq!(configurations.size_hint(), (0, None));
-    let error = configurations.next().unwrap();
+    // The first answer failed, so it named no plugin, and a read that
+    // answers no plugin answers no message: the array's two responses yield
+    // one configuration, which is the one that came back (decision 17).
     let value = configurations.next().unwrap();
     assert_eq!(value.name(), Some("Bridge"));
     assert!(configurations.next().is_none());
     assert!(configurations.next().is_none());
     assert_eq!(configurations.size_hint(), (0, Some(0)));
     let codec = ulbridge_codec();
-    let message = error.into_fixmsg(&codec).unwrap();
-    assert_eq!(message.by_name("Status").unwrap(), &Scalar::from(404_i64));
-    assert_eq!(message.by_name("Error").unwrap(), &Scalar::from("missing"));
-    assert!(message.get_by_name("SessionInterface").is_none());
+    let message = value.into_fixmsg(&codec).unwrap();
+    assert_eq!(
+        message.by_name("SessionInterface").unwrap(),
+        &Scalar::from("com.ullink.ulbridge:type=Bridge")
+    );
+    assert_eq!(
+        message.by_name("CurrentPort").unwrap(),
+        &Scalar::from(9905_i64)
+    );
+    // Neither the 404 nor the `missing` it failed with reaches a message,
+    // and neither does the read that carried the one that answered.
+    assert_states_no_envelope(&message);
+
+    // A wildcard that selected nothing states nothing, twice: the iterator
+    // it answers with is empty and fused rather than carrying an envelope
+    // with no configuration inside it.
     let empty = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{},"status":200}"#;
-    let mut values = crate::UlPlugin::from_json_bytes(empty).unwrap();
+    let mut values = crate::UlPlugin::from_json_bytes(empty);
     assert!(values.next().is_none());
     assert!(values.next().is_none());
+    assert!(codec.parse_line(empty).unwrap().next().is_none());
+
+    // The same fact one layer up: a line whose whole document is an answer
+    // that failed is a row yielding no message at all, rather than a row
+    // carrying an envelope with nothing inside it (decisions 16 and 17).
+    let failed = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":404,"error":"missing"}"#;
+    assert!(codec.parse_line(failed).unwrap().next().is_none());
+    assert!(codec.parse_ulconfig_line(failed).next().is_none());
+
+    // A request is what was asked and answers for no plugin at all, so a
+    // document holding only one yields no message.
     let request = br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
-    let request = crate::UlPlugin::from_json_bytes(request)
-        .unwrap()
-        .next()
-        .unwrap();
-    assert!(request.mbean().is_none());
-    let message = request.into_fixmsg(&codec).unwrap();
-    assert_eq!(message.by_name("Operation").unwrap(), &Scalar::from("read"));
-    assert!(message.get_by_name("SessionInterface").is_none());
+    let mut asked = crate::UlPlugin::from_json_bytes(request);
+    assert!(asked.next().is_none());
+    assert!(asked.next().is_none());
+    assert!(codec.parse_ulconfig_line(request).next().is_none());
 }
 
 #[test]
-fn a_selected_ulconfig_identity_excludes_other_mbeans() {
+fn a_selected_ulconfig_identity_excludes_other_mbeans_and_the_exchange() {
     use std::hash::{Hash, Hasher};
     let document = String::from_utf8(ULCONFIG_WILDCARD.to_vec()).unwrap();
     let changed_sibling = document.replace("9905", "9906");
     let first = crate::UlPlugin::from_json_bytes(document.as_bytes())
-        .unwrap()
         .next()
         .unwrap();
     let same = crate::UlPlugin::from_json_bytes(changed_sibling.as_bytes())
-        .unwrap()
         .next()
         .unwrap();
     assert_eq!(first, same);
-    let rebuilt = crate::UlPlugin::new(
-        first.mbean(),
-        first.as_attributes().clone(),
-        first.as_envelope().clone(),
-    );
+    let rebuilt = crate::UlPlugin::new(first.mbean(), first.as_attributes().clone());
     assert_eq!(first, rebuilt);
     let digest = |value: &crate::UlPlugin| {
         let mut hasher = std::hash::DefaultHasher::new();
@@ -647,57 +702,127 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans() {
     assert_eq!(digest(&first), digest(&same));
     assert_eq!(first.stable_hash(), same.stable_hash());
     assert_eq!(first.stable_hash(), rebuilt.stable_hash());
-    let changed_exchange = document.replace("\"status\":200", "\"status\":503");
-    let changed = crate::UlPlugin::from_json_bytes(changed_exchange.as_bytes())
-        .unwrap()
+    // What a plugin is named and what it states is the whole of it: how the
+    // asking went never was part of the configuration, so the same answer
+    // arriving with a 503 in front of it is the same plugin, and so is the
+    // same one a different operation asked for (decision 17).
+    for changed_exchange in [
+        document.replace("\"status\":200", "\"status\":503"),
+        document.replace("\"type\":\"read\"", "\"type\":\"exec\""),
+    ] {
+        let changed = crate::UlPlugin::from_json_bytes(changed_exchange.as_bytes())
+            .next()
+            .unwrap();
+        assert_eq!(first, changed, "{changed_exchange}");
+        assert_eq!(digest(&first), digest(&changed), "{changed_exchange}");
+        assert_eq!(
+            first.stable_hash(),
+            changed.stable_hash(),
+            "{changed_exchange}"
+        );
+    }
+    // The ObjectName is half of what a plugin is, so the same attributes
+    // answered for under another name are another plugin.
+    let renamed = document.replace("name=A,", "name=AA,");
+    let other = crate::UlPlugin::from_json_bytes(renamed.as_bytes())
         .next()
         .unwrap();
-    assert_ne!(first, changed);
-    assert_ne!(first.stable_hash(), changed.stable_hash());
+    assert_ne!(first, other);
+    assert_ne!(first.stable_hash(), other.stable_hash());
 }
 
 #[test]
 fn ulconfig_conversion_reports_an_unrepresentable_attribute() {
     let attributes = Scalar::from_record([("CurrentPort", Scalar::from(f64::NAN))]).unwrap();
-    let value = crate::UlPlugin::new(None, attributes, Scalar::Null);
+    let value = crate::UlPlugin::new(None, attributes);
     let codec = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let error = value.into_fixmsg(&codec).unwrap_err();
     assert!(error.to_string().contains("non-finite"), "{error}");
 }
 
 #[test]
-fn ulconfig_intake_refuses_malformed_bulk_responses_before_yielding() {
-    for body in [b"null".as_slice(), b"true", b"1", br#""text""#] {
-        let error = crate::UlPlugin::from_json_bytes(body).unwrap_err();
-        assert!(error.to_string().contains("ulconfig"), "{error}");
-    }
+fn a_body_that_is_no_jolokia_answer_names_no_plugin_and_refuses_nothing() {
+    // Reading is not refusing. A body that is not a Jolokia answer - a
+    // `value` beside what was asked, keyed by ObjectNames of this namespace -
+    // names no plugin, and naming none is what it answers: the row carried
+    // bytes this reader cannot read, which is a statement and not an error
+    // in the codec (decision 17).
+    let codec = ulbridge_codec();
     for body in [
-        br#"[{"value":{"Name":"valid"}},42]"#.as_slice(),
+        b"null".as_slice(),
+        b"true",
+        b"1",
+        br#""text""#,
+        b"[]",
+        br#"{"a":1}"#,
+        b"not JSON at all",
+        // A bulk array whose second element is no response at all: the one
+        // that names nothing is skipped rather than refused, and the object
+        // beside it names nothing either, having no ObjectName to answer for.
+        br#"[{"value":{"Name":"valid"}},42]"#,
         br#"[{"value":{"Name":"valid"}},[]]"#,
     ] {
-        let error = crate::UlPlugin::from_json_bytes(body).unwrap_err();
-        assert!(error.to_string().contains("ulconfig[1]"), "{error}");
+        let shown = String::from_utf8_lossy(body).into_owned();
+        let mut values = crate::UlPlugin::from_json_bytes(body);
+        assert!(values.next().is_none(), "{shown}");
+        assert!(values.next().is_none(), "{shown}");
+        // Through the doors as well as through the value: nothing refused,
+        // and nothing yielded.
+        let mut messages = codec.parse_ulconfig_line(body);
+        assert!(messages.next().is_none(), "{shown}");
+        let mut messages = codec.parse_line(body).unwrap();
+        assert!(messages.next().is_none(), "{shown}");
+        let line = crate::media::text::TextLine::from_bytes(
+            0,
+            crate::media::text::TextBytes::from_bytes(body).unwrap(),
+        )
+        .unwrap();
+        let mut messages = codec.parse_text_line(&line).unwrap();
+        assert!(messages.next().is_none(), "{shown}");
     }
-    let mut empty = crate::UlPlugin::from_json_bytes(b"[]").unwrap();
-    assert!(empty.next().is_none());
-    assert!(empty.next().is_none());
 }
 
 #[test]
 fn ulbridge_fields_are_a_dictionary_of_their_own() {
     let held = crate::fix_ulbridge_fields().unwrap();
-    assert_eq!(held[0].name(), "MBean");
-    // The name is what keeps a venue's own 20001 a different field: the
+    // The envelope is gone, so the dictionary opens on the ObjectName the
+    // answer named a plugin by, which is the smallest tag it defines.
+    assert_eq!(held[0].name(), "SessionInterface");
+    // The name is what keeps a venue's own 20010 a different field: the
     // identity is the tag and the name together.
-    let (tag, name) = crate::MBEAN_TAG_NAME;
+    let (tag, name) = (20_010, "SessionInterface");
     assert_eq!(held[0].as_fix().id().unwrap(), Some(id_of(tag, name)));
     assert_ne!(held[0].as_fix().id().unwrap().unwrap(), id_of(tag, "Venue"));
+
+    // 20001 is the floor of the range this dictionary claims, not the
+    // smallest tag it defines: 20001 to 20004 carried the Jolokia envelope
+    // and are retired rather than reused, because a capture written before
+    // decision 17 holds `MBean` on 20001 and a dictionary handing 20001 to
+    // something else would read that column as the new field.
+    let smallest = held
+        .iter()
+        .map(|field| field.as_fix().tag().unwrap().expect("a tag"))
+        .min()
+        .expect("a dictionary of its own");
+    assert_eq!(smallest, tag);
+    assert!(smallest > crate::ULBRIDGE_TAG_MIN);
+    for retired in ["MBean", "Operation", "Status", "Error"] {
+        assert!(
+            !held.iter().any(|field| field.name() == retired),
+            "{retired} is retired",
+        );
+    }
 
     // Every tag this dictionary claims is from its own block, and every
     // field says whose dictionary it is.
     for field in held {
         let tag = field.as_fix().tag().unwrap().expect("a tag");
         assert!(tag >= crate::ULBRIDGE_TAG_MIN, "{}: {tag}", field.name());
+        assert!(
+            !(20_001..=20_004).contains(&tag),
+            "{}: {tag} is retired",
+            field.name()
+        );
         assert!(
             field.as_fix().has_branch(crate::ULBRIDGE_DIALECT),
             "{}",

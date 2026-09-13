@@ -899,10 +899,14 @@ Environment and default-folder resolution happen once, on the first global looku
 | Name keys with `#` markers or `MSGTYPE=` | `text/ullink` |
 | Numeric frame mixed with symbolic keys | `text/fixul` |
 | XML in the official `XmlData(213)` payload | `text/fixml` |
-| A JSON document identifying an ULBridge MBean | `text/ulconfig` |
 | Unframed key/value text | `text/key-value` |
-| Other XML or JSON | The corresponding generic MIME type |
+| XML or JSON | The corresponding generic MIME type |
 | Unrecognized bytes | `application/octet-stream` |
+
+A bridge configuration document is `application/json`, which is what it is.
+What makes one *this* reader's is a shape the codec recognizes rather than a
+name the classifier gives it, and the codec reads that shape at the offset the
+namespace scan already found, so nothing is looked for twice.
 
 === "Rust"
 
@@ -932,9 +936,9 @@ Environment and default-folder resolution happen once, on the first global looku
     assert.equal(fix.FixCodec.inferMsgtypeText('MSGTYPE=P Report Ack|'), 'P Report Ack')
     ```
 
-### A bridge configuration is a document that names itself
+### A bridge configuration is a shape the codec recognizes
 
-An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `UlPlugins` and `FixMessages`; each selected configuration becomes one flat typed message, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_ulbridge_fields` registers them, every one a member of `ULBRIDGE_DIALECT` (`ulbridge`) with tags from 20001 - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
+An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `UlPlugins` and `FixMessages`; each configuration a response named becomes one flat typed message, and a response that named none - an error-only answer, a request with no value, a wildcard that selected nothing - becomes no message at all, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_ulbridge_fields` registers them, every one a member of `ULBRIDGE_DIALECT` (`ulbridge`) with tags inside the range `ULBRIDGE_TAG_MIN` (20001) floors, the four the Jolokia envelope held retired rather than reused so the smallest one defined is `SessionInterface` (20010) - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
 
 ### A direction is what the rules on tag 385 read in front of the payload
 
@@ -951,7 +955,7 @@ Where the field carries no property the defaults answer, keyed by the set's `Sen
 | Receive | `(?i)(?:^\|[\[(])in(?:[\]):]\|$)` | the bare word, only bracketed: `(in)`, `[IN]` |
 | Receive | `(?i)(?:^\|\s)response:` | an answer came back |
 
-`Request:` and `Response:` prose names the half of a Jolokia exchange - a request went out, an answer came back - and a bare configuration document states nothing of itself: the envelope is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door.
+`Request:` and `Response:` prose names the half of a Jolokia exchange - a request went out, an answer came back - and a bare configuration document states nothing of itself: the half is prose in front of the payload, read by the same rules as every other prose, so a document with no prose in front of it has no tag 385 on the line door and takes the pin on the batch door. A direction is the line's and a message is the document's, read apart, so prose in front of a document that names no configuration still names a half and still yields no message.
 
 `set_directions` on the field's FIX view is the door: it resolves every code through the one resolution a pin goes through and refuses a code outside the set the field declares - its `fix:codes`, else the specification's `S` and `R` - a code named twice under any spelling (`S` beside `Send`), an empty code or one carrying a quote, backslash or control character, an entry with no pattern, an empty pattern, or a pattern `regex::bytes` refuses, leaving the field unchanged. A hand-edited dictionary reaches the reading without the door, and every entry the door would have refused is dropped with a warning that is that refusal word for word, so the table degrades to fewer rules - down to none, where a property the field carries states nothing readable - rather than to a wrong reading, and never falls back to the defaults, which are the absent property's alone; an empty list, or `remove_directions`, takes the property away; `directions()` walks it borrowed and `FixDirection` is the owned rule; through `update` the incoming table [wins whole](#one-merge-with-a-rule-per-key). The [CLI](cli.md#definition-flags) edits it through `--directions '<json>'` on `fields create` and `fields update` - `ygg fix fields update MsgDirection utf8 --tag 385 --codes '<json>' --directions '<json>'`, the set restated because an update replaces the definition whole - and the bindings read and write it as a list on `field.fix.directions`. `MsgDirection::directions` answers the rules in force - the field's, each code resolved to the set's value, or the defaults - as data, so what a dictionary reads by is never hidden in Rust. The codec compiles every pattern once into a `regex::bytes::Regex` when it takes its registry (`FixCodec::new`), so a codec is built after the field is edited, and a row applies the compiled patterns to its prefix allocating nothing. The committed dictionary carries no property and reads by the defaults: they have one owner, the crate, and a dictionary that ships a table states its own.
 

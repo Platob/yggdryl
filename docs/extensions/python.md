@@ -1530,9 +1530,12 @@ assert "fix:directions" not in direction.metadata
 
 A `dict` is the obvious Python spelling of a named row, and the declared root is what says so. `FixMsg` reads one as the record its Struct field declares, while a `Map` field keeps its mapping.
 
-Bulk configuration responses stream one flat message per selected plugin. Each
-message retains its selected MBean and source envelope; the fields are directly
-addressable on the message.
+Bulk configuration responses stream one flat message per configuration a
+response named, and none for a response that named none - so an error-only
+answer and a request with no value are silent. Each message retains the
+ObjectName the read named it by, on `SessionInterface`; what the Jolokia
+exchange wrapped it in reaches no column. The fields are directly addressable
+on the message.
 
 ```python
 import json
@@ -1544,12 +1547,19 @@ registry.with_ulbridge_fields()
 assert ULBRIDGE_DIALECT == "ulbridge" and registry.dialects() == ["ulbridge"]
 assert all(field.fix.has_branch("ulbridge") for field in fix_ulbridge_fields())
 assert [registry[tag].name for tag in (20019, 20021)] == ["PluginState", "PluginVersion"]
+# 20001 to 20004 held the Jolokia envelope and are retired, not reused.
+assert all(registry.get_field_by_tag(tag) is None for tag in (20001, 20002, 20003, 20004))
+assert registry[20010].name == "SessionInterface"
 codec = FixCodec(registry)
+plugins = "com.ullink.ulbridge.sessioninterfaces.plugins"
 document = [
-    {"request": {"type": "read", "mbean": "bridge:type=Plugin,name=Orders"},
+    {"request": {"type": "read", "mbean": f"{plugins}:name=Orders,plugin-type=FIX,type=Plugin"},
      "status": 200, "value": {"Name": "Orders"}},
-    {"request": {"type": "read", "mbean": "bridge:type=Plugin,name=Prices"},
+    {"request": {"type": "read", "mbean": f"{plugins}:name=Prices,plugin-type=FIX,type=Plugin"},
      "status": 200, "value": {"Name": "Prices"}},
+    # An error-only answer names no configuration and states no message.
+    {"request": {"type": "read", "mbean": f"{plugins}:name=Gone,plugin-type=FIX,type=Plugin"},
+     "status": 404, "error": "missing"},
 ]
 messages = codec.parse_ulconfig_line(json.dumps(document).encode())
 assert isinstance(messages, FixMessages)
@@ -1557,6 +1567,9 @@ assert [message.by_name("Name").as_py() for message in messages] == ["Orders", "
 assert next(messages, None) is None
 selected = next(UlPlugin.from_json_scalar(document))
 assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
+# A body that is not a Jolokia answer names no configuration, and answering
+# none is what it answers: reading is not refusing.
+assert list(codec.parse_ulconfig_line(b'{"a":1}')) == []
 ```
 
 ## Edges
