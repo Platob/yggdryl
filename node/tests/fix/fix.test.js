@@ -356,8 +356,8 @@ test('protocol and MsgType inference stays native and shallow', () => {
     ['level=INFO message=random', MimeType.KEYVALUE, null],
     [
       // A bridge configuration document is JSON, which is what it is:
-      // `text/ulconfig` is deleted, and what makes one *this* reader's is a
-      // shape the codec reads rather than a name the scan gives it.
+      // what makes one *this* reader's is a shape the codec reads rather
+      // than a name the scan gives it.
       '{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:' +
         'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
       MimeType.JSON,
@@ -1044,15 +1044,15 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'FixMsg',
       'FixRegistry',
       'MsgType',
-      'UlPlugin',
-      'UlPlugins',
+      'Plugin',
+      'Plugins',
       'crateFields',
       'globalRegistry',
       'installGlobalRegistry',
+      'pluginFields',
       'schema',
       'schemaCarrying',
       'schemaTags',
-      'ulbridgeFields',
     ],
   )
   for (const name of [

@@ -345,7 +345,7 @@ A source row is read for every message it carries, so a capture answers one row 
     ])]);
     let batch = yggdryl::arrow::batch_from_value(&field, &rows)?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
-    let registry = Arc::new(FixRegistry::new().with_ulbridge_fields()?);
+    let registry = Arc::new(FixRegistry::new().with_plugin_fields()?);
     let reader = FixCodec::new(registry).parse_text_arrow_reader(source)?;
     let mut count = 0;
     for batch in reader {
@@ -365,7 +365,7 @@ A source row is read for every message it carries, so a capture answers one row 
     ])]);
     let batch = yggdryl::arrow::batch_from_value(&field, &rows)?;
     let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
-    let registry = Arc::new(FixRegistry::new().with_ulbridge_fields()?);
+    let registry = Arc::new(FixRegistry::new().with_plugin_fields()?);
     let mut silent_rows = 0;
     for batch in FixCodec::new(registry).parse_text_arrow_reader(source)? {
         silent_rows += batch?.num_rows();
@@ -382,7 +382,7 @@ A source row is read for every message it carries, so a capture answers one row 
     body = '[{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Orders,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Orders"},"status":200},{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=Prices,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"Prices"},"status":200}]'
     source = pa.table({"rownum": pa.array([7], pa.int64()), "body": pa.array([body], pa.string())})
     registry = FixRegistry()
-    registry.with_ulbridge_fields()
+    registry.with_plugin_fields()
     result = FixCodec(registry).parse_text_arrow_reader(source.to_reader()).read_all()
     assert result.num_rows == 2
     assert result.column("rownum").to_pylist() == [7, 7]
@@ -408,7 +408,7 @@ A source row is read for every message it carries, so a capture answers one row 
       body: arrow.vectorFromArray([body], new arrow.Utf8()),
     })
     const registry = new fix.FixRegistry()
-    registry.withUlbridgeFields()
+    registry.withPluginFields()
     const result = new fix.FixCodec(registry).parseTextArrowReader(BatchReader.from(source)).intoTable()
     assert.equal(result.numRows, 2)
     assert.deepEqual([...result.getChild('rownum')], [7n, 7n])

@@ -183,7 +183,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             |mut field| {
                 field
                     .as_fix_mut()
-                    .set_branches(["ulbridge", "CME", venue, "eurex"])
+                    .set_branches(["plugin", "CME", venue, "eurex"])
                     .unwrap();
                 field
             },

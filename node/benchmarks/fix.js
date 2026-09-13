@@ -158,7 +158,7 @@ if (catalog.clone().addField(arrivingField) !== true) throw new Error('Symbol sh
 const singleton = catalog.msgtype('D')
 const codec = new fix.FixCodec(catalog)
 const ulregistry = new fix.FixRegistry()
-ulregistry.withUlbridgeFields()
+ulregistry.withPluginFields()
 const ulcodec = new fix.FixCodec(ulregistry)
 
 function drain(values) {
@@ -333,15 +333,15 @@ try {
   for (const size of [1, 32, 64]) {
     const body = wildcard(size)
     if (drain(ulcodec.parseLine(body)) !== size) throw new Error('bulk cardinality mismatch')
-    const selected = fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]().next().value
-    benchmark(`fix/ulconfigs_first/${size}`, () => fix.UlPlugin.fromJsonBytes(body)[Symbol.iterator]().next().value)
-    benchmark(`fix/ulconfigs_drain/${size}`, () => drain(fix.UlPlugin.fromJsonBytes(body)))
+    const selected = fix.Plugin.fromJsonBytes(body)[Symbol.iterator]().next().value
+    benchmark(`fix/plugins_first/${size}`, () => fix.Plugin.fromJsonBytes(body)[Symbol.iterator]().next().value)
+    benchmark(`fix/plugins_drain/${size}`, () => drain(fix.Plugin.fromJsonBytes(body)))
     benchmark(`fix/messages_first/${size}`, () => ulcodec.parseLine(body).next().value)
     benchmark(`fix/messages_drain/${size}`, () => drain(ulcodec.parseLine(body)))
     benchmark(`fix/text_line_drain/${size}`, () => drain(ulcodec.parseTextLine(new TextLine(0, body))))
-    benchmark(`fix/ulconfig_hash/${size}`, () => selected.stableHash())
+    benchmark(`fix/plugin_hash/${size}`, () => selected.stableHash())
   }
-  benchmark('fix/register_ulbridge_fields', () => new fix.FixRegistry().withUlbridgeFields())
+  benchmark('fix/register_plugin_fields', () => new fix.FixRegistry().withPluginFields())
   benchmarkLoad('fix/from_handle_seed', () => fix.FixRegistry.fromHandle(SEED))
   benchmarkLoad(`fix/from_handle_${WIDE_FIELDS}_fields`, () =>
     fix.FixRegistry.fromHandle(generated),

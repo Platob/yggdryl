@@ -46,9 +46,9 @@ pub use expression::{
 };
 pub use fix::{
     FixCodecOptions, JsFixCodec, JsFixDefinitionIterator, JsFixFieldIterator, JsFixMessages,
-    JsFixMsg, JsFixMsgEntries, JsFixRegistry, JsMsgType, JsMsgTypeIterator, JsUlPlugin,
-    JsUlPlugins, fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_schema,
-    fix_schema_carrying, fix_schema_tags, fix_ulbridge_fields,
+    JsFixMsg, JsFixMsgEntries, JsFixRegistry, JsMsgType, JsMsgTypeIterator, JsPlugin, JsPlugins,
+    fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_plugin_fields,
+    fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};

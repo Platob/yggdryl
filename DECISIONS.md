@@ -1305,3 +1305,66 @@ through `parse_line`, `parse_text_line`, `parse_ulconfig_line` and the batch
 door, and refusing nothing; a JSON body classifying as `application/json`;
 the byte-for-byte re-emission of a configuration message unchanged, because
 the entries are what arrived and the envelope was never one of them.
+
+## 18. A plugin is FIX's, and ULBridge is one producer of one
+
+**Rule.** A plugin is a FIX session endpoint as the bridge hosting it reports
+it: comp ids, begin string, hosts, ports, state, sequence numbers. None of
+that is ULBridge's - it is what a FIX session is, seen from whatever hosts it
+- and the reading of it is FIX's, generic over the bridge. ULBridge's Jolokia
+answer is one producer of such a report, and the crate is named for the thing
+reported rather than for the one product that reports it today.
+
+So every name spelling `ulconfig`, `UlPlugin` or `ULCONFIG` is spelled
+`plugin` or `Plugin`: `yggdryl::fix::Plugin` and `Plugins`,
+`FixCodec::parse_plugin_line`, `plugin_with`, `FixMessages::from_plugins` and
+`Source::Plugins`, `plugin_at`, `plugin_span`, `plugin_msgtype`, the bench
+group `fix/plugin`, the allocation probes, `sole_plugin_line`, the bindings'
+`fix.Plugin`/`Plugins` and `parse_plugin_line`/`parsePluginLine`, and the
+module file: `fix/plugin.rs` holds the reading. The attribute fields become
+dialect `plugin` - `PLUGIN_DIALECT`, `PLUGIN_TAG_MIN`, `fix_plugin_fields`,
+`with_plugin_fields` - and their tags 20010 to 20047 do not move, because a
+tag is an identity and a rename is not a renumbering.
+
+Two names stay ULBridge's, because what they read really is the product's.
+`ULBRIDGE_ROWHEADER` reads ULBridge's own log line, whose shape no other
+bridge writes. The namespace `com.ullink.ulbridge` is a vendor string in a
+document, not a name of ours to choose.
+
+A rename is the whole commit and nothing else travels with it: every door
+answers byte for byte what it answered, the equivalence snapshot does not
+move, every pinned cost stays where it was, and `git grep -i ulconfig`
+answers nothing outside this file. The one value that does move is the
+`stable_hash` of a registry carrying the attribute fields, because the
+dialect text is hashed: `ulbridge` and `plugin` are different bytes, so the
+digest is different and the pin is restated rather than explained away.
+
+**Why.** A name that says who wrote a thing rather than what it is puts the
+producer in the type system, and the next producer then arrives as either a
+second reading or a lie. Everything the reading does with a plugin - typing
+its attributes against a dictionary, crossing to a `FixMsg` and back, filling
+comp ids from it (decision 19) - is true of a plugin however it was reported,
+and none of it consults ULBridge. Keeping the product's name on it would make
+decision 19's `pluginconfig` message a ULBridge message type, which it is
+not.
+
+The dialect is the same argument one level down: `fix:branches = ulbridge`
+says these fields belong to a product, when what they belong to is the
+reading of a plugin. A second bridge reporting the same endpoint would have
+to choose between a membership naming someone else's product and a second
+membership for the same fields.
+
+**Written in:** `fix/plugin.rs`, the module the reading moves to;
+`fix/codec.rs` and `fix/messages.rs`, where the doors and the source are
+spelled; `mime_type/line.rs`, where the document is located;
+`docs/fix/capture.md` and `docs/fix/registry.md`.
+**Fixtures:** every existing pin, renamed and otherwise unmoved - the
+snapshot byte for byte, the allocation counts, the corpus row counts, the
+doors' answers; `dialects()` answering `["plugin"]`; the registry
+`stable_hash` restated to what the new dialect text digests to; and
+`git grep -i ulconfig` answering nothing but this file. The three pins
+decision 17 left on the retired media type - that `text/ulconfig` parses as a
+stranger and that no binding carries a `ULCONFIG` constant - go with the
+spelling: a crate that never had the name has nothing to say about it, an
+unknown name is already pinned on one that was never ours, and the vocabulary
+count guards the constant list.

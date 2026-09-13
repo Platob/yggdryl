@@ -94,7 +94,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let source = handle(&bytes);
     let registry = Arc::new(
         seed()
-            .with_ulbridge_fields()
+            .with_plugin_fields()
             .expect("the bridge's own fields"),
     );
     assert!(
@@ -102,7 +102,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .field("SessionInterface")
             .expect("the bridge's first field")
             .as_fix()
-            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+            .has_branch(yggdryl::PLUGIN_DIALECT)
     );
     let codec = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
@@ -302,7 +302,7 @@ fn capture_body(index: usize, expects: &[u8]) -> Vec<u8> {
 pub fn line_benchmarks(criterion: &mut Criterion) {
     let registry = Arc::new(
         seed()
-            .with_ulbridge_fields()
+            .with_plugin_fields()
             .expect("the bridge's own fields"),
     );
     let codec = FixCodec::new(Arc::clone(&registry));

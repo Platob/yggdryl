@@ -719,7 +719,7 @@ impl FixCodec
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
-  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one per ULconfig plugin; nothing collected either way; fused after exhaustion or the first error; decision 16)
+  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one per configuration a bulk answer named; nothing collected either way; fused after exhaustion or the first error; decision 16)
   impl FusedIterator for FixMessages
 
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
@@ -821,13 +821,13 @@ pub struct FixAnomalies<'msg>
   impl<'msg> Iterator for FixAnomalies<'msg>  (Item = FixAnomaly<'msg>)
   impl FusedIterator for FixAnomalies<'_>
 
-### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
-pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulbridge_fields)
+### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
+pub struct Plugin  (re-exported at the crate root beside Plugins and fix_plugin_fields)
   pub fn stable_hash(&self) -> u64
   pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self
-  pub fn from_json_bytes(body: &[u8]) -> UlPlugins  (a body that is not a Jolokia answer names no configuration and answers none; decision 17)
-  pub fn from_json_scalar(document: &Scalar) -> UlPlugins
-  pub fn from_fixmsg(message: &FixMsg) -> Result<UlPlugin>
+  pub fn from_json_bytes(body: &[u8]) -> Plugins  (a body that is not a Jolokia answer names no configuration and answers none; decision 17)
+  pub fn from_json_scalar(document: &Scalar) -> Plugins
+  pub fn from_fixmsg(message: &FixMsg) -> Result<Plugin>
   pub fn into_fixmsg(&self, codec: &FixCodec) -> Result<FixMsg>
   pub fn mbean(&self) -> Option<&str>
   pub fn mbean_type(&self) -> Option<&str>
@@ -839,9 +839,9 @@ pub struct UlPlugin  (re-exported at the crate root beside UlPlugins and fix_ulb
   pub fn get(&self, attribute: &str) -> Option<&Scalar>
   pub const fn as_attributes(&self) -> &Scalar
   pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)>
-  impl Clone, Debug, PartialEq, Eq, Hash for UlPlugin
-  pub struct UlPlugins
-  impl Iterator for UlPlugins  (Item = UlPlugin; also FusedIterator; lazy over shared Scalar)
+  impl Clone, Debug, PartialEq, Eq, Hash for Plugin
+  pub struct Plugins
+  impl Iterator for Plugins  (Item = Plugin; also FusedIterator; lazy over shared Scalar)
 
 ### yggdryl::FixCategory  [rust\src\fix_category.rs]
 pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype; decision 13)
@@ -949,14 +949,17 @@ impl FixRegistry
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
 
-### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
-pub const ULBRIDGE_DIALECT: &str = "ulbridge";  (the membership every field here carries in `fix:branches`)
-pub const ULBRIDGE_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
-pub fn fix_ulbridge_fields() -> Result<&'static [Field]>
+### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
+pub const PLUGIN_DIALECT: &str = "plugin";  (the membership every field here carries in `fix:branches`)
+pub const PLUGIN_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
+pub fn fix_plugin_fields() -> Result<&'static [Field]>
 impl FixRegistry
-  pub fn with_ulbridge_fields(mut self) -> Result<Self>
+  pub fn with_plugin_fields(mut self) -> Result<Self>
 impl FixCodec
-  pub fn parse_ulconfig_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing; decision 17)
+  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing; decision 17)
+
+### yggdryl::fix::ulbridge  [rust\src\fix\ulbridge.rs]
+pub const ULBRIDGE_ROWHEADER: &str  (the row header ULBridge writes in front of every line of its log: timestamp, thread bracket, pluginid, level; kept ULBridge's because the line shape is the product's, where the plugin reading is not; decision 18)
 
 ### yggdryl::holder::buffer  [rust\src\holder\buffer.rs]
 pub struct Buffer

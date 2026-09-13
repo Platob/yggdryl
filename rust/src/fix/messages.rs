@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use super::build::RowStamp;
-use super::{FixCodec, FixMsg, UlPlugins};
+use super::{FixCodec, FixMsg, Plugins};
 use crate::Result;
 use crate::media::text::TextEntries;
 
@@ -12,7 +12,7 @@ enum Source {
     One(Option<Result<FixMsg>>),
     Configs {
         codec: FixCodec,
-        values: UlPlugins,
+        values: Plugins,
     },
     /// The frames one row still holds, read where they open.
     Frames {
@@ -32,7 +32,7 @@ enum Source {
 ///
 /// A row yields none, one or many (decision 16): a line carrying several
 /// frames yields one per frame, re-entering the frame reader where each
-/// opens over the page the row already holds, and a bulk UL configuration
+/// opens over the page the row already holds, and a bulk plugin configuration
 /// document yields one item for each configuration, retaining only the
 /// parsed source document and the current conversion. Nothing is collected.
 /// An error is yielded once and ends this iterator.
@@ -77,7 +77,7 @@ impl FixMessages {
         })
     }
 
-    pub(super) fn from_ulconfigs(codec: FixCodec, values: UlPlugins) -> Self {
+    pub(super) fn from_plugins(codec: FixCodec, values: Plugins) -> Self {
         Self {
             source: Source::Configs { codec, values },
         }

@@ -91,8 +91,8 @@ import {
   FixMessages,
   MsgType,
   MsgTypeIterator,
-  UlPlugin,
-  UlPlugins,
+  Plugin,
+  Plugins,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -122,8 +122,8 @@ export type {
   FixMessages,
   MsgType,
   MsgTypeIterator,
-  UlPlugin,
-  UlPlugins,
+  Plugin,
+  Plugins,
   IcebergOptions,
   ManifestFile,
   PartitionField,
@@ -474,7 +474,7 @@ declare module './index' {
 
   interface FixDefinitionIterator extends IterableIterator<Field> {}
   interface MsgTypeIterator extends IterableIterator<MsgType> {}
-  interface UlPlugins extends IterableIterator<UlPlugin> {}
+  interface Plugins extends IterableIterator<Plugin> {}
   interface FixMessages extends IterableIterator<FixMsg> {
     next(): IteratorResult<FixMsg>
   }
@@ -2987,12 +2987,12 @@ export interface FixMsgConstructor {
 }
 
 /** One native configuration with ordinary JavaScript scalar intake. */
-export interface UlPluginConstructor {
-  new (mbean: string | null, attributes: unknown): UlPlugin
-  readonly prototype: UlPlugin
-  fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): UlPlugins
-  fromJsonScalar(document: unknown): UlPlugins
-  fromFixmsg(message: FixMsg): UlPlugin
+export interface PluginConstructor {
+  new (mbean: string | null, attributes: unknown): Plugin
+  readonly prototype: Plugin
+  fromJsonBytes(body: string | ArrayBufferLike | ArrayBufferView): Plugins
+  fromJsonScalar(document: unknown): Plugins
+  fromFixmsg(message: FixMsg): Plugin
 }
 
 /** `yggdryl::fix`: the FIX dictionary, its message, and the process default. */
@@ -3016,8 +3016,8 @@ export interface Fix {
   readonly MsgType: abstract new () => MsgType
   /** A lazy stream of messages: what every stage of `FixCodec` answers. */
   readonly FixMessages: abstract new () => FixMessages
-  readonly UlPlugin: UlPluginConstructor
-  readonly UlPlugins: abstract new () => UlPlugins
+  readonly Plugin: PluginConstructor
+  readonly Plugins: abstract new () => Plugins
   /**
    * The state a stream of messages has reached, one chain per order alive:
    * `fill` stamps each message with its instrument, its own identity and
@@ -3059,7 +3059,7 @@ export interface Fix {
    */
   crateFields(): Field[]
   /** The native ULBridge scalar definitions. */
-  ulbridgeFields(): Field[]
+  pluginFields(): Field[]
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry
   /** Install the process-wide registry before anything resolves it. */

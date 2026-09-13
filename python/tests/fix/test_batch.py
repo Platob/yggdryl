@@ -72,7 +72,7 @@ REPORT = b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|"
 
 def _config_registry() -> FixRegistry:
     registry = FixRegistry()
-    registry.with_ulbridge_fields()
+    registry.with_plugin_fields()
     # Tag 385 as the dictionary types it: text carrying its code set.
     direction = Field("MsgDirection", "utf8")
     direction.fix.tag = 385

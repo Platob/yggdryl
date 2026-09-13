@@ -93,7 +93,7 @@ pub(crate) struct LineInference<'line> {
     names_namespace: bool,
     tag_msgtype: Option<&'line [u8]>,
     name_msgtype: Option<&'line [u8]>,
-    ulconfig_msgtype: Option<&'line [u8]>,
+    plugin_msgtype: Option<&'line [u8]>,
 }
 
 impl<'line> LineInference<'line> {
@@ -137,7 +137,7 @@ impl<'line> LineInference<'line> {
     pub(crate) fn msgtype(&self) -> Option<&'line [u8]> {
         self.name_msgtype
             .or(self.tag_msgtype)
-            .or(self.ulconfig_msgtype)
+            .or(self.plugin_msgtype)
     }
 
     /// Reads the bridge configuration document the line carries, if it does.
@@ -146,15 +146,15 @@ impl<'line> LineInference<'line> {
     /// place the answer could change a thing: a line holding a frame is that
     /// frame whatever document quoted it, and the namespace scan a document
     /// costs is one a frame never pays.
-    fn read_ulconfig(&mut self, line: &'line [u8]) {
+    fn read_plugin(&mut self, line: &'line [u8]) {
         if self.has_tag || self.has_symbolic || self.has_xml {
             return;
         }
-        let Some(at) = ulconfig_at(line) else {
+        let Some(at) = plugin_at(line) else {
             return;
         };
         self.names_namespace = true;
-        self.ulconfig_msgtype = ulconfig_msgtype(&line[at..]);
+        self.plugin_msgtype = plugin_msgtype(&line[at..]);
     }
 }
 
@@ -683,7 +683,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
         // No frame at all: the line is a document, a sentence, or a bare run
         // of pairs. The first two are decided by their opening byte.
         inferred.has_pairs |= has_any_pair(line);
-        inferred.read_ulconfig(line);
+        inferred.read_plugin(line);
         return inferred;
     };
     let mut offset = frame.start;
@@ -728,7 +728,7 @@ pub(crate) fn inspect(line: &[u8]) -> LineInference<'_> {
             break;
         }
     }
-    inferred.read_ulconfig(line);
+    inferred.read_plugin(line);
     inferred
 }
 
@@ -1100,7 +1100,7 @@ pub(crate) fn trim_ascii(line: &[u8]) -> &[u8] {
 pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
     locate_frame(line)
         .map(|frame| frame.start)
-        .or_else(|| ulconfig_at(line))
+        .or_else(|| plugin_at(line))
 }
 
 /// Whether the line named a separator for the run of pairs its payload
@@ -1128,8 +1128,8 @@ pub(crate) fn names_separator(line: &[u8]) -> bool {
 /// The object is the outermost one, found by the `{` a member opens behind, so
 /// a `[jolokia]` in the prose is not mistaken for the document and the bound a
 /// direction is read against is the whole prefix rather than part of it.
-fn ulconfig_at(line: &[u8]) -> Option<usize> {
-    Some(ulconfig_span(line)?.start)
+fn plugin_at(line: &[u8]) -> Option<usize> {
+    Some(plugin_span(line)?.start)
 }
 
 /// The span of the ULBridge configuration document one line carries.
@@ -1144,7 +1144,7 @@ fn ulconfig_at(line: &[u8]) -> Option<usize> {
 /// both sides of the document - a timestamp in front, a duration behind - is
 /// read exactly as one writing prose in front alone. A document the line cut
 /// short never closes and is no document.
-pub(crate) fn ulconfig_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
+pub(crate) fn plugin_span(line: &[u8]) -> Option<std::ops::Range<usize>> {
     // The cheap half first: the namespace is absent from every line that is
     // not one of these, and finding it is one prefiltered pass.
     let named = object_names(line).next()?.start;
@@ -1259,7 +1259,7 @@ fn opens_member(line: &[u8], mut at: usize) -> bool {
 /// the operation - `read`, `write`, `exec` - which is only how the document
 /// was obtained. A wildcard read names no type in its own MBean and every
 /// entry it answers with names one, so the first entry's is the document's.
-fn ulconfig_msgtype(document: &[u8]) -> Option<&[u8]> {
+fn plugin_msgtype(document: &[u8]) -> Option<&[u8]> {
     object_name_type(document).or_else(|| jolokia_operation(document))
 }
 

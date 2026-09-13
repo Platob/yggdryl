@@ -391,16 +391,16 @@ fn a_fix_registry_lookup_allocates_nothing() {
     // classifies as `application/json` now (decision 17) - what makes one a
     // configuration is a shape the codec probes at the offset this scan
     // already found, so nothing is looked for twice and the cost is the same.
-    const ULCONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
-    free("infer_bytes_protocol ULCONFIG", || {
-        let _ = black_box(MimeType::infer_bytes(black_box(ULCONFIG)));
+    const PLUGIN: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=X,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"X"},"status":200}"#;
+    free("infer_bytes_protocol PLUGIN", || {
+        let _ = black_box(MimeType::infer_bytes(black_box(PLUGIN)));
     });
-    free("infer_bytes_msgtype ULCONFIG", || {
-        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(ULCONFIG)));
+    free("infer_bytes_msgtype PLUGIN", || {
+        let _ = black_box(FixCodec::infer_msgtype_bytes(black_box(PLUGIN)));
     });
     let reading = registry.msgdirection();
-    free("read_bytes_direction ULCONFIG", || {
-        let _ = black_box(reading.read_bytes(black_box(ULCONFIG)));
+    free("read_bytes_direction PLUGIN", || {
+        let _ = black_box(reading.read_bytes(black_box(PLUGIN)));
     });
     // The rules are compiled once with the reading; applying them to the
     // prose in front of a payload costs nothing per line, whether one code
@@ -444,7 +444,7 @@ fn a_fix_registry_lookup_allocates_nothing() {
 }
 
 #[test]
-fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
+fn parsed_plugin_wildcards_iterate_without_allocating_results() {
     for size in [1, 32, 256] {
         let values = Scalar::from_record((0..size).map(|index| {
             let name = format!("Configuration{index:04}");
@@ -461,14 +461,14 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
         // none, and answering none is what it answers (decision 17), so there
         // is no validation pass in front of the walk and nothing to unwrap.
         let (first_allocations, first) = counted(|| {
-            yggdryl::UlPlugin::from_json_scalar(black_box(&document))
+            yggdryl::Plugin::from_json_scalar(black_box(&document))
                 .next()
                 .expect("the wildcard has configurations")
         });
         assert_eq!(first.name(), Some("Configuration0000"));
         // The shared stable hash owns one XXH3 secret buffer; feeding the
         // selected configuration allocates nothing proportional to its siblings.
-        costs("hashing one selected UL configuration", 1, || {
+        costs("hashing one selected plugin", 1, || {
             black_box(first.stable_hash());
         });
         assert_eq!(
@@ -477,7 +477,7 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
         );
 
         let (drain_allocations, read) = counted(|| {
-            yggdryl::UlPlugin::from_json_scalar(black_box(&document))
+            yggdryl::Plugin::from_json_scalar(black_box(&document))
                 .inspect(|configuration| {
                     black_box(configuration.name());
                 })

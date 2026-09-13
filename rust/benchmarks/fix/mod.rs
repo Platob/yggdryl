@@ -4,9 +4,9 @@ pub mod cblock;
 pub mod lift;
 pub mod mutate;
 pub mod pipeline;
+pub mod plugin;
 pub mod resolve;
 pub mod store;
-pub mod ulconfig;
 
 pub(crate) use common::{
     DIALECT_FIELDS, LARGE_FIELDS, generated, mixed_categories, scratch, seed, seed_root,

@@ -13,8 +13,8 @@ import {
   type FixRegistry,
   type FixMessages,
   type MsgType,
-  type UlPlugin,
-  type UlPlugins,
+  type Plugin,
+  type Plugins,
   type FixValueInput,
   type LocationInput,
   type TextLine,
@@ -396,7 +396,7 @@ const groupByCounter: Field | null = loaded.getGroupByCounter(453)
 const requiredGroup: Field = loaded.groupByCounter(453)
 const snapshot: string = loaded.intoJson()
 const restored: FixRegistry = fix.FixRegistry.fromJson(snapshot)
-loaded.withUlbridgeFields()
+loaded.withPluginFields()
 
 const order: MsgType = loaded.msgtype('D')
 const optionalOrder: MsgType | null = loaded.getMsgtype('newordersingle')
@@ -420,19 +420,19 @@ const groupRef: string | null = field.fix.group
 const fieldRef: string | null = field.fix.fieldRef
 const messageCode: string | null = field.fix.msgtype
 
-const selected: UlPlugin = new fix.UlPlugin('d:name=A,type=ConfigurationPlugin', { Name: 'A' })
-const configurations: UlPlugins = fix.UlPlugin.fromJsonScalar({
+const selected: Plugin = new fix.Plugin('d:name=A,type=ConfigurationPlugin', { Name: 'A' })
+const configurations: Plugins = fix.Plugin.fromJsonScalar({
   request: { mbean: 'com.ullink.ulbridge.sessioninterfaces.plugins:name=A,type=Plugin', type: 'read' },
   value: { Name: 'A' },
   status: 200,
 })
-const parsedConfigurations: UlPlugins = fix.UlPlugin.fromJsonBytes(new Uint8Array())
-const nativeConfigurations: UlPlugin[] = [...configurations]
+const parsedConfigurations: Plugins = fix.Plugin.fromJsonBytes(new Uint8Array())
+const nativeConfigurations: Plugin[] = [...configurations]
 const configAttributes: Scalar = selected.asAttributes()
 const configMessage: FixMsg = selected.intoFixmsg(reader)
-const recovered: UlPlugin = fix.UlPlugin.fromFixmsg(configMessage)
+const recovered: Plugin = fix.Plugin.fromFixmsg(configMessage)
 const configHash: bigint = selected.stableHash()
-const bulk: FixMessages = reader.parseUlconfigLine(Buffer.from('{}'))
+const bulk: FixMessages = reader.parsePluginLine(Buffer.from('{}'))
 const decoded: TextLine = handle.readTextLines().next().value
 const records: FixMessages = reader.parseTextLine(decoded)
 const lineStream: FixMessages = reader.parseTextLines([decoded])

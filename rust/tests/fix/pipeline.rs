@@ -33,7 +33,7 @@ use yggdryl::{
 
 /// The committed dictionary beside the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
-    super::ulbridge_registry()
+    super::plugin_fields_registry()
 }
 
 /// The Jolokia answer, which is the one line that is a document.
@@ -419,10 +419,10 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
 
     // What each line was, read once by the text reader and carried through.
     let mimetype = text_column(&read, "mimetype");
-    // A bridge configuration line is JSON, which is what it is: `text/ulconfig`
-    // is deleted (decision 17), because a classifier answering it had already
-    // read the body far enough to know it was a Jolokia answer, and that
-    // reading is the codec's rather than the classifier's.
+    // A bridge configuration line is JSON, which is what it is: a classifier
+    // that named it anything else would have read the body far enough to know
+    // it was a Jolokia answer, and that reading is the codec's rather than
+    // the classifier's (decision 17).
     assert_eq!(mimetype[RESPONSE_ROW].as_deref(), Some("application/json"));
     assert_eq!(mimetype[HEARTBEAT_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[FILL_ROW].as_deref(), Some("text/fix"));
@@ -622,25 +622,25 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
 fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard() {
     let registry = registry();
     // The bridge's dictionary is a membership on the fields it contributed,
-    // not a namespace of its own: every field from `ULBRIDGE_TAG_MIN` says
+    // not a namespace of its own: every field from `PLUGIN_TAG_MIN` says
     // the bridge speaks it, a standard field it never touched says nothing,
     // and both are reached by tag or by name from the one registry.
-    assert_eq!(registry.dialects(), [yggdryl::ULBRIDGE_DIALECT.to_owned()]);
-    // `ULBRIDGE_TAG_MIN` is the floor of the range this dictionary claims,
+    assert_eq!(registry.dialects(), [yggdryl::PLUGIN_DIALECT.to_owned()]);
+    // `PLUGIN_TAG_MIN` is the floor of the range this dictionary claims,
     // not the smallest tag it happens to define: 20001 to 20004 carried the
     // Jolokia envelope, which decision 17 deleted, and they are retired
     // rather than reused - a capture written before it holds `MBean` on
     // 20001, so nothing else may answer to that tag. The smallest tag defined
     // is `SessionInterface` on 20010, above the floor and not equal to it.
     let (tag, name) = (SESSIONINTERFACE_TAG, "SessionInterface");
-    assert!(tag > yggdryl::ULBRIDGE_TAG_MIN, "{tag}");
+    assert!(tag > yggdryl::PLUGIN_TAG_MIN, "{tag}");
     for retired in RETIRED_ENVELOPE_TAGS {
         assert!(registry.field_by_tag(retired).is_err(), "{retired}");
     }
     for retired in RETIRED_ENVELOPE_NAMES {
         assert!(registry.field_by_name(retired).is_err(), "{retired}");
     }
-    let smallest = yggdryl::fix_ulbridge_fields()
+    let smallest = yggdryl::fix_plugin_fields()
         .unwrap()
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
@@ -648,16 +648,16 @@ fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard()
         .expect("the bridge defines fields");
     assert_eq!(smallest, tag);
     assert!(
-        smallest >= yggdryl::ULBRIDGE_TAG_MIN,
+        smallest >= yggdryl::PLUGIN_TAG_MIN,
         "the floor is a floor: {smallest}"
     );
     let first = registry
         .field_by_tag(tag)
         .expect("the bridge's first field");
-    assert!(first.as_fix().has_branch(yggdryl::ULBRIDGE_DIALECT));
+    assert!(first.as_fix().has_branch(yggdryl::PLUGIN_DIALECT));
     assert_eq!(
         first.as_fix().branches().collect::<Vec<_>>(),
-        [yggdryl::ULBRIDGE_DIALECT]
+        [yggdryl::PLUGIN_DIALECT]
     );
     assert_eq!(
         first.as_fix().id().unwrap(),
@@ -679,13 +679,13 @@ fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard()
     // in its membership; the specification's own fields in the same tag
     // range say nothing of the bridge.
     let mut bridged = 0;
-    for defined in yggdryl::fix_ulbridge_fields().unwrap() {
+    for defined in yggdryl::fix_plugin_fields().unwrap() {
         let held = registry
             .field_by_id(defined.as_fix().id().unwrap().unwrap())
             .unwrap();
         bridged += 1;
         assert!(
-            held.as_fix().has_branch(yggdryl::ULBRIDGE_DIALECT),
+            held.as_fix().has_branch(yggdryl::PLUGIN_DIALECT),
             "{} says nothing of the bridge",
             held.name()
         );
@@ -696,7 +696,7 @@ fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard()
             .field_by_name("NoAdditionalTermBondRefs")
             .unwrap()
             .as_fix()
-            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+            .has_branch(yggdryl::PLUGIN_DIALECT)
     );
 }
 

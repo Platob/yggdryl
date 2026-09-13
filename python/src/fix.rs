@@ -23,8 +23,8 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType, Scalar,
-    UlPlugin as CoreUlPlugin, UlPlugins as CoreUlPlugins, Version as CoreVersion,
+    FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType,
+    Plugin as CorePlugin, Plugins as CorePlugins, Scalar, Version as CoreVersion,
     from_json_scalar_with_field, into_json_scalar,
 };
 
@@ -360,18 +360,15 @@ impl PyFixRegistry {
         read_cfb(location, |handle| registry.add_cfb_file(handle, dialect))
     }
 
-    /// Add `ULBridge`'s own fields, so a bridge configuration document types.
+    /// Add the plugin dictionary's own fields, so a plugin report types.
     ///
     /// A dictionary that has them reads a document's attributes as the ports,
     /// sequence numbers and flags they are; one that does not reads them as
     /// the text they arrived as, because a key no dictionary explains is kept
     /// rather than dropped.
-    fn with_ulbridge_fields(&mut self) -> PyResult<()> {
+    fn with_plugin_fields(&mut self) -> PyResult<()> {
         let registry = self.inner_mut()?;
-        *registry = registry
-            .clone()
-            .with_ulbridge_fields()
-            .map_err(value_error)?;
+        *registry = registry.clone().with_plugin_fields().map_err(value_error)?;
         Ok(())
     }
 
@@ -1107,26 +1104,26 @@ impl PyFixMessages {
     }
 }
 
-#[pyclass(name = "UlPlugins", module = "yggdryl._native")]
-pub(crate) struct PyUlPlugins {
-    inner: CoreUlPlugins,
+#[pyclass(name = "Plugins", module = "yggdryl._native")]
+pub(crate) struct PyPlugins {
+    inner: CorePlugins,
 }
 
-impl PyUlPlugins {
-    const fn from_inner(inner: CoreUlPlugins) -> Self {
+impl PyPlugins {
+    const fn from_inner(inner: CorePlugins) -> Self {
         Self { inner }
     }
 }
 
 #[pymethods]
-impl PyUlPlugins {
+impl PyPlugins {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
     fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
         slf
     }
-    fn __next__(&mut self) -> Option<PyUlPlugin> {
-        self.inner.next().map(PyUlPlugin::from_inner)
+    fn __next__(&mut self) -> Option<PyPlugin> {
+        self.inner.next().map(PyPlugin::from_inner)
     }
 }
 
@@ -1886,8 +1883,8 @@ impl PyFixCodec {
     /// a timestamp in front of one and sometimes a duration behind it, and
     /// both are prose. A body that is not a Jolokia answer names no
     /// configuration, and answering none is what it answers.
-    fn parse_ulconfig_line(&self, body: &[u8]) -> PyFixMessages {
-        PyFixMessages::over(self.inner.parse_ulconfig_line(body))
+    fn parse_plugin_line(&self, body: &[u8]) -> PyFixMessages {
+        PyFixMessages::over(self.inner.parse_plugin_line(body))
     }
 
     /// Pairs a caller already holds, in the order they arrived.
@@ -2268,7 +2265,7 @@ fn stated_attributes(value: Scalar) -> PyResult<Scalar> {
 }
 
 /// Pickle carries the attributes and the `ObjectName`, which is all of it.
-type UlPluginPickle = (Py<PyAny>, (String, Option<String>));
+type PluginPickle = (Py<PyAny>, (String, Option<String>));
 
 /// One plugin a bridge configuration document answers for.
 ///
@@ -2286,24 +2283,24 @@ type UlPluginPickle = (Py<PyAny>, (String, Option<String>));
 ///
 /// Immutable, so it hashes, copies and pickles like every other value here.
 #[pyclass(
-    name = "UlPlugin",
+    name = "Plugin",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
 )]
-pub(crate) struct PyUlPlugin {
-    inner: CoreUlPlugin,
+pub(crate) struct PyPlugin {
+    inner: CorePlugin,
 }
 
-impl PyUlPlugin {
+impl PyPlugin {
     /// Wrap a plugin the core answered.
-    const fn from_inner(inner: CoreUlPlugin) -> Self {
+    const fn from_inner(inner: CorePlugin) -> Self {
         Self { inner }
     }
 }
 
 #[pymethods]
-impl PyUlPlugin {
+impl PyPlugin {
     /// Build one plugin from the parts a document states.
     ///
     /// `attributes` is anything the `Scalar` boundary reads - a mapping of
@@ -2314,7 +2311,7 @@ impl PyUlPlugin {
     #[new]
     #[pyo3(signature = (attributes, mbean=None))]
     fn new(attributes: &Bound<'_, PyAny>, mbean: Option<&str>) -> PyResult<Self> {
-        Ok(Self::from_inner(CoreUlPlugin::new(
+        Ok(Self::from_inner(CorePlugin::new(
             mbean,
             stated_attributes(from_py(attributes)?)?,
         )))
@@ -2330,8 +2327,8 @@ impl PyUlPlugin {
     /// what they answer: reading is not refusing, so bytes that are not JSON
     /// at all iterate empty rather than raising.
     #[staticmethod]
-    fn from_json_bytes(body: &[u8]) -> PyUlPlugins {
-        PyUlPlugins::from_inner(CoreUlPlugin::from_json_bytes(body))
+    fn from_json_bytes(body: &[u8]) -> PyPlugins {
+        PyPlugins::from_inner(CorePlugin::from_json_bytes(body))
     }
 
     /// The same, over a document a caller already parsed.
@@ -2342,9 +2339,9 @@ impl PyUlPlugin {
     /// what they answer rather than raising - a Jolokia error is a document
     /// too, and so is `{"a": 1}`.
     #[staticmethod]
-    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyUlPlugins> {
+    fn from_json_scalar(document: &Bound<'_, PyAny>) -> PyResult<PyPlugins> {
         let document = stated_document(from_py(document)?);
-        Ok(PyUlPlugins::from_inner(CoreUlPlugin::from_json_scalar(
+        Ok(PyPlugins::from_inner(CorePlugin::from_json_scalar(
             &document,
         )))
     }
@@ -2352,7 +2349,7 @@ impl PyUlPlugin {
     /// Every plugin one typed message carries, one per occurrence.
     #[staticmethod]
     fn from_fixmsg(message: &PyFixMsg) -> PyResult<Self> {
-        CoreUlPlugin::from_fixmsg(message.as_inner())
+        CorePlugin::from_fixmsg(message.as_inner())
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -2360,7 +2357,7 @@ impl PyUlPlugin {
     /// This plugin as a message typed against `codec`'s dictionary.
     ///
     /// The same build every other reader funnels into, so a dictionary
-    /// carrying `ULBridge`'s fields types a port as a number and a flag as a
+    /// carrying the plugin fields types a port as a number and a flag as a
     /// boolean, and one that does not keeps every attribute as the text it
     /// arrived as.
     #[allow(clippy::wrong_self_convention)]
@@ -2462,10 +2459,10 @@ impl PyUlPlugin {
     #[staticmethod]
     fn _from_pickle(attributes: &str, mbean: Option<&str>) -> PyResult<Self> {
         let attributes = yggdryl::from_json_scalar(attributes.as_bytes()).map_err(value_error)?;
-        Ok(Self::from_inner(CoreUlPlugin::new(mbean, attributes)))
+        Ok(Self::from_inner(CorePlugin::new(mbean, attributes)))
     }
 
-    fn __reduce__(&self, py: Python<'_>) -> PyResult<UlPluginPickle> {
+    fn __reduce__(&self, py: Python<'_>) -> PyResult<PluginPickle> {
         let callable = py.get_type::<Self>().getattr("_from_pickle")?.unbind();
         let attributes = into_json_scalar(self.inner.as_attributes()).map_err(value_error)?;
         Ok((
@@ -2486,24 +2483,24 @@ impl PyUlPlugin {
 
     fn __repr__(&self) -> String {
         format!(
-            "UlPlugin({:?}, {} attributes)",
+            "Plugin({:?}, {} attributes)",
             self.inner.name().unwrap_or_default(),
             self.inner.attributes().count()
         )
     }
 }
 
-/// The fields `ULBridge`'s own dictionary defines, in tag order.
+/// The fields the plugin dictionary defines, in tag order.
 ///
 /// What a bridge configuration document states about a session interface -
 /// the venue it talks to, the host and port, the sequence numbers, the state -
-/// each carrying `ULBRIDGE_DIALECT` in `fix:branches`, because the
+/// each carrying `PLUGIN_DIALECT` in `fix:branches`, because the
 /// specification publishes none of it. Registering them is a caller's choice,
-/// which is what `FixRegistry.with_ulbridge_fields` is for.
+/// which is what `FixRegistry.with_plugin_fields` is for.
 #[pyfunction]
-#[pyo3(name = "fix_ulbridge_fields")]
-pub(crate) fn fix_ulbridge_fields() -> PyResult<Vec<PyField>> {
-    yggdryl::fix_ulbridge_fields()
+#[pyo3(name = "fix_plugin_fields")]
+pub(crate) fn fix_plugin_fields() -> PyResult<Vec<PyField>> {
+    yggdryl::fix_plugin_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
         .map_err(value_error)
 }

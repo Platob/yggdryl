@@ -42,14 +42,6 @@ fn known_and_custom_mime_names_are_canonical_and_round_trip() {
             .unwrap()
             .is_known()
     );
-    // `text/ulconfig` is deleted (decision 17): a bridge configuration
-    // document is `application/json`, which is what it is, and the old
-    // spelling parses as any other stranger does - a custom name this crate
-    // does not know.
-    let retired = MimeType::from_str("TEXT/ULCONFIG").unwrap();
-    assert!(!retired.is_known());
-    assert_eq!(retired.as_str(), "text/ulconfig");
-    assert_ne!(retired, MimeType::JSON);
     assert_eq!(MimeType::default(), MimeType::OCTET_STREAM);
 }
 

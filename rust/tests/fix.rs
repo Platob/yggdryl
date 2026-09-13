@@ -119,7 +119,7 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     }))
 }
 
-fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
+fn plugin_fields_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     static REGISTRY: std::sync::OnceLock<std::sync::Arc<yggdryl::FixRegistry>> =
         std::sync::OnceLock::new();
     std::sync::Arc::clone(REGISTRY.get_or_init(|| {
@@ -127,7 +127,7 @@ fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
             committed_registry()
                 .as_ref()
                 .clone()
-                .with_ulbridge_fields()
+                .with_plugin_fields()
                 .expect("the bridge's own fields"),
         )
     }))
@@ -141,7 +141,7 @@ fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
 /// first with nobody noticing.
 trait SoleMessage {
     fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
-    fn sole_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+    fn sole_plugin_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
 }
 
 fn sole_message(
@@ -176,8 +176,8 @@ impl SoleMessage for yggdryl::FixCodec {
         sole_message_filled(self, self.parse_line(row)?, enrich)
     }
 
-    fn sole_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        sole_message_filled(self, self.parse_ulconfig_line(row), enrich)
+    fn sole_plugin_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
+        sole_message_filled(self, self.parse_plugin_line(row), enrich)
     }
 }
 
@@ -215,7 +215,7 @@ fn states_no_envelope(message: &yggdryl::FixMsg) {
 /// The one place a configuration message names itself, and where the
 /// ObjectName always belonged: the envelope that used to restate it on 20001
 /// is gone. It is also the smallest tag ULBridge's dictionary now defines,
-/// which is why [`yggdryl::ULBRIDGE_TAG_MIN`] is a floor rather than an
+/// which is why [`yggdryl::PLUGIN_TAG_MIN`] is a floor rather than an
 /// equal.
 const SESSIONINTERFACE_TAG: i32 = 20_010;
 

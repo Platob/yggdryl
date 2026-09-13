@@ -980,10 +980,7 @@ impl FixCodec {
         // namespace scan that finds one is run here and nowhere else: the
         // span is kept whole, so where the payload opens and where the
         // document closes are the one answer (decision 17).
-        let document = frame_at
-            .is_none()
-            .then(|| line::ulconfig_span(row))
-            .flatten();
+        let document = frame_at.is_none().then(|| line::plugin_span(row)).flatten();
         let opens = frame_at
             .or_else(|| document.as_ref().map(|span| span.start))
             .unwrap_or(row.len());
@@ -1031,7 +1028,7 @@ impl FixCodec {
         // document: the namespace, the opener and the close are found once
         // for the whole reading.
         if let Some(span) = document {
-            return Ok(self.ulconfig_with(&row[span], extras));
+            return Ok(self.plugin_with(&row[span], extras));
         }
         let body = &row[opens..];
         // A FIXML row states no `key=value` frame, so the locator finds none

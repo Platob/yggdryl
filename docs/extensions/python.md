@@ -1358,7 +1358,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `UlPlugin`, `UlPlugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_ulbridge_fields()`, `global_registry()`, `install_global_registry()`, and `ULBRIDGE_DIALECT` (`"ulbridge"`, the membership every field a bridge defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `Plugin`, `Plugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_plugin_fields()`, `global_registry()`, `install_global_registry()`, and `PLUGIN_DIALECT` (`"plugin"`, the membership every field a plugin dictionary defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1375,11 +1375,11 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
-| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_ulconfig_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_plugin_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`, over the C Stream interface; `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| UlPlugin | `UlPlugin.from_json_bytes` / `from_json_scalar` return lazy `UlPlugins`; each selection converts to one flat message with `into_fixmsg` |
+| Plugin | `Plugin.from_json_bytes` / `from_json_scalar` return lazy `Plugins`; each selection converts to one flat message with `into_fixmsg` |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 
@@ -1540,12 +1540,12 @@ on the message.
 ```python
 import json
 
-from yggdryl.fix import ULBRIDGE_DIALECT, FixCodec, FixMessages, FixRegistry, UlPlugin, fix_ulbridge_fields
+from yggdryl.fix import PLUGIN_DIALECT, FixCodec, FixMessages, FixRegistry, Plugin, fix_plugin_fields
 
 registry = FixRegistry()
-registry.with_ulbridge_fields()
-assert ULBRIDGE_DIALECT == "ulbridge" and registry.dialects() == ["ulbridge"]
-assert all(field.fix.has_branch("ulbridge") for field in fix_ulbridge_fields())
+registry.with_plugin_fields()
+assert PLUGIN_DIALECT == "plugin" and registry.dialects() == ["plugin"]
+assert all(field.fix.has_branch("plugin") for field in fix_plugin_fields())
 assert [registry[tag].name for tag in (20019, 20021)] == ["PluginState", "PluginVersion"]
 # 20001 to 20004 held the Jolokia envelope and are retired, not reused.
 assert all(registry.get_field_by_tag(tag) is None for tag in (20001, 20002, 20003, 20004))
@@ -1561,15 +1561,15 @@ document = [
     {"request": {"type": "read", "mbean": f"{plugins}:name=Gone,plugin-type=FIX,type=Plugin"},
      "status": 404, "error": "missing"},
 ]
-messages = codec.parse_ulconfig_line(json.dumps(document).encode())
+messages = codec.parse_plugin_line(json.dumps(document).encode())
 assert isinstance(messages, FixMessages)
 assert [message.by_name("Name").as_py() for message in messages] == ["Orders", "Prices"]
 assert next(messages, None) is None
-selected = next(UlPlugin.from_json_scalar(document))
+selected = next(Plugin.from_json_scalar(document))
 assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
 # A body that is not a Jolokia answer names no configuration, and answering
 # none is what it answers: reading is not refusing.
-assert list(codec.parse_ulconfig_line(b'{"a":1}')) == []
+assert list(codec.parse_plugin_line(b'{"a":1}')) == []
 ```
 
 ## Edges

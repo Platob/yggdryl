@@ -62,7 +62,7 @@ from yggdryl._native import (
     StringEnum,
     StringParameters,
     BytesParameters,
-    UlPlugins,
+    Plugins,
 )
 from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
 from yggdryl.types import (
@@ -173,7 +173,7 @@ iceberg_names_hash: None = IcebergNames.__hash__
 fix_definitions_hash: None = FixDefinitionIterator.__hash__
 fix_messages_hash: None = FixMessages.__hash__
 fix_msgtypes_hash: None = MsgTypeIterator.__hash__
-ulplugins_hash: None = UlPlugins.__hash__
+plugins_hash: None = Plugins.__hash__
 bound_hash: None = Bound.__hash__
 bound_statement_hash: None = BoundStatement.__hash__
 catalog_hash: None = iceberg.Catalog.__hash__
@@ -1201,7 +1201,7 @@ fix_field.fix.add_branch("ice")
 fix_branches: list[str] = fix_field.fix.branches
 fix_has_branch: bool = fix_field.fix.has_branch("BLOOMBERG")
 fix_id: int | None = fix_field.fix.id
-fix_ulbridge_dialect: str = fix.ULBRIDGE_DIALECT
+fix_plugin_dialect: str = fix.PLUGIN_DIALECT
 
 python_field: Field = Field("Quote", "int64", nullable=False)
 python_field.python.class_metadata = PythonMetadata(
@@ -1353,7 +1353,7 @@ text_entry_value: str = text_line_text.entry_by_path("58").value
 text_entry_value_bytes: bytes = text_line_text.entry_by_path("58").value_bytes
 text_entry_key: str = text_line_text.entry_by_path("58").key
 text_entry_key_bytes: bytes = text_line_text.entry_by_path("58").key_bytes
-fix_read_config: fix.FixMessages = fix_reader.parse_ulconfig_line(b'{"Name":"Router"}')
+fix_read_config: fix.FixMessages = fix_reader.parse_plugin_line(b'{"Name":"Router"}')
 fix_read_frame: fix.FixMsg = fix_reader.parse_fix_line(b"8=FIX.4.4")
 fix_read_bridge: fix.FixMsg = fix_reader.parse_ullink_line(b"#SYMBOL=TTF")
 fix_read_fixml: fix.FixMsg = fix_reader.parse_fixml_line(b"<Order ClOrdID='A'/>")
@@ -1428,7 +1428,7 @@ fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter(453)
 fix_msgtype_hash: int = fix_msgtype.stable_hash()
 fix_msgtype_ordered: bool = fix_msgtype <= fix_msgtype_item
 fix_msgtype_pickle: tuple[object, tuple[str, int]] = fix_msgtype.__reduce__()
-fix_configuration: fix.UlPlugin = fix.UlPlugin({"Name": "Router"}, mbean="ulbridge:name=Router")
+fix_configuration: fix.Plugin = fix.Plugin({"Name": "Router"}, mbean="ulbridge:name=Router")
 _JOLOKIA_TEXT = (
     '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
     'name=Router,type=Plugin","type":"read"},"value":{"Name":"Router"},"status":200}'
@@ -1441,11 +1441,11 @@ _JOLOKIA: dict[str, Any] = {
     "value": {"Name": "Router"},
     "status": 200,
 }
-fix_configurations: fix.UlPlugins = fix.UlPlugin.from_json_scalar(_JOLOKIA)
-fix_configurations_bytes: fix.UlPlugins = fix.UlPlugin.from_json_bytes(_JOLOKIA_TEXT.encode())
-fix_configuration_item: fix.UlPlugin = next(fix_configurations)
+fix_configurations: fix.Plugins = fix.Plugin.from_json_scalar(_JOLOKIA)
+fix_configurations_bytes: fix.Plugins = fix.Plugin.from_json_bytes(_JOLOKIA_TEXT.encode())
+fix_configuration_item: fix.Plugin = next(fix_configurations)
 fix_configuration_message: fix.FixMsg = fix_configuration.into_fixmsg(fix_reader)
-fix_configuration_again: fix.UlPlugin = fix.UlPlugin.from_fixmsg(fix_configuration_message)
+fix_configuration_again: fix.Plugin = fix.Plugin.from_fixmsg(fix_configuration_message)
 fix_configuration_attributes: dict[str, Scalar] = fix_configuration.attributes
 fix_configuration_hash: int = fix_configuration.stable_hash()
 fix_configuration_pickle: tuple[Any, tuple[str, str | None]] = fix_configuration.__reduce__()
@@ -1475,7 +1475,7 @@ fix.install_global_registry(fix_registry_from_fields)
 
 assert fix_tag == 38 and fix_tags and fix_aliases and fix_description
 assert fix_branches == ["bloomberg", "cme", "ice"] and fix_has_branch
-assert fix_ulbridge_dialect == "ulbridge" and fix_dialects
+assert fix_plugin_dialect == "plugin" and fix_dialects
 assert fix_id is not None and fix_vendor_id is not None
 assert fix_direction_code == "S"
 assert fix_direction_patterns == ["(?i)^TX\\b"] and len(fix_directions) == 2

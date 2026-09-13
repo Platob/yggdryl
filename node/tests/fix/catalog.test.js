@@ -263,9 +263,9 @@ function wildcard(size = 2) {
   }
 }
 
-test('UlPlugin iterators own selected values, named by ObjectName and attributes', () => {
+test('Plugin iterators own selected values, named by ObjectName and attributes', () => {
   const document = wildcard()
-  const cursor = fix.UlPlugin.fromJsonScalar(document)[Symbol.iterator]()
+  const cursor = fix.Plugin.fromJsonScalar(document)[Symbol.iterator]()
   const first = cursor.next().value
   document.value = {}
   assert.equal(cursor.next().value.name, 'Item1')
@@ -273,40 +273,40 @@ test('UlPlugin iterators own selected values, named by ObjectName and attributes
   assert.equal(cursor.next().done, true)
   const sibling = wildcard()
   Object.values(sibling.value)[1].CurrentPort = 9999
-  const same = fix.UlPlugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
+  const same = fix.Plugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
   assert.ok(same.equals(first))
   assert.equal(same.stableHash(), first.stableHash())
   // The envelope is transport: how the asking went was never part of the
   // configuration, so an answer that came back 503 states the same plugin.
   sibling.status = 503
-  const changed = fix.UlPlugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
+  const changed = fix.Plugin.fromJsonScalar(sibling)[Symbol.iterator]().next().value
   assert.ok(changed.equals(first))
   assert.equal(changed.stableHash(), first.stableHash())
   // A plugin is its ObjectName and its attributes, which is all of it, so
   // the two parts rebuild it and `asEnvelope` is gone with the third.
-  const rebuilt = new fix.UlPlugin(first.mbean, first.asAttributes())
+  const rebuilt = new fix.Plugin(first.mbean, first.asAttributes())
   assert.ok(rebuilt.equals(first))
   assert.ok(first.clone().equals(first))
   assert.equal(rebuilt.stableHash(), first.stableHash())
-  assert.equal(new fix.UlPlugin(null, first.asAttributes()).equals(first), false)
+  assert.equal(new fix.Plugin(null, first.asAttributes()).equals(first), false)
   assert.equal(typeof first.asEnvelope, 'undefined')
   // An array element that is not an answer names no plugin, and naming none
   // is what it answers: the walk continues past it and refuses nothing.
   assert.deepEqual(
-    [...fix.UlPlugin.fromJsonScalar([wildcard(), null])].map(held => held.name),
+    [...fix.Plugin.fromJsonScalar([wildcard(), null])].map(held => held.name),
     ['Item0', 'Item1'],
   )
-  assert.equal([...fix.UlPlugin.fromJsonBytes(Buffer.from(JSON.stringify(wildcard())))].length, 2)
+  assert.equal([...fix.Plugin.fromJsonBytes(Buffer.from(JSON.stringify(wildcard())))].length, 2)
   // Bytes that are not a Jolokia answer name none, through every door, and
   // bytes that are not JSON at all are the same silence rather than a throw.
   for (const silent of ['[]', '{}', '{"a":1}', 'null', 'true', '1', '"text"', 'not json at all']) {
-    assert.deepEqual([...fix.UlPlugin.fromJsonBytes(Buffer.from(silent))], [], silent)
+    assert.deepEqual([...fix.Plugin.fromJsonBytes(Buffer.from(silent))], [], silent)
   }
 })
 
 test('bulk message streams drop answers naming no plugin and fuse', () => {
   const registry = new fix.FixRegistry()
-  registry.withUlbridgeFields()
+  registry.withPluginFields()
   const codec = new fix.FixCodec(registry)
   const error = { request: { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }, status: 404, error: 'missing' }
   const request = { mbean: 'com.ullink.ulbridge:type=Bridge', type: 'read' }
@@ -333,28 +333,28 @@ test('bulk message streams drop answers naming no plugin and fuse', () => {
   assert.ok(values.every(value => value.getByName('SessionInterfaces') === null))
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
-  assert.equal([...codec.parseUlconfigLine(body)].length, 2)
+  assert.equal([...codec.parsePluginLine(body)].length, 2)
   assert.equal([...codec.parseTextLine(new TextLine(17, body))].length, 2)
   // A row's own bytes that are not a Jolokia answer say nothing FIX can
   // read, through every door, and being unable to read a body is not an
   // error in the codec.
   const stranger = Buffer.from('{"a":1}')
   assert.equal(codec.parseLine(stranger).next().done, true)
-  assert.equal(codec.parseUlconfigLine(stranger).next().done, true)
+  assert.equal(codec.parsePluginLine(stranger).next().done, true)
   assert.equal(codec.parseTextLine(new TextLine(17, stranger)).next().done, true)
-  const selected = fix.UlPlugin.fromFixmsg(values[0])
+  const selected = fix.Plugin.fromFixmsg(values[0])
   assert.equal(selected.name, 'Item0')
   assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Item0')
-  const invalid = new fix.UlPlugin(null, { CurrentPort: NaN })
+  const invalid = new fix.Plugin(null, { CurrentPort: NaN })
   assert.throws(() => invalid.intoFixmsg(codec), /non-finite/)
   const schema = fix.schema(registry)
   assert.equal(values[0].intoRow(schema).asJs().length, schema.fieldLen)
   assert.equal(typeof values[0].stableHash(), 'bigint')
 })
 
-// Only `ulbridge` is registered on request: the crate's own fields seed every
+// Only `plugin` is registered on request: the crate's own fields seed every
 // registry, so there is no `withCrateFields` left to refuse.
-for (const [method, vocabulary] of [['withUlbridgeFields', fix.ulbridgeFields]]) {
+for (const [method, vocabulary] of [['withPluginFields', fix.pluginFields]]) {
   test(`${method} refuses atomically with a named catalog present`, () => {
     const registry = catalog()
     // One namespace: a held name under another tag folds into its holder,

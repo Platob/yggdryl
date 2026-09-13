@@ -3352,32 +3352,32 @@ NativeFixMsg.prototype.set = function set(key, value) {
   return nativeFixMsgSet.call(this, key, asScalar(value))
 }
 
-const NativeUlPlugin = binding.UlPlugin
-function UlPlugin(mbean, attributes) {
+const NativePlugin = binding.Plugin
+function Plugin(mbean, attributes) {
   if (new.target === undefined) {
-    throw new TypeError("Class constructor UlPlugin cannot be invoked without 'new'")
+    throw new TypeError("Class constructor Plugin cannot be invoked without 'new'")
   }
-  return new NativeUlPlugin(
+  return new NativePlugin(
     mbean,
     attributes instanceof Scalar ? attributes : Scalar.fromJs(attributes),
   )
 }
-UlPlugin.prototype = NativeUlPlugin.prototype
-Object.defineProperty(UlPlugin.prototype, 'constructor', {
+Plugin.prototype = NativePlugin.prototype
+Object.defineProperty(Plugin.prototype, 'constructor', {
   configurable: true,
-  value: UlPlugin,
+  value: Plugin,
   writable: true,
 })
-UlPlugin.fromJsonBytes = function fromJsonBytes(body) {
-  return NativeUlPlugin.fromJsonBytes(toBytes(body))
+Plugin.fromJsonBytes = function fromJsonBytes(body) {
+  return NativePlugin.fromJsonBytes(toBytes(body))
 }
-UlPlugin.fromJsonScalar = function fromJsonScalar(document) {
-  return NativeUlPlugin.fromJsonScalar(
+Plugin.fromJsonScalar = function fromJsonScalar(document) {
+  return NativePlugin.fromJsonScalar(
     document instanceof Scalar ? document : Scalar.fromJs(document),
   )
 }
-UlPlugin.fromFixmsg = function fromFixmsg(message) {
-  return NativeUlPlugin.fromFixmsg(message)
+Plugin.fromFixmsg = function fromFixmsg(message) {
+  return NativePlugin.fromFixmsg(message)
 }
 
 // A line crosses as the `TextLine` a text read answered - there is nothing to
@@ -3509,15 +3509,15 @@ const fix = Object.freeze({
   FixMsg,
   FixCodec: binding.FixCodec,
   MsgType: binding.MsgType,
-  UlPlugin,
-  UlPlugins: binding.UlPlugins,
+  Plugin,
+  Plugins: binding.Plugins,
   FixMessages: binding.FixMessages,
   FixLifecycle: binding.FixLifecycle,
   schema: binding.fixSchema,
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
-  ulbridgeFields: binding.fixUlbridgeFields,
+  pluginFields: binding.fixPluginFields,
   globalRegistry: binding.fixGlobalRegistryNative,
   installGlobalRegistry: binding.fixInstallGlobalRegistryNative,
 })
@@ -3533,8 +3533,8 @@ for (const name of [
   'FixDefinitionIterator',
   'MsgType',
   'MsgTypeIterator',
-  'UlPlugin',
-  'UlPlugins',
+  'Plugin',
+  'Plugins',
   'FixMessages',
   'FixLifecycle',
   'JsFixFieldIterator',
@@ -3545,12 +3545,12 @@ for (const name of [
   'JsFixDefinitionIterator',
   'JsMsgType',
   'JsMsgTypeIterator',
-  'JsUlPlugin',
-  'JsUlPlugins',
+  'JsPlugin',
+  'JsPlugins',
   'JsFixMessages',
   'JsFixLifecycle',
   'fixCrateFields',
-  'fixUlbridgeFields',
+  'fixPluginFields',
   'fixGlobalRegistryNative',
   'fixInstallGlobalRegistryNative',
   'fixSchema',

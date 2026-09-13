@@ -375,8 +375,8 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register_functions(module)?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     // The one dictionary membership this crate itself stamps: the name every
-    // `ULBridge` field carries in `fix:branches`.
-    module.add("ULBRIDGE_DIALECT", yggdryl::ULBRIDGE_DIALECT)?;
+    // plugin field carries in `fix:branches`.
+    module.add("PLUGIN_DIALECT", yggdryl::PLUGIN_DIALECT)?;
     // The reserved Arrow schema metadata key that carries per-field dictionary
     // IDs across the C Data Interface, which has no slot for them.
     module.add(
@@ -436,8 +436,8 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyFixMsgIterator>()?;
     module.add_class::<fix::PyFixCodec>()?;
     module.add_class::<fix::PyFixLifecycle>()?;
-    module.add_class::<fix::PyUlPlugin>()?;
-    module.add_class::<fix::PyUlPlugins>()?;
+    module.add_class::<fix::PyPlugin>()?;
+    module.add_class::<fix::PyPlugins>()?;
     module.add_class::<fix::PyFixMessages>()?;
     module.add_class::<fix::PyMsgType>()?;
     module.add_class::<fix::PyMsgTypeIterator>()?;
@@ -514,7 +514,7 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_crate_fields, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_cfb_fields, module)?)?;
-    module.add_function(wrap_pyfunction!(fix::fix_ulbridge_fields, module)?)?;
+    module.add_function(wrap_pyfunction!(fix::fix_plugin_fields, module)?)?;
     module.add_function(wrap_pyfunction!(
         media::iceberg::iceberg_assign_field_ids,
         module

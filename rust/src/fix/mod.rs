@@ -159,6 +159,7 @@ mod memo;
 mod messages;
 mod msg;
 mod msgtype;
+mod plugin;
 mod registry;
 mod replacements;
 mod schema;
@@ -194,15 +195,13 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
+pub use plugin::{PLUGIN_DIALECT, PLUGIN_TAG_MIN, Plugin, Plugins, fix_plugin_fields};
 pub use registry::{FixFieldIter, FixRegistry};
 pub use replacements::{
     FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,
     FixReplacementEntry, FixReplacements,
 };
-pub use ulbridge::{
-    ULBRIDGE_DIALECT, ULBRIDGE_ROWHEADER, ULBRIDGE_TAG_MIN, UlPlugin, UlPlugins,
-    fix_ulbridge_fields,
-};
+pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{
     BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN,

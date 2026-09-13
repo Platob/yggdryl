@@ -29,7 +29,7 @@ from collections.abc import Callable
 import pyarrow as pa
 
 from yggdryl import DataType, Field, MimeType, TextLine, types
-from yggdryl.fix import FixCodec, FixMsg, FixRegistry, UlPlugin, fix_schema
+from yggdryl.fix import FixCodec, FixMsg, FixRegistry, Plugin, fix_schema
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -245,7 +245,7 @@ CATALOG_JSON = CATALOG.into_json()
 CATALOG_PICKLE = pickle.dumps(CATALOG)
 CODEC = FixCodec(SEED_REGISTRY)
 BRIDGE_REGISTRY = copy.copy(SEED_REGISTRY)
-BRIDGE_REGISTRY.with_ulbridge_fields()
+BRIDGE_REGISTRY.with_plugin_fields()
 BRIDGE_CODEC = FixCodec(BRIDGE_REGISTRY)
 NUMERIC_GROUP = b"8=FIX.4.4|35=D|453=1|448=BROKER|447=D|452=1|10=0|"
 assert CODEC.parse_fix_line(NUMERIC_GROUP).by_tag(453).as_py() == 1
@@ -360,7 +360,7 @@ def _add_field(field: Field) -> FixRegistry:
 
 def _register_bridge_vocabulary() -> FixRegistry:
     registry = FixRegistry()
-    registry.with_ulbridge_fields()
+    registry.with_plugin_fields()
     return registry
 
 def _wildcard(count: int) -> bytes:
@@ -461,15 +461,15 @@ def main() -> None:
         _measure(f"write_arrow_reader/{len(LINES)}", _write_arrow_reader, streams)
         for count in (1, 32, 64):
             body = _wildcard(count)
-            assert len(list(UlPlugin.from_json_bytes(body))) == count
+            assert len(list(Plugin.from_json_bytes(body))) == count
             assert len(list(BRIDGE_CODEC.parse_line(body))) == count
-            _measure(f"UlPlugins first/{count}", lambda body=body: next(UlPlugin.from_json_bytes(body)), args.iterations)
-            _measure(f"UlPlugins drain/{count}", lambda body=body: list(UlPlugin.from_json_bytes(body)), args.iterations)
+            _measure(f"Plugins first/{count}", lambda body=body: next(Plugin.from_json_bytes(body)), args.iterations)
+            _measure(f"Plugins drain/{count}", lambda body=body: list(Plugin.from_json_bytes(body)), args.iterations)
             _measure(f"FixMessages first/{count}", lambda body=body: next(BRIDGE_CODEC.parse_line(body)), args.iterations)
             _measure(f"FixMessages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_line(body)), args.iterations)
             _measure(f"line messages drain/{count}", lambda body=body: list(BRIDGE_CODEC.parse_text_line(TextLine(0, body))), args.iterations)
-            first = next(UlPlugin.from_json_bytes(body))
-            _measure(f"UlPlugin hash/{count}", first.stable_hash, args.iterations)
+            first = next(Plugin.from_json_bytes(body))
+            _measure(f"Plugin hash/{count}", first.stable_hash, args.iterations)
         loads = max(1, args.iterations // 100)
         _measure(
             "from_handle, the seed",

@@ -26,7 +26,7 @@ use yggdryl::{FixCodec, FixRegistry, IOMedia, Scalar, Url};
 
 /// The committed dictionary, plus the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
-    super::ulbridge_registry()
+    super::plugin_fields_registry()
 }
 
 /// A framed order behind the prose its process printed around it.
@@ -40,7 +40,7 @@ const NAMED: &str = "recv |MSGTYPE=D|SYMBOL=TTF|SIDE=1|ORDERQTY=1200|#NOPARTYIDS
 /// A FIXML row, whose fields are attributes.
 const FIXML: &str = r#"<FIXML><Order ClOrdID="ORDER-2" Side="1" OrdQty="50"/></FIXML>"#;
 /// A Jolokia read of a session interface, which is a document rather than pairs.
-const ULCONFIG: &str = concat!(
+const PLUGIN: &str = concat!(
     r#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_DMZ,"#,
     r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","#,
     r#""TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","State":"logged"},"status":200}"#,
@@ -63,7 +63,7 @@ const CHATTER: &str = "heartbeat emitted seq=7 to VENUE, no reply yet";
 
 /// Every shape, in the order the capture holds them.
 const CAPTURE: [&str; 8] = [
-    TAGGED, WORKING, FILLED, NAMED, FIXML, ULCONFIG, PROSE, CHATTER,
+    TAGGED, WORKING, FILLED, NAMED, FIXML, PLUGIN, PROSE, CHATTER,
 ];
 
 /// The messages the capture states: one per line but the two silent ones.
@@ -308,14 +308,14 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // carries none, because a message is not a dictionary member.
     let bridge = FixCodec::new(Arc::clone(&registry));
     let config = bridge
-        .sole_line(ULCONFIG.as_bytes(), true)
+        .sole_line(PLUGIN.as_bytes(), true)
         .expect("a configuration document");
     assert!(
         registry
             .field_by_tag(SESSIONINTERFACE_TAG)
             .unwrap()
             .as_fix()
-            .has_branch(yggdryl::ULBRIDGE_DIALECT)
+            .has_branch(yggdryl::PLUGIN_DIALECT)
     );
     assert_eq!(config.as_field().as_fix().branches().count(), 0);
     // A configuration message is the plugin's attributes and nothing the
@@ -521,7 +521,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
 
     let codec = FixCodec::new(registry());
     let message = codec
-        .sole_ulconfig_line(LOGGED.as_bytes(), false)
+        .sole_plugin_line(LOGGED.as_bytes(), false)
         .expect("the document the line carries");
     // Standard FIX and bridge attributes share the configuration's flat row.
     assert_eq!(
@@ -573,8 +573,8 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
 fn every_plugin_a_document_answers_for_crosses_both_ways() {
     // A wildcard read answers a plugin per key; a single read answers one, and
     // the request's own MBean names it. Both are the same walk.
-    let held: Vec<yggdryl::UlPlugin> =
-        yggdryl::UlPlugin::from_json_bytes(WILDCARD.as_bytes()).collect();
+    let held: Vec<yggdryl::Plugin> =
+        yggdryl::Plugin::from_json_bytes(WILDCARD.as_bytes()).collect();
     assert_eq!(held.len(), 2);
     assert_eq!(held[0].name(), Some("ULMSG_BROKER_BDG_DMZ_PCO"));
     assert_eq!(held[0].mbean_type(), Some("ConfigurationPlugin"));
@@ -590,8 +590,8 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
         Some(5)
     );
 
-    let single: Vec<yggdryl::UlPlugin> =
-        yggdryl::UlPlugin::from_json_bytes(LOGGED.as_bytes()).collect();
+    let single: Vec<yggdryl::Plugin> =
+        yggdryl::Plugin::from_json_bytes(LOGGED.as_bytes()).collect();
     assert_eq!(single.len(), 1);
     assert_eq!(single[0].name(), Some("Router_OrderRouting"));
     assert_eq!(single[0].state(), Some("logged"));
@@ -606,7 +606,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
             .and_then(Scalar::as_i64),
         Some(5)
     );
-    let back = yggdryl::UlPlugin::from_fixmsg(&message).expect("one flat configuration");
+    let back = yggdryl::Plugin::from_fixmsg(&message).expect("one flat configuration");
     assert_eq!(back.mbean(), held[0].mbean());
     assert_eq!(back.name(), held[0].name());
     assert_eq!(back.version(), held[0].version());
@@ -661,7 +661,7 @@ fn a_body_no_reader_here_can_read_is_silence_at_every_door() {
     );
     assert!(
         codec
-            .parse_ulconfig_line(STRANGER.as_bytes())
+            .parse_plugin_line(STRANGER.as_bytes())
             .next()
             .is_none(),
         "the document door",
@@ -684,11 +684,10 @@ fn a_body_no_reader_here_can_read_is_silence_at_every_door() {
     ])
     .unwrap()
     .required_field("capture");
-    let value = Scalar::from_sequence([(1_i64, STRANGER), (2_i64, ULCONFIG)].map(
-        |(rownum, body)| {
+    let value =
+        Scalar::from_sequence([(1_i64, STRANGER), (2_i64, PLUGIN)].map(|(rownum, body)| {
             Scalar::from_sequence([Scalar::from(rownum), Scalar::from(body.as_bytes().to_vec())])
-        },
-    ));
+        }));
     let source = yggdryl::arrow::batch_from_value(&field, &value).unwrap();
     let batch = codec
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
@@ -727,7 +726,7 @@ fn a_document_that_names_no_plugin_answers_none_rather_than_refusing() {
         "",
     ] {
         assert_eq!(
-            yggdryl::UlPlugin::from_json_bytes(body.as_bytes()).count(),
+            yggdryl::Plugin::from_json_bytes(body.as_bytes()).count(),
             0,
             "{body:?} names a plugin",
         );
@@ -744,7 +743,7 @@ fn a_document_that_names_no_plugin_answers_none_rather_than_refusing() {
         Scalar::from_record([("a", Scalar::from(1_i64))]).unwrap(),
     ] {
         assert_eq!(
-            yggdryl::UlPlugin::from_json_scalar(&document).count(),
+            yggdryl::Plugin::from_json_scalar(&document).count(),
             0,
             "{document:?} names a plugin",
         );

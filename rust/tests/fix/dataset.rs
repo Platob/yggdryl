@@ -126,10 +126,7 @@ fn registry() -> Arc<FixRegistry> {
         .join("fix");
     let folder = Folder::new(root).expect("the seed folder is a local path");
     let held = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
-    Arc::new(
-        held.with_ulbridge_fields()
-            .expect("the bridge's own fields"),
-    )
+    Arc::new(held.with_plugin_fields().expect("the bridge's own fields"))
 }
 
 /// The log as the `.log` handle a reader opens.
@@ -906,9 +903,9 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     let document = find(
         r#"Response: {"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=OMS_X1_TradeCapture"#,
     );
-    // The line classifies as the JSON it is: `text/ulconfig` is deleted, and
-    // what makes a document *this* reader's is a shape the codec recognizes
-    // rather than a name the classifier gives it (decision 17).
+    // The line classifies as the JSON it is: what makes a document *this*
+    // reader's is a shape the codec recognizes rather than a name the
+    // classifier gives it (decision 17).
     assert_eq!(mimetype(document).as_deref(), Some(MimeType::JSON.as_str()));
     let message = read(document);
     // The message is the plugin's attributes and nothing the Jolokia answer

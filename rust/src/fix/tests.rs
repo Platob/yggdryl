@@ -459,10 +459,10 @@ fn the_prose_in_front_of_a_configuration_document_names_its_half_and_the_documen
 }
 
 /// One Jolokia read of one session interface, trimmed to what is read.
-const ULCONFIG_SINGLE: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","Category":"InterBridge","PrimaryHost":"localhost","CurrentPort":7061,"BackupHost":null,"BackupPort":-1,"OutgoingMsgSeqNum":129,"NeedReload":false,"Name":"ULMSG_BROKER_TO_POSTTRADE","ExtendedActions":[{"name":"hot-reset","enabled":true}]},"status":200}"#;
+const PLUGIN_SINGLE: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER_TO_POSTTRADE,plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","Category":"InterBridge","PrimaryHost":"localhost","CurrentPort":7061,"BackupHost":null,"BackupPort":-1,"OutgoingMsgSeqNum":129,"NeedReload":false,"Name":"ULMSG_BROKER_TO_POSTTRADE","ExtendedActions":[{"name":"hot-reset","enabled":true}]},"status":200}"#;
 
 /// One wildcard read, answering for two MBeans of different types.
-const ULCONFIG_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"CLIENT_BPAG"}},"status":200}"#;
+const PLUGIN_WILDCARD: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin":{"Name":"A","Category":"InterBridge"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B","CurrentPort":9905,"SenderCompID":"CLIENT_BPAG"}},"status":200}"#;
 
 /// What no configuration message states: the Jolokia envelope, by either of
 /// the two ways a message can be asked for a field.
@@ -482,19 +482,19 @@ fn assert_states_no_envelope(message: &crate::FixMsg) {
 }
 
 /// A codec over the shipped dictionary, holding ULBridge's own fields too.
-fn ulbridge_codec() -> crate::FixCodec {
+fn plugin_codec() -> crate::FixCodec {
     static REGISTRY: std::sync::OnceLock<Arc<FixRegistry>> = std::sync::OnceLock::new();
-    let registry =
-        Arc::clone(REGISTRY.get_or_init(|| {
-            Arc::new(committed().as_ref().clone().with_ulbridge_fields().unwrap())
-        }));
+    let registry = Arc::clone(
+        REGISTRY
+            .get_or_init(|| Arc::new(committed().as_ref().clone().with_plugin_fields().unwrap())),
+    );
     crate::FixCodec::new(registry)
 }
 
 #[test]
 fn a_bridge_configuration_reads_as_one_flat_message() {
-    let codec = ulbridge_codec();
-    let mut messages = codec.parse_line(ULCONFIG_SINGLE).unwrap();
+    let codec = plugin_codec();
+    let mut messages = codec.parse_line(PLUGIN_SINGLE).unwrap();
     let msg = messages.next().unwrap().unwrap();
     assert!(messages.next().is_none());
     assert!(msg.get_by_name("SessionInterfaces").is_none());
@@ -557,9 +557,9 @@ fn a_bridge_configuration_reads_as_one_flat_message() {
 
 #[test]
 fn a_wildcard_read_is_one_flat_message_per_mbean() {
-    let codec = ulbridge_codec();
+    let codec = plugin_codec();
     let messages = codec
-        .parse_line(ULCONFIG_WILDCARD)
+        .parse_line(PLUGIN_WILDCARD)
         .unwrap()
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
@@ -595,7 +595,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
         messages[1].by_name("SenderCompID").unwrap(),
         &Scalar::from("CLIENT_BPAG")
     );
-    let recovered = crate::UlPlugin::from_fixmsg(&messages[1]).unwrap();
+    let recovered = crate::Plugin::from_fixmsg(&messages[1]).unwrap();
     assert_eq!(recovered.name(), Some("B"));
     assert_eq!(recovered.get("CurrentPort"), Some(&Scalar::from(9905_i64)));
     let rebuilt = recovered.into_fixmsg(&codec).unwrap();
@@ -610,7 +610,7 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     // dropping it: a venue sends fields no dictionary has.
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let plain = bare
-        .parse_line(ULCONFIG_WILDCARD)
+        .parse_line(PLUGIN_WILDCARD)
         .unwrap()
         .collect::<crate::Result<Vec<_>>>()
         .unwrap();
@@ -629,9 +629,9 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
 }
 
 #[test]
-fn ulconfig_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
+fn plugin_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
     let document = crate::from_json_scalar(br#"[{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"status":404,"error":"missing"},{"request":{"mbean":"com.ullink.ulbridge:type=Bridge","type":"read"},"value":{"Name":"Bridge","CurrentPort":9905}}]"#).unwrap();
-    let mut configurations = crate::UlPlugin::from_json_scalar(&document);
+    let mut configurations = crate::Plugin::from_json_scalar(&document);
     assert_eq!(configurations.size_hint(), (0, None));
     // The first answer failed, so it named no plugin, and a read that
     // answers no plugin answers no message: the array's two responses yield
@@ -641,7 +641,7 @@ fn ulconfig_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
     assert!(configurations.next().is_none());
     assert!(configurations.next().is_none());
     assert_eq!(configurations.size_hint(), (0, Some(0)));
-    let codec = ulbridge_codec();
+    let codec = plugin_codec();
     let message = value.into_fixmsg(&codec).unwrap();
     assert_eq!(
         message.by_name("SessionInterface").unwrap(),
@@ -659,7 +659,7 @@ fn ulconfig_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
     // it answers with is empty and fused rather than carrying an envelope
     // with no configuration inside it.
     let empty = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"value":{},"status":200}"#;
-    let mut values = crate::UlPlugin::from_json_bytes(empty);
+    let mut values = crate::Plugin::from_json_bytes(empty);
     assert!(values.next().is_none());
     assert!(values.next().is_none());
     assert!(codec.parse_line(empty).unwrap().next().is_none());
@@ -669,32 +669,32 @@ fn ulconfig_bulk_iteration_answers_only_for_the_plugins_named_and_fuses() {
     // carrying an envelope with nothing inside it (decisions 16 and 17).
     let failed = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"},"status":404,"error":"missing"}"#;
     assert!(codec.parse_line(failed).unwrap().next().is_none());
-    assert!(codec.parse_ulconfig_line(failed).next().is_none());
+    assert!(codec.parse_plugin_line(failed).next().is_none());
 
     // A request is what was asked and answers for no plugin at all, so a
     // document holding only one yields no message.
     let request = br#"{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:*","type":"read"}"#;
-    let mut asked = crate::UlPlugin::from_json_bytes(request);
+    let mut asked = crate::Plugin::from_json_bytes(request);
     assert!(asked.next().is_none());
     assert!(asked.next().is_none());
-    assert!(codec.parse_ulconfig_line(request).next().is_none());
+    assert!(codec.parse_plugin_line(request).next().is_none());
 }
 
 #[test]
-fn a_selected_ulconfig_identity_excludes_other_mbeans_and_the_exchange() {
+fn a_selected_plugin_identity_excludes_other_mbeans_and_the_exchange() {
     use std::hash::{Hash, Hasher};
-    let document = String::from_utf8(ULCONFIG_WILDCARD.to_vec()).unwrap();
+    let document = String::from_utf8(PLUGIN_WILDCARD.to_vec()).unwrap();
     let changed_sibling = document.replace("9905", "9906");
-    let first = crate::UlPlugin::from_json_bytes(document.as_bytes())
+    let first = crate::Plugin::from_json_bytes(document.as_bytes())
         .next()
         .unwrap();
-    let same = crate::UlPlugin::from_json_bytes(changed_sibling.as_bytes())
+    let same = crate::Plugin::from_json_bytes(changed_sibling.as_bytes())
         .next()
         .unwrap();
     assert_eq!(first, same);
-    let rebuilt = crate::UlPlugin::new(first.mbean(), first.as_attributes().clone());
+    let rebuilt = crate::Plugin::new(first.mbean(), first.as_attributes().clone());
     assert_eq!(first, rebuilt);
-    let digest = |value: &crate::UlPlugin| {
+    let digest = |value: &crate::Plugin| {
         let mut hasher = std::hash::DefaultHasher::new();
         value.hash(&mut hasher);
         hasher.finish()
@@ -710,7 +710,7 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans_and_the_exchange() {
         document.replace("\"status\":200", "\"status\":503"),
         document.replace("\"type\":\"read\"", "\"type\":\"exec\""),
     ] {
-        let changed = crate::UlPlugin::from_json_bytes(changed_exchange.as_bytes())
+        let changed = crate::Plugin::from_json_bytes(changed_exchange.as_bytes())
             .next()
             .unwrap();
         assert_eq!(first, changed, "{changed_exchange}");
@@ -724,7 +724,7 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans_and_the_exchange() {
     // The ObjectName is half of what a plugin is, so the same attributes
     // answered for under another name are another plugin.
     let renamed = document.replace("name=A,", "name=AA,");
-    let other = crate::UlPlugin::from_json_bytes(renamed.as_bytes())
+    let other = crate::Plugin::from_json_bytes(renamed.as_bytes())
         .next()
         .unwrap();
     assert_ne!(first, other);
@@ -732,9 +732,9 @@ fn a_selected_ulconfig_identity_excludes_other_mbeans_and_the_exchange() {
 }
 
 #[test]
-fn ulconfig_conversion_reports_an_unrepresentable_attribute() {
+fn plugin_conversion_reports_an_unrepresentable_attribute() {
     let attributes = Scalar::from_record([("CurrentPort", Scalar::from(f64::NAN))]).unwrap();
-    let value = crate::UlPlugin::new(None, attributes);
+    let value = crate::Plugin::new(None, attributes);
     let codec = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let error = value.into_fixmsg(&codec).unwrap_err();
     assert!(error.to_string().contains("non-finite"), "{error}");
@@ -747,7 +747,7 @@ fn a_body_that_is_no_jolokia_answer_names_no_plugin_and_refuses_nothing() {
     // names no plugin, and naming none is what it answers: the row carried
     // bytes this reader cannot read, which is a statement and not an error
     // in the codec (decision 17).
-    let codec = ulbridge_codec();
+    let codec = plugin_codec();
     for body in [
         b"null".as_slice(),
         b"true",
@@ -763,12 +763,12 @@ fn a_body_that_is_no_jolokia_answer_names_no_plugin_and_refuses_nothing() {
         br#"[{"value":{"Name":"valid"}},[]]"#,
     ] {
         let shown = String::from_utf8_lossy(body).into_owned();
-        let mut values = crate::UlPlugin::from_json_bytes(body);
+        let mut values = crate::Plugin::from_json_bytes(body);
         assert!(values.next().is_none(), "{shown}");
         assert!(values.next().is_none(), "{shown}");
         // Through the doors as well as through the value: nothing refused,
         // and nothing yielded.
-        let mut messages = codec.parse_ulconfig_line(body);
+        let mut messages = codec.parse_plugin_line(body);
         assert!(messages.next().is_none(), "{shown}");
         let mut messages = codec.parse_line(body).unwrap();
         assert!(messages.next().is_none(), "{shown}");
@@ -783,8 +783,13 @@ fn a_body_that_is_no_jolokia_answer_names_no_plugin_and_refuses_nothing() {
 }
 
 #[test]
-fn ulbridge_fields_are_a_dictionary_of_their_own() {
-    let held = crate::fix_ulbridge_fields().unwrap();
+fn plugin_fields_are_a_dictionary_of_their_own() {
+    let held = crate::fix_plugin_fields().unwrap();
+    // The membership is text, and text is hashed: a registry carrying these
+    // fields digests to this and to nothing else, so the one value decision
+    // 18's rename moves is stated here rather than left to be discovered.
+    let carrying = FixRegistry::new().with_plugin_fields().unwrap();
+    assert_eq!(carrying.stable_hash(), 4_011_410_089_001_341_530);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -805,7 +810,7 @@ fn ulbridge_fields_are_a_dictionary_of_their_own() {
         .min()
         .expect("a dictionary of its own");
     assert_eq!(smallest, tag);
-    assert!(smallest > crate::ULBRIDGE_TAG_MIN);
+    assert!(smallest > crate::PLUGIN_TAG_MIN);
     for retired in ["MBean", "Operation", "Status", "Error"] {
         assert!(
             !held.iter().any(|field| field.name() == retired),
@@ -817,20 +822,20 @@ fn ulbridge_fields_are_a_dictionary_of_their_own() {
     // field says whose dictionary it is.
     for field in held {
         let tag = field.as_fix().tag().unwrap().expect("a tag");
-        assert!(tag >= crate::ULBRIDGE_TAG_MIN, "{}: {tag}", field.name());
+        assert!(tag >= crate::PLUGIN_TAG_MIN, "{}: {tag}", field.name());
         assert!(
             !(20_001..=20_004).contains(&tag),
             "{}: {tag} is retired",
             field.name()
         );
         assert!(
-            field.as_fix().has_branch(crate::ULBRIDGE_DIALECT),
+            field.as_fix().has_branch(crate::PLUGIN_DIALECT),
             "{}",
             field.name()
         );
         assert_eq!(
             field.as_fix().branches().collect::<Vec<_>>(),
-            [crate::ULBRIDGE_DIALECT],
+            [crate::PLUGIN_DIALECT],
             "{}",
             field.name()
         );
@@ -851,12 +856,12 @@ fn ulbridge_fields_are_a_dictionary_of_their_own() {
     // Registering is idempotent in the sense that matters: the same fields
     // twice is a replacement, never a conflict.
     let registry = FixRegistry::new()
-        .with_ulbridge_fields()
+        .with_plugin_fields()
         .unwrap()
-        .with_ulbridge_fields()
+        .with_plugin_fields()
         .unwrap();
     assert_eq!(registry.len(), held.len() + crated());
-    assert_eq!(registry.dialects(), [crate::ULBRIDGE_DIALECT]);
+    assert_eq!(registry.dialects(), [crate::PLUGIN_DIALECT]);
     assert!(
         registry
             .get_definition(crate::FixCategory::Groups, "SessionInterfaces")

@@ -2,20 +2,20 @@
 
 use napi::bindgen_prelude::{Buffer, Generator, Result};
 use napi_derive::napi;
-use yggdryl::{UlPlugin, UlPlugins};
+use yggdryl::{Plugin, Plugins};
 
 use super::{JsFixCodec, JsFixMsg};
 use crate::napi_error;
 use crate::text::codec::JsScalar;
 
 /// One configuration: the `ObjectName` naming it and the attributes it states.
-#[napi(js_name = "UlPlugin")]
-pub struct JsUlPlugin {
-    inner: UlPlugin,
+#[napi(js_name = "Plugin")]
+pub struct JsPlugin {
+    inner: Plugin,
 }
 
 #[napi]
-impl JsUlPlugin {
+impl JsPlugin {
     /// Construct from the parts a document states: the selected `ObjectName`
     /// and the attributes.
     ///
@@ -24,7 +24,7 @@ impl JsUlPlugin {
     #[napi(constructor, ts_args_type = "mbean: string | null, attributes: Scalar")]
     pub fn new(mbean: Option<String>, attributes: &JsScalar) -> Self {
         Self {
-            inner: UlPlugin::new(mbean.as_deref(), attributes.inner.clone()),
+            inner: Plugin::new(mbean.as_deref(), attributes.inner.clone()),
         }
     }
 
@@ -34,9 +34,9 @@ impl JsUlPlugin {
     /// they answer: reading is not refusing, so bytes that are not JSON at all
     /// iterate empty rather than throwing.
     #[napi]
-    pub fn from_json_bytes(body: Buffer) -> JsUlPlugins {
-        JsUlPlugins {
-            inner: UlPlugin::from_json_bytes(&body),
+    pub fn from_json_bytes(body: Buffer) -> JsPlugins {
+        JsPlugins {
+            inner: Plugin::from_json_bytes(&body),
         }
     }
 
@@ -46,16 +46,16 @@ impl JsUlPlugin {
     /// empty and an error-only answer all name no configuration, which is
     /// what they answer.
     #[napi]
-    pub fn from_json_scalar(document: &JsScalar) -> JsUlPlugins {
-        JsUlPlugins {
-            inner: UlPlugin::from_json_scalar(&document.inner),
+    pub fn from_json_scalar(document: &JsScalar) -> JsPlugins {
+        JsPlugins {
+            inner: Plugin::from_json_scalar(&document.inner),
         }
     }
 
     /// Recover one configuration from a flat native message.
     #[napi(factory)]
     pub fn from_fixmsg(message: &JsFixMsg) -> Result<Self> {
-        UlPlugin::from_fixmsg(&message.inner)
+        Plugin::from_fixmsg(&message.inner)
             .map(|inner| Self { inner })
             .map_err(napi_error)
     }
@@ -63,7 +63,7 @@ impl JsUlPlugin {
     /// This plugin as a message typed against `codec`'s dictionary.
     ///
     /// The same build every other reader funnels into, so a dictionary
-    /// carrying `ULBridge`'s fields types a port as a number and a flag as a
+    /// carrying the plugin fields types a port as a number and a flag as a
     /// boolean, and one that does not keeps every attribute as the text it
     /// arrived as.
     #[napi]
@@ -124,7 +124,7 @@ impl JsUlPlugin {
 
     /// Two configurations are equal with the same `ObjectName` and attributes.
     #[napi]
-    pub fn equals(&self, other: &JsUlPlugin) -> bool {
+    pub fn equals(&self, other: &JsPlugin) -> bool {
         self.inner == other.inner
     }
 
@@ -144,16 +144,16 @@ impl JsUlPlugin {
 }
 
 /// A lazy iterator over the configurations a document names.
-#[napi(iterator, js_name = "UlPlugins")]
-pub struct JsUlPlugins {
-    inner: UlPlugins,
+#[napi(iterator, js_name = "Plugins")]
+pub struct JsPlugins {
+    inner: Plugins,
 }
 
-impl Generator for JsUlPlugins {
-    type Yield = JsUlPlugin;
+impl Generator for JsPlugins {
+    type Yield = JsPlugin;
     type Next = ();
     type Return = ();
     fn next(&mut self, _: Option<Self::Next>) -> Option<Self::Yield> {
-        self.inner.next().map(|inner| JsUlPlugin { inner })
+        self.inner.next().map(|inner| JsPlugin { inner })
     }
 }

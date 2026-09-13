@@ -810,9 +810,9 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 ## FIX is a namespace
 
 `fix.FixRegistry`, `fix.FixMsg`, `fix.MsgType`, `fix.FixCodec`,
-`fix.FixMessages`, `fix.FixLifecycle`, `fix.UlPlugin`, `fix.UlPlugins`,
+`fix.FixMessages`, `fix.FixLifecycle`, `fix.Plugin`, `fix.Plugins`,
 `fix.schema()`, `fix.schemaCarrying()`, `fix.schemaTags()`, `fix.crateFields()`,
-`fix.ulbridgeFields()`, `fix.globalRegistry()` and `fix.installGlobalRegistry()`
+`fix.pluginFields()`, `fix.globalRegistry()` and `fix.installGlobalRegistry()`
 are the whole surface: the registry, message definitions, codec, messages and
 lazy iterators. The namespace holds no constant: a dictionary is one namespace
 of tags and names, an identity is the number `field.fix.id` derives from both,
@@ -843,11 +843,11 @@ to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
-| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parseUlconfigLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parsePluginLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| ULconfig | `UlPlugin.fromJsonBytes` / `fromJsonScalar` return lazy `UlPlugins`; each selection converts to one flat message with `intoFixmsg` |
+| Plugin | `Plugin.fromJsonBytes` / `fromJsonScalar` return lazy `Plugins`; each selection converts to one flat message with `intoFixmsg` |
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -1031,7 +1031,7 @@ answer and a request with no value are silent. Each message retains the
 ObjectName the read named it by, on `SessionInterface`; what the Jolokia
 exchange wrapped it in reaches no column, and the plugin's fields are directly
 addressable on the message. The bridge's fields are members of
-the `ulbridge` dictionary and resolve in the one namespace like any other; the
+the `plugin` dictionary and resolve in the one namespace like any other; the
 document's `State` and `Version` attributes are held under `PluginState` and
 `PluginVersion`, because every registry already holds the crate's own `state`
 and `version`, and the arrival record keeps the document's spelling.
@@ -1041,11 +1041,11 @@ const assert = require('node:assert/strict')
 const { fix } = require('yggdryl')
 
 const registry = new fix.FixRegistry()
-registry.withUlbridgeFields()
-// The bridge's fields are members of the `ulbridge` dictionary; no codec pin
+registry.withPluginFields()
+// The bridge's fields are members of the `plugin` dictionary; no codec pin
 // names one, since the dictionary is one namespace.
-assert.deepEqual(registry.dialects(), ['ulbridge'])
-assert.deepEqual(registry.fieldByName('SessionInterface').fix.branches, ['ulbridge'])
+assert.deepEqual(registry.dialects(), ['plugin'])
+assert.deepEqual(registry.fieldByName('SessionInterface').fix.branches, ['plugin'])
 assert.equal(registry.fieldByName('SessionInterface').fix.tag, 20010)
 assert.equal(registry.fieldByName('PluginState').fix.tag, 20019)
 assert.equal(registry.fieldByName('PluginVersion').fix.tag, 20021)
@@ -1064,7 +1064,7 @@ const document = [
   { request: { type: 'read', mbean: `${plugins}:name=Gone,plugin-type=FIX,type=Plugin` },
     status: 404, error: 'missing' },
 ]
-const messages = codec.parseUlconfigLine(Buffer.from(JSON.stringify(document)))
+const messages = codec.parsePluginLine(Buffer.from(JSON.stringify(document)))
 assert.ok(messages instanceof fix.FixMessages)
 const [orders, prices] = [...messages]
 assert.deepEqual([orders, prices].map(message => message.byName('Name').asJs()), ['Orders', 'Prices'])
@@ -1077,11 +1077,11 @@ assert.deepEqual(
   [[20019, 'State', 'Running'], [20021, 'Version', '1.2']],
 )
 assert.equal(messages.next().done, true)
-const selected = fix.UlPlugin.fromJsonScalar(document).next().value
+const selected = fix.Plugin.fromJsonScalar(document).next().value
 assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
 // A body that is not a Jolokia answer names no configuration, and answering
 // none is what it answers: reading is not refusing.
-assert.equal(codec.parseUlconfigLine(Buffer.from('{"a":1}')).next().done, true)
+assert.equal(codec.parsePluginLine(Buffer.from('{"a":1}')).next().done, true)
 ```
 
 ## Edges

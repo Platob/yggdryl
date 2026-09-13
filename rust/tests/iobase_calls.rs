@@ -119,7 +119,7 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     let options: RecordOptions = options.into();
     let codec = FixCodec::new(Arc::new(
         FixRegistry::new()
-            .with_ulbridge_fields()
+            .with_plugin_fields()
             .expect("the bridge's own fields"),
     ));
 

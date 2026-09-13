@@ -29,18 +29,18 @@ from yggdryl.fix import (
     FixMsg,
     FixMessages,
     MsgType,
-    UlPlugins,
+    Plugins,
     FixCodec,
     FixLifecycle,
     FixRegistry,
-    ULBRIDGE_DIALECT,
-    UlPlugin,
+    PLUGIN_DIALECT,
+    Plugin,
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
-    fix_ulbridge_fields,
+    fix_plugin_fields,
     global_registry,
     install_global_registry,
 )
@@ -435,8 +435,8 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
         (b"level=INFO message=random", MimeType.KEYVALUE, None),
         (
             # A bridge configuration document is JSON, which is what it is:
-            # `text/ulconfig` is deleted, and what makes one *this* reader's
-            # is a shape the codec reads rather than a name the scan gives it.
+            # what makes one *this* reader's is a shape the codec reads
+            # rather than a name the scan gives it.
             b'{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:'
             b'name=ULMSG_BROKER_TO_DMZ,plugin-type=FIX,type=Plugin","type":"read"}',
             MimeType.JSON,
@@ -1606,26 +1606,27 @@ WILDCARD = (
 def bridge(seed: FixRegistry) -> FixRegistry:
     """The committed dictionary, plus the bridge's own vocabulary."""
     registry = seed
-    registry.with_ulbridge_fields()
+    registry.with_plugin_fields()
     return registry
 
 
-def test_the_bridge_vocabulary_is_a_caller_s_choice(bridge: FixRegistry) -> None:
-    """Registering ULBridge's fields is the one thing that types its answers."""
-    fields = fix_ulbridge_fields()
-    assert fields, "the bridge publishes its own vocabulary"
-    assert ULBRIDGE_DIALECT == "ulbridge"
-    assert all(field.fix.branches == [ULBRIDGE_DIALECT] for field in fields)
-    assert all(field.fix.has_branch("ULBridge") for field in fields)
+def test_the_plugin_vocabulary_is_a_caller_s_choice(bridge: FixRegistry) -> None:
+    """Registering the plugin fields is the one thing that types a report."""
+    fields = fix_plugin_fields()
+    assert fields, "the plugin dictionary publishes its own vocabulary"
+    assert PLUGIN_DIALECT == "plugin"
+    assert all(field.fix.branches == [PLUGIN_DIALECT] for field in fields)
+    # The membership folds, like every other name in this crate.
+    assert all(field.fix.has_branch("Plugin") for field in fields)
     # Every one of them is in the dictionary that folded them, carrying the
     # membership it declared, and a dictionary that never folded them holds
     # none of them.
     for field in fields:
         held = bridge.field_by_name(field.name)
         assert held.fix.tag == field.fix.tag
-        assert held.fix.branches == [ULBRIDGE_DIALECT]
+        assert held.fix.branches == [PLUGIN_DIALECT]
         assert bridge.field_by_id(field.fix.id) == held
-    assert bridge.dialects() == [ULBRIDGE_DIALECT]
+    assert bridge.dialects() == [PLUGIN_DIALECT]
     assert FixRegistry.from_handle(SEED).get_field_by_name(fields[0].name) is None
     assert FixRegistry.from_handle(SEED).dialects() == []
 
@@ -1641,7 +1642,7 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
 
     reader = FixCodec(bridge)
-    message = next(reader.parse_ulconfig_line(LOGGED))
+    message = next(reader.parse_plugin_line(LOGGED))
     # FIX's own names stay FIX's and the bridge's own are the bridge's, both
     # inside the occurrence the document answered for. The registry is one
     # namespace, so the plugin's own `Version` and `State` - not the FIX
@@ -1670,9 +1671,9 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     assert wire.startswith(b"SessionInterface=com.ullink.ulbridge")
     for retired_key in (b"MBean=", b"Operation=", b"Status=", b"Error="):
         assert retired_key not in wire
-    # `ULBRIDGE_TAG_MIN` is 20001 still - the floor of the range this
+    # `PLUGIN_TAG_MIN` is 20001 still - the floor of the range this
     # dictionary claims, not the smallest tag it defines, which is 20010.
-    assert min(field.fix.tag for field in fix_ulbridge_fields()) == 20010
+    assert min(field.fix.tag for field in fix_plugin_fields()) == 20010
     # `parse_line` finds the same document behind the same prose.
     assert next(reader.parse_line(LOGGED)) == message
 
@@ -1681,8 +1682,8 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
     bridge: FixRegistry,
 ) -> None:
     """A wildcard read, a single read, and the message each crosses to."""
-    walk = UlPlugin.from_json_bytes(WILDCARD)
-    assert isinstance(walk, UlPlugins)
+    walk = Plugin.from_json_bytes(WILDCARD)
+    assert isinstance(walk, Plugins)
     assert iter(walk) is walk
     held = list(walk)
     assert len(held) == 2
@@ -1705,7 +1706,7 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
     assert len(held[0]) == len(held[0].attributes)
     assert held[0].attributes["Version"].as_py() == "2.0.3"
 
-    single = list(UlPlugin.from_json_bytes(LOGGED))
+    single = list(Plugin.from_json_bytes(LOGGED))
     assert len(single) == 1
     assert single[0].name == "Router_OrderRouting"
     assert single[0].state == "logged"
@@ -1713,14 +1714,14 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
 
     # A parsed document is the same walk as the bytes it was parsed from, and
     # anything the Scalar boundary reads is a parsed document.
-    assert list(UlPlugin.from_json_scalar(json.loads(WILDCARD))) == held
+    assert list(Plugin.from_json_scalar(json.loads(WILDCARD))) == held
 
     # And back to a typed message, and out of one again: the crossing keeps
     # the ObjectName, the attributes and their types.
     reader = FixCodec(bridge)
     message = held[0].into_fixmsg(reader)
     assert message.by_path("PriorityLevel").as_py() == 5
-    back = UlPlugin.from_fixmsg(message)
+    back = Plugin.from_fixmsg(message)
     assert back.mbean == held[0].mbean
     assert back.name == held[0].name
     assert back.version == held[0].version
@@ -1728,13 +1729,13 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
 
 def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     """Equality, hash, copy and pickle, the way every other value here is."""
-    plugin = next(UlPlugin.from_json_bytes(LOGGED))
-    same = next(UlPlugin.from_json_bytes(LOGGED))
+    plugin = next(Plugin.from_json_bytes(LOGGED))
+    same = next(Plugin.from_json_bytes(LOGGED))
     assert plugin == same
     assert hash(plugin) == hash(same)
     assert plugin.stable_hash() == same.stable_hash()
     assert len({plugin, same}) == 1
-    assert plugin != next(UlPlugin.from_json_bytes(WILDCARD))
+    assert plugin != next(Plugin.from_json_bytes(WILDCARD))
     assert plugin != object()
 
     assert copy.copy(plugin) == plugin
@@ -1743,7 +1744,7 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     assert "Router_OrderRouting" in repr(plugin)
 
     # Built from the parts a caller has, rather than from a document.
-    built = UlPlugin({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)
+    built = Plugin({"Name": "Local", "Version": "1.0"}, mbean=plugin.mbean)
     assert built.name == "Local"
     assert built.mbean == plugin.mbean
     assert built != plugin
@@ -1752,7 +1753,7 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
     assert built.get("name").as_py() == "Local"
     assert built.attributes.keys() == {"Name", "Version"}
     with pytest.raises(TypeError):
-        UlPlugin({1: "not a name"})
+        Plugin({1: "not a name"})
 
     # A body that is not a Jolokia answer names no plugin, and answering
     # none is what it answers: reading is not refusing, so every one of
@@ -1768,7 +1769,7 @@ def test_a_plugin_is_an_immutable_value(bridge: FixRegistry) -> None:
         b'"text"',
         b"no document here at all",
     ):
-        assert list(UlPlugin.from_json_bytes(silent)) == [], silent
+        assert list(Plugin.from_json_bytes(silent)) == [], silent
 
 
 def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> None:

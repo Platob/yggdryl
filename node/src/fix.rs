@@ -17,10 +17,10 @@
 //! nothing here resolves through it.
 
 mod catalog;
-mod ulplugin;
+mod plugin;
 
 pub use catalog::{JsFixDefinitionIterator, JsMsgType, JsMsgTypeIterator};
-pub use ulplugin::{JsUlPlugin, JsUlPlugins};
+pub use plugin::{JsPlugin, JsPlugins};
 
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
@@ -294,13 +294,13 @@ impl JsFixRegistry {
         }
     }
 
-    /// Add native scalar `ULBridge` fields atomically.
+    /// Add the native scalar plugin fields atomically.
     #[napi]
-    pub fn with_ulbridge_fields(&mut self) -> Result<()> {
+    pub fn with_plugin_fields(&mut self) -> Result<()> {
         let registry = self
             .inner_mut()?
             .clone()
-            .with_ulbridge_fields()
+            .with_plugin_fields()
             .map_err(napi_error)?;
         self.inner = Arc::new(registry);
         Ok(())
@@ -1638,8 +1638,8 @@ impl JsFixCodec {
     /// one message per `ObjectName` it names, lazily, and none where it names
     /// no configuration.
     #[napi]
-    pub fn parse_ulconfig_line(&self, body: Buffer) -> JsFixMessages {
-        JsFixMessages::over(self.inner.parse_ulconfig_line(&body))
+    pub fn parse_plugin_line(&self, body: Buffer) -> JsFixMessages {
+        JsFixMessages::over(self.inner.parse_plugin_line(&body))
     }
 
     /// Pairs a caller already holds, in the order they arrived.
@@ -2018,10 +2018,10 @@ pub fn fix_crate_fields() -> Result<Vec<JsField>> {
         .map_err(napi_error)
 }
 
-/// The scalar fields owned by `ULBridge`.
-#[napi(js_name = "fixUlbridgeFields")]
-pub fn fix_ulbridge_fields() -> Result<Vec<JsField>> {
-    yggdryl::fix_ulbridge_fields()
+/// The scalar fields the plugin dictionary owns.
+#[napi(js_name = "fixPluginFields")]
+pub fn fix_plugin_fields() -> Result<Vec<JsField>> {
+    yggdryl::fix_plugin_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
         .map_err(napi_error)
 }

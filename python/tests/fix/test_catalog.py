@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, TextLine, types
-from yggdryl.fix import FixCodec, FixMessages, FixRegistry, MsgType, UlPlugin, UlPlugins, fix_crate_fields, fix_ulbridge_fields
+from yggdryl.fix import FixCodec, FixMessages, FixRegistry, MsgType, Plugin, Plugins, fix_crate_fields, fix_plugin_fields
 
 
 def _field(name: str, tag: int, dtype: str = "utf8") -> Field:
@@ -196,8 +196,8 @@ def _wildcard(size: int = 2) -> dict[str, Any]:
 
 def test_wildcard_values_are_lazy_owned_views_named_by_objectname_and_attributes() -> None:
     document = _wildcard()
-    iterator = UlPlugin.from_json_scalar(document)
-    assert isinstance(iterator, UlPlugins)
+    iterator = Plugin.from_json_scalar(document)
+    assert isinstance(iterator, Plugins)
     assert iter(iterator) is iterator
     first = next(iterator)
     document["value"].clear()
@@ -206,22 +206,22 @@ def test_wildcard_values_are_lazy_owned_views_named_by_objectname_and_attributes
     assert next(iterator, None) is None
     sibling = _wildcard()
     list(sibling["value"].values())[1]["CurrentPort"] = 9999
-    same = next(UlPlugin.from_json_scalar(sibling))
+    same = next(Plugin.from_json_scalar(sibling))
     assert same == first
     assert hash(same) == hash(first)
     assert same.stable_hash() == first.stable_hash()
     # The envelope is transport: how the asking went was never part of the
     # configuration, so an answer that came back 503 states the same plugin.
     sibling["status"] = 503
-    changed = next(UlPlugin.from_json_scalar(sibling))
+    changed = next(Plugin.from_json_scalar(sibling))
     assert changed == first
     assert changed.stable_hash() == first.stable_hash()
     # A plugin is its ObjectName and its attributes, which is all of it, so
     # the two parts rebuild it and pickle carries nothing else.
-    rebuilt = UlPlugin(first.attributes, mbean=first.mbean)
+    rebuilt = Plugin(first.attributes, mbean=first.mbean)
     assert rebuilt == first
     assert rebuilt.stable_hash() == first.stable_hash()
-    assert UlPlugin(first.attributes) != first
+    assert Plugin(first.attributes) != first
     restored = pickle.loads(pickle.dumps(first))
     assert restored == first
     assert restored.mbean == first.mbean
@@ -229,7 +229,7 @@ def test_wildcard_values_are_lazy_owned_views_named_by_objectname_and_attributes
     assert not hasattr(first, "envelope")
     # An array element that is not an answer names no plugin, and naming
     # none is what it answers: the walk continues past it and refuses nothing.
-    assert [held.name for held in UlPlugin.from_json_scalar([_wildcard(), None])] == [
+    assert [held.name for held in Plugin.from_json_scalar([_wildcard(), None])] == [
         "Item0",
         "Item1",
     ]
@@ -237,7 +237,7 @@ def test_wildcard_values_are_lazy_owned_views_named_by_objectname_and_attributes
 
 def test_bulk_messages_drop_answers_naming_no_plugin_keep_source_columns_and_fuse() -> None:
     registry = FixRegistry()
-    registry.with_ulbridge_fields()
+    registry.with_plugin_fields()
     codec = FixCodec(registry)
     error = {"request": {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}, "status": 404, "error": "missing"}
     request = {"mbean": "com.ullink.ulbridge:type=Bridge", "type": "read"}
@@ -273,18 +273,18 @@ def test_bulk_messages_drop_answers_naming_no_plugin_keep_source_columns_and_fus
     stranger = b'{"a":1}'
     reader = FixCodec(registry)
     assert next(reader.parse_line(stranger), None) is None
-    assert next(reader.parse_ulconfig_line(stranger), None) is None
+    assert next(reader.parse_plugin_line(stranger), None) is None
     assert next(reader.parse_text_line(TextLine(17, stranger)), None) is None
     strangers = pa.table({"body": pa.array([stranger], type=pa.binary())})
     assert reader.parse_text_arrow_reader(strangers).read_all().num_rows == 0
-    config = UlPlugin({"CurrentPort": float("nan")})
+    config = Plugin({"CurrentPort": float("nan")})
     with pytest.raises(ValueError, match="non-finite"):
         config.into_fixmsg(FixCodec(registry))
 
 
-# Only `ulbridge` is registered on request: the crate's own fields seed every
+# Only `plugin` is registered on request: the crate's own fields seed every
 # registry, so there is no `with_crate_fields` left to refuse.
-@pytest.mark.parametrize("method, vocabulary", [("with_ulbridge_fields", fix_ulbridge_fields)])
+@pytest.mark.parametrize("method, vocabulary", [("with_plugin_fields", fix_plugin_fields)])
 def test_registering_vocabulary_refusals_preserve_every_category(method: str, vocabulary: Any) -> None:
     registry = _catalog()
     # A held identity under another datatype is what refuses: a held tag

@@ -1232,7 +1232,7 @@ export declare class FixCodec {
    * one message per `ObjectName` it names, lazily, and none where it names
    * no configuration.
    */
-  parseUlconfigLine(body: Buffer): FixMessages
+  parsePluginLine(body: Buffer): FixMessages
   /** Pairs a caller already holds, in the order they arrived. */
   parsePairs(pairs: Array<[string, string]>): FixMsg
   /**
@@ -1685,8 +1685,8 @@ export declare class FixRegistry {
   msgtype(spelling: string): MsgType
   /** Iterate native message singletons in canonical order. */
   msgtypes(): MsgTypeIterator
-  /** Add native scalar `ULBridge` fields atomically. */
-  withUlbridgeFields(): void
+  /** Add the native scalar plugin fields atomically. */
+  withPluginFields(): void
   /**
    * A registry holding nothing but this crate's own fields.
    *
@@ -2905,6 +2905,84 @@ export declare class PartitionSpec {
   clone(): PartitionSpec
 }
 export type JsPartitionSpec = PartitionSpec
+
+/** One configuration: the `ObjectName` naming it and the attributes it states. */
+export declare class Plugin {
+  /**
+   * Construct from the parts a document states: the selected `ObjectName`
+   * and the attributes.
+   *
+   * What the Jolokia exchange wrapped them in is the transport's and no
+   * part of the configuration.
+   */
+  constructor(mbean: string | null, attributes: Scalar)
+  /**
+   * Every configuration a body names, lazily.
+   *
+   * Bytes that are not a Jolokia answer name none, and naming none is what
+   * they answer: reading is not refusing, so bytes that are not JSON at all
+   * iterate empty rather than throwing.
+   */
+  static fromJsonBytes(body: Buffer): JsPlugins
+  /**
+   * The same, over a document a caller already parsed.
+   *
+   * A document that is not a Jolokia answer, an answer that came back
+   * empty and an error-only answer all name no configuration, which is
+   * what they answer.
+   */
+  static fromJsonScalar(document: JsScalar): JsPlugins
+  /** Recover one configuration from a flat native message. */
+  static fromFixmsg(message: JsFixMsg): Plugin
+  /**
+   * This plugin as a message typed against `codec`'s dictionary.
+   *
+   * The same build every other reader funnels into, so a dictionary
+   * carrying the plugin fields types a port as a number and a flag as a
+   * boolean, and one that does not keeps every attribute as the text it
+   * arrived as.
+   */
+  intoFixmsg(codec: JsFixCodec): JsFixMsg
+  /** The selected actual `ObjectName`, when present. */
+  get mbean(): string | null
+  /** The type property of the selected `ObjectName`. */
+  get mbeanType(): string | null
+  /** The declared plugin type. */
+  get pluginType(): string | null
+  /** The native canonical name. */
+  get name(): string | null
+  /** The declared configuration version. */
+  get version(): string | null
+  /** The declared configuration category. */
+  get category(): string | null
+  /** The declared configuration state. */
+  get state(): string | null
+  /** Look up one native configuration attribute. */
+  get(name: string): JsScalar | null
+  /** Share the selected native attribute value. */
+  asAttributes(): JsScalar
+  /** Two configurations are equal with the same `ObjectName` and attributes. */
+  equals(other: Plugin): boolean
+  /** Deterministic hash bits from the native value. */
+  stableHash(): bigint
+  /** Clone the native value, retaining shared backing. */
+  clone(): Plugin
+}
+export type JsPlugin = Plugin
+
+/**
+ * A lazy iterator over the configurations a document names.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class Plugins {
+
+}
+export type JsPlugins = Plugins
 
 /**
  * One protocol's properties on a field, read and written by bare name.
@@ -4460,84 +4538,6 @@ export declare class TxHasher {
 }
 export type JsTxHasher = TxHasher
 
-/** One configuration: the `ObjectName` naming it and the attributes it states. */
-export declare class UlPlugin {
-  /**
-   * Construct from the parts a document states: the selected `ObjectName`
-   * and the attributes.
-   *
-   * What the Jolokia exchange wrapped them in is the transport's and no
-   * part of the configuration.
-   */
-  constructor(mbean: string | null, attributes: Scalar)
-  /**
-   * Every configuration a body names, lazily.
-   *
-   * Bytes that are not a Jolokia answer name none, and naming none is what
-   * they answer: reading is not refusing, so bytes that are not JSON at all
-   * iterate empty rather than throwing.
-   */
-  static fromJsonBytes(body: Buffer): JsUlPlugins
-  /**
-   * The same, over a document a caller already parsed.
-   *
-   * A document that is not a Jolokia answer, an answer that came back
-   * empty and an error-only answer all name no configuration, which is
-   * what they answer.
-   */
-  static fromJsonScalar(document: JsScalar): JsUlPlugins
-  /** Recover one configuration from a flat native message. */
-  static fromFixmsg(message: JsFixMsg): UlPlugin
-  /**
-   * This plugin as a message typed against `codec`'s dictionary.
-   *
-   * The same build every other reader funnels into, so a dictionary
-   * carrying `ULBridge`'s fields types a port as a number and a flag as a
-   * boolean, and one that does not keeps every attribute as the text it
-   * arrived as.
-   */
-  intoFixmsg(codec: JsFixCodec): JsFixMsg
-  /** The selected actual `ObjectName`, when present. */
-  get mbean(): string | null
-  /** The type property of the selected `ObjectName`. */
-  get mbeanType(): string | null
-  /** The declared plugin type. */
-  get pluginType(): string | null
-  /** The native canonical name. */
-  get name(): string | null
-  /** The declared configuration version. */
-  get version(): string | null
-  /** The declared configuration category. */
-  get category(): string | null
-  /** The declared configuration state. */
-  get state(): string | null
-  /** Look up one native configuration attribute. */
-  get(name: string): JsScalar | null
-  /** Share the selected native attribute value. */
-  asAttributes(): JsScalar
-  /** Two configurations are equal with the same `ObjectName` and attributes. */
-  equals(other: UlPlugin): boolean
-  /** Deterministic hash bits from the native value. */
-  stableHash(): bigint
-  /** Clone the native value, retaining shared backing. */
-  clone(): UlPlugin
-}
-export type JsUlPlugin = UlPlugin
-
-/**
- * A lazy iterator over the configurations a document names.
- *
- * This type implements JavaScript's iterable iterator protocol.
- * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
- * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
- */
-export declare class UlPlugins {
-
-}
-export type JsUlPlugins = UlPlugins
-
 /** A normalized URI backed by the validated Rust core. */
 export declare class Uri {
   /** Parse a URI expression or cheaply clone another native `Uri`. */
@@ -5214,6 +5214,9 @@ export interface FixDirection {
   patterns: Array<string>
 }
 
+/** The scalar fields the plugin dictionary owns. */
+export declare function fixPluginFields(): Array<JsField>
+
 /**
  * The fixed root every message answers as, built from one dictionary.
  *
@@ -5243,9 +5246,6 @@ export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsFi
 
 /** One row's columns, in order, as tags. */
 export declare function fixSchemaTags(): Array<number>
-
-/** The scalar fields owned by `ULBridge`. */
-export declare function fixUlbridgeFields(): Array<JsField>
 
 /**
  * The Iceberg option fields, as one JavaScript options object.

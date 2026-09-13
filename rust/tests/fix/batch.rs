@@ -19,7 +19,7 @@ fn codec() -> FixCodec {
 const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}"#;
 
 fn config_registry() -> Arc<FixRegistry> {
-    let mut registry = FixRegistry::new().with_ulbridge_fields().unwrap();
+    let mut registry = FixRegistry::new().with_plugin_fields().unwrap();
     // Tag 385 as the dictionary types it: text carrying its code set
     // (decision 14).
     let mut direction = DataType::utf8().nullable_field("MsgDirection");

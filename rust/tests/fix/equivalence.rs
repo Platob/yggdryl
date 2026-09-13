@@ -284,7 +284,7 @@ fn committed_codec() -> FixCodec {
 /// The bridge's dictionary, exactly as the dataset and pipeline suites hold
 /// it: its fields resolve in the one namespace, so nothing is pinned.
 fn bridge_codec() -> FixCodec {
-    FixCodec::new(super::ulbridge_registry())
+    FixCodec::new(super::plugin_fields_registry())
 }
 
 fn owned(lines: &[&str]) -> Vec<Vec<u8>> {

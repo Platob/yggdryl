@@ -24,13 +24,13 @@ adding what is absent, merging what is stored, and writing nothing at all when
 it refuses. :meth:`FixRegistry.from_cfb_file` is the same file read whole, answering
 a dictionary and the message roots its grammar bindings describe.
 
-:class:`UlPlugin` carries one bridge configuration: the ObjectName the read
+:class:`Plugin` carries one bridge configuration: the ObjectName the read
 named it by and the attributes it stated, which is all of it - what the Jolokia
-exchange wrapped them in is the transport's. :class:`UlPlugins` lazily yields
+exchange wrapped them in is the transport's. :class:`Plugins` lazily yields
 the configurations a single or bulk document names, and none where it names
-none, and :meth:`UlPlugin.into_fixmsg` converts one to a flat typed message. :func:`fix_ulbridge_fields` is the dictionary
+none, and :meth:`Plugin.into_fixmsg` converts one to a flat typed message. :func:`fix_plugin_fields` is the dictionary
 those attributes type against, which
-:meth:`FixRegistry.with_ulbridge_fields` registers.
+:meth:`FixRegistry.with_plugin_fields` registers.
 
 :class:`FixCodec` parses lines into messages and enriches messages, each
 as an iterator and each with an Arrow-batch twin. :meth:`FixCodec.parse_line`
@@ -98,8 +98,8 @@ an iterable of messages, lazily, and composes over a whole capture through
 A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
 and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
 field the file produces, :meth:`FixRegistry.dialects` lists the names any
-field or definition carries, and ``ULBRIDGE_DIALECT`` is the one this crate
-stamps itself, on :func:`fix_ulbridge_fields`.
+field or definition carries, and ``PLUGIN_DIALECT`` is the one this crate
+stamps itself, on :func:`fix_plugin_fields`.
 
 The registry stores scalar ``fields`` and named ``components`` and ``groups``;
 a message is a component carrying ``fix:msgtype``. Enum codes remain inline in
@@ -112,41 +112,41 @@ registry-owned message definition and keeps its complete case-sensitive wire cod
 from __future__ import annotations
 
 from ._native import (
-    ULBRIDGE_DIALECT,
+    PLUGIN_DIALECT,
     FixMsg,
     FixCodec,
     FixLifecycle,
     FixRegistry,
     FixMessages,
     MsgType,
-    UlPlugin,
-    UlPlugins,
+    Plugin,
+    Plugins,
     fix_cfb_fields,
     fix_crate_fields,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
-    fix_ulbridge_fields,
+    fix_plugin_fields,
     global_registry,
     install_global_registry,
 )
 
 __all__ = [
-    "ULBRIDGE_DIALECT",
+    "PLUGIN_DIALECT",
     "FixMsg",
     "FixCodec",
     "FixLifecycle",
     "FixRegistry",
     "FixMessages",
     "MsgType",
-    "UlPlugin",
-    "UlPlugins",
+    "Plugin",
+    "Plugins",
     "fix_cfb_fields",
     "fix_crate_fields",
     "fix_schema",
     "fix_schema_carrying",
     "fix_schema_tags",
-    "fix_ulbridge_fields",
+    "fix_plugin_fields",
     "global_registry",
     "install_global_registry",
 ]
