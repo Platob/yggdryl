@@ -17,7 +17,7 @@ fn reader() -> FixCodec {
         .join("config")
         .join("fix");
     let folder = Folder::new(root).expect("the seed folder is a local path");
-    FixCodec::new(Arc::new(
+    super::fixed_codec(Arc::new(
         FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
     ))
 }

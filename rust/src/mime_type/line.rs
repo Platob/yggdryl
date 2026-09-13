@@ -789,6 +789,9 @@ pub(crate) fn document_behind_prefix(line: &[u8]) -> Option<(MimeType, usize)> {
 pub(crate) struct PairSpan {
     pub(crate) key: std::ops::Range<usize>,
     pub(crate) value: std::ops::Range<usize>,
+    /// The segment's original end, before transport decoration was trimmed.
+    /// A protocol may select that span without locating its delimiter again.
+    pub(crate) value_end: usize,
     /// Whether the line wrote a `#` in front of the key.
     ///
     /// The key range excludes the marker, because a reader lifting a bridge
@@ -824,7 +827,12 @@ const fn span(
     value: std::ops::Range<usize>,
     marked: bool,
 ) -> PairSpan {
-    PairSpan { key, value, marked }
+    PairSpan {
+        key,
+        value_end: value.end,
+        value,
+        marked,
+    }
 }
 
 /// One pair where nothing has said which byte separates two fields.
@@ -882,7 +890,9 @@ fn segment_span(line: &[u8], start: usize, end: usize) -> Option<PairSpan> {
     {
         value_end -= 1;
     }
-    Some(span(name_at..equals, equals + 1..value_end, marked))
+    let mut pair = span(name_at..equals, equals + 1..value_end, marked);
+    pair.value_end = end;
+    Some(pair)
 }
 
 /// Whether what a segment put in front of its `=` is a key.

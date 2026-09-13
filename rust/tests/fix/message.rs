@@ -14,7 +14,7 @@ use yggdryl::{
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
-    let reader = FixCodec::new(Arc::clone(&registry));
+    let reader = super::fixed_codec(Arc::clone(&registry));
     (registry, reader)
 }
 
@@ -80,9 +80,13 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
     );
     assert_eq!(message.by_tag(55).unwrap(), &Scalar::from("MSFT"));
     assert_eq!(message.by_tag(54).unwrap().as_str(), Some("2"));
-    // Every other tag still reaches the child it reached before.
+    // Content identity changes; every other tag still reaches its previous value.
     for (tag, value) in before {
         if tag == 55 || tag == 54 {
+            continue;
+        }
+        if tag == yggdryl::UUID_TAG_NAME.0 {
+            assert_ne!(message.by_tag(tag).unwrap(), &value);
             continue;
         }
         assert_eq!(message.by_tag(tag).unwrap(), &value, "tag {tag}");
@@ -96,7 +100,7 @@ fn a_set_leaves_the_entries_and_the_wire_untouched() {
     let mut message = parsed.clone();
     message.set(55, Scalar::from("MSFT")).unwrap();
     message.set(38, Scalar::from(100.0_f64)).unwrap();
-    assert!(message.remove(54).is_some());
+    assert!(message.remove(54).unwrap().is_some());
     assert_eq!(message.entries(), parsed.entries());
     assert_eq!(message.into_bytes(b'|'), ORDER);
     assert_eq!(
@@ -214,20 +218,27 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     let before = stated(&message);
     let count = message.as_field().fields().len();
 
-    assert_eq!(message.remove(55), Some(Scalar::from("AAPL")));
+    assert_eq!(message.remove(55).unwrap(), Some(Scalar::from("AAPL")));
     assert_eq!(message.get_by_tag(55), None);
     assert_eq!(message.as_field().fields().len(), count - 1);
     for (tag, value) in &before {
         if *tag == 55 {
             continue;
         }
+        if *tag == yggdryl::UUID_TAG_NAME.0 {
+            assert_ne!(message.by_tag(*tag).unwrap(), value);
+            continue;
+        }
         assert_eq!(message.by_tag(*tag).unwrap(), value, "tag {tag}");
     }
     // By name, by decimal, and a miss.
-    assert_eq!(message.remove("VenueThing"), Some(Scalar::from("7")));
-    assert_eq!(message.remove(9999), Some(Scalar::from("x")));
-    assert_eq!(message.remove(55), None);
-    assert_eq!(message.remove("nosuchfield"), None);
+    assert_eq!(
+        message.remove("VenueThing").unwrap(),
+        Some(Scalar::from("7"))
+    );
+    assert_eq!(message.remove(9999).unwrap(), Some(Scalar::from("x")));
+    assert_eq!(message.remove(55).unwrap(), None);
+    assert_eq!(message.remove("nosuchfield").unwrap(), None);
     assert_eq!(message.as_field().fields().len(), count - 3);
     assert_eq!(message.into_bytes(b'|'), ORDER, "the entries are untouched");
 }

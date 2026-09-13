@@ -16,12 +16,10 @@
 
 use super::path;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::holder::Buffer;
-use yggdryl::holder::local::Folder;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
 use yggdryl::types::State;
@@ -120,22 +118,19 @@ const fn line_of(row: usize) -> usize {
 
 /// The committed dictionary beside the bridge's own vocabulary.
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    let held = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
-    Arc::new(held.with_plugin_fields().expect("the bridge's own fields"))
+    super::plugin_fields_registry()
 }
 
 /// The log as the `.log` handle a reader opens.
-fn source() -> Buffer {
-    Buffer::from_bytes(LOG.to_vec()).with_media_type(
-        Url::from_str("file:///ulbridge.log")
-            .expect("a URL")
-            .media_type(),
-    )
+fn source() -> &'static Buffer {
+    static SOURCE: std::sync::OnceLock<Buffer> = std::sync::OnceLock::new();
+    SOURCE.get_or_init(|| {
+        Buffer::from_bytes(LOG.to_vec()).with_media_type(
+            Url::from_str("file:///ulbridge.log")
+                .expect("a URL")
+                .media_type(),
+        )
+    })
 }
 
 /// The text options a bridge log is read under: its own row header, each
@@ -154,7 +149,7 @@ fn reading() -> RecordOptions {
 /// the one namespace, and batches closing at `bytes` of raw capture where one
 /// is stated.
 fn codec_batching(bytes: Option<u64>) -> FixCodec {
-    let codec = FixCodec::new(registry());
+    let codec = super::fixed_codec(registry());
     match bytes {
         Some(bytes) => codec.with_batch_byte_size(bytes),
         None => codec,
@@ -247,7 +242,7 @@ pub(super) fn text_lines() -> Vec<TextLine> {
     let RecordOptions::Text(options) = reading() else {
         panic!("a text read")
     };
-    read_text_lines(&source(), &options)
+    read_text_lines(source(), &options)
         .expect("a line reader")
         .map(|line| line.expect("a line"))
         .collect()
@@ -302,14 +297,12 @@ fn every_line_is_a_row_whatever_the_batch_size_and_the_batches_share_one_schema(
             "one schema for every batch"
         );
     }
-    // The rows are the same rows, whichever way the capture was cut - past
-    // the URL, which names the buffer each read opened.
-    let (names, whole_rows) = rows_of(&whole);
+    // The same immutable source has the same captured URL and content UUID,
+    // whichever way its rows are batched.
+    let (_, whole_rows) = rows_of(&whole);
     let (_, small_rows) = rows_of(&small);
-    let url = at(&names, "url");
     for (row, (left, right)) in whole_rows.iter().zip(&small_rows).enumerate() {
-        assert_eq!(left[..url], right[..url], "row {row}");
-        assert_eq!(left[url + 1..], right[url + 1..], "row {row}");
+        assert_eq!(left, right, "row {row}");
     }
 
     // The text reader framed every line: the line number is the capture's,
@@ -352,14 +345,15 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
     let batch = batches(None);
     let (names, rows) = rows_of(&batch);
     let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let projection = yggdryl::fix_schema(codec.registry(), "row").expect("FIX-only columns");
     // Every fixed column the dictionary explains, header, body, groups and
     // the crate's own alike.
-    let fixed: Vec<(usize, i32)> = names
+    let fixed: Vec<(usize, i32, usize)> = names
         .iter()
         .enumerate()
         .filter_map(|(index, _)| {
             let tag = schema.fields()[index].as_fix().tag().ok().flatten()?;
-            Some((index, tag))
+            Some((index, tag, yggdryl::fix_column_of(&projection, tag)?))
         })
         .collect();
     assert!(fixed.len() > 80, "{} fixed columns", fixed.len());
@@ -380,7 +374,9 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
         for message in messages {
             let row = next;
             next += 1;
-            for &(index, tag) in &fixed {
+            let projected = message.into_row(&projection).expect("a FIX-only row");
+            let projected = projected.as_sequence().expect("cells");
+            for &(index, tag, projected_at) in &fixed {
                 if index == direction {
                     // The batch door fills the codec's pin where a line states
                     // no direction; the line door leaves it unsaid (decision 14).
@@ -388,12 +384,7 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
                 }
                 let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
                 let alone = if alone.is_null() {
-                    message
-                        .into_row(&schema)
-                        .expect("a row")
-                        .as_sequence()
-                        .expect("cells")[index]
-                        .clone()
+                    projected[projected_at].clone()
                 } else {
                     alone
                 };
@@ -439,6 +430,7 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
             body.contains("|35=8|") && body.contains("|32=21|")
         })
         .expect("the fill");
+    let fill_row = row_of(fill);
     // `GrossTradeAmt` is no fixed column, so the message answers for it;
     // `SettlCurrency` is one, so the row does.
     let enriched = codec()
@@ -452,12 +444,12 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
         .expect("GrossTradeAmt derived");
     assert!((gross - 21.0 * 83.08).abs() < 1e-6, "{gross}");
     assert_eq!(
-        rows[fill][column(120)].as_str(),
+        rows[fill_row][column(120)].as_str(),
         Some("CHF"),
         "SettlCurrency from Currency"
     );
     // Stated values are never overwritten: the line said 260 shares remain.
-    assert_eq!(rows[fill][column(151)].as_f64(), Some(260.0));
+    assert_eq!(rows[fill_row][column(151)].as_f64(), Some(260.0));
 
     // Read without enrichment, the same line states neither.
     let plain = codec()
@@ -481,16 +473,16 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
     );
     assert_eq!(enriched.by_tag(470).unwrap().as_str(), Some("CH"));
     assert_eq!(
-        rows[fill][column(460)].as_i128(),
+        rows[fill_row][column(460)].as_i128(),
         Some(5),
         "Product from SecurityType"
     );
     assert_eq!(
-        rows[fill][column(yggdryl::MICCODE_TAG_NAME.0)].as_str(),
+        rows[fill_row][column(yggdryl::MICCODE_TAG_NAME.0)].as_str(),
         Some("XSWX")
     );
     assert_eq!(
-        rows[fill][column(yggdryl::STATE_TAG_NAME.0)]
+        rows[fill_row][column(yggdryl::STATE_TAG_NAME.0)]
             .as_str()
             .and_then(State::from_spelling),
         State::from_spelling("1"),
@@ -525,9 +517,13 @@ fn enrichment_fills_what_the_line_implied_and_only_that() {
             "tag {tag} off a masked ISIN"
         );
     }
-    // And the row is dated by the row header, not by the wire's clock.
+    // The wire's event clock settles the message; capture time remains context.
     let clock = &text[fill][at(&text_names, "timestamp")];
-    assert_eq!(&rows[fill][column(yggdryl::TIMESTAMP_TAG_NAME.0)], clock);
+    assert_eq!(
+        &rows[fill_row][column(yggdryl::UPDATEDAT_TAG_NAME.0)],
+        plain.updatedat()
+    );
+    assert_ne!(plain.updatedat(), clock);
 }
 
 #[test]
@@ -543,10 +539,19 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         // own, so a row is read against the line it came from.
         let clock = &text[line_of(row)][at(&text_names, "timestamp")];
         assert_eq!(
-            &held[column(yggdryl::TIMESTAMP_TAG_NAME.0)],
+            &held[schema.index_of("timestamp").expect("capture clock")],
             clock,
-            "row {row} is dated by its header"
+            "row {row} carries its header clock"
         );
+        let transact = &held[column(60)];
+        let event = if transact.is_null() {
+            &held[column(52)]
+        } else {
+            transact
+        };
+        assert_eq!(&held[column(yggdryl::UPDATEDAT_TAG_NAME.0)], event);
+        assert_eq!(&held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)], event);
+        assert_eq!(&held[column(yggdryl::CREATEDAT_TAG_NAME.0)], event);
         assert!(
             !held[column(yggdryl::UNIXPARTITION_TAG_NAME.0)].is_null(),
             "row {row} has a partition"
@@ -559,8 +564,8 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             held[column(8)]
         );
         assert!(
-            !held[column(yggdryl::MSGHASH_TAG_NAME.0)].is_null(),
-            "row {row} digests"
+            matches!(held[column(yggdryl::UUID_TAG_NAME.0)], Scalar::Uuid(_)),
+            "row {row} has a native content identity"
         );
         // The bracket names the context, which fills `msgctxid`; its session
         // uid is the bridge's own and is carried in front, so `sendersessionid`

@@ -727,7 +727,8 @@ impl Plugin {
     /// all three from `mbean` rather than from the attributes. Every other
     /// entry is an attribute the document stated - a message states nothing
     /// of the exchange that carried it (decision 17), so there is nothing
-    /// else to leave out.
+    /// else to leave out. A synthesized SendingTime is intake context, not
+    /// an attribute: only the document's own arrival may export tag 52.
     pub fn from_fixmsg(message: &super::FixMsg) -> Result<Self> {
         let values =
             message
@@ -738,8 +739,13 @@ impl Plugin {
                     reason: "expected a flat FIX row sequence".into(),
                 })?;
         let mut attributes = Vec::new();
+        let sending_stated = message.entries().iter().any(|entry| entry.tag() == 52);
         for (field, value) in message.as_field().fields().iter().zip(values) {
-            if value.is_null() || field.as_fix().tag()?.is_some_and(super::is_crate_tag) {
+            let tag = field.as_fix().tag()?;
+            if value.is_null()
+                || tag.is_some_and(super::is_crate_tag)
+                || (tag == Some(52) && !sending_stated)
+            {
                 continue;
             }
             let name = field.name();
@@ -1059,5 +1065,30 @@ impl super::FixCodec {
         let mut values = Plugin::from_json_document(document);
         values.stamp = RowStamp::retained(extras);
         super::FixMessages::from_plugins(self.clone(), values)
+    }
+}
+
+#[cfg(test)]
+mod clock_attribute_tests {
+    use super::*;
+    use crate::{FixCodec, FixRegistry, TimeUnit, Timezone};
+
+    #[test]
+    fn only_document_stated_sending_time_is_a_plugin_attribute() {
+        let codec = FixCodec::new(Arc::new(FixRegistry::new()))
+            .try_with_default_sending_time(Some(
+                Scalar::datetime64(17, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+            ))
+            .unwrap();
+        let plain =
+            br#"{"request":{"mbean":"com.ullink.ulbridge.plugins:type=Plugin,name=demo"},"value":{"Name":"demo"}}"#;
+        let message = codec.parse_plugin_line(plain).next().unwrap().unwrap();
+        assert!(message.get_by_tag(52).is_some());
+        let plugin = Plugin::from_fixmsg(&message).unwrap();
+        assert!(plugin.get("SendingTime").is_none());
+        let stated = br#"{"request":{"mbean":"com.ullink.ulbridge.plugins:type=Plugin,name=demo"},"value":{"Name":"demo","SendingTime":"20260102-10:15:30"}}"#;
+        let message = codec.parse_plugin_line(stated).next().unwrap().unwrap();
+        let plugin = Plugin::from_fixmsg(&message).unwrap();
+        assert_eq!(plugin.get("SendingTime"), message.get_by_tag(52));
     }
 }

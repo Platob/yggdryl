@@ -501,7 +501,7 @@ fn custom_identifier_message(dtype: DataType, value: Scalar) -> (FixCodec, FixMs
         Scalar::from_sequence([Scalar::from("Z9"), value]),
     )
     .unwrap();
-    (FixCodec::new(registry), message)
+    (super::fixed_codec(registry), message)
 }
 
 #[test]
@@ -550,7 +550,7 @@ fn binary_identifier_invalid_utf8_propagates_the_typed_located_refusal() {
 #[test]
 fn enrichment_fills_sorted_identifier_text_and_preserves_arrival_and_second_pass() {
     let registry = super::committed_registry();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
     let line = b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|";
     let original = codec.sole_line(line, false).unwrap();
     let enriched = codec.enrich_message(original.clone()).unwrap();
@@ -581,7 +581,7 @@ fn enrichment_fills_sorted_identifier_text_and_preserves_arrival_and_second_pass
 
 #[test]
 fn stated_maps_including_empty_are_preserved_and_unknown_types_have_none() {
-    let codec = FixCodec::new(super::committed_registry());
+    let codec = super::fixed_codec(super::committed_registry());
     for stated in [mapping(&[("venue", "001")]), mapping(&[])] {
         let mut message = codec
             .sole_line(b"8=FIX.4.4|35=D|11=C-1|10=0|", false)
@@ -603,7 +603,7 @@ fn stated_maps_including_empty_are_preserved_and_unknown_types_have_none() {
 
 #[test]
 fn enrichment_does_not_promote_an_identifier_from_a_nested_occurrence() {
-    let codec = FixCodec::new(super::committed_registry());
+    let codec = super::fixed_codec(super::committed_registry());
     let nested = codec.sole_line(
         b"MSGTYPE=E|#LISTID=L-1|#NOORDERS=1|#NOORDERS[0]=CLORDID=C-nested\x04\x03SYMBOL=EXAMPLE",
         true,

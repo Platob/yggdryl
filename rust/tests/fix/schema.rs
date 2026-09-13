@@ -9,7 +9,7 @@ use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
-    let reader = FixCodec::new(Arc::clone(&registry));
+    let reader = super::fixed_codec(Arc::clone(&registry));
     (registry, reader)
 }
 
@@ -28,12 +28,12 @@ fn column_of(schema: &Field, tag: i32) -> usize {
 }
 
 #[test]
-fn the_fixed_schema_appends_previous_fields_without_moving_existing_tags() {
+fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields() {
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 103);
-    let (message, crated) = tags.split_at(tags.len() - 24);
+    assert_eq!(tags.len(), 105);
+    let (message, crated) = tags.split_at(tags.len() - 26);
     assert_eq!(
         message,
         [
@@ -44,16 +44,19 @@ fn the_fixed_schema_appends_previous_fields_without_moving_existing_tags() {
         ]
         .concat()
     );
-    assert_eq!(crated, (65_000..=65_022).chain([385]).collect::<Vec<_>>());
+    assert_eq!(crated, (65_001..=65_025).chain([385]).collect::<Vec<_>>());
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     assert_eq!(
-        &names[names.len() - 5..],
+        &names[names.len() - 8..],
         [
             "prevtimestamp",
             "prevuuid",
+            "createdat",
+            "code",
+            "snapshotat",
             "msgdirection",
             "nofixentries",
             "nounmappedfixentries"
@@ -108,7 +111,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(44), DataType::Float64, "Price(44)");
     assert_eq!(
         typed(yggdryl::PREVTIMESTAMP_TAG_NAME.0),
-        typed(yggdryl::TIMESTAMP_TAG_NAME.0)
+        typed(yggdryl::UPDATEDAT_TAG_NAME.0)
     );
     assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
 
@@ -116,10 +119,9 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // identity is the folded name, while renderers receive the FIX-style
     // spelling the field keeps as its display.
     for (tag, display) in [
-        (yggdryl::MSGHASH_TAG_NAME.0, "MsgHash"),
         (yggdryl::VERSION_TAG_NAME.0, "Version"),
         (yggdryl::SYMBOLTICKER_TAG_NAME.0, "SymbolTicker"),
-        (yggdryl::TIMESTAMP_TAG_NAME.0, "Timestamp"),
+        (yggdryl::UPDATEDAT_TAG_NAME.0, "UpdatedAt"),
         (yggdryl::UNIXPARTITION_TAG_NAME.0, "UnixPartition"),
         (yggdryl::PARENTCLORDID_TAG_NAME.0, "ParentClOrdID"),
         (yggdryl::PARENTORDERID_TAG_NAME.0, "ParentOrderID"),
@@ -142,10 +144,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
-    // The four columns every message fills are declared so - the version it
-    // was read as, its digest, its clock and the partition the clock falls in
-    // - and every other is nullable, because a message that carried nothing
-    // there must answer null rather than shift its neighbours.
+    // The seven replay holders, BeginString and derived partition are required.
     let required: Vec<&str> = fields
         .iter()
         .filter(|field| !field.is_nullable())
@@ -153,7 +152,17 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         .collect();
     assert_eq!(
         required,
-        ["beginstring", "msghash", "timestamp", "unixpartition"]
+        [
+            "beginstring",
+            "sendingtime",
+            "updatedat",
+            "unixpartition",
+            "uuid",
+            "puuid",
+            "createdat",
+            "code",
+            "snapshotat"
+        ]
     );
 }
 
@@ -173,8 +182,6 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
     let digest = message.digest();
     let identities = [
         (INSTUUID_TAG_NAME, "00112233-4455-8677-8899-aabbccddeeff"),
-        (UUID_TAG_NAME, "01941f29-7e00-7000-8000-000000000001"),
-        (PUUID_TAG_NAME, "01941f29-7e00-7000-8000-000000000002"),
         (PREVUUID_TAG_NAME, "01941f29-7dff-7fff-bfff-ffffffffffff"),
     ];
     message
@@ -198,6 +205,9 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
+    for (tag, _) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
+        assert!(matches!(at(&row, &schema, tag), Scalar::Uuid(_)));
+    }
     assert_eq!(
         at(&row, &schema, yggdryl::PREVTIMESTAMP_TAG_NAME.0),
         &previous_clock
@@ -225,7 +235,12 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
             .data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
     );
-    for ((_, name), _) in identities {
+    for (_, name) in [
+        INSTUUID_TAG_NAME,
+        UUID_TAG_NAME,
+        PUUID_TAG_NAME,
+        PREVUUID_TAG_NAME,
+    ] {
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(
             field.data_type(),
@@ -261,7 +276,7 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
 }
 
 #[test]
-fn explicitly_binary_dataset_columns_do_not_acquire_uuid_identity() {
+fn plain_binary_columns_remain_plain_arrow_but_cannot_claim_fix_uuid_roles() {
     use yggdryl::FixMsg;
 
     let registry = Arc::new(FixRegistry::new());
@@ -277,13 +292,11 @@ fn explicitly_binary_dataset_columns_do_not_acquire_uuid_identity() {
         .unwrap()
         .required_field("stored");
     let row = Scalar::from_sequence((0..3_u8).map(|byte| Scalar::from(vec![byte; 16])));
-    let message = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-    assert_eq!(message.as_field(), &schema);
-    assert_eq!(message.into_row(&schema).unwrap(), row);
+    let error = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap_err();
+    assert!(error.to_string().contains("id"));
     let arrow_schema = schema.into_arrow_schema().unwrap();
-    for (tag, old_name) in columns {
+    for (_, old_name) in columns {
         assert!(registry.get_field_by_name(old_name).is_none());
-        assert!(matches!(message.by_tag(tag).unwrap(), Scalar::Bytes(_)));
         let arrow = arrow_schema.field_with_name(old_name).unwrap();
         assert_eq!(
             arrow.data_type(),
@@ -357,7 +370,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
 }
 
 #[test]
-fn the_derived_columns_are_computed_and_never_stored() {
+fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let order = reader
@@ -368,9 +381,10 @@ fn the_derived_columns_are_computed_and_never_stored() {
         .unwrap();
     let row = order.into_row(&schema).unwrap();
 
-    // The digest is sixteen bytes of value, not a rendered string.
-    let digest = at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0);
-    assert_eq!(digest.as_bytes().map(<[u8]>::len), Some(16));
+    assert!(matches!(
+        at(&row, &schema, yggdryl::UUID_TAG_NAME.0),
+        Scalar::Uuid(_)
+    ));
 
     // One ticker for one instrument, qualified by the venue that named it.
     assert_eq!(
@@ -380,7 +394,7 @@ fn the_derived_columns_are_computed_and_never_stored() {
 
     // The clock, and the partition it falls in - an hour, floored, so a row
     // lands in the partition that contains it.
-    assert!(!at(&row, &schema, yggdryl::TIMESTAMP_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::UPDATEDAT_TAG_NAME.0).is_null());
     let partition = at(&row, &schema, yggdryl::UNIXPARTITION_TAG_NAME.0);
     let seconds = 1_704_190_530_i64; // 2024-01-02T10:15:30Z
     assert_eq!(partition, &Scalar::from(seconds - seconds % 3_600));
@@ -391,16 +405,15 @@ fn the_derived_columns_are_computed_and_never_stored() {
         Some("4.4")
     );
 
-    // And nothing of it was stored: the message is what it was. The clock
-    // alone is a child of the message, stamped when it was built - but never
-    // an entry, so the wire re-emits without it.
-    assert!(order.get_by_tag(yggdryl::MSGHASH_TAG_NAME.0).is_none());
-    assert!(order.get_by_tag(yggdryl::TIMESTAMP_TAG_NAME.0).is_some());
+    // Hard identities and clocks are stored mirrors, never invented arrivals.
+    assert!(order.get_by_tag(65_000).is_none());
+    assert!(order.get_by_tag(yggdryl::UUID_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::UPDATEDAT_TAG_NAME.0).is_some());
     assert!(
         order
             .entries()
             .iter()
-            .all(|entry| entry.tag() != yggdryl::TIMESTAMP_TAG_NAME.0)
+            .all(|entry| entry.tag() != yggdryl::UPDATEDAT_TAG_NAME.0)
     );
 }
 

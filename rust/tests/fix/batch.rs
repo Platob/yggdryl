@@ -13,7 +13,7 @@ fn registry() -> Arc<FixRegistry> {
 }
 
 fn codec() -> FixCodec {
-    FixCodec::new(registry())
+    super::fixed_codec(registry())
 }
 
 const BULK_CONFIG: &[u8] = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},"value":{"com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=Plugin":{"Name":"A"},"com.ullink.ulbridge.sessioninterfaces.plugins:name=B,plugin-type=FIX,type=Plugin":{"Name":"B"}},"status":200}"#;
@@ -139,7 +139,7 @@ fn bulk_configuration_lines_expand_without_pulling_the_next_line() {
         .inspect(move |_| {
             observed.fetch_add(1, Ordering::SeqCst);
         });
-    let codec = FixCodec::new(config_registry());
+    let codec = super::fixed_codec(config_registry());
     let mut messages = codec.parse_lines(lines);
     assert_eq!(pulled.load(Ordering::SeqCst), 0);
     assert!(messages.next().unwrap().is_ok());
@@ -168,7 +168,7 @@ fn expanded_configurations_repeat_the_source_columns_and_stated_direction() {
     ])]);
     let source = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
     // One byte a batch: a batch a message, so each expanded row is seen alone.
-    let reader = FixCodec::new(config_registry())
+    let reader = super::fixed_codec(config_registry())
         .with_batch_byte_size(1)
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(source.schema(), [source]))
         .unwrap();
@@ -234,8 +234,8 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         454,
         768, // the groups
         10,  // the trailer
-        yggdryl::MSGHASH_TAG_NAME.0,
-        yggdryl::TIMESTAMP_TAG_NAME.0,
+        yggdryl::UUID_TAG_NAME.0,
+        yggdryl::UPDATEDAT_TAG_NAME.0,
         yggdryl::UNIXPARTITION_TAG_NAME.0, // the digest, the clock, the partition
         yggdryl::SENDERSESSIONID_TAG_NAME.0,
         yggdryl::MSGCTXID_TAG_NAME.0, // what a bridge's own log states
@@ -349,8 +349,8 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     // The lifted facets answered.
     let symbol = tag_column(&batch, 55);
     assert!(symbol.is_valid(0));
-    // The digest is sixteen bytes, not a string.
-    let digest = tag_column(&batch, yggdryl::MSGHASH_TAG_NAME.0);
+    // The content identity's UUID storage is sixteen bytes, not a string.
+    let digest = tag_column(&batch, yggdryl::UUID_TAG_NAME.0);
     assert_eq!(
         digest.data_type(),
         &arrow_schema::DataType::FixedSizeBinary(16)
@@ -803,7 +803,7 @@ fn byte_in_byte_out_over_the_whole_corpus() {
     // The line each message came from, paired with the pairs it should be
     // written as, so the written lines zip against the lines that carried a
     // message rather than against every line.
-    let plain = FixCodec::new(registry()).with_null_values::<[&str; 0], &str>([]);
+    let plain = super::fixed_codec(registry()).with_null_values::<[&str; 0], &str>([]);
     let expected: Vec<(&str, String)> = CAPTURE
         .iter()
         .flat_map(|source| {
@@ -907,7 +907,7 @@ fn a_line_is_read_by_its_captures_and_a_bare_body_reads_as_the_byte_reader_does(
     );
 
     // A bulk document is many messages, and the stream door yields each.
-    let read: Vec<_> = FixCodec::new(config_registry())
+    let read: Vec<_> = super::fixed_codec(config_registry())
         .parse_text_lines([TextLine::from_bytes(0, page(BULK_CONFIG)).unwrap()])
         .collect::<yggdryl::Result<_>>()
         .unwrap();
@@ -951,7 +951,7 @@ fn one_of(codec: &FixCodec, line: &TextLine) -> FixMsg {
 #[test]
 fn a_rows_pluginid_fills_its_own_column_and_selects_no_dialect() {
     let registry = plugin_registry();
-    let codec = FixCodec::new(Arc::clone(&registry)).with_capture_names(PLUGIN_CAPTURES);
+    let codec = super::fixed_codec(Arc::clone(&registry)).with_capture_names(PLUGIN_CAPTURES);
     let body: &[u8] = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark";
 
     // Membership is provenance on the dictionary's field, never a namespace
@@ -1082,7 +1082,7 @@ fn a_prevpluginid_capture_fills_its_field_and_nothing_derives_it() {
 #[test]
 fn the_batch_reader_and_the_line_reader_agree_on_a_rows_plugin() {
     let registry = plugin_registry();
-    let codec = FixCodec::new(registry).with_capture_names(PLUGIN_CAPTURES);
+    let codec = super::fixed_codec(registry).with_capture_names(PLUGIN_CAPTURES);
     // Every way a row can name its plugin: a dictionary's name, an alias of
     // it, a plugin no dictionary is named after, nothing, and an empty string
     // - beside a previous plugin stated or not.
@@ -1188,18 +1188,35 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
         .unwrap();
     assert_eq!(first.num_rows(), 2);
 
-    // Feed the batch back through as a capture under the `body` column it
-    // carried its own payload in: one implementation serves both, so a column
-    // source builds the same schema a row source does - the capture's own
-    // columns first, then the fixed ones under their own names - and the two
-    // frames read again as two messages.
+    // A settled FIX row replays through messages without parsing its body.
     let schema = first.schema();
-    let again = codec
+    assert_eq!(
+        codec
+            .messages(yggdryl::arrow::batch_reader(
+                schema.clone(),
+                [first.clone()]
+            ))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap()
+            .len(),
+        2
+    );
+    // Re-parsing the body under the projected row's UUID asserts a different
+    // named content shape and must refuse instead of silently replacing it.
+    let mut again = codec
         .clone()
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
             schema.clone(),
             [first.clone()],
         ))
+        .unwrap();
+    let error = again.next().unwrap().unwrap_err();
+    assert!(error.to_string().contains("$.uuid"), "{error}");
+    assert!(again.next().is_none());
+    // An explicit body-only projection is a fresh capture, with no stale claim.
+    let bodies = first.project(&[schema.index_of("body").unwrap()]).unwrap();
+    let again = codec
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(bodies.schema(), [bodies]))
         .unwrap();
     let rows: usize = again.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2, "the frames the batch carried, read again");
@@ -1355,7 +1372,7 @@ fn a_pluginid_capture_with_no_field_to_fill_is_silence() {
     let registry = plugin_registry();
     let mut without = registry.as_ref().clone();
     assert!(without.remove(yggdryl::PLUGINID_TAG_NAME.0).is_some());
-    let codec = FixCodec::new(Arc::new(without));
+    let codec = super::fixed_codec(Arc::new(without));
     let body: &[u8] = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark";
 
     let alone = one_of(
@@ -1412,7 +1429,7 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
     // own `pluginid` field, or a capture whose payload column happened to be
     // spelled so would stamp every line with whatever its first bytes were.
     let registry = plugin_registry();
-    let codec = FixCodec::new(registry).with_payload_column("pluginid");
+    let codec = super::fixed_codec(registry).with_payload_column("pluginid");
     // One payload spelling a dictionary's name exactly, and one that is a
     // frame, so the column is proven to be read as the payload.
     let bodies = ["venue", "8=FIX.4.4|35=D|11=A|10=0|"];

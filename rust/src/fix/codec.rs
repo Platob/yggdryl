@@ -70,9 +70,7 @@ use crate::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
 use crate::mime_type::line;
 use crate::{Error, Field, Result, Scalar, Version};
 
-use super::build::{
-    BEGINSTRING_COLUMN, Builder, CLOCK_COLUMN, Fill, FixPair, RowExtras, root_name, version_of,
-};
+use super::build::{BEGINSTRING_COLUMN, Builder, Fill, FixPair, RowExtras, root_name, version_of};
 use super::memo::Memo;
 use super::{FixMessages, FixMsg, FixRegistry};
 
@@ -367,8 +365,6 @@ pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 enum CaptureRole {
     /// The version the line is read at.
     Version,
-    /// The clock that stamps the message.
-    Clock,
     /// A capture whose name reaches a field, beside the field it fills.
     /// A capture named `msgdirection` is one of these: tag 385 is a field
     /// like any other (decision 14), and a fill never overrides what the
@@ -384,9 +380,6 @@ impl CaptureRole {
         let is = |known: &str| crate::types::folds_equal(known, name);
         if is(BEGINSTRING_COLUMN) {
             return Self::Version;
-        }
-        if is(CLOCK_COLUMN) {
-            return Self::Clock;
         }
         codec
             .fill_target(name)
@@ -404,6 +397,8 @@ impl CaptureRole {
 pub struct FixCodec {
     registry: Arc<FixRegistry>,
     version: Option<Version>,
+    /// Already validated; absence defers the one now read until intake.
+    default_sending_time: Option<Scalar>,
     separator: Option<u8>,
     payload_column: SmolStr,
     /// What a run's row-header captures state, resolved in their order.
@@ -471,6 +466,7 @@ impl FixCodec {
         Self {
             registry,
             version: None,
+            default_sending_time: None,
             separator: None,
             payload_column: SmolStr::new_static(DEFAULT_PAYLOAD_COLUMN),
             captures: Arc::from([]),
@@ -496,6 +492,40 @@ impl FixCodec {
     #[must_use]
     pub const fn version(&self) -> Option<Version> {
         self.version
+    }
+
+    /// The exact nanosecond/UTC clock used when neither message nor carrier
+    /// states SendingTime. `None` reads UTC now lazily at fresh intake.
+    #[must_use]
+    pub const fn default_sending_time(&self) -> Option<&Scalar> {
+        self.default_sending_time.as_ref()
+    }
+
+    /// Sets the fallback SendingTime without coercing a different layout.
+    ///
+    /// # Errors
+    ///
+    /// Refuses null or any value other than DateTime64(ns, UTC), atomically.
+    pub fn set_default_sending_time(&mut self, value: Option<Scalar>) -> Result<()> {
+        if let Some(value) = &value {
+            super::identity::validate_value(
+                "default_sending_time",
+                &super::schema::CLOCK_DATATYPE,
+                value,
+            )?;
+        }
+        self.default_sending_time = value;
+        Ok(())
+    }
+
+    /// [`Self::set_default_sending_time`], consuming the codec.
+    ///
+    /// # Errors
+    ///
+    /// Returns the setter's exact-layout refusal.
+    pub fn try_with_default_sending_time(mut self, value: Option<Scalar>) -> Result<Self> {
+        self.set_default_sending_time(value)?;
+        Ok(self)
     }
 
     /// The code a line with no verb in front of its payload takes on the
@@ -575,7 +605,7 @@ impl FixCodec {
     ///
     /// A line carries its captures by position, in the order its header
     /// declares them, so this is the boundary that decides what each position
-    /// means: the version, the clock, a field a capture's
+    /// means: the version, a field a capture's
     /// name reaches, or nothing. Pass what
     /// [`TextOptions::capture_names`] answers for the options the lines were
     /// read under, and every line of the run is then read without one name
@@ -696,11 +726,23 @@ impl FixCodec {
     }
 
     /// Whether one raw value is a stated absence rather than a value.
-    fn is_absent(&self, value: &[u8]) -> bool {
+    fn is_absent(&self, key: &[u8], value: &[u8]) -> bool {
         let trimmed = line::trim_ascii(value);
+        if trimmed.is_empty()
+            && !value.is_empty()
+            && super::build::preserves_value(&self.registry, &self.memo, key)
+        {
+            return false;
+        }
         self.null_values
             .iter()
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
+    }
+
+    fn entries(&self, page: &TextBytes) -> (Option<TextEntries>, Option<usize>) {
+        TextEntries::from_bytes_direct_located(page, |key| {
+            super::build::preserves_value(&self.registry, &self.memo, key)
+        })
     }
 
     /// Parses one log line into an iterator of the messages it carries,
@@ -836,7 +878,6 @@ impl FixCodec {
     /// | the line's | supplies |
     /// | --- | --- |
     /// | [`body`](TextLine::body) | the bytes read, as the range they already are |
-    /// | [`timestamp`](TextLine::timestamp) | the clock that stamps the message |
     /// | [`captures`](TextLine::captures) | the version and every field a capture's name reaches, by the positions [`Self::with_capture_names`] resolved |
     ///
     /// A line that states none of them reads exactly as its bytes would,
@@ -849,12 +890,10 @@ impl FixCodec {
         // The row's own cells, read by the position the codec resolved.
         let text = |at: usize| line.capture(at);
         let mut version = None;
-        let mut stamped = None;
         let mut cells: Vec<(Field, i32, Scalar)> = Vec::new();
         for (at, role) in self.captures.iter().enumerate() {
             match role {
                 CaptureRole::Version => version = text(at).and_then(version_of),
-                CaptureRole::Clock => stamped = text(at),
                 CaptureRole::Fill(field, tag) => {
                     let Some(held) = text(at) else { continue };
                     cells.push((field.clone(), *tag, Scalar::from(held)));
@@ -862,13 +901,6 @@ impl FixCodec {
                 CaptureRole::Silent => {}
             }
         }
-        // The line's own clock where the read gave it one - a consumed capture
-        // or the object's own time - and the capture it was read from where it
-        // did not, which is a column the read emitted rather than consumed.
-        let clock = line
-            .timestamp()
-            .map(Scalar::from)
-            .or_else(|| stamped.map(Scalar::from));
         let fills: Vec<Fill<'_>> = cells
             .iter()
             .map(|(field, tag, value)| Fill {
@@ -879,7 +911,6 @@ impl FixCodec {
             .collect();
         let extras = RowExtras {
             version,
-            clock: clock.as_ref(),
             fills: &fills,
             direction: None,
             direction_pin: None,
@@ -890,9 +921,8 @@ impl FixCodec {
             // A row with no payload at all carries no message (decision 16).
             return Ok(FixMessages::none());
         }
-        Ok(self
-            .parse_page_with(page, extras)
-            .unwrap_or_else(|_| FixMessages::one(self.empty_with(extras))))
+        self.parse_page_with(page, extras)
+            .or_else(|_| self.empty_with(extras).map(FixMessages::one))
     }
 
     /// Parses a stream of decoded lines into a stream of messages, lazily.
@@ -924,8 +954,15 @@ impl FixCodec {
             // A row with no payload at all carries no message (decision 16).
             return FixMessages::none();
         }
-        self.parse_line_with(bytes, extras)
-            .unwrap_or_else(|_| FixMessages::one(self.empty_with(extras)))
+        // Page capacity is a materialization bound, never malformed syntax.
+        let page = match TextBytes::from_bytes(bytes) {
+            Ok(page) => page,
+            Err(error) => return FixMessages::from_result(Err(error)),
+        };
+        FixMessages::from_result(
+            self.parse_page_with(&page, extras)
+                .or_else(|_| self.empty_with(extras).map(FixMessages::one)),
+        )
     }
 
     /// What a byte door states beside the line it was handed whole: the
@@ -948,9 +985,8 @@ impl FixCodec {
     /// A row that carried nothing to read is not this: it answers no message
     /// (decision 16). This is the payload that was there and would not
     /// parse, which a batch must not fail on.
-    fn empty_with(&self, extras: RowExtras<'_>) -> FixMsg {
+    fn empty_with(&self, extras: RowExtras<'_>) -> Result<FixMsg> {
         self.build_pairs_with(&[], extras)
-            .expect("an empty message builds")
     }
 
     /// [`Self::parse_line`], with what the row stated beside its line.
@@ -975,7 +1011,7 @@ impl FixCodec {
         // One scan answers the pairs and where the frame opens; a row that
         // carries no payload at all opens past its own end, so the frame
         // reading gets nothing and the document readers below answer.
-        let (entries, frame_at) = TextEntries::from_bytes_direct_located(page);
+        let (entries, frame_at) = self.entries(page);
         let entries = entries.unwrap_or_default();
         // A row that located no frame may carry a document instead, and the
         // namespace scan that finds one is run here and nowhere else: the
@@ -1012,9 +1048,10 @@ impl FixCodec {
             if opened == payload && next_frame(entries.as_slice(), end).is_none() {
                 // One frame and nothing in front of it: the row is read
                 // where it stands, which is what a row of one message costs.
-                return self
-                    .frame_with(&entries.as_slice()[payload..end], extras)
-                    .map(FixMessages::one);
+                return Ok(FixMessages::from_result(
+                    self.frame_with(&entries.as_slice()[payload..end], extras)
+                        .map(FixMessages::one),
+                ));
             }
             let stamp = super::build::RowStamp::retained(extras);
             return Ok(FixMessages::frames(self.clone(), entries, opened, stamp));
@@ -1023,7 +1060,10 @@ impl FixCodec {
         // any pair the locator could read as a bridge row, and is read as
         // the document it is, by its attributes.
         if let Some((_, open)) = line::document_behind_prefix(row) {
-            return self.fixml_with(&row[open..], extras).map(FixMessages::one);
+            let pairs = fixml_pairs(&row[open..])?;
+            return Ok(FixMessages::from_result(
+                self.fixml_with(&pairs, extras).map(FixMessages::one),
+            ));
         }
         // The document the scan above already bounded, handed over as the
         // document: the namespace, the opener and the close are found once
@@ -1037,7 +1077,10 @@ impl FixCodec {
         // opens at the first tag - which is also how a prefix is dropped from
         // one, since everything before that tag is text the reader skips.
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
-            return self.fixml_with(row, extras).map(FixMessages::one);
+            let pairs = fixml_pairs(row)?;
+            return Ok(FixMessages::from_result(
+                self.fixml_with(&pairs, extras).map(FixMessages::one),
+            ));
         }
         // A run of named pairs is a bridge row where the line named a
         // separator for it or the bridge marked one of its keys, and prose
@@ -1053,7 +1096,9 @@ impl FixCodec {
             return Ok(FixMessages::none());
         }
         if next_frame(held, 0).is_none() {
-            return self.bridge_with(held, extras).map(FixMessages::one);
+            return Ok(FixMessages::from_result(
+                self.bridge_with(held, extras).map(FixMessages::one),
+            ));
         }
         // A frame opens behind the row, so the row is one message and the
         // frame the next.
@@ -1113,7 +1158,7 @@ impl FixCodec {
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
-        let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
+        let entries = self.entries(&page).0.unwrap_or_default();
         let framed = bounded(&page, &entries);
         if let Some(at) = second_frame_at(framed) {
             return Err(second_frame("fix", at));
@@ -1170,7 +1215,7 @@ impl FixCodec {
     /// Returns the builder's refusal, which a row's content cannot provoke.
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
-        let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
+        let entries = self.entries(&page).0.unwrap_or_default();
         // Judged over the row's own entries rather than the bounded run: a
         // frame behind the row is where the scanner would have opened the
         // payload, so bounding first would read the frame and refuse
@@ -1337,7 +1382,7 @@ impl FixCodec {
     fn bare_spellings<'row>(&self, arrived: &'row [Arrived<'_>]) -> Vec<(&'row [u8], &'row [u8])> {
         arrived
             .iter()
-            .filter(|held| !held.marked && !self.is_absent(held.value()))
+            .filter(|held| !held.marked && !self.is_absent(held.key(), held.value()))
             .map(|held| (held.key(), held.value()))
             .collect()
     }
@@ -1361,7 +1406,7 @@ impl FixCodec {
         let judged = if stripped.first() == Some(&b'#') {
             let written: Vec<(TextBytes, TextBytes)> = arrived
                 .iter()
-                .filter(|held| !self.is_absent(held.value()))
+                .filter(|held| !self.is_absent(held.key(), held.value()))
                 .map(|held| (held.written(), held.value.as_ref().clone()))
                 .collect();
             let row: Vec<(&[u8], &[u8])> = written
@@ -1547,13 +1592,18 @@ impl FixCodec {
         if let Some(at) = second_root(body)? {
             return Err(second_frame("fixml", at));
         }
-        self.fixml_with(body, self.read_extras(body))
+        self.fixml_with(&fixml_pairs(body)?, self.read_extras(body))
     }
 
-    /// [`Self::parse_fixml_line`], with what the row stated beside its document.
-    fn fixml_with(&self, body: &[u8], extras: RowExtras<'_>) -> Result<FixMsg> {
+    /// Materializes attributes already parsed from one XML document.
+    /// Syntax stays outside the message result, as it does for lazy frames.
+    fn fixml_with(
+        &self,
+        attributes: &[(Vec<u8>, Vec<u8>)],
+        extras: RowExtras<'_>,
+    ) -> Result<FixMsg> {
         let pairs = own_pairs(
-            fixml_pairs(body)?
+            attributes
                 .iter()
                 .map(|(key, value)| (key.as_slice(), value.as_slice())),
         )?;
@@ -1725,12 +1775,14 @@ impl FixCodec {
         // A stated absence produces no field and no entry: the key is read
         // as never having been sent. Filtering happens before typing, so
         // nothing tries to read `<null>` as a price and file the failure.
-        builder.push_pairs(pairs, |value| self.is_absent(value));
+        builder.push_pairs(pairs, |key, value| self.is_absent(key, value));
         for row in nested {
             self.push_nested(&mut builder, row, pinned);
         }
         for fill in extras.fills {
-            builder.fill(fill);
+            if fill.tag != 52 {
+                builder.fill(fill);
+            }
         }
         // Tag 385 as a built child, where the line stated none of its own:
         // a fill, so a `385=` on the wire or a stated column stands.
@@ -1764,21 +1816,44 @@ impl FixCodec {
                     value: &value,
                 });
             }
-            let built = builder.finish(name, extras.clock)?;
-            return Ok(super::enrich::compose(
-                &self.registry,
-                FixMsg::from_built(Arc::clone(&self.registry), built),
-            ));
+            return self.finish(builder.finish(name)?, extras);
         }
-        let built = builder.finish(root_name(stated.as_deref()).as_str(), extras.clock)?;
+        self.finish(
+            builder.finish(root_name(stated.as_deref()).as_str())?,
+            extras,
+        )
+    }
+
+    fn finish(&self, mut built: super::build::Built, extras: RowExtras<'_>) -> Result<FixMsg> {
         // What the row stated under a namespace of its own is what the row
         // stated, so it is read here rather than left to the enriching pass:
         // a child the dictionary does not name has no column, so one read
         // any later would be invisible to the batch door (decision 20).
-        Ok(super::enrich::compose(
-            &self.registry,
-            FixMsg::from_built(Arc::clone(&self.registry), built),
-        ))
+        built.compose(&self.registry)?;
+        let stated = built
+            .index_of_tag(52, &self.registry)
+            .and_then(|at| built.value.get(at))
+            .is_some_and(|value| !value.is_null());
+        let carrier = if stated {
+            None
+        } else {
+            extras
+                .fills
+                .iter()
+                .find(|fill| fill.tag == 52 && !fill.value.is_null())
+                .map(|fill| {
+                    super::build::typed_fill(fill.field, fill.tag, fill.value, built.version)
+                })
+                .transpose()?
+        };
+        FixMsg::from_built(
+            Arc::clone(&self.registry),
+            built,
+            carrier
+                .as_ref()
+                .filter(|value| !value.is_null())
+                .or(self.default_sending_time.as_ref()),
+        )
     }
 
     /// Reads one row a data field carried into the line it arrived on.
@@ -1826,7 +1901,7 @@ impl FixCodec {
         // The value's own entries, read in their own scope: what a bridge
         // wrote inside a data field is judged against that row's spellings
         // and not against the frame's.
-        let entries = TextEntries::from_bytes_direct(row).unwrap_or_default();
+        let entries = self.entries(row).0.unwrap_or_default();
         let arrived = arrivals(entries.as_slice());
         let (declared, held) = self.bridge_pairs(&arrived);
         self.nest(builder, declared, &held, pinned);
@@ -1843,7 +1918,7 @@ impl FixCodec {
         let dated = pinned.or_else(|| self.infer_version(pairs));
         builder.begin_nested(declared, dated);
         for pair in pairs {
-            if self.is_absent(pair.value()) {
+            if self.is_absent(pair.key(), pair.value()) {
                 continue;
             }
             builder.push(pair.key(), pair.value());
@@ -2512,6 +2587,473 @@ fn folds_twin(left: &[u8], right: &[u8]) -> bool {
             (None, None) => return true,
             (Some(one), Some(other)) if one.eq_ignore_ascii_case(other) => {}
             _ => return false,
+        }
+    }
+}
+
+#[cfg(test)]
+mod clock_intake_tests {
+    use super::*;
+    use crate::{DataType, TimeUnit, Timezone};
+
+    fn clock(value: i64) -> Scalar {
+        Scalar::datetime64(value, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+    }
+
+    fn codec() -> FixCodec {
+        FixCodec::new(Arc::new(FixRegistry::new()))
+            .try_with_default_sending_time(Some(clock(17)))
+            .unwrap()
+    }
+
+    fn text_line(body: &[u8]) -> TextLine {
+        TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn fallback_clock_is_exact_optional_and_atomic() {
+        let mut codec = codec();
+        for value in [
+            Scalar::Null,
+            Scalar::from(17_i64),
+            Scalar::from("20260102-10:15:30"),
+            Scalar::datetime64(17, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+            Scalar::datetime64(17, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
+        ] {
+            assert!(codec.set_default_sending_time(Some(value)).is_err());
+            assert_eq!(codec.default_sending_time(), Some(&clock(17)));
+        }
+        codec.set_default_sending_time(None).unwrap();
+        assert_eq!(codec.default_sending_time(), None);
+    }
+
+    #[test]
+    fn seeded_clocks_type_once_and_impact_precedes_sending() {
+        let codec = codec();
+        for tag in [52, 60] {
+            assert_eq!(
+                codec.registry().field_by_tag(tag).unwrap().dtype(),
+                &super::super::schema::CLOCK_DATATYPE
+            );
+        }
+        let message = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|60=20260102-10:15:31|")
+            .unwrap();
+        assert!(message.by_tag(52).unwrap().as_datetime64().is_some());
+        assert!(message.by_tag(60).unwrap().as_datetime64().is_some());
+        assert_eq!(
+            message.by_tag(super::super::SNAPSHOTAT_TAG_NAME.0).unwrap(),
+            message.by_tag(60).unwrap()
+        );
+        assert_eq!(
+            message.by_tag(super::super::UPDATEDAT_TAG_NAME.0).unwrap(),
+            message.by_tag(60).unwrap()
+        );
+        let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|").unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
+        assert!(absent.get_by_tag(60).is_none());
+    }
+
+    #[test]
+    fn capture_context_clock_is_not_a_fix_clock() {
+        let codec = codec().with_capture_names(["timestamp"]);
+        let line = text_line(b"8=FIX.4.4|35=D|")
+            .with_timestamp(99)
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(b"not-a-FIX-clock").unwrap(),
+            )])
+            .unwrap();
+        let message = codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), &clock(17));
+        assert_eq!(
+            message.by_tag(super::super::SNAPSHOTAT_TAG_NAME.0).unwrap(),
+            &clock(17)
+        );
+    }
+
+    #[test]
+    fn namespace_sending_precedes_carrier_and_default() {
+        let codec = codec().with_capture_names(["SendingTime"]);
+        let line = text_line(b"#scope.SendingTime=20260102-10:15:30|")
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(b"invalid-lower-priority-clock").unwrap(),
+            )])
+            .unwrap();
+        let message = codec
+            .parse_text_line(&line)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        let direct = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30|")
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), direct.by_tag(52).unwrap());
+        assert_eq!(message.entries().len(), 1);
+        let carried = text_line(b"8=FIX.4.4|35=D|")
+            .with_captures(vec![Some(
+                TextBytes::from_bytes(b"20260102-10:15:30").unwrap(),
+            )])
+            .unwrap();
+        let message = codec
+            .parse_text_line(&carried)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), direct.by_tag(52).unwrap());
+        assert!(!message.entries().iter().any(|entry| entry.tag() == 52));
+    }
+
+    #[test]
+    fn deferred_clocks_use_the_source_resolved_version() {
+        use crate::{FixCode, FixLineageEntry, FixPedigree};
+
+        let version = |text: &str| text.parse::<Version>().unwrap();
+        let mut registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending
+            .as_fix_mut()
+            .set_lineage(&[
+                FixLineageEntry::new(FixPedigree::new(version("4.2"), None))
+                    .with_name("SendingTimeOld"),
+                FixLineageEntry::new(FixPedigree::new(version("5.0.2"), None))
+                    .with_name("sendingtime"),
+            ])
+            .unwrap();
+        sending
+            .as_fix_mut()
+            .set_codes(&[
+                FixCode::new("ClockOld", "20240102-10:15:30")
+                    .with_aliases(["Clock", "Broken"])
+                    .with_deprecated(version("4.3")),
+                FixCode::new("Clock", "20240102-10:15:31").with_since(version("4.3"), None),
+                FixCode::new("Broken", "invalid-clock").with_since(version("4.3"), None),
+            ])
+            .unwrap();
+        registry.insert(sending).unwrap();
+        let codec = FixCodec::new(Arc::new(registry))
+            .try_with_default_sending_time(Some(clock(17)))
+            .unwrap()
+            .with_capture_names([BEGINSTRING_COLUMN, "SendingTime"]);
+        let old = clock(1_704_190_530_000_000_000);
+        let new = clock(1_704_190_531_000_000_000);
+        for (pin, row_version, frame, expected) in [
+            (None, None, "4.2", &old),
+            (None, None, "4.4", &new),
+            (Some("4.4"), None, "4.2", &new),
+            (Some("4.4"), Some("4.2"), "4.4", &old),
+            (Some("4.2"), Some("4.4"), "4.2", &new),
+        ] {
+            let reader = pin.map_or_else(
+                || codec.clone(),
+                |pin| codec.clone().with_version(version(pin)),
+            );
+            for source in ["52=Clock|", "scope.SendingTime=Clock|", ""] {
+                let body = format!("8=FIX.{frame}|35=D|{source}");
+                let line = text_line(body.as_bytes())
+                    .with_captures(vec![
+                        row_version.map(|value| TextBytes::from_bytes(value.as_bytes()).unwrap()),
+                        Some(TextBytes::from_bytes(b"Clock").unwrap()),
+                    ])
+                    .unwrap();
+                let message = reader
+                    .parse_text_line(&line)
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    message.by_tag(52).unwrap(),
+                    expected,
+                    "{pin:?} {row_version:?} {frame} {source}"
+                );
+                assert_eq!(message.updatedat(), expected);
+            }
+        }
+        // A lifted namespace is typed at the nested row's resolved version,
+        // not the outer frame's restored version. An explicit pin dates both.
+        for (reader, expected) in [
+            (codec.clone(), &new),
+            (codec.clone().with_version(version("4.2")), &old),
+        ] {
+            for nested in ["SendingTime=Clock", "scope.SendingTime=Clock"] {
+                let frame = format!("8=FIX.4.2|35=UL|212={}|213={nested}|10=0|", nested.len());
+                let message = reader.parse_fix_line(frame.as_bytes()).unwrap();
+                assert_eq!(message.by_tag(52).unwrap(), expected, "{nested}");
+            }
+        }
+        // Raw consensus also needs semantic consensus across source versions.
+        // The duplicate nested voice exercises one conversion per version.
+        for (reader, spelling, expected) in [
+            (codec.clone(), "Clock", clock(17)),
+            (codec.clone(), "20240102-10:15:30", old.clone()),
+            (
+                codec.clone().with_version(version("4.2")),
+                "Clock",
+                old.clone(),
+            ),
+            (
+                codec.clone().with_version(version("4.4")),
+                "Clock",
+                new.clone(),
+            ),
+        ] {
+            let nested = format!("right.SendingTime={spelling}|also.SendingTime={spelling}");
+            let frame = format!(
+                "8=FIX.4.2|35=UL|left.SendingTime={spelling}|212={}|213={nested}|10=0|",
+                nested.len()
+            );
+            let message = reader.parse_fix_line(frame.as_bytes()).unwrap();
+            assert_eq!(message.by_tag(52).unwrap(), &expected, "{spelling}");
+        }
+        let frame = |direct: &str, left: &str, right: &str| {
+            let nested = format!("right.SendingTime={right}");
+            format!(
+                "8=FIX.4.2|35=UL|{direct}left.SendingTime={left}|212={}|213={nested}|10=0|",
+                nested.len()
+            )
+        };
+        let conflict = codec
+            .parse_fix_line(frame("", "Clock", "invalid-clock").as_bytes())
+            .unwrap();
+        assert_eq!(
+            conflict.by_tag(52).unwrap(),
+            &clock(17),
+            "raw-conflicting voices are never converted"
+        );
+        let overridden = codec
+            .parse_fix_line(frame("52=20240102-10:15:30|", "Broken", "Broken").as_bytes())
+            .unwrap();
+        assert_eq!(
+            overridden.by_tag(52).unwrap(),
+            &old,
+            "overridden voices are never converted"
+        );
+        let refused = codec
+            .parse_fix_line(frame("", "Broken", "Broken").as_bytes())
+            .unwrap_err();
+        assert!(
+            matches!(&refused, Error::InvalidRecord { path, .. } if path == "$.sendingtime"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn critical_namespace_winners_preserve_invalid_input_but_losers_do_not_refuse() {
+        let codec = codec().with_null_values::<[&str; 0], &str>([]);
+        // An empty pair alone discovers no frame under the shared scanner's
+        // existing grammar. The strict conversion below needs a stated frame.
+        assert!(
+            codec
+                .parse_line(b"#scope.SendingTime=|")
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        let source_free = codec.parse_ullink_line(b"#scope.SendingTime=|").unwrap();
+        assert!(source_free.entries().is_empty());
+        assert_eq!(source_free.by_tag(52).unwrap(), &clock(17));
+        for body in [
+            &b"#scope.SendingTime=20260102-10:15:30\0|"[..],
+            &b"#scope.SendingTime=20260102-10:15:30\xff|"[..],
+            &b"MSGTYPE=D|#scope.SendingTime=|"[..],
+            &b"#scope.code=bad\xff|"[..],
+        ] {
+            assert!(codec.parse_ullink_line(body).is_err(), "{body:?}");
+        }
+        let stated = codec
+            .parse_ullink_line(b"#SendingTime=20260102-10:15:30|#scope.SendingTime=bad\xff|")
+            .unwrap();
+        assert!(stated.by_tag(52).unwrap().as_datetime64().is_some());
+        let absent = self::codec()
+            .parse_ullink_line(b"MSGTYPE=D|#scope.SendingTime=|")
+            .unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
+        assert!(
+            !absent
+                .entries()
+                .iter()
+                .any(|entry| entry.key().as_bytes() == b"scope.SendingTime")
+        );
+        let disagreed = codec
+            .parse_ullink_line(
+                b"#one.SendingTime=20260102-10:15:30\0|#two.SendingTime=20260102-10:15:30|",
+            )
+            .unwrap();
+        assert_eq!(disagreed.by_tag(52).unwrap(), &clock(17));
+        let ordinary = codec
+            .parse_ullink_line(b"#scope.unregistered=bad\0value|")
+            .unwrap();
+        assert_eq!(
+            ordinary.by_name("scope.unregistered").unwrap().as_str(),
+            Some("badvalue")
+        );
+    }
+
+    #[test]
+    fn malformed_root_invariants_are_items_not_recovered_messages() {
+        let codec = codec();
+        for tag in [52, 60, 65003, 65017, 65018, 65023, 65025] {
+            let body = format!("8=FIX.4.4|35=D|{tag}=invalid|10=0|");
+            assert!(
+                matches!(
+                    codec.parse_fix_line(body.as_bytes()),
+                    Err(Error::InvalidRecord { .. })
+                ),
+                "tag {tag}"
+            );
+            let mut messages = codec.parse_line(body.as_bytes()).unwrap();
+            assert!(
+                matches!(messages.next(), Some(Err(Error::InvalidRecord { .. }))),
+                "tag {tag}"
+            );
+            assert!(messages.next().is_none());
+            let mut captured = codec.parse_text_line(&text_line(body.as_bytes())).unwrap();
+            assert!(
+                matches!(captured.next(), Some(Err(Error::InvalidRecord { .. }))),
+                "tag {tag}"
+            );
+            assert!(captured.next().is_none());
+        }
+        let mut multiple = codec
+            .parse_line(b"8=FIX.4.4|35=D|52=bad|10=0|8=FIX.4.4|35=D|10=0|")
+            .unwrap();
+        assert!(multiple.next().unwrap().is_err());
+        assert!(multiple.next().is_none());
+        let xml = text_line(br#"<FIXML><Order SendingTime="bad"/></FIXML>"#);
+        let mut messages = codec.parse_text_line(&xml).unwrap();
+        assert!(messages.next().unwrap().is_err());
+        assert!(messages.next().is_none());
+    }
+
+    #[test]
+    fn syntax_fallback_is_fallible_and_never_masks_registry_layouts() {
+        let codec = codec();
+        let broken = text_line(b"<FIXML><Order");
+        let message = codec
+            .parse_text_line(&broken)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap();
+        assert_eq!(message.by_tag(52).unwrap(), &clock(17));
+        assert!(message.entries().is_empty());
+        assert!(
+            codec
+                .parse_text_line(&text_line(b""))
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        let mut registry = FixRegistry::new();
+        assert!(registry.remove(52).is_some());
+        let codec = FixCodec::new(Arc::new(registry));
+        assert!(codec.parse_text_line(&broken).is_err());
+        let mut registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending.set_dtype(DataType::utf8()).unwrap();
+        registry.insert(sending).unwrap();
+        let codec = FixCodec::new(Arc::new(registry));
+        assert!(codec.parse_fix_line(b"8=FIX.4.4|35=D|52=bad|").is_err());
+    }
+
+    #[test]
+    fn declared_absence_differs_from_failed_conversion_and_cleaning() {
+        let mut registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending.as_fix_mut().set_nulls(["not-sent"]).unwrap();
+        registry.insert(sending).unwrap();
+        let codec = FixCodec::new(Arc::new(registry))
+            .try_with_default_sending_time(Some(clock(17)))
+            .unwrap();
+        let absent = codec
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=not-sent|")
+            .unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
+        assert!(absent.entries().iter().any(|entry| entry.tag() == 52));
+        let absent = codec.parse_fix_line(b"8=FIX.4.4|35=D|52=|").unwrap();
+        assert_eq!(absent.by_tag(52).unwrap(), &clock(17));
+        assert!(!absent.entries().iter().any(|entry| entry.tag() == 52));
+        let literal = codec.with_null_values::<[&str; 0], &str>([]);
+        assert!(literal.parse_fix_line(b"8=FIX.4.4|35=D|52=|").is_err());
+        for body in [
+            &b"8=FIX.4.4|35=D|52=20260102-10:15:30\xff|"[..],
+            &b"8=FIX.4.4|35=D|52=20260102-10:15:30\0|"[..],
+            &b"8=FIX.4.4|35=D|65024=name\xff|"[..],
+        ] {
+            assert!(literal.parse_fix_line(body).is_err());
+        }
+        let code = literal
+            .parse_fix_line(b"8=FIX.4.4|35=D|65024=  named  |")
+            .unwrap();
+        assert_eq!(code.by_tag(65024).unwrap().as_str(), Some("  named  "));
+        let ordinary = literal
+            .parse_fix_line(b"8=FIX.4.4|35=D|90001=bad\0value|")
+            .unwrap();
+        assert_eq!(ordinary.by_tag(90001).unwrap().as_str(), Some("badvalue"));
+    }
+
+    #[test]
+    fn code_keeps_original_segment_bytes_at_every_text_door() {
+        let mut registry = FixRegistry::new();
+        let mut code = registry.field_by_tag(65024).unwrap().clone();
+        code.as_fix_mut().set_aliases(["ChainLabel"]).unwrap();
+        registry.insert(code).unwrap();
+        let codec = FixCodec::new(Arc::new(registry))
+            .try_with_default_sending_time(Some(clock(17)))
+            .unwrap();
+        for key in [
+            "65024",
+            "code",
+            "ChainLabel",
+            "scope.code",
+            "scope.ChainLabel",
+        ] {
+            for value in ["  named  ", " \t ", "name);,}", "équipe  "] {
+                let body = format!("35=D|{key}={value}|90001=ordinary  |");
+                let direct = codec.parse_fix_line(body.as_bytes()).unwrap();
+                let bridge = codec.parse_ullink_line(body.as_bytes()).unwrap();
+                let selected = codec
+                    .parse_line(body.as_bytes())
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let captured = codec
+                    .parse_text_line(&text_line(body.as_bytes()))
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap();
+                let paired = codec
+                    .parse_pairs([
+                        (b"35".as_slice(), b"D".as_slice()),
+                        (key.as_bytes(), value.as_bytes()),
+                    ])
+                    .unwrap();
+                for message in [&direct, &bridge, &selected, &captured, &paired] {
+                    assert_eq!(
+                        message.by_tag(65024).unwrap().as_str(),
+                        Some(value),
+                        "{key} {value:?}"
+                    );
+                }
+                assert_eq!(direct.by_tag(90001).unwrap().as_str(), Some("ordinary"));
+                assert_eq!(direct.entries()[1].value().as_bytes(), value.as_bytes());
+                // The public scanner still answers its existing trimmed view.
+                let page = TextBytes::from_bytes(body.as_bytes()).unwrap();
+                let public = TextEntries::from_bytes_direct(&page).unwrap();
+                assert_ne!(
+                    public.as_slice()[1].value_bytes().as_bytes(),
+                    value.as_bytes()
+                );
+            }
         }
     }
 }

@@ -4,7 +4,6 @@
 //! test in these phases loads, and the one path this suite names.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 use yggdryl::holder::local::Folder;
 use yggdryl::{
@@ -13,12 +12,7 @@ use yggdryl::{
 };
 
 fn seed() -> FixRegistry {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    FixRegistry::from_handle(&folder).expect("the committed dictionary loads")
+    super::committed_registry().as_ref().clone()
 }
 
 fn version(text: &str) -> Version {
@@ -414,8 +408,8 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight of the seed's, and the crate's `timestamp`/`prevtimestamp`.
-    assert_eq!(utc, 70, "instants stated in UTC");
+    // Sixty-eight shipped fields, plus updatedat, createdat, snapshotat and prevtimestamp.
+    assert_eq!(utc, 72, "instants stated in UTC");
 }
 
 #[test]
@@ -513,10 +507,13 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// Decision 22 renames the three lifecycle identities and types them as UUIDs.
 /// Decision 23 describes the chain's scoped lifecycle recipe in its field.
 /// Decision 24 adds the previous clock and UUID declarations.
+/// Decision 26 retires msghash, renames updatedat, adds createdat/code/snapshotat,
+/// and replaces the identity recipes in the crate declarations. The shipped
+/// SendingTime/TransactTime definitions already supply the standard clock seeds.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 6_456_976_043_740_267_577);
+    assert_eq!(registry.stable_hash(), 11_503_781_206_853_360_085);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

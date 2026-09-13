@@ -514,7 +514,7 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         }
         assert_eq!(registry.field("quoteackstatus").unwrap(), &current);
         assert_eq!(registry.field(1865).unwrap(), &current);
-        assert_eq!(registry.len(), 2 + super::crated());
+        assert_eq!(registry.len(), 2 + super::seeded_fields());
         let loaded = FixRegistry::from_json(&registry.into_json().unwrap()).unwrap();
         assert_eq!(loaded, registry);
         let document = yggdryl::from_json_scalar(registry.into_json().unwrap()).unwrap();
@@ -552,7 +552,7 @@ fn canonical_fields_supersede_aliases_in_every_creation_and_snapshot_order() {
         registry
             .create_definition(FixCategory::Fields, tagged("other", 1865, DataType::Int32))
             .unwrap();
-        assert_eq!(registry.len(), 3 + super::crated());
+        assert_eq!(registry.len(), 3 + super::seeded_fields());
         assert_eq!(registry.field(1865).unwrap().name(), "quoteackstatus");
         assert_eq!(registry.field("other").unwrap().name(), "other");
         assert_eq!(
@@ -585,7 +585,7 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
     assert_eq!(&loaded, registry.as_ref());
     assert_eq!(loaded.stable_hash(), registry.stable_hash());
     assert_eq!(loaded.into_json().unwrap(), document);
-    assert_eq!(loaded.len(), 6241 + super::crated());
+    assert_eq!(loaded.len(), 6241 + super::crated_fields());
     assert_eq!(
         loaded.definitions(FixCategory::Components).count(),
         928 + super::crated_messages()
@@ -660,7 +660,7 @@ fn registry_snapshots_reject_missing_categories_and_unresolved_references() {
     // fields and nothing more.
     let empty = FixRegistry::from_json(r#"{"fields":[],"components":[],"groups":[]}"#).unwrap();
     assert_eq!(empty, FixRegistry::new());
-    assert_eq!(empty.len(), super::crated());
+    assert_eq!(empty.len(), super::seeded_fields());
     assert!(empty.dialects().is_empty());
     let document = yggdryl::from_json_scalar(catalog().into_json().unwrap()).unwrap();
     let missing = Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
@@ -855,7 +855,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
     let newcomer = FixId::of(448, "VenuePartyID").unwrap();
     assert_ne!(holder, newcomer);
     let check = |registry: &FixRegistry| {
-        assert_eq!(registry.len(), 3 + super::crated());
+        assert_eq!(registry.len(), 3 + super::seeded_fields());
         assert_eq!(registry.field(448).unwrap().name(), "PartyID");
         assert_eq!(registry.field(holder).unwrap().name(), "PartyID");
         assert_eq!(registry.field(newcomer).unwrap().name(), "VenuePartyID");
@@ -896,7 +896,7 @@ fn two_fields_on_one_tag_round_trip_through_the_snapshot_and_the_store() {
             .filter_map(|field| field.as_fix().tag().unwrap())
             .filter(|tag| *tag < yggdryl::CRATE_TAG_MIN)
             .collect();
-        assert_eq!(tags, [448, 448, 453]);
+        assert_eq!(tags, [52, 60, 448, 448, 453]);
         let on_448: Vec<FixId> = registry
             .iter()
             .filter(|field| field.as_fix().tag().unwrap() == Some(448))
@@ -1087,7 +1087,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
     assert!(loaded.get_field(5001).is_none());
-    assert_eq!(loaded.len(), super::crated());
+    assert_eq!(loaded.len(), super::seeded_fields());
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -1095,7 +1095,7 @@ fn malformed_shards_are_located_and_nested_folders_are_passed_over() {
 fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
-    assert_eq!(registry.len(), 6241 + super::crated());
+    assert_eq!(registry.len(), 6241 + super::crated_fields());
     // The census decision 13 rests on: 747 components and 181 messages fold
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
@@ -1177,9 +1177,10 @@ fn named_definition_equality_does_not_depend_on_insertion_order() {
 fn merging_a_complete_catalog_commits_references_together() {
     let source = catalog();
     let mut target = FixRegistry::new();
-    assert_eq!(target.merge_with(&source).unwrap(), (2, 0));
+    // SendingTime and TransactTime are real stored definitions, not crate fields.
+    assert_eq!(target.merge_with(&source).unwrap(), (2, 2));
     assert_eq!(target, source);
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 4));
     assert_eq!(target, source);
 }
 
@@ -1225,7 +1226,7 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
     }] {
         let mut target = original.clone();
         let incoming = source(respell);
-        assert_eq!(target.merge_with(&incoming).unwrap(), (0, 2));
+        assert_eq!(target.merge_with(&incoming).unwrap(), (0, 4));
         assert_eq!(target, original);
         for (category, name) in [
             (FixCategory::Components, "Party"),
@@ -1276,7 +1277,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         .unwrap();
     let before_source = source.clone();
 
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 4));
     for path in [
         "PartyID",
         "Party.PartyID",
@@ -1332,7 +1333,7 @@ fn merging_catalogs_extends_referenced_definitions_and_refuses_a_changed_member_
 
     // The member the source adds to the component reaches the group and the
     // message that restate it, through the references they keep.
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 1));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 3));
     for path in [
         "Party.Extra",
         "Parties.Extra",

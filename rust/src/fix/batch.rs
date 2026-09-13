@@ -22,7 +22,7 @@
 //!
 //! | group | columns |
 //! | --- | --- |
-//! | identity | `msgtype`, `version`, `msghash`, `msgdirection` |
+//! | identity | `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` |
 //! | meaning | one per lifted facet, typed as that facet's field is typed |
 //! | arrival | `entries`, a list of `tag`/`branch`/`key`/`value` |
 //!
@@ -62,7 +62,7 @@ use crate::arrow::rows::{Closing, ROW_OVERHEAD, appended_bytes, canonical_closin
 use crate::arrow::value::value_from_array;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar};
 
-use super::build::{BEGINSTRING_COLUMN, CLOCK_COLUMN, DIRECTION_COLUMN, version_of};
+use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
@@ -93,7 +93,7 @@ impl FixCodec {
     ///
     /// Each row is read cell by cell out of the arrays and parsed through the
     /// same funnel as a line: the payload as [`Self::parse_line`] reads it,
-    /// the `beginstring` and `timestamp` columns as
+    /// the `beginstring` column as
     /// [`Self::parse_text_line`] reads the captures of those names, the
     /// `msgdirection` column as the direction the row states, and every
     /// other column named after a field the dictionary knows - `pluginid`
@@ -101,8 +101,8 @@ impl FixCodec {
     /// column sits and which field it fills is decided once from the schema,
     /// so no row copies the codec or asks the dictionary a question the row
     /// before it asked. A line the reader
-    /// refuses is a row holding an empty message, never a row lost, so a row
-    /// in is a row out; a bulk configuration document is one row per
+    /// cannot classify yields no message; malformed-body recovery still obeys
+    /// the mandatory field contract. A bulk configuration document is one row per
     /// configuration it named and no row where it named none, each repeating
     /// its source row's carried columns. Tag 385, the column
     /// [`MSGDIRECTION_TAG_NAME`](super::MSGDIRECTION_TAG_NAME) names, takes
@@ -158,7 +158,8 @@ impl FixCodec {
         // clone shares it rather than building a second one, and the tag each
         // column answers for is read off it once rather than once per row.
         let schema = field.clone();
-        let plan = super::schema::column_plan(&schema)?;
+        let plan = super::schema::column_plan(&schema, self.registry())?;
+        plan.identity.require_bundle(&schema)?;
         let target = self.batch_byte_size();
         let mut carried = 0_u64;
         let rows = rows.map(move |held| match held {
@@ -396,16 +397,13 @@ fn payload_column_of(carrier: &Field, payload: &str, at: Option<usize>) -> Resul
 fn row_of(
     message: &FixMsg,
     schema: &Field,
-    plan: &[super::schema::Column],
+    plan: &super::schema::Columns,
     front: Vec<Scalar>,
 ) -> Result<Scalar> {
-    // The row is the schema's whole width already: a carried column is named
-    // by no tag, so it comes back null and is filled here rather than spliced
-    // in, which keeps a column position an index into the row itself.
-    let mut held = message.row_values(schema, plan)?;
-    for (slot, value) in held.iter_mut().zip(front) {
-        *slot = value;
-    }
+    // Capture values land before the field contract and content hash run.
+    let mut held = message.row_values(schema, plan, front)?;
+    plan.identity
+        .finalize(schema, &mut held, super::identity::Assertions::default())?;
     Ok(Scalar::from_sequence(held))
 }
 
@@ -516,7 +514,7 @@ fn payload_bytes<'batch>(
 /// states the same facts as row-header captures, which the codec resolves by
 /// name once and reads by position.
 fn is_parameter(name: &str, payload: &str) -> bool {
-    [payload, BEGINSTRING_COLUMN, CLOCK_COLUMN, DIRECTION_COLUMN]
+    [payload, BEGINSTRING_COLUMN, DIRECTION_COLUMN]
         .iter()
         .any(|held| crate::types::folds_equal(held, name))
 }
@@ -527,8 +525,6 @@ struct Columns {
     beginstring: Option<usize>,
     /// The column stating the row's direction: tag 385's own name.
     direction: Option<usize>,
-    /// The column stating the row's own clock, which stamps the message.
-    clock: Option<usize>,
     /// The columns whose names reach a field, each beside the field it fills.
     ///
     /// Resolved once from the schema and the dictionary: a column named after
@@ -566,7 +562,6 @@ impl Columns {
             payload: payload_at,
             beginstring: named(BEGINSTRING_COLUMN),
             direction: named(DIRECTION_COLUMN),
-            clock: named(CLOCK_COLUMN),
             fills,
             kept,
             dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
@@ -611,7 +606,6 @@ impl Rows {
         let at = self.columns.payload;
         let payload = payload_bytes(&self.columns.dtypes[at], batch.column(at), row)?;
         let beginstring = stated(self.columns.beginstring)?;
-        let clock = stated(self.columns.clock)?;
         // The direction a row states outranks any reading of its line, and
         // the codec's pin fills what neither states (decision 14).
         let direction = stated(self.columns.direction)?
@@ -641,7 +635,6 @@ impl Rows {
                 .as_ref()
                 .and_then(Scalar::as_str)
                 .and_then(version_of),
-            clock: clock.as_ref(),
             fills: &fills,
             direction: direction.as_deref(),
             direction_pin: self.codec.direction(),

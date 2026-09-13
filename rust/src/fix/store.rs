@@ -417,7 +417,7 @@ impl FixRegistry {
                 });
             }
         }
-        let mut registry = Self::new();
+        let mut registry = Self::base();
         let mut raw = BTreeMap::new();
         for category in LOAD_ORDER {
             let fields = record
@@ -451,6 +451,7 @@ impl FixRegistry {
                 }
             }
         }
+        registry.seed_clocks()?;
         registry.load_definitions(raw, None)?;
         registry.validate_catalog()?;
         registry.refresh_msgtype_aliases();
@@ -518,7 +519,7 @@ impl FixRegistry {
     /// rejected before a registry is returned. A folder inside a category
     /// is not a store's layout and is passed over.
     pub fn from_handle(handle: &dyn IOBase) -> Result<Self> {
-        let mut registry = Self::new();
+        let mut registry = Self::base();
         let mut raw = BTreeMap::new();
         for category in LOAD_ORDER {
             let root = handle.child_by_path(category.as_str())?;
@@ -529,6 +530,7 @@ impl FixRegistry {
                     .map_err(|error| located(error, &entry))?;
             }
         }
+        registry.seed_clocks()?;
         registry.load_definitions(raw, Some(handle))?;
         registry.validate_catalog()?;
         registry.refresh_msgtype_aliases();
@@ -713,5 +715,52 @@ impl FixRegistry {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod clock_seed_tests {
+    use super::*;
+
+    #[test]
+    fn stored_clocks_replace_seeds_but_duplicate_documents_refuse() {
+        let registry = FixRegistry::new();
+        let mut sending = registry.field_by_tag(52).unwrap().clone();
+        sending
+            .set_description("store owns this declaration")
+            .unwrap();
+        let field = sending.clone().into_json().unwrap();
+        let document = format!(r#"{{"fields":[{field}],"components":[],"groups":[]}}"#);
+        let loaded = FixRegistry::from_json(&document).unwrap();
+        assert_eq!(loaded.field_by_tag(52).unwrap(), &sending);
+        assert_eq!(
+            loaded.field_by_tag(60).unwrap().dtype(),
+            &super::super::schema::CLOCK_DATATYPE
+        );
+        assert_eq!(
+            FixRegistry::from_json(&loaded.into_json().unwrap()).unwrap(),
+            loaded
+        );
+        let duplicate = format!(r#"{{"fields":[{field},{field}],"components":[],"groups":[]}}"#);
+        assert!(matches!(
+            FixRegistry::from_json(&duplicate),
+            Err(Error::Conflict { .. })
+        ));
+    }
+
+    #[test]
+    fn renamed_loaded_clock_keeps_its_canonical_identity() {
+        let registry = FixRegistry::new();
+        let sending = registry
+            .field_by_tag(52)
+            .unwrap()
+            .clone()
+            .with_name("VenueSendingClock");
+        let field = sending.into_json().unwrap();
+        let document = format!(r#"{{"fields":[{field}],"components":[],"groups":[]}}"#);
+        let loaded = FixRegistry::from_json(&document).unwrap();
+        assert_eq!(loaded.field_by_tag(52).unwrap().name(), "VenueSendingClock");
+        assert!(loaded.get_field_by_name("SendingTime").is_none());
+        assert_eq!(loaded.field_by_tag(60).unwrap().name(), "transacttime");
     }
 }

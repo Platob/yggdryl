@@ -5,8 +5,8 @@ use std::sync::Arc;
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME,
-    TimeUnit, Timezone, UUID_TAG_NAME,
+    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
+    UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
 const IDENTITIES: [(i32, &str); 3] = [UUID_TAG_NAME, PUUID_TAG_NAME, INSTUUID_TAG_NAME];
@@ -22,13 +22,14 @@ fn event(
     identifiers: &[(&str, &str)],
     target: Option<(Field, Scalar)>,
     terminal: bool,
-) -> FixMsg {
+) -> yggdryl::Result<FixMsg> {
     let mut columns = vec![
         field((55, "symbol"), DataType::utf8()),
         registry
             .get_group_by_counter(ALTIDS_TAG_NAME.0)
             .unwrap()
             .clone(),
+        registry.get_field_by_tag(52).unwrap().clone(),
     ];
     let mut values = vec![
         Scalar::from("ALPHA"),
@@ -38,6 +39,7 @@ fn event(
                 .map(|(name, value)| (Scalar::from(*name), Scalar::from(*value))),
         )
         .unwrap(),
+        clock(0),
     ];
     if let Some((field, value)) = target {
         columns.push(field);
@@ -54,7 +56,6 @@ fn event(
             .required_field("event"),
         Scalar::from_sequence(values),
     )
-    .unwrap()
 }
 
 fn custom_registry(base: &FixRegistry, target: &Field, registered: bool) -> Arc<FixRegistry> {
@@ -86,7 +87,7 @@ fn located(error: Error, name: &str, expected: &DataType) {
 }
 
 #[test]
-fn generated_uuid_stamps_refuse_coercible_registry_and_row_targets() {
+fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
     let registry = Arc::new(FixRegistry::new());
     for identity in IDENTITIES {
         for dtype in [DataType::utf8(), DataType::binary()] {
@@ -98,17 +99,35 @@ fn generated_uuid_stamps_refuse_coercible_registry_and_row_targets() {
             let target = field(identity, dtype);
             for registered in [false, true] {
                 let custom = custom_registry(&registry, &target, registered);
-                let mut life = FixLifecycle::new(Arc::clone(&registry));
+                let mut life = FixLifecycle::new(Arc::clone(&registry))
+                    .try_with_interval_ns(1)
+                    .unwrap();
                 let message = event(
                     custom,
                     &[("id", "NEW")],
                     Some((target.clone(), Scalar::Null)),
                     false,
                 );
-                located(life.fill(message).unwrap_err(), identity.1, &DataType::Uuid);
+                let error = if identity == INSTUUID_TAG_NAME {
+                    life.fill(message.unwrap()).unwrap_err()
+                } else {
+                    message.unwrap_err()
+                };
+                if !registered && identity != INSTUUID_TAG_NAME {
+                    let Error::InvalidRecord { path, reason } = error else {
+                        panic!("expected a located missing definition refusal, got {error}");
+                    };
+                    assert_eq!(path, format!("$.{}", identity.1));
+                    assert_eq!(
+                        reason,
+                        "expected a registered mandatory definition, got missing definition"
+                    );
+                } else {
+                    located(error, identity.1, &DataType::Uuid);
+                }
                 assert_eq!(life.alive(), 0);
                 let accepted = life
-                    .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false))
+                    .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false).unwrap())
                     .unwrap();
                 for (tag, _) in IDENTITIES {
                     uuid(&accepted, tag);
@@ -127,35 +146,33 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
             let target = field(identity, dtype);
             let custom = custom_registry(&registry, &target, true);
             for terminal in [false, true] {
-                let mut life = FixLifecycle::new(Arc::clone(&registry));
+                let mut life = FixLifecycle::new(Arc::clone(&registry))
+                    .try_with_interval_ns(1)
+                    .unwrap();
                 let live = life
-                    .fill(event(Arc::clone(&registry), &[("id", "LIVE")], None, false))
+                    .fill(event(Arc::clone(&registry), &[("id", "LIVE")], None, false).unwrap())
                     .unwrap();
                 let persistent = uuid(&live, PUUID_TAG_NAME.0);
-                let target = if identity == PUUID_TAG_NAME {
-                    let foreign = Uuid::new(999);
-                    assert_ne!(foreign, persistent);
-                    // The row carries a native stated value, but its registry
-                    // directs the correction into a coercible non-UUID field.
-                    (field(identity, DataType::Uuid), Scalar::Uuid(foreign))
-                } else {
-                    (target.clone(), Scalar::Null)
-                };
                 let message = event(
                     Arc::clone(&custom),
                     &[("a", "LIVE"), ("b", "NEW")],
-                    Some(target),
+                    Some((target.clone(), Scalar::Null)),
                     terminal,
                 );
-                located(life.fill(message).unwrap_err(), identity.1, &DataType::Uuid);
+                let error = if identity == INSTUUID_TAG_NAME {
+                    life.fill(message.unwrap()).unwrap_err()
+                } else {
+                    message.unwrap_err()
+                };
+                located(error, identity.1, &DataType::Uuid);
                 assert_eq!(life.alive(), 1, "a refusal cannot close the live chain");
                 let independent = life
-                    .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false))
+                    .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false).unwrap())
                     .unwrap();
                 assert_ne!(uuid(&independent, PUUID_TAG_NAME.0), persistent);
                 assert_eq!(life.alive(), 2, "a refusal cannot attach the new alias");
                 let unchanged = life
-                    .fill(event(Arc::clone(&registry), &[("id", "LIVE")], None, false))
+                    .fill(event(Arc::clone(&registry), &[("id", "LIVE")], None, false).unwrap())
                     .unwrap();
                 assert_eq!(uuid(&unchanged, PUUID_TAG_NAME.0), persistent);
                 assert_eq!(life.alive(), 2);
@@ -165,7 +182,7 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
 }
 
 #[test]
-fn registered_uuid_targets_retype_null_row_columns_without_erasing_uuid_values() {
+fn mandatory_null_columns_require_native_layout_but_optional_instrument_can_retype() {
     let registry = Arc::new(FixRegistry::new());
     for identity in IDENTITIES {
         for dtype in [DataType::utf8(), DataType::binary()] {
@@ -176,8 +193,14 @@ fn registered_uuid_targets_retype_null_row_columns_without_erasing_uuid_values()
                 Some((target, Scalar::Null)),
                 false,
             );
-            let mut life = FixLifecycle::new(Arc::clone(&registry));
-            let message = life.fill(message).unwrap();
+            if identity != INSTUUID_TAG_NAME {
+                located(message.unwrap_err(), identity.1, &DataType::Uuid);
+                continue;
+            }
+            let mut life = FixLifecycle::new(Arc::clone(&registry))
+                .try_with_interval_ns(1)
+                .unwrap();
+            let message = life.fill(message.unwrap()).unwrap();
             uuid(&message, identity.0);
             assert_eq!(
                 message.as_field().get_field(identity.1).unwrap().dtype(),
@@ -209,13 +232,13 @@ fn timed_event(
     target: Option<(Field, Scalar)>,
     terminal: bool,
     instant: i64,
-    id: u128,
+    sequence: i64,
 ) -> FixMsg {
-    let mut message = event(registry, identifiers, target, terminal);
+    let mut message = event(registry, identifiers, target, terminal).unwrap();
     message
         .set_many([
-            (TIMESTAMP_TAG_NAME.0, clock(instant)),
-            (UUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(id))),
+            (UPDATEDAT_TAG_NAME.0, clock(instant)),
+            (34, Scalar::from(sequence)),
         ])
         .unwrap();
     message
@@ -279,7 +302,9 @@ fn first_null_previous_stamps_refuse_wrong_layouts_before_opening_a_chain() {
             for registered in [false, true] {
                 let custom = custom_registry(&registry, &target, registered);
                 for has_chain in [false, true] {
-                    let mut life = FixLifecycle::new(Arc::clone(&registry));
+                    let mut life = FixLifecycle::new(Arc::clone(&registry))
+                        .try_with_interval_ns(1)
+                        .unwrap();
                     let ids = if has_chain { &[("id", "NEW")][..] } else { &[] };
                     let message = timed_event(
                         Arc::clone(&custom),
@@ -323,7 +348,9 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
             for registered in [false, true] {
                 let custom = custom_registry(&registry, &target, registered);
                 for terminal in [false, true] {
-                    let mut life = FixLifecycle::new(Arc::clone(&registry));
+                    let mut life = FixLifecycle::new(Arc::clone(&registry))
+                        .try_with_interval_ns(1)
+                        .unwrap();
                     let live = life
                         .fill(timed_event(
                             Arc::clone(&registry),
@@ -357,7 +384,7 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
                         ))
                         .unwrap();
                     assert_eq!(uuid(&next, PUUID_TAG_NAME.0), persistent);
-                    previous(&next, Some((101, Uuid::new(101))));
+                    previous(&next, Some((101, uuid(&live, UUID_TAG_NAME.0))));
                     let independent = life
                         .fill(timed_event(
                             Arc::clone(&registry),
@@ -387,20 +414,22 @@ fn previous_stamps_use_the_input_tag_role_not_the_resolved_columns_name() {
         let target = field((identity.0, "custom_previous"), dtype.clone());
         for registered in [false, true] {
             let custom = custom_registry(&registry, &target, registered);
-            let mut life = FixLifecycle::new(Arc::clone(&registry));
-            for (instant, id, expected) in
-                [(101, 101, None), (202, 202, Some((101, Uuid::new(101))))]
-            {
+            let mut life = FixLifecycle::new(Arc::clone(&registry))
+                .try_with_interval_ns(1)
+                .unwrap();
+            let mut expected = None;
+            for instant in [101, 202] {
                 let message = timed_event(
                     Arc::clone(&custom),
                     &[("id", "LIVE")],
                     Some((target.clone(), Scalar::Null)),
                     false,
                     instant,
-                    id,
+                    instant,
                 );
                 let message = life.fill(message).unwrap();
                 previous(&message, expected);
+                expected = Some((instant, uuid(&message, UUID_TAG_NAME.0)));
                 assert_eq!(
                     message
                         .as_field()

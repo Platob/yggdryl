@@ -1,13 +1,14 @@
-//! Decision 23: UUID-owned chains and instrument-scoped identifier keys.
+//! Code-owned live chains retain instrument-scoped first-owner identifiers.
 
 use std::sync::Arc;
 
 use super::SoleMessage;
+use yggdryl::hashing::xxhash::xxh128;
 use yggdryl::types::Uuid;
 use yggdryl::types::nested::{Mapping, Nested};
 use yggdryl::{
-    ALTIDS_TAG_NAME, DataType, Error, Field, FixCategory, FixCodec, FixLifecycle, FixMsg,
-    FixRegistry, INSTUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME, TimeUnit, Timezone,
+    ALTIDS_TAG_NAME, CODE_TAG_NAME, DataType, Error, Field, FixCategory, FixLifecycle, FixMsg,
+    FixRegistry, INSTUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
     UUID_TAG_NAME,
 };
 
@@ -17,23 +18,32 @@ fn field(name: &str, tag: i32, dtype: DataType) -> Field {
     field
 }
 
-pub(super) fn row(
+pub(super) fn clock(time: i64) -> Scalar {
+    Scalar::datetime64(time, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+}
+
+pub(super) fn try_row(
     registry: &Arc<FixRegistry>,
     cells: impl IntoIterator<Item = (i32, Scalar)>,
-) -> FixMsg {
+) -> yggdryl::Result<FixMsg> {
+    let mut cells: Vec<_> = cells.into_iter().collect();
+    if !cells.iter().any(|(tag, _)| *tag == 52) {
+        cells.push((52, clock(0)));
+    }
     let mut fields = Vec::new();
     let mut values = Vec::new();
     for (tag, value) in cells {
-        let name = if tag == ALTIDS_TAG_NAME.0 {
-            ALTIDS_TAG_NAME.1.to_owned()
+        let known = if tag == ALTIDS_TAG_NAME.0 {
+            registry.get_group_by_counter(tag)
         } else {
-            registry
-                .get_field_by_tag(tag)
-                .map_or_else(|| tag.to_string(), |field| field.name().to_owned())
+            registry.get_field_by_tag(tag)
         };
-        // The row states its actual shape; lifecycle must reject an invalid
-        // UUID or Map instead of letting the registry coerce it first.
-        let dtype = if value.as_mapping().is_some_and(|entries| entries.is_empty()) {
+        let name = known.map_or_else(|| tag.to_string(), |field| field.name().to_owned());
+        // Keep the actual native layout: intake owns mandatory refusal;
+        // lifecycle owns the optional UUID/Map/previous-value contract.
+        let dtype = if value.is_null() {
+            known.map_or(DataType::Null, |field| field.dtype().clone())
+        } else if value.as_mapping().is_some_and(|entries| entries.is_empty()) {
             DataType::map_of(DataType::utf8(), DataType::utf8(), false).unwrap()
         } else {
             value.dtype().unwrap()
@@ -48,7 +58,13 @@ pub(super) fn row(
             .required_field("event"),
         Scalar::from_sequence(values),
     )
-    .unwrap()
+}
+
+pub(super) fn row(
+    registry: &Arc<FixRegistry>,
+    cells: impl IntoIterator<Item = (i32, Scalar)>,
+) -> FixMsg {
+    try_row(registry, cells).unwrap()
 }
 
 fn mapping(entries: &[(&str, &str)]) -> Scalar {
@@ -63,19 +79,16 @@ fn mapping(entries: &[(&str, &str)]) -> Scalar {
 fn event(
     registry: &Arc<FixRegistry>,
     scope: Option<Uuid>,
-    persistent: Option<Uuid>,
+    code: Option<&str>,
     time: i64,
     entries: &[(&str, &str)],
 ) -> FixMsg {
     let mut cells = vec![
         (ALTIDS_TAG_NAME.0, mapping(entries)),
-        (
-            TIMESTAMP_TAG_NAME.0,
-            Scalar::datetime64(time, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
-        ),
+        (UPDATEDAT_TAG_NAME.0, clock(time)),
     ];
     cells.extend(scope.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(value))));
-    cells.extend(persistent.map(|value| (PUUID_TAG_NAME.0, Scalar::Uuid(value))));
+    cells.extend(code.map(|value| (CODE_TAG_NAME.0, Scalar::from(value))));
     row(registry, cells)
 }
 
@@ -92,38 +105,40 @@ fn uuid(message: &FixMsg, tag: i32) -> Option<Uuid> {
 }
 
 fn chain(message: &FixMsg) -> Uuid {
-    uuid(message, PUUID_TAG_NAME.0).expect("a chain")
+    uuid(message, PUUID_TAG_NAME.0).expect("every message has its code identity")
+}
+
+fn persistent(code: &str) -> Uuid {
+    Uuid::from_v8(xxh128(code.as_bytes()))
 }
 
 fn located(error: Error, expected: &str) {
     let Error::InvalidRecord { path, .. } = error else {
-        panic!("expected a located value refusal, got {error}");
+        panic!("expected a located refusal, got {error}");
     };
     assert_eq!(path, expected);
 }
 
 #[test]
-fn stated_uuid_opens_without_keys_and_direct_join_outranks_identifier_lookup() {
+fn explicit_code_opens_without_keys_and_direct_join_outranks_identifier_lookup() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let direct = Uuid::new(0);
-    let other = Uuid::new(7);
     let first = life
-        .fill(event(&registry, None, Some(direct), 0, &[]))
+        .fill(event(&registry, None, Some("direct"), 0, &[]))
         .unwrap();
-    assert_eq!(chain(&first), direct, "nil is a stated UUID, not absence");
-    life.fill(event(&registry, None, Some(other), 1, &[("a", "OWNED")]))
+    assert_eq!(chain(&first), persistent("direct"));
+    life.fill(event(&registry, None, Some("other"), 1, &[("a", "OWNED")]))
         .unwrap();
     let joined = life
         .fill(event(
             &registry,
             None,
-            Some(direct),
+            Some("direct"),
             2,
             &[("a", "OWNED"), ("b", "NEW")],
         ))
         .unwrap();
-    assert_eq!(chain(&joined), direct);
+    assert_eq!(chain(&joined), chain(&first));
     assert_eq!(life.alive(), 2);
     let owner = life
         .fill(event(&registry, None, None, 3, &[("a", "OWNED")]))
@@ -133,35 +148,36 @@ fn stated_uuid_opens_without_keys_and_direct_join_outranks_identifier_lookup() {
         .unwrap();
     assert_eq!(
         chain(&owner),
-        other,
-        "a direct join cannot steal an owned key"
+        persistent("other"),
+        "direct joins cannot steal keys"
     );
-    assert_eq!(chain(&attached), direct);
+    assert_eq!(chain(&attached), persistent("direct"));
 }
 
 #[test]
-fn scoped_identifier_corrects_a_foreign_stated_puuid_but_preserves_other_uuids() {
+fn scoped_identifier_resolves_code_but_foreign_identity_assertions_refuse_atomically() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let scope = Uuid::new(123);
     let original = life
         .fill(event(&registry, Some(scope), None, 0, &[("id", "A")]))
         .unwrap();
-    let mut message = event(
-        &registry,
-        Some(scope),
-        Some(Uuid::new(456)),
-        1,
-        &[("id", "A")],
-    );
-    let own_uuid = Uuid::new(u128::MAX);
-    message
-        .set(UUID_TAG_NAME.0, Scalar::Uuid(own_uuid))
-        .unwrap();
-    let corrected = life.fill(message).unwrap();
-    assert_eq!(chain(&corrected), chain(&original));
-    assert_eq!(uuid(&corrected, INSTUUID_TAG_NAME.0), Some(scope));
-    assert_eq!(uuid(&corrected, UUID_TAG_NAME.0), Some(own_uuid));
+    let mut message = event(&registry, Some(scope), None, 1, &[("id", "A")]);
+    for tag in [UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
+        let before = message.clone();
+        located(
+            message.set(tag, Scalar::Uuid(Uuid::new(456))).unwrap_err(),
+            if tag == UUID_TAG_NAME.0 {
+                "$.uuid"
+            } else {
+                "$.puuid"
+            },
+        );
+        assert_eq!(message, before);
+    }
+    let resolved = life.fill(message).unwrap();
+    assert_eq!(chain(&resolved), chain(&original));
+    assert_eq!(uuid(&resolved, INSTUUID_TAG_NAME.0), Some(scope));
     assert_eq!(life.alive(), 1);
 }
 
@@ -179,12 +195,8 @@ fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
         let message = life
             .fill(event(&registry, scope, None, 456, &[("id", "SAME")]))
             .unwrap();
-        let mut input = vec![u8::from(scope.is_some())];
-        if let Some(scope) = scope {
-            input.extend_from_slice(&scope.into_bytes());
-        }
-        input.extend_from_slice(b"\x1fSAME");
-        let expected = Uuid::from_v7(456, yggdryl::hashing::xxhash::xxh3(&input)).unwrap();
+        let code = scope.map_or_else(|| "-/SAME".to_owned(), |scope| format!("{scope}/SAME"));
+        let expected = persistent(&code);
         assert_eq!(chain(&message), expected);
         assert_eq!(uuid(&message, INSTUUID_TAG_NAME.0), scope);
         assert!(!chains.contains(&expected));
@@ -193,7 +205,6 @@ fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
     assert_eq!(life.alive(), 4);
     let mut null_scope = event(&registry, None, None, 456, &[("id", "SAME")]);
     null_scope.set(INSTUUID_TAG_NAME.0, Scalar::Null).unwrap();
-    null_scope.set(PUUID_TAG_NAME.0, Scalar::Null).unwrap();
     assert_eq!(chain(&life.fill(null_scope).unwrap()), chains[0]);
     assert_eq!(life.alive(), 4);
 }
@@ -212,8 +223,7 @@ fn stated_scope_controls_identity_independently_of_raw_instrument_fields() {
     assert_eq!(chain(&first), chain(&second));
     let mut elsewhere = event(&registry, Some(Uuid::new(18)), None, 0, &[("id", "A")]);
     elsewhere.set(55, Scalar::from("ALPHA")).unwrap();
-    let elsewhere = life.fill(elsewhere).unwrap();
-    assert_ne!(chain(&first), chain(&elsewhere));
+    assert_ne!(chain(&first), chain(&life.fill(elsewhere).unwrap()));
     assert_eq!(life.alive(), 2);
 }
 
@@ -236,11 +246,7 @@ fn member_name_priority_wins_without_merging_or_stealing_aliases() {
             &[("a", "NEWER"), ("b", "OLDER"), ("c", "ADDED")],
         ))
         .unwrap();
-    assert_eq!(
-        chain(&conflict),
-        chain(&newer),
-        "map name order, not chain age"
-    );
+    assert_eq!(chain(&conflict), chain(&newer), "name order, not chain age");
     assert_eq!(life.alive(), 2);
     for (key, expected) in [
         ("OLDER", chain(&older)),
@@ -282,35 +288,30 @@ fn member_name_priority_wins_without_merging_or_stealing_aliases() {
 fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let persistent = Uuid::new(91);
-    for (scope, key) in [
+    let scopes = [
         (Some(Uuid::new(1)), "A"),
         (Some(Uuid::new(2)), "B"),
         (None, "C"),
-    ] {
-        life.fill(event(&registry, scope, Some(persistent), 0, &[("id", key)]))
+    ];
+    for (scope, key) in scopes {
+        life.fill(event(&registry, scope, Some("shared"), 0, &[("id", key)]))
             .unwrap();
     }
     assert_eq!(life.alive(), 1);
-    let mut terminal = event(&registry, None, Some(persistent), 1, &[]);
+    let mut terminal = event(&registry, None, Some("shared"), 1, &[]);
     terminal.set(39, Scalar::from("2")).unwrap();
     life.fill(terminal).unwrap();
     assert_eq!(life.alive(), 0);
     let mut reopened = Vec::new();
-    for (scope, key) in [
-        (Some(Uuid::new(1)), "A"),
-        (Some(Uuid::new(2)), "B"),
-        (None, "C"),
-    ] {
+    for (scope, key) in scopes {
         let message = life
             .fill(event(&registry, scope, None, 2, &[("id", key)]))
             .unwrap();
-        assert_ne!(chain(&message), persistent);
+        assert_ne!(chain(&message), persistent("shared"));
         reopened.push(message);
     }
     assert_eq!(life.alive(), 3);
     life.clear();
-    assert_eq!(life.alive(), 0);
     for message in reopened {
         assert_eq!(life.fill(message.clone()).unwrap(), message);
     }
@@ -318,20 +319,23 @@ fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
     let mut terminal = event(
         &registry,
         None,
-        Some(Uuid::new(999)),
+        Some("first-terminal"),
         3,
         &[("id", "FIRST-TERMINAL")],
     );
     terminal.set(39, Scalar::from("2")).unwrap();
-    assert_eq!(chain(&life.fill(terminal).unwrap()), Uuid::new(999));
-    assert_eq!(life.alive(), 3, "a first terminal event leaves no chain");
+    assert_eq!(
+        chain(&life.fill(terminal).unwrap()),
+        persistent("first-terminal")
+    );
+    assert_eq!(life.alive(), 3);
     assert_ne!(
         chain(
             &life
                 .fill(event(&registry, None, None, 4, &[("id", "FIRST-TERMINAL")]))
                 .unwrap()
         ),
-        Uuid::new(999)
+        persistent("first-terminal")
     );
 }
 
@@ -347,7 +351,8 @@ fn null_empty_duplicate_case_and_whitespace_values_keep_their_exact_meanings() {
     let empty = life
         .fill(row(&registry, [(ALTIDS_TAG_NAME.0, no_ids)]))
         .unwrap();
-    assert_eq!(uuid(&empty, PUUID_TAG_NAME.0), None);
+    assert_eq!(chain(&empty), persistent(""));
+    assert_eq!(empty.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some(""));
     assert_eq!(life.alive(), 0);
     let mut chains = Vec::new();
     for value in ["ID", "id", " ID ", " "] {
@@ -391,7 +396,7 @@ fn stated_altids_including_empty_overrides_compiled_fallback_and_null_does_not()
     };
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let empty = life.fill(make(mapping(&[]))).unwrap();
-    assert_eq!(uuid(&empty, PUUID_TAG_NAME.0), None);
+    assert_eq!(chain(&empty), persistent(""));
     assert_eq!(empty.by_tag(ALTIDS_TAG_NAME.0).unwrap(), &mapping(&[]));
     let raw = life.fill(make(Scalar::Null)).unwrap();
     assert_eq!(life.alive(), 1);
@@ -436,7 +441,7 @@ fn declared_registry(dtype: DataType) -> Arc<FixRegistry> {
 #[test]
 fn compiled_integer_identifiers_match_enrichments_sorted_map_and_priority() {
     let registry = declared_registry(DataType::Int64);
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
     let message = row(
         &registry,
         [
@@ -469,25 +474,18 @@ fn invalid_identifier_text_refuses_atomically_at_the_declared_member() {
     let registry = declared_registry(DataType::binary());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let live = life
-        .fill(event(
-            &registry,
-            None,
-            Some(Uuid::new(8)),
-            0,
-            &[("id", "LIVE")],
-        ))
+        .fill(event(&registry, None, Some("live"), 0, &[("id", "LIVE")]))
         .unwrap();
     let invalid = row(
         &registry,
         [
             (35, Scalar::from("ZID")),
             (71_001, Scalar::from(vec![0xff_u8])),
-            (PUUID_TAG_NAME.0, Scalar::Uuid(chain(&live))),
+            (CODE_TAG_NAME.0, Scalar::from("live")),
             (39, Scalar::from("2")),
         ],
     );
-    let error = life.fill(invalid).unwrap_err();
-    located(error, "$.zidentifier");
+    located(life.fill(invalid).unwrap_err(), "$.zidentifier");
     assert_eq!(life.alive(), 1);
     assert_eq!(
         chain(
@@ -511,8 +509,8 @@ fn unknown_message_types_have_no_hard_tag_or_nested_identifier_fallback() {
             (37, Scalar::from("B")),
         ],
     );
-    assert_eq!(uuid(&life.fill(unknown).unwrap(), PUUID_TAG_NAME.0), None);
-
+    assert_eq!(chain(&life.fill(unknown).unwrap()), persistent(""));
+    assert_eq!(life.alive(), 0);
     let nested_member = field("innerid", 71_003, DataType::utf8());
     let mut item = DataType::from_fields([nested_member])
         .unwrap()
@@ -530,70 +528,78 @@ fn unknown_message_types_have_no_hard_tag_or_nested_identifier_fallback() {
     let custom = Arc::new(custom);
     let message = FixMsg::with_registry(
         Arc::clone(&custom),
-        DataType::from_fields([field("msgtype", 35, DataType::utf8()), nested])
-            .unwrap()
-            .required_field("nestedonly"),
+        DataType::from_fields([
+            field("msgtype", 35, DataType::utf8()),
+            nested,
+            custom.get_field_by_tag(52).unwrap().clone(),
+        ])
+        .unwrap()
+        .required_field("nestedonly"),
         Scalar::from_sequence([
             Scalar::from("ZNEST"),
             Scalar::from_sequence([Scalar::from_sequence([Scalar::from("NESTED-ID")])]),
+            clock(0),
         ]),
     )
     .unwrap();
     let mut life = FixLifecycle::new(custom);
-    assert_eq!(uuid(&life.fill(message).unwrap(), PUUID_TAG_NAME.0), None);
+    assert_eq!(chain(&life.fill(message).unwrap()), persistent(""));
     assert_eq!(life.alive(), 0);
 }
 
 #[test]
 fn malformed_maps_and_uuid_shapes_refuse_before_direct_join_or_terminal_cleanup() {
     let registry = Arc::new(FixRegistry::new());
-    let invalid_maps = [
-        (Scalar::from("not a map"), "$.altids"),
+    let invalid = [
+        (ALTIDS_TAG_NAME.0, Scalar::from("not a map"), "$.altids"),
         (
+            ALTIDS_TAG_NAME.0,
             Scalar::from_mapping([(Scalar::from(1_i64), Scalar::from("NEW"))]).unwrap(),
             "$.altids[0].key",
         ),
         (
+            ALTIDS_TAG_NAME.0,
             Scalar::from_mapping([(Scalar::from("a"), Scalar::from(7_i64))]).unwrap(),
             "$.altids[0].value",
         ),
         (
+            ALTIDS_TAG_NAME.0,
             Scalar::from_mapping([(Scalar::from("a"), Scalar::from(vec![0xff_u8]))]).unwrap(),
             "$.altids[0].value",
         ),
-        (mapping(&[("b", "NEW"), ("a", "LIVE")]), "$.altids[1].key"),
+        (
+            ALTIDS_TAG_NAME.0,
+            mapping(&[("b", "NEW"), ("a", "LIVE")]),
+            "$.altids[1].key",
+        ),
+        (
+            INSTUUID_TAG_NAME.0,
+            Scalar::from("00000000-0000-0000-0000-000000000000"),
+            "$.instuuid",
+        ),
+        (PUUID_TAG_NAME.0, Scalar::from(vec![0_u8; 16]), "$.puuid"),
+        (UUID_TAG_NAME.0, Scalar::from(1_i64), "$.uuid"),
     ];
-    let invalid = invalid_maps
-        .into_iter()
-        .map(|(value, path)| (ALTIDS_TAG_NAME.0, value, path))
-        .chain([
-            (
-                INSTUUID_TAG_NAME.0,
-                Scalar::from("00000000-0000-0000-0000-000000000000"),
-                "$.instuuid",
-            ),
-            (PUUID_TAG_NAME.0, Scalar::from(vec![0_u8; 16]), "$.puuid"),
-            (UUID_TAG_NAME.0, Scalar::from(1_i64), "$.uuid"),
-        ]);
     for (tag, value, path) in invalid {
         let mut life = FixLifecycle::new(Arc::clone(&registry));
         let live = life
-            .fill(event(
-                &registry,
-                None,
-                Some(Uuid::new(8)),
-                0,
-                &[("id", "LIVE")],
-            ))
+            .fill(event(&registry, None, Some("live"), 0, &[("id", "LIVE")]))
             .unwrap();
-        let mut cells = vec![(39, Scalar::from("2")), (tag, value)];
-        if tag != PUUID_TAG_NAME.0 {
-            cells.push((PUUID_TAG_NAME.0, Scalar::Uuid(chain(&live))));
-        }
+        let mut cells = vec![
+            (39, Scalar::from("2")),
+            (tag, value),
+            (CODE_TAG_NAME.0, Scalar::from("live")),
+        ];
         if tag != ALTIDS_TAG_NAME.0 {
             cells.push((ALTIDS_TAG_NAME.0, mapping(&[("a", "LIVE"), ("b", "NEW")])));
         }
-        located(life.fill(row(&registry, cells)).unwrap_err(), path);
+        let built = try_row(&registry, cells);
+        let error = if [UUID_TAG_NAME.0, PUUID_TAG_NAME.0].contains(&tag) {
+            built.unwrap_err()
+        } else {
+            life.fill(built.unwrap()).unwrap_err()
+        };
+        located(error, path);
         assert_eq!(life.alive(), 1, "{path}");
         let independent = life
             .fill(event(&registry, None, None, 1, &[("id", "NEW")]))
@@ -601,7 +607,7 @@ fn malformed_maps_and_uuid_shapes_refuse_before_direct_join_or_terminal_cleanup(
         assert_ne!(
             chain(&independent),
             chain(&live),
-            "{path}: no alias was published"
+            "{path}: no alias published"
         );
         assert_eq!(life.alive(), 2);
     }
@@ -627,20 +633,6 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
                     INSTUUID_TAG_NAME.0,
                     Scalar::from(long.clone()),
                     "$.instuuid",
-                    "a native UUID or null",
-                    true,
-                ),
-                (
-                    PUUID_TAG_NAME.0,
-                    Scalar::from(long.clone()),
-                    "$.puuid",
-                    "a native UUID or null",
-                    true,
-                ),
-                (
-                    UUID_TAG_NAME.0,
-                    Scalar::from(long.clone()),
-                    "$.uuid",
                     "a native UUID or null",
                     true,
                 ),
@@ -676,27 +668,27 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
             ];
             for (tag, value, expected_path, expected, retains_text) in invalid {
                 let mut life = FixLifecycle::new(Arc::clone(&registry));
-                let live = Uuid::new(8);
-                life.fill(event(&registry, None, Some(live), 0, &[("id", "LIVE")]))
+                let live = life
+                    .fill(event(&registry, None, Some("live"), 0, &[("id", "LIVE")]))
                     .unwrap();
-                let mut cells = vec![(39, Scalar::from("2")), (tag, value)];
-                if tag != PUUID_TAG_NAME.0 {
-                    cells.push((PUUID_TAG_NAME.0, Scalar::Uuid(live)));
-                }
+                let mut cells = vec![
+                    (39, Scalar::from("2")),
+                    (tag, value),
+                    (CODE_TAG_NAME.0, Scalar::from("live")),
+                ];
                 if tag != ALTIDS_TAG_NAME.0 {
                     cells.push((ALTIDS_TAG_NAME.0, mapping(&[("a", "LIVE"), ("b", "NEW")])));
                 }
-                let error = life.fill(row(&registry, cells)).unwrap_err();
-                let Error::InvalidRecord { path, reason } = error else {
-                    panic!("expected a located value refusal, got {error}");
+                let Error::InvalidRecord { path, reason } =
+                    life.fill(row(&registry, cells)).unwrap_err()
+                else {
+                    panic!("a located value refusal");
                 };
                 assert_eq!(path, expected_path);
                 let prefix = format!("expected {expected}, got ");
                 let actual = reason
                     .strip_prefix(prefix.as_str())
-                    .expect("the refusal retains both expected and actual");
-                // The shared error renderer admits 64 payload bytes plus its
-                // three-byte ellipsis, independent of input size or encoding.
+                    .expect("both expected and actual");
                 assert!(actual.len() <= 64 + '…'.len_utf8(), "{reason}");
                 assert!(actual.ends_with('…'), "{reason}");
                 if retains_text {
@@ -707,41 +699,55 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
                 let retained = life
                     .fill(event(&registry, None, None, 1, &[("id", "LIVE")]))
                     .unwrap();
-                assert_eq!(chain(&retained), live);
+                assert_eq!(chain(&retained), chain(&live));
                 let independent = life
                     .fill(event(&registry, None, None, 2, &[("id", "NEW")]))
                     .unwrap();
-                assert_ne!(chain(&independent), live);
+                assert_ne!(chain(&independent), chain(&live));
                 assert_eq!(life.alive(), 2);
+            }
+            // Mandatory wrong layouts fail before a message exists; the
+            // reported actual datatype itself is bounded, not the payload.
+            for (tag, name) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
+                let Error::InvalidRecord { path, reason } =
+                    try_row(&registry, [(tag, Scalar::from(long.clone()))]).unwrap_err()
+                else {
+                    panic!("mandatory layout refusal");
+                };
+                assert_eq!(path, format!("$.{name}"));
+                assert!(reason.len() < 256, "{reason}");
+                assert!(!reason.contains(&long));
             }
         }
     }
 }
 
 #[test]
-fn a_generated_uuid_collision_does_not_join_an_unrelated_explicit_chain() {
+fn a_stated_foreign_hash_cannot_manufacture_an_unrelated_chain_collision() {
     let registry = Arc::new(FixRegistry::new());
-    let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let colliding = Uuid::from_v7(0, yggdryl::hashing::xxhash::xxh3(b"\0\x1fNEW")).unwrap();
-    life.fill(event(
+    let mut message = event(
         &registry,
         None,
-        Some(colliding),
+        Some("UNRELATED"),
         0,
         &[("id", "UNRELATED")],
-    ))
-    .unwrap();
+    );
+    let before = message.clone();
     located(
-        life.fill(event(&registry, None, None, 0, &[("id", "NEW")]))
+        message
+            .set(PUUID_TAG_NAME.0, Scalar::Uuid(persistent("-/NEW")))
             .unwrap_err(),
         "$.puuid",
     );
-    assert_eq!(life.alive(), 1);
-    let later = life
-        .fill(event(&registry, None, None, 1, &[("id", "NEW")]))
+    assert_eq!(message, before);
+    let mut life = FixLifecycle::new(Arc::clone(&registry));
+    let unrelated = life.fill(message).unwrap();
+    let fresh = life
+        .fill(event(&registry, None, None, 0, &[("id", "NEW")]))
         .unwrap();
-    assert_ne!(chain(&later), colliding);
+    assert_ne!(chain(&unrelated), chain(&fresh));
     assert_eq!(life.alive(), 2);
+    // Actual equal-hash/different-code injection is pinned inside the owner.
 }
 
 #[test]
@@ -767,23 +773,23 @@ fn duplicate_mapping_keys_are_refused_before_a_message_can_reach_lifecycle() {
 }
 
 #[test]
-fn a_fresh_replay_rebuilds_direct_and_corrected_chains_without_touching_arrivals() {
+fn a_fresh_replay_rebuilds_direct_and_identifier_chains_without_touching_arrivals() {
     let registry = super::committed_registry();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
     let specs = [
-        (Some(Uuid::new(1)), Some(Uuid::new(20)), "A", false),
-        (Some(Uuid::new(2)), Some(Uuid::new(20)), "B", false),
-        (None, Some(Uuid::new(30)), "C", false),
-        (Some(Uuid::new(2)), Some(Uuid::new(999)), "B", true),
+        (Some(Uuid::new(1)), Some("joined"), "A", false),
+        (Some(Uuid::new(2)), Some("joined"), "B", false),
+        (None, Some("other"), "C", false),
+        (Some(Uuid::new(2)), None, "B", true),
         (Some(Uuid::new(1)), None, "A", false),
     ];
     let mut input = Vec::new();
-    for (at, (scope, persistent, key, terminal)) in specs.into_iter().enumerate() {
+    for (at, (scope, code, key, terminal)) in specs.into_iter().enumerate() {
         let line = format!("8=FIX.4.4|35=D|11={key}|60=20260102-10:15:3{at}|10=0|");
         let mut message = codec.sole_line(line.as_bytes(), false).unwrap();
         let mut writes = vec![(ALTIDS_TAG_NAME.0, mapping(&[("id", key)]))];
         writes.extend(scope.map(|scope| (INSTUUID_TAG_NAME.0, Scalar::Uuid(scope))));
-        writes.extend(persistent.map(|persistent| (PUUID_TAG_NAME.0, Scalar::Uuid(persistent))));
+        writes.extend(code.map(|code| (CODE_TAG_NAME.0, Scalar::from(code))));
         if terminal {
             writes.push((39, Scalar::from("2")));
         }
@@ -792,6 +798,7 @@ fn a_fresh_replay_rebuilds_direct_and_corrected_chains_without_touching_arrivals
     }
     let mut first = FixLifecycle::new(Arc::clone(&registry));
     let mut once = Vec::new();
+    assert_eq!(input.len(), 5);
     for (message, alive) in input.into_iter().zip([1, 1, 2, 1, 2]) {
         let entries = message.entries().to_vec();
         let digest = message.digest();

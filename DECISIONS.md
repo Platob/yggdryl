@@ -2050,3 +2050,250 @@ is whole; binding/documentation checks remain in their user-ordered stages.
 All twelve FIX pieces are now landed, so remove the spent root prompts
 `FIX_DIRECTION_MESSAGES_PROMPT.md` and `CHARSET_READ_PATH_PROMPT.md` in this
 commit. Their complete records remain recoverable from Git history.
+
+## 26. Settled clocks and code define message identity and grid snapshots
+
+**Rule.** This supersedes the identity and clock rules of decisions 22–24;
+those decisions remain historical records, never compatibility modes.
+The user retires msghash: uuid is the only stored message hash identity.
+
+### Vocabulary and ownership
+
+- Rename tag 65003 timestamp to updatedat, including its public constant and
+  FIX accessors; no alias. Retire msghash/tag65000 without reusing the slot.
+- Generic TextLine.timestamp and ULBRIDGE_ROWHEADER's timestamp capture remain
+  capture context, not FIX aliases. Delete FIX's special Clock capture role and
+  private CLOCK_COLUMN mapping; neither holder mtime nor capture-header time
+  overrides the event's60>52 rule. Explicit resolved FIX clock fields use the
+  ordinary fill path. Fixed FIX rows no longer claim the name timestamp, so
+  carrying batches retain that ordinary capture column and hash it as context.
+- Add createdat65023, code65024, snapshotat65025. Clocks are DateTime64(ns,UTC),
+  code is UTF-8; all are non-null. Empty code is the explicit unknown name.
+- FixMsg directly holds updatedat, createdat, uuid and puuid as private,
+  exact-layout Scalar values. Borrowed accessors/get_by_tag answer those
+  fields without registry lookup, metadata read or child scan. The eager row
+  contains derived mirrors; one finalizer publishes mirrors and hard values
+  together. Clone copies settled values and never reads a clock.
+- This finalizer serves initial intake, mutation, enrichment and row exchange;
+  there is no separately stored content digest and no second hashing engine.
+  Keep existing equality over schema/value/registry, not identity alone.
+- Resolve mandatory roles once at each schema boundary. Explicit fix:tag wins
+  and malformed metadata propagates; absent tags use the existing numeric-tag
+  parser or registry canonical-name/alias resolution. Do not parse paths or
+  infer a role merely from its datatype. Correctly tagged renamed fields keep
+  their names/positions; a name claiming a different mandatory role than its
+  explicit tag refuses. Duplicate mandatory holders refuse even when equal/null.
+  Ordinary duplicate-tag semantics do not change. Fresh recognized tagless
+  fields gain their resolved tag on the staged schema; only genuinely missing
+  roles are appended. The retired name timestamp receives no special lookup.
+- FixMsg::remove becomes fallible if needed to refuse removal of mandatory
+  fields explicitly; never silently restore a removed field using now.
+
+### Clocks and initial intake
+
+- Seed standard SendingTime52 and TransactTime60 definitions into FixRegistry::new, outside
+  fix_crate_fields: existing registry Tag/Name/Id indexes and builder memo
+  remain the sole resolver. Loaded dictionary definitions supply their metadata.
+  TransactTime is optional in messages: its seed types a stated60 once, not
+  an extra always-filled cell. Delete the old interior UTF-8 wire-clock reparse.
+- Registry removal/override remains generic; FIX intake validates the required
+  layouts and refuses missing/mistyped declarations. Do not add a parallel
+  fallback resolver or classify standard52 as a crate tag.
+- Stored-catalog readers load through the same private base constructor before
+  installing missing standard clock seeds: shipped52/60 documents must not
+  collide with preinstalled defaults, and duplicate stored documents still
+  refuse. Public create_definition never becomes an overwrite operation.
+- FixCodec exposes a validated optional default_sending_time in ns/UTC.
+  None means one lazy UTC-now read for each genuinely new undated message.
+  SendingTime precedence: valid message52, valid carrier52, configured default,
+  now. A malformed stated clock is an error, not an absent clock to overwrite.
+  Deferred namespace and carrier-clock conversion use the same resolved FIX
+  version as direct entries, including version-qualified enum aliases; the
+  builder carries that version rather than recovering or guessing it later.
+  Equal raw namespace voices from different source versions must also agree
+  after typing: conflicting meanings fill nothing, while equivalent literal
+  instants coalesce. Compare only distinct source versions of raw-consensus
+  critical candidates; raw-conflicting or overridden voices remain untyped.
+  A conversion failure in a surviving candidate remains a located refusal.
+- snapshotat is the real event instant: explicit valid snapshotat, otherwise
+  TransactTime60 then settled SendingTime52. Initial updatedat and createdat
+  each default to that instant; valid explicit values are retained.
+- No wall clock participates after this initial boundary. Mutations and
+  enrichment carry resolved clocks unless explicitly changed. Parsing fresh
+  undated bytes without a fixed default is intentionally not deterministic;
+  replay carries the settled message/row or uses the same configured default.
+- Existing namespace composition runs before mandatory default selection, so
+  a composed SendingTime remains a stated source and never loses to now.
+  Preserve its existing implementation rather than add a second name reader.
+  Its two callers are codec build branches: relocate it onto existing Built,
+  between Builder::finish and FixMsg::from_built. Borrow existing fields/cells,
+  type only winners, and rebuild only when one lands; no FieldRecord allocation,
+  unsealed FixMsg, mode flag or duplicate composition pass.
+- The shared scanner retains each segment's original value end privately.
+  FIX intake projects that original span only for a key resolving to code,
+  including registry aliases and namespace candidates, through the existing
+  bounded key memo. Public TextEntries and prose trimming are unchanged;
+  no delimiter is rediscovered and no second parser or cache is introduced.
+  Nonempty whitespace code bypasses the capture-wide empty spelling, while
+  ordinary fields and clocks retain their declared absence semantics.
+- Preserve parser cardinality and typed errors: empty payload stays no message;
+  best-effort malformed-body fallback finalizes only its accepted message once.
+  No caller-controlled layout reaches empty_with.expect, and clock errors
+  cannot be caught and replaced by an empty message.
+- Use the two existing error channels: outer Result is payload discovery/syntax,
+  FixMessages items carry materialization and mandatory-contract failures.
+  Single-frame/bridge fast paths wrap their build Result like lazy multi-frame
+  sources already do. Parse XML attributes before materialization; allocate
+  the TextBytes page before any syntax-recovery closure. No new error enum.
+- Builder retains only the first root mandatory-value conversion error until
+  finish instead of converting it to Null; ordinary fields/groups keep their
+  existing best-effort typing. Pin declared-null spellings separately from
+  malformed values, including early empty-value and cleaning filters, so invalid
+  input cannot disappear before the checked conversion.
+- Plugin configuration attributes remain document-owned; synthetic SendingTime
+  is not exported as a plugin attribute. Wire emission and arrival digest still
+  read only the immutable arrival record, not synthetic defaults.
+
+### Content identity
+
+- puuid is UUIDv8 packing of unseeded XXH3-128 of exact code UTF-8 bytes alone.
+  Unknown code gets the same deterministic hash of empty bytes, not nil and
+  not a live unnamed chain. Nonempty whitespace is a real distinct name.
+- Canonical content is the actual named semantic row cells sorted by exact
+  field-name UTF-8 bytes, with existing Scalar Record framing and recursive
+  canonical value feed. Omitted differs from present-null; empty differs from
+  null. Names, values and nested member order matter; root column order does
+  not. Schema metadata itself is not content.
+- Exclude uuid (self-reference), updatedat and createdat by resolved tag;
+  exclude reserved arrival-materialization columns because they are the
+  separately carried wire record, not interpreted message fields. Include
+  every other row cell, including code/puuid/snapshotat/52, identifiers,
+  history, unknown semantic fields and retained capture context/body.
+- Reuse the FIX column plan and its bounded cache for canonical content order;
+  share one depth-aware named-record feed with Scalar rather than allocate a
+  Record, serialize JSON or route through Arrow digest-holder selection.
+  Cache pointer identity is fast; equal reconstructed layouts may require a
+  structural comparison, so claim no zero-cost schema comparison.
+  Since mandatory-role planning may resolve registered aliases, the one-entry
+  cache also retains and keys the registry Arc, not only Fields storage. This
+  prevents a schema from reusing another registry's interpretation.
+- An unseeded transient XXH64 feeds TxHash at updatedat's exact nanosecond count;
+  only its UUID projection is stored. Arrival FixMsg::digest and dedup keep
+  their existing distinct contract.
+- Externally stated uuid/puuid are assertions and must match the computed
+  values. Ordinary content mutation recomputes them; it does not validate the
+  previous identity as if the caller had newly asserted it. Explicit identity
+  writes must match the complete candidate state. Publish atomically.
+
+### UUID packing
+
+- Add TxHash::into_uuid using RFC9562 UUIDv8: preserve all 64 signed nanosecond
+  bits, order-preserving via sign-bit flip, plus the low 58 digest bits around
+  the required version/variant bits. A private Uuid helper owns packing.
+- Let t=(ns as u64) XOR 2^63. Before from_v8 fixes reserved bits, payload is
+  (t>>16)<<80 | ((t>>4)&0xfff)<<64 | (t&0xf)<<58 | digest_low58.
+- Reuse checked unit conversion; refuse counts not representable in i64 ns
+  and digests without a 64-bit payload. Algorithm is not encoded. This is a
+  lossy 58-bit content fingerprint, not cryptographic uniqueness or an inverse
+  of TxHash. Existing raw TxHash bytes and derived ordering are unchanged.
+- Pin MIN/-1/0/1/MAX, 15→16 and 65535→65536, equivalent units, overflow,
+  version/variant, intentional high-digest-bit truncation, zero allocations.
+
+### Row exchange
+
+- A replayable FIX row carries all seven fields: updatedat,createdat,uuid,
+  puuid,code,snapshotat,SendingTime52, each with an exact non-null layout.
+  Validate presence/uniqueness/types before record canonicalization can invent
+  defaults. Row export/import never reads now or recovers clocks from UUID.
+- Partial business projections remain supported if they retain this bundle;
+  missing bundle members produce a typed located refusal. Plain Arrow can
+  still hold arbitrary projections, but those are not replayable FIX rows.
+- Canonicalize exactly the values Arrow will receive, then recompute projected
+  identities AFTER capture-column overlay. Reuse the row Vec, not a second
+  FixMsg/Record/JSON tree. from_row verifies these identities.
+  A matching DataTypeId alone is not proof of matching units/scales/parameters:
+  replace that fitting shortcut with the existing Field::scalar contract.
+  Unrepresentable projected values refuse with their location before hashing.
+- Adding null padding, renaming columns, regrouping members, deriving values
+  or carrying capture context may change uuid; unchanged named content does
+  not. Projection does not change the source message, and retained code keeps
+  the chain name. Second export under the same schema is identical.
+- The four pre-existing invalid group fixtures, frames/verbatim 028 and 031,
+  now refuse at row export through Field::scalar rather than at later import.
+  The indexed-symbol fixture lift 012 also refuses at $.symbol: its two-value
+  Sequence cannot fit the dictionary's string column. The former fitting
+  fallback silently replaced that stated value with null; that loss is no
+  longer accepted. Pin these five refusals and their exact locations, retaining
+  their type, wire, digest and arrival-entry pins. They have no valid projected
+  row to pin, so their former field lines are removed only with this decision's
+  snapshot change. A separate semantic pin proves the list survives in the
+  source message and its own schema, and a failed projection changes neither.
+
+### Lifecycle and grid in this decision
+
+- Update obsolete identity writers now: lifecycle writes canonical code and
+  other facts, and the single message finalizer derives uuid/puuid. It must
+  not write old version7 message/chain identities beside the new rule.
+- Explicit nonempty code selects its live chain globally, even across
+  instrument scopes. Otherwise scoped identifiers find a live chain's code;
+  absent a match, the first identifier derives an unambiguous readable code
+  '<scope UUID or ->/<exact identifier>'. No identifier means code stays empty
+  and opens no chain. Different explicit codes never merge or steal keys.
+- Chains retain their code (the hash cannot recover it) and reject an actual
+  different-code hash collision atomically. Terminal/reopen/clear retains the
+  established live-only storage bound. Reusing code means the same puuid but
+  starts a fresh live incarnation; no historical tombstones are kept.
+- A positive snapshot interval X defaults to 1_000_000_000 ns, a second; the
+  configurable interval is settled before live chains exist. Grid instant
+  g=floor(t/X)*X uses i128 Euclidean arithmetic and checked i64 conversion.
+  Exact boundaries open their bucket; never use now for grid alignment.
+- Cadence belongs only to FixLifecycle: DEFAULT_INTERVAL_NS, interval_ns,
+  set_interval_ns and the usual fallible consuming setter. Repeating the
+  current interval is a no-op even with live chains; changing it requires none.
+  FixCodec::lifecycle retains its default-cadence convenience. A singular
+  snapshot returns Result<Option<FixMsg>>; consuming snapshots over Result
+  messages owns the configured lifecycle and filters only successful None
+  answers, directly composing with existing codec messages/arrow_reader doors.
+  No new iterator class, second cadence setting or hidden row representation.
+  Preserve the existing full lifecycle stream's per-item errors: yield source
+  or transition errors without advancing lifecycle state, and permit the next
+  input when the source does. Fuse only exhaustion, not an error value. The
+  caller can collect Result to stop on error; add no hidden failure bit.
+- A single transition powers full fill and zero-or-one snapshot output. It
+  handles every accepted message once, including suppressed and terminal ones;
+  every returned full message's updatedat becomes g and its UUID is finalized
+  after every code/history/grid stamp. snapshotat keeps the real instant.
+  Both doors commit that exact final pair; presentation does not change state.
+- Per live chain retain highest consumed bucket. An already-aligned updatedat
+  produces no snapshot but consumes its bucket; equal/older buckets suppress.
+  Only the first accepted arrival above the high-water may emit, and only if
+  it was off-grid on arrival. No pending full message/timer/backfill. Unknown
+  code emits no lifecycle snapshot (no shared suppression chain for H('')).
+- History follows every accepted message, not only emitted snapshots; a
+  previous UUID may point outside the snapshot stream. Closed/reopened chains
+  forget suppression/history: uniqueness is bounded to one live incarnation.
+  Decision24's stated non-null previous values remain authoritative. Only
+  lifecycle-filled previous values necessarily reference the actual preceding
+  finalized full message; state always remembers that full message's own pair.
+- Late arrivals can move previous-message time backward while high-water stays
+  at its maximum. A suppressed terminal still closes. A named standalone
+  terminal may emit its off-grid result and retains no chain state. Truncation
+  can put updatedat before createdat and snapshotat; no opposite inequality is
+  enforced. Reopening the same code in the same bucket may emit again.
+- Decision27 remains separate: carry createdat from the first chain message,
+  with replay/history/grid integration pins on top of these settled identities.
+
+### Pins and owning snapshot changes
+
+Mandatory defaults/clock precedence and malformed declarations/statements;
+atomic setters/removers; direct borrowed hard-field access and allocation cost;
+stable named-content ordering/nulls; code-only puuid; UUID packing vectors;
+full/narrow rows, tampering, capture overlays, second-export identity;
+enrichment idempotence and unchanged wire/arrival digest; deterministic replay
+with fixed intake clocks; two messages/one bucket; already-aligned suppression;
+negative/boundary/overflow arithmetic; terminal/reopen/clear and no-name bound.
+
+Regenerate equivalence ONLY after intentional changes and exact moved keys are
+catalogued, with WRITE=1 in this decision's commit. Never exempt the new clocks
+or identities from the tripwire to conceal nondeterminism. Registry hash pins
+change for the renamed/added/retired definitions and seeded standard clocks.

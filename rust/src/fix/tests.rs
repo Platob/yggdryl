@@ -82,14 +82,10 @@ fn scratch(label: &str) -> PathBuf {
     path
 }
 
-/// How many fields every registry holds before a test inserts one: the
-/// crate's own, which `FixRegistry::new` seeds.
-fn crated() -> usize {
-    crate::fix_crate_fields()
-        .unwrap()
-        .iter()
-        .filter(|field| !field.dtype().is_nested())
-        .count()
+/// Scalar definitions present before any test insertion, including standard clocks.
+fn seeded_fields() -> usize {
+    static COUNT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *COUNT.get_or_init(|| FixRegistry::new().len())
 }
 
 /// How many message types every registry holds before a test registers one:
@@ -946,7 +942,8 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
     // Decisions 21–23 add altids, UUID types and the scoped chain description;
     // decision 24 adds the previous clock and UUID declarations.
-    assert_eq!(carrying.stable_hash(), 18_240_345_886_234_747_417);
+    // Decision 26 changes the clock/code/identity declarations and seeds standard clocks.
+    assert_eq!(carrying.stable_hash(), 10_868_304_278_345_408_333);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -1017,7 +1014,7 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
         .unwrap()
         .with_plugin_fields()
         .unwrap();
-    assert_eq!(registry.len(), held.len() + crated());
+    assert_eq!(registry.len(), held.len() + seeded_fields());
     assert_eq!(registry.dialects(), [crate::PLUGIN_DIALECT]);
     assert!(
         registry
@@ -1088,9 +1085,10 @@ fn merge_with_folds_the_fields_and_the_dialects_beside_them() {
 
     // The other dictionary holds the crate's own fields as every registry
     // does, and they are neither added nor merged: a fold never counts them.
+    // Standard SendingTime and TransactTime are ordinary definitions and do merge.
     let (added, merged) = dictionary.merge_with(&other).unwrap();
-    assert_eq!((added, merged), (1, 1));
-    assert_eq!(dictionary.len(), 3 + crated());
+    assert_eq!((added, merged), (1, 3));
+    assert_eq!(dictionary.len(), 3 + seeded_fields());
     // A folded input name retains the canonical identity's stored spelling.
     assert_eq!(dictionary.field_by_tag(55).unwrap().name(), "symbol");
 
@@ -1446,7 +1444,7 @@ fn two_fields_may_hold_one_tag_under_two_names() {
     let venue = member("VenueSymbol", "cme", 5055);
 
     let registry = FixRegistry::from_fields([spec.clone(), venue.clone()]).unwrap();
-    assert_eq!(registry.len(), 2 + crated());
+    assert_eq!(registry.len(), 2 + seeded_fields());
 
     // Each identity answers its own field. The holder of the tag gained the
     // arrival's name as an alias, so it is its stored self plus that.
@@ -1541,7 +1539,11 @@ fn two_fields_may_hold_one_tag_under_two_names() {
 
 /// One run of the fold table over `fold`, which is either verb that adds a
 /// field to a dictionary it may already describe.
-fn fold_table(verb: &str, fold: impl Fn(&mut FixRegistry, Field) -> (usize, usize)) {
+fn fold_table(
+    verb: &str,
+    seeded_merges: usize,
+    fold: impl Fn(&mut FixRegistry, Field) -> (usize, usize),
+) {
     let mut registry = FixRegistry::from_fields([
         full("Symbol", 55, &[65], &["Ticker"]),
         full("Price", 44, &[31], &["Px"]),
@@ -1553,8 +1555,12 @@ fn fold_table(verb: &str, fold: impl Fn(&mut FixRegistry, Field) -> (usize, usiz
     let mut same = member("SYMBOL", "cme", 55);
     same.as_fix_mut().set_tags(&[66]).unwrap();
     same.as_fix_mut().set_aliases(["Sym"]).unwrap();
-    assert_eq!(fold(&mut registry, same), (0, 1), "{verb}: row 1");
-    assert_eq!(registry.len(), 2 + crated(), "{verb}");
+    assert_eq!(
+        fold(&mut registry, same),
+        (0, 1 + seeded_merges),
+        "{verb}: row 1"
+    );
+    assert_eq!(registry.len(), 2 + seeded_fields(), "{verb}");
     let symbol = registry.field_by_tag(55).unwrap();
     assert_eq!(symbol.name(), "Symbol", "{verb}");
     assert_eq!(symbol.as_fix().tags().unwrap(), [66, 65], "{verb}");
@@ -1575,10 +1581,10 @@ fn fold_table(verb: &str, fold: impl Fn(&mut FixRegistry, Field) -> (usize, usiz
     // its name or its identity, and its membership is its own.
     assert_eq!(
         fold(&mut registry, member("VenueSymbol", "xnas", 55)),
-        (1, 0),
+        (1, seeded_merges),
         "{verb}: row 2"
     );
-    assert_eq!(registry.len(), 3 + crated(), "{verb}");
+    assert_eq!(registry.len(), 3 + seeded_fields(), "{verb}");
     let symbol = registry.field_by_tag(55).unwrap();
     assert_eq!(symbol.name(), "Symbol", "{verb}: the bare tag");
     assert_eq!(
@@ -1611,8 +1617,12 @@ fn fold_table(verb: &str, fold: impl Fn(&mut FixRegistry, Field) -> (usize, usiz
     // second field.
     let mut spelled = member("symbol", "blp", 9055);
     spelled.as_fix_mut().set_aliases(["BlpSym"]).unwrap();
-    assert_eq!(fold(&mut registry, spelled), (0, 1), "{verb}: row 3");
-    assert_eq!(registry.len(), 3 + crated(), "{verb}");
+    assert_eq!(
+        fold(&mut registry, spelled),
+        (0, 1 + seeded_merges),
+        "{verb}: row 3"
+    );
+    assert_eq!(registry.len(), 3 + seeded_fields(), "{verb}");
     let symbol = registry.field_by_tag(9055).unwrap();
     assert_eq!(
         symbol.name(),
@@ -1643,7 +1653,7 @@ fn fold_table(verb: &str, fold: impl Fn(&mut FixRegistry, Field) -> (usize, usiz
     // already answers: the tag stays with that field and is left out.
     assert_eq!(
         fold(&mut registry, member("TICKER", "blp", 31)),
-        (0, 1),
+        (0, 1 + seeded_merges),
         "{verb}: row 3 by alias"
     );
     assert_eq!(registry.field_by_tag(31).unwrap().name(), "Price", "{verb}");
@@ -1655,28 +1665,28 @@ fn fold_table(verb: &str, fold: impl Fn(&mut FixRegistry, Field) -> (usize, usiz
 
     // Row 4: neither, so it is inserted as it arrived.
     assert_eq!(
-        fold(&mut registry, member("TransactTime", "cme", 60)),
-        (1, 0),
+        fold(&mut registry, member("Text", "cme", 58)),
+        (1, seeded_merges),
         "{verb}: row 4"
     );
-    assert_eq!(registry.len(), 4 + crated(), "{verb}");
+    assert_eq!(registry.len(), 4 + seeded_fields(), "{verb}");
     assert_eq!(
-        registry.field_by_tag(60).unwrap(),
-        &member("TransactTime", "cme", 60)
+        registry.field_by_tag(58).unwrap(),
+        &member("Text", "cme", 58)
     );
     assert_eq!(registry.dialects(), ["blp", "cme", "xnas"], "{verb}");
 }
 
 #[test]
 fn the_fold_table_holds_through_add_field_and_through_merge_with() {
-    fold_table("add_field", |registry, field| {
+    fold_table("add_field", 0, |registry, field| {
         if registry.add_field(field).unwrap() {
             (1, 0)
         } else {
             (0, 1)
         }
     });
-    fold_table("merge_with", |registry, field| {
+    fold_table("merge_with", 2, |registry, field| {
         let other = FixRegistry::from_fields([field]).unwrap();
         registry.merge_with(&other).unwrap()
     });
@@ -1875,7 +1885,7 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
         assert!(path.ends_with(", held by Symbol"), "{path}");
         assert_eq!(probed, registry, "{key}: a refusal changes nothing");
         assert_eq!(format!("{probed:?}"), format!("{registry:?}"));
-        assert_eq!(probed.len(), 1 + crated());
+        assert_eq!(probed.len(), 1 + seeded_fields());
     }
 
     // The one thing this namespace admits twice: a held tag under another
@@ -1886,7 +1896,7 @@ fn an_insert_conflict_names_both_fields_for_each_key_kind() {
         beside.insert(full("SymbolSfx", 55, &[], &[])).unwrap(),
         None
     );
-    assert_eq!(beside.len(), 2 + crated());
+    assert_eq!(beside.len(), 2 + seeded_fields());
     assert_eq!(beside.field_by_tag(55).unwrap().name(), "Symbol");
     assert_eq!(
         beside
@@ -1942,7 +1952,7 @@ fn reinserting_the_same_identity_replaces_properties_and_retains_its_spelling() 
     assert_eq!(registry.field_by_name("Sym").unwrap().name(), "Symbol");
     assert!(registry.get_field_by_tag(65).is_none());
     assert!(registry.get_field_by_name("Ticker").is_none());
-    assert_eq!(registry.len(), 2 + crated());
+    assert_eq!(registry.len(), 2 + seeded_fields());
 
     // A tag matching one field and a name matching another is never a
     // replacement, and a new key another field holds refuses the whole thing.
@@ -2013,7 +2023,7 @@ fn a_merge_follows_the_truth_table() {
             "{name}"
         );
     }
-    assert_eq!(registry.len(), 1 + crated());
+    assert_eq!(registry.len(), 1 + seeded_fields());
 
     // Another spelling retains the accumulated tags and canonical name.
     let before = registry.clone();
@@ -2092,7 +2102,7 @@ fn a_rejected_merge_leaves_the_registry_untouched() {
         [Some("Symbol"); 4]
     );
     assert_eq!(probe(&registry, 44, 31, "price", "px"), [Some("Price"); 4]);
-    assert_eq!(registry.len(), 2 + crated());
+    assert_eq!(registry.len(), 2 + seeded_fields());
 }
 
 #[test]
@@ -2102,7 +2112,7 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
             .unwrap();
 
     // Tag 55 is stored and folds; tag 44 is stored under another spelling of
-    // the same name and folds too; tag 60 is new. The venue's own `Symbol`
+    // the same name and folds too; tag 58 is new. The venue's own `Symbol`
     // on 5055 is the same folded name under another tag: the same field
     // spelled with another number, so it folds into the holder too.
     let mut priced = tagged("PRICE", 44);
@@ -2111,12 +2121,12 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
         .add_fields([
             full("Symbol", 55, &[66], &["Sym"]),
             priced,
-            tagged("TransactTime", 60),
+            tagged("Text", 58),
             member("Symbol", "cme", 5_055),
         ])
         .unwrap();
     assert_eq!((added, merged), (1, 3));
-    assert_eq!(registry.len(), 3 + crated());
+    assert_eq!(registry.len(), 3 + seeded_fields());
 
     // The merge kept what only the stored field declared and added the rest:
     // the venue's tag as an alternate, and its membership.
@@ -2131,29 +2141,29 @@ fn add_fields_adds_what_is_absent_and_merges_what_is_present() {
     assert!(registry.get_field_by_id(id_of(5_055, "Symbol")).is_none());
     // Incoming metadata folds into the stored canonical spelling.
     assert_eq!(registry.field_by_tag(44).unwrap().name(), "Price");
-    assert_eq!(registry.field_by_tag(60).unwrap().name(), "TransactTime");
+    assert_eq!(registry.field_by_tag(58).unwrap().name(), "Text");
 
     // The identity is the whole probe: the same tag under another name is
     // another field, added beside the specification's rather than folded
     // into it, and the holder learns the arrival's name.
     let (added, merged) = registry
-        .add_fields([member("VenueTime", "cme", 60)])
+        .add_fields([member("VenueText", "cme", 58)])
         .unwrap();
     assert_eq!((added, merged), (1, 0));
-    assert_eq!(registry.len(), 4 + crated());
-    assert_eq!(registry.field_by_tag(60).unwrap().name(), "TransactTime");
+    assert_eq!(registry.len(), 4 + seeded_fields());
+    assert_eq!(registry.field_by_tag(58).unwrap().name(), "Text");
     assert_eq!(
         registry
-            .field_by_tag(60)
+            .field_by_tag(58)
             .unwrap()
             .as_fix()
             .aliases()
             .collect::<Vec<_>>(),
-        ["VenueTime"]
+        ["VenueText"]
     );
     assert_eq!(
-        registry.field_by_id(id_of(60, "VenueTime")).unwrap(),
-        &member("VenueTime", "cme", 60)
+        registry.field_by_id(id_of(58, "VenueText")).unwrap(),
+        &member("VenueText", "cme", 58)
     );
 }
 
@@ -2187,7 +2197,7 @@ fn add_fields_refuses_the_way_the_one_field_writes_refuse() {
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
     assert_eq!(registry, before);
-    assert_eq!(registry.len(), 1 + crated());
+    assert_eq!(registry.len(), 1 + seeded_fields());
 }
 
 #[test]
@@ -2202,7 +2212,7 @@ fn removal_keeps_every_position_consistent() {
     // Removing the first field moves the last into its slot.
     let removed = registry.remove(55).unwrap();
     assert_eq!(removed.name(), "Symbol");
-    assert_eq!(registry.len(), 2 + crated());
+    assert_eq!(registry.len(), 2 + seeded_fields());
     assert_eq!(probe(&registry, 55, 65, "symbol", "ticker"), [None; 4]);
     assert_eq!(probe(&registry, 44, 45, "price", "px"), [Some("Price"); 4]);
     assert_eq!(
@@ -2211,7 +2221,7 @@ fn removal_keeps_every_position_consistent() {
     );
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
-        then_crated(&["Price", "Text"])
+        then_crated(&["Price", "sendingtime", "Text", "transacttime"])
     );
 
     // A name key removes through the alias tier too; a path never does.
@@ -2222,11 +2232,11 @@ fn removal_keeps_every_position_consistent() {
         probe(&registry, 58, 59, "text", "freetext"),
         [Some("Text"); 4]
     );
-    assert_eq!(registry.len(), 1 + crated());
+    assert_eq!(registry.len(), 1 + seeded_fields());
     assert_eq!(registry.remove("FreeText").unwrap().name(), "Text");
     assert_eq!(
         registry.len(),
-        crated(),
+        seeded_fields(),
         "nothing of the test's own is left"
     );
     assert!(registry.remove(58).is_none());
@@ -2462,22 +2472,24 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     // test claims.
     let crated_names = crate_names();
     let mut iter = registry.iter();
-    assert_eq!(iter.len(), 3 + crated());
+    assert_eq!(iter.len(), 3 + seeded_fields());
     assert_eq!(iter.next().map(Field::name), Some("Account"));
     assert_eq!(
         iter.next_back().map(Field::name),
         crated_names.last().copied()
     );
-    assert_eq!(iter.len(), 1 + crated());
+    assert_eq!(iter.len(), 1 + seeded_fields());
+    assert_eq!(iter.next().map(Field::name), Some("sendingtime"));
     assert_eq!(iter.next().map(Field::name), Some("Symbol"));
     assert_eq!(iter.next().map(Field::name), Some("Text"));
+    assert_eq!(iter.next().map(Field::name), Some("transacttime"));
     assert_eq!(
         iter.map(Field::name).collect::<Vec<_>>(),
         crated_names[..crated_names.len() - 1].to_vec()
     );
     assert_eq!(
         (&registry).into_iter().map(Field::name).collect::<Vec<_>>(),
-        then_crated(&["Account", "Symbol", "Text"])
+        then_crated(&["Account", "sendingtime", "Symbol", "Text", "transacttime"])
     );
     // The cursor form walks the same order, and a binding advancing it with
     // only the last identifier it saw sees every field exactly once.
@@ -2487,7 +2499,10 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
         walked.push(field.name());
         cursor = field.as_fix().id().unwrap();
     }
-    assert_eq!(walked, then_crated(&["Account", "Symbol", "Text"]));
+    assert_eq!(
+        walked,
+        then_crated(&["Account", "sendingtime", "Symbol", "Text", "transacttime"])
+    );
     assert!(
         registry
             .next_field_after(Some(id_of(i32::MAX, "Nothing")))
@@ -2496,8 +2511,8 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     );
     assert_eq!(
         FixRegistry::new().next_field_after(None).map(Field::name),
-        crated_names.first().copied(),
-        "a new registry walks the crate's own fields"
+        Some("sendingtime"),
+        "standard clocks precede the crate's own fields"
     );
     // An alternate tag is an index entry, never a cursor stop.
     let mut aliased = tagged("MsgType", 35);
@@ -2518,7 +2533,7 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
         !FixRegistry::new().is_empty(),
         "a new registry holds the crate's own fields"
     );
-    assert_eq!(FixRegistry::new().iter().len(), crated());
+    assert_eq!(FixRegistry::new().iter().len(), seeded_fields());
 
     // A conflict anywhere fails the whole build: a held name under another
     // tag is a conflict for the strict verb, where the same tag under
@@ -2526,7 +2541,7 @@ fn iteration_follows_the_canonical_tag_and_equality_ignores_order() {
     let error = FixRegistry::from_fields([tagged("Text", 58), tagged("text", 59)]).unwrap_err();
     assert!(error.is_conflict(), "{error}");
     let beside = FixRegistry::from_fields([tagged("Text", 58), tagged("Symbol", 58)]).unwrap();
-    assert_eq!(beside.len(), 2 + crated());
+    assert_eq!(beside.len(), 2 + seeded_fields());
     assert_eq!(beside.field_by_tag(58).unwrap().name(), "Text");
     assert_eq!(
         beside.field_by_id(id_of(58, "Symbol")).unwrap().name(),
@@ -2552,7 +2567,7 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
         member("Venue", "cme", 9000),
     ])
     .unwrap();
-    assert_eq!(registry.len(), 5 + crated());
+    assert_eq!(registry.len(), 5 + seeded_fields());
     assert_eq!(registry.field_by_tag(35).unwrap().name(), "MsgType");
 
     // Tags lead whatever the membership; on an equal tag the holder of the
@@ -2563,7 +2578,15 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
         (id_of(35, "MsgType"), "MsgType"),
         (id_of(35, "MsgKind"), "MsgKind"),
     ];
-    let expected = then_crated(&["Account", "MsgType", "MsgKind", "TradeID", "Venue"]);
+    let expected = then_crated(&[
+        "Account",
+        "MsgType",
+        "MsgKind",
+        "sendingtime",
+        "transacttime",
+        "TradeID",
+        "Venue",
+    ]);
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
         expected
@@ -2587,7 +2610,7 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
     );
     assert_eq!(
         registry.next_field_after(Some(on_35[1].0)).map(Field::name),
-        Some("TradeID")
+        Some("sendingtime")
     );
     let rendered = format!("{registry:?}");
     assert!(rendered.starts_with("{1 Account: "), "{rendered}");
@@ -2609,7 +2632,15 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
     .unwrap();
     assert_eq!(
         reversed.iter().map(Field::name).collect::<Vec<_>>(),
-        then_crated(&["Account", "MsgKind", "MsgType", "TradeID", "Venue"])
+        then_crated(&[
+            "Account",
+            "MsgKind",
+            "MsgType",
+            "sendingtime",
+            "transacttime",
+            "TradeID",
+            "Venue"
+        ])
     );
     assert_eq!(reversed.field_by_tag(35).unwrap().name(), "MsgKind");
     assert_eq!(
@@ -2623,7 +2654,14 @@ fn iteration_and_the_cursor_are_tag_major_then_by_identity() {
     assert_eq!(departed.field_by_tag(35).unwrap().name(), "MsgKind");
     assert_eq!(
         departed.iter().map(Field::name).collect::<Vec<_>>(),
-        then_crated(&["Account", "MsgKind", "TradeID", "Venue"])
+        then_crated(&[
+            "Account",
+            "MsgKind",
+            "sendingtime",
+            "transacttime",
+            "TradeID",
+            "Venue"
+        ])
     );
 }
 
@@ -2651,7 +2689,7 @@ fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
         .nullable_field("Coded");
     encoded.as_fix_mut().set_tag(60).unwrap();
     registry.insert(encoded).unwrap();
-    assert_eq!(registry.len(), 2 + crated());
+    assert_eq!(registry.len(), 2 + seeded_fields());
 }
 
 #[test]
@@ -2827,7 +2865,14 @@ fn scalar_iteration_and_named_category_iteration_have_distinct_orders() {
     registry
         .insert_definition(FixCategory::Groups, named_group("Parties", 453))
         .unwrap();
-    let expected = then_crated(&["Account", "Symbol", "Text", "NoPartyIDs"]);
+    let expected = then_crated(&[
+        "Account",
+        "sendingtime",
+        "Symbol",
+        "Text",
+        "transacttime",
+        "NoPartyIDs",
+    ]);
     assert_eq!(
         registry.iter().map(Field::name).collect::<Vec<_>>(),
         expected
@@ -2901,7 +2946,7 @@ fn the_default_resolves_in_the_documented_order_from_explicit_inputs() {
     let as_url = located.url().to_string();
     for spelling in [as_path, as_url] {
         let loaded = autoload(Some(&spelling), Some(config.clone())).unwrap();
-        assert_eq!(loaded.len(), 1 + crated(), "{spelling}");
+        assert_eq!(loaded.len(), 1 + seeded_fields(), "{spelling}");
         assert_eq!(
             loaded.field_by_tag(44).unwrap().name(),
             "Price",
@@ -2965,6 +3010,7 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         count,
         group,
         DataType::utf8().nullable_field("9999"),
+        registry.field_by_tag(52).unwrap().clone(),
     ])
     .unwrap()
     .required_field("NewOrderSingle");
@@ -2991,6 +3037,10 @@ fn order() -> (Arc<FixRegistry>, Field, Scalar) {
         ),
         ("NoPartyIDs", Scalar::from(2_i32)),
         ("9999", Scalar::from("custom")),
+        (
+            "sendingtime",
+            Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap(),
+        ),
     ])
     .unwrap();
     (registry, root, value)
@@ -3020,14 +3070,19 @@ fn a_message_resolves_values_through_its_registry() {
     let (registry, root, value) = order();
     let msg = FixMsg::with_registry(Arc::clone(&registry), root.clone(), value).unwrap();
     assert!(Arc::ptr_eq(msg.registry(), &registry));
-    assert_eq!(msg.as_field(), &root);
+    assert_eq!(msg.as_field().name(), root.name());
+    assert_eq!(&msg.as_field().fields()[..5], &root.fields()[..5]);
 
     // A record input canonicalizes to the ordered sequence the root declares.
     let row = msg.as_value().as_sequence().unwrap();
-    assert_eq!(row.len(), 5);
+    assert_eq!(row.len(), 12, "five business fields and the replay bundle");
     assert_eq!(row[0], Scalar::from(100));
     assert_eq!(row[2], Scalar::from(2_i32));
     assert_eq!(row[4], Scalar::from("custom"));
+    assert_eq!(
+        msg.by_tag(52).unwrap(),
+        &Scalar::datetime64(0, crate::TimeUnit::Nanosecond, crate::Timezone::UTC).unwrap()
+    );
 
     // By tag, through the registry's canonical name.
     assert_eq!(msg.by_tag(38).unwrap(), &Scalar::from(100));
@@ -3111,7 +3166,7 @@ fn a_message_resolves_values_through_its_registry() {
     assert!(matches!(&error, Error::Absent { path, .. } if path == "path absent.x"));
 
     // Equality and hashing follow the schema and the value.
-    let same = FixMsg::with_registry(Arc::clone(&registry), root, msg.as_value().clone()).unwrap();
+    let same = FixMsg::from_row(Arc::clone(&registry), msg.as_field(), msg.as_value()).unwrap();
     assert_eq!(msg, same);
     assert_eq!(
         crate::hashing::stable_hash_of(&msg),
@@ -3137,7 +3192,11 @@ fn a_message_rejects_a_value_its_field_refuses() {
         Scalar::from(1),
     )
     .unwrap_err();
-    assert!(error.to_string().contains("struct root"), "{error}");
+    assert!(
+        matches!(&error, Error::InvalidRecord { path, reason }
+        if path == "$.scalar" && reason == "expected a Struct field, got int64"),
+        "{error}"
+    );
 }
 
 #[test]

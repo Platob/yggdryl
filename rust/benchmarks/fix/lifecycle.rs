@@ -1,4 +1,4 @@
-//! Scoped chain lookup through declared identifiers or an authoritative Map.
+//! Scoped chain lookup and epoch-grid snapshots through the same transition.
 
 use std::collections::HashSet;
 use std::hint::black_box;
@@ -8,7 +8,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME,
-    PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME, UUID_TAG_NAME,
+    PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
 use super::seed;
@@ -74,11 +74,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
                     assert_eq!(stamped.by_tag(tag).unwrap(), &Scalar::Null, "{name}");
                 }
             }
-            previous = Some((
-                stamped.by_tag(TIMESTAMP_TAG_NAME.0).unwrap().clone(),
-                stamped.by_tag(UUID_TAG_NAME.0).unwrap().clone(),
-            ));
-            if let Some(Scalar::Uuid(value)) = stamped.get_by_tag(PUUID_TAG_NAME.0) {
+            previous = Some((stamped.updatedat().clone(), stamped.uuid().clone()));
+            if expected_chains != 0 {
+                let Scalar::Uuid(value) = stamped.by_tag(PUUID_TAG_NAME.0).unwrap() else {
+                    panic!("a native code identity");
+                };
                 identities.insert(*value);
             }
         }
@@ -94,6 +94,48 @@ pub fn benchmarks(criterion: &mut Criterion) {
                         black_box(life.fill(message).expect("a scoped message"));
                     }
                     life
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        let off_grid: Vec<_> = rows
+            .iter()
+            .enumerate()
+            .map(|(index, message)| {
+                let mut message = message.clone();
+                let nanos = message.updatedat().as_datetime64().unwrap().0;
+                message
+                    .set(
+                        UPDATEDAT_TAG_NAME.0,
+                        Scalar::datetime64(
+                            nanos + 1 + (index % 2) as i64,
+                            TimeUnit::Nanosecond,
+                            Timezone::UTC,
+                        )
+                        .unwrap(),
+                    )
+                    .expect("two arrivals inside the same second");
+                message
+            })
+            .collect();
+        let snapshots = FixLifecycle::new(Arc::clone(&registry))
+            .snapshots(off_grid.clone().into_iter().map(Ok))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .expect("the same transition filters only repeated buckets");
+        assert_eq!(snapshots.len(), expected_chains, "{name}");
+        for snapshot in &snapshots {
+            assert_eq!(snapshot.updatedat(), message.updatedat());
+            assert!(snapshot.by_tag(PREVUUID_TAG_NAME.0).unwrap().is_null());
+        }
+        group.bench_function(format!("{name}_snapshots"), |bencher| {
+            bencher.iter_batched(
+                || off_grid.clone(),
+                |messages| {
+                    for snapshot in FixLifecycle::new(Arc::clone(&registry))
+                        .snapshots(messages.into_iter().map(Ok))
+                    {
+                        black_box(snapshot.expect("a scoped snapshot"));
+                    }
                 },
                 BatchSize::LargeInput,
             );

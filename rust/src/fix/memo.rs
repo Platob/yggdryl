@@ -59,6 +59,9 @@ impl Facts {
 pub(super) struct Lookup {
     pub(super) field: Option<(i32, FixId)>,
     pub(super) group: bool,
+    /// A dotted root name's last segment, resolved once before its value is
+    /// typed. Dotted path lookup itself remains schema-scoped in the builder.
+    pub(super) composed: Option<(i32, FixId)>,
 }
 
 /// One table's lock, poisoned or not: a table holds answers, and a panic

@@ -682,6 +682,9 @@ pub struct FixCodec
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn version(&self) -> Option<Version>
+  pub const fn default_sending_time(&self) -> Option<&Scalar>
+  pub fn set_default_sending_time(&mut self, value: Option<Scalar>) -> Result<()>
+  pub fn try_with_default_sending_time(self, value: Option<Scalar>) -> Result<Self>  (exact ns/UTC or None; initial intake only)
   pub fn direction(&self) -> Option<&str>  (the code of tag 385's set an unmarked line takes on the batch door; the set's Send code by default; decision 14)
   pub fn msgdirection(&self) -> &MsgDirection  (the registry's reading of tag 385, the field's fix:directions or the defaults, every pattern compiled once when the codec is built)
   pub const fn batch_byte_size(&self) -> u64
@@ -703,11 +706,11 @@ pub struct FixCodec
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
   pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>  (one document; likewise refused, at a second root element, target `fixml`)
   pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>  (one frame; likewise refused, at the second frame's key in the page the pairs were copied into)
-  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; a payload that was there and would not parse is one empty `unknown` message, which is what keeps a row's content from failing a batch)
+  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; malformed syntax may recover as one `unknown` message; mandatory clock/layout/content failures remain error items)
   pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Borrow<TextLine>
-  pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (the one enriching pass, three steps on one message in this order: the row restated at the registry's newest version, completion - which is a read and writes nothing, because the registry answers a field for any alias it holds - and the fills, the composed keys the row carried before the rules the specification licenses. Fails only where the restated children do not make a root; a derived value the column refuses is silence rather than a refusal; decision 20)
+  pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (the one enriching pass, three steps on one message in this order: the row restated at the registry's newest version, completion - which is a read and writes nothing, because the registry answers a field for any alias it holds - and the fills licensed by the specification. Namespace composition already ran at initial intake before clock defaults. Settled clocks are retained and identities recomputed atomically; decisions 20 and 26)
   pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none; decision 19. Every message crosses the same three-step pass `enrich_message` runs, the plugin fill last because a rule may state what it would otherwise fill; decision 20)
-  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>  (one FixLifecycle over the stream; puuid-keyed chains and instuuid-scoped identifiers from authoritative altids or the registered compiled selector; decision 23)
+  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instuuid-scoped identifiers; grid/history semantics of decision 26)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
@@ -720,11 +723,17 @@ impl FixCodec
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
 
 ### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
-pub struct FixLifecycle  (live chains keyed by native Uuid; identifier text scoped by optional instuuid; each chain retains only its last successful message's nanosecond UTC clock and UUID beside its owned keys; held facts bounded by the live set and reusable capacity by its peak; Debug)
+pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each chain retains code, last full-message clock/UUID and highest consumed grid bucket; capacity bounded by peak live state)
+  pub const DEFAULT_INTERVAL_NS: i64 = 1_000_000_000;
   pub fn new(registry: Arc<FixRegistry>) -> Self
+  pub const fn interval_ns(&self) -> i64
+  pub fn set_interval_ns(&mut self, interval_ns: i64) -> Result<()>  (positive; changing cadence requires no live chains; same value is a no-op)
+  pub fn try_with_interval_ns(self, interval_ns: i64) -> Result<Self>
   pub fn alive(&self) -> usize
-  pub fn clear(&mut self)  (forgets chains, previous pairs and scoped keys without promising a capacity shrink)
-  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (live stated puuid joins directly, else the first scoped identifier wins without stealing another chain's keys; puuid may be corrected, uuid and instuuid remain stated; sorted altids including empty is authoritative, otherwise the compiled selector supplies canonical text; prevtimestamp and prevuuid independently preserve non-null native statements, otherwise take the selected chain's last pair or null; terminal receives its previous pair then closes only the selected chain; located shape/range/collision refusals are atomic and cannot advance history; replay into fresh or cleared state rebuilds equal state and arrivals remain unchanged)
+  pub fn clear(&mut self)  (forgets live chains/history/buckets/keys, retains cadence)
+  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (one atomic code/history/grid transition; all messages normalize updatedat, snapshotat remains the event clock; native non-null previous statements remain authoritative)
+  pub fn snapshot(&mut self, message: FixMsg) -> Result<Option<FixMsg>>  (same transition; emits only an off-grid arrival above that live chain's highest consumed bucket)
+  pub fn snapshots<I>(self, messages: I) -> impl FusedIterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = Result<FixMsg>>  (filters successful suppression only; errors yield without advancing state; fuses exhaustion)
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
@@ -734,10 +743,9 @@ pub struct FixMessages
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]
 pub const CRATE_TAG_MIN: i32 = 65_000;
 pub const CRATE_TAG_MAX: i32 = 65_100;
-pub const MSGHASH_TAG_NAME: (i32, &str) = (65_000, "msghash");  (every crate field is declared once as its tag beside its name, the pair being its identity)
 pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
-pub const TIMESTAMP_TAG_NAME: (i32, &str) = (65_003, "timestamp");  (the name is also what its partition names)
+pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");  (settled event or lifecycle grid instant)
 pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
 pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
 pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_006, "parentorderid");
@@ -757,6 +765,9 @@ pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
 pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable native UUID of the preceding message in the selected event chain)
+pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
+pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
+pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
@@ -791,7 +802,11 @@ pub struct FixMsg
   pub fn set<'key>(&mut self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<()>  (row only; typed by the field the key reaches, replaced in place or appended; a bare unknown tag appends a nullable utf8 child named by its decimal; failure leaves the message unchanged)
   pub fn set_many<'key, I, K>(&mut self, values: I) -> Result<()> where I: IntoIterator<Item = (K, Scalar)>, K: Into<FixKey<'key>>  (several `set`s with one rebuild; the later of two writes to one child lands)
   pub fn with_value<'key>(self, key: impl Into<FixKey<'key>>, value: Scalar) -> Result<Self>  (the consuming twin of `set`)
-  pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Scalar>  (row only; the value the reached child held)
+  pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (row only; mandatory fields refuse removal atomically)
+  pub const fn updatedat(&self) -> &Scalar
+  pub const fn createdat(&self) -> &Scalar
+  pub const fn uuid(&self) -> &Scalar
+  pub const fn puuid(&self) -> &Scalar
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
 
 ### yggdryl::fix::lift  [rust\src\fix\lift.rs]
@@ -951,7 +966,6 @@ impl FixMsg
   pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `nofixentries`; a row without that column has no entries)
   pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null)
   pub fn symbol_ticker(&self) -> Scalar
-  pub fn market_timestamp(&self) -> Scalar
   pub fn unix_partition(&self, seconds: i64) -> Scalar
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
@@ -1046,6 +1060,7 @@ pub const UNIX_WIDTH: usize = 8;
   pub const fn width(&self) -> usize
   pub const fn dtype(&self) -> DataType
   pub fn with_unit(self, unit: TimeUnit) -> Result<Self>
+  pub fn into_uuid(self) -> Result<crate::types::Uuid>  (RFC 9562 v8; exact signed i64 nanoseconds and low 58 digest bits; requires a 64-bit digest; checked unit conversion; zero successful allocations; raw TxHash bytes and ordering unchanged)
   pub fn into_bytes(self) -> TxHashBytes
   pub fn from_bytes(unit: TimeUnit, algorithm: DigestAlgorithm, bytes: &[u8]) -> Result<Self>
   pub fn from_str(value: &str) -> Result<Self>

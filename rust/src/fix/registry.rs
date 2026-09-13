@@ -306,7 +306,7 @@ impl FixRegistry {
         crate::hashing::stable_hash_of(self)
     }
 
-    /// A registry holding nothing but this crate's own fields.
+    /// A registry holding the crate definitions and standard clock fields.
     ///
     /// Every registry starts here: the fields this crate defines - the
     /// digest, the clock, the partition, the bridge's session and context -
@@ -319,6 +319,15 @@ impl FixRegistry {
     /// same category rules as caller-owned definitions.
     #[must_use]
     pub fn new() -> Self {
+        let mut registry = Self::base();
+        if let Err(error) = registry.seed_clocks() {
+            log::warn!("registering FIX standard clocks: {error}");
+        }
+        registry
+    }
+
+    /// A store loads its definitions before filling absent standard clocks.
+    pub(super) fn base() -> Self {
         let mut registry = Self {
             fields: Vec::new(),
             catalog: super::catalog::Catalog::default(),
@@ -357,6 +366,25 @@ impl FixRegistry {
             Err(error) => log::warn!("registering FIX plugin configuration: {error}"),
         }
         registry
+    }
+
+    /// Standard clocks use the ordinary indexes and remain caller-owned.
+    /// A loaded definition supplies its own metadata rather than colliding
+    /// with a seed; duplicate stored definitions still use `create_definition`.
+    pub(super) fn seed_clocks(&mut self) -> Result<()> {
+        for (tag, name, display) in [
+            (52, "sendingtime", "SendingTime"),
+            (60, "transacttime", "TransactTime"),
+        ] {
+            if self.get_field_by_tag(tag).is_some() {
+                continue;
+            }
+            let mut field = super::schema::CLOCK_DATATYPE.nullable_field(name);
+            field.as_fix_mut().set_tag(tag)?;
+            field.set_display(display)?;
+            self.insert(field)?;
+        }
+        Ok(())
     }
 
     /// Builds a registry by inserting `fields` in order.
@@ -1020,7 +1048,8 @@ impl FixRegistry {
     ///     DataType::from_fields([symbol, venue])?.required_field("Instrument"),
     /// )?;
     ///
-    /// assert_eq!(held.merge_with(&other)?, (0, 1));
+    /// // Symbol and the two standard clock seeds merge.
+    /// assert_eq!(held.merge_with(&other)?, (0, 3));
     /// let stored = held.field_by_tag(9001)?;
     /// assert_eq!(stored.name(), "Symbol");
     /// assert_eq!(stored.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);

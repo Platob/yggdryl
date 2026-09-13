@@ -1,0 +1,666 @@
+//! Decision 26: one normalized transition, live-incarnation snapshot cadence.
+
+use std::cell::Cell;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use yggdryl::hashing::xxhash::xxh128;
+use yggdryl::types::Uuid;
+use yggdryl::{
+    ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, Error, FixCodec, FixLifecycle,
+    FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME,
+    SNAPSHOTAT_TAG_NAME, STATE_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
+};
+
+fn clock(nanos: i64) -> Scalar {
+    Scalar::datetime64(nanos, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+}
+
+fn event(
+    registry: &Arc<FixRegistry>,
+    nanos: i64,
+    code: &str,
+    scope: Option<Uuid>,
+    identifiers: &[(&str, &str)],
+) -> FixMsg {
+    let mut fields = [
+        52,
+        UPDATEDAT_TAG_NAME.0,
+        CREATEDAT_TAG_NAME.0,
+        SNAPSHOTAT_TAG_NAME.0,
+        CODE_TAG_NAME.0,
+    ]
+    .map(|tag| registry.get_field_by_tag(tag).unwrap().clone())
+    .to_vec();
+    fields.push(
+        registry
+            .get_group_by_counter(ALTIDS_TAG_NAME.0)
+            .unwrap()
+            .clone(),
+    );
+    let mut values = vec![
+        clock(nanos),
+        clock(nanos),
+        clock(nanos),
+        clock(nanos),
+        Scalar::from(code),
+        Scalar::from_mapping(
+            identifiers
+                .iter()
+                .map(|(name, value)| (Scalar::from(*name), Scalar::from(*value))),
+        )
+        .unwrap(),
+    ];
+    if let Some(scope) = scope {
+        fields.push(
+            registry
+                .get_field_by_tag(INSTUUID_TAG_NAME.0)
+                .unwrap()
+                .clone(),
+        );
+        values.push(Scalar::Uuid(scope));
+    }
+    FixMsg::with_registry(
+        Arc::clone(registry),
+        DataType::from_fields(fields)
+            .unwrap()
+            .required_field("event"),
+        Scalar::from_sequence(values),
+    )
+    .unwrap()
+}
+
+fn lifecycle(registry: &Arc<FixRegistry>) -> FixLifecycle {
+    FixLifecycle::new(Arc::clone(registry))
+        .try_with_interval_ns(10)
+        .unwrap()
+}
+
+fn previous(message: &FixMsg, expected: Option<&FixMsg>) {
+    assert_eq!(
+        message.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+        expected.map_or(&Scalar::Null, FixMsg::updatedat),
+    );
+    assert_eq!(
+        message.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
+        expected.map_or(&Scalar::Null, FixMsg::uuid),
+    );
+}
+
+fn located(error: Error, expected: &str) {
+    let Error::InvalidRecord { path, reason } = error else {
+        panic!("expected a located refusal, got {error}");
+    };
+    assert_eq!(path, expected);
+    assert!(reason.len() < 256, "{reason}");
+}
+
+fn terminal(message: FixMsg) -> FixMsg {
+    message
+        .with_value(STATE_TAG_NAME.0, Scalar::from("Filled"))
+        .unwrap()
+}
+
+#[test]
+fn cadence_is_positive_atomic_and_retained_by_clear() {
+    let registry = Arc::new(FixRegistry::new());
+    let mut life = FixLifecycle::new(Arc::clone(&registry));
+    assert_eq!(FixLifecycle::DEFAULT_INTERVAL_NS, 1_000_000_000);
+    assert_eq!(life.interval_ns(), FixLifecycle::DEFAULT_INTERVAL_NS);
+    for invalid in [0, -1, i64::MIN] {
+        located(life.set_interval_ns(invalid).unwrap_err(), "$.interval_ns");
+        assert_eq!(life.interval_ns(), FixLifecycle::DEFAULT_INTERVAL_NS);
+        assert_eq!(life.alive(), 0);
+    }
+    life.set_interval_ns(10).unwrap();
+    life.fill(event(&registry, 1, "A", None, &[])).unwrap();
+    life.set_interval_ns(10).unwrap();
+    for invalid in [0, -1, 20] {
+        located(life.set_interval_ns(invalid).unwrap_err(), "$.interval_ns");
+        assert_eq!(life.interval_ns(), 10);
+        assert_eq!(life.alive(), 1);
+    }
+    life.clear();
+    assert_eq!(life.interval_ns(), 10);
+    assert_eq!(life.alive(), 0);
+    life.set_interval_ns(i64::MAX).unwrap();
+    assert_eq!(life.interval_ns(), i64::MAX);
+    located(
+        FixLifecycle::new(registry)
+            .try_with_interval_ns(0)
+            .unwrap_err(),
+        "$.interval_ns",
+    );
+}
+
+#[test]
+fn epoch_floor_uses_negative_buckets_and_boundary_belongs_to_the_bucket_it_opens() {
+    let registry = Arc::new(FixRegistry::new());
+    for (time, interval, grid) in [
+        (-11, 10, -20),
+        (-10, 10, -10),
+        (-1, 10, -10),
+        (0, 10, 0),
+        (9, 10, 0),
+        (10, 10, 10),
+        (11, 10, 10),
+        (i64::MIN, 1, i64::MIN),
+        (i64::MAX, 1, i64::MAX),
+        (i64::MAX, i64::MAX, i64::MAX),
+    ] {
+        let make = || {
+            FixLifecycle::new(Arc::clone(&registry))
+                .try_with_interval_ns(interval)
+                .unwrap()
+        };
+        let raw = event(&registry, time, "A", None, &[]);
+        let filled = make().fill(raw.clone()).unwrap();
+        assert_eq!(filled.updatedat(), &clock(grid));
+        assert_eq!(filled.createdat(), &clock(time));
+        assert_eq!(filled.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(), &clock(time));
+        assert_eq!(
+            make().snapshot(raw).unwrap(),
+            (time != grid).then_some(filled),
+        );
+    }
+}
+
+#[test]
+fn full_and_filtered_doors_share_finalized_history_and_consume_aligned_buckets() {
+    let registry = Arc::new(FixRegistry::new());
+    let mut full = lifecycle(&registry);
+    let mut filtered = lifecycle(&registry);
+    let mut last = None;
+    for (time, grid, emit) in [
+        (1, 0, true),
+        (7, 0, false),
+        (10, 10, false),
+        (11, 10, false),
+        (21, 20, true),
+    ] {
+        let raw = event(&registry, time, "A", None, &[]);
+        let filled = full.fill(raw.clone()).unwrap();
+        previous(&filled, last.as_ref());
+        assert_eq!(filled.updatedat(), &clock(grid));
+        assert_eq!(
+            filtered.snapshot(raw).unwrap(),
+            emit.then(|| filled.clone())
+        );
+        last = Some(filled);
+    }
+    assert_eq!(full.alive(), 1);
+    assert_eq!(filtered.alive(), 1);
+
+    let mut aligned = lifecycle(&registry);
+    assert!(
+        aligned
+            .snapshot(event(&registry, 10, "B", None, &[]))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        aligned
+            .snapshot(event(&registry, 19, "B", None, &[]))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        aligned
+            .snapshot(event(&registry, 21, "B", None, &[]))
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
+    let registry = Arc::new(FixRegistry::new());
+    let mut life = lifecycle(&registry);
+    let scope = Uuid::new(1);
+    let first = life
+        .fill(event(&registry, 1, "A", Some(scope), &[("id", "OWNED")]))
+        .unwrap();
+    let other = life
+        .fill(event(&registry, 2, "B", Some(scope), &[("id", "OWNED")]))
+        .unwrap();
+    assert_ne!(first.puuid(), other.puuid());
+    previous(&other, None);
+    assert_eq!(life.alive(), 2);
+    let alias = life
+        .fill(event(&registry, 11, "", Some(scope), &[("id", "OWNED")]))
+        .unwrap();
+    assert_eq!(alias.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some("A"));
+    previous(&alias, Some(&first));
+
+    let direct = life
+        .fill(event(
+            &registry,
+            21,
+            "A",
+            Some(Uuid::new(2)),
+            &[("id", "NEW")],
+        ))
+        .unwrap();
+    previous(&direct, Some(&alias));
+    assert_eq!(direct.puuid(), first.puuid());
+    let attached = life
+        .fill(event(
+            &registry,
+            31,
+            "",
+            Some(Uuid::new(2)),
+            &[("id", "NEW")],
+        ))
+        .unwrap();
+    previous(&attached, Some(&direct));
+    assert_eq!(life.alive(), 2);
+
+    // When two aliases reach different chains, canonical name order wins.
+    let b = life
+        .fill(event(&registry, 41, "B", Some(scope), &[("id", "OTHER")]))
+        .unwrap();
+    let joined = life
+        .fill(event(
+            &registry,
+            51,
+            "",
+            Some(scope),
+            &[("a", "OTHER"), ("z", "OWNED")],
+        ))
+        .unwrap();
+    previous(&joined, Some(&b));
+    assert_eq!(joined.puuid(), other.puuid());
+    let still_a = life
+        .fill(event(&registry, 61, "", Some(scope), &[("id", "OWNED")]))
+        .unwrap();
+    previous(&still_a, Some(&attached));
+}
+
+#[test]
+fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
+    let registry = Arc::new(FixRegistry::new());
+    let mut life = lifecycle(&registry);
+    let text = "Mixed/Case/界";
+    let mut ids = Vec::new();
+    for scope in [None, Some(Uuid::new(0)), Some(Uuid::new(1))] {
+        let expected = scope.map_or_else(|| format!("-/{text}"), |id| format!("{id}/{text}"));
+        let value = life
+            .fill(event(&registry, 1, "", scope, &[("id", text)]))
+            .unwrap();
+        assert_eq!(
+            value.by_tag(CODE_TAG_NAME.0).unwrap().as_str(),
+            Some(expected.as_str())
+        );
+        assert_eq!(
+            value.puuid(),
+            &Scalar::Uuid(Uuid::from_v8(xxh128(expected.as_bytes())))
+        );
+        previous(&value, None);
+        assert!(!ids.contains(value.puuid()));
+        ids.push(value.puuid().clone());
+    }
+    assert_eq!(life.alive(), 3);
+    let unknown = event(&registry, 1, "", None, &[]);
+    let filled = life.fill(unknown.clone()).unwrap();
+    assert_eq!(filled.puuid(), &Scalar::Uuid(Uuid::from_v8(xxh128(b""))));
+    assert_eq!(filled.updatedat(), &clock(0));
+    previous(&filled, None);
+    assert!(life.snapshot(unknown).unwrap().is_none());
+    assert_eq!(life.alive(), 3);
+    let whitespace = life
+        .snapshot(event(&registry, 1, " ", None, &[]))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        whitespace.by_tag(CODE_TAG_NAME.0).unwrap().as_str(),
+        Some(" ")
+    );
+    assert_eq!(life.alive(), 4);
+}
+
+#[test]
+fn late_messages_advance_previous_history_without_lowering_the_bucket_high_water() {
+    let registry = Arc::new(FixRegistry::new());
+    let mut full = lifecycle(&registry);
+    let mut filtered = lifecycle(&registry);
+    let mut last = None;
+    for (time, emit) in [(21, true), (1, false), (29, false), (31, true)] {
+        let raw = event(&registry, time, "A", None, &[]);
+        let filled = full.fill(raw.clone()).unwrap();
+        previous(&filled, last.as_ref());
+        assert_eq!(
+            filtered.snapshot(raw).unwrap(),
+            emit.then(|| filled.clone())
+        );
+        last = Some(filled);
+    }
+}
+
+#[test]
+fn suppressed_terminal_closes_and_same_bucket_reopening_starts_fresh() {
+    let registry = Arc::new(FixRegistry::new());
+    let mut life = lifecycle(&registry);
+    let first = life
+        .snapshot(event(&registry, 1, "A", None, &[("id", "OLD")]))
+        .unwrap()
+        .unwrap();
+    assert!(
+        life.snapshot(terminal(event(&registry, 2, "A", None, &[])))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(life.alive(), 0);
+    let reopened = life
+        .snapshot(event(&registry, 3, "A", None, &[]))
+        .unwrap()
+        .unwrap();
+    previous(&reopened, None);
+    assert_eq!(reopened.puuid(), first.puuid());
+    let old_key = life
+        .fill(event(&registry, 4, "", None, &[("id", "OLD")]))
+        .unwrap();
+    assert_ne!(old_key.puuid(), reopened.puuid());
+    previous(&old_key, None);
+    assert_eq!(life.alive(), 2);
+    life.clear();
+    assert_eq!(life.interval_ns(), 10);
+    for _ in 0..2 {
+        let standalone = life
+            .snapshot(terminal(event(&registry, 5, "A", None, &[])))
+            .unwrap()
+            .unwrap();
+        previous(&standalone, None);
+        assert_eq!(life.alive(), 0, "no closed-chain tombstones");
+    }
+    assert!(
+        life.snapshot(terminal(event(&registry, 10, "A", None, &[])))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(life.alive(), 0);
+}
+
+#[test]
+fn grid_underflow_refuses_before_opening_attaching_advancing_or_closing() {
+    let registry = Arc::new(FixRegistry::new());
+    for existing in [false, true] {
+        let mut life = lifecycle(&registry);
+        let first = existing.then(|| {
+            life.fill(event(&registry, 1, "A", None, &[("id", "LIVE")]))
+                .unwrap()
+        });
+        let failed = terminal(event(&registry, i64::MIN, "A", None, &[("id", "NEW")]));
+        located(life.snapshot(failed).unwrap_err(), "$.updatedat");
+        assert_eq!(life.alive(), usize::from(existing));
+        let accepted = life
+            .snapshot(event(&registry, 11, "A", None, &[]))
+            .unwrap()
+            .unwrap();
+        previous(&accepted, first.as_ref());
+        let free = life
+            .fill(event(&registry, 12, "", None, &[("id", "NEW")]))
+            .unwrap();
+        previous(&free, None);
+        assert_ne!(free.puuid(), accepted.puuid());
+    }
+}
+
+fn wrong_previous_registry(base: &FixRegistry, tag: i32, dtype: DataType) -> Arc<FixRegistry> {
+    let mut registry = base.clone();
+    let mut field = registry.remove(tag).unwrap();
+    field.set_dtype(dtype).unwrap();
+    field.set_nullable(true);
+    registry.insert(field).unwrap();
+    Arc::new(registry)
+}
+
+#[test]
+fn native_previous_target_failures_cannot_consume_a_bucket_or_close_and_attach() {
+    let registry = Arc::new(FixRegistry::new());
+    for ((tag, name), dtype) in [
+        (PREVUUID_TAG_NAME, DataType::utf8()),
+        (PREVUUID_TAG_NAME, DataType::binary()),
+        (PREVUUID_TAG_NAME, clock(0).dtype().unwrap()),
+        (PREVTIMESTAMP_TAG_NAME, DataType::Uuid),
+        (PREVTIMESTAMP_TAG_NAME, DataType::utf8()),
+    ] {
+        let custom = wrong_previous_registry(&registry, tag, dtype);
+        for existing in [false, true] {
+            let mut life = lifecycle(&registry);
+            let first = existing.then(|| {
+                life.fill(event(&registry, 1, "A", None, &[("id", "LIVE")]))
+                    .unwrap()
+            });
+            let failed = terminal(event(
+                &custom,
+                11,
+                "A",
+                None,
+                &[("a", "LIVE"), ("b", "NEW")],
+            ))
+            .with_value(tag, Scalar::Null)
+            .unwrap();
+            located(life.snapshot(failed).unwrap_err(), &format!("$.{name}"));
+            assert_eq!(life.alive(), usize::from(existing));
+            let accepted = life
+                .snapshot(event(&registry, 12, "A", None, &[]))
+                .unwrap()
+                .unwrap();
+            previous(&accepted, first.as_ref());
+            let free = life
+                .fill(event(&registry, 13, "", None, &[("id", "NEW")]))
+                .unwrap();
+            previous(&free, None);
+            assert_ne!(free.puuid(), accepted.puuid());
+        }
+    }
+}
+
+#[test]
+fn independently_stated_previous_values_are_not_used_as_current_history() {
+    let registry = Arc::new(FixRegistry::new());
+    for (stated_clock, stated_uuid) in [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let mut life = lifecycle(&registry);
+        let first = life.fill(event(&registry, 1, "A", None, &[])).unwrap();
+        let mut second = event(&registry, 11, "A", None, &[]);
+        second
+            .set_many([
+                (
+                    PREVTIMESTAMP_TAG_NAME.0,
+                    if stated_clock {
+                        clock(987)
+                    } else {
+                        Scalar::Null
+                    },
+                ),
+                (
+                    PREVUUID_TAG_NAME.0,
+                    if stated_uuid {
+                        Scalar::Uuid(Uuid::new(987))
+                    } else {
+                        Scalar::Null
+                    },
+                ),
+            ])
+            .unwrap();
+        let second = life.fill(second).unwrap();
+        let expected_clock = if stated_clock {
+            clock(987)
+        } else {
+            first.updatedat().clone()
+        };
+        let expected_uuid = if stated_uuid {
+            Scalar::Uuid(Uuid::new(987))
+        } else {
+            first.uuid().clone()
+        };
+        assert_eq!(
+            second.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            &expected_clock,
+        );
+        assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &expected_uuid,);
+        let third = life.fill(event(&registry, 21, "A", None, &[])).unwrap();
+        previous(&third, Some(&second));
+    }
+}
+
+#[test]
+fn snapshot_stream_is_lazy_keeps_per_item_errors_and_fuses_only_exhaustion() {
+    let registry = Arc::new(FixRegistry::new());
+    let custom = wrong_previous_registry(&registry, PREVUUID_TAG_NAME.0, DataType::utf8());
+    let bad = event(&custom, 11, "A", None, &[])
+        .with_value(PREVUUID_TAG_NAME.0, Scalar::Null)
+        .unwrap();
+    let mut input = [
+        Ok(event(&registry, 1, "A", None, &[])),
+        Err(Error::InvalidRecord {
+            path: "$.source".into(),
+            reason: "source item failed".into(),
+        }),
+        Ok(bad),
+        Ok(event(&registry, 12, "A", None, &[])),
+        Ok(event(&registry, 20, "A", None, &[])),
+        Ok(event(&registry, 29, "A", None, &[])),
+        Ok(event(&registry, 31, "A", None, &[])),
+    ]
+    .into_iter();
+    let pulls = Rc::new(Cell::new(0));
+    let count = Rc::clone(&pulls);
+    let source = std::iter::from_fn(move || {
+        count.set(count.get() + 1);
+        input.next()
+    });
+    let mut snapshots = lifecycle(&registry).snapshots(source);
+    assert_eq!(pulls.get(), 0);
+    let first = snapshots.next().unwrap().unwrap();
+    assert_eq!(pulls.get(), 1);
+    located(snapshots.next().unwrap().unwrap_err(), "$.source");
+    assert_eq!(pulls.get(), 2);
+    located(snapshots.next().unwrap().unwrap_err(), "$.prevuuid");
+    assert_eq!(pulls.get(), 3);
+    let recovered = snapshots.next().unwrap().unwrap();
+    previous(&recovered, Some(&first));
+    assert_eq!(
+        pulls.get(),
+        4,
+        "failed transition did not consume bucket ten"
+    );
+    assert_eq!(snapshots.next().unwrap().unwrap().updatedat(), &clock(30));
+    assert_eq!(
+        pulls.get(),
+        7,
+        "aligned and equal buckets were processed, not emitted"
+    );
+    assert!(snapshots.next().is_none());
+    assert_eq!(pulls.get(), 8);
+    assert!(snapshots.next().is_none());
+    assert_eq!(pulls.get(), 8);
+
+    let mut resumed = 0;
+    let source = std::iter::from_fn(move || {
+        resumed += 1;
+        (resumed != 1).then(|| Ok(event(&registry, 1, "LATE", None, &[])))
+    });
+    let mut snapshots = FixLifecycle::new(Arc::new(FixRegistry::new())).snapshots(source);
+    assert!(snapshots.next().is_none());
+    assert!(
+        snapshots.next().is_none(),
+        "a source cannot resume after exhaustion"
+    );
+}
+
+#[test]
+fn fresh_replay_is_exact_and_preprocessed_snapshot_replay_emits_nothing() {
+    let registry = Arc::new(FixRegistry::new());
+    let raw: Vec<_> = [1, 7, 11, 21]
+        .map(|time| event(&registry, time, "A", None, &[]))
+        .into();
+    let fill = |messages: Vec<FixMsg>| {
+        let mut life = lifecycle(&registry);
+        messages
+            .into_iter()
+            .map(|message| life.fill(message))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let filled = fill(raw.clone());
+    assert_eq!(filled.len(), raw.len());
+    assert_eq!(fill(raw.clone()), filled);
+    assert_eq!(fill(filled.clone()), filled);
+    let snapshots = || {
+        lifecycle(&registry)
+            .snapshots(raw.clone().into_iter().map(Ok))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap()
+    };
+    let first = snapshots();
+    assert_eq!(first.len(), 3);
+    assert_eq!(snapshots(), first);
+    assert_eq!(
+        lifecycle(&registry)
+            .snapshots(filled.into_iter().map(Ok))
+            .count(),
+        0
+    );
+}
+
+#[test]
+fn snapshot_iterator_crosses_arrow_without_codec_lifetimes_or_a_second_transition() {
+    let registry = Arc::new(FixRegistry::new());
+    let raw: Vec<_> = [1, 7, 11]
+        .map(|time| event(&registry, time, "A", None, &[]))
+        .into();
+    let schema = raw[0].as_field().clone();
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let input = codec
+        .arrow_reader(schema.clone(), raw.clone().into_iter().map(Ok))
+        .unwrap();
+    let messages = codec.messages(input);
+    let snapshots = lifecycle(&registry).snapshots(messages);
+    let reader = codec.arrow_reader(schema, snapshots).unwrap();
+    drop(codec);
+    let reader_codec = FixCodec::new(Arc::clone(&registry));
+    let actual = reader_codec
+        .messages(reader)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(actual.len(), 2);
+    assert_eq!(actual[0].updatedat(), &clock(0));
+    assert_eq!(actual[1].updatedat(), &clock(10));
+    // Compare against the same emitted row projection: projection itself owns
+    // its identity and may omit the newly appended previous-message columns.
+    let expected_reader = reader_codec
+        .arrow_reader(
+            raw[0].as_field().clone(),
+            lifecycle(&registry).snapshots(raw.into_iter().map(Ok)),
+        )
+        .unwrap();
+    let expected = reader_codec
+        .messages(expected_reader)
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn lifecycle_normalization_keeps_wire_entries_digest_and_real_clock() {
+    let registry = Arc::new(FixRegistry::new());
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let wire = b"8=FIX.4.4|35=D|52=20260102-10:15:30.125|60=20260102-10:15:30.123456789|10=0|";
+    let raw = codec
+        .parse_fix_line(wire)
+        .unwrap()
+        .with_value(CODE_TAG_NAME.0, Scalar::from("A"))
+        .unwrap();
+    let filled = FixLifecycle::new(registry).fill(raw.clone()).unwrap();
+    assert_eq!(filled.into_bytes(b'|'), raw.into_bytes(b'|'));
+    assert_eq!(filled.entries(), raw.entries());
+    assert_eq!(filled.digest(), raw.digest());
+    assert_eq!(
+        filled.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(),
+        raw.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap()
+    );
+    assert_eq!(filled.createdat(), raw.createdat());
+    assert_ne!(filled.updatedat(), raw.updatedat());
+}

@@ -144,18 +144,10 @@ pub fn fix_schema_tags() -> Vec<i32> {
     tags
 }
 
-/// The columns every message fills, so they are declared non-null.
-///
-/// `BeginString` because a message is built with one whatever its line
-/// carried; the digest because every arrival record has one; the clock and
-/// its partition because a message is stamped when it is built - by the row
-/// that carried it, by its own clock, or by the epoch.
-const REQUIRED_TAGS: [i32; 4] = [
-    8,
-    super::MSGHASH_TAG_NAME.0,
-    super::TIMESTAMP_TAG_NAME.0,
-    super::UNIXPARTITION_TAG_NAME.0,
-];
+/// BeginString and the partition supplement the identity owner's replay bundle.
+fn is_required(tag: i32) -> bool {
+    tag == 8 || tag == super::UNIXPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
+}
 
 /// The fixed root every message answers as.
 ///
@@ -183,7 +175,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
                 let spelling = held.name().to_owned();
                 held.set_display(spelling)?;
             }
-            held.set_nullable(!REQUIRED_TAGS.contains(&tag));
+            held.set_nullable(!is_required(tag));
             if !fields
                 .iter()
                 .any(|known| crate::types::folds_equal(known.name(), held.name()))
@@ -208,7 +200,11 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
         "NoUnmappedFixEntries",
         "The pairs no dictionary explained, a view over the arrival record.",
     )?);
-    Ok(DataType::from_fields(fields)?.required_field(name))
+    let schema = DataType::from_fields(fields)?.required_field(name);
+    column_plan(&schema, registry)?
+        .identity
+        .require_bundle(&schema)?;
+    Ok(schema)
 }
 
 /// The fixed schema behind a capture's own columns.
@@ -325,67 +321,67 @@ pub fn fix_column_tags(schema: &Field) -> Vec<Option<i32>> {
 /// this so a batch of a million rows reads the schema once.
 #[derive(Clone, Copy)]
 pub(super) struct Column {
-    tag: Option<i32>,
+    pub(super) tag: Option<i32>,
     counter: Option<i32>,
 }
 
-/// One schema's columns, shared by the rows read against it.
-pub(super) type ColumnPlan = Arc<[Column]>;
-
-/// [`fix_column_tags`] and each column's counter, for one schema.
-///
-/// # Errors
-///
-/// Returns the metadata refusal when a column's `fix:counter` is not a tag.
-pub(super) fn column_plan(schema: &Field) -> Result<ColumnPlan> {
-    schema
-        .fields()
-        .iter()
-        .map(|column| {
-            Ok(Column {
-                tag: column_tag(column),
-                counter: column.as_fix().counter()?,
-            })
-        })
-        .collect()
+/// One schema's resolved projections and canonical content order.
+pub(super) struct Columns {
+    columns: Box<[Column]>,
+    pub(super) identity: super::identity::Plan,
 }
 
-thread_local! {
-    /// The plan of the schema this thread last filled one row from.
-    ///
-    /// A message read on its own pays the schema's metadata once per column,
-    /// which is most of what a row costs, and the schema it is read against
-    /// is the same one for a whole capture. The columns' shared storage is
-    /// held beside the plan, so the storage outlives the entry and its
-    /// address names it and nothing else.
-    static LAST_COLUMN_PLAN: RefCell<Option<(Fields, ColumnPlan)>> = const { RefCell::new(None) };
-}
+pub(super) type ColumnPlan = Arc<Columns>;
 
-/// Whether two column lists are one allocation, which is what makes the
-/// remembered plan theirs and nobody else's.
-fn same_storage(left: &Fields, right: &Fields) -> bool {
-    match (&left.0, &right.0) {
-        (Some(left), Some(right)) => Arc::ptr_eq(left, right),
-        (None, None) => true,
-        _ => false,
+impl std::ops::Deref for Columns {
+    type Target = [Column];
+    fn deref(&self) -> &[Column] {
+        &self.columns
     }
 }
 
-/// [`column_plan`] for one schema, remembered across the rows this thread
-/// reads against it.
-fn column_plan_of(schema: &Field) -> Result<ColumnPlan> {
+pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<ColumnPlan> {
+    let DataType::Struct(fields) = schema.dtype() else {
+        return Err(super::identity::refused(
+            schema.name(),
+            "a Struct field",
+            schema.dtype(),
+        ));
+    };
+    let mut columns = Vec::with_capacity(fields.len());
+    for column in fields.iter() {
+        columns.push(Column {
+            tag: super::identity::resolve_tag(column, registry)?,
+            counter: column.as_fix().counter()?,
+        });
+    }
+    let columns = columns.into_boxed_slice();
+    let identity =
+        super::identity::Plan::new(schema, columns.iter().map(|column| column.tag), registry)?;
+    Ok(Arc::new(Columns { columns, identity }))
+}
+
+thread_local! {
+    // One retained schema and registry: aliases belong to the resolving registry.
+    static LAST_COLUMN_PLAN: RefCell<Option<(Fields, Arc<FixRegistry>, ColumnPlan)>> = const { RefCell::new(None) };
+}
+
+/// Pointer identity is fast; equal reconstructed layouts need a structural comparison.
+pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Result<ColumnPlan> {
     let DataType::Struct(columns) = schema.dtype() else {
-        return column_plan(schema);
+        return column_plan(schema, registry);
     };
     LAST_COLUMN_PLAN.with(|held| {
         let mut held = held.borrow_mut();
-        if let Some((known, plan)) = held.as_ref() {
-            if same_storage(known, columns) {
+        if let Some((known, resolver, plan)) = held.as_ref() {
+            if Arc::ptr_eq(resolver, registry)
+                && (known.shares_storage_with(columns) || known == columns)
+            {
                 return Ok(Arc::clone(plan));
             }
         }
-        let plan = column_plan(schema)?;
-        *held = Some((columns.clone(), Arc::clone(&plan)));
+        let plan = column_plan(schema, registry)?;
+        *held = Some((columns.clone(), Arc::clone(registry), Arc::clone(&plan)));
         Ok(plan)
     })
 }
@@ -493,42 +489,6 @@ fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
                 .collect::<Vec<_>>(),
         ),
     ])
-}
-
-/// One value as the column holds it.
-///
-/// A value the message holds was typed under the column's own field - the
-/// dictionary's, which the fixed row renamed - so it is already the stored
-/// form and passes untouched. A value this module derived, or one the
-/// message holds in another kind, goes through the column's contract: a
-/// digest becomes the fixed-width bytes its column declares, a clock read
-/// out of text becomes an instant, and a kind the column cannot hold is
-/// null rather than a refusal the row cannot survive. This is what lets a
-/// reader take every row of a capture as canonical without walking it.
-fn fitted(column: &Field, value: crate::Scalar) -> crate::Scalar {
-    if value.is_null() || value.id() == column.dtype().id() {
-        return value;
-    }
-    column.scalar(value).unwrap_or(crate::Scalar::Null)
-}
-
-/// One clock source as the instant it states, whatever it is typed as.
-///
-/// A narrow dictionary types a clock field as text, and the derived clock
-/// column is declared as an instant however narrow the dictionary is. FIX's
-/// own spelling is read here, so a stated timestamp stays a timestamp instead
-/// of becoming a refusal the row cannot survive.
-pub(super) fn as_instant(held: crate::Scalar) -> crate::Scalar {
-    let Some(text) = held.as_str() else {
-        return held;
-    };
-    // Only a dated reading. `TZTimeOnly` is an instant on the epoch day,
-    // which is a legal value of that datatype and never a moment a capture
-    // happened at, so a clock column takes nothing from one.
-    if super::build::fix_date(text).is_none() {
-        return crate::Scalar::Null;
-    }
-    super::build::wire_spelling(&CLOCK_DATATYPE, text).unwrap_or(crate::Scalar::Null)
 }
 
 /// The members one repeating-group field declares, or None for anything else.
@@ -661,7 +621,16 @@ impl super::FixMsg {
         schema: &Field,
         row: &crate::Scalar,
     ) -> Result<Self> {
-        let mut built = Self::with_registry(registry, schema.clone(), row.clone())?;
+        let plan = column_plan_of(schema, &registry)?;
+        plan.identity.require_values(schema, row)?;
+        let value = schema.canonicalize_value(row.clone())?;
+        let mut built = Self::settled_parts(
+            registry,
+            schema.clone(),
+            value,
+            Vec::new(),
+            super::identity::Assertions::STATED,
+        )?;
         let entries = schema
             .index_of(ENTRIES_COLUMN)
             .and_then(|at| built.as_value().get(at))
@@ -686,7 +655,8 @@ impl super::FixMsg {
     /// tag or group counter names is a capture's own: it takes the child of
     /// the same name where the message has one - which is how a row read
     /// back through [`Self::from_row`] returns to its schema whole - and is
-    /// left null otherwise, for the capture reader to fill.
+    /// left null otherwise, which a required column refuses. The capture reader
+    /// supplies its prefix before validation, not after projection.
     ///
     /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it, and [`UNMAPPED_COLUMN`]
@@ -717,13 +687,14 @@ impl super::FixMsg {
     /// ```
     /// # Errors
     ///
-    /// Returns the JSON writer's failure rendering a truncated subtree into
-    /// the arrival column's leaf - the one fallible step, because every other
-    /// member is already a value.
+    /// Refuses a missing or mistyped mandatory replay holder, a cell the target
+    /// field cannot represent, or an unrenderable truncated arrival subtree.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
-        let plan = column_plan_of(schema)?;
-        self.row_values(schema, &plan)
-            .map(crate::Scalar::from_sequence)
+        let plan = column_plan_of(schema, self.registry())?;
+        let mut values = self.row_values(schema, &plan, Vec::new())?;
+        plan.identity
+            .finalize(schema, &mut values, super::identity::Assertions::default())?;
+        Ok(crate::Scalar::from_sequence(values))
     }
 
     /// The fixed row as the values it is made of, before they are wrapped.
@@ -733,8 +704,22 @@ impl super::FixMsg {
     /// left for them and wraps the row once, rather than unwrapping a row to
     /// wrap it again. `plan` is [`column_plan`] over the same schema, read
     /// once by the caller rather than once per row.
-    pub(super) fn row_values(&self, schema: &Field, plan: &[Column]) -> Result<Vec<crate::Scalar>> {
+    pub(super) fn row_values(
+        &self,
+        schema: &Field,
+        plan: &Columns,
+        front: Vec<crate::Scalar>,
+    ) -> Result<Vec<crate::Scalar>> {
+        plan.identity.require_bundle(schema)?;
         let columns = schema.fields();
+        if front.len() > columns.len() {
+            return Err(super::identity::refused(
+                schema.name(),
+                columns.len(),
+                front.len(),
+            ));
+        }
+        let mut front = front.into_iter();
         // The arrival record answers both closing columns and is walked once,
         // because the second is a view over the first rather than a second
         // record. A schema holding neither pays nothing for either.
@@ -747,11 +732,13 @@ impl super::FixMsg {
             known = Some(record);
             unknown = Some(unexplained);
         }
-        // The market clock answers two columns, so it is read once for both.
-        let mut clock: Option<crate::Scalar> = None;
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
-        for (column, planned) in columns.iter().zip(plan) {
-            values.push(match column.name() {
+        for (column, planned) in columns.iter().zip(plan.iter()) {
+            if let Some(value) = front.next() {
+                values.push(column.scalar(value)?);
+                continue;
+            }
+            let value = match column.name() {
                 ENTRIES_COLUMN => known.take().unwrap_or(crate::Scalar::Null),
                 UNMAPPED_COLUMN => unknown.take().unwrap_or(crate::Scalar::Null),
                 // A column declaring a group's `fix:counter` answers with
@@ -770,19 +757,17 @@ impl super::FixMsg {
                         self.regrouped(counter, column, value)
                     } else {
                         match planned.tag {
-                            Some(tag) => {
-                                let held =
-                                    self.regrouped(tag, column, self.column_value(tag, &mut clock));
-                                fitted(column, held)
-                            }
+                            Some(tag) => self.regrouped(tag, column, self.column_value(tag)),
                             None => self
                                 .index_of_name(column.name())
                                 .and_then(|at| self.as_value().get(at))
-                                .map_or(crate::Scalar::Null, |held| fitted(column, held.clone())),
+                                .cloned()
+                                .unwrap_or(crate::Scalar::Null),
                         }
                     }
                 }
-            });
+            };
+            values.push(column.scalar(value)?);
         }
         Ok(values)
     }
@@ -793,8 +778,8 @@ impl super::FixMsg {
     /// order it stated them; the fixed column declares the dictionary's
     /// members. Placing them by name is what lets an occurrence a bridge
     /// packed into one member land in the same column as one that spelled
-    /// every member out - and a member an occurrence never stated is null,
-    /// which is what keeps a row's content from failing its batch.
+    /// every member out. An unstated member becomes null; Field::scalar then
+    /// enforces the declared occurrence's types and nullability.
     fn regrouped(&self, tag: i32, declared: &Field, held: crate::Scalar) -> crate::Scalar {
         let Some(members) = item_fields(declared) else {
             return held;
@@ -836,8 +821,8 @@ impl super::FixMsg {
     ///
     /// Three sources, in this order. What the message actually said, always,
     /// because a stated value is never overridden. Then the derived facts
-    /// this crate computes - the digest, the version, the ticker, the clock,
-    /// the partition. Then the lift's own enrichment, which fills a column
+    /// this crate computes - the version, the ticker and the partition.
+    /// Then the lift's own enrichment, which fills a column
     /// the message did not state but forced: a buy order at a price is a
     /// party willing to pay it, so a bid lane it never wrote is still true of
     /// it, and a one-sided quote implies the side it never wrote either.
@@ -845,10 +830,7 @@ impl super::FixMsg {
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
     ///
-    /// `clock` is the market clock once it has been read: two columns derive
-    /// from it, and the row reads it for the first and keeps it for the
-    /// second.
-    fn column_value(&self, tag: i32, clock: &mut Option<crate::Scalar>) -> crate::Scalar {
+    fn column_value(&self, tag: i32) -> crate::Scalar {
         // A stated value wins - a stated null is a value that would not
         // type, and the derivation still answers for it.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
@@ -875,21 +857,14 @@ impl super::FixMsg {
                     .map_or_else(|| "4.4".to_owned(), |held| held.version().to_string())
             ));
         }
-        if is(super::MSGHASH_TAG_NAME) {
-            crate::Scalar::from(self.digest().to_be_bytes().to_vec())
-        } else if is(super::VERSION_TAG_NAME) {
+        if is(super::VERSION_TAG_NAME) {
             self.version().map_or(crate::Scalar::Null, |held| {
                 crate::Scalar::from(held.to_string())
             })
         } else if is(super::SYMBOLTICKER_TAG_NAME) {
             self.symbol_ticker()
-        } else if is(super::TIMESTAMP_TAG_NAME) {
-            clock.get_or_insert_with(|| self.stamped_clock()).clone()
         } else if is(super::UNIXPARTITION_TAG_NAME) {
-            partition_of(
-                clock.get_or_insert_with(|| self.stamped_clock()),
-                super::DEFAULT_PARTITION_SECONDS,
-            )
+            partition_of(self.updatedat(), super::DEFAULT_PARTITION_SECONDS)
         } else if is(super::ISINCODE_TAG_NAME) {
             self.isin_code()
         } else if is(super::MICCODE_TAG_NAME) {
@@ -899,12 +874,6 @@ impl super::FixMsg {
         } else {
             crate::Scalar::Null
         }
-    }
-
-    /// The clock the row is dated by, never null: the stamp, else the epoch.
-    pub(super) fn stamped_clock(&self) -> crate::Scalar {
-        let held = self.market_timestamp();
-        if held.is_null() { epoch() } else { held }
     }
 
     /// The instrument's ISIN: `SecurityID(48)` under an ISIN source, else the
@@ -1043,18 +1012,7 @@ const DERIVED_FACETS: [(i32, &str); 5] = [
 /// anything.
 const TICKER_SOURCES: [i32; 2] = [55, 48];
 
-/// The timestamps a market clock is read from, in decreasing exactness.
-///
-/// `TransactTime` is when the venue acted, `TrdRegTimestamp` when a
-/// regulatory clock ran, `SendingTime` when the frame left, and
-/// `OrigSendingTime` when the original left on a resend. A capture with no
-/// time is not orderable at all, so this falls rather than refuses - and
-/// which one answered stays visible, because the columns they came from are
-/// in the row beside it.
-pub(super) const CLOCK_SOURCES: [i32; 4] = [60, 769, 52, 122];
-
-/// What the derived clock column is declared as, and therefore what a clock
-/// read out of a text-typed field has to become.
+/// Exact layout shared by FIX event, creation, grid and previous clocks.
 pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
@@ -1103,70 +1061,16 @@ impl super::FixMsg {
         }
         crate::Scalar::from(rendered)
     }
-
-    /// The timestamp a capture is ordered and partitioned by.
-    ///
-    /// A message the codec built carries it as a child of its own, stamped
-    /// when it was built - by the row that carried it, else by the first
-    /// clock source it answers in decreasing exactness (`TransactTime`,
-    /// `TrdRegTimestamp`, `SendingTime`, `OrigSendingTime`), else by the
-    /// epoch - so this answers that child. A message built from a schema and
-    /// a value carries no such child, and this reads the clock sources
-    /// directly for it. A group's timestamp is read from its first
-    /// occurrence, because a regulatory clock that ran several times still
-    /// ran first once.
-    #[must_use]
-    pub fn market_timestamp(&self) -> crate::Scalar {
-        if let Some(stamped) = self.get_by_tag(super::TIMESTAMP_TAG_NAME.0) {
-            if !stamped.is_null() {
-                return stamped.clone();
-            }
-        }
-        wire_clock(|tag| self.get_by_tag(tag).cloned())
-    }
-}
-
-/// The first clock source a message answers, read through `held`.
-///
-/// Shared by the built message and the builder that stamps it, so the two
-/// can never disagree about which clock a message keeps.
-pub(super) fn wire_clock(held: impl Fn(i32) -> Option<crate::Scalar>) -> crate::Scalar {
-    for tag in CLOCK_SOURCES {
-        let Some(held) = held(tag) else {
-            continue;
-        };
-        if held.is_null() {
-            continue;
-        }
-        if let Some(occurrences) = held.as_sequence() {
-            if let Some(first) = occurrences.iter().find(|held| !held.is_null()) {
-                return as_instant(first.clone());
-            }
-            continue;
-        }
-        return as_instant(held);
-    }
-    crate::Scalar::Null
-}
-
-/// The instant a message with no clock at all is stamped with.
-///
-/// The epoch: where a row nobody dated sorts first and visibly, rather than
-/// among the rows of whatever day it happened to be read on.
-pub(super) fn epoch() -> crate::Scalar {
-    CLOCK_DATATYPE
-        .scalar(crate::Scalar::from(0_i64))
-        .unwrap_or(crate::Scalar::Null)
 }
 
 impl super::FixMsg {
-    /// The partition [`Self::market_timestamp`] falls in, in whole seconds.
+    /// The partition [`Self::updatedat`] falls in, in whole seconds.
     ///
     /// Floor division rather than truncation, so a timestamp before the epoch
     /// lands in the partition that contains it rather than the one after.
     #[must_use]
     pub fn unix_partition(&self, seconds: i64) -> crate::Scalar {
-        partition_of(&self.market_timestamp(), seconds)
+        partition_of(self.updatedat(), seconds)
     }
 }
 

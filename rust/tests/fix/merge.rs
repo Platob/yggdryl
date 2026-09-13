@@ -92,7 +92,7 @@ fn a_field_whose_name_folds_to_a_stored_name_merges_into_that_field() {
         .unwrap();
     incoming.as_fix_mut().set_description("incoming").unwrap();
     assert!(!registry.add_field(incoming.clone()).unwrap());
-    assert_eq!(registry.len(), 2 + super::crated());
+    assert_eq!(registry.len(), 2 + super::seeded_fields());
 
     // The stored field keeps its identity and spelling; the union is stored
     // order first, then what only the incoming field stated, then its tag.
@@ -155,7 +155,7 @@ fn a_name_that_is_a_stored_alias_folds_into_the_alias_holder() {
     assert_eq!(stored.as_fix().tags().unwrap(), [9001]);
     assert_eq!(stored.as_fix().aliases().collect::<Vec<_>>(), ["Ticker"]);
     assert_eq!(registry.field("TICKER").unwrap().name(), "Symbol");
-    assert_eq!(registry.len(), 1 + super::crated());
+    assert_eq!(registry.len(), 1 + super::seeded_fields());
 }
 
 #[test]
@@ -536,13 +536,13 @@ fn add_fields_counts_what_arrived_and_what_folded() {
             yggdryl::fix_crate_fields().unwrap()[0].clone(),
             described,
             tagged("ticker", 9001, DataType::utf8()),
-            tagged("TransactTime", 60, DataType::utf8()),
+            tagged("Text", 58, DataType::utf8()),
             DataType::from_fields([]).unwrap().required_field("Header"),
             extended,
         ])
         .unwrap();
     assert_eq!((added, merged), (2, 3));
-    assert_eq!(registry.len(), 3 + super::crated());
+    assert_eq!(registry.len(), 3 + super::seeded_fields());
     assert_eq!(
         registry.field(55).unwrap().description(),
         Some("by identity")
@@ -606,7 +606,8 @@ fn merging_a_dictionary_folds_its_definitions_rather_than_replacing_them() {
         .unwrap();
     let before_source = source.clone();
 
-    assert_eq!(target.merge_with(&source).unwrap(), (1, 2));
+    // The two standard clock seeds are ordinary definitions and merge too.
+    assert_eq!(target.merge_with(&source).unwrap(), (1, 4));
     let party = target.definition(FixCategory::Components, "Party").unwrap();
     assert_eq!(names(party), ["PartyID", "PartyNote"]);
     assert_eq!(party.description(), Some("stored wording"));
@@ -625,7 +626,7 @@ fn merging_a_dictionary_folds_its_definitions_rather_than_replacing_them() {
         target
     );
     let before = target.clone();
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 3));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 5));
     assert_eq!(target, before);
 
     // A member that disagrees refuses the whole merge.
@@ -817,7 +818,7 @@ fn a_separator_respelling_is_a_spelling_of_the_stored_name() {
         stored.as_fix().aliases().collect::<Vec<_>>(),
         ["Ticker", "SYM"]
     );
-    assert_eq!(registry.len(), 1 + super::crated());
+    assert_eq!(registry.len(), 1 + super::seeded_fields());
 
     // By identity the same respelling is the stored name too.
     let mut described = tagged("sym-bol", 55, DataType::utf8());
@@ -884,7 +885,7 @@ fn a_canonical_identity_supersedes_the_alternate_another_field_lists() {
         "Price"
     );
     assert_eq!(registry.field(55).unwrap().as_fix().tags().unwrap(), [44]);
-    assert_eq!(registry.len(), 3 + super::crated());
+    assert_eq!(registry.len(), 3 + super::seeded_fields());
 }
 
 #[test]
@@ -956,7 +957,7 @@ fn a_reference_to_a_definition_arriving_in_the_same_merge_restates_an_inline_mem
         )
         .unwrap();
 
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 4));
     let route = target.definition(FixCategory::Components, "Route").unwrap();
     assert_eq!(names(route), ["Hops", "RouteID"]);
     assert!(route.fields()[0].as_fix().group().is_none(), "kept inline");
@@ -1008,7 +1009,7 @@ fn arrivals() -> [Field; 4] {
 
 /// What every row of the fold table leaves behind, whichever verb folded it.
 fn assert_fold_table(registry: &FixRegistry) {
-    assert_eq!(registry.len(), 5 + super::crated());
+    assert_eq!(registry.len(), 5 + super::seeded_fields());
 
     // Row 1: the same tag under the same folded name is the same field.
     // `Msg_Type`, `msgtype` and `MsgType` are one id, so the respelling
@@ -1099,8 +1100,8 @@ fn assert_fold_table(registry: &FixRegistry) {
     let mut sorted = tags.clone();
     sorted.sort_unstable();
     assert_eq!(tags, sorted);
-    assert_eq!(tags, [1, 35, 44, 55, 55]);
-    let (first, second) = (order[3].1, order[4].1);
+    assert_eq!(tags, [1, 35, 44, 52, 55, 55, 60]);
+    let (first, second) = (order[4].1, order[5].1);
     assert_eq!(
         first,
         registry
@@ -1188,7 +1189,7 @@ fn the_fold_table_holds_through_merge_with() {
     let mut registry = holders();
     let source = FixRegistry::from_fields(arrivals()).unwrap();
     let before_source = source.clone();
-    assert_eq!(registry.merge_with(&source).unwrap(), (2, 2));
+    assert_eq!(registry.merge_with(&source).unwrap(), (2, 4));
     assert_fold_table(&registry);
     assert_eq!(source, before_source);
 
@@ -1196,8 +1197,8 @@ fn the_fold_table_holds_through_merge_with() {
     // source's `VenueSymbol` is then the first holder of 55, and `Symbol`
     // arrives beside it.
     let mut reversed = FixRegistry::from_fields(arrivals()).unwrap();
-    assert_eq!(reversed.merge_with(&holders()).unwrap(), (1, 2));
-    assert_eq!(reversed.len(), 5 + super::crated());
+    assert_eq!(reversed.merge_with(&holders()).unwrap(), (1, 4));
+    assert_eq!(reversed.len(), 5 + super::seeded_fields());
     assert_eq!(reversed.field_by_tag(55).unwrap().name(), "VenueSymbol");
     assert_eq!(
         reversed
@@ -1264,7 +1265,7 @@ fn a_merged_membership_is_the_union_of_what_each_side_spoke() {
     let mut price = tagged("Price", 44, DataType::Float64);
     price.as_fix_mut().set_branches(["venue"]).unwrap();
     let source = FixRegistry::from_fields([price, symbol]).unwrap();
-    assert_eq!(target.merge_with(&source).unwrap(), (1, 1));
+    assert_eq!(target.merge_with(&source).unwrap(), (1, 3));
     assert_eq!(
         target
             .field_by_tag(44)
@@ -1344,7 +1345,7 @@ fn message_codes_live_in_one_namespace() {
     source
         .create_definition(FixCategory::Components, venue)
         .unwrap();
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 0));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
     assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(target.msgtype("VenueOrder").unwrap().as_str(), "D");
     assert_eq!(target.msgtypes().count(), 2 + super::crated_messages());
@@ -1394,7 +1395,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     source
         .create_definition(FixCategory::Components, algo)
         .unwrap();
-    assert_eq!(target.merge_with(&source).unwrap(), (0, 0));
+    assert_eq!(target.merge_with(&source).unwrap(), (0, 2));
     assert_eq!(target.msgtype("AlgoOrder").unwrap().as_str(), "D");
     assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
     let restored = FixRegistry::from_json(&target.into_json().unwrap()).unwrap();

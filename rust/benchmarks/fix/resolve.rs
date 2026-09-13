@@ -56,6 +56,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
             }
         });
     });
+    group.bench_function("settled_identity_borrows", |bencher| {
+        bencher.iter(|| {
+            let held = black_box(&identifier_message);
+            black_box((
+                held.updatedat(),
+                held.createdat(),
+                held.uuid(),
+                held.puuid(),
+            ))
+        });
+    });
 
     // The four outcomes a lookup has, over the tracked seed.
     group.bench_function("tag_hit", |bencher| {

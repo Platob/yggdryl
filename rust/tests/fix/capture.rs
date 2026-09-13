@@ -166,7 +166,7 @@ fn column_at(batch: &arrow_array::RecordBatch, at: usize) -> Vec<Scalar> {
 fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     let registry = registry();
     let source = handle();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
 
     // Line by line: the text reader answers lines, and every line is read for
     // the messages its own body spells - none, one or many (decision 16) -
@@ -241,7 +241,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
 #[test]
 fn every_dialect_in_one_capture_is_read_as_itself() {
     let registry = registry();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
 
     // A framed order behind prose: the frame is located and the prose dropped.
     let order = codec.sole_line(TAGGED.as_bytes(), true).expect("an order");
@@ -306,7 +306,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // a name the specification publishes resolves the same way. The bridge's
     // fields carry their dictionary as a membership, and a message root
     // carries none, because a message is not a dictionary member.
-    let bridge = FixCodec::new(Arc::clone(&registry));
+    let bridge = super::fixed_codec(Arc::clone(&registry));
     let config = bridge
         .sole_line(PLUGIN.as_bytes(), true)
         .expect("a configuration document");
@@ -366,7 +366,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
 #[test]
 fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
     let registry = registry();
-    let codec = FixCodec::new(registry);
+    let codec = super::fixed_codec(registry);
 
     // The part-filled report states what was ordered and what was done, so it
     // has stated what is left and what the fill was worth.
@@ -403,7 +403,7 @@ fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
 fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
     let registry = registry();
     let source = handle();
-    let codec = FixCodec::new(Arc::clone(&registry)).with_separator(b'|');
+    let codec = super::fixed_codec(Arc::clone(&registry)).with_separator(b'|');
 
     let parsed = codec
         .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
@@ -441,7 +441,7 @@ fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
 fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
     let registry = registry();
     let source = handle();
-    let codec = FixCodec::new(registry);
+    let codec = super::fixed_codec(registry);
 
     let parsed = codec
         .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
@@ -519,7 +519,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
         Some(&b"Plugin"[..])
     );
 
-    let codec = FixCodec::new(registry());
+    let codec = super::fixed_codec(registry());
     let message = codec
         .sole_plugin_line(LOGGED.as_bytes(), false)
         .expect("the document the line carries");
@@ -598,7 +598,7 @@ fn every_plugin_a_document_answers_for_crosses_both_ways() {
 
     // And back to a typed message, and out of one again: the crossing keeps
     // the ObjectName, the attributes and their types.
-    let codec = FixCodec::new(registry());
+    let codec = super::fixed_codec(registry());
     let message = held[0].into_fixmsg(&codec).expect("a typed message");
     assert_eq!(
         message
@@ -648,7 +648,7 @@ fn a_body_no_reader_here_can_read_is_silence_at_every_door() {
         yggdryl::MimeType::JSON
     );
 
-    let codec = FixCodec::new(registry());
+    let codec = super::fixed_codec(registry());
     let line =
         TextLine::from_bytes(0, TextBytes::from_bytes(STRANGER.as_bytes()).unwrap()).unwrap();
     assert!(
@@ -752,7 +752,7 @@ fn a_document_that_names_no_plugin_answers_none_rather_than_refusing() {
 
 #[test]
 fn a_wildcard_capture_expands_messages_and_repeats_its_source_columns() {
-    let codec = FixCodec::new(registry());
+    let codec = super::fixed_codec(registry());
     let messages = codec
         .parse_line(WILDCARD.as_bytes())
         .expect("a wildcard response")

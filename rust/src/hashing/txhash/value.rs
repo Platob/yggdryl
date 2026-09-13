@@ -8,7 +8,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::types::{Bytes, BytesLayout, BytesParameters};
+use crate::types::{Bytes, BytesLayout, BytesParameters, Uuid};
 use crate::{DataType, Digest, DigestAlgorithm, Error, Result, Scalar, TimeUnit, Timezone};
 
 use super::time::{DEFAULT_UNIT, restate_unix, validate_unit};
@@ -215,6 +215,53 @@ impl TxHash {
             bytes,
             length: self.width() as u8,
         }
+    }
+
+    /// Project this value to RFC 9562 UUIDv8 without allocating on success.
+    ///
+    /// The instant is converted exactly to signed 64-bit nanoseconds. Its
+    /// sign bit is flipped and all 64 bits are packed around the UUID's
+    /// version and variant bits, followed by the digest's low 58 bits.
+    /// UUID ordering therefore follows nanosecond instants across the epoch,
+    /// independent of digest. Neither the original unit nor the algorithm
+    /// is encoded; the discarded six digest bits cannot be recovered.
+    /// This is a lossy fingerprint, not a uniqueness guarantee or an inverse
+    /// of [`Self::into_bytes`]. The raw bytes and ordering of `TxHash` itself
+    /// are unchanged.
+    ///
+    /// ```
+    /// use yggdryl::{Digest, DigestAlgorithm, TimeUnit, hashing::txhash::TxHash};
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let value = TxHash::new_in(
+    ///     0, TimeUnit::Nanosecond, Digest::new(DigestAlgorithm::Xxh64, 1),
+    /// )?;
+    /// assert_eq!(value.into_uuid()?.to_string(), "80000000-0000-8000-8000-000000000001");
+    /// let earlier = TxHash::new_in(-1, TimeUnit::Nanosecond, value.digest())?;
+    /// assert!(earlier.into_uuid()? < value.into_uuid()?);
+    /// assert!(earlier.into_bytes() > value.into_bytes());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
+    /// 64 bits wide, or the existing [`Error::ArithmeticOverflow`] from
+    /// [`restate_unix`] when the instant does not fit signed 64-bit nanoseconds.
+    pub fn into_uuid(self) -> Result<Uuid> {
+        let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
+            path: "$.digest".into(),
+            reason: crate::text::expected_got(
+                "a 64-bit digest for UUIDv8",
+                format_args!(
+                    "{} ({} bits)",
+                    self.algorithm(),
+                    self.algorithm().width() * 8
+                ),
+            ),
+        })?;
+        let nanoseconds = restate_unix(self.unix, self.unit, TimeUnit::Nanosecond)?;
+        Ok(Uuid::from_time_hash(nanoseconds, digest))
     }
 
     /// Rebuild a value from its canonical bytes.

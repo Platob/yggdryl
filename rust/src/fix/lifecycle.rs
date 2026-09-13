@@ -1,64 +1,32 @@
-//! One event's life, read across the messages that told it.
+//! Live named chains, arrival history and epoch-aligned snapshots.
 //!
-//! A message says what happened; it does not say which order it happened
-//! to, beyond the identifiers a venue chose. An order is created under one
-//! `ClOrdID`, acknowledged under an `OrderID`, replaced under a new
-//! `ClOrdID` that names the old one as `OrigClOrdID`, and every consumer
-//! then rebuilds the chain from those references independently - which is
-//! how two systems come to disagree about how many orders there were.
+//! An explicit nonempty `code` names one chain globally. Otherwise the first
+//! identifier reaching a live chain under the effective `instuuid` supplies
+//! its code; a new chain is named `<scope UUID or ->/<first identifier>`.
+//! Identifiers come from stated `altids` or the registered compiled selector,
+//! never a second tag list. Occupied keys are not stolen, and empty code opens
+//! no chain. The message's identity owner hashes the settled code into `puuid`.
 //!
-//! This module reads a stream once, in order, and stamps every message with
-//! three identities and the previous message the stream implies:
+//! Every accepted message has `updatedat` truncated to its epoch bucket; its
+//! real event instant remains `snapshotat`. One transition finalizes the whole
+//! message before remembering its previous-message pair. `fill` returns every
+//! result; `snapshot` emits only an off-grid arrival above its live chain's
+//! highest consumed bucket. Suppression changes neither processing nor history.
+//! Already-aligned arrivals consume a bucket without emitting a snapshot.
 //!
-//! | column | holds |
-//! | --- | --- |
-//! | `instuuid` | a version-8 UUID over the xxh128 digest of market, classification, ISIN - else symbol - and currency |
-//! | `uuid` | a version-7 UUID ordered by the impact clock, with an xxh3 payload derived from what the message said |
-//! | `puuid` | the chain's UUID; generated values are version 7 over its first clock, instrument scope and identifier |
-//! | `prevtimestamp` | the preceding message's row clock in nanoseconds and UTC, null on the first message |
-//! | `prevuuid` | the preceding message's UUID, null on the first message |
-//!
-//! # The chain is the identifiers, joined
-//!
-//! A stated live `puuid` joins directly. Otherwise identifiers from stated
-//! `altids`, or the registered component's compiled declaration, are looked
-//! up under the effective `instuuid`. Canonical member-name order decides
-//! which matching chain wins. Unowned identifiers attach to it; identifiers
-//! belonging to another live chain are never stolen. A foreign stated
-//! `puuid` is corrected when these identifiers already name a chain.
-//! An absent instrument is its own scope, and an empty stated Map supplies
-//! no identifiers. No order-only tag list or nested-group promotion applies.
-//!
-//! # A chain ends when its state does
-//!
-//! The [`State`](crate::types::State) a message reports ranks its
-//! lifecycle, and a rank past the live ones - filled, done for day,
-//! cancelled, rejected, expired - closes the chain: its identifiers are
-//! forgotten, so a venue reusing a `ClOrdID` tomorrow opens a new chain
-//! rather than joining yesterday's. What is held is therefore the orders
-//! still alive, and [`FixLifecycle::alive`] says how many.
-//!
-//! # The impact clock
-//!
-//! `TransactTime(60)` is when the venue says it happened; `SendingTime(52)`
-//! when the message left; the row's own `timestamp` when the capture saw
-//! it. The first stated orders `uuid` and `puuid` at microsecond precision.
-//! The exact instant remains the clock's fact, not a UUID accessor. These
-//! deterministic hashes are not cryptographic or guaranteed collision-free.
-//!
-//! # Nothing here is an entry
-//!
-//! The five columns are stamped on the row alone. The entries are what
-//! arrived, and a message re-emitted after this pass is the received line
-//! byte for byte.
+//! State is bounded to live chains and their distinct attached identifiers:
+//! code, last clock/UUID and highest bucket, never pending rows or historical
+//! tombstones. A terminal message receives its previous pair, then closes the
+//! chain even when suppressed. Reopening starts fresh and may emit in the same
+//! bucket. Late arrivals advance history but cannot lower the high-water mark.
+//! All stamps affect the semantic row alone, not wire entries or arrival digest.
 
 use std::collections::{HashMap, hash_map::Entry};
 use std::sync::Arc;
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, format_smolstr};
 
-use crate::hashing::txhash::unix_from_scalar;
-use crate::hashing::xxhash::{Xxh3, Xxh128, xxh3};
+use crate::hashing::xxhash::Xxh128;
 use crate::path::{Path, Segment};
 use crate::types::{Code, State, Uuid};
 use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone};
@@ -67,13 +35,10 @@ use super::msg::FixMsg;
 use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    ALTIDS_TAG_NAME, FixKey, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, STATE_TAG_NAME, TIMESTAMP_TAG_NAME,
+    ALTIDS_TAG_NAME, CODE_TAG_NAME, FixKey, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
+    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, STATE_TAG_NAME, UPDATEDAT_TAG_NAME,
     UUID_TAG_NAME,
 };
-
-/// The clocks closest to the market impact, most exact first.
-const IMPACT_TAGS: [i32; 2] = [60, 52];
 
 /// The separator between the parts an instrument's identity digests.
 ///
@@ -85,64 +50,31 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// Built once per stream and fed every message in order through
 /// [`fill`](Self::fill); [`FixCodec::lifecycle`](super::FixCodec::lifecycle)
-/// does exactly that over an iterator, and the batch reader does it when
-/// asked.
+/// does exactly that at the default cadence. [`Self::snapshots`] owns a
+/// configured lifecycle over a fallible message stream and drops only
+/// successful messages whose buckets have already been consumed.
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, ALTIDS_TAG_NAME, UUID_TAG_NAME, PUUID_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
 /// let reader = FixCodec::new(Arc::clone(&registry));
 /// let mut life = FixLifecycle::new(registry);
 ///
-/// // Explicit altids work even without registered message definitions.
-/// // The order, then its acknowledgement under the venue's own identifier.
-/// let order = life.fill(
-///     reader
-///         .parse_line(
-///             b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.000|10=0|",
-///         )?
-///         .next()
-///         .expect("one message")?
-///         .with_value(ALTIDS_TAG_NAME.0, Scalar::from_mapping([
-///             (Scalar::from("clordid"), Scalar::from("A1")),
-///         ])?)?,
-/// )?;
-/// let ack = life.fill(
-///     reader
-///         .parse_line(
-///             b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.250|10=0|",
-///         )?
-///         .next()
-///         .expect("one message")?
-///         .with_value(ALTIDS_TAG_NAME.0, Scalar::from_mapping([
-///             (Scalar::from("clordid"), Scalar::from("A1")),
-///             (Scalar::from("orderid"), Scalar::from("O1")),
-///         ])?)?,
-/// )?;
-/// // One chain, with two UUIDs ordered by the impact clock.
-/// assert_eq!(order.by_tag(PUUID_TAG_NAME.0)?, ack.by_tag(PUUID_TAG_NAME.0)?);
-/// assert!(order.by_tag(UUID_TAG_NAME.0)? < ack.by_tag(UUID_TAG_NAME.0)?);
-/// assert!(order.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
-/// assert!(order.by_tag(PREVTIMESTAMP_TAG_NAME.0)?.is_null());
-/// assert_eq!(ack.by_tag(PREVUUID_TAG_NAME.0)?, order.by_tag(UUID_TAG_NAME.0)?);
-/// assert_eq!(ack.by_tag(PREVTIMESTAMP_TAG_NAME.0)?, &order.market_timestamp());
+/// let event = reader.parse_fix_line(
+///     b"8=FIX.4.4|35=D|52=20260102-10:15:30.250|10=0|",
+/// )?.with_value(CODE_TAG_NAME.0, Scalar::from("order/A1"))?;
+/// let first = life.fill(event.clone())?;
+/// let second = life.fill(event)?;
+/// assert_eq!(first.puuid(), second.puuid());
+/// assert!(first.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
+/// assert!(first.by_tag(PREVTIMESTAMP_TAG_NAME.0)?.is_null());
+/// assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0)?, first.uuid());
+/// assert_eq!(second.by_tag(PREVTIMESTAMP_TAG_NAME.0)?, first.updatedat());
 /// assert_eq!(life.alive(), 1);
-///
-/// // The fill closes the chain, and the venue's identifier is forgotten.
-/// life.fill(
-///     reader
-///         .parse_line(
-///             b"8=FIX.4.4|35=8|37=O1|150=F|39=2|55=AAPL|14=100|151=0|60=20260102-10:15:31.000|10=0|",
-///         )?
-///         .next()
-///         .expect("one message")?
-///         .with_value(ALTIDS_TAG_NAME.0, Scalar::from_mapping([
-///             (Scalar::from("orderid"), Scalar::from("O1")),
-///         ])?)?,
-/// )?;
+/// life.clear();
 /// assert_eq!(life.alive(), 0);
 /// # Ok(())
 /// # }
@@ -151,10 +83,8 @@ const PART_SEPARATOR: u8 = 0x1F;
 pub struct FixLifecycle {
     /// The owner of compiled message identifier selection.
     registry: Arc<FixRegistry>,
-    /// Whether the registry holds the five columns, decided once: a stamp
-    /// lands through the message's own writer, which resolves the field
-    /// again, and this only says whether there is one to resolve.
-    stamps: bool,
+    /// Positive nanoseconds; changes require an empty live set.
+    interval_ns: i64,
     /// Live chains only; capacity is reused after a wider live set closes.
     chains: HashMap<Uuid, Chain>,
     /// Which chain each live identifier belongs to.
@@ -164,35 +94,74 @@ pub struct FixLifecycle {
 /// One event still alive.
 #[derive(Debug)]
 struct Chain {
+    /// Collision detection and identifier-only joins need the original name.
+    code: SmolStr,
     /// Every attached scope is forgotten together when this chain closes.
     keys: Vec<(Option<Uuid>, SmolStr)>,
     /// Only the last successful message, under the shared clock datatype.
     timestamp: Scalar,
     uuid: Uuid,
+    /// Includes aligned and suppressed arrivals, never decreases while live.
+    highest_bucket: i64,
 }
 
 impl FixLifecycle {
-    /// A stream with no event alive yet.
-    ///
-    /// The five columns are the registry's own crate fields, so a registry
-    /// without them - which none built by this crate is - stamps nothing.
+    /// A second, in nanoseconds: a deterministic epoch grid, not a timer.
+    pub const DEFAULT_INTERVAL_NS: i64 = 1_000_000_000;
+
+    /// A stream with no event alive yet, using [`Self::DEFAULT_INTERVAL_NS`].
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
-        let stamps = [
-            INSTUUID_TAG_NAME.0,
-            UUID_TAG_NAME.0,
-            PUUID_TAG_NAME.0,
-            PREVTIMESTAMP_TAG_NAME.0,
-            PREVUUID_TAG_NAME.0,
-        ]
-        .into_iter()
-        .all(|tag| registry.get_field_by_tag(tag).is_some());
         Self {
             registry,
-            stamps,
+            interval_ns: Self::DEFAULT_INTERVAL_NS,
             chains: HashMap::new(),
             keys: HashMap::new(),
         }
+    }
+
+    /// The selected epoch-grid interval in nanoseconds.
+    #[must_use]
+    pub const fn interval_ns(&self) -> i64 {
+        self.interval_ns
+    }
+
+    /// Selects a positive interval before any live chain uses it.
+    ///
+    /// Repeating the selected interval is a no-op, even while chains are live.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a nonpositive interval or a change while a chain is live,
+    /// without changing either configuration or stream state.
+    pub fn set_interval_ns(&mut self, interval_ns: i64) -> Result<()> {
+        if interval_ns <= 0 {
+            return Err(Error::InvalidRecord {
+                path: "$.interval_ns".into(),
+                reason: crate::text::expected_got("positive nanoseconds", interval_ns),
+            });
+        }
+        if interval_ns != self.interval_ns && !self.chains.is_empty() {
+            return Err(Error::InvalidRecord {
+                path: "$.interval_ns".into(),
+                reason: crate::text::expected_got(
+                    "no live chains before changing the interval",
+                    format_args!("{} live chains", self.alive()),
+                ),
+            });
+        }
+        self.interval_ns = interval_ns;
+        Ok(())
+    }
+
+    /// [`Self::set_interval_ns`], consuming the lifecycle.
+    ///
+    /// # Errors
+    ///
+    /// Returns the setter's refusal without changing stream state.
+    pub fn try_with_interval_ns(mut self, interval_ns: i64) -> Result<Self> {
+        self.set_interval_ns(interval_ns)?;
+        Ok(self)
     }
 
     /// How many events are alive: opened by a message and not yet closed by
@@ -202,19 +171,17 @@ impl FixLifecycle {
         self.chains.len()
     }
 
-    /// Forgets every chain, as a new session or a new day would.
+    /// Forgets every chain and bucket, retaining the configured interval.
     pub fn clear(&mut self) {
         self.chains.clear();
         self.keys.clear();
     }
 
-    /// Stamps one message with its identities and previous pair, then advances
-    /// or closes the chain it belongs to.
+    /// Normalizes one message to its grid, then advances or closes its chain.
     ///
-    /// A live stated `puuid` joins directly. Otherwise the first identifier
-    /// reaching a live chain under the effective instrument wins, correcting
-    /// even a foreign stated `puuid`. Occupied identifiers are never stolen
-    /// from another chain. Stated `uuid` and `instuuid` remain untouched.
+    /// A nonempty code selects its chain globally. Otherwise the first scoped
+    /// identifier reaching a live chain wins; the first identifier names a new
+    /// chain when none match. Occupied identifiers are never stolen.
     /// Each absent/null previous stamp comes from the selected chain's last
     /// message; each stated non-null stamp is preserved. A fresh or cleared
     /// replay rebuilds the same state from the carried identities. Feeding an
@@ -223,100 +190,156 @@ impl FixLifecycle {
     ///
     /// # Errors
     ///
-    /// Returns a located refusal for an impact instant outside the version-7
-    /// range, malformed stated UUID/identifier/previous values, an
-    /// unrepresentable live-history clock, a generated UUID collision, or a
-    /// value the message's field refuses. No chain, history or identifier
-    /// changes on failure.
-    pub fn fill(&mut self, mut message: FixMsg) -> Result<FixMsg> {
-        if !self.stamps {
-            return Ok(message);
-        }
+    /// Returns a located refusal for an unrepresentable bucket, malformed
+    /// identifier/previous values, a code-hash collision, or a native stamp
+    /// target refusal. No chain, history, bucket or identifier changes on error.
+    pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg> {
+        self.transition(message).map(|(message, _)| message)
+    }
+
+    /// Processes one message, emitting only its live incarnation's new bucket.
+    ///
+    /// An already-aligned arrival consumes its bucket without emission. Equal
+    /// and older buckets, and messages with no chain name, also return `None`.
+    /// Suppressed messages still advance history and terminal messages close.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same atomic refusal as [`Self::fill`].
+    pub fn snapshot(&mut self, message: FixMsg) -> Result<Option<FixMsg>> {
+        self.transition(message)
+            .map(|(message, emitted)| emitted.then_some(message))
+    }
+
+    /// Owns this configured lifecycle over a fallible stream, without buffering.
+    ///
+    /// Only successful suppressed messages disappear. Source and transition
+    /// errors remain items; the next input may succeed without the failed item
+    /// having advanced state. Exhaustion is fused, even if the source is not.
+    pub fn snapshots<I>(
+        mut self,
+        messages: I,
+    ) -> impl std::iter::FusedIterator<Item = Result<FixMsg>> + use<I>
+    where
+        I: IntoIterator<Item = Result<FixMsg>>,
+    {
+        messages.into_iter().fuse().filter_map(move |message| {
+            message
+                .and_then(|message| self.snapshot(message))
+                .transpose()
+        })
+    }
+
+    /// Stage once, finalize once, then publish the live-state transition.
+    fn transition(&mut self, mut message: FixMsg) -> Result<(FixMsg, bool)> {
+        let incoming = message
+            .updatedat()
+            .as_datetime64()
+            .ok_or_else(|| Error::InvalidRecord {
+                path: Path::root().field(UPDATEDAT_TAG_NAME.1).render().into(),
+                reason: crate::text::expected_got(
+                    &CLOCK_DATATYPE,
+                    crate::text::elide_display(&format_args!("{:?}", message.updatedat())),
+                ),
+            })?
+            .0;
+        let grid = i128::from(incoming).div_euclid(i128::from(self.interval_ns))
+            * i128::from(self.interval_ns);
+        let grid = i64::try_from(grid).map_err(|_| Error::InvalidRecord {
+            path: Path::root().field(UPDATEDAT_TAG_NAME.1).render().into(),
+            reason: crate::text::expected_got("an i64 nanosecond grid instant", grid),
+        })?;
         let stated_instrument = stated_uuid(&message, INSTUUID_TAG_NAME)?;
-        let stated_id = stated_uuid(&message, UUID_TAG_NAME)?;
-        let stated_persistent = stated_uuid(&message, PUUID_TAG_NAME)?;
         let instrument =
             stated_instrument.or_else(|| instrument_digest(&message).map(Uuid::from_v8));
         let keys = self.chain_keys(&message, instrument)?;
-        let existing = stated_persistent
-            .filter(|held| self.chains.contains_key(held))
-            .or_else(|| keys.iter().find_map(|key| self.keys.get(key).copied()));
-        let impact = if stated_id.is_none()
-            || (existing.is_none() && stated_persistent.is_none() && !keys.is_empty())
-        {
-            impact_unix(&message)
-        } else {
-            0
-        };
-        let time_uuid = |payload, name| {
-            Uuid::from_v7(impact, payload).map_err(|error| match error {
-                Error::InvalidRecord { reason, .. } => Error::InvalidRecord {
-                    path: Path::root().field(name).render().into(),
-                    reason,
-                },
-                other => other,
-            })
-        };
-        let uuid = if let Some(held) = stated_id {
-            held
-        } else {
-            time_uuid(xxh3(&message.digest().to_be_bytes()), UUID_TAG_NAME.1)?
-        };
-        let persistent = if let Some(held) = existing.or(stated_persistent) {
-            Some(held)
-        } else {
-            keys.first()
-                .map(|(_, first)| time_uuid(persistent_digest(instrument, first), PUUID_TAG_NAME.1))
-                .transpose()?
-        };
-        if existing.is_none()
-            && stated_persistent.is_none()
-            && persistent.is_some_and(|held| self.chains.contains_key(&held))
-        {
-            return Err(Error::InvalidRecord {
-                path: Path::root().field(PUUID_TAG_NAME.1).render().into(),
-                reason: "expected a new chain UUID, got a generated UUID owned by an unrelated live chain".into(),
-            });
-        }
+        let (code, persistent) = self.chain_name(&message, &keys)?;
+        let previous = persistent.and_then(|held| self.chains.get(&held));
+        let emitted = persistent.is_some()
+            && incoming != grid
+            && previous.is_none_or(|chain| grid > chain.highest_bucket);
         let terminal = is_terminal(&message);
-        let timestamp = (persistent.is_some() && !terminal)
-            .then(|| {
-                CLOCK_DATATYPE
-                    .scalar(message.stamped_clock())
-                    .map_err(|error| crate::types::rooted_at_field(error, TIMESTAMP_TAG_NAME.1))
-            })
-            .transpose()?;
         message.stamp_lifecycle(
-            [
-                (
-                    INSTUUID_TAG_NAME.0,
-                    instrument.filter(|_| stated_instrument.is_none()),
-                ),
-                (UUID_TAG_NAME.0, stated_id.is_none().then_some(uuid)),
-                (
-                    PUUID_TAG_NAME.0,
-                    persistent.filter(|held| Some(*held) != stated_persistent),
-                ),
-            ],
-            existing.and_then(|held| self.chains.get(&held)),
+            &code,
+            Scalar::datetime64(grid, TimeUnit::Nanosecond, Timezone::UTC)?,
+            instrument.filter(|_| stated_instrument.is_none()),
+            previous,
         )?;
-        // The message's value contract is the last fallible step. The
-        // already-resolved join publishes only after all stamps landed.
-        match (persistent, timestamp) {
-            (Some(persistent), Some(timestamp)) => self.join(persistent, keys, timestamp, uuid),
-            (Some(persistent), None) => self.close(persistent),
-            (None, _) => {}
+        if let Some(persistent) = persistent {
+            if terminal {
+                self.close(persistent);
+            } else {
+                let uuid = native_uuid(message.uuid(), UUID_TAG_NAME.1)?;
+                self.join(
+                    persistent,
+                    code,
+                    keys,
+                    message.updatedat().clone(),
+                    uuid,
+                    grid,
+                );
+            }
         }
-        Ok(message)
+        Ok((message, emitted))
+    }
+
+    /// Explicit names precede scoped aliases; the identity owner hashes new names.
+    fn chain_name(
+        &self,
+        message: &FixMsg,
+        keys: &[(Option<Uuid>, SmolStr)],
+    ) -> Result<(SmolStr, Option<Uuid>)> {
+        let stated = message.get_by_tag(CODE_TAG_NAME.0);
+        let Some(Scalar::String(stated)) = stated else {
+            return Err(Error::InvalidRecord {
+                path: Path::root().field(CODE_TAG_NAME.1).render().into(),
+                reason: crate::text::expected_got(
+                    "a non-null UTF-8 chain code",
+                    crate::text::elide_display(&format_args!("{stated:?}")),
+                ),
+            });
+        };
+        let (code, persistent) = if !stated.as_str().is_empty() {
+            (
+                stated.storage().clone(),
+                native_uuid(message.puuid(), PUUID_TAG_NAME.1)?,
+            )
+        } else if let Some(persistent) = keys.iter().find_map(|key| self.keys.get(key)) {
+            let chain = &self.chains[persistent];
+            return Ok((chain.code.clone(), Some(*persistent)));
+        } else if let Some((scope, first)) = keys.first() {
+            let code = match scope {
+                Some(scope) => format_smolstr!("{scope}/{first}"),
+                None => format_smolstr!("-/{first}"),
+            };
+            let persistent = super::identity::persistent_uuid(&code);
+            (code, persistent)
+        } else {
+            return Ok((SmolStr::default(), None));
+        };
+        if let Some(chain) = self.chains.get(&persistent) {
+            if chain.code != code {
+                return Err(Error::InvalidRecord {
+                    path: Path::root().field(PUUID_TAG_NAME.1).render().into(),
+                    reason: crate::text::expected_got(
+                        format_args!("the live code {}", crate::text::elide_display(&chain.code)),
+                        crate::text::elide_display(&code),
+                    ),
+                });
+            }
+        }
+        Ok((code, Some(persistent)))
     }
 
     /// Attach only unowned keys, retaining the incoming buffer for a new chain.
     fn join(
         &mut self,
         persistent: Uuid,
+        code: SmolStr,
         mut keys: Vec<(Option<Uuid>, SmolStr)>,
         timestamp: Scalar,
         uuid: Uuid,
+        bucket: i64,
     ) {
         keys.retain(|key| match self.keys.entry(key.clone()) {
             Entry::Vacant(entry) => {
@@ -331,9 +354,11 @@ impl FixLifecycle {
                 // on a chain holding only a few distinct identifiers.
                 keys.shrink_to_fit();
                 entry.insert(Chain {
+                    code,
                     keys,
                     timestamp,
                     uuid,
+                    highest_bucket: bucket,
                 });
             }
             Entry::Occupied(mut entry) => {
@@ -341,6 +366,7 @@ impl FixLifecycle {
                 chain.keys.extend(keys);
                 chain.timestamp = timestamp;
                 chain.uuid = uuid;
+                chain.highest_bucket = chain.highest_bucket.max(bucket);
             }
         }
     }
@@ -435,7 +461,9 @@ impl FixMsg {
     /// Preserve stated previous values and publish all native stamps together.
     fn stamp_lifecycle(
         &mut self,
-        identities: [(i32, Option<Uuid>); 3],
+        code: &SmolStr,
+        updatedat: Scalar,
+        instrument: Option<Uuid>,
         previous: Option<&Chain>,
     ) -> Result<()> {
         let previous_id_stated = stated_uuid(self, PREVUUID_TAG_NAME)?.is_some();
@@ -455,15 +483,22 @@ impl FixMsg {
             }),
         ];
         self.set_many_with(
-            identities
-                .into_iter()
-                .filter_map(|(tag, value)| value.map(|value| (tag, Scalar::Uuid(value))))
-                .chain(previous.into_iter().flatten()),
+            [
+                (CODE_TAG_NAME.0, Scalar::from(code.clone())),
+                (UPDATEDAT_TAG_NAME.0, updatedat),
+            ]
+            .into_iter()
+            .chain(instrument.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(value))))
+            .chain(previous.into_iter().flatten()),
             |key, field| {
-                let expected = if matches!(key, FixKey::Tag(tag) if *tag == PREVTIMESTAMP_TAG_NAME.0) {
-                    &CLOCK_DATATYPE
-                } else {
-                    &DataType::Uuid
+                let expected = match key {
+                    FixKey::Tag(tag) if *tag == CODE_TAG_NAME.0 => &DataType::utf8(),
+                    FixKey::Tag(tag)
+                        if *tag == UPDATEDAT_TAG_NAME.0 || *tag == PREVTIMESTAMP_TAG_NAME.0 =>
+                    {
+                        &CLOCK_DATATYPE
+                    }
+                    _ => &DataType::Uuid,
                 };
                 if field.dtype() == expected {
                     Ok(())
@@ -483,10 +518,18 @@ impl FixMsg {
 
 /// Native UUIDs are already packed; this adds no version/variant policy.
 fn stated_uuid(message: &FixMsg, (tag, name): (i32, &str)) -> Result<Option<Uuid>> {
-    match message.get_by_tag(tag).filter(|held| !held.is_null()) {
-        None => Ok(None),
-        Some(Scalar::Uuid(held)) => Ok(Some(*held)),
-        Some(held) => Err(Error::InvalidRecord {
+    message
+        .get_by_tag(tag)
+        .filter(|held| !held.is_null())
+        .map(|held| native_uuid(held, name))
+        .transpose()
+}
+
+/// Extract the native leaf without coercion, parsing or changing its bits.
+fn native_uuid(held: &Scalar, name: &str) -> Result<Uuid> {
+    match held {
+        Scalar::Uuid(held) => Ok(*held),
+        held => Err(Error::InvalidRecord {
             path: Path::root().field(name).render().into(),
             reason: crate::text::expected_got(
                 "a native UUID or null",
@@ -514,24 +557,6 @@ fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
             ),
         }),
     }
-}
-
-/// The instant closest to the market impact, in microseconds since the epoch.
-///
-/// The venue's transaction time, else the sending time, else the clock the
-/// row is dated by - which every built message carries - else the epoch.
-fn impact_unix(message: &FixMsg) -> i64 {
-    let micros = |held: &Scalar| {
-        (!held.is_null())
-            .then(|| unix_from_scalar(held, TimeUnit::Microsecond).ok())
-            .flatten()
-    };
-    IMPACT_TAGS
-        .into_iter()
-        .filter_map(|tag| message.get_by_tag(tag))
-        .find_map(micros)
-        .or_else(|| micros(&message.market_timestamp()))
-        .unwrap_or(0)
 }
 
 /// The instrument's identity: the xxh128 digest of its market, its
@@ -572,18 +597,6 @@ fn instrument_digest(message: &FixMsg) -> Option<u128> {
         digest.write_bytes(&[PART_SEPARATOR]);
     }
     Some(digest.as_u128())
-}
-
-/// The chain's payload: the effective scope, separator and first identifier.
-fn persistent_digest(instrument: Option<Uuid>, first: &str) -> u64 {
-    let mut digest = Xxh3::new();
-    digest.write_bytes(&[u8::from(instrument.is_some())]);
-    if let Some(held) = instrument {
-        digest.write_bytes(&held.into_bytes());
-    }
-    digest.write_bytes(&[PART_SEPARATOR]);
-    digest.write_bytes(first.as_bytes());
-    digest.as_u64()
 }
 
 /// Whether the state the message reports ends the order's life.
@@ -642,9 +655,11 @@ mod tests {
             let persistent = Uuid::new(1);
             life.join(
                 persistent,
+                SmolStr::new("same"),
                 vec![(None, SmolStr::new("same")); count],
-                super::super::schema::epoch(),
+                Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
                 Uuid::new(2),
+                0,
             );
             let chain = &life.chains[&persistent];
             assert_eq!(chain.keys.len(), 1);
@@ -653,6 +668,55 @@ mod tests {
             life.close(persistent);
             assert!(life.chains.is_empty());
             assert!(life.keys.is_empty());
+        }
+    }
+
+    #[test]
+    fn code_hash_collision_cannot_advance_close_or_attach_to_another_name() {
+        let registry = Arc::new(FixRegistry::new());
+        let codec = super::super::FixCodec::new(Arc::clone(&registry));
+        for explicit in [false, true] {
+            let code = if explicit { "A" } else { "-/A" };
+            let mut message = codec
+                .parse_fix_line(b"8=FIX.4.4|35=D|52=20260102-10:15:30.125|10=0|")
+                .unwrap();
+            message
+                .set_many([
+                    (
+                        CODE_TAG_NAME.0,
+                        Scalar::from(if explicit { code } else { "" }),
+                    ),
+                    (
+                        ALTIDS_TAG_NAME.0,
+                        Scalar::from_mapping([(Scalar::from("id"), Scalar::from("A"))]).unwrap(),
+                    ),
+                    (STATE_TAG_NAME.0, Scalar::from("Filled")),
+                ])
+                .unwrap();
+            let persistent = super::super::identity::persistent_uuid(code);
+            let mut life = FixLifecycle::new(Arc::clone(&registry));
+            // Force the otherwise impractical 122-bit collision at the state
+            // seam, without weakening the public asserted-identity boundary.
+            life.join(
+                persistent,
+                SmolStr::new("a different live code"),
+                vec![(None, SmolStr::new("OWNED"))],
+                Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+                Uuid::new(7),
+                0,
+            );
+            let Error::InvalidRecord { path, .. } = life.snapshot(message).unwrap_err() else {
+                panic!("a located code collision");
+            };
+            assert_eq!(path, "$.puuid");
+            let chain = &life.chains[&persistent];
+            assert_eq!(chain.code, "a different live code");
+            assert_eq!(chain.uuid, Uuid::new(7));
+            assert_eq!(chain.highest_bucket, 0);
+            assert_eq!(chain.keys, [(None, SmolStr::new("OWNED"))]);
+            assert_eq!(life.keys.len(), 1);
+            assert!(!life.keys.contains_key(&(None, SmolStr::new("A"))));
+            assert_eq!(life.alive(), 1);
         }
     }
 }

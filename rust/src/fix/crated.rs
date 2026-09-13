@@ -15,7 +15,7 @@
 //!
 //! Their tags sit above every tag FIX publishes and above the user-defined
 //! ranges venues share, so they collide with nothing a dictionary declares
-//! and belong to no dialect: `timestamp` is one identity in every
+//! and belong to no dialect: `updatedat` is one identity in every
 //! dictionary, a bridge row spelling `SESSIONID` lands on the crate's own
 //! column, and a name every registry carries is never an unknown key.
 //! [`is_crate_tag`] is the whole test. A field is its tag and its name, so
@@ -33,16 +33,16 @@
 //!
 //! [`FixRegistry::new`](super::FixRegistry::new) inserts them before anything
 //! else, so a dictionary loaded from a store, built from fields or left empty
-//! answers `timestamp` and `sessionid` alike - and a store never writes them,
+//! answers `updatedat` and `sessionid` alike - and a store never writes them,
 //! because they are the crate's rather than the store's. A stored copy is
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty-two scalar fields and one Map group, each registered by its shape.
+//! Twenty-four scalar fields and one Map group, each registered by its shape.
 
 use std::sync::LazyLock;
 
-use crate::{DataType, DigestAlgorithm, Field, Result};
+use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
 pub const CRATE_TAG_MIN: i32 = 65_000;
@@ -55,9 +55,6 @@ pub const CRATE_TAG_MIN: i32 = 65_000;
 /// to grow without ever reaching the one above it.
 pub const CRATE_TAG_MAX: i32 = 65_100;
 
-/// The tag and name carrying a message's value digest.
-pub const MSGHASH_TAG_NAME: (i32, &str) = (65_000, "msghash");
-
 /// The tag and name carrying the FIX version a message was read at.
 pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 
@@ -65,11 +62,10 @@ pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 /// venues.
 pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 
-/// The tag and name carrying the timestamp a capture is ordered by; the name
-/// is also what its partition names.
-pub const TIMESTAMP_TAG_NAME: (i32, &str) = (65_003, "timestamp");
+/// The tag and name carrying the settled message or snapshot grid instant.
+pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");
 
-/// The tag and name carrying the partition that timestamp falls in.
+/// The tag and name carrying the partition that updatedat falls in.
 pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
 
 /// The tag and name carrying the client order identifier this one descends
@@ -115,7 +111,7 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 /// The tag and name carrying the instrument's version-8 UUID.
 pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
-/// The tag and name carrying the message's time-ordered version-7 UUID.
+/// The tag and name carrying the message's time/content version-8 UUID.
 pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 
 /// The tag and name carrying the event chain's UUID.
@@ -134,6 +130,15 @@ pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");
 /// The tag and name carrying the preceding message's UUID in its event chain.
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
 
+/// The tag and name carrying the message's creation instant.
+pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
+
+/// The tag and name carrying the event chain's exact UTF-8 name.
+pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
+
+/// The tag and name carrying the real event instant captured by a snapshot.
+pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -145,12 +150,6 @@ pub const fn is_crate_tag(tag: i32) -> bool {
 /// Published, not invented: the specification has spelled this `MsgDirection`
 /// since 4.4, and a field it already declares is never given a second tag.
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
-
-/// The algorithm a message digest is taken with.
-const DIGEST_ALGORITHM: DigestAlgorithm = DigestAlgorithm::Xxh128;
-
-/// The digest's width in bytes, which is the algorithm's.
-const DIGEST_WIDTH: u32 = 16;
 
 /// How wide a partition is by default, in seconds.
 ///
@@ -167,23 +166,6 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
         None
     }
 });
-
-/// The crate's `timestamp` field as a built message carries it: non-null,
-/// resolved once for every message the builder stamps.
-static TIMESTAMP_FIELD: LazyLock<Option<Field>> = LazyLock::new(|| {
-    let held = FIELDS
-        .as_deref()?
-        .iter()
-        .find(|field| field.as_fix().tag().ok().flatten() == Some(TIMESTAMP_TAG_NAME.0))?;
-    let mut field = held.clone();
-    field.set_nullable(false);
-    Some(field)
-});
-
-/// The crate's `timestamp` field, non-null, built once.
-pub(super) fn timestamp_field() -> Option<&'static Field> {
-    TIMESTAMP_FIELD.as_ref()
-}
 
 /// The crate's `version` field, non-null, built once, for the reason the
 /// clock's is: every built message carries one and looking it up per line
@@ -214,7 +196,7 @@ fn crated(
     dtype: DataType,
     description: &str,
 ) -> Result<Field> {
-    let mut field = dtype.nullable_field(name);
+    let mut field = Field::new(name, dtype, !super::identity::is_mandatory(tag));
     field.as_fix_mut().set_tag(tag)?;
     field.set_display(display)?;
     field.set_description(description)?;
@@ -236,12 +218,7 @@ fn aliased(
 
 /// Builds every field this crate defines.
 ///
-/// Two of them declare more than a type. `msghash` is a digest holder, so it
-/// says which algorithm filled it and what it read; `unixpartition` is a
-/// derived partition column, so it says which column it derives from and how.
-/// Both are said in the protocols the crate already has - `digest:` and
-/// `partition:` beside `iceberg:` - rather than in a spelling only a FIX
-/// reader would know to look for.
+/// The partition declares its existing protocol source and transform.
 fn build() -> Result<Vec<Field>> {
     let mut altids = crated(
         ALTIDS_TAG_NAME,
@@ -251,35 +228,14 @@ fn build() -> Result<Vec<Field>> {
          field name in sorted order; repeating-group members are not flattened.",
     )?;
     altids.as_fix_mut().set_counter(ALTIDS_TAG_NAME.0)?;
-    // `FixedSizeBinary`, big-endian, because a digest is not a string and
-    // must not become one. Big-endian is the one layout where byte order and
-    // numeric order agree on every machine: a little-endian digest sorts
-    // differently than it compares, and someone eventually sorts it.
-    let mut msghash = crated(
-        MSGHASH_TAG_NAME,
-        "MsgHash",
-        DataType::fixed_size_binary(DIGEST_WIDTH)?,
-        "The xxh128 digest of what the message said, over the arrival \
-             record with the envelope tags left out.",
-    )?;
-    // Holder first: the algorithm and the sources are both refused on a field
-    // that has not said it holds a digest.
-    msghash.as_digest_mut().set_holder()?;
-    msghash.as_digest_mut().set_algorithm(DIGEST_ALGORITHM)?;
-    // The arrival record, because that is what the digest actually reads: the
-    // columns are one reading of a message and `entries` is the message.
-    msghash
-        .as_digest_mut()
-        .set_sources([super::ENTRIES_COLUMN])?;
-
-    // The partition that timestamp falls in, as whole seconds since the
+    // The partition that updatedat falls in, as whole seconds since the
     // epoch. An integer rather than a rendered date: a partition value is
     // compared and ranged over, and a string would sort lexically.
     let mut unixpartition = crated(
         UNIXPARTITION_TAG_NAME,
         "UnixPartition",
         DataType::Int64,
-        "The partition the market timestamp falls in, as whole seconds \
+        "The partition updatedat falls in, as whole seconds \
              since the epoch floored to the partition width.",
     )?;
     // Named by the column it reads, because that is what the column is
@@ -292,7 +248,7 @@ fn build() -> Result<Vec<Field>> {
     // the metadata write validates it exactly as the setter's would.
     let sources = crate::metadata::render_source_list(
         crate::metadata::PARTITION_SOURCES_KEY,
-        [TIMESTAMP_TAG_NAME.1.to_owned()],
+        [UPDATEDAT_TAG_NAME.1.to_owned()],
     )?;
     unixpartition
         .as_partition_mut()
@@ -311,7 +267,6 @@ fn build() -> Result<Vec<Field>> {
         .insert("transform", partition_transform())?;
 
     Ok(vec![
-        msghash,
         // The version the message was *read* at, which is not always the one
         // its `BeginString` claims: a venue that mislabels its session still
         // produces rows, and the column says which dictionary answered them.
@@ -330,14 +285,12 @@ fn build() -> Result<Vec<Field>> {
             "One instrument symbol that is the same across venues, qualified \
              by its scheme and its exchange where the message states them.",
         )?,
-        // The timestamp a capture is ordered by, in UTC because a capture
-        // spans venues and a local time cannot be compared across them.
+        // The settled timeline, normalized by the lifecycle without reading now.
         crated(
-            TIMESTAMP_TAG_NAME,
-            "Timestamp",
+            UPDATEDAT_TAG_NAME,
+            "UpdatedAt",
             super::schema::CLOCK_DATATYPE,
-            "The timestamp a capture is ordered by: the row's own clock, else \
-             the first clock the message answers in decreasing exactness.",
+            "The settled message instant, truncated to the snapshot grid by the lifecycle.",
         )?,
         unixpartition,
         // Where an order came from. FIX threads a replace chain through
@@ -453,8 +406,7 @@ fn build() -> Result<Vec<Field>> {
             "The state the order is in: OrdStatus, else ExecType, read as one \
              lifecycle vocabulary.",
         )?,
-        // UUID owns the RFC layout and Arrow extension. The clock orders
-        // version 7; its exact instant remains the timestamp's fact.
+        // UUID owns the RFC layout and Arrow extension.
         crated(
             INSTUUID_TAG_NAME,
             "InstUuid",
@@ -466,15 +418,14 @@ fn build() -> Result<Vec<Field>> {
             UUID_TAG_NAME,
             "Uuid",
             DataType::Uuid,
-            "The message's version-7 UUID ordered by the market-impact clock, \
-             with 62 bits from xxh3 of the arrival digest's big-endian bytes.",
+            "The version-8 UUID of signed updatedat nanoseconds and 58 bits \
+             of the canonical named message content's XXH64.",
         )?,
         crated(
             PUUID_TAG_NAME,
             "PUuid",
             DataType::Uuid,
-            "The event chain's UUID. FixLifecycle generates version 7 from \
-             its creation clock, effective instrument scope and first identifier.",
+            "The event chain's version-8 UUID over XXH3-128 of code alone.",
         )?,
         // The target side of the session pair, which the block's next free tag
         // takes rather than displacing a tag already published.
@@ -497,6 +448,24 @@ fn build() -> Result<Vec<Field>> {
             DataType::Uuid,
             "The preceding message's UUID in the selected event chain.",
         )?,
+        crated(
+            CREATEDAT_TAG_NAME,
+            "CreatedAt",
+            super::schema::CLOCK_DATATYPE,
+            "The creation instant, preserved after initial materialization.",
+        )?,
+        crated(
+            CODE_TAG_NAME,
+            "Code",
+            DataType::utf8(),
+            "The exact event-chain name; empty means unknown.",
+        )?,
+        crated(
+            SNAPSHOTAT_TAG_NAME,
+            "SnapshotAt",
+            super::schema::CLOCK_DATATYPE,
+            "The real event's instant, independent of the snapshot grid.",
+        )?,
     ])
 }
 
@@ -517,15 +486,15 @@ fn partition_transform() -> String {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 23);
-/// assert_eq!(held[0].name(), "msghash");
-/// assert_eq!(held[0].display(), Some("MsgHash"));
-/// assert_eq!(held[21].dtype(), held[3].dtype());
-/// assert_eq!(held[22].dtype(), &yggdryl::DataType::Uuid);
-/// assert!(held[21].is_nullable() && held[22].is_nullable());
+/// assert_eq!(held.len(), 25);
+/// assert_eq!(held[0].name(), "version");
+/// assert_eq!(held[0].display(), Some("Version"));
+/// assert_eq!(held[20].dtype(), held[2].dtype());
+/// assert_eq!(held[21].dtype(), &yggdryl::DataType::Uuid);
+/// assert!(held[20].is_nullable() && held[21].is_nullable());
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
-/// let (tag, name) = yggdryl::MSGHASH_TAG_NAME;
+/// let (tag, name) = yggdryl::VERSION_TAG_NAME;
 /// let mine = held[0].as_fix().id()?.expect("an identity");
 /// assert_eq!(mine, yggdryl::FixId::of(tag, name)?);
 /// assert!(yggdryl::is_crate_tag(yggdryl::STATE_TAG_NAME.0));

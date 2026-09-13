@@ -5,7 +5,7 @@ use super::SoleMessage;
 use yggdryl::{DataType, FixCodec, FixDedup, FixId, FixRegistry, Scalar};
 
 fn reader() -> FixCodec {
-    FixCodec::new(super::committed_registry())
+    super::fixed_codec(super::committed_registry())
 }
 
 #[test]
@@ -218,10 +218,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(
         names,
         [
-            "msghash",
             "version",
             "symbolticker",
-            "timestamp",
+            "updatedat",
             "unixpartition",
             "parentclordid",
             "parentorderid",
@@ -241,16 +240,18 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "altids",
             "prevtimestamp",
             "prevuuid",
+            "createdat",
+            "code",
+            "snapshotat",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
     assert_eq!(
         displays,
         [
-            Some("MsgHash"),
             Some("Version"),
             Some("SymbolTicker"),
-            Some("Timestamp"),
+            Some("UpdatedAt"),
             Some("UnixPartition"),
             Some("ParentClOrdID"),
             Some("ParentOrderID"),
@@ -270,38 +271,41 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("AltIds"),
             Some("PrevTimestamp"),
             Some("PrevUuid"),
+            Some("CreatedAt"),
+            Some("Code"),
+            Some("SnapshotAt"),
         ],
     );
 
-    // Sixteen bytes, big-endian, because a digest is compared and ordered as
-    // bytes and must not become a string.
-    assert_eq!(
-        held[0].dtype(),
-        &DataType::fixed_size_binary(16).expect("a width")
-    );
     // The columns a message answers from what it said are typed as the thing
     // they hold, not as the text a venue spelled it in; the three lifecycle
     // identities carry UUID identity rather than untyped digest bytes.
-    assert_eq!(held[13].dtype(), &DataType::Isin);
-    assert_eq!(held[14].dtype(), &DataType::Mic);
-    assert_eq!(held[15].dtype(), &DataType::State);
-    for identity in &held[16..19] {
+    assert_eq!(held[12].dtype(), &DataType::Isin);
+    assert_eq!(held[13].dtype(), &DataType::Mic);
+    assert_eq!(held[14].dtype(), &DataType::State);
+    for identity in &held[15..18] {
         assert_eq!(identity.dtype(), &DataType::Uuid);
         assert_eq!(identity.as_fix().aliases().count(), 0);
     }
-    assert_eq!(held[21].dtype(), held[3].dtype());
+    assert_eq!(held[20].dtype(), held[2].dtype());
     assert_eq!(
-        held[21].dtype(),
+        held[20].dtype(),
         &DataType::DateTime64 {
             unit: yggdryl::TimeUnit::Nanosecond,
             timezone: yggdryl::Timezone::UTC,
         }
     );
-    assert_eq!(held[22].dtype(), &DataType::Uuid);
-    for previous in &held[21..23] {
+    assert_eq!(held[21].dtype(), &DataType::Uuid);
+    for previous in &held[20..22] {
         assert!(previous.is_nullable());
         assert_eq!(previous.as_fix().aliases().count(), 0);
     }
+    for at in [2, 22, 24] {
+        assert_eq!(held[at].dtype(), held[20].dtype());
+        assert!(!held[at].is_nullable());
+    }
+    assert_eq!(held[23].dtype(), &DataType::utf8());
+    assert!(!held[23].is_nullable());
 
     // Every definition has a tag from 65000 up: one block, in the one namespace
     // every dictionary resolves through, so a bridge row spelling `SESSIONID`
@@ -311,7 +315,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         let view = field.as_fix();
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
-        assert_eq!(tag, yggdryl::CRATE_TAG_MIN + i32::try_from(at).unwrap());
+        assert_eq!(tag, yggdryl::CRATE_TAG_MIN + 1 + i32::try_from(at).unwrap());
         assert_eq!(id, FixId::of(tag, field.name()).unwrap(), "tag and name");
         assert!(yggdryl::is_crate_tag(tag));
         assert_eq!(
@@ -322,7 +326,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         );
     }
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
-    assert_eq!(yggdryl::MSGHASH_TAG_NAME.0, 65_000);
+    assert!(
+        !held
+            .iter()
+            .any(|field| field.as_fix().tag().unwrap() == Some(65_000))
+    );
     assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
     assert_eq!(
         [
@@ -337,7 +345,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [(65_021, "prevtimestamp"), (65_022, "prevuuid")]
     );
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
-    let sessions = &held[11..13];
+    let sessions = &held[10..12];
     assert_eq!(
         sessions
             .iter()
@@ -356,12 +364,12 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 23);
-    assert_eq!(scalar_count, 22);
+    assert_eq!(held.len(), 25);
+    assert_eq!(scalar_count, 24);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
-    assert_eq!(registry.len(), scalar_count);
-    for retired in ["instid", "id", "persistentid"] {
+    assert_eq!(registry.len(), scalar_count + 2);
+    for retired in ["instid", "id", "persistentid", "timestamp", "msghash"] {
         assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
     }
     for field in held {
@@ -373,7 +381,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(registry.definition(category, field.name()).unwrap(), field);
         registry.insert_definition(category, field.clone()).unwrap();
     }
-    assert_eq!(registry.len(), scalar_count);
+    assert_eq!(
+        registry.len(),
+        scalar_count + 2,
+        "standard clock seeds remain"
+    );
     let map = registry
         .get_group_by_counter(yggdryl::ALTIDS_TAG_NAME.0)
         .unwrap();

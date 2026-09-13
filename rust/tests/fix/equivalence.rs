@@ -41,8 +41,8 @@
 //! same wire and the same row. That is what says the entries column carries
 //! the whole arrival record, and it is how deleting a column that used to be
 //! copied back verbatim is judged - a fact missed on the way back shows
-//! nowhere else. Two lines refuse the trip and refused it before any of this;
-//! they are named in the assertion so a third cannot appear quietly.
+//! nowhere else. Three malformed shapes refuse projection (five fixtures);
+//! the assertion pins their exact identities and errors.
 //!
 //! The file is one `key<TAB>value` a line. Values are rendered by the crate's
 //! own canonical spellings - [`into_json_scalar`] for a column, the wire bytes
@@ -117,11 +117,11 @@ fn escaped(bytes: &[u8]) -> String {
 #[derive(Default)]
 struct Pinned {
     records: Vec<(String, String)>,
-    /// The messages whose row would not read back, and why.
+    /// The messages whose row cannot be exported or read back, and why.
     ///
     /// Not a snapshot line, because it is not an answer this file pins - it
     /// is the standing exception to an identity every other message honours,
-    /// and it is counted here so that a second one cannot appear quietly.
+    /// and its exact set is asserted so another cannot appear quietly.
     unread: Vec<String>,
 }
 
@@ -168,7 +168,13 @@ impl Pinned {
         self.push(format!("{at}.digest"), format!("{:032x}", message.digest()));
         self.push(format!("{at}.wire"), escaped(&message.into_bytes(b'|')));
         self.entries(at, "", message.entries());
-        let row = message.into_row(schema).expect("a message fills its row");
+        let row = match message.into_row(schema) {
+            Ok(row) => row,
+            Err(refused) => {
+                self.unread.push(format!("{at}: export: {refused}"));
+                return;
+            }
+        };
         match FixMsg::from_row(Arc::clone(codec.registry()), schema, &row) {
             Ok(held) => {
                 assert_eq!(held.entries(), message.entries(), "{at}: the arrivals");
@@ -278,13 +284,13 @@ fn committed(text: &str) -> BTreeMap<&str, &str> {
 
 /// The committed dictionary, and the codec every generic frame is read under.
 fn committed_codec() -> FixCodec {
-    FixCodec::new(super::committed_registry())
+    super::fixed_codec(super::committed_registry())
 }
 
 /// The bridge's dictionary, exactly as the dataset and pipeline suites hold
 /// it: its fields resolve in the one namespace, so nothing is pinned.
 fn bridge_codec() -> FixCodec {
-    FixCodec::new(super::plugin_fields_registry())
+    super::fixed_codec(super::plugin_fields_registry())
 }
 
 fn owned(lines: &[&str]) -> Vec<Vec<u8>> {
@@ -615,7 +621,8 @@ fn read() -> Pinned {
     // The absence convention is deliberately not byte-preserving, so the same
     // marked and null-spelled lines are read once more with it turned off: a
     // difference the convention would have swallowed shows here instead.
-    let verbatim = FixCodec::new(super::committed_registry()).with_null_values::<[&str; 0], _>([]);
+    let verbatim =
+        super::fixed_codec(super::committed_registry()).with_null_values::<[&str; 0], _>([]);
     pinned.lines("verbatim", &verbatim, &frames(), false);
     pinned
 }
@@ -635,31 +642,26 @@ fn the_codec_answers_what_it_answered() {
     // copied back verbatim can only be missed on the way back, so deleting
     // one is judged here.
     //
-    // Two lines do not honour it, and neither did before any of this: both
-    // are a group whose row `into_row` writes and `from_row` will not read,
-    // and the row value each fills is the same one the codec answered before
-    // - a null occurrence under a non-nullable item, and a sub-occurrence
-    // carrying a member its declared struct has no field for. That is the
-    // two halves of the row door disagreeing about one shape, not a reading
-    // that moved, so they are counted here rather than repaired: counted so a
-    // third cannot appear quietly, and named so nobody reads the round trip
-    // as unconditional.
+    // Checked projection refuses two malformed groups in both source forms,
+    // and an indexed Symbol list formerly discarded as null (decision 26).
+    // No other fixture may disappear; invalid rows have no field values to pin.
     assert_eq!(
         pinned.unread,
         [
-            "frames[028]:0: invalid record value at $.fix.parties[0].party: \
+            "frames[028]:0: export: invalid record value at $.parties[0].party: \
              non-nullable field received null",
-            "frames[031]:0: invalid record value at \
-             $.fix.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
-            "verbatim[028]:0: invalid record value at $.fix.parties[0].party: \
+            "frames[031]:0: export: invalid record value at \
+             $.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
+            "lift[012]:0: export: invalid record value at $.symbol: expected string, got sequence",
+            "verbatim[028]:0: export: invalid record value at $.parties[0].party: \
              non-nullable field received null",
-            "verbatim[031]:0: invalid record value at \
-             $.fix.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
+            "verbatim[031]:0: export: invalid record value at \
+             $.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
         ],
         "the rows that will not read back"
     );
     let path = snapshot_path();
-    if std::env::var_os(WRITE).is_some() {
+    if std::env::var(WRITE).as_deref() == Ok("1") {
         std::fs::write(&path, pinned.rendered()).expect("the snapshot is writable");
         return;
     }

@@ -373,7 +373,7 @@ fn children(root: &Field) -> Vec<&str> {
 #[test]
 fn the_vocabulary_becomes_a_dictionary_of_lower_cased_names() {
     let (registry, _) = parse(CBLOCK);
-    assert_eq!(registry.len(), 15 + super::crated());
+    assert_eq!(registry.len(), 14 + super::seeded_fields());
 
     // Named by `alt` lower-cased, with the file's own spelling kept beside it,
     // so a caller spelling it the file's way still resolves.
@@ -544,12 +544,13 @@ fn the_root_element_is_read_past_and_the_dialect_is_a_membership() {
     let (registry, _) = parse(CBLOCK);
     assert_eq!(registry.dialects(), [DIALECT]);
     for field in registry.iter() {
-        // The crate's own fields are every registry's and no file's.
+        // Crate fields and unstated SendingTime are seeds, not this file's
+        // declarations. Its TransactTime replaces the standard seed.
         if field
             .as_fix()
             .tag()
             .unwrap()
-            .is_some_and(yggdryl::is_crate_tag)
+            .is_some_and(|tag| yggdryl::is_crate_tag(tag) || tag == 52)
         {
             assert!(!field.as_fix().has_branch(DIALECT), "{}", field.name());
             continue;
@@ -910,7 +911,7 @@ fn a_warning_the_core_raised_names_the_declaration_that_asked_for_it() {
         super::warned::during(|| FixRegistry::from_cfb_file(&handle(doubled), None));
     let (registry, roots) = read.expect("a readable CBlock");
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert_eq!(registry.len(), 2 + super::crated());
+    assert_eq!(registry.len(), 2 + super::seeded_fields());
     // The first declaration is the one the bare tag answers.
     let holder = registry.field_by_tag(35).unwrap();
     assert_eq!(holder.name(), "msgtype");
@@ -1057,7 +1058,10 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
 </cplugin-configuration>"#;
     let (registry, roots) =
         FixRegistry::from_cfb_file(&handle(whole), None).expect("a readable CBlock");
-    assert_eq!((registry.len(), roots.len()), (2 + super::crated(), 1));
+    assert_eq!(
+        (registry.len(), roots.len()),
+        (2 + super::seeded_fields(), 1)
+    );
 
     for (cut, wanted) in [
         ("</description>", "vocabulary-tag"),
@@ -1080,7 +1084,10 @@ fn a_document_cut_short_is_refused_rather_than_read_as_a_shorter_one() {
     let at = whole.find("\t<grammar-binding").expect("the binding");
     let (registry, roots) =
         FixRegistry::from_cfb_file(&handle(&whole[..at]), None).expect("a readable prefix");
-    assert_eq!((registry.len(), roots.len()), (2 + super::crated(), 0));
+    assert_eq!(
+        (registry.len(), roots.len()),
+        (2 + super::seeded_fields(), 0)
+    );
 }
 
 #[test]
@@ -1181,7 +1188,7 @@ fn a_file_declaring_no_message_type_tag_keeps_its_types_out_of_the_dictionary() 
 	<vocabulary><vocabulary-tag name="55" alt="Symbol" type="string" /></vocabulary>
 </cplugin-configuration>"#;
     let (registry, _) = FixRegistry::from_cfb_file(&handle(body), None).expect("a readable CBlock");
-    assert_eq!(registry.len(), 1 + super::crated());
+    assert_eq!(registry.len(), 1 + super::seeded_fields());
     assert!(registry.get_field_by_tag(35).is_none());
 }
 
@@ -1326,7 +1333,7 @@ fn a_file_answers_its_vocabulary_alone_and_in_declaration_order() {
 
     // The roots are what a registry holds instead.
     let (registry, roots) = FixRegistry::from_cfb_file(&handle(CBLOCK), Some(DIALECT)).unwrap();
-    assert_eq!(registry.len(), fields.len() + super::crated());
+    assert_eq!(registry.len(), fields.len() - 1 + super::seeded_fields());
     assert_eq!(roots.len(), 1);
     assert_eq!(registry.dialects(), [DIALECT]);
 }
@@ -1410,7 +1417,7 @@ fn a_stem_that_cannot_be_a_membership_is_refused_rather_than_folded_into_one() {
     assert!(refused(&error), "{error}");
     assert_eq!(
         dictionary.len(),
-        super::crated(),
+        super::seeded_fields(),
         "a refused read writes nothing"
     );
     assert!(dictionary.dialects().is_empty());
@@ -1679,7 +1686,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
         ["price", "lastpx"]
     );
     let (registry, _) = FixRegistry::from_cfb_file(&handle(doubled), None).unwrap();
-    assert_eq!(registry.len(), 2 + super::crated());
+    assert_eq!(registry.len(), 2 + super::seeded_fields());
     let holder = registry.field_by_tag(44).unwrap();
     assert_eq!(holder.name(), "price");
     assert_eq!(holder.as_fix().aliases().collect::<Vec<_>>(), ["lastpx"]);
@@ -1710,7 +1717,11 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
         .filter_map(|field| field.as_fix().tag().unwrap())
         .filter(|tag| !yggdryl::is_crate_tag(*tag))
         .collect();
-    assert_eq!(held, [44, 44], "tag-major, the pair adjacent");
+    assert_eq!(
+        held,
+        [44, 44, 52, 60],
+        "tag-major, the pair adjacent before the clock seeds"
+    );
     let price = FixId::of(44, "Price").unwrap();
     assert_eq!(
         registry.next_field_after(None).map(|field| field.name()),
@@ -1736,7 +1747,7 @@ fn both_doors_keep_the_second_declaration_of_one_tag_as_a_second_field() {
     assert_eq!(fields.len(), 2);
     assert!(warnings.is_empty(), "{warnings:?}");
     let (registry, _) = FixRegistry::from_cfb_file(&handle(repeated), None).unwrap();
-    assert_eq!(registry.len(), 1 + super::crated());
+    assert_eq!(registry.len(), 1 + super::seeded_fields());
 }
 
 #[test]
@@ -1745,11 +1756,11 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
     let (added, merged) = dictionary
         .add_cfb_file(&named_handle(CBLOCK, "MSFIX44.cfb"), Some("morgan"))
         .expect("a readable CBlock");
-    // Fifteen of the file's added, and nothing merged: the parsed dictionary
-    // holds the crate's own fields as every registry does, and a fold never
-    // counts them.
-    assert_eq!((added, merged), (15, 0));
-    assert_eq!(dictionary.len(), 15 + super::crated());
+    // Fourteen new fields; declared TransactTime merges into its seed, and
+    // the parsed dictionary's SendingTime seed participates too. Crate fields
+    // never count as folds.
+    assert_eq!((added, merged), (14, 2));
+    assert_eq!(dictionary.len(), 14 + super::seeded_fields());
 
     // The dialect the caller named is what every field the file produced is
     // a member of - the name wins over the stem - and the version the root
@@ -1760,7 +1771,7 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
             .as_fix()
             .tag()
             .unwrap()
-            .is_some_and(yggdryl::is_crate_tag)
+            .is_some_and(|tag| yggdryl::is_crate_tag(tag) || tag == 52)
         {
             continue;
         }
@@ -1780,8 +1791,8 @@ fn a_cblock_reads_in_whole_with_its_dialect_and_the_file_it_arrived_as() {
         .expect("the same dialect, read again");
     assert_eq!(
         (added, merged),
-        (0, 1),
-        "SELLSIDE declares only tag 35; the crate's own fields are never folded"
+        (0, 3),
+        "SELLSIDE declares tag 35 and carries both standard clock seeds"
     );
     assert_eq!(
         branches(dictionary.field_by_tag(35).unwrap()),
@@ -1842,8 +1853,8 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
         .expect("a compatible vocabulary folds");
     assert_eq!(
         (added, merged),
-        (2, 1),
-        "two venue tags added, Symbol merged"
+        (2, 3),
+        "two venue tags added; Symbol and both standard clock seeds merged"
     );
     assert_eq!(seeded.dialects(), ["venue"]);
 
@@ -1903,7 +1914,11 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
     let (added, merged) = seeded
         .add_cfb_file(&handle(body), Some("Other"))
         .expect("the same vocabulary again");
-    assert_eq!((added, merged), (0, 3));
+    assert_eq!(
+        (added, merged),
+        (0, 5),
+        "three vocabulary fields and two standard clock seeds"
+    );
     assert_eq!(
         branches(seeded.field_by_tag(55).unwrap()),
         ["other", "venue"]
@@ -2257,7 +2272,7 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     // And a bridge row of that message type reaches both tags: the flat key
     // through the message's own children, the packed one through the members
     // of the group it arrived in.
-    let reader = FixCodec::new(Arc::new(registry));
+    let reader = super::fixed_codec(Arc::new(registry));
     let row: &[u8] = b"MSGTYPE=tradecapturereport|HEDGECURRENCY=USD|TR_FIXINGCENTER=LN\
 |NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGESETTLDATE=20260818\x04\x03HEDGECURRENCY=XAU\x04\x03";
     let message = <FixCodec as super::SoleMessage>::sole_line(&reader, row, false)
@@ -2312,7 +2327,7 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
         .find(|line| line.contains("MSGTYPE=tradecapturereport"))
         .expect("the trade capture frame");
     let (registry, _) = parse(HEDGED);
-    let reader = FixCodec::new(Arc::new(registry));
+    let reader = super::fixed_codec(Arc::new(registry));
     let message = <FixCodec as super::SoleMessage>::sole_line(&reader, logged.as_bytes(), false)
         .expect("the captured frame builds");
 

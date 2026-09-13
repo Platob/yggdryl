@@ -37,7 +37,7 @@ use super::memo::{Lookup, Memo};
 use super::{FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, occurrence_name};
 use crate::media::text::TextBytes;
 use crate::types::{Code, State};
-use crate::{DataType, Field, Result, Scalar, Version};
+use crate::{DataType, Error, Field, Result, Scalar, Version};
 
 /// What a key resolved to, before any field is built.
 enum Located<'key> {
@@ -58,6 +58,27 @@ enum Located<'key> {
 struct Known<'registry> {
     field: Option<(&'registry Field, i32)>,
     group: Option<&'registry Field>,
+}
+
+/// Provenance for one composable root child, bounded by root field count.
+/// No value is copied: critical text remains in its one source cell until
+/// the winner is typed, and invalid UTF-8 is not repaired into an identity.
+struct Composed {
+    source: SmolStr,
+    target: Field,
+    tag: i32,
+    version: Option<Version>,
+    invalid_utf8: bool,
+}
+
+/// Raw consensus for one target. Additional versions allocate only when
+/// agreeing sources actually cross versions, bounded by their source count.
+struct Composition<'source> {
+    source: &'source Composed,
+    write: super::msg::Write,
+    disagreed: bool,
+    invalid_utf8: bool,
+    versions: Vec<Option<Version>>,
 }
 
 impl Known<'_> {
@@ -332,8 +353,6 @@ impl FixPair {
 /// row states a fact about its line either way, and the two doors must not
 /// disagree about what it is called.
 pub(super) const BEGINSTRING_COLUMN: &str = "beginstring";
-/// The name a row states its own clock under, which stamps the message.
-pub(super) const CLOCK_COLUMN: &str = super::TIMESTAMP_TAG_NAME.1;
 /// The name a row states the direction its line moved under: tag 385's own
 /// (decision 14), so a stated `msgdirection` column is read as the direction
 /// and never as a fill.
@@ -354,14 +373,10 @@ pub(super) fn version_of(beginstring: &str) -> Option<Version> {
 
 /// What a row states beside its payload, applied when its message is built.
 ///
-/// A version, a clock and fills, all the caller speaking per row. The
+/// A version and fills, all the caller speaking per row. The
 /// version is what the row's `beginstring` resolved to, and it outranks the
 /// codec's own pin because a row is the more specific statement; it arrives
-/// resolved, so the build reads under it and parses no name per line. The
-/// clock stamps the message where a clock the message carries otherwise
-/// would, because a row that says when its line was written outranks what
-/// the reader would derive, exactly as a stated direction outranks the
-/// reading of the line.
+/// resolved, so the build reads under it and parses no name per line.
 /// Each fill lands on the field its name reaches - a capture named `sessionId`
 /// fills `sessionid`, one named `seqNum` fills `MsgSeqNum` - unless the
 /// message stated that field itself, because a stated value is never
@@ -371,8 +386,6 @@ pub(super) fn version_of(beginstring: &str) -> Option<Version> {
 pub(super) struct RowExtras<'row> {
     /// The version the row is read at, where it stated one.
     pub(super) version: Option<Version>,
-    /// The row's own clock.
-    pub(super) clock: Option<&'row Scalar>,
     /// The row's own columns, resolved to the fields they fill.
     pub(super) fills: &'row [Fill<'row>],
     /// The direction the row stated, as a code of tag 385's set: it outranks
@@ -400,8 +413,6 @@ pub(super) struct RowExtras<'row> {
 pub(super) struct RowStamp {
     /// The version the row is read at, where it stated one.
     version: Option<Version>,
-    /// The row's own clock.
-    clock: Option<Scalar>,
     /// The row's own columns, beside the field and tag each fills.
     fills: Vec<(Field, i32, Scalar)>,
     /// The direction resolved for the row, a code of tag 385's set.
@@ -411,16 +422,11 @@ pub(super) struct RowStamp {
 impl RowStamp {
     /// What a row stated, retained; nothing at all where it stated nothing.
     pub(super) fn retained(extras: RowExtras<'_>) -> Option<Arc<Self>> {
-        if extras.version.is_none()
-            && extras.clock.is_none()
-            && extras.fills.is_empty()
-            && extras.direction.is_none()
-        {
+        if extras.version.is_none() && extras.fills.is_empty() && extras.direction.is_none() {
             return None;
         }
         Some(Arc::new(Self {
             version: extras.version,
-            clock: extras.clock.cloned(),
             fills: extras
                 .fills
                 .iter()
@@ -446,7 +452,6 @@ impl RowStamp {
     pub(super) fn extras<'row>(&'row self, fills: &'row [Fill<'row>]) -> RowExtras<'row> {
         RowExtras {
             version: self.version,
-            clock: self.clock.as_ref(),
             fills,
             direction: self.direction.as_deref(),
             direction_pin: None,
@@ -483,7 +488,6 @@ impl RowExtras<'static> {
     /// A row stating nothing beside its payload.
     pub(super) const NONE: Self = Self {
         version: None,
-        clock: None,
         fills: &[],
         direction: None,
         direction_pin: None,
@@ -520,6 +524,57 @@ pub(super) fn fill_field<'registry>(
     let tag = super::ulbridge::capture_tag(key)?;
     let field = registry.get_field_by_tag(tag)?;
     Some((field, tag))
+}
+
+/// The dictionary's one key resolver, shared by the builder and its span
+/// projection. A nested descendant remains borrowed from its actual schema.
+fn resolve<'registry>(
+    registry: &'registry FixRegistry,
+    key: &str,
+) -> Option<(&'registry Field, i32)> {
+    let field = if let Some(tag) = super::field::parse_tag(key) {
+        registry.get_field_by_tag(tag)
+    } else {
+        let path = crate::FieldPath::from_str(key).ok()?;
+        registry.get_field_by_path(&path)
+    }?;
+    Some((field, registry.identity_of(field).map_or(0, |(tag, _)| tag)))
+}
+
+/// Namespace targets and direct field identities share the existing bounded
+/// key table. Dotted descendants themselves cannot be recovered by global id.
+fn lookup(registry: &FixRegistry, memo: &Memo, key: &str) -> Lookup {
+    memo.lookup(key, || {
+        if let Some((_, last)) = key.rsplit_once('.') {
+            Lookup {
+                field: None,
+                group: false,
+                composed: registry
+                    .get_field_by_name(last)
+                    .and_then(|field| registry.identity_of(field)),
+            }
+        } else {
+            Lookup {
+                field: resolve(registry, key).and_then(|(field, _)| registry.identity_of(field)),
+                group: registry
+                    .get_definition(crate::FixCategory::Groups, key)
+                    .is_some(),
+                composed: None,
+            }
+        }
+    })
+}
+
+/// Exact code bytes select the scanner's original span before value typing.
+pub(super) fn preserves_value(registry: &FixRegistry, memo: &Memo, key: &[u8]) -> bool {
+    let Ok(key) = std::str::from_utf8(key) else {
+        return false;
+    };
+    let found = lookup(registry, memo, key.trim());
+    found
+        .field
+        .or(found.composed)
+        .is_some_and(|(tag, _)| tag == super::CODE_TAG_NAME.0)
 }
 
 /// The version a message is said to be read at when nothing decided one.
@@ -592,6 +647,10 @@ pub(super) struct Builder<'registry> {
     /// down - and what it writes is the same two ranges whichever of them got
     /// there.
     arrival: Option<Arrived>,
+    /// The first rejected root invariant, retained only until this build
+    /// finishes. Best-effort fields never enter this bounded error slot.
+    failure: Option<Error>,
+    composed: Vec<Composed>,
 }
 
 /// The pair one fold records, as the line wrote it.
@@ -646,17 +705,19 @@ impl<'registry> Builder<'registry> {
             open: Vec::new(),
             framed: (None, None),
             arrival: None,
+            failure: None,
+            composed: Vec::new(),
         }
     }
 
     /// Numeric counters open schema-scoped groups; indexed/name keys retain
     /// their explicit addressing. Only received pairs advance or allocate rows.
-    pub(super) fn push_pairs(&mut self, pairs: &[FixPair], absent: impl Fn(&[u8]) -> bool) {
+    pub(super) fn push_pairs(&mut self, pairs: &[FixPair], absent: impl Fn(&[u8], &[u8]) -> bool) {
         let mut cursor = 0;
         while let Some(pair) = pairs.get(cursor) {
             cursor += 1;
             let (key, value) = (pair.key(), pair.value());
-            if absent(value) || value.is_empty() {
+            if absent(key, value) {
                 continue;
             }
             let group = std::str::from_utf8(key)
@@ -726,13 +787,13 @@ impl<'registry> Builder<'registry> {
         plan: &'registry GroupPlan,
         pairs: &[FixPair],
         cursor: &mut usize,
-        absent: &impl Fn(&[u8]) -> bool,
+        absent: &impl Fn(&[u8], &[u8]) -> bool,
     ) -> Scalar {
         let mut rows = Vec::new();
         let mut current = None;
         while let Some(pair) = pairs.get(*cursor) {
             let raw = pair.value();
-            if absent(raw) || raw.is_empty() {
+            if absent(pair.key(), raw) || raw.is_empty() {
                 *cursor += 1;
                 continue;
             }
@@ -818,8 +879,7 @@ impl<'registry> Builder<'registry> {
     pub(super) fn push(&mut self, key: &[u8], value: &[u8]) {
         let key_text = String::from_utf8_lossy(key);
         let key_text = key_text.trim();
-        if key_text.is_empty() || value.is_empty() {
-            // `54=` is a malformed message, not an absent side.
+        if key_text.is_empty() {
             return;
         }
         let value_text = String::from_utf8_lossy(value);
@@ -846,7 +906,10 @@ impl<'registry> Builder<'registry> {
                 group,
                 occurrence,
                 member,
-            } => self.push_grouped(group, occurrence, member, &value_text, value),
+            } if !value.is_empty() => {
+                self.push_grouped(group, occurrence, member, &value_text, value);
+            }
+            Located::Grouped { .. } => {}
         }
     }
 
@@ -872,8 +935,20 @@ impl<'registry> Builder<'registry> {
         {
             return;
         }
-        let Ok(typed) = fill.field.scalar(fill.value.clone()) else {
-            return;
+        let critical = super::identity::required_dtype(fill.tag).is_some();
+        let typed = if critical {
+            typed_fill(fill.field, fill.tag, fill.value, self.version)
+        } else {
+            fill.field.scalar(fill.value.clone())
+        };
+        let typed = match typed {
+            Ok(typed) => typed,
+            Err(error) => {
+                if critical && self.failure.is_none() {
+                    self.failure = Some(error);
+                }
+                return;
+            }
         };
         if typed.is_null() {
             return;
@@ -891,17 +966,7 @@ impl<'registry> Builder<'registry> {
     /// spellings while still carrying `MsgType`, `SenderCompID` and every
     /// other specification field, and one namespace answers all of them.
     fn resolve(&self, key: &str) -> Option<(&'registry Field, i32)> {
-        let field = if let Some(tag) = super::field::parse_tag(key) {
-            self.by_tag(tag)
-        } else {
-            // The key is a wire spelling, so this is where it becomes a path.
-            let path = crate::FieldPath::from_str(key).ok()?;
-            self.registry.get_field_by_path(&path)
-        }?;
-        // The tag off the index the registry keeps, never read out of the
-        // field's metadata for every key of every line.
-        let tag = self.registry.identity_of(field).map_or(0, |(tag, _)| tag);
-        Some((field, tag))
+        resolve(self.registry, key)
     }
 
     /// The field a tag names: the one that holds the tag, first holder first.
@@ -981,12 +1046,7 @@ impl<'registry> Builder<'registry> {
                 group: self.by_group(key),
             };
         }
-        let lookup = self.memo.lookup(key, || Lookup {
-            field: self
-                .resolve(key)
-                .and_then(|(field, _)| self.registry.identity_of(field)),
-            group: self.by_group(key).is_some(),
-        });
+        let lookup = lookup(self.registry, self.memo, key);
         Known {
             field: lookup
                 .field
@@ -997,6 +1057,45 @@ impl<'registry> Builder<'registry> {
                 None
             },
         }
+    }
+
+    /// The sole namespace-composition resolver. The target travels with the
+    /// build, so composition never splits or resolves the name a second time.
+    fn composed_target(&self, name: &str) -> Option<(&'registry Field, i32)> {
+        if !name.contains('.') {
+            return None;
+        }
+        let lookup = lookup(self.registry, self.memo, name);
+        let (tag, id) = lookup.composed?;
+        Some((self.registry.get_field_by_id(id)?, tag))
+    }
+
+    fn retain_composed(&mut self, field: &Field, raw: &[u8]) -> bool {
+        if !field.name().contains('.') {
+            return false;
+        }
+        if let Some(held) = self
+            .composed
+            .iter_mut()
+            .find(|held| held.source == field.name())
+        {
+            let critical = super::identity::required_dtype(held.tag).is_some();
+            held.invalid_utf8 |= critical && std::str::from_utf8(raw).is_err();
+            return critical;
+        }
+        let Some((target, tag)) = self.composed_target(field.name()) else {
+            return false;
+        };
+        let critical = super::identity::required_dtype(tag).is_some();
+        let invalid_utf8 = critical && std::str::from_utf8(raw).is_err();
+        self.composed.push(Composed {
+            source: SmolStr::new(field.name()),
+            target: stated(target),
+            tag,
+            version: self.version,
+            invalid_utf8,
+        });
+        critical
     }
 
     /// The message this row declared, which a flat key resolves against when
@@ -1031,7 +1130,18 @@ impl<'registry> Builder<'registry> {
         // control byte a bridge left in a value is not part of it. The entry
         // keeps the decode as it was, which is what the anomaly reads.
         let cleaned = cleaned(text);
-        let text = cleaned.as_ref();
+        self.typed_value(field, source, raw, &cleaned)
+            .unwrap_or(Scalar::Null)
+    }
+
+    /// The shared conversion before best-effort callers discard a refusal.
+    fn typed_value(
+        &self,
+        field: &Field,
+        source: Option<&'registry Field>,
+        raw: &[u8],
+        text: &str,
+    ) -> Result<Scalar> {
         let facts = source.map(|source| self.memo.facts(source));
         // A spelling this field states as its own absence types as null while
         // the entry keeps the text: which spelling means "nothing was sent" is
@@ -1043,14 +1153,12 @@ impl<'registry> Builder<'registry> {
             None => field.as_fix().is_null_value(text),
         };
         if absent {
-            return Scalar::Null;
+            return Ok(Scalar::Null);
         }
         // A `data` field's value is bytes, and the row is where they live:
         // the entry holds a lossy decode of them and this does not.
         if is_binary(field.dtype()) {
-            return field
-                .scalar(Scalar::from(raw.to_vec()))
-                .unwrap_or(Scalar::Null);
+            return field.scalar(Scalar::from(raw.to_vec()));
         }
         // The translation is the one step of a typed read that walks a
         // document, and the one whose answer repeats across a run.
@@ -1059,7 +1167,42 @@ impl<'registry> Builder<'registry> {
                 let translated = self.memo.translation(source, facts, text, self.version);
                 typed_translation(field, text, translated.as_deref(), self.version)
             }
-            _ => typed_spelling(field, text, self.version),
+            _ => typed_spelling_checked(field, text, self.version),
+        }
+    }
+
+    /// Root invariants retain their first conversion refusal and never clean
+    /// invalid bytes into a different valid identity or clock spelling.
+    fn typed_root(
+        &mut self,
+        field: &Field,
+        source: Option<&'registry Field>,
+        tag: i32,
+        raw: &[u8],
+        text: &str,
+    ) -> Scalar {
+        let composed = self.retain_composed(field, raw);
+        if super::identity::required_dtype(tag).is_none() {
+            if composed {
+                // The source is still an ordinary row cell. Only a winning
+                // composition checks it against the resolved target below.
+                return field.scalar(Scalar::from(text)).unwrap_or(Scalar::Null);
+            }
+            return self.typed(field, source, raw, text);
+        }
+        let value = super::identity::validate_field(field, tag).and_then(|_| {
+            super::identity::resolve_tag(field, self.registry)?;
+            let text = std::str::from_utf8(raw).map_err(|error| invalid_value(field, error))?;
+            self.typed_value(field, source, raw, text)
+        });
+        match value {
+            Ok(value) => value,
+            Err(error) => {
+                if self.failure.is_none() {
+                    self.failure = Some(invalid_value(field, error));
+                }
+                Scalar::Null
+            }
         }
     }
 
@@ -1123,7 +1266,15 @@ impl<'registry> Builder<'registry> {
         if self.shadowed(field.name()) {
             return;
         }
-        let value = self.typed(&field, source, raw, text);
+        if raw.is_empty()
+            && super::identity::required_dtype(tag).is_none()
+            && self
+                .composed_target(field.name())
+                .is_none_or(|(_, target)| super::identity::required_dtype(target).is_none())
+        {
+            return;
+        }
+        let value = self.typed_root(&field, source, tag, raw, text);
         self.record(tag);
         self.slot_for(field, tag, source.is_some())
             .values
@@ -1238,7 +1389,15 @@ impl<'registry> Builder<'registry> {
         if self.shadowed(field.name()) {
             return;
         }
-        let value = self.typed(&field, source, raw, text);
+        if raw.is_empty()
+            && super::identity::required_dtype(tag).is_none()
+            && self
+                .composed_target(field.name())
+                .is_none_or(|(_, target)| super::identity::required_dtype(target).is_none())
+        {
+            return;
+        }
+        let value = self.typed_root(&field, source, tag, raw, text);
         self.record(tag);
         let slot = self.slot_for(field, tag, source.is_some());
         // Indices may be partial or out of order, so occurrences are built by
@@ -1415,6 +1574,9 @@ impl<'registry> Builder<'registry> {
         match held {
             Some(index) => &mut self.slots[index],
             None => {
+                // A structured root can have a composed name too. Its value
+                // needs no cleaning provenance, but shares the same target.
+                self.retain_composed(&field, &[]);
                 self.hashes.push(hash);
                 self.slots.push(Slot {
                     field,
@@ -1505,18 +1667,21 @@ impl<'registry> Builder<'registry> {
     /// that version outright - the codec's target where the caller pinned
     /// one - because `BeginString` is what the message says about *itself*
     /// and the two differ every time a session carries a row written to a
-    /// later FIX than it speaks. The crate's `timestamp` closes the message:
-    /// `clock` where the row stated one, else the first clock the message
-    /// carries, else the epoch - so a row is always dated, and a row nobody
-    /// dated sorts first and visibly.
-    pub(super) fn finish(self, name: &str, clock: Option<&Scalar>) -> Result<Built> {
+    /// later FIX than it speaks. Mandatory clocks and identity are finalized
+    /// after namespace composition, never while the payload is still built.
+    pub(super) fn finish(self, name: &str) -> Result<Built> {
         let Self {
             beginstring,
             version,
             mut slots,
             entries,
+            failure,
+            composed,
             ..
         } = self;
+        if let Some(error) = failure {
+            return Err(error);
+        }
         if !slots
             .iter()
             .any(|slot| slot.tag == 8 || slot.field.name() == "beginstring")
@@ -1560,19 +1725,12 @@ impl<'registry> Builder<'registry> {
                 });
             }
         }
-        let stamp = stamped(&slots, clock);
         // Each slot's place is read once, as a rank, rather than once per
         // comparison inside the sort.
         let mut ordered: Vec<(usize, Slot)> = Vec::with_capacity(slots.len());
         let mut rest: Vec<Slot> = Vec::with_capacity(slots.len());
         let mut trailing: Vec<(usize, Slot)> = Vec::new();
         for slot in slots {
-            if slot.tag == super::TIMESTAMP_TAG_NAME.0
-                || slot.field.name() == super::TIMESTAMP_TAG_NAME.1
-            {
-                // Restamped below, in the one place the clock is decided.
-                continue;
-            }
             if let Some(rank) = rank_in(&STANDARD_HEADER_TAGS, slot.tag) {
                 ordered.push((rank, slot));
             } else if let Some(rank) = rank_in(&STANDARD_TRAILER_TAGS, slot.tag) {
@@ -1583,13 +1741,12 @@ impl<'registry> Builder<'registry> {
         }
         ordered.sort_by_key(|(rank, _)| *rank);
         trailing.sort_by_key(|(rank, _)| *rank);
-        let count = ordered.len() + rest.len() + trailing.len() + 1;
+        let count = ordered.len() + rest.len() + trailing.len();
         let ordered = ordered
             .into_iter()
             .map(|(_, slot)| slot)
             .chain(rest)
-            .chain(trailing.into_iter().map(|(_, slot)| slot))
-            .chain(std::iter::once(stamp));
+            .chain(trailing.into_iter().map(|(_, slot)| slot));
 
         let mut fields = Vec::with_capacity(count);
         let mut values = Vec::with_capacity(count);
@@ -1609,6 +1766,8 @@ impl<'registry> Builder<'registry> {
             value: Scalar::from_sequence(values),
             entries,
             tags,
+            composed,
+            version,
         })
     }
 }
@@ -1620,104 +1779,128 @@ pub(super) struct Built {
     pub(super) value: Scalar,
     pub(super) entries: Vec<FixEntry>,
     pub(super) tags: Vec<(i32, usize)>,
+    pub(super) version: Option<Version>,
+    composed: Vec<Composed>,
 }
 
-/// The `timestamp` child every built message closes with.
-///
-/// The row's clock outranks the message's own, because it is the caller
-/// speaking per row; a clock the message carries is next, read exactly as
-/// [`FixMsg::market_timestamp`](super::FixMsg::market_timestamp) reads it;
-/// and the epoch is where a message with no clock at all lands. A clock
-/// stated as text is read in FIX's own spelling first and in the column's
-/// own second, so a row header's ISO instant and a wire's `20240102-10:15:30`
-/// both stamp.
-fn stamped(slots: &[Slot], clock: Option<&Scalar>) -> Slot {
-    let field = super::crated::timestamp_field()
-        .cloned()
-        .unwrap_or_else(|| {
-            let mut field =
-                super::schema::CLOCK_DATATYPE.required_field(super::TIMESTAMP_TAG_NAME.1);
-            let _ = field.as_fix_mut().set_tag(super::TIMESTAMP_TAG_NAME.0);
-            field
-        });
-    let stated_clock = clock.and_then(|held| utc_instant(&field, held));
-    let carried = || {
-        slots
-            .iter()
-            .find(|slot| {
-                slot.tag == super::TIMESTAMP_TAG_NAME.0
-                    || slot.field.name() == super::TIMESTAMP_TAG_NAME.1
+impl Built {
+    /// The first declared holder, else the canonical name the registry owns.
+    pub(super) fn index_of_tag(&self, tag: i32, registry: &FixRegistry) -> Option<usize> {
+        let at = self.tags.partition_point(|(held, _)| *held < tag);
+        self.tags
+            .get(at)
+            .filter(|(held, _)| *held == tag)
+            .map(|(_, index)| *index)
+            .or_else(|| {
+                registry
+                    .get_field_by_tag(tag)
+                    .and_then(|field| self.field.index_of(field.name()))
             })
-            .and_then(|slot| slot.values.first())
-            .and_then(|held| utc_instant(&field, held))
-    };
-    let wire = || {
-        let read = super::schema::wire_clock(|tag| {
-            slots
-                .iter()
-                .find(|slot| slot.tag == tag)
-                .and_then(|slot| slot.values.first().cloned())
-        });
-        utc_instant(&field, &read)
-    };
-    let value = stated_clock
-        .or_else(carried)
-        .or_else(wire)
-        .unwrap_or_else(super::schema::epoch);
-    Slot {
-        field,
-        tag: super::TIMESTAMP_TAG_NAME.0,
-        known: true,
-        values: vec![value],
-        group: false,
-        occurrences: Vec::new(),
     }
-}
 
-/// One clock as the UTC instant the crate's column holds, whatever it came as.
-///
-/// Text is read in FIX's own spelling first and in the column's own second.
-/// An instant with no zone, which is what a row header the text reader typed
-/// without one arrives as, is the wall clock read as UTC, restated through
-/// its count rather than refused for the zone it never had. Anything else
-/// that will not become an instant is nothing.
-fn utc_instant(field: &Field, held: &Scalar) -> Option<Scalar> {
-    if held.is_null() {
-        return None;
-    }
-    if let Some(text) = held.as_str() {
-        let read = super::schema::as_instant(held.clone());
-        if !read.is_null() {
-            return field.scalar(read).ok().filter(|held| !held.is_null());
-        }
-        if let Ok(read) = field.scalar(held.clone()) {
-            if !read.is_null() {
-                return Some(read);
+    /// A namespace's last segment may fill one absent dictionary field.
+    /// Conflicting voices fill nothing. This is intake, before defaults;
+    /// entries stay the payload's own and the existing row is rebuilt once.
+    pub(super) fn compose(&mut self, registry: &FixRegistry) -> Result<()> {
+        let mut named: Vec<Composition<'_>> = Vec::new();
+        let values = self
+            .value
+            .as_sequence()
+            .ok_or_else(|| invalid_value(&self.field, "expected a canonical Struct row"))?;
+        for source in &self.composed {
+            let Some(value) = self
+                .field
+                .index_of(&source.source)
+                .and_then(|at| values.get(at))
+            else {
+                continue;
+            };
+            let tag = source.tag;
+            let at = self.index_of_tag(tag, registry);
+            if value.is_null()
+                || at
+                    .and_then(|at| values.get(at))
+                    .is_some_and(|held| !held.is_null())
+            {
+                continue;
+            }
+            match named.iter_mut().find(|held| held.source.tag == tag) {
+                Some(held) => {
+                    held.disagreed |= held.write.value != *value;
+                    held.invalid_utf8 |= source.invalid_utf8;
+                    if !held.disagreed
+                        && super::identity::required_dtype(tag).is_some()
+                        && held.source.version != source.version
+                        && !held.versions.contains(&source.version)
+                    {
+                        held.versions.push(source.version);
+                    }
+                }
+                None => named.push(Composition {
+                    source,
+                    write: super::msg::Write {
+                        at,
+                        field: source.target.clone(),
+                        value: value.clone(),
+                    },
+                    disagreed: false,
+                    invalid_utf8: source.invalid_utf8,
+                    versions: Vec::new(),
+                }),
             }
         }
-        let naive = DataType::DateTime64 {
-            unit: crate::TimeUnit::Nanosecond,
-            timezone: crate::Timezone::NAIVE,
+        let mut writes = Vec::with_capacity(named.len());
+        for Composition {
+            source,
+            mut write,
+            disagreed,
+            invalid_utf8,
+            versions,
+        } in named
+        {
+            if disagreed {
+                continue;
+            }
+            write.value = if super::identity::required_dtype(source.tag).is_some() {
+                if invalid_utf8 {
+                    return Err(invalid_value(
+                        &write.field,
+                        "expected valid UTF-8 in the composed value",
+                    ));
+                }
+                let value = typed_fill(&write.field, source.tag, &write.value, source.version)?;
+                let mut disagreed = false;
+                for version in versions {
+                    let next = typed_fill(&write.field, source.tag, &write.value, version)?;
+                    disagreed |= next != value;
+                }
+                if disagreed {
+                    continue;
+                }
+                value
+            } else {
+                let Ok(value) = write.field.scalar(write.value) else {
+                    continue;
+                };
+                value
+            };
+            if write.value.is_null() {
+                write.field.set_nullable(true);
+            }
+            writes.push(write);
         }
-        .scalar(Scalar::from(text))
-        .ok()?;
-        return restated(field, &naive);
-    }
-    if let Ok(read) = field.scalar(held.clone()) {
-        if !read.is_null() {
-            return Some(read);
+        if !writes.is_empty() {
+            let (field, values, indexed) =
+                super::msg::stage_writes(&self.field, &self.value, writes)?;
+            self.field = field;
+            self.value = Scalar::from_sequence(values);
+            for change in indexed {
+                change.apply(&mut self.tags, None);
+            }
         }
+        self.composed.clear();
+        Ok(())
     }
-    restated(field, held)
-}
-
-/// An instant restated in the column's own unit and zone through its count.
-fn restated(field: &Field, held: &Scalar) -> Option<Scalar> {
-    let count = held.temporal_count_at(crate::TimeUnit::Nanosecond)?;
-    field
-        .scalar(Scalar::from(count))
-        .ok()
-        .filter(|held| !held.is_null())
 }
 
 /// The text a value is typed from, with its unknown characters gone.
@@ -2007,6 +2190,15 @@ fn zoned(text: &str) -> (&str, Option<&str>) {
 /// for a field it did not arrive under. A spelling that will not type is
 /// null rather than a failure, for the reason the builder's read is.
 pub(super) fn typed_spelling(field: &Field, text: &str, at: Option<Version>) -> Scalar {
+    typed_spelling_checked(field, text, at).unwrap_or(Scalar::Null)
+}
+
+/// The same conversion with its typed refusal preserved for root invariants.
+pub(super) fn typed_spelling_checked(
+    field: &Field,
+    text: &str,
+    at: Option<Version>,
+) -> Result<Scalar> {
     let view = field.as_fix();
     let translated = match at {
         Some(at) => view.code_value_at(at, text),
@@ -2023,7 +2215,7 @@ fn typed_translation(
     text: &str,
     translated: Option<&str>,
     at: Option<Version>,
-) -> Scalar {
+) -> Result<Scalar> {
     let view = field.as_fix();
     let spelling = translated.unwrap_or(text);
     // A state is read through the name the field gives its code before
@@ -2036,7 +2228,7 @@ fn typed_translation(
             None => view.code_name(spelling),
         };
         if let Some(state) = named.and_then(State::from_spelling) {
-            return Scalar::Code(Code::State(state));
+            return Ok(Scalar::Code(Code::State(state)));
         }
     }
     // Every wire value is text, and the generic value contract does not
@@ -2055,9 +2247,40 @@ fn typed_translation(
     // form and is not checked a second time. A spelling it refuses is
     // offered to the field as it stands, which is where a raw payload
     // that is not a spelling of anything still lands.
-    crate::text::prepare_text(candidate, field)
-        .or_else(|_| field.scalar(Scalar::from(spelling)))
-        .unwrap_or(Scalar::Null)
+    crate::text::prepare_text(candidate, field).or_else(|_| field.scalar(Scalar::from(spelling)))
+}
+
+fn invalid_value(field: &Field, error: impl std::fmt::Display) -> Error {
+    Error::InvalidRecord {
+        path: crate::path::Path::root()
+            .field(field.name())
+            .render()
+            .into(),
+        reason: format_smolstr!("{}", crate::text::elide_display(&error)),
+    }
+}
+
+/// Carrier/composed text shares the wire converter; native values must
+/// already have the declared critical layout rather than coerce into it.
+pub(super) fn typed_fill(
+    field: &Field,
+    tag: i32,
+    value: &Scalar,
+    at: Option<Version>,
+) -> Result<Scalar> {
+    super::identity::validate_field(field, tag)?;
+    if value.is_null() {
+        return Ok(Scalar::Null);
+    }
+    if let Some(text) = value.as_str() {
+        if field.as_fix().is_null_value(text) {
+            return Ok(Scalar::Null);
+        }
+        return typed_spelling_checked(field, text, at)
+            .map_err(|error| invalid_value(field, error));
+    }
+    super::identity::validate_value(field.name(), field.dtype(), value)?;
+    Ok(value.clone())
 }
 
 /// One registry field as this message carried it.

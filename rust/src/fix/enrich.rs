@@ -933,65 +933,6 @@ impl Remembered {
     }
 }
 
-/// Fills every field a composed key names and the row left absent.
-///
-/// A bridge writes a field under its own namespace - `TECH.CLIENTID`,
-/// `ULLINK.INSTRUMENTID`, `FIRM.ORIG.ULFROMSESSIONNAME` - and the fact is
-/// the field's however the writer spelled the key. Where the last dotted
-/// segment of a child's name resolves to a dictionary field and that field
-/// is absent, the composed key fills it, and the filled child takes the
-/// field's tag so every rule below reads it like any other (decision 20).
-///
-/// One voice or silence. Where a row names one absent field under several
-/// composed keys and they disagree, none of them fills it: on nine lines of
-/// the committed corpus `FIRM.ORIG.CLIENTID` is a firm account number and
-/// `ULLINK.CLIENTID` a trader login, both naming an absent `CLIENTID`, and
-/// nothing in the row says which one the field means. Filling from either
-/// would invent a fact.
-///
-/// Read where the row is read, rather than in the enriching pass. A composed
-/// key is the row's own statement of the field under a spelling of its own,
-/// not an inference from other fields, so it belongs with the reading of the
-/// row - and that is the only placement under which both enriching doors
-/// agree, because a child the dictionary does not name has no column and so
-/// does not survive a row: the batch door would never see it.
-pub(super) fn compose(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
-    // What each absent field is named under, and by how many voices: the
-    // first value seen, and whether a later one disagreed with it.
-    let mut named: Vec<(i32, Scalar, bool)> = Vec::new();
-    for child in msg.as_field().fields() {
-        let Some((_, last)) = child.name().rsplit_once('.') else {
-            continue;
-        };
-        // A segment naming no field of this dictionary names nothing.
-        let Ok(field) = registry.field_by_name(last) else {
-            continue;
-        };
-        let Ok(Some(tag)) = field.as_fix().tag() else {
-            continue;
-        };
-        // What the message already states is never a thing to fill.
-        if msg.get_by_tag(tag).is_some_and(|held| !held.is_null()) {
-            continue;
-        }
-        let Some(value) = msg.get_by_name(child.name()).filter(|held| !held.is_null()) else {
-            continue;
-        };
-        match named.iter_mut().find(|(held, _, _)| *held == tag) {
-            Some(entry) => entry.2 |= entry.1 != *value,
-            None => named.push((tag, value.clone(), false)),
-        }
-    }
-    let mut msg = msg;
-    for (tag, value, disagreed) in named {
-        if disagreed {
-            continue;
-        }
-        let _ = msg.set(tag, value);
-    }
-    msg
-}
-
 /// The fields the arrival record names that the message no longer holds.
 ///
 /// A row is a projection. [`fix_schema`](super::fix_schema) names a column

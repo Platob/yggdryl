@@ -1484,7 +1484,11 @@ impl PyFixMsg {
     fn remove(&mut self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
         self.require_mutable()?;
         let key = FixKeyArg::from_py(key)?;
-        Ok(self.inner.remove(key.as_key()).map(PyScalar::from_inner))
+        Ok(self
+            .inner
+            .remove(key.as_key())
+            .map_err(|error| absent(&error))?
+            .map(PyScalar::from_inner))
     }
 
     /// The `(name, value)` pairs of the root, in the order it declares.
@@ -1560,8 +1564,8 @@ impl PyFixMsg {
     /// row's own clock where the capture stated one, else the first clock the
     /// message carries, else the epoch - so a message the codec built always
     /// answers, and only a message built by hand without that child does not.
-    fn market_timestamp(&self) -> Option<PyScalar> {
-        Self::answered(Some(&self.inner.market_timestamp()))
+    fn updatedat(&self) -> Option<PyScalar> {
+        Self::answered(Some(self.inner.updatedat()))
     }
 
     /// The partition that timestamp falls in, in whole seconds.

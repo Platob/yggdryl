@@ -8,6 +8,8 @@ mod capture;
 mod cfb;
 #[path = "fix/codec.rs"]
 mod codec;
+#[path = "fix/content_identity.rs"]
+mod content_identity;
 #[path = "fix/dataset.rs"]
 mod dataset;
 #[path = "fix/dictionary.rs"]
@@ -36,6 +38,8 @@ mod latest;
 mod lifecycle;
 #[path = "fix/lifecycle_chains.rs"]
 mod lifecycle_chains;
+#[path = "fix/lifecycle_grid.rs"]
+mod lifecycle_grid;
 #[path = "fix/lifecycle_previous.rs"]
 mod lifecycle_previous;
 #[path = "fix/lifecycle_targets.rs"]
@@ -129,6 +133,20 @@ fn committed_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
             yggdryl::FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
         )
     }))
+}
+
+/// Undated test bytes have one explicit intake clock; replay never consults now.
+fn fixed_codec(registry: std::sync::Arc<yggdryl::FixRegistry>) -> yggdryl::FixCodec {
+    yggdryl::FixCodec::new(registry)
+        .try_with_default_sending_time(Some(
+            yggdryl::Scalar::datetime64(
+                1_704_190_530_000_000_000,
+                yggdryl::TimeUnit::Nanosecond,
+                yggdryl::Timezone::UTC,
+            )
+            .unwrap(),
+        ))
+        .unwrap()
 }
 
 fn plugin_fields_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
@@ -235,7 +253,7 @@ const SESSIONINTERFACE_TAG: i32 = 20_010;
 ///
 /// The crate's own, which `FixRegistry::new` seeds beside its fields exactly
 /// as it seeds `pluginid`: `pluginconfig` is the one of them (decision 19).
-/// Counted rather than spelled `1`, the way [`crated`] counts the fields, so
+/// Counted rather than spelled `1`, the way [`crated_fields`] counts the fields, so
 /// every total below stays true of the next one.
 fn crated_messages() -> usize {
     usize::from(yggdryl::fix_plugin_message().is_ok())
@@ -257,14 +275,19 @@ fn run_isolated(test_name: &str, marker: &str) -> bool {
     true
 }
 
-/// How many fields every registry holds before a test inserts one: the
-/// crate's own, which `FixRegistry::new` seeds and no store writes.
-fn crated() -> usize {
+/// Crate-owned scalar definitions inherited by every dictionary.
+fn crated_fields() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count()
+}
+
+/// Initial registry fields, including the standard SendingTime and TransactTime seeds.
+fn seeded_fields() -> usize {
+    static COUNT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *COUNT.get_or_init(|| yggdryl::FixRegistry::new().len())
 }
 
 /// Where the column carrying `tag` sits in a batch: by the tag its field

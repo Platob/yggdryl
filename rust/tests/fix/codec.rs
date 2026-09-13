@@ -15,7 +15,7 @@ fn registry() -> Arc<FixRegistry> {
 }
 
 fn codec() -> FixCodec {
-    FixCodec::new(registry())
+    super::fixed_codec(registry())
 }
 
 fn reader() -> FixCodec {
@@ -376,7 +376,7 @@ fn nested_counter_anomalies_follow_each_counter_across_reordered_siblings() {
     scoped
         .insert_definition(FixCategory::Components, message_type)
         .unwrap();
-    let reader = FixCodec::new(Arc::new(scoped));
+    let reader = super::fixed_codec(Arc::new(scoped));
     let wire = b"35=ZCNT|453=2|448=A|539=2|524=RIGHT|802=invalid|523=LEFT|448=B|802=1|523=BLEFT|539=0|524=BRIGHT|55=AAPL|10=0|";
     let message = reader.parse_fix_line(wire).unwrap();
     let anomalies: Vec<_> = message.anomalies().collect();
@@ -1404,7 +1404,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
         "J"
     );
     let messages = registry.msgtypes().count();
-    let none = FixCodec::new(Arc::new(registry.clone()));
+    let none = super::fixed_codec(Arc::new(registry.clone()));
     assert!(grouped(&none.sole_line(frame, false).unwrap()));
 
     // Declared under another name: a second message, reached by its name and
@@ -1416,7 +1416,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     assert_eq!(registry.msgtype("J").unwrap().name(), standard);
     assert_eq!(registry.msgtype("AllocIn").unwrap().as_str(), "J");
     assert_eq!(registry.msgtype("alloc_in").unwrap().name(), "AllocIn");
-    let once = FixCodec::new(Arc::new(registry.clone()));
+    let once = super::fixed_codec(Arc::new(registry.clone()));
     let message = once.sole_line(frame, false).unwrap();
     assert!(grouped(&message), "the first holder's grammar");
     let occurrences = message
@@ -1474,8 +1474,8 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
         .iter()
         .map(yggdryl::Field::name)
         .collect();
-    // The header in rank order, the body, the trailer, and the crate's own
-    // clock closing the message.
+    // Wire children retain header/body/trailer order; mandatory identities
+    // and clocks are appended by the shared finalizer.
     assert_eq!(
         names,
         [
@@ -1485,7 +1485,13 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
             "symbol",
             "version",
             "checksum",
-            "timestamp"
+            "updatedat",
+            "createdat",
+            "uuid",
+            "puuid",
+            "code",
+            "snapshotat",
+            "sendingtime"
         ],
         "{names:?}"
     );
@@ -1689,7 +1695,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
     let registry = Arc::new(registry);
 
     let row = "35=D|55=AAPL|453=2|448=A|452=1|802=2|523=S1|803=1|523=S2|803=2|448=B|452=3|10=0|";
-    let message = FixCodec::new(registry)
+    let message = super::fixed_codec(registry)
         .sole_line(row.as_bytes(), false)
         .unwrap();
     let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
@@ -1783,9 +1789,15 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
                 "nopartyids",
                 "parties",
                 "version",
-                "timestamp"
+                "updatedat",
+                "createdat",
+                "uuid",
+                "puuid",
+                "code",
+                "snapshotat",
+                "sendingtime"
             ],
-            "the counter and the group, beside the three children every message has"
+            "one counter and one group beside the mandatory message fields"
         );
         assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(2_i32));
         let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
@@ -1855,7 +1867,13 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
             "nolinesoftext",
             "linesoftextgrp",
             "version",
-            "timestamp"
+            "updatedat",
+            "createdat",
+            "uuid",
+            "puuid",
+            "code",
+            "snapshotat",
+            "sendingtime"
         ],
         "{names:?}"
     );
@@ -1907,7 +1925,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
         .unwrap();
     let registry = Arc::new(registry);
 
-    let message = FixCodec::new(registry)
+    let message = super::fixed_codec(registry)
         .sole_line(b"35=D|55=AAPL|453=2|10=0|", false)
         .unwrap();
     let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
@@ -2061,7 +2079,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
     scoped
         .insert_definition(FixCategory::Components, definition)
         .unwrap();
-    let numeric_name = FixCodec::new(Arc::new(scoped))
+    let numeric_name = super::fixed_codec(Arc::new(scoped))
         .sole_line(
             b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
             false,
@@ -2106,7 +2124,7 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
     use yggdryl::fix_schema;
 
     let registry = registry();
-    let reader = FixCodec::new(Arc::clone(&registry));
+    let reader = super::fixed_codec(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let held = reader
         .sole_line(
@@ -2162,10 +2180,13 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     assert_eq!(latest("00:30+05:30", 1079), instant(-18_000_000_000_000));
     // FIX means local time by stating no offset, which an instant cannot
     // hold, so that reads as nothing rather than as a guessed UTC. It is the
-    // same rule that keeps a dateless `UTCTimestamp` from becoming an instant
-    // on the epoch day.
+    // same declared datatype rule that rejects a dateless `UTCTimestamp`.
+    // The latter is a critical event clock, so its refusal fails intake.
     assert_eq!(latest("07:39:12", 1079), Scalar::Null);
-    assert_eq!(read("8=FIX.4.4", "10:15:30.000", 60), Scalar::Null);
+    let refused = reader
+        .parse_fix_line(b"8=FIX.4.4|35=D|60=10:15:30.000|10=0|")
+        .unwrap_err();
+    assert!(refused.to_string().contains("transacttime"));
 
     // TZTransactTime(1132) is a TZTimestamp: it states the zone, so writing
     // `Z` over it would spell one twice and read as nothing.
@@ -2181,47 +2202,42 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     );
 }
 
-/// A capture is never ordered by the epoch day.
-///
-/// The clock column is declared an instant however narrow the dictionary is,
-/// so a clock field typed as text is read through FIX's own spelling. A
-/// `TZTimeOnly` is a legal reading of that spelling and never a moment a
-/// capture happened at, so a dateless value contributes nothing and the
-/// ladder keeps walking - to the epoch itself, where a message with no clock
-/// at all is stamped, which sorts first and visibly rather than among the
-/// rows of whatever day it was read on.
+/// Critical clocks are typed at intake; no text-typed interior fallback remains.
 #[test]
-fn a_dateless_clock_never_becomes_the_capture_instant() {
-    use yggdryl::{TimeUnit, Timezone};
+fn clock_intake_keeps_the_declared_datatypes_contract_and_refuses_wrong_layouts() {
+    let reader = super::fixed_codec(Arc::new(FixRegistry::new()));
+    // A native ns/UTC datetime accepts time with an offset on the epoch day.
+    // The seed has no stricter FIX UTCTimestamp metadata, pinned above.
+    let dateless = reader
+        .parse_fix_line(b"8=FIX.4.4|35=D|60=07:39:12.123+05:30|10=0|")
+        .unwrap();
+    assert_eq!(
+        dateless.updatedat().as_datetime64().unwrap().0,
+        7_752_123_000_000
+    );
+    assert_eq!(
+        dateless.by_tag(yggdryl::SNAPSHOTAT_TAG_NAME.0).unwrap(),
+        dateless.by_tag(60).unwrap()
+    );
+    let dated = reader
+        .parse_fix_line(b"8=FIX.4.4|35=D|60=20240102-10:15:30.000|10=0|")
+        .unwrap();
+    assert_eq!(
+        dated.updatedat().as_datetime64().unwrap().0,
+        1_704_190_530_000_000_000
+    );
 
-    // A dictionary narrow enough to type the clock as text is what reaches
-    // the reading at all: a full one has already made it an instant.
     let mut narrow = FixRegistry::new();
     let mut clock = DataType::utf8().nullable_field("transacttime");
-    clock.as_fix_mut().set_tag(60).expect("a standard tag");
-    narrow.insert(clock).expect("a fresh dictionary");
-    let reader = FixCodec::new(Arc::new(narrow));
-    let clocked = |value: &str| {
-        reader
-            .sole_line(format!("8=FIX.4.4|35=D|60={value}|10=0|").as_bytes(), false)
-            .expect("a readable message")
-            .market_timestamp()
-    };
-
-    let instant = |count: i64| {
-        Scalar::datetime64(count, TimeUnit::Nanosecond, Timezone::UTC).expect("a nanosecond count")
-    };
-    assert_eq!(
-        clocked("07:39:12.123+05:30"),
-        instant(0),
-        "the epoch, never the epoch day"
-    );
-    // A dated one is the instant the clock column holds, which is what this
-    // derivation exists to produce.
-    assert_eq!(
-        clocked("20240102-10:15:30.000"),
-        instant(1_704_190_530_000_000_000),
-    );
+    clock.as_fix_mut().set_tag(60).unwrap();
+    narrow.insert(clock).unwrap();
+    let reader = super::fixed_codec(Arc::new(narrow));
+    for value in ["07:39:12.123+05:30", "20240102-10:15:30.000"] {
+        let error = reader
+            .parse_fix_line(format!("8=FIX.4.4|35=D|60={value}|10=0|").as_bytes())
+            .unwrap_err();
+        assert!(error.to_string().contains("transacttime"));
+    }
 }
 
 /// Each reader on its own, over the one row shape it owns.
@@ -2400,7 +2416,7 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
     // The frame's `BeginString` is the envelope's and stays the message's;
     // the row inside `XmlData` states no version of its own, so it is read at
     // the dictionary's newest rather than at the session's.
-    let message = FixCodec::new(Arc::clone(&registry))
+    let message = super::fixed_codec(Arc::clone(&registry))
         .parse_fix_line(frame)
         .unwrap();
     assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
@@ -2408,7 +2424,7 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
 
     // A pinned version is the caller speaking for the whole run and answers
     // for the nested row too.
-    let dated = FixCodec::new(Arc::clone(&registry))
+    let dated = super::fixed_codec(Arc::clone(&registry))
         .with_version("4.2".parse::<Version>().unwrap())
         .parse_fix_line(frame)
         .unwrap();

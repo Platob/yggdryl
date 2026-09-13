@@ -91,6 +91,183 @@ fn canonical_bytes_are_the_instant_then_the_digest() {
 }
 
 #[test]
+fn uuid_projection_keeps_all_signed_nanoseconds_around_the_reserved_bits() {
+    let digest = Digest::new(DigestAlgorithm::Xxh64, 0x0123_4567_89ab_cdef);
+    for (nanoseconds, expected) in [
+        (i64::MIN, "00000000-0000-8000-8123-456789abcdef"),
+        (-1, "7fffffff-ffff-8fff-bd23-456789abcdef"),
+        (0, "80000000-0000-8000-8123-456789abcdef"),
+        (1, "80000000-0000-8000-8523-456789abcdef"),
+        (15, "80000000-0000-8000-bd23-456789abcdef"),
+        (16, "80000000-0000-8001-8123-456789abcdef"),
+        (65_535, "80000000-0000-8fff-bd23-456789abcdef"),
+        (65_536, "80000000-0001-8000-8123-456789abcdef"),
+        (i64::MAX, "ffffffff-ffff-8fff-bd23-456789abcdef"),
+    ] {
+        let value = TxHash::new_in(nanoseconds, TimeUnit::Nanosecond, digest).unwrap();
+        let raw = value.into_bytes();
+        let projected = value.into_uuid().unwrap();
+        assert_eq!(projected.to_string(), expected, "{nanoseconds}");
+        let bytes = projected.into_bytes();
+        assert_eq!(bytes[6] >> 4, 8);
+        assert_eq!(bytes[8] >> 6, 2);
+        assert_eq!(
+            value.into_bytes(),
+            raw,
+            "projection does not mutate the value"
+        );
+        assert_eq!(&raw[..UNIX_WIDTH], &nanoseconds.to_be_bytes());
+        assert_eq!(&raw[UNIX_WIDTH..], &*digest.into_bytes());
+    }
+}
+
+#[test]
+fn uuid_projection_orders_signed_instants_before_every_digest_bit() {
+    let instants = [
+        i64::MIN,
+        i64::MIN + 1,
+        -65_536,
+        -16,
+        -1,
+        0,
+        1,
+        15,
+        16,
+        65_535,
+        65_536,
+        i64::MAX,
+    ];
+    for pair in instants.windows(2) {
+        let earlier = TxHash::new_in(
+            pair[0],
+            TimeUnit::Nanosecond,
+            Digest::new(DigestAlgorithm::Xxh64, u128::MAX),
+        )
+        .unwrap();
+        let later = TxHash::new_in(
+            pair[1],
+            TimeUnit::Nanosecond,
+            Digest::new(DigestAlgorithm::Xxh64, 0),
+        )
+        .unwrap();
+        assert!(
+            earlier < later,
+            "native ordering still compares the signed count"
+        );
+        assert!(
+            earlier.into_uuid().unwrap() < later.into_uuid().unwrap(),
+            "{pair:?}"
+        );
+    }
+    let before = TxHash::new_in(
+        -1,
+        TimeUnit::Nanosecond,
+        Digest::new(DigestAlgorithm::Xxh64, 0),
+    )
+    .unwrap();
+    let epoch = TxHash::new_in(0, TimeUnit::Nanosecond, before.digest()).unwrap();
+    assert!(
+        before.into_bytes() > epoch.into_bytes(),
+        "raw bytes retain two's-complement ordering"
+    );
+}
+
+#[test]
+fn uuid_projection_normalizes_units_and_preserves_restatement_overflow() {
+    let digest = Digest::new(DigestAlgorithm::Xxh3, 7);
+    for seconds in [-2, 0, 2] {
+        let expected = TxHash::new_in(seconds, TimeUnit::Second, digest)
+            .unwrap()
+            .into_uuid()
+            .unwrap();
+        for (unit, scale) in [
+            (TimeUnit::Second, 1),
+            (TimeUnit::Millisecond, 1_000),
+            (TimeUnit::Microsecond, 1_000_000),
+            (TimeUnit::Nanosecond, 1_000_000_000),
+        ] {
+            let value = TxHash::new_in(seconds * scale, unit, digest).unwrap();
+            assert_eq!(value.into_uuid().unwrap(), expected, "{unit}");
+        }
+    }
+    for (unit, scale) in [
+        (TimeUnit::Second, 1_000_000_000),
+        (TimeUnit::Millisecond, 1_000_000),
+        (TimeUnit::Microsecond, 1_000),
+    ] {
+        for count in [i64::MIN / scale, i64::MAX / scale] {
+            assert!(
+                TxHash::new_in(count, unit, digest)
+                    .unwrap()
+                    .into_uuid()
+                    .is_ok()
+            );
+        }
+        for count in [i64::MIN / scale - 1, i64::MAX / scale + 1] {
+            let expected = restate_unix(count, unit, TimeUnit::Nanosecond).unwrap_err();
+            let error = TxHash::new_in(count, unit, digest)
+                .unwrap()
+                .into_uuid()
+                .unwrap_err();
+            assert_eq!(error.to_string(), expected.to_string());
+            assert!(matches!(
+                error,
+                Error::ArithmeticOverflow {
+                    operation: "unix restatement",
+                    kind: "int64"
+                }
+            ));
+        }
+    }
+}
+
+#[test]
+fn uuid_projection_discards_only_the_high_six_digest_bits_and_algorithm() {
+    let project = |algorithm, payload| {
+        TxHash::new_in(-1, TimeUnit::Nanosecond, Digest::new(algorithm, payload))
+            .unwrap()
+            .into_uuid()
+            .unwrap()
+    };
+    let payload = 0x0123_4567_89ab_cdef;
+    let expected = project(DigestAlgorithm::Xxh64, payload);
+    assert_eq!(project(DigestAlgorithm::Xxh3, payload), expected);
+    for bit in 58..64 {
+        assert_eq!(
+            project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
+            expected
+        );
+    }
+    for bit in 0..58 {
+        assert_ne!(
+            project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
+            expected
+        );
+    }
+}
+
+#[test]
+fn uuid_projection_refuses_non_64_bit_digests_without_narrowing() {
+    for algorithm in [DigestAlgorithm::Xxh32, DigestAlgorithm::Xxh128] {
+        for payload in [0, 7, u128::MAX] {
+            let value =
+                TxHash::new_in(0, TimeUnit::Nanosecond, Digest::new(algorithm, payload)).unwrap();
+            let Error::InvalidRecord { path, reason } = value.into_uuid().unwrap_err() else {
+                panic!("a wrong-width digest must raise a located value refusal");
+            };
+            assert_eq!(path, "$.digest");
+            assert_eq!(
+                reason,
+                format!(
+                    "expected a 64-bit digest for UUIDv8, got {algorithm} ({} bits)",
+                    algorithm.width() * 8
+                )
+            );
+        }
+    }
+}
+
+#[test]
 fn bytes_of_the_wrong_width_or_unit_are_refused() {
     let value = txh3(b"AAPL", INSTANT);
     let bytes = value.into_bytes();

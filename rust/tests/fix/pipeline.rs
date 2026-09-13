@@ -10,7 +10,7 @@
 //! data, a message in is a row out - a line carrying none is no row and a
 //! line carrying two frames is two (decision 16) - the capture's own columns
 //! lead each row and the captures named after fields fill them instead,
-//! every row is stamped by its header's clock, a document's attributes land
+//! every row keeps its event clock independently of its header, attributes land
 //! typed on the bridge's own tags, and the batched read agrees with the line
 //! read on every tag both can answer.
 
@@ -128,7 +128,7 @@ fn text() -> RecordOptions {
 /// The codec: over the bridge's dictionary, whose fields resolve in the one
 /// namespace without a pin.
 fn codec() -> FixCodec {
-    FixCodec::new(registry())
+    super::fixed_codec(registry())
 }
 
 /// The first stage alone, as one batch: what the text reader hands the codec.
@@ -231,19 +231,27 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // and the header's
     // captures - and the fixed columns follow. A capture whose folded name a
     // fixed column takes is not carried in front, it fills that column: the
-    // reader's `msgtype`, and the header's `timestamp`, `msgCtxId` and
+    // reader's `msgtype`, and the header's `msgCtxId` and
     // `pluginid`. `senderSessionId` names a fixed column too, so it is not
     // carried either. `seqNum` is, since no fixed column is spelled so, and
     // it fills `msgseqnum` besides.
     assert_eq!(
-        &names[..8],
+        &names[..9],
         [
-            "url", "rownum", "mtime", "mimetype", "body", "threadId", "seqNum", "level"
+            "url",
+            "rownum",
+            "mtime",
+            "mimetype",
+            "body",
+            "timestamp",
+            "threadId",
+            "seqNum",
+            "level"
         ],
         "{names:?}"
     );
     assert_eq!(
-        &names[8..11],
+        &names[9..12],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
@@ -270,8 +278,8 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     );
 
     // The timestamp capture was typed from its pattern before a byte was
-    // read and took the zone the options declared; the fixed column it
-    // stamps is an instant too, and one every row has.
+    // read and took the zone the options declared; updatedat is independently
+    // settled as an exact nanosecond UTC instant on every row.
     let stage = text_stage(&CAPTURE);
     let captured = stage.schema();
     let clock = captured
@@ -285,7 +293,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "{clock:?}"
     );
     let stamp = schema
-        .field_with_name("timestamp")
+        .field_with_name("updatedat")
         .expect("the clock column");
     assert!(
         matches!(
@@ -499,11 +507,10 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         "{:?}",
         sent[RELAY_ROW]
     );
-    // A row that states no sending time is a document, not prose: prose
-    // carries no row here to state one (decision 16).
-    assert!(
-        sent[RESPONSE_ROW].is_null(),
-        "a configuration document states no sending time"
+    assert_eq!(
+        sent[RESPONSE_ROW].temporal_count_at(TimeUnit::Nanosecond),
+        Some(1_704_190_530_000_000_000),
+        "an unstated sending time uses the explicit codec default"
     );
 
     // The fill's body: symbol, side, quantities and prices, typed.
@@ -532,62 +539,46 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert_eq!(tag_column(&read, 38)[ROUTED_ROW].as_f64(), Some(982.0));
     assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
 
-    // The crate's own columns: a digest on every row - a row exists only
-    // where a message did (decision 16), so there is no longer an empty
-    // `unknown` row with nothing to digest - the framed fill and the routed
-    // row state different tag sets, so they digest apart, and the clock
-    // every row is stamped with.
-    let digest = tag_column(&read, yggdryl::MSGHASH_TAG_NAME.0);
-    for (row, held) in digest.iter().enumerate() {
-        assert!(
-            held.as_bytes().is_some_and(|held| held.len() == 16),
-            "row {row} carried a message, so it digests"
-        );
+    // Every projected row carries a native content identity. Distinct real
+    // messages remain distinct, independently of the separate arrival digest.
+    let identities = tag_column(&read, yggdryl::UUID_TAG_NAME.0);
+    for (row, held) in identities.iter().enumerate() {
+        assert!(matches!(held, Scalar::Uuid(_)), "row {row} has a UUID");
     }
-    assert!(
-        digest[FILL_ROW]
-            .as_bytes()
-            .is_some_and(|held| held.len() == 16)
-    );
-    assert!(
-        digest[ROUTED_ROW]
-            .as_bytes()
-            .is_some_and(|held| held.len() == 16)
-    );
-    assert_ne!(digest[FILL_ROW], digest[ROUTED_ROW]);
-    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
+    assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
+    let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
     assert!(matches!(stamp[FILL_ROW], Scalar::Temporal(_)));
     assert!(matches!(stamp[ROUTED_ROW], Scalar::Temporal(_)));
 }
 
 #[test]
-fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() {
+fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     let read = read(&CAPTURE);
     let stage = text_stage(&CAPTURE);
 
-    // The row's own clock outranks every clock the message carries - the fill
-    // states 04:46:36 and is stamped when the bridge wrote its line,
-    // 06:46:36.887 - and a message carrying no clock at all is stamped too.
-    // The text read declared UTC, so the capture and the stamp are one
-    // instant, on every row. The stage holds one row per line and the codec
-    // one per message (decision 16), so the clock a stamp must equal is the
-    // clock of the line the message was read from: `CARRYING` names it.
+    // A capture instant is ordinary context. TransactTime, else SendingTime,
+    // settles the real event independently of when the bridge logged it.
     let clock = column(&stage, "timestamp");
-    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
+    let carried = column(&read, "timestamp");
+    let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
+    let snapshot = tag_column(&read, yggdryl::SNAPSHOTAT_TAG_NAME.0);
+    let created = tag_column(&read, yggdryl::CREATEDAT_TAG_NAME.0);
     assert_eq!(stamp.len(), MESSAGES);
     assert_eq!(clock.len(), CAPTURE.len());
     for (row, line) in CARRYING.into_iter().enumerate() {
-        assert!(!stamp[row].is_null(), "row {row} is stamped");
-        assert_eq!(
-            stamp[row].temporal_count_at(TimeUnit::Nanosecond),
-            clock[line].temporal_count_at(TimeUnit::Nanosecond),
-            "row {row} is stamped by the header clock of line {line}",
-        );
+        assert_eq!(carried[row], clock[line], "capture context for row {row}");
+        assert_eq!(stamp[row], snapshot[row]);
+        assert_eq!(created[row], snapshot[row]);
+        assert_ne!(stamp[row], clock[line]);
     }
     let millis = |row: usize| stamp[row].temporal_count_at(TimeUnit::Millisecond);
-    assert_eq!(millis(HEARTBEAT_ROW), Some(1_786_689_990_416));
-    assert_eq!(millis(FILL_ROW), Some(1_786_689_996_887));
-    assert_eq!(millis(ROUTED_ROW), Some(1_786_689_997_153));
+    assert_eq!(millis(RESPONSE_ROW), Some(1_704_190_530_000));
+    assert_eq!(
+        stamp[HEARTBEAT_ROW].temporal_count_at(TimeUnit::Nanosecond),
+        Some(1_786_682_790_415_655_000)
+    );
+    assert_eq!(millis(FILL_ROW), Some(1_786_682_796_000));
+    assert_eq!(millis(ROUTED_ROW), Some(1_786_682_796_000));
 
     // The partition the stamp falls in, floored from the clock's own
     // nanoseconds so a millisecond clock still has one - on every row.
@@ -595,7 +586,7 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
     for (row, held) in partition.iter().enumerate() {
         assert!(!held.is_null(), "row {row} has a partition");
     }
-    let seconds = 1_786_689_996_i64;
+    let seconds = 1_786_682_796_i64;
     assert_eq!(
         partition[FILL_ROW].as_i64(),
         Some(seconds - seconds % yggdryl::DEFAULT_PARTITION_SECONDS)
@@ -706,7 +697,7 @@ fn the_bridges_own_fields_carry_its_membership_and_resolve_beside_the_standard()
 #[test]
 fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     let registry = registry();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
 
     // The line as the text reader hands it to the codec: the row header
     // gone, the `Response:` prose still in front of the document.
@@ -814,7 +805,7 @@ const ROWHEADER_WIDTH: usize = "2026-08-14 06:46:22.255 [23] [Jolokia] (DEBUG) "
 #[test]
 fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let registry = registry();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
     let read = read(&CAPTURE);
 
     // The text reader's bodies are what the codec reads, so the line read
@@ -881,7 +872,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         34,
         yggdryl::MSGCTXID_TAG_NAME.0,
         yggdryl::PLUGINID_TAG_NAME.0,
-        yggdryl::TIMESTAMP_TAG_NAME.0,
+        yggdryl::UPDATEDAT_TAG_NAME.0,
     ] {
         assert!(
             !recorded.contains(&i64::from(filled)),
@@ -968,13 +959,14 @@ fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
     assert_eq!(tag_column(&read, 34)[0].as_i64(), Some(696));
     assert_eq!(tag_column(&read, 34)[1].as_i64(), Some(935));
 
-    // What the row carried, both messages share once (decision 8): the
-    // header's clock, the plugin that wrote the line and the direction its
-    // verb stated.
-    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
-    assert_eq!(stamp[0], stamp[1]);
+    // Capture context is shared, while each frame keeps its own event clock.
+    let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
+    assert_ne!(stamp[0], stamp[1]);
+    assert_eq!(stamp, tag_column(&read, 52));
+    let captured = column(&read, "timestamp");
+    assert_eq!(captured[0], captured[1]);
     assert_eq!(
-        stamp[0].temporal_count_at(TimeUnit::Millisecond),
+        captured[0].temporal_count_at(TimeUnit::Millisecond),
         Some(1_786_689_990_947)
     );
     assert_eq!(

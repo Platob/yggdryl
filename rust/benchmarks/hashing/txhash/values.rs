@@ -64,6 +64,16 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("into_bytes", |bencher| {
         bencher.iter(|| black_box(value).into_bytes());
     });
+    let projected = value.into_uuid().expect("the instant fits nanoseconds");
+    assert_eq!(projected.into_bytes()[6] >> 4, 8);
+    assert_eq!(projected.into_bytes()[8] >> 6, 2);
+    group.bench_function("into_uuid", |bencher| {
+        bencher.iter(|| {
+            black_box(value)
+                .into_uuid()
+                .expect("a 64-bit digest and in-range instant")
+        });
+    });
     group.bench_function("from_bytes", |bencher| {
         bencher.iter(|| {
             TxHash::from_bytes(

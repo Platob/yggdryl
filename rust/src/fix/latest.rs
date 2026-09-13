@@ -926,7 +926,13 @@ pub(super) fn restate(msg: FixMsg) -> Result<FixMsg> {
     );
     let registry = Arc::clone(msg.registry());
     let entries = msg.into_entries();
-    let mut restated = FixMsg::from_parts(registry, root, Scalar::from_sequence(values), entries)?;
+    let mut restated = FixMsg::settled_parts(
+        registry,
+        root,
+        Scalar::from_sequence(values),
+        entries,
+        super::identity::Assertions::default(),
+    )?;
     if let Some(newest) = newest {
         let spelled = format_smolstr!("{newest}");
         restated.set(super::VERSION_TAG_NAME.0, Scalar::from(spelled.as_str()))?;

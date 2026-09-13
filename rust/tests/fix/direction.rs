@@ -214,7 +214,7 @@ fn a_rule_added_through_the_registry_changes_what_a_line_answers() {
 
     // The codec compiles the rules it was built with, once, and every door
     // fills tag 385 from them.
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
     let message = codec
         .parse_line(b"RX 8=FIX.4.4|35=D|10=0|")
         .unwrap()
@@ -283,7 +283,7 @@ fn the_prose_in_front_of_a_jolokia_document_names_its_half_and_a_bare_document_n
 
     // On the line door the bare document fills nothing; on the batch door
     // the pin fills it.
-    let codec = FixCodec::new(super::committed_registry());
+    let codec = super::fixed_codec(super::committed_registry());
     let bare = codec
         .parse_line(ANSWERED.as_bytes())
         .unwrap()
@@ -548,7 +548,7 @@ fn a_merge_lets_the_incoming_table_win_whole() {
 
 #[test]
 fn every_door_fills_tag_385_from_the_reading_and_the_pin_is_the_batch_doors() {
-    let codec = FixCodec::new(super::committed_registry());
+    let codec = super::fixed_codec(super::committed_registry());
     let direction = |line: &[u8]| {
         codec
             .parse_line(line)

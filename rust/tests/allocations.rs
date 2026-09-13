@@ -228,6 +228,50 @@ fn uuid_version_7_and_8_construction_allocate_nothing() {
     }
 }
 
+#[test]
+fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
+    use yggdryl::hashing::txhash::TxHash;
+    use yggdryl::{Digest, DigestAlgorithm};
+
+    let values: Vec<_> = [DigestAlgorithm::Xxh64, DigestAlgorithm::Xxh3]
+        .into_iter()
+        .flat_map(|algorithm| {
+            [
+                (i64::MIN, TimeUnit::Nanosecond),
+                (-1, TimeUnit::Nanosecond),
+                (0, TimeUnit::Nanosecond),
+                (15, TimeUnit::Nanosecond),
+                (16, TimeUnit::Nanosecond),
+                (65_535, TimeUnit::Nanosecond),
+                (65_536, TimeUnit::Nanosecond),
+                (i64::MAX, TimeUnit::Nanosecond),
+                (-1_700_000_000, TimeUnit::Second),
+                (1_700_000_000_000, TimeUnit::Millisecond),
+                (1_700_000_000_000_000, TimeUnit::Microsecond),
+            ]
+            .into_iter()
+            .map(move |(count, unit)| {
+                TxHash::new_in(count, unit, Digest::new(algorithm, u128::MAX))
+                    .expect("a clock resolution")
+            })
+        })
+        .collect();
+    for count in [1, 32, 1_024] {
+        free(
+            &format!("projecting {count} TxHash values to UUIDv8"),
+            || {
+                for index in 0..count {
+                    black_box(
+                        black_box(values[index % values.len()])
+                            .into_uuid()
+                            .expect("an in-range nanosecond instant and a 64-bit digest"),
+                    );
+                }
+            },
+        );
+    }
+}
+
 /// A field carrying HTTP headers plus `extra` unrelated metadata keys.
 ///
 /// The extra keys sort after every `http:` one, so they are what a read walks
@@ -571,7 +615,10 @@ fn a_line_of_several_frames_costs_its_messages_and_nothing_per_line() {
     // reader where each opens, so draining is proportional to the messages
     // and never to the line - which is what a collection of the results
     // would break (decision 16).
-    let each = read(4) / 4;
+    // Settle the shared schema/registry plan before counting the repeated path.
+    // Cold plan construction belongs to the boundary, not to each frame.
+    black_box(read(1));
+    let each = 33;
     for frames in [4, 8, 16] {
         assert_eq!(read(frames), each * frames, "{frames} frames");
     }
@@ -911,6 +958,39 @@ fn a_fix_message_tag_lookup_allocates_nothing() {
     free("get_by_path", || {
         let _ = black_box(msg.get_by_path(&absent_member));
     });
+}
+
+#[test]
+fn settled_fix_identity_getters_borrow_without_allocating_at_every_row_width() {
+    for width in [0, 64, 1_024] {
+        let field = DataType::from_fields(
+            (0..width).map(|index| DataType::Int64.required_field(format!("datum{index}"))),
+        )
+        .unwrap()
+        .required_field("row");
+        let value = Scalar::from_sequence((0..width).map(Scalar::from));
+        let message = FixMsg::with_registry(Arc::new(FixRegistry::new()), field, value).unwrap();
+        free("four settled identity borrows", || {
+            let held = black_box(&message);
+            black_box((
+                held.updatedat(),
+                held.createdat(),
+                held.uuid(),
+                held.puuid(),
+            ));
+        });
+        free("four settled identity tag borrows", || {
+            let held = black_box(&message);
+            for tag in [
+                yggdryl::UPDATEDAT_TAG_NAME.0,
+                yggdryl::CREATEDAT_TAG_NAME.0,
+                yggdryl::UUID_TAG_NAME.0,
+                yggdryl::PUUID_TAG_NAME.0,
+            ] {
+                black_box(held.get_by_tag(black_box(tag)));
+            }
+        });
+    }
 }
 
 #[test]
@@ -1829,35 +1909,26 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// What reading a message off a line costs, by how many pairs the line
 /// carries: four, sixteen and sixty-four.
 ///
-/// Three widths rather than one, because the interesting number is not the
-/// total but how it grows: fifteen allocations for twelve more pairs and fifty
-/// for forty-eight more, which is the same growth these three widths measured
-/// before the entries became ranges of the line's own page - 22, 37 and 87.
-/// Every one of the four that were added is per *message*, and the per-pair
-/// cost did not move at all.
+/// Three widths distinguish a fixed boundary cost from one paid per pair.
+/// Settling the mandatory replay bundle adds eight containers: three for the
+/// initial column plan (columns, named-content order, shared plan), two staged
+/// field/value vectors, two settled shared slices, and the final tag index.
+/// The replaced timestamp Slot no longer allocates its one-value vector, so
+/// the net increase is seven. Above sixteen final columns, the Struct's
+/// duplicate-name check adds one more allocation: these rows have 13, 25 and
+/// 73 columns after settlement. Thus the former counts gain 7, 8 and 8, not
+/// another allocation per pair. The steady-state final plan is cache-reused;
+/// initial buffers reserve their exact bounds and already-correct tags are
+/// not rewritten. Native clock and identity values add no per-cell buffer.
 ///
-/// That is worth stating plainly, because the change was expected to save two
-/// allocations a pair and did not. It could not: this line's keys are four
-/// bytes and its values one or two, so both halves fitted `SmolStr`'s inline
-/// buffer and the copies the entry stopped making were never allocations at
-/// these widths. Where they were is a value too wide for that buffer, and
-/// that is pinned next door, in
-/// [`a_wide_value_costs_a_message_what_a_narrow_one_does`]: the same pair
-/// counts with three-kilobyte values cost exactly what two-byte values cost,
-/// which an owned copy could not have managed.
-///
-/// The four are the page the line is copied into - two allocations, the
-/// vector and the shared box around it - and the lists the two-stage read
-/// holds, what the line said and what the build folds in. The page is what a
-/// message owning its bytes costs when it is handed a borrowed slice, which
-/// is all this door can be handed. A fifth went with the branch (decision
-/// 11): the root's own `fix:branch` key, written once per message, is no
-/// longer written at all.
+/// Arrival keys and values remain ranges of one shared page. These short
+/// strings fit inline even in the typed row; the separate wide-value test
+/// pins the one allocation each long row value needs and none for its entry.
 ///
 /// A caller who decoded the line already owns that page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
 /// takes it: two fewer at each, which is the page and nothing else.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 26), (16, 41), (64, 91)];
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 33), (16, 49), (64, 99)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1905,10 +1976,11 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// rather than one - and it copied every one of those kilobytes besides,
 /// which no count sees and every capture pays.
 ///
-/// Two pair counts and two widths, because one of each could tell neither a
+/// Three pair counts and two widths, because one of each could tell neither a
 /// per-message cost from a per-pair one nor a cost that scales with a value
 /// from one that does not.
-const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 2] = [(4, (26, 29)), (16, (41, 56))];
+const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
+    [(4, (33, 36)), (16, (49, 64)), (64, (99, 162))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -2001,7 +2073,10 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// and the rest of it is the row a wider group builds. The codec reads a
 /// row's pairs directly and descends into none of them, so the tree the
 /// packed value would have been scanned into is not among these.
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 59), (16, 93)];
+/// The settled bundle adds the same net seven containers as [`FIX_LINE_COSTS`]
+/// at both widths: neither root crosses the Struct duplicate-check threshold.
+/// The 34-allocation growth for twelve more members is unchanged.
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 66), (16, 100)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -2038,7 +2113,7 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// is one page however many pairs the line carries, so the slope is unchanged
 /// and only the constant moves. Three widths again, so that the claim is the
 /// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 24), (16, 39), (64, 89)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 47), (64, 97)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {

@@ -55,11 +55,22 @@ fn dated_registry() -> Arc<FixRegistry> {
 }
 
 /// One message built from a schema and a record, as a converted row is.
-fn built(registry: Arc<FixRegistry>, children: Vec<Field>, record: &[(&str, Scalar)]) -> FixMsg {
+fn built(
+    registry: Arc<FixRegistry>,
+    mut children: Vec<Field>,
+    record: &[(&str, Scalar)],
+) -> FixMsg {
+    let sending = registry.field_by_tag(52).unwrap().clone();
+    let fixed = super::fixed_codec(Arc::clone(&registry))
+        .default_sending_time()
+        .unwrap()
+        .clone();
+    let value = Scalar::from_record(record.iter().cloned().chain([(sending.name(), fixed)]))
+        .expect("a record");
+    children.push(sending);
     let root = DataType::from_fields(children)
         .expect("a struct")
         .required_field("8");
-    let value = Scalar::from_record(record.iter().cloned()).expect("a record");
     FixMsg::with_registry(registry, root, value).expect("a message")
 }
 
@@ -67,7 +78,7 @@ fn built(registry: Arc<FixRegistry>, children: Vec<Field>, record: &[(&str, Scal
 /// restatement: the codec is the pass's only door, and it reads the same
 /// registry the message already resolves against.
 fn enriched(message: FixMsg) -> FixMsg {
-    FixCodec::new(Arc::clone(message.registry()))
+    super::fixed_codec(Arc::clone(message.registry()))
         .enrich_message(message)
         .expect("enriched")
 }
@@ -79,6 +90,24 @@ fn names(message: &FixMsg) -> Vec<&str> {
         .fields()
         .iter()
         .map(Field::name)
+        .collect()
+}
+
+/// Initial business columns, the settled bundle, then facts restatement adds.
+fn with_bundle<'a>(before: &[&'a str], after: &[&'a str]) -> Vec<&'a str> {
+    before
+        .iter()
+        .copied()
+        .chain([
+            "sendingtime",
+            "updatedat",
+            "createdat",
+            "uuid",
+            "puuid",
+            "code",
+            "snapshotat",
+        ])
+        .chain(after.iter().copied())
         .collect()
 }
 
@@ -133,7 +162,7 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
     let latest = enriched(message);
     // Renamed in place, re-typed to the registry's datatype, the tag now
     // carried so the message answers by it.
-    assert_eq!(names(&latest), ["lastqty", "symbol"]);
+    assert_eq!(names(&latest), with_bundle(&["lastqty", "symbol"], &[]));
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
     assert_eq!(latest.as_field().fields()[0].dtype(), &DataType::Float64);
     assert!(!latest.as_field().fields()[0].is_nullable());
@@ -150,7 +179,7 @@ fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
         &[("32", Scalar::from("100"))],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["lastqty"]);
+    assert_eq!(names(&latest), with_bundle(&["lastqty"], &[]));
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
 }
 
@@ -171,7 +200,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["lastqty", "symbol"]);
+    assert_eq!(names(&latest), with_bundle(&["lastqty", "symbol"], &[]));
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
 
     // Both stated and different: both are kept, because nothing that
@@ -188,7 +217,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["lastqty", "LastShares"]);
+    assert_eq!(names(&latest), with_bundle(&["lastqty", "LastShares"], &[]));
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(50.0_f64));
     assert_eq!(child(&latest, "LastShares"), &Scalar::from(100));
 
@@ -205,7 +234,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["lastqty"]);
+    assert_eq!(names(&latest), with_bundle(&["lastqty"], &[]));
 }
 
 #[test]
@@ -224,7 +253,10 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["9999", "VenueOwnThing", "lastqty"]);
+    assert_eq!(
+        names(&latest),
+        with_bundle(&["9999", "VenueOwnThing", "lastqty"], &[])
+    );
     assert_eq!(latest.by_tag(9999).unwrap(), &Scalar::from("custom"));
     assert_eq!(
         latest.as_field().fields()[1],
@@ -243,7 +275,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
     let latest = enriched(message);
     assert_eq!(latest.version(), Some(version("4.3")));
     assert_eq!(text(&latest, VERSION_TAG_NAME.0), Some("4.3"));
-    assert_eq!(names(&latest), ["lastqty", "version"]);
+    assert_eq!(names(&latest), with_bundle(&["lastqty"], &["version"]));
     // The lineage's old spelling reaches the field as an alias does.
     assert_eq!(
         latest.by_name("LastShares").unwrap(),
@@ -268,7 +300,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["version", "lastqty"]);
+    assert_eq!(names(&latest), with_bundle(&["version", "lastqty"], &[]));
     assert_eq!(latest.version(), Some(version("4.3")));
 }
 
@@ -335,7 +367,10 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
         ],
     );
     let latest = enriched(message);
-    assert_eq!(names(&latest), ["ordercapacity", "rule80a", "version"]);
+    assert_eq!(
+        names(&latest),
+        with_bundle(&["ordercapacity", "rule80a"], &["version"])
+    );
     assert_eq!(text(&latest, 528), Some("A"));
     // A stated current code stands, and blocks the rule.
     let message = built(
@@ -373,7 +408,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
 // --- The committed dictionary ---
 
 fn reader() -> FixCodec {
-    FixCodec::new(super::committed_registry())
+    super::fixed_codec(super::committed_registry())
 }
 
 /// One line read, enriched, and enriched again to prove the second pass
@@ -703,7 +738,7 @@ fn a_removed_field_with_no_rule_and_a_source_the_rule_cannot_place_stay() {
 fn a_batch_read_lands_at_the_newest_version_when_asked() {
     let registry = super::committed_registry();
     let newest = registry.newest().expect("a dated dictionary").version();
-    let codec = FixCodec::new(Arc::clone(&registry));
+    let codec = super::fixed_codec(Arc::clone(&registry));
     let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
     // A stage is a call: the enriching pass, whose first step is the
     // restatement, composes over the message stream between the parse and
@@ -769,7 +804,7 @@ fn the_dictionary_carries_the_rules_the_engine_reads() {
             .is_some(),
         "the catalog is untouched"
     );
-    let reader = FixCodec::new(Arc::new(registry));
+    let reader = super::fixed_codec(Arc::new(registry));
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|47=A|109=C1|10=0|");
     assert_eq!(text(&latest, 528), Some("P"));
     assert_eq!(text(&latest, 47), Some("A"));
@@ -821,13 +856,11 @@ fn a_group_fill_appending_to_a_counted_group_leaves_the_anomalies_alone() {
 fn declared_parties(list: Field, value: Scalar) -> FixMsg {
     let registry = super::committed_registry();
     let broker = registry.field_by_tag(76).expect("ExecBroker").clone();
-    let children = vec![list, broker];
-    let root = DataType::from_fields(children)
-        .expect("a struct")
-        .required_field("8");
-    let value = Scalar::from_record([("parties", value), ("execbroker", Scalar::from("BRKR"))])
-        .expect("a record");
-    FixMsg::with_registry(registry, root, value).expect("a message")
+    built(
+        registry,
+        vec![list, broker],
+        &[("parties", value), ("execbroker", Scalar::from("BRKR"))],
+    )
 }
 
 #[test]
@@ -841,7 +874,7 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
     let latest = enriched(declared_parties(list, Scalar::Null));
     assert_eq!(
         names(&latest),
-        ["parties", "execbroker", "nopartyids", "version"]
+        with_bundle(&["parties", "execbroker"], &["nopartyids", "version"])
     );
     let parties = occurrences(&latest, "parties");
     assert_eq!(parties.len(), 1);

@@ -246,9 +246,21 @@ impl TextEntries {
     /// One scan for both, because the reader that bounds a message to its
     /// frame asks both of the same bytes, and locating the frame is a walk
     /// over every pair a line holds in front of it.
-    pub(crate) fn from_bytes_direct_located(body: &TextBytes) -> (Option<Self>, Option<usize>) {
+    /// `preserve` selects a scanner-owned original span where a protocol's
+    /// value must retain transport-like trailing bytes; public readers keep
+    /// the trimmed view.
+    pub(crate) fn from_bytes_direct_located(
+        body: &TextBytes,
+        preserve: impl Fn(&[u8]) -> bool,
+    ) -> (Option<Self>, Option<usize>) {
         let bytes = body.as_bytes();
         let (frame_at, spans) = crate::mime_type::line::located_entry_spans(bytes);
+        let spans = spans.map(|mut span| {
+            if span.value.end != span.value_end && preserve(&bytes[span.key.clone()]) {
+                span.value.end = span.value_end;
+            }
+            span
+        });
         (collect_entries(body, spans, 1), frame_at)
     }
 

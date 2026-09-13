@@ -5,7 +5,7 @@ use super::SoleMessage;
 use yggdryl::{FixAnomaly, FixCodec, Scalar};
 
 fn reader() -> FixCodec {
-    FixCodec::new(super::committed_registry())
+    super::fixed_codec(super::committed_registry())
 }
 
 /// The text one facet answers with, for the assertions that read a spelling.

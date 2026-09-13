@@ -335,12 +335,14 @@ impl Scalar {
                 }
             }
             Self::Nested(Nested::Record(entries)) => {
-                write_tag(sink, DataTypeId::Struct);
-                write_len(sink, entries.as_map().len());
-                for (name, value) in entries.as_map() {
-                    write_text(sink, name);
-                    value.feed(sink, depth + 1);
-                }
+                write_named_bytes(
+                    sink,
+                    entries
+                        .as_map()
+                        .iter()
+                        .map(|(name, value)| (name.as_str(), value)),
+                    depth,
+                );
             }
             // Every remaining variant answered one of the family views above.
             Self::Integer(_) => unreachable!("every integer width fed above"),
@@ -348,6 +350,20 @@ impl Scalar {
             Self::Decimal(_) => unreachable!("all decimal widths fed above"),
             Self::Temporal(_) => unreachable!("every temporal family fed above"),
         }
+    }
+}
+
+/// Canonical Record framing over an already sorted, borrowed named row.
+pub(crate) fn write_named_bytes<'a>(
+    sink: &mut impl Hasher,
+    cells: impl ExactSizeIterator<Item = (&'a str, &'a Scalar)>,
+    depth: usize,
+) {
+    write_tag(sink, DataTypeId::Struct);
+    write_len(sink, cells.len());
+    for (name, value) in cells {
+        write_text(sink, name);
+        value.feed(sink, depth + 1);
     }
 }
 

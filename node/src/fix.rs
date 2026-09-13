@@ -987,7 +987,11 @@ impl JsFixMsg {
     #[napi(ts_args_type = "key: number | string")]
     pub fn remove(&mut self, env: Env, key: Unknown<'_>) -> Result<Option<JsScalar>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
-        Ok(self.inner.remove(key.as_key()).map(JsScalar::from_core))
+        Ok(self
+            .inner
+            .remove(key.as_key())
+            .map_err(napi_error)?
+            .map(JsScalar::from_core))
     }
 
     /// The `[name, value]` pairs of the root, in the order it declares.
@@ -1025,8 +1029,8 @@ impl JsFixMsg {
     /// reader built always answers, and only a message built by hand without
     /// that child does not.
     #[napi]
-    pub fn market_timestamp(&self) -> Option<JsScalar> {
-        answered(&self.inner.market_timestamp())
+    pub fn updatedat(&self) -> Option<JsScalar> {
+        answered(self.inner.updatedat())
     }
 
     /// The partition that timestamp falls in, in whole seconds.
