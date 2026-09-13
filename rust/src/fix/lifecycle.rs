@@ -57,10 +57,10 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
+use crate::hashing::txhash::unix_from_scalar;
+use crate::hashing::xxhash::{Xxh3, Xxh128, xxh3};
 use crate::path::{Path, Segment};
-use crate::txhash::unix_from_scalar;
 use crate::types::{Code, State, Uuid};
-use crate::xxhash::{Xxh3, Xxh128, xxh3};
 use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone};
 
 use super::msg::FixMsg;

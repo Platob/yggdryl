@@ -299,7 +299,7 @@ impl FixId {
                 reason: format_smolstr!("expected a non-negative FIX tag, got {tag}"),
             });
         }
-        let mut state = crate::xxhash::Xxh32::with_seed(IDENTITY_SEED);
+        let mut state = crate::hashing::xxhash::Xxh32::with_seed(IDENTITY_SEED);
         state.write_bytes(&tag.to_le_bytes());
         let mut folded = [0_u8; 64];
         let mut held = 0;

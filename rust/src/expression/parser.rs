@@ -233,7 +233,7 @@ pub struct Statement {
 impl Statement {
     /// Return a deterministic hash of the canonical statement text.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_display(self)
+        crate::hashing::stable_hash_display(self)
     }
 
     /// Select every column, unfiltered.

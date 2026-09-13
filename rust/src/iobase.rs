@@ -744,7 +744,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// ```
     /// use yggdryl::{IOBase, holder::Buffer};
-    /// use yggdryl::{DigestAlgorithm, xxhash};
+    /// use yggdryl::{DigestAlgorithm, hashing::xxhash};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::new();
@@ -770,7 +770,7 @@ pub trait IOBase: Send + IOMedia {
     /// bytes of its own, and which files a folder digest would cover in what
     /// order is a convention no format states.
     fn read_digest(&self, algorithm: crate::DigestAlgorithm) -> Result<crate::Digest> {
-        crate::xxhash::stream::read_digest(self, algorithm)
+        crate::hashing::xxhash::stream::read_digest(self, algorithm)
     }
 
     /// Digest `length` bytes starting at `offset`, streaming the window.
@@ -789,7 +789,7 @@ pub trait IOBase: Send + IOMedia {
         length: usize,
         algorithm: crate::DigestAlgorithm,
     ) -> Result<crate::Digest> {
-        crate::xxhash::stream::read_range_digest(self, offset, length, algorithm)
+        crate::hashing::xxhash::stream::read_range_digest(self, offset, length, algorithm)
     }
 
     /// Write every byte at `offset`.

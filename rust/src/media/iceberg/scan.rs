@@ -57,7 +57,7 @@ impl ScanTask {
     /// Return a deterministic hash of this complete executable task.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Borrow the data file this task reads.
@@ -88,7 +88,7 @@ impl ScanPlan {
     /// Return a deterministic hash of the ordered tasks and pruning report.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Return the rows the planned files hold, as the manifests counted them.

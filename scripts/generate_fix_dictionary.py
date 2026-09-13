@@ -1432,7 +1432,7 @@ def xxh32(data: bytes) -> int:
 
     Spelled here rather than imported: this script is the dictionary's own
     build step and runs on the standard library alone. The core's
-    `yggdryl::xxhash::Xxh32` is the same function, which is what lets a tag
+    `yggdryl::hashing::xxhash::Xxh32` is the same function, which is what lets a tag
     derived here equal the tag the core would derive for the same name.
     """
     one, two, three, four, five = _PRIME32

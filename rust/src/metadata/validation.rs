@@ -4,16 +4,16 @@ use std::collections::HashSet;
 
 use crate::Scalar;
 use crate::expression::Function;
-use crate::txhash::{
+use crate::hashing::txhash::{
     DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
+};
+use crate::hashing::xxhash::{
+    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
+    canonicalize_digest_algorithm,
 };
 use crate::types::protocol::{
     PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
     validate_python_module, validate_python_qualname,
-};
-use crate::xxhash::{
-    DIGEST_ALGORITHM_KEY, DIGEST_ROLE_HOLDER, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY,
-    canonicalize_digest_algorithm,
 };
 
 use super::*;

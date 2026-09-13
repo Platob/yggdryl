@@ -147,17 +147,6 @@ impl<'a> FieldRecord<'a> {
         self.get(key)?.as_str()
     }
 
-    /// Return a deterministic hash of the row.
-    ///
-    /// The row hashes as the ordered sequence it canonicalizes to, so it
-    /// answers what [`Self::into_scalar`] followed by [`Scalar::stable_hash`]
-    /// answers, without building the sequence.
-    pub fn stable_hash(&self) -> u64 {
-        let mut state = crate::xxhash::Xxh3::new();
-        crate::xxhash::write_row_bytes(&mut state, self.values.iter().map(FieldScalar::value));
-        state.as_u64()
-    }
-
     /// Consume the row and return its cells' values, in schema order.
     pub fn into_values(self) -> Vec<Scalar> {
         self.values

@@ -53,7 +53,7 @@ struct ContainerIdentity<'a> {
 impl Container {
     /// Return a deterministic hash of the complete decoded container value.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     fn identity(&self) -> ContainerIdentity<'_> {

@@ -79,6 +79,22 @@ fn every_refusal_names_the_first_bad_byte() {
 }
 
 #[test]
+fn folded_patch_vectors_keep_the_suffix_bytes_and_sixteen_bit_fold() {
+    // Independently evaluated XXH3-64 tails, not the version's rendered text.
+    for (text, patch) in [
+        ("1.2-rc1", 63_727),
+        ("1.2-RC1", 11_007),
+        ("1.2SP2_EP240", 10_898),
+        ("1.2.65536", 54_529),
+        ("1.2.2.3", 63_347),
+        ("1.2界", 17_090),
+    ] {
+        assert_eq!(version(text), Version::new(1, 2, patch), "{text:?}");
+    }
+    assert_eq!(version("255.255-rc1"), Version::new(255, 255, 63_727));
+}
+
+#[test]
 fn a_patch_tail_that_states_no_number_folds_instead_of_refusing() {
     // Every tail the strict grammar refused now parses, and the components it
     // does read stay exactly what the text stated.

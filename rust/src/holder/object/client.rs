@@ -694,8 +694,9 @@ impl Client {
             None => {
                 let window = backoff(attempt);
                 let span = u64::try_from(window.as_nanos()).unwrap_or(u64::MAX);
-                let draw =
-                    crate::xxhash::xxh3(&self.jitter.fetch_add(1, Ordering::Relaxed).to_le_bytes());
+                let draw = crate::hashing::xxhash::xxh3(
+                    &self.jitter.fetch_add(1, Ordering::Relaxed).to_le_bytes(),
+                );
                 Duration::from_nanos(draw % span.saturating_add(1))
             }
         };
@@ -2439,7 +2440,7 @@ fn is_resumable(error: &std::io::Error) -> bool {
 fn fresh_jitter() -> u64 {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let ordinal = NEXT.fetch_add(1, Ordering::Relaxed);
-    crate::xxhash::xxh3(
+    crate::hashing::xxhash::xxh3(
         &[u64::from(std::process::id()), ordinal]
             .map(u64::to_le_bytes)
             .concat(),

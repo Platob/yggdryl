@@ -598,7 +598,7 @@ pub enum Expression {
 impl Expression {
     /// Return a deterministic hash of the canonical expression text.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_display(self)
+        crate::hashing::stable_hash_display(self)
     }
 
     /// The expression that is true for every row.

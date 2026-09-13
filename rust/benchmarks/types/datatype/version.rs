@@ -1,4 +1,4 @@
-//! The two hot operations owned by the generic version value.
+//! Parsing and projections owned by the generic version value.
 
 use std::hint::black_box;
 
@@ -19,6 +19,18 @@ pub(crate) fn version_benchmarks(criterion: &mut Criterion) {
             black_box("5.0sp250")
                 .parse::<Version>()
                 .expect("the compact FIX version is valid")
+        });
+    });
+    let qualified = "1.2-rc1";
+    assert_eq!(
+        qualified.parse::<Version>().expect("a folded qualifier"),
+        Version::new(1, 2, 63_727)
+    );
+    group.bench_function("parse_qualified", |bencher| {
+        bencher.iter(|| {
+            black_box(qualified)
+                .parse::<Version>()
+                .expect("a folded qualifier")
         });
     });
 

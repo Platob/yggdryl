@@ -13,8 +13,8 @@ use napi::JsDate;
 use napi::bindgen_prelude::{BigInt, Buffer, ClassInstance, Either, Result, Uint8Array};
 use napi_derive::napi;
 
-use yggdryl::txhash::{self, TxHash, TxHasher};
-use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::hashing::txhash::{self, TxHash, TxHasher};
+use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Scalar, TimeUnit};
 
 use crate::napi_error;

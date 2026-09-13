@@ -1115,10 +1115,9 @@ impl FixRegistry {
     /// taken, which needs a million definitions in one registry.
     pub(super) fn derived_definition_tag(&self, name: &str) -> Result<i32> {
         let span = FixId::DEFINITION_TAG_MAX - FixId::DEFINITION_TAG_MIN;
-        let mut hasher = crate::xxhash::Xxh32::new();
-        hasher.write_bytes(name.as_bytes());
+        let hash = crate::hashing::xxhash::xxh32(name.as_bytes());
         #[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)]
-        let start = (hasher.as_u32() % (span as u32)) as i32;
+        let start = (hash % (span as u32)) as i32;
         for step in 0..span {
             let tag = FixId::DEFINITION_TAG_MIN + (start + step) % span;
             if !self.definition_tag_in_use(tag) {

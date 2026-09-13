@@ -9,7 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, SmolStrBuilder};
 
 use crate::text::Format;
-use crate::{Error, Result, stable_hash_display};
+use crate::{Error, Result, hashing::stable_hash_display};
 
 #[derive(Clone, Debug)]
 enum MimeTypeValue {

@@ -320,7 +320,10 @@ mod tests {
         assert_traits::<Plan>();
         let plan = Plan::new(Format::Json, Codec::Gzip);
         assert_eq!(plan, plan.clone());
-        assert_eq!(crate::stable_hash_of(&plan), crate::stable_hash_of(&plan));
+        assert_eq!(
+            crate::hashing::stable_hash_of(&plan),
+            crate::hashing::stable_hash_of(&plan)
+        );
     }
 
     fn sample() -> Scalar {

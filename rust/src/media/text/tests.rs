@@ -752,7 +752,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
         path.push(format!(
             "yggdryl-absent-framed-schema-{}-{}.{}",
             std::process::id(),
-            crate::stable_hash_of(&path),
+            crate::hashing::stable_hash_of(&path),
             suffix
         ));
         let mut absent = File::new(&path).unwrap();
@@ -1581,8 +1581,8 @@ mod values {
         let right = TextBytes::from_page(&page(b"beta"), 0, 4).expect("inside");
         assert_eq!(left, right, "same bytes, different pages");
         assert_eq!(
-            crate::stable_hash_of(&left),
-            crate::stable_hash_of(&right),
+            crate::hashing::stable_hash_of(&left),
+            crate::hashing::stable_hash_of(&right),
             "equal values must hash alike"
         );
         assert!(left <= right && right <= left);
@@ -1891,8 +1891,8 @@ mod values {
         assert_eq!(bare.value(), marked.value());
         assert_ne!(bare, marked, "the line wrote two different things");
         assert_ne!(
-            crate::stable_hash_of(bare),
-            crate::stable_hash_of(marked),
+            crate::hashing::stable_hash_of(bare),
+            crate::hashing::stable_hash_of(marked),
             "unequal values must not be forced to hash alike"
         );
         assert!(

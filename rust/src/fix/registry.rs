@@ -19,8 +19,8 @@ use std::iter::FusedIterator;
 use smol_str::format_smolstr;
 
 use super::{FixId, FixKey, FixPedigree};
+use crate::hashing::xxhash::Xxh64;
 use crate::types::folds_equal;
-use crate::xxhash::Xxh64;
 use crate::{Error, Field, FieldPath, FieldSegment, IOBase, Result, Version};
 
 const NAME_SEED: u64 = 0x4e41_4d45_5f46_4958;
@@ -303,7 +303,7 @@ impl FixRegistry {
     /// Uses one allocation for the shared XXH3 state, independent of catalog size.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// A registry holding nothing but this crate's own fields.

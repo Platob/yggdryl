@@ -1405,7 +1405,7 @@ impl<'registry> Builder<'registry> {
     /// and the name only where it agrees, so a hit costs one string compare
     /// and a miss costs none.
     fn slot_for(&mut self, field: Field, tag: i32, known: bool) -> &mut Slot {
-        let hash = crate::xxhash::xxh64(field.name().as_bytes());
+        let hash = crate::hashing::xxhash::xxh64(field.name().as_bytes());
         let held = self
             .hashes
             .iter()

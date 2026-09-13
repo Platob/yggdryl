@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 use crate::metadata::write_json_string as write_quoted;
 use crate::{
-    DataType, Fields, MapType, Metadata, RunEndEncodedType, UnionFields, stable_hash_display,
+    DataType, Fields, MapType, Metadata, RunEndEncodedType, UnionFields,
+    hashing::stable_hash_display,
 };
 
 use super::Field;

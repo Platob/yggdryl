@@ -278,7 +278,7 @@ impl PythonMetadata {
     /// class that disagree on what it is are different values, and
     /// [`Self::import_path`] alone cannot tell them apart.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_display(&Rendered(self))
+        crate::hashing::stable_hash_display(&Rendered(self))
     }
 
     /// Returns the three properties in their stored order.

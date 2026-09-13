@@ -100,7 +100,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     assert_eq!(&chains[0][..6], &millis[2..]);
     assert_eq!(&ids[0][..8], &chains[0][..8]);
     assert_eq!(
-        yggdryl::txhash::unix_from_scalar(
+        yggdryl::hashing::txhash::unix_from_scalar(
             stamped[0].by_tag(60).unwrap(),
             yggdryl::TimeUnit::Microsecond,
         )
@@ -268,7 +268,7 @@ fn uuid_payloads_keep_the_original_inputs_and_effective_instrument_scope() {
     let arrival_digest = original.digest();
     let entries = original.entries().to_vec();
     let message = FixLifecycle::new(registry).fill(original).unwrap();
-    let raw_instrument = yggdryl::xxhash::xxh128(b"XNAS\x1f\x1fAAPL\x1fUSD\x1f");
+    let raw_instrument = yggdryl::hashing::xxhash::xxh128(b"XNAS\x1f\x1fAAPL\x1fUSD\x1f");
     let instuuid = Uuid::from_v8(raw_instrument);
     assert_ne!(
         raw_instrument,
@@ -285,7 +285,7 @@ fn uuid_payloads_keep_the_original_inputs_and_effective_instrument_scope() {
         b"\x1fA1",
     ]
     .concat();
-    let chain_payload = yggdryl::xxhash::xxh3(&chain_input);
+    let chain_payload = yggdryl::hashing::xxhash::xxh3(&chain_input);
     let impact = 1_767_348_930_000_000;
     assert_eq!(
         bytes(&message, PUUID_TAG_NAME.0),
@@ -294,9 +294,12 @@ fn uuid_payloads_keep_the_original_inputs_and_effective_instrument_scope() {
     assert_eq!(
         bytes(&message, UUID_TAG_NAME.0),
         Some(
-            Uuid::from_v7(impact, yggdryl::xxhash::xxh3(&arrival_digest.to_be_bytes()))
-                .unwrap()
-                .into_bytes()
+            Uuid::from_v7(
+                impact,
+                yggdryl::hashing::xxhash::xxh3(&arrival_digest.to_be_bytes())
+            )
+            .unwrap()
+            .into_bytes()
         ),
     );
     assert_eq!(message.entries(), entries);
@@ -320,8 +323,11 @@ fn uuid_clock_precedence_is_transaction_then_sending_then_market_then_epoch() {
             Arc::clone(&registry),
             clocks.into_iter().map(|(tag, time)| (tag, micros(time))),
         );
-        let expected =
-            Uuid::from_v7(expected, yggdryl::xxhash::xxh3(&row.digest().to_be_bytes())).unwrap();
+        let expected = Uuid::from_v7(
+            expected,
+            yggdryl::hashing::xxhash::xxh3(&row.digest().to_be_bytes()),
+        )
+        .unwrap();
         let message = FixLifecycle::new(Arc::clone(&registry)).fill(row).unwrap();
         assert_eq!(
             bytes(&message, UUID_TAG_NAME.0),

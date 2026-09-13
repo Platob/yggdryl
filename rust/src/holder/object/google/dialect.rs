@@ -140,7 +140,7 @@ pub(crate) fn multipart_body(
 /// A random one would do; a digest of the payload is deterministic, which is
 /// what lets a test assert the request bytes.
 pub(crate) fn boundary(bytes: &[u8]) -> String {
-    format!("yggdryl{:016x}", crate::xxhash::xxh3(bytes))
+    format!("yggdryl{:016x}", crate::hashing::xxhash::xxh3(bytes))
 }
 
 /// Begin a resumable upload, which answers a session to send chunks to.

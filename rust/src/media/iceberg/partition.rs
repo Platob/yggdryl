@@ -225,7 +225,7 @@ pub struct PartitionField {
 impl PartitionField {
     /// Return a deterministic hash of this complete partition field.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Partition on a source column's value unchanged.
@@ -317,7 +317,7 @@ pub struct PartitionSpec {
 impl PartitionSpec {
     /// Return a deterministic hash of this complete partition specification.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// The unpartitioned spec, which every table has as spec zero.

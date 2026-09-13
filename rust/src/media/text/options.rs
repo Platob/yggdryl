@@ -547,7 +547,7 @@ impl TextOptions {
     /// Return a deterministic hash of the complete flat configuration.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     pub(crate) fn rowheader_regex(&self) -> Option<&Regex> {

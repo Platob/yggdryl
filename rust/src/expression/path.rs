@@ -342,7 +342,7 @@ impl FieldPath {
     /// A deterministic hash of the complete path.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 }
 

@@ -95,7 +95,7 @@ pub struct SortField {
 impl SortField {
     /// Return a deterministic hash of this complete sort field.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 }
 
@@ -111,7 +111,7 @@ pub struct SortOrder {
 impl SortOrder {
     /// Return a deterministic hash of this complete sort order.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// The unsorted order, which every table has as order zero.
@@ -591,7 +591,7 @@ impl TableMetadata {
     /// Return a deterministic hash of the complete semantic table document.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(&self.identity())
+        crate::hashing::stable_hash_of(&self.identity())
     }
 
     /// Describe a new, empty table.

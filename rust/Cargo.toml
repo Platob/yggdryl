@@ -193,24 +193,11 @@ name = "media"
 path = "benchmarks/media.rs"
 harness = false
 
-# The digest surface: throughput per algorithm and size, this module's
-# overhead over the protocol crate it wraps, the constant-memory handle read,
-# the canonical value feed, and the Arrow row-digest column. The value codec
-# needs no Arrow, so the target compiles in a default build; the row-digest
-# group is compiled in only when that feature is.
+# Hashing: byte and value digests, bounded handle reads, time coupling, and
+# holder fills. Values need no Arrow; column groups follow that feature.
 [[bench]]
-name = "xxhash"
-path = "benchmarks/xxhash.rs"
-harness = false
-
-# An instant coupled with a digest: the coupling beside the digest it wraps,
-# the value's projections, reading an instant out of a value, and the coupled
-# Arrow column beside the digest column and the holder fill. The value needs
-# no Arrow, so the target compiles in a default build; the column groups are
-# compiled in only when that feature is.
-[[bench]]
-name = "txhash"
-path = "benchmarks/txhash.rs"
+name = "hashing"
+path = "benchmarks/hashing.rs"
 harness = false
 
 # Foreign Arrow filesystems behind IOBase: byte-level wrapper overhead against

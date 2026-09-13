@@ -126,7 +126,9 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `uri/` | URI, URL, URN |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
 | `expression/` | expression grammar, bound statements, `FieldPath`/`FieldSegment` |
-| `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
+| `hashing/` | byte/value and time-coupled digests; private structural/display stable-hash adapters; shared dispatch vocabulary remains in `digest.rs` |
+| `hashing/xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
+| `hashing/txhash/` | raw Unix-count/digest pairs, clock-unit conversion, configured hashing and Arrow coupling; not RFC UUIDs |
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
 
@@ -209,7 +211,7 @@ Equivalences a change keeps lossless, in both directions:
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
 Wrappers compose over a handle, never inside it - `Coded` (coding),
-`Transcoded` (charset), `Buffered` (holder), `Hashed` (xxhash), `Counted`
+`Transcoded` (charset), `Buffered` (holder), `Hashed` (hashing::xxhash), `Counted`
 (tests) - each forwarding through
 `delegate_iobase!` and overriding only what it changes. Commit cadence belongs to
 `RecordOptions` and the write session in `iobase/transfer.rs`
@@ -968,7 +970,7 @@ python scripts/check_iceberg_interop.py   # PyIceberg, v1/v2/v3 tables
 Benchmarks for every touched surface, release build, numbers regenerated:
 
 ```bash
-cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|xxhash|expression|fix>
+cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix>
 ```
 
 # 3. Python

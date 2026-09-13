@@ -208,7 +208,7 @@ impl FixMsg {
     /// Uses one allocation for the shared XXH3 state, independent of message size.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Builds a message against the process-wide registry.

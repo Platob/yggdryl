@@ -926,29 +926,6 @@ impl Scalar {
         }
     }
 
-    /// Return the deterministic 64-bit hash used by every binding.
-    ///
-    /// This is XXH3-64 over [`Self::write_bytes`], the value's canonical byte
-    /// representation, so the value and its [`Self::digest`] have one
-    /// definition. Equal values hash identically across integer, float,
-    /// decimal, and temporal widths, because that feed writes each family's
-    /// canonical form rather than its storage width.
-    ///
-    /// ```
-    /// use yggdryl::{DigestAlgorithm, Scalar};
-    ///
-    /// assert_eq!(Scalar::from(1).stable_hash(), Scalar::from(1).stable_hash());
-    /// assert_eq!(
-    ///     Scalar::from("AAPL").stable_hash(),
-    ///     Scalar::from("AAPL").digest(DigestAlgorithm::Xxh3).as_u64().unwrap(),
-    /// );
-    /// ```
-    pub fn stable_hash(&self) -> u64 {
-        let mut state = crate::xxhash::Xxh3::new();
-        self.write_bytes(&mut state);
-        state.as_u64()
-    }
-
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();

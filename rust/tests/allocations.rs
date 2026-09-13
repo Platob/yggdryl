@@ -158,6 +158,38 @@ fn version_parse_compare_and_render_allocate_nothing() {
             black_box(text.parse::<Version>().expect("a static FIX version"));
         });
     }
+    for (text, patch) in [
+        ("1.2-rc1", 63_727),
+        ("1.2SP2_EP240", 10_898),
+        ("1.2.65536", 54_529),
+        ("1.2界", 17_090),
+    ] {
+        free("parsing a version with a folded suffix", || {
+            assert_eq!(
+                black_box(text)
+                    .parse::<Version>()
+                    .expect("a folded version"),
+                Version::new(1, 2, patch)
+            );
+        });
+    }
+    for tail_bytes in [16, 240, 241, 4096] {
+        let text = format!("1.2-{}", "x".repeat(tail_bytes - 1));
+        let expected = text.parse::<Version>().expect("a generated qualifier");
+        assert_eq!(text.len() - "1.2".len(), tail_bytes);
+        assert_ne!(expected.patch(), 0);
+        free(
+            &format!("parsing a {tail_bytes}-byte version suffix"),
+            || {
+                assert_eq!(
+                    black_box(text.as_str())
+                        .parse::<Version>()
+                        .expect("a generated qualifier"),
+                    expected
+                );
+            },
+        );
+    }
 
     let left = "5.0.2".parse::<Version>().expect("a static version");
     let right = "5.0.10".parse::<Version>().expect("a static version");
@@ -1215,7 +1247,7 @@ fn the_canonical_value_feed_allocates_nothing() {
     // state is built outside the counted section: XXH3 keeps its secret on the
     // heap, and that is the algorithm's cost rather than the feed's.
     for (label, value) in feed_corpus() {
-        let mut sink = yggdryl::xxhash::Xxh3::new();
+        let mut sink = yggdryl::hashing::xxhash::Xxh3::new();
         free(&format!("feeding {label}"), || {
             value.write_bytes(black_box(&mut sink));
         });
@@ -1494,7 +1526,7 @@ fn coupled_value_bytes_allocate_nothing() {
     // the two out, reading them back, and restating the resolution copies
     // nothing to the heap. The one-shot XXH32 answer is inline too; XXH3
     // keeps its secret on the heap, which is the algorithm's cost.
-    use yggdryl::txhash::{self, TxHash};
+    use yggdryl::hashing::txhash::{self, TxHash};
     use yggdryl::{DigestAlgorithm, TimeUnit};
 
     let value = txhash::txh128(b"AAPL", 1_700_000_000_000_000);
@@ -1526,7 +1558,7 @@ fn coupled_value_bytes_allocate_nothing() {
 
 #[test]
 fn reading_an_instant_out_of_a_value_allocates_nothing() {
-    use yggdryl::txhash;
+    use yggdryl::hashing::txhash;
     use yggdryl::{Scalar, TimeUnit, Timezone};
 
     let integer = Scalar::from(1_700_000_000_000_000_i64);
@@ -1564,7 +1596,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
     // builds nothing; a column at another unit is one fresh buffer and the
     // handle that shares it, however many rows it holds.
     use arrow_array::{TimestampMicrosecondArray, TimestampSecondArray};
-    use yggdryl::{TimeUnit, txhash};
+    use yggdryl::{TimeUnit, hashing::txhash};
 
     for rows in [16_i64, 4_096] {
         let micros = TimestampMicrosecondArray::from_iter_values(0..rows).with_timezone("UTC");

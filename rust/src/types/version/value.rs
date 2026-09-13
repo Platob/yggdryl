@@ -222,9 +222,7 @@ fn patch_of(tail: &str) -> u16 {
 /// there is: two unlike tails can fold together, and a fold can equal a patch
 /// some other version states as a number.
 fn hashed_patch(tail: &str) -> u16 {
-    let mut hasher = crate::xxhash::Xxh3::new();
-    hasher.write_bytes(tail.as_bytes());
-    let hash = hasher.as_u64();
+    let hash = crate::hashing::xxhash::xxh3(tail.as_bytes());
     let folded = (hash ^ (hash >> 16) ^ (hash >> 32) ^ (hash >> 48)) as u16;
     1 + (folded % u16::MAX)
 }

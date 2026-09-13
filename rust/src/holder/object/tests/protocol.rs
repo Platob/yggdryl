@@ -103,7 +103,7 @@ fn absence_is_emptiness_on_every_read_and_a_success_on_every_delete() {
             .read_digest(crate::DigestAlgorithm::Xxh3)
             .expect("a digest")
             .as_u64(),
-        Some(crate::xxhash::xxh3(b"")),
+        Some(crate::hashing::xxhash::xxh3(b"")),
     );
 }
 

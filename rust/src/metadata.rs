@@ -13,7 +13,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{Error, Result, Scheme, StringEnum, Url, stable_hash_display};
+use crate::{Error, Result, Scheme, StringEnum, Url, hashing::stable_hash_display};
 
 mod pairs;
 

@@ -758,11 +758,11 @@ impl RecordOptions {
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
         match self {
-            Self::Ipc(options) => crate::stable_hash_of(&("ipc", options)),
+            Self::Ipc(options) => crate::hashing::stable_hash_of(&("ipc", options)),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => crate::stable_hash_of(&("parquet", options)),
-            Self::Avro(options) => crate::stable_hash_of(&("avro", options)),
-            Self::Text(options) => crate::stable_hash_of(&("text", options)),
+            Self::Parquet(options) => crate::hashing::stable_hash_of(&("parquet", options)),
+            Self::Avro(options) => crate::hashing::stable_hash_of(&("avro", options)),
+            Self::Text(options) => crate::hashing::stable_hash_of(&("text", options)),
         }
     }
 

@@ -14,8 +14,8 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDate, PyDateTime, PyTuple, PyType};
 
-use yggdryl::txhash::{self, TxHash, TxHasher};
-use yggdryl::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::hashing::txhash::{self, TxHash, TxHasher};
+use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digester, Scalar, TimeUnit, Timezone};
 
 use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};

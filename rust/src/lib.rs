@@ -26,6 +26,7 @@ mod fix_category;
 pub use fix_category::FixCategory;
 pub mod expression;
 pub mod fix;
+pub mod hashing;
 pub mod holder;
 mod i256;
 mod iobase;
@@ -46,17 +47,9 @@ mod scheme;
 pub mod text;
 mod time_unit;
 mod timezone;
-// An instant coupled with a digest. The value and its protocol vocabulary
-// need no Arrow, like the digest vocabulary they extend; only
-// `txhash/arrow.rs` is gated.
-pub mod txhash;
 pub mod types;
 mod union_mode;
 mod uri;
-// The digest vocabulary's implementation. The value codec has no Arrow
-// dependency, so the module is unconditional like the Avro value codec; only
-// `xxhash/arrow.rs` is gated.
-pub mod xxhash;
 
 #[cfg(feature = "arrow")]
 pub use arrow::{ArrowShape, ArrowValue};
@@ -88,6 +81,7 @@ pub use fix::{
     fix_plugin_fields, fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags,
     is_crate_tag,
 };
+pub use hashing::xxhash::{DigestFieldNames, DigestFields};
 pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -111,7 +105,6 @@ pub use text::json::{from_json_scalar, from_json_scalar_with_field, into_json_sc
 pub use text::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use text::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use text::{Format, Limits, ScalarIter, Structured};
-pub(crate) use text::{stable_hash_display, stable_hash_of};
 pub use time_unit::TimeUnit;
 pub use timezone::Timezone;
 #[cfg(feature = "arrow")]
@@ -146,7 +139,6 @@ pub use uri::{
     Authority, Extensions, Parameters, Parents, PathSegments, Uri, UriParents, UriPath, Url,
     UrlParents, Urn,
 };
-pub use xxhash::{DigestFieldNames, DigestFields};
 
 #[cfg(test)]
 mod tests {

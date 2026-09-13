@@ -211,7 +211,7 @@ impl DataType {
 
     /// Returns a deterministic cross-process hash of the canonical display.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_display(self)
+        crate::hashing::stable_hash_display(self)
     }
 
     /// Returns the parameter-free identifier of this variant.

@@ -193,7 +193,7 @@ struct DataFileIdentity<'a> {
 impl DataFile {
     /// Return a deterministic hash of this complete data-file description.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     fn identity(&self) -> DataFileIdentity<'_> {
@@ -293,7 +293,7 @@ pub struct ManifestEntry {
 impl ManifestEntry {
     /// Return a deterministic hash of this complete manifest entry.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Describe a newly written data file.
@@ -371,7 +371,7 @@ pub struct FieldSummary {
 impl FieldSummary {
     /// Return a deterministic hash of this complete field summary.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 }
 
@@ -415,7 +415,7 @@ pub struct ManifestFile {
 impl ManifestFile {
     /// Return a deterministic hash of this complete manifest-file description.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Assign this manifest's v3 row range from the manifest-list cursor.

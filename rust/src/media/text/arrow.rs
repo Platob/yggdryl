@@ -1034,7 +1034,7 @@ impl<R: Read> Iterator for RawRows<R> {
             let Ok(row) = row else {
                 return Some(row);
             };
-            let digest = crate::xxhash::xxh128(&row.body);
+            let digest = crate::hashing::xxhash::xxh128(&row.body);
             if self.previous == Some(digest) {
                 continue;
             }

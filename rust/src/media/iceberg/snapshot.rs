@@ -62,7 +62,7 @@ struct SnapshotIdentity<'a> {
 impl Snapshot {
     /// Return a deterministic hash of this complete snapshot description.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     fn identity(&self) -> SnapshotIdentity<'_> {
@@ -371,7 +371,7 @@ pub struct SnapshotRef {
 impl SnapshotRef {
     /// Return a deterministic hash of this complete snapshot reference.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// Point a branch at one snapshot.

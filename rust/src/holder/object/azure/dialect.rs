@@ -148,7 +148,10 @@ pub(crate) fn batch_body(
 
 /// The boundary a batch is framed with, which Azure requires to begin `batch_`.
 pub(crate) fn batch_boundary(seed: &[u8]) -> String {
-    format!("batch_{:032x}", u128::from(crate::xxhash::xxh3(seed)))
+    format!(
+        "batch_{:032x}",
+        u128::from(crate::hashing::xxhash::xxh3(seed))
+    )
 }
 
 /// The id of block `index`, base64 as the wire spells one.

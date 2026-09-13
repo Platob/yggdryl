@@ -71,7 +71,7 @@ pub struct IcebergOptions {
 impl IcebergOptions {
     /// Return a deterministic hash of every explicitly configured option.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 
     /// The property naming how many beaten commit attempts are retried.

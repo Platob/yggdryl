@@ -184,7 +184,7 @@ fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
             input.extend_from_slice(&scope.into_bytes());
         }
         input.extend_from_slice(b"\x1fSAME");
-        let expected = Uuid::from_v7(456, yggdryl::xxhash::xxh3(&input)).unwrap();
+        let expected = Uuid::from_v7(456, yggdryl::hashing::xxhash::xxh3(&input)).unwrap();
         assert_eq!(chain(&message), expected);
         assert_eq!(uuid(&message, INSTUUID_TAG_NAME.0), scope);
         assert!(!chains.contains(&expected));
@@ -722,7 +722,7 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
 fn a_generated_uuid_collision_does_not_join_an_unrelated_explicit_chain() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let colliding = Uuid::from_v7(0, yggdryl::xxhash::xxh3(b"\0\x1fNEW")).unwrap();
+    let colliding = Uuid::from_v7(0, yggdryl::hashing::xxhash::xxh3(b"\0\x1fNEW")).unwrap();
     life.fill(event(
         &registry,
         None,

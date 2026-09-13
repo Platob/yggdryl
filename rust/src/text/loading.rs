@@ -155,11 +155,17 @@ mod tests {
             .with_variable("B", Scalar::from(2))
             .with_variable("A", Scalar::from(1));
         assert_eq!(first, equal);
-        assert_eq!(crate::stable_hash_of(&first), crate::stable_hash_of(&equal));
+        assert_eq!(
+            crate::hashing::stable_hash_of(&first),
+            crate::hashing::stable_hash_of(&equal)
+        );
 
         let first = Loading::new().with_placeholders(first);
         let equal = Loading::new().with_placeholders(equal);
         assert_eq!(first, equal);
-        assert_eq!(crate::stable_hash_of(&first), crate::stable_hash_of(&equal));
+        assert_eq!(
+            crate::hashing::stable_hash_of(&first),
+            crate::hashing::stable_hash_of(&equal)
+        );
     }
 }

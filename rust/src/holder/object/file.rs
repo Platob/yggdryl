@@ -470,7 +470,9 @@ impl IOBase for File {
         if self.state()?.stage.is_some() {
             // A staged value is already in memory; the inherited walk reads it
             // there, out of `pstream_bytes`, without asking the store.
-            return crate::xxhash::stream::read_range_digest(self, offset, length, algorithm);
+            return crate::hashing::xxhash::stream::read_range_digest(
+                self, offset, length, algorithm,
+            );
         }
         let mut digester = algorithm.digester();
         if length == 0 {

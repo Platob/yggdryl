@@ -2323,7 +2323,7 @@ pub struct Compaction {
 impl Compaction {
     /// Return a deterministic hash of this complete compaction report.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 }
 
@@ -2354,7 +2354,7 @@ pub struct CommitConflict {
 impl CommitConflict {
     /// Return a deterministic hash of this complete conflict report.
     pub fn stable_hash(&self) -> u64 {
-        crate::stable_hash_of(self)
+        crate::hashing::stable_hash_of(self)
     }
 }
 

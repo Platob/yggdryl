@@ -232,7 +232,7 @@ fn previous_timestamp_uses_the_capture_clock_with_its_nanoseconds_not_uuid_time(
         .unwrap();
     let expected_uuid = Uuid::from_v7(
         1_000_002,
-        yggdryl::xxhash::xxh3(&first.digest().to_be_bytes()),
+        yggdryl::hashing::xxhash::xxh3(&first.digest().to_be_bytes()),
     )
     .unwrap();
     let mut life = FixLifecycle::new(registry);
@@ -468,7 +468,7 @@ fn orphan_and_terminal_messages_keep_uuid_range_without_retaining_history() {
         let message = row(&registry, cells);
         let expected = Uuid::from_v7(
             micros,
-            yggdryl::xxhash::xxh3(&message.digest().to_be_bytes()),
+            yggdryl::hashing::xxhash::xxh3(&message.digest().to_be_bytes()),
         )
         .unwrap();
         let message = life.fill(message).unwrap();

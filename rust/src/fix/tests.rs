@@ -2655,6 +2655,61 @@ fn fields_reject_nested_shapes_and_keep_the_registry_unchanged() {
 }
 
 #[test]
+fn derived_definition_tags_keep_the_exact_initial_slots() {
+    let registry = FixRegistry::new();
+    // Independent XXH32 vectors placed into the half-open definition block.
+    for (name, expected) in [
+        ("acorn", 475_337),
+        ("birch", 534_447),
+        ("cedar", 312_212),
+        ("delta.group", 830_555),
+    ] {
+        assert_eq!(
+            registry.derived_definition_tag(name).unwrap(),
+            expected,
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn derived_definition_tags_probe_past_scalar_and_component_occupants() {
+    let mut registry = FixRegistry::from_fields([tagged("OccupiedScalar", 475_337)]).unwrap();
+    let dtype = DataType::from_fields([] as [Field; 0]).unwrap();
+    let mut occupied = dtype.clone().nullable_field("OccupiedComponent");
+    occupied.as_fix_mut().set_tag(475_338).unwrap();
+    registry
+        .insert_definition(FixCategory::Components, occupied)
+        .unwrap();
+    assert_eq!(registry.derived_definition_tag("acorn").unwrap(), 475_339);
+    registry
+        .insert_definition(FixCategory::Components, dtype.nullable_field("acorn"))
+        .unwrap();
+    assert_eq!(
+        registry
+            .definition(FixCategory::Components, "acorn")
+            .unwrap()
+            .as_fix()
+            .tag()
+            .unwrap(),
+        Some(475_339)
+    );
+    assert_eq!(
+        registry.field_by_tag(475_337).unwrap().name(),
+        "OccupiedScalar"
+    );
+    assert_eq!(
+        registry
+            .definition(FixCategory::Components, "OccupiedComponent")
+            .unwrap()
+            .as_fix()
+            .tag()
+            .unwrap(),
+        Some(475_338)
+    );
+}
+
+#[test]
 fn a_derived_tag_identifies_one_definition_however_it_arrived() {
     let mut registry = FixRegistry::from_fields([counter("NoPartyIDs", 453)]).unwrap();
     registry
@@ -3058,7 +3113,10 @@ fn a_message_resolves_values_through_its_registry() {
     // Equality and hashing follow the schema and the value.
     let same = FixMsg::with_registry(Arc::clone(&registry), root, msg.as_value().clone()).unwrap();
     assert_eq!(msg, same);
-    assert_eq!(crate::stable_hash_of(&msg), crate::stable_hash_of(&same));
+    assert_eq!(
+        crate::hashing::stable_hash_of(&msg),
+        crate::hashing::stable_hash_of(&same)
+    );
 }
 
 #[test]

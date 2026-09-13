@@ -1981,3 +1981,72 @@ The clock declaration is shared with the existing clock owner, and fixed
 schema construction resolves its tag list once with capacity derived from
 the real definition counts. This does not change schema order or selection.
 The later updatedat/grid/code-only identity rules remain separate work.
+
+## 25. Hash implementations share one hashing owner
+
+**Rule.** Move the complete Rust implementations and their unit tests to
+`hashing::xxhash` and `hashing::txhash` under `rust/src/hashing/`. The parent
+module explains the byte/value digest, instrument/message identity and
+time-ordered pair, and owns no second dispatcher. Retire the old root module
+paths entirely; no aliases or forwarding modules remain. Shared root digest
+vocabulary stays in `digest.rs`, as the repository contract requires; its
+implementation imports the actual hashing owner. Existing named root field
+type re-exports continue to name the same owning types, not a second module.
+
+Move the structural/display stable-hash adapters from `text/display.rs` to
+private `hashing/stable.rs`, with crate-private access through `hashing`.
+Remove their old text and crate-root re-exports and update every caller.
+The existing explicit little-endian structural sink also implements
+`fmt::Write`, replacing the separate display-only sink without changing a
+byte fed in either mode. Keep both existing vector tests beside that owner;
+text retains only rendering and bounded-error helpers. Trait implementations
+remain on the values they describe, delegating to the hashing owner.
+
+Keep `Scalar::stable_hash` and `FieldRecord::stable_hash` as the same public
+methods, but locate their implementations beside the existing canonical
+scalar/row digest methods in `hashing/xxhash/scalar.rs`. A typed row still
+feeds its borrowed cells and builds no temporary sequence. Value-specific
+recipes (version-tail folding and FIX definition-tag placement) stay with
+their values, using the existing one-shot hashes when their complete input
+slice is already available. In particular, version-tail hashing no longer
+allocates a streaming state. Pin zero allocations for nonnumeric suffixes
+at several input sizes and retain the exact folded-version/tag vectors.
+
+This is a location change, not a new hash contract: algorithms, seeds,
+canonical scalar bytes, arrival digests, UUID packing, raw TxHash bytes,
+ordering, null/default behavior and errors do not change. A TxHash remains
+its existing raw time/digest pair, not an RFC 9562 UUID. Any later UUID
+projection is a separate decision. Existing digest/row/stream/holder pins
+must remain exact, and the equivalence snapshot must not move.
+
+Correct the touched raw-layout prose: byte ordering matches time ordering
+within a fixed unit and algorithm and one sign range; negative instants sort
+after nonnegative ones in the existing two's-complement bytes. Derived value
+ordering compares unit before its count; it does not normalize instants.
+The existing negative-boundary tests pin this bound, not a changed layout.
+
+The benchmark sources mirror the hashing layer. One `hashing` driver
+replaces the two old drivers, with xxhash/txhash submodules and one shared
+deterministic payload implementation. Existing case names, fixture bytes,
+smoke bounds and cost assertions remain unchanged. Compile and run only
+the suite's untimed fixture checks; measure no benchmarks.
+
+Rust imports, rustdoc examples, inventory and workspace consumers use the
+new core paths in this commit. The user's Rust-first sequence defers host
+module regrouping and parity suites until the Python and then Node stages.
+Their compile-time core imports change now only as required by Gate 1.
+
+The final documentation stage consolidates the six xxhash/txhash pages
+into `docs/hashing.md`, one Hashing navigation item. Rewrite incoming links
+and delete the old pages; do not keep redirect pages or old anchors. Keep
+the complete canonical encoding, time/overflow, holder and language-bound
+contracts, and historical measurement provenance without rerunning it.
+
+**Pins.** Existing canonical digest vectors, seeded/secret and chunked
+equivalence, logical cross-width hashes, Arrow exchanges, holder and
+allocation/call-count assertions, and raw TxHash layouts remain exact.
+The old Rust module paths disappear from source and API inventory. Gate 1
+is whole; binding/documentation checks remain in their user-ordered stages.
+All twelve FIX pieces are now landed, so remove the spent root prompts
+`FIX_DIRECTION_MESSAGES_PROMPT.md` and `CHARSET_READ_PATH_PROMPT.md` in this
+commit. Their complete records remain recoverable from Git history.

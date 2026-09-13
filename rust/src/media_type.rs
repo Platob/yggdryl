@@ -7,7 +7,7 @@ use serde::ser::SerializeStruct as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::MimeType;
-use crate::{Charset, Error, Result, stable_hash_display};
+use crate::{Charset, Error, Result, hashing::stable_hash_display};
 
 /// A base MIME type, the charset its bytes are in, and the ordered transparent
 /// encodings applied to it.
