@@ -54,6 +54,8 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
+use super::build::RowStamp;
+
 use crate::{DataType, Field, Result, Scalar};
 
 /// The dictionary ULBridge's own attributes are members of.
@@ -541,48 +543,6 @@ fn push_attributes(pairs: &mut Vec<Pair>, mbean: Option<&str>, attributes: &Scal
     Ok(())
 }
 
-/// What the row a document arrived on stated beside it.
-///
-/// A row's version, clock and own columns are borrowed from the row
-/// the reader framed, and one document answers for as many plugins as it
-/// names, so what the row stated is retained here and applied to each of
-/// them rather than borrowed across an expansion the caller drives. One
-/// copy per document, never per line: an ordinary line borrows.
-#[derive(Clone, Debug)]
-struct RowStamp {
-    /// The version the row is read at, where it stated one.
-    version: Option<crate::Version>,
-    /// The row's own clock.
-    clock: Option<Scalar>,
-    /// The row's own columns, beside the field and tag each fills.
-    fills: Vec<(Field, i32, Scalar)>,
-    /// The direction resolved for the row, a code of tag 385's set.
-    direction: Option<SmolStr>,
-}
-
-impl RowStamp {
-    /// What a row stated, retained; nothing at all where it stated nothing.
-    fn retained(extras: super::build::RowExtras<'_>) -> Option<Arc<Self>> {
-        if extras.version.is_none()
-            && extras.clock.is_none()
-            && extras.fills.is_empty()
-            && extras.direction.is_none()
-        {
-            return None;
-        }
-        Some(Arc::new(Self {
-            version: extras.version,
-            clock: extras.clock.cloned(),
-            fills: extras
-                .fills
-                .iter()
-                .map(|fill| (fill.field.clone(), fill.tag, fill.value.clone()))
-                .collect(),
-            direction: extras.direction.map(SmolStr::new),
-        }))
-    }
-}
-
 /// One leaf of the envelope, where the document stated it.
 fn push_leaf(pairs: &mut Vec<Pair>, key: &[u8], value: Option<&Scalar>) -> Result<()> {
     let Some(value) = value else {
@@ -867,26 +827,12 @@ impl UlPlugin {
             .iter()
             .map(|(key, value, name)| (key.as_slice(), value.as_slice(), *name))
             .collect();
-        let fills: Vec<super::build::Fill<'_>> = self
+        let fills = self
             .stamp
-            .iter()
-            .flat_map(|stamp| stamp.fills.iter())
-            .map(|(field, tag, value)| super::build::Fill {
-                field,
-                tag: *tag,
-                value,
-            })
-            .collect();
-        let extras = super::build::RowExtras {
-            version: self.stamp.as_ref().and_then(|stamp| stamp.version),
-            clock: self.stamp.as_ref().and_then(|stamp| stamp.clock.as_ref()),
-            fills: &fills,
-            direction: self
-                .stamp
-                .as_ref()
-                .and_then(|stamp| stamp.direction.as_deref()),
-            direction_pin: None,
-        };
+            .as_ref()
+            .map(|stamp| stamp.fills())
+            .unwrap_or_default();
+        let extras = RowStamp::held(self.stamp.as_ref(), &fills);
         codec.build_pairs_with(&borrowed, extras)
     }
 

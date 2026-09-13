@@ -2,7 +2,7 @@
 //! from a hand-written line, refused where the answer is not certain, and
 //! settled in one pass.
 
-use super::OneMessage;
+use super::SoleMessage;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ fn reader() -> FixCodec {
 /// One line read with enrichment on, then enriched again to prove a second
 /// pass changes nothing: every chain of rules reaches its end in one pass.
 fn settled(reader: &FixCodec, line: &[u8]) -> FixMsg {
-    let once = reader.one_line(line, true).expect("a readable line");
+    let once = reader.sole_line(line, true).expect("a readable line");
     let twice = reader.enrich_message(once.clone()).expect("a second pass");
     assert_eq!(
         once,
@@ -423,7 +423,7 @@ fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
     // the text; the option's own code then says it is a call, and the answer
     // takes the null's place rather than standing beside it.
     const LINE: &[u8] = b"8=FIX.4.4|35=D|11=A|461=OCXXXX|201=abc|10=0|";
-    let bare = reader.one_line(LINE, false).expect("a readable line");
+    let bare = reader.sole_line(LINE, false).expect("a readable line");
     assert_eq!(bare.get_by_tag(201), Some(&Scalar::Null));
     let held = settled(&reader, LINE);
     assert_eq!(integer(&held, 201), Some(1));

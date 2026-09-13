@@ -40,17 +40,53 @@ const LINES: usize = 129;
 /// Each is the line and how many rows it yields beyond its first.
 const WILDCARDS: [(usize, usize); 2] = [(98, 1), (128, 2)];
 
-/// How many rows the capture reads as: a row a line, and each wildcard
-/// line's further MBeans once more.
-const ROWS: usize = LINES + WILDCARDS[0].1 + WILDCARDS[1].1;
+/// The lines that read as no row at all: the bridge's own prose, which
+/// states no frame, no bridge pair and no document, so it carries no message
+/// (decision 16). A line is still a line - the text reader answers every one
+/// of them - and this is what the FIX reader answers for it.
+const SILENT: [usize; 48] = [
+    0, 2, 12, 16, 17, 18, 19, 22, 28, 29, 31, 40, 41, 42, 46, 48, 49, 50, 54, 61, 65, 66, 67, 68,
+    71, 78, 79, 80, 84, 86, 87, 88, 92, 93, 94, 95, 96, 108, 109, 110, 115, 116, 117, 118, 120,
+    124, 126, 127,
+];
 
-/// The first row text line `line` was read into.
-const fn row_of(line: usize) -> usize {
-    let mut row = line;
+/// How many rows the capture reads as: a row for every message, so a row a
+/// line but for the wildcards, which answer for each of their MBeans, and
+/// the prose, which answers for nothing.
+const ROWS: usize = LINES - SILENT.len() + WILDCARDS[0].1 + WILDCARDS[1].1;
+
+/// Whether text line `line` carries no message.
+const fn silent(line: usize) -> bool {
+    let mut at = 0;
+    while at < SILENT.len() {
+        if SILENT[at] == line {
+            return true;
+        }
+        at += 1;
+    }
+    false
+}
+
+/// How many rows beyond its first text line `line` answers.
+const fn beyond(line: usize) -> usize {
     let mut at = 0;
     while at < WILDCARDS.len() {
-        if line > WILDCARDS[at].0 {
-            row += WILDCARDS[at].1;
+        if WILDCARDS[at].0 == line {
+            return WILDCARDS[at].1;
+        }
+        at += 1;
+    }
+    0
+}
+
+/// The first row text line `line` was read into; where the line is silent,
+/// the row the line after it opens.
+const fn row_of(line: usize) -> usize {
+    let mut row = 0;
+    let mut at = 0;
+    while at < line {
+        if !silent(at) {
+            row += 1 + beyond(at);
         }
         at += 1;
     }
@@ -59,21 +95,19 @@ const fn row_of(line: usize) -> usize {
 
 /// The text line row `row` was read from.
 const fn line_of(row: usize) -> usize {
-    let mut line = row;
-    let mut at = 0;
-    while at < WILDCARDS.len() {
-        // The rows the wildcard yields all belong to its line: past the
-        // last of them the offset applies whole, inside them the line is
-        // the wildcard's.
-        let first = row_of(WILDCARDS[at].0);
-        if row > first + WILDCARDS[at].1 {
-            line -= WILDCARDS[at].1;
-        } else if row > first {
-            return WILDCARDS[at].0;
+    let mut line = 0;
+    let mut seen = 0;
+    while line < LINES {
+        if !silent(line) {
+            let held = 1 + beyond(line);
+            if row < seen + held {
+                return line;
+            }
+            seen += held;
         }
-        at += 1;
+        line += 1;
     }
-    line
+    LINES
 }
 
 /// The committed dictionary beside the bridge's own vocabulary.
@@ -962,25 +996,30 @@ fn every_other_shape_the_bridge_writes_lands_where_it_belongs() {
     assert_eq!(rows[row_of(marked)][column(35)].as_str(), Some("D"));
     assert_eq!(rows[row_of(marked)][column(385)].as_str(), Some("S"));
 
-    // A line with nothing after its header is still a row: dated, versioned,
-    // and saying nothing else.
+    // A line with nothing after its header carries no message, so the FIX
+    // batch holds no row for it at all (decision 16): what a line was is the
+    // text reader's answer, and it still holds every one of them.
     let empty = text
         .iter()
         .position(|held| body(&text_names, held).is_empty())
         .expect("the empty line");
-    assert!(rows[row_of(empty)][column(35)].is_null());
-    assert!(!rows[row_of(empty)][column(8)].is_null());
-    assert_eq!(
-        &rows[row_of(empty)][column(yggdryl::TIMESTAMP_TAG_NAME.0)],
-        &text[empty][at(&text_names, "timestamp")]
-    );
-    // And a sentence is a sentence.
+    assert!(silent(empty), "a line with no payload carries no message");
+    assert_ne!(line_of(row_of(empty)), empty, "no row is that line's");
+    assert!(!text[empty][at(&text_names, "timestamp")].is_null());
+    // And a sentence is a sentence: classified as one, and no message.
     let warning = find("Unable to resolve destination for OD9EOEDJ401");
     assert_eq!(
         mimetype(warning).as_deref(),
         Some(MimeType::OCTET_STREAM.as_str())
     );
-    assert!(rows[row_of(warning)][column(35)].is_null());
+    assert!(silent(warning), "a sentence carries no message");
+    assert!(
+        codec
+            .parse_text_line(&lines[warning])
+            .expect("a line")
+            .next()
+            .is_none()
+    );
 }
 
 #[test]

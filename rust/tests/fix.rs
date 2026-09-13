@@ -133,45 +133,51 @@ fn ulbridge_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     }))
 }
 
-trait OneMessage {
-    fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
-    fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+/// The sole message a fixture carrying one is read into.
+///
+/// A row yields none, one or many (decision 16), so a fixture that carries
+/// exactly one says so here: what the assertions below are about is that one
+/// message, and a fixture that grew a second would otherwise be read as its
+/// first with nobody noticing.
+trait SoleMessage {
+    fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
+    fn sole_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg>;
 }
 
-fn one_message(
+fn sole_message(
     mut messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
 ) -> yggdryl::Result<yggdryl::FixMsg> {
     let message = messages
         .next()
-        .expect("a singleton fixture yields one message")?;
+        .expect("a fixture of one message yields it")?;
     assert!(
         messages.next().is_none(),
-        "a singleton fixture yields exactly one message"
+        "a fixture of one message yields exactly one"
     );
     Ok(message)
 }
 
-/// The one message a singleton fixture yields, filled where asked: a stage
-/// is a call on the codec, so the flag lives in the test helper alone.
-fn one_message_filled(
+/// The sole message a fixture yields, filled where asked: a stage is a call
+/// on the codec, so the flag lives in the test helper alone.
+fn sole_message_filled(
     codec: &yggdryl::FixCodec,
     messages: impl Iterator<Item = yggdryl::Result<yggdryl::FixMsg>>,
     enrich: bool,
 ) -> yggdryl::Result<yggdryl::FixMsg> {
-    let message = one_message(messages)?;
+    let message = sole_message(messages)?;
     if enrich {
         return codec.enrich_message(message);
     }
     Ok(message)
 }
 
-impl OneMessage for yggdryl::FixCodec {
-    fn one_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message_filled(self, self.parse_line(row)?, enrich)
+impl SoleMessage for yggdryl::FixCodec {
+    fn sole_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
+        sole_message_filled(self, self.parse_line(row)?, enrich)
     }
 
-    fn one_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
-        one_message_filled(self, self.parse_ulconfig_line(row)?, enrich)
+    fn sole_ulconfig_line(&self, row: &[u8], enrich: bool) -> yggdryl::Result<yggdryl::FixMsg> {
+        sole_message_filled(self, self.parse_ulconfig_line(row)?, enrich)
     }
 }
 

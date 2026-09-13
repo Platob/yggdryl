@@ -7,12 +7,13 @@
 //! implies - row by row and in batches, which have to agree.
 //!
 //! It is the acceptance test for the layers under it. Where a unit test says
-//! one rule works, this says the rules compose: the text reader's row count
-//! survives the codec, the codec's dialect choice survives enrichment, and
+//! one rule works, this says the rules compose: the text reader answers a row
+//! per line and the codec a row per message (decision 16), so the two counts
+//! are read apart here; the codec's dialect choice survives enrichment; and
 //! enrichment leaves the wire exactly as it arrived so the round trip still
 //! closes.
 
-use super::OneMessage;
+use super::SoleMessage;
 use super::path;
 
 use std::sync::Arc;
@@ -43,11 +44,35 @@ const ULCONFIG: &str = concat!(
     r#"plugin-type=FIX,type=Plugin","type":"read"},"value":{"SenderCompID":"ULB_BKRBDG","#,
     r#""TargetCompID":"ULB_PTBDG","BeginString":"FIX.4.2","State":"logged"},"status":200}"#,
 );
-/// A line that is not a message at all, which is still a row.
+/// A line that is not a message at all, which is still a text row.
+///
+/// It opens no frame, holds no pair and carries no document, so it states
+/// nothing and yields no message - not even the entry-less `unknown` it used
+/// to build (decision 16).
 const PROSE: &str = "no level printed by this plugin, and no pairs either";
 
+/// A sentence whose prose carries an `=`, which is not a pair it separated.
+///
+/// The shape decision 16 is named for. The run of named pairs is a bridge row
+/// only where the line named a separator for it - a pipe, a `SOH`, one of the
+/// spellings a log escapes it with, never whitespace - or the bridge marked a
+/// key with `#`. This line does neither, so `seq=7` is prose and the line
+/// states no message, where it used to state an `unknown` carrying `seq`.
+const CHATTER: &str = "heartbeat emitted seq=7 to VENUE, no reply yet";
+
 /// Every shape, in the order the capture holds them.
-const CAPTURE: [&str; 7] = [TAGGED, WORKING, FILLED, NAMED, FIXML, ULCONFIG, PROSE];
+const CAPTURE: [&str; 8] = [
+    TAGGED, WORKING, FILLED, NAMED, FIXML, ULCONFIG, PROSE, CHATTER,
+];
+
+/// The messages the capture states: one per line but the two silent ones.
+///
+/// `PROSE` and `CHATTER` state no message - the first holds no pair at all,
+/// the second holds one no separator was named for - so a message count is
+/// two under the line count. A line is a text row whatever it holds, which is
+/// why `CAPTURE.len()` is what a line count is compared against and this is
+/// what a message count is.
+const MESSAGES: usize = CAPTURE.len() - 2;
 
 /// The capture as the bytes a log file holds.
 fn corpus() -> Vec<u8> {
@@ -142,9 +167,9 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     let source = handle();
     let codec = FixCodec::new(Arc::clone(&registry));
 
-    // Line by line: the text reader answers lines, and every line is read as
-    // the message its own body spells - the dialect chosen per line, never
-    // per capture.
+    // Line by line: the text reader answers lines, and every line is read for
+    // the messages its own body spells - none, one or many (decision 16) -
+    // the dialect chosen per line, never per capture.
     let lines = lines_of(&source);
     assert_eq!(lines.len(), CAPTURE.len(), "a line in is a line out");
 
@@ -153,7 +178,14 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
         .map(|held| held.and_then(|held| codec.enrich_message(held)))
         .map(|held| held.expect("a message"))
         .collect();
-    assert_eq!(one_at_a_time.len(), CAPTURE.len());
+    // A message per line but the last two: the prose opens no frame, states
+    // no bridge pair and carries no document, and the chatter's `seq=7` is a
+    // pair the line named no separator for - so both state nothing at all.
+    assert_eq!(one_at_a_time.len(), MESSAGES);
+    assert!(
+        one_at_a_time.iter().all(|held| !held.entries().is_empty()),
+        "no line answered an entry-less `unknown`",
+    );
 
     // Batched: the same capture through the batch reader, which is the same
     // read with the rows held in Arrow instead of one at a time, then the
@@ -167,7 +199,9 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
         .map(|batch| batch.expect("a batch"))
         .collect();
     let rows: usize = batched.iter().map(arrow_array::RecordBatch::num_rows).sum();
-    assert_eq!(rows, CAPTURE.len(), "the batch path keeps the row count");
+    // The batch door answers a row per message rather than per line, so the
+    // two lines that state none yield no row there either (decision 16).
+    assert_eq!(rows, MESSAGES, "the batch path reads the same messages");
     // One batch, because the capture is far under the 128 MiB target.
     assert_eq!(batched.len(), 1);
 
@@ -209,13 +243,13 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     let codec = FixCodec::new(Arc::clone(&registry));
 
     // A framed order behind prose: the frame is located and the prose dropped.
-    let order = codec.one_line(TAGGED.as_bytes(), true).expect("an order");
+    let order = codec.sole_line(TAGGED.as_bytes(), true).expect("an order");
     assert_eq!(order.by_tag(11).unwrap().as_str(), Some("ORDER-1"));
     assert_eq!(order.by_tag(55).unwrap().as_str(), Some("AAPL"));
 
     // A bridge row keyed by name, with its group packed into one occurrence.
     let bridge = codec
-        .one_line(NAMED.as_bytes(), true)
+        .sole_line(NAMED.as_bytes(), true)
         .expect("a bridge row");
     assert_eq!(bridge.by_tag(55).unwrap().as_str(), Some("TTF"));
     // The packed occurrence split into the group the counter heads: one
@@ -231,16 +265,35 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
         party.iter().any(|held| held.as_str() == Some("BUYSIDE")),
         "the occurrence carries the members it packed",
     );
+    // What makes that run of named keys a bridge row rather than prose
+    // carrying an `=` is the separator the line named for it - the pipe - and
+    // the `#` the bridge marked its counter with. Named neither way, the same
+    // shape of run is prose: whitespace names no separator, so the line states
+    // no message at all (decision 16).
+    let paired = codec
+        .sole_line(b"ACCOUNT=A1|SIDE=1", true)
+        .expect("a bridge row the pipe separated");
+    assert_eq!(paired.by_tag(1).unwrap().as_str(), Some("A1"));
+    assert!(
+        codec
+            .parse_line(b"After Enrichment -> ACCOUNT=A1 CLIENTID=B2")
+            .expect("a readable line")
+            .next()
+            .is_none(),
+        "a run of named pairs the line separated with whitespace is prose",
+    );
 
     // A FIXML row, whose fields are attributes rather than pairs.
-    let fixml = codec.one_line(FIXML.as_bytes(), true).expect("a FIXML row");
+    let fixml = codec
+        .sole_line(FIXML.as_bytes(), true)
+        .expect("a FIXML row");
     assert_eq!(fixml.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
     // The same document behind a transport's prose, with whitespace either
     // side: the document opens where the tag opens, whatever was trimmed off
     // the line's end.
     let prosed = format!("  Sending : {FIXML}  \t");
     let behind = codec
-        .one_line(prosed.as_bytes(), true)
+        .sole_line(prosed.as_bytes(), true)
         .expect("a FIXML row behind prose");
     assert_eq!(behind.by_tag(11).unwrap().as_str(), Some("ORDER-2"));
     assert_eq!(behind.by_tag(54).unwrap(), fixml.by_tag(54).unwrap());
@@ -254,7 +307,7 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
     // root carries none, because a message is not a dictionary member.
     let bridge = FixCodec::new(Arc::clone(&registry));
     let config = bridge
-        .one_line(ULCONFIG.as_bytes(), true)
+        .sole_line(ULCONFIG.as_bytes(), true)
         .expect("a configuration document");
     assert!(
         registry
@@ -280,10 +333,21 @@ fn every_dialect_in_one_capture_is_read_as_itself() {
         &Scalar::from("Plugin"),
     );
 
-    // A line that is not a message is a message with nothing in it, never an
-    // error: one corrupt line must not end a run over ten million.
-    let prose = codec.one_line(PROSE.as_bytes(), true).expect("a row");
-    assert_eq!(prose.get_by_tag(35), None);
+    // A line that is not a message states no message at all - never an error,
+    // and no longer the empty `unknown` it used to state: it opens no frame,
+    // states no bridge pair and carries no document, so there is nothing in it
+    // to read (decision 16). It reads without failing, which is the fact that
+    // matters: one such line must not end a run over ten million.
+    for line in [PROSE, CHATTER] {
+        assert!(
+            codec
+                .parse_line(line.as_bytes())
+                .expect("a readable line")
+                .next()
+                .is_none(),
+            "{line:?} states no message",
+        );
+    }
 }
 
 #[test]
@@ -293,8 +357,10 @@ fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
 
     // The part-filled report states what was ordered and what was done, so it
     // has stated what is left and what the fill was worth.
-    let bare = codec.one_line(WORKING.as_bytes(), false).expect("a report");
-    let filled = codec.one_line(WORKING.as_bytes(), true).expect("a report");
+    let bare = codec
+        .sole_line(WORKING.as_bytes(), false)
+        .expect("a report");
+    let filled = codec.sole_line(WORKING.as_bytes(), true).expect("a report");
     assert_eq!(bare.get_by_tag(151), None);
     assert_eq!(filled.by_tag(151).unwrap(), &Scalar::from(60.0_f64));
     assert_eq!(filled.by_tag(381).unwrap(), &Scalar::from(420.0_f64));
@@ -306,15 +372,15 @@ fn enrichment_fills_the_columns_and_leaves_the_wire_alone() {
 
     // The closing fill settles in the currency it was dealt in, at the rate it
     // stated - Appendix O read as the implication it is.
-    let closed = codec.one_line(FILLED.as_bytes(), true).expect("a report");
+    let closed = codec.sole_line(FILLED.as_bytes(), true).expect("a report");
     assert_eq!(closed.by_tag(151).unwrap(), &Scalar::from(0.0_f64));
     assert_eq!(closed.by_tag(120).unwrap().as_str(), Some("EUR"));
 
     // And none of it touched the arrival record, so the capture still
     // re-emits the bytes it was read from.
     for line in [WORKING, FILLED] {
-        let plain = codec.one_line(line.as_bytes(), false).expect("a report");
-        let held = codec.one_line(line.as_bytes(), true).expect("a report");
+        let plain = codec.sole_line(line.as_bytes(), false).expect("a report");
+        let held = codec.sole_line(line.as_bytes(), true).expect("a report");
         assert_eq!(plain.entries(), held.entries());
         assert_eq!(held.into_bytes(b'|'), line.as_bytes());
     }
@@ -339,18 +405,27 @@ fn an_enriched_capture_still_writes_back_the_wire_it_was_read_from() {
     let rows = codec
         .write_arrow_reader(reader, &mut written)
         .expect("the capture writes");
-    assert_eq!(rows, CAPTURE.len() as u64);
+    // One line written per message, and the two lines that state none reach
+    // the writer as no row at all, so the capture comes back two lines shorter
+    // than it went in (decision 16).
+    assert_eq!(rows, MESSAGES as u64);
 
     // The two framed reports come back exactly as they arrived, filled or not.
     let held = String::from_utf8(written).expect("the wire is text here");
     let lines: Vec<&str> = held.lines().collect();
-    assert_eq!(lines.len(), CAPTURE.len());
+    assert_eq!(lines.len(), MESSAGES);
     assert!(lines.contains(&WORKING), "the report re-emits exactly");
     assert!(lines.contains(&FILLED), "the fill re-emits exactly");
+    for silent in [PROSE, CHATTER] {
+        assert!(
+            !lines.contains(&silent),
+            "a line that stated no message writes back none",
+        );
+    }
 }
 
 #[test]
-fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
+fn the_batch_states_what_each_message_was_and_which_way_it_moved() {
     let registry = registry();
     let source = handle();
     let codec = FixCodec::new(registry);
@@ -365,10 +440,14 @@ fn the_batch_states_what_each_line_was_and_which_way_it_moved() {
         .expect("a batch")
         .expect("a batch");
 
-    // Which way each line moved is FIX's own tag 385 (decision 14), a code
-    // of its set.
+    // Which way a message moved is FIX's own tag 385 (decision 14), a code of
+    // its set, retained once per row and shared by every message that row
+    // states (decision 16).
     let directions = tag_column(&batch, 385);
-    assert_eq!(directions.len(), CAPTURE.len());
+    // A direction per message, not per line: the prose holds no pair and the
+    // chatter's pair was separated by whitespace, so neither states a message
+    // and neither reaches the batch as a row.
+    assert_eq!(directions.len(), MESSAGES);
     // The bridge row wrote `recv` in front of its frame, and a verb the
     // transport wrote wins over everything else.
     assert_eq!(directions[3].as_str(), Some("R"));
@@ -426,7 +505,7 @@ fn a_document_is_read_out_of_the_line_that_carries_it() {
 
     let codec = FixCodec::new(registry());
     let message = codec
-        .one_ulconfig_line(LOGGED.as_bytes(), false)
+        .sole_ulconfig_line(LOGGED.as_bytes(), false)
         .expect("the document the line carries");
     // Standard FIX and bridge attributes share the configuration's flat row.
     assert_eq!(

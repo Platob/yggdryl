@@ -1094,6 +1094,20 @@ pub(crate) fn payload_at(line: &[u8]) -> Option<usize> {
         .or_else(|| ulconfig_at(line))
 }
 
+/// Whether the line named a separator for the run of pairs its payload
+/// opens with.
+///
+/// Decision 1's second amendment: a frame is a run of pairs the line named a
+/// separator for - a `SOH` raw or escaped, or a pipe - and whitespace names
+/// none. A run of *named* keys is a bridge row where the line separated it
+/// and prose carrying an `=` where it did not, which is what tells
+/// `heartbeat emitted seq=7` from `ACCOUNT=A1|SIDE=1` (decision 16). A
+/// numeric frame is FIX whatever separated it, so the codec asks this only
+/// of a run it did not already read as tags.
+pub(crate) fn names_separator(line: &[u8]) -> bool {
+    locate_frame(line).is_some_and(|frame| frame.separator.stated())
+}
+
 /// Where the message starts, given where a frame was already located.
 ///
 /// The answer [`payload_at`] gives, for a caller whose scan already located

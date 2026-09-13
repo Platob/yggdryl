@@ -1,6 +1,6 @@
 //! The value digest, the dedup adapter, and the crate's own two fields.
 
-use super::OneMessage;
+use super::SoleMessage;
 
 use yggdryl::{DataType, FixCodec, FixDedup, FixId, FixRegistry, Scalar};
 
@@ -12,10 +12,10 @@ fn reader() -> FixCodec {
 fn identical_entries_hash_equal_and_a_different_order_does_not() {
     let reader = reader();
     let one = reader
-        .one_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|", false)
         .unwrap();
     let same = reader
-        .one_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|", false)
         .unwrap();
     assert_eq!(one.digest(), same.digest());
     assert_eq!(one.stable_hash(), same.stable_hash());
@@ -24,7 +24,7 @@ fn identical_entries_hash_equal_and_a_different_order_does_not() {
     // Order carries meaning inside a repeating group, so it is never sorted
     // away: the same pairs in another order are another message.
     let reordered = reader
-        .one_line(b"8=FIX.4.4|35=D|55=AAPL|11=A|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|55=AAPL|11=A|10=0|", false)
         .unwrap();
     assert_ne!(one.digest(), reordered.digest());
     assert_ne!(one.stable_hash(), reordered.stable_hash());
@@ -40,10 +40,10 @@ fn a_length_prefix_is_what_keeps_two_split_values_apart() {
     // `123`, and only the lengths tell them apart. A FIX value may hold any
     // byte at all, so no separator could have done it either.
     let split = reader
-        .one_line(b"8=FIX.4.4|35=D|9999=1|9998=23|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|9999=1|9998=23|10=0|", false)
         .unwrap();
     let other = reader
-        .one_line(b"8=FIX.4.4|35=D|9999=12|9998=3|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|9999=12|9998=3|10=0|", false)
         .unwrap();
     assert_ne!(split.digest(), other.digest());
 }
@@ -52,12 +52,12 @@ fn a_length_prefix_is_what_keeps_two_split_values_apart() {
 fn the_envelope_is_not_the_message() {
     let reader = reader();
     let row = "8=FIX.4.4|9=64|35=D|11=A|55=AAPL|10=203|";
-    let one = reader.one_line(row.as_bytes(), false).unwrap();
+    let one = reader.sole_line(row.as_bytes(), false).unwrap();
 
     // A recomputed body length and a different checksum describe how the
     // message was written down, not what it says.
     let rewritten = reader
-        .one_line(b"8=FIX.4.4|9=999|35=D|11=A|55=AAPL|10=000|", false)
+        .sole_line(b"8=FIX.4.4|9=999|35=D|11=A|55=AAPL|10=000|", false)
         .unwrap();
     assert_eq!(one.digest(), rewritten.digest());
 
@@ -69,10 +69,10 @@ fn the_envelope_is_not_the_message() {
     // The session layer is not the message either: the same order sent a
     // second later, over another session, on a redelivery, is one message.
     let relayed = reader
-        .one_line(b"8=FIX.4.4|35=D|34=91|49=DESK|56=VENUE|52=20240102-10:15:31.000|43=Y|11=A|55=AAPL|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|34=91|49=DESK|56=VENUE|52=20240102-10:15:31.000|43=Y|11=A|55=AAPL|10=0|", false)
         .unwrap();
     let original = reader
-        .one_line(
+        .sole_line(
             b"8=FIX.4.4|35=D|34=7|49=OTHER|56=ELSEWHERE|52=20240102-10:15:30.000|11=A|55=AAPL|10=0|",
         false)
         .unwrap();
@@ -82,7 +82,7 @@ fn the_envelope_is_not_the_message() {
     // it: the application version, the encoding and the last sequence number
     // processed all describe how to read this delivery, not what it says.
     let annotated = reader
-        .one_line(
+        .sole_line(
             b"8=FIX.4.4|35=D|1128=9|1129=X|1156=1|347=UTF-8|369=6|11=A|55=AAPL|10=0|",
             false,
         )
@@ -91,11 +91,11 @@ fn the_envelope_is_not_the_message() {
 
     // What the message says still separates it, and so does what it is.
     let other = reader
-        .one_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=MSFT|10=0|", false)
         .unwrap();
     assert_ne!(original.digest(), other.digest());
     let typed = reader
-        .one_line(b"8=FIX.4.4|35=F|11=A|55=AAPL|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=F|11=A|55=AAPL|10=0|", false)
         .unwrap();
     assert_ne!(
         original.digest(),
@@ -109,22 +109,26 @@ fn two_unknown_keys_carrying_one_value_are_two_messages() {
     let reader = reader();
     // Neither key names a field, so the tag is `0` for both and only the key
     // itself distinguishes them.
-    let one = reader.one_line(b"35=D|VenueOwnThing=x", false).unwrap();
-    let other = reader.one_line(b"35=D|OtherVenueThing=x", false).unwrap();
+    let one = reader.sole_line(b"35=D|VenueOwnThing=x", false).unwrap();
+    let other = reader.sole_line(b"35=D|OtherVenueThing=x", false).unwrap();
     assert_ne!(one.digest(), other.digest());
 
-    // A message built from a schema and a value has no entries, so it
-    // digests as the empty walk - correct, because none of them arrived.
-    let empty = reader
-        .one_line(b"no level printed by this plugin", false)
-        .unwrap();
+    // A message that recorded no arrival digests as the empty walk - correct,
+    // because none of them arrived - whichever door built it: pairs a caller
+    // handed in stating nothing, and a document stating no attribute. A line
+    // that states no message states none at all now (decision 16), so it is
+    // no longer one of the doors that can answer an empty message.
+    let empty = reader.parse_pairs(std::iter::empty()).unwrap();
     assert!(empty.entries().is_empty());
-    assert_eq!(
-        empty.digest(),
+    let stated = reader.parse_fixml_line(b"<Order/>").unwrap();
+    assert!(stated.entries().is_empty());
+    assert_eq!(empty.digest(), stated.digest());
+    assert!(
         reader
-            .one_line(b"also nothing here", false)
+            .parse_line(b"also nothing here")
             .unwrap()
-            .digest()
+            .next()
+            .is_none()
     );
 }
 
@@ -140,7 +144,7 @@ fn dedup_drops_the_adjacent_republication_and_counts_it() {
     ];
     let mut dedup = FixDedup::new(
         rows.iter()
-            .map(|row| reader.one_line(row.as_bytes(), false).unwrap()),
+            .map(|row| reader.sole_line(row.as_bytes(), false).unwrap()),
     );
     let kept: Vec<String> = dedup
         .by_ref()
@@ -158,7 +162,7 @@ fn dedup_drops_the_adjacent_republication_and_counts_it() {
     let mut clean = FixDedup::new(
         ["8=FIX.4.4|35=D|11=A|10=0|", "8=FIX.4.4|35=D|11=B|10=0|"]
             .iter()
-            .map(|row| reader.one_line(row.as_bytes(), false).unwrap()),
+            .map(|row| reader.sole_line(row.as_bytes(), false).unwrap()),
     );
     assert_eq!(clean.by_ref().count(), 2);
     assert_eq!(clean.dropped(), 0);
@@ -176,7 +180,7 @@ fn a_redelivery_of_one_order_is_one_order() {
     let mut dedup = FixDedup::new(
         replayed
             .iter()
-            .map(|row| reader.one_line(row.as_bytes(), false).unwrap()),
+            .map(|row| reader.sole_line(row.as_bytes(), false).unwrap()),
     );
     assert_eq!(
         dedup.by_ref().count(),
@@ -187,20 +191,20 @@ fn a_redelivery_of_one_order_is_one_order() {
 
     // That a delivery *was* a replay is still readable, from the columns the
     // digest declined to fold in.
-    let held = reader.one_line(resend.as_bytes(), false).unwrap();
+    let held = reader.sole_line(resend.as_bytes(), false).unwrap();
     assert!(held.lifted("resent").is_some());
     assert_eq!(held.lifted("seqnum"), Some(&Scalar::from(8_i32)));
 
     // A genuinely different order is a different order.
     let amended = reader
-        .one_line(
+        .sole_line(
             b"8=FIX.4.4|35=D|34=7|52=20240102-10:15:30.000|11=A|55=AAPL|38=100|10=0|",
             false,
         )
         .unwrap();
     assert_ne!(
         reader
-            .one_line(original.as_bytes(), false)
+            .sole_line(original.as_bytes(), false)
             .unwrap()
             .digest(),
         amended.digest()

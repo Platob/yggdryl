@@ -265,21 +265,44 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
 }
 
 #[test]
-fn a_row_in_is_a_row_out() {
+fn a_capture_answers_one_row_per_message_not_one_per_line() {
     let batches = batches(codec().parse_text_arrow_reader(source()).unwrap());
+    // A FIX batch answers one row per *message*, and five of the fourteen
+    // lines carry none, so they carry no row either (decision 16) - the text
+    // reader is the one that answers a row per line. The silent five, and
+    // why each states no message:
+    //
+    // - `After Enrichment -> ACCOUNT=... CLIENTID=... VENUE=...` separates its
+    //   named pairs with whitespace alone and marks no key, so the run is
+    //   prose carrying an `=` rather than a bridge row;
+    // - `Referential(dbi|equity|...|[quantity-type=])` holds every pipe in
+    //   front of its one `=`, so nothing names a separator for a run of pairs;
+    // - `Message rejected because : ...` and `no level printed by this plugin`
+    //   hold no `=` at all;
+    // - `heartbeat emitted seq=7` states its one pair on whitespace, unmarked.
+    //
+    // None of the five opens a frame or carries a document either, so each is
+    // a line and no row.
     assert_eq!(
         row_count(&batches),
-        CAPTURE.len(),
-        "every line, including the ones that are not messages at all",
+        9,
+        "nine of the {} lines carry a message",
+        CAPTURE.len()
     );
 
-    // The rows that were not FIX are still rows, named `unknown`.
+    // A row that states no type is still a row, named `unknown` - but only a
+    // bridge row or a document ever is, never a sentence, because a sentence
+    // is not a row at all (decision 16).
     let first = &batches[0];
     let msgtype = tag_column(first, 35);
     assert!(msgtype.is_valid(0), "a framed row states its type");
     assert!(
-        !msgtype.is_valid(CAPTURE.len() - 1),
-        "a sentence states no type"
+        !msgtype.is_valid(5),
+        "the bridge row `toBridge #ISINCODE=XX|...` states no type"
+    );
+    assert!(
+        !msgtype.is_valid(8),
+        "the last row is the `<Execution>` document, which states no type"
     );
 }
 
@@ -582,15 +605,31 @@ fn a_source_without_a_readable_payload_column_is_refused_before_a_row_is_read() 
     // Neither refusal exists at the line door, and that is the point of it: a
     // line holds its bytes as a typed field, so there is no column to name
     // wrongly and no cell that could hold a number instead. A line carrying
-    // no bytes is a row holding an empty message, which is the one answer the
-    // two doors share.
+    // no bytes carries no message either: an empty payload column is a row
+    // that had nothing to read, not a row holding an empty message
+    // (decision 16).
     let mut silent = codec
         .parse_text_line(&TextLine::from_bytes(0, TextBytes::default()).unwrap())
         .unwrap();
-    let empty = silent.next().unwrap().unwrap();
-    assert!(silent.next().is_none());
+    assert!(silent.next().is_none(), "no payload, no message");
+
+    // The empty `unknown` survives for the one case that is not this: a
+    // payload that was there and would not parse, which a batch must not fail
+    // on.
+    let malformed = TextBytes::from_bytes(b"<Order ClOrdID='X'></Nope>").unwrap();
+    let mut broken = codec
+        .parse_text_line(&TextLine::from_bytes(0, malformed).unwrap())
+        .unwrap();
+    let empty = broken.next().unwrap().unwrap();
+    assert!(broken.next().is_none());
     assert_eq!(empty.as_field().name(), "unknown");
     assert!(empty.entries().is_empty());
+
+    // And empty bytes at the byte door are still the one typed refusal: they
+    // are not a row at all, where an empty payload column is a row that
+    // carried nothing.
+    let refused = codec.parse_line(b"").map(drop).unwrap_err();
+    assert!(matches!(refused, yggdryl::Error::Parse { .. }), "{refused}");
 }
 
 #[test]
@@ -615,13 +654,17 @@ fn a_refused_line_ends_the_batch_stream_after_the_completed_prefix() {
     assert!(reader.next().unwrap().is_err());
     assert!(reader.next().is_none(), "fused");
 
-    // The capture door answers every line as a row, the refused one empty.
-    let rows = batches(
-        codec
-            .parse_text_arrow_reader(capture_reader(&lines, lines.len()))
-            .unwrap(),
-    );
-    assert_eq!(row_count(&rows), 3);
+    // The capture door has no refusal to make and no empty row to answer
+    // with: the empty cell is a row that carried no payload, so it yields no
+    // row at all and the two framed lines come through as two (decision 16).
+    let read: Vec<_> = codec
+        .parse_text_arrow_reader(capture_reader(&lines, lines.len()))
+        .unwrap()
+        .collect();
+    assert!(read.iter().all(|batch| batch.is_ok()), "no line refused");
+    let rows: Vec<RecordBatch> = read.into_iter().map(Result::unwrap).collect();
+    assert_eq!(row_count(&rows), 2);
+    assert_eq!(first_tag_value(&rows[0], 11).as_str(), Some("A"));
 }
 
 #[test]
@@ -690,6 +733,14 @@ fn messages_and_arrow_reader_invert_each_other() {
         .parse_lines(CAPTURE)
         .collect::<yggdryl::Result<_>>()
         .unwrap();
+    // The stream is over messages, not lines: the five lines of the corpus
+    // that state no message contribute none to it (decision 16).
+    assert_eq!(
+        parsed.len(),
+        9,
+        "nine messages from {} lines",
+        CAPTURE.len()
+    );
 
     let reader = codec
         .arrow_reader(schema.clone(), parsed.clone().into_iter().map(Ok))
@@ -745,22 +796,35 @@ fn byte_in_byte_out_over_the_whole_corpus() {
 
     let mut written = Vec::new();
     let count = codec.write_arrow_reader(reader, &mut written).unwrap();
-    assert_eq!(count as usize, CAPTURE.len());
 
-    // Every line comes back as the pairs it arrived with, in arrival order.
-    let back: Vec<&str> = std::str::from_utf8(&written).unwrap().lines().collect();
-    assert_eq!(back.len(), CAPTURE.len());
-
+    // One written line per *message*, not per source line: the five lines of
+    // the corpus that open no frame, state no bridge pair and carry no
+    // document are silent, so nine of the fourteen come back (decision 16).
+    // The line each message came from, paired with the pairs it should be
+    // written as, so the written lines zip against the lines that carried a
+    // message rather than against every line.
     let plain = FixCodec::new(registry()).with_null_values::<[&str; 0], &str>([]);
-    for (line, source) in back.iter().zip(CAPTURE) {
-        let read = plain
-            .parse_line(source.as_bytes())
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap();
-        let expected = String::from_utf8(read.into_bytes(b'|')).unwrap();
-        assert_eq!(*line, expected, "{source}");
+    let expected: Vec<(&str, String)> = CAPTURE
+        .iter()
+        .flat_map(|source| {
+            plain
+                .parse_line(source.as_bytes())
+                .unwrap()
+                .map(|read| {
+                    let bytes = read.unwrap().into_bytes(b'|');
+                    (*source, String::from_utf8(bytes).unwrap())
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    assert_eq!(expected.len(), 9, "nine of the fourteen lines are messages");
+    assert_eq!(count as usize, expected.len());
+
+    // Every message comes back as the pairs it arrived with, in arrival order.
+    let back: Vec<&str> = std::str::from_utf8(&written).unwrap().lines().collect();
+    assert_eq!(back.len(), expected.len());
+    for (line, (source, pairs)) in back.iter().zip(&expected) {
+        assert_eq!(line, pairs, "{source}");
     }
 }
 
@@ -1124,12 +1188,26 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
         .unwrap();
     assert_eq!(first.num_rows(), 2);
 
-    // Feed the batch back through as a capture under one of its own text
-    // columns: one implementation serves both, so a column source builds the
-    // same schema a row source does - the capture's own columns first, then
-    // the fixed ones under their own names - and a row in is a row out.
+    // Feed the batch back through as a capture under the `body` column it
+    // carried its own payload in: one implementation serves both, so a column
+    // source builds the same schema a row source does - the capture's own
+    // columns first, then the fixed ones under their own names - and the two
+    // frames read again as two messages.
     let schema = first.schema();
     let again = codec
+        .clone()
+        .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
+            schema.clone(),
+            [first.clone()],
+        ))
+        .unwrap();
+    let rows: usize = again.map(|batch| batch.unwrap().num_rows()).sum();
+    assert_eq!(rows, 2, "the frames the batch carried, read again");
+
+    // Named at a column that is not a payload, the same source answers
+    // nothing: `msgtype` holds `D`, which opens no frame, states no bridge
+    // pair and carries no document, so neither row is a row (decision 16).
+    let typed = codec
         .clone()
         .with_payload_column("msgtype")
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
@@ -1137,8 +1215,8 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
             [first.clone()],
         ))
         .unwrap();
-    let rows: usize = again.map(|batch| batch.unwrap().num_rows()).sum();
-    assert_eq!(rows, 2, "a row in is still a row out");
+    let rows: usize = typed.map(|batch| batch.unwrap().num_rows()).sum();
+    assert_eq!(rows, 0, "a payload of `D` carries no message");
 
     // The entries column is a list, not a payload: naming it is refused
     // before a row is read rather than answered as rows of nothing.
@@ -1348,7 +1426,16 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
             TextLine::from_bytes(0, TextBytes::from_bytes(body.as_bytes()).unwrap()).unwrap()
         })
         .collect();
-    let alone: Vec<FixMsg> = lines.iter().map(|line| one_of(&codec, line)).collect();
+    // Read as the payload it is, `venue` is one word: it opens no frame,
+    // states no bridge pair and carries no document, so it states no message
+    // at all (decision 16). It used to answer an empty `unknown`; that it now
+    // answers nothing is the same proof, that the column was read as a
+    // payload and never as the plugin its spelling names.
+    assert!(
+        codec.parse_text_line(&lines[0]).unwrap().next().is_none(),
+        "a payload of one word carries no message"
+    );
+    let alone = one_of(&codec, &lines[1]);
 
     let capture = DataType::from_fields([DataType::utf8().required_field("pluginid")])
         .unwrap()
@@ -1365,27 +1452,26 @@ fn a_payload_column_spelled_pluginid_is_the_payload_and_fills_no_plugin() {
             .parse_text_arrow_reader(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
             .unwrap(),
     );
-    assert_eq!(row_count(&read), bodies.len());
+    // The batch door reads the column the same way: one row for the frame,
+    // and none for the word, which is a payload carrying no message.
+    assert_eq!(row_count(&read), 1);
     let streamed: Vec<FixMsg> = codec
         .messages(yggdryl::arrow::batch_reader(read[0].schema(), read.clone()))
         .collect::<yggdryl::Result<_>>()
         .unwrap();
-    assert_eq!(streamed.len(), bodies.len());
+    assert_eq!(streamed.len(), 1);
 
-    for (row, message) in alone.iter().enumerate() {
-        for read in [message, &streamed[row]] {
-            assert_eq!(read.as_field().as_fix().branches().count(), 0, "row {row}");
-            assert!(
-                read.get_by_tag(yggdryl::PLUGINID_TAG_NAME.0)
-                    .is_none_or(Scalar::is_null),
-                "row {row}: the payload never fills the plugin"
-            );
-            assert!(read.get_by_tag(5001).is_none(), "row {row}");
-        }
-        assert_eq!(message.entries(), streamed[row].entries(), "row {row}");
+    for message in [&alone, &streamed[0]] {
+        assert_eq!(message.as_field().as_fix().branches().count(), 0);
+        assert!(
+            message
+                .get_by_tag(yggdryl::PLUGINID_TAG_NAME.0)
+                .is_none_or(Scalar::is_null),
+            "the payload never fills the plugin"
+        );
+        assert!(message.get_by_tag(5001).is_none());
     }
+    assert_eq!(alone.entries(), streamed[0].entries());
     // The frame was read as the body; the dictionary's name held nothing to read.
-    assert_eq!(alone[1].by_tag(11).unwrap().as_str(), Some("A"));
-    assert!(alone[0].get_by_tag(11).is_none());
-    assert!(alone[0].entries().is_empty());
+    assert_eq!(alone.by_tag(11).unwrap().as_str(), Some("A"));
 }

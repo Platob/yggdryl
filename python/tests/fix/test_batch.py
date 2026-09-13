@@ -59,6 +59,13 @@ CAPTURE = [
     b"heartbeat emitted seq=7",
 ]
 
+# The capture lines that carry a message. A line that opens no frame, states
+# no bridge pair and carries no document carries nothing to read
+# (decision 16): `After Enrichment ->` and `heartbeat emitted seq=7` write
+# their pairs into a sentence, which names no separator for them, so they are
+# prose that happens to hold an `=`, and the other three hold no pair at all.
+CARRYING = [CAPTURE[at] for at in (0, 1, 2, 3, 4, 5, 6, 9, 10)]
+
 ORDER = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|"
 REPORT = b"8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|"
 
@@ -236,12 +243,13 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     assert reader.read_all().num_rows == 0
 
 
-def test_a_row_in_is_a_row_out(seed: FixRegistry) -> None:
+def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistry) -> None:
     parsed = FixCodec(seed).parse_text_arrow_reader(_capture(CAPTURE, len(CAPTURE))).read_all()
-    assert parsed.num_rows == len(CAPTURE), "every line, including the ones that are not messages"
+    assert parsed.num_rows == len(CARRYING), "one row a message; the text reader answers one a line"
+    assert [bytes(body) for body in _column(parsed, "body")] == CARRYING
     msgtype = _column(parsed, "msgtype")
     assert msgtype[0] == "D", "a framed row states its type"
-    assert msgtype[-1] is None, "a sentence states no type"
+    assert msgtype[-1] is None, "a document that states no type is `unknown`"
     # The arrival record closes every row that carried one.
     assert len(_column(parsed, "nofixentries")[0]) == 7
 
@@ -358,7 +366,7 @@ def test_messages_pull_from_the_reader_one_batch_at_a_time(seed: FixRegistry) ->
     first = next(messages)
     assert first.by_tag(11).as_py() == "ORDER-1"
     assert first.by_name("body").as_py() == CAPTURE[0], "a carried column is a child of its own name"
-    assert len(list(messages)) == len(CAPTURE) - 1
+    assert len(list(messages)) == len(CARRYING) - 1
 
 
 def test_a_python_failure_behind_a_batch_stream_arrives_with_the_batch(seed: FixRegistry) -> None:
@@ -379,12 +387,13 @@ def test_byte_in_byte_out_over_the_whole_corpus(seed: FixRegistry) -> None:
     codec = FixCodec(seed, null_values=[], separator=124)
     sink = io.BytesIO()
     written = codec.write_arrow_reader(codec.parse_text_arrow_reader(_capture(CAPTURE, len(CAPTURE))), sink)
-    assert written == len(CAPTURE)
+    # One line out per message, so the lines that carried none are not there.
+    assert written == len(CARRYING)
     back = sink.getvalue().split(b"\n")
     assert back.pop() == b""
-    assert len(back) == len(CAPTURE)
+    assert len(back) == len(CARRYING)
     plain = FixCodec(seed, null_values=[])
-    for line, source in zip(back, CAPTURE):
+    for line, source in zip(back, CARRYING):
         assert line == next(plain.parse_line(source)).into_bytes(124), source
 
 

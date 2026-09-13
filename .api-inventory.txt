@@ -695,13 +695,13 @@ pub struct FixCodec
   pub fn with_null_values<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: Into<String>
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
-  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>
+  pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per MBean of a bulk configuration, and none at all where the row opens no frame, states no bridge pair and carries no document; decision 16)
   pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item)
-  pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>
-  pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>
-  pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>
-  pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>
-  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing)
+  pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>  (one frame; a body holding a second is refused at the byte it opens at - `invalid fix expression at byte N: expected one frame, got a second`; decision 16)
+  pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
+  pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>  (one document; likewise refused, at a second root element, target `fixml`)
+  pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>  (one frame; likewise refused, at the second frame's key in the page the pairs were copied into)
+  pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; a payload that was there and would not parse is one empty `unknown` message, which is what keeps a row's content from failing a batch)
   pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Borrow<TextLine>
   pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (never fails; the `Result` is the shape every stage answers in)
   pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
@@ -711,7 +711,7 @@ pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
 ### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
 impl FixCodec
-  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, FIX rows out; the capture's columns lead; batches close on the payload column's raw bytes read once per input batch)
+  pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row; batches close on the payload column's raw bytes read once per input batch)
   pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, filled FIX rows out under the same schema; no re-parse)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
   pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator<Item = Result<FixMsg>>, I::IntoIter: Send + 'static  (each message through `FixMsg::into_row`; batches close on the arrival record's raw bytes)
@@ -719,7 +719,7 @@ impl FixCodec
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
-  impl Iterator for FixMessages  (Item = Result<FixMsg>; fused after exhaustion or the first error; no collection of ULconfig results)
+  impl Iterator for FixMessages  (Item = Result<FixMsg>; none, one or many a row - one per frame of a line, re-entering the frame reader at each frame's offset, one per ULconfig plugin; nothing collected either way; fused after exhaustion or the first error; decision 16)
   impl FusedIterator for FixMessages
 
 ### yggdryl::fix::crated  [rust\src\fix\crated.rs]

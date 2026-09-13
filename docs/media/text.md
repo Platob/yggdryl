@@ -160,12 +160,16 @@ when the read goes on into a FIX batch.
 
 The classification column is the [capture reading](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is. It needs no dictionary and costs one shallow scan per record, which is why it is opt-in — a read that only needs rows should not pay for it. Which way a line moved is FIX's own fact, tag 385, and the [codec](../fix/decode.md) reads it from the prose in front of the payload; the reader states no direction of its own and takes nothing off the body.
 
-The reader states no message type of its own either: a line's type is what its frame says, and reading a frame is the [codec's](../fix/decode.md) work rather than the classifier's.
+The reader states no message type of its own either: a line's type is what its frame says, and reading a frame is the [codec's](../fix/decode.md) work rather than the classifier's. The scan stops at the first frame it locates, so on a line carrying two of them the `mimetype` a row holds — and the message code that same reading infers — describes the first frame and no other, which is what a classifier can answer without parsing.
 
 [FIX decoding](../fix/decode.md) consumes these captured records through a lazy
-`FixMessages` iterator. One bulk ULconfig response can yield several flat
-messages; each retains the originating capture columns. The text reader itself
-still emits one row per framed record.
+`FixMessages` iterator, which answers none, one or many messages a record: a
+line carrying two frames yields both, one bulk ULconfig response yields a flat
+message per configuration, and a line the codec finds no message in yields
+none. Each retains the originating capture columns, and a
+[FIX batch](../fix/arrow.md#one-row-per-message) is therefore one row per
+message. The text reader is what answers one row per line: it emits every
+framed record, whatever the codec would go on to make of it.
 
 Measured in [Classifying a capture](../fix/registry.md#classifying-a-capture).
 

@@ -51,6 +51,13 @@ const CAPTURE = [
   'heartbeat emitted seq=7',
 ]
 
+// The capture lines that carry a message. A line that opens no frame, states
+// no bridge pair and carries no document carries nothing to read
+// (decision 16): `After Enrichment ->` and `heartbeat emitted seq=7` write
+// their pairs into a sentence, which names no separator for them, so they are
+// prose that happens to hold an `=`, and the other three hold no pair at all.
+const CARRYING = [0, 1, 2, 3, 4, 5, 6, 9, 10].map((at) => CAPTURE[at])
+
 const ORDER = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|VenueThing=7|9999=x|10=0|'
 const REPORT = '8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|'
 
@@ -281,12 +288,16 @@ test('the schema is decided before the first row is read', () => {
   assert.equal(reader.intoTable().numRows, 0)
 })
 
-test('a row in is a row out', () => {
+test('a capture answers one row per message, not one per line', () => {
   const parsed = new fix.FixCodec(seed()).parseTextArrowReader(capture(CAPTURE, CAPTURE.length)).intoTable()
-  assert.equal(parsed.numRows, CAPTURE.length, 'every line, including the ones that are not messages')
+  assert.equal(parsed.numRows, CARRYING.length, 'one row a message; the text reader answers one a line')
+  assert.deepEqual(
+    column(parsed, 'body').map((body) => Buffer.from(body).toString()),
+    CARRYING,
+  )
   const msgtype = column(parsed, 'msgtype')
   assert.equal(msgtype[0], 'D', 'a framed row states its type')
-  assert.equal(msgtype.at(-1), null, 'a sentence states no type')
+  assert.equal(msgtype.at(-1), null, 'a document that states no type is `unknown`')
 })
 
 test('several small input batches accumulate and one large batch splits by rows', () => {
@@ -400,7 +411,7 @@ test('messages pull from the reader one batch at a time', () => {
   const first = messages.next().value
   assert.equal(first.byTag(11).asJs(), 'ORDER-1')
   assert.equal(Buffer.from(first.byName('body').asJs()).toString(), CAPTURE[0], 'a carried column is a child of its own name')
-  assert.equal([...messages].length, CAPTURE.length - 1)
+  assert.equal([...messages].length, CARRYING.length - 1)
 })
 
 test('a failure behind a batch stream arrives with the batch', () => {
@@ -425,13 +436,14 @@ test('byte in, byte out over the whole corpus', () => {
       chunks.push(Buffer.from(chunk))
     },
   })
-  assert.equal(written, CAPTURE.length)
+  // One line out per message, so the lines that carried none are not there.
+  assert.equal(written, CARRYING.length)
   const back = Buffer.concat(chunks).toString().split('\n')
   assert.equal(back.pop(), '')
-  assert.equal(back.length, CAPTURE.length)
+  assert.equal(back.length, CARRYING.length)
   const plain = new fix.FixCodec(registry, { nullValues: [] })
   for (const [at, line] of back.entries()) {
-    assert.equal(line, plain.parseLine(Buffer.from(CAPTURE[at])).next().value.intoBytes(PIPE).toString(), CAPTURE[at])
+    assert.equal(line, plain.parseLine(Buffer.from(CARRYING[at])).next().value.intoBytes(PIPE).toString(), CARRYING[at])
   }
   // An Arrow JS table is a source too, the sink is whatever writes chunks,
   // and a batch without the arrival record is refused before a row is read.

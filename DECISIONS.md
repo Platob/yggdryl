@@ -97,7 +97,9 @@ codec already stops at `10=` for exactly this reason. Selecting a range of the
 entries is cheap: every key exposes `start()`.
 
 A line carrying two frames reads as the first, which is what the codec answers
-today; the rest of the line is not part of that message.
+today; the rest of the line is not part of that message. (Decision 16 amends
+that last sentence: the rest of the line is the next message where it opens a
+frame of its own. What a message is bounded by does not move.)
 
 **Written in:** `fix/codec.rs`, on the line entry point.
 **Fixtures:** a frame behind a `k=v` log prefix; trailing pairs after the
@@ -1156,3 +1158,92 @@ flag; the bindings reading and writing the list; the equivalence snapshot
 regenerated: `ulbridge[095]` and `ulbridge[117]` (`Request: JmxReadRequest[...]`)
 gain `.field.msgdirection` `S`, `bridge[005]` (the bare configuration
 document on the line door) loses its `R`, and nothing else moves.
+
+## 16. A row yields none, one or many messages, and `unknown` names a frame
+
+**Rule.** A row is read for every message it carries, and a row that carries
+none yields none. Amending decision 3, which said a line carrying two frames
+reads as the first: a frame still begins where it opens and ends at its
+checksum, and the pairs behind that checksum begin the next message where
+they open a frame of their own. What opens one is the rule `locate_frame`
+already applies, read over the row's own entries so a mark is a mark: an
+unmarked `8=`, and where the rest of the run states none, an unmarked `35=`.
+A frame that states no checksum ends where the next unmarked `8=` opens -
+only an `8=`, because a frame's own `35=` stands behind its `8=` and a second
+`35=` inside an open frame is a duplicate tag, not a new message. The tail of
+the last frame is the last frame's, as decision 3 said.
+
+`unknown` names a frame, a bridge row or a document that states no type -
+never a line that states no frame. A row that opens no frame, states no
+bridge pair and carries no document yields nothing at all: no message, and on
+the batch door no row. What makes a run of named pairs a bridge row rather
+than prose carrying an `=` is decision 1's second amendment, already the
+crate's vocabulary for it: the line named a separator for the run - a pipe, a
+`SOH`, or one of the spellings a log escapes it with, never whitespace - or
+the bridge marked one of its keys. A numeric frame needs neither: a run of
+tag-keyed pairs is FIX whatever separated it, so a space-separated frame
+still reads. So `heartbeat emitted seq=7` and `... ExecId=[00011377094XEEA0
+OrderId=[00026877712XOEA0` state no message, where they used to state an
+`unknown` carrying `seq` and `ExecID(17)`; `ACCOUNT=A1|SIDE=1` still states
+one. A bridge row is one message and an opener-headed numeric frame behind it
+is a second; a tag run behind a bridge row that opens no frame stays part of
+it, which is the mixed form a bridge writes.
+
+Every message of one row shares the row's version, clock, fills and direction
+(decision 8), retained once per row exactly as a configuration document's are
+(`RowStamp`, moved beside `RowExtras` in `fix/build.rs` as the owned twin it
+is). `FixMessages` gains a lazy source over the page the row already holds,
+re-entering the frame reader at each frame's offset: nothing is collected,
+each message owns the ranges of its own frame, and an `Err` still fuses the
+iterator. A row of one frame keeps the eager path, so the allocation pins on
+a single-frame line do not move. The entry-less `unknown` a line used to
+build survives for one case and one only: a payload that was there and would
+not parse - a malformed document - which a batch must not fail on. A row that
+carried nothing to read is a different fact and answers nothing.
+
+The single-dialect byte doors - `parse_fix_line`, `parse_ullink_line`,
+`parse_fixml_line`, `parse_pairs` - keep answering one message and refuse a
+body that holds a second: `invalid fix expression at byte N: expected one
+frame, got a second`, positioned at the byte the second frame opens at (the
+second root element for FIXML, the second `8=` behind a checksum for pairs).
+They are the doors a caller uses when it holds one frame, and a caller
+holding two has a row, not a frame.
+
+The batch reader expands a row into its messages as it already expands
+MBeans - the carried columns repeated, the row's byte charge on the first -
+and a row yielding nothing yields no output row, so a capture of ten million
+lines answers one row per *message*, not one per line; the text reader is
+what answers one row per line. `write_arrow_reader` writes one line per
+message, so a source line holding two frames comes back as two. The
+classifier's `mimetype` and `msgtype` columns describe the line's first
+frame, which is what a classifier can know without parsing.
+
+**Why.** Two frames on one line is a shape captures really hold - a relay
+that batched two messages into one log write - and reading only the first
+silently drops the second: a count that says 113 rows for a capture holding
+114 messages is wrong in the direction nobody checks. The opposite error was
+the same mistake mirrored: a sentence with no frame in it became a message
+named `unknown` carrying whatever `=` the prose happened to hold, so a
+capture's message count was the line count by construction and `ExecId=` in
+an English sentence became `ExecID(17)`. A reader that answers "this line
+carried no message" is the one that can be counted on, and the line is still
+the line - the text reader answers every one of them.
+
+**What moves.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `fix/messages.rs` | the lazy frames source; `none()` | the fuse, the ULconfig source, no collection |
+| `fix/codec.rs` | `frame_end`/`next_frame` beside `bounded`; the page dispatch; the four doors' refusals; `empty_with` gone | the frame's own bounds, the mixed form, a prefix's pairs staying prose |
+| `fix/build.rs` | `RowStamp` moved beside `RowExtras` | what a stamp holds |
+| `mime_type/line.rs` | `names_separator`, the one reading of decision 1's amendment a caller outside the scanner needs | `locate_frame`, `inspect`, the classifier's first-frame answer |
+| the corpus | every prose line's `.messages` 1 -> 0 | every framed line |
+
+**Written in:** `fix/codec.rs`, on `parse_line`; `fix/messages.rs`;
+`docs/fix/decode.md`, `docs/fix/arrow.md`, `docs/media/text.md`.
+**Fixtures:** two frames on one line, both bounded, each re-emitting its own
+bytes; a bridge row then a frame; a checksum-less frame then a frame; a
+marked `#8=`/`#10=` inside a bridge row opening and closing nothing; a prose
+line answering nothing through every door; the four doors refusing a second
+frame by byte; the corpus lines whose `.messages` moves from 1 to 0, named in
+the regeneration commit; `one_line` renamed to what it asserts and kept.

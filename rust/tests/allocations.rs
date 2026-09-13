@@ -485,6 +485,39 @@ fn parsed_ulconfig_wildcards_iterate_without_allocating_results() {
 }
 
 #[test]
+fn a_line_of_several_frames_costs_its_messages_and_nothing_per_line() {
+    let codec = FixCodec::new(Arc::new(fix_registry(64)));
+    let frame = "8=FIX.4.4|35=D|11=A|10=001|";
+    let read = |frames: usize| {
+        let line = frame.repeat(frames).into_bytes();
+        // The row is read outside the count: what is measured is draining
+        // the messages it carries, which is where a collection would show.
+        let messages = codec.parse_line(black_box(&line)).expect("a row");
+        let (allocations, count) = counted(move || {
+            messages
+                .inspect(|message| {
+                    black_box(message.as_ref().expect("a message").as_field().name());
+                })
+                .count()
+        });
+        assert_eq!(
+            count, frames,
+            "a line of {frames} frames is {frames} messages"
+        );
+        allocations
+    };
+    // What a row of several frames costs is its messages and nothing per
+    // line: the source holds the row's entries and re-enters the frame
+    // reader where each opens, so draining is proportional to the messages
+    // and never to the line - which is what a collection of the results
+    // would break (decision 16).
+    let each = read(4) / 4;
+    for frames in [4, 8, 16] {
+        assert_eq!(read(frames), each * frames, "{frames} frames");
+    }
+}
+
+#[test]
 fn registry_message_singletons_and_scoped_groups_are_borrowed() {
     let mut registry = fix_registry(512);
     let mut message = DataType::from_fields([

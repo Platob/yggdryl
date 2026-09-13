@@ -10,7 +10,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | --- | --- |
 | [FIX](index.md) | This page: vocabulary, `FixId`, membership, nesting |
 | [Explorer](explorer.md) | The whole dictionary live: counts, field search, message layouts, provenance |
-| [Decode](decode.md) | A frame in, an explanation out; every shape a capture holds, read by the package |
+| [Decode](decode.md) | A line in, every message it holds out; every shape a capture holds, read by the package |
 | [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |

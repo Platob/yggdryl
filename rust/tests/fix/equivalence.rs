@@ -419,6 +419,16 @@ fn frames() -> Vec<Vec<u8>> {
         )
         .into_bytes(),
     );
+    // A row is read for every message it carries (decision 16). Appended at
+    // the end because the unread assertion names the earlier ones by index:
+    // two frames on one line, a checksum-less frame the next one closes, a
+    // bridge row the bridge marked in front of a frame, and a marked `#8=`
+    // and `#10=` inside a bridge row, which are the bridge's own spelling
+    // and so open and close nothing.
+    lines.push(b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O|10=002|".to_vec());
+    lines.push(b"8=FIX.4.4|35=D|11=A|8=FIX.4.4|35=8|37=O|10=002|".to_vec());
+    lines.push(b"#MSGTYPE=D|#CLORDID=A1|8=FIX.4.4|35=D|11=A1|10=000|".to_vec());
+    lines.push(b"MSGTYPE=D|#8=FIX.4.4|#10=000".to_vec());
     lines
 }
 

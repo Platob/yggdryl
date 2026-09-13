@@ -1,6 +1,6 @@
 //! The message holder's setters, and the row read back into a message.
 
-use super::OneMessage;
+use super::SoleMessage;
 
 use std::sync::Arc;
 
@@ -34,7 +34,7 @@ fn stated(message: &FixMsg) -> Vec<(i32, Scalar)> {
 #[test]
 fn a_set_value_is_typed_by_the_registry_field_and_appended_when_absent() {
     let (registry, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     let before = message.as_field().fields().len();
     let declared = registry.get_field_by_tag(34).expect("MsgSeqNum");
 
@@ -58,7 +58,7 @@ fn a_set_value_is_typed_by_the_registry_field_and_appended_when_absent() {
 #[test]
 fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
     let (_, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     let before = stated(&message);
     let at = message
         .as_field()
@@ -92,7 +92,7 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
 #[test]
 fn a_set_leaves_the_entries_and_the_wire_untouched() {
     let (_, reader) = reader();
-    let parsed = reader.one_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER, false).unwrap();
     let mut message = parsed.clone();
     message.set(55, Scalar::from("MSFT")).unwrap();
     message.set(38, Scalar::from(100.0_f64)).unwrap();
@@ -109,7 +109,7 @@ fn a_set_leaves_the_entries_and_the_wire_untouched() {
 #[test]
 fn a_null_is_stored_as_a_stated_null() {
     let (_, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     message.set(55, Scalar::Null).unwrap();
     let at = message.as_field().index_of("symbol").unwrap();
     assert!(message.as_field().fields()[at].is_nullable());
@@ -119,7 +119,7 @@ fn a_null_is_stored_as_a_stated_null() {
 #[test]
 fn an_unknown_name_is_refused_and_the_message_stands() {
     let (_, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     let before = message.clone();
     let refused = message.set("nosuchfield", Scalar::from("y")).unwrap_err();
     assert!(refused.to_string().contains("nosuchfield"), "{refused}");
@@ -132,7 +132,7 @@ fn an_unknown_name_is_refused_and_the_message_stands() {
 #[test]
 fn an_unknown_name_still_reaches_the_child_spelled_that_way() {
     let (_, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     let at = message
         .as_field()
         .index_of("venuething")
@@ -147,7 +147,7 @@ fn an_unknown_name_still_reaches_the_child_spelled_that_way() {
 #[test]
 fn a_bare_unknown_tag_is_appended_under_its_decimal_spelling() {
     let (_, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     message.set(7777, Scalar::from("custom")).unwrap();
     let child = message.as_field().fields().last().unwrap();
     assert_eq!(child.name(), "7777");
@@ -169,7 +169,7 @@ fn a_bare_unknown_tag_is_appended_under_its_decimal_spelling() {
 #[test]
 fn several_values_land_with_one_rebuild_as_the_same_writes_would_one_at_a_time() {
     let (_, reader) = reader();
-    let mut many = reader.one_line(ORDER, false).unwrap();
+    let mut many = reader.sole_line(ORDER, false).unwrap();
     let mut one = many.clone();
     let writes = [
         (55, Scalar::from("MSFT")),
@@ -201,7 +201,7 @@ fn several_values_land_with_one_rebuild_as_the_same_writes_would_one_at_a_time()
 #[test]
 fn the_consuming_twin_answers_what_the_setter_leaves() {
     let (_, reader) = reader();
-    let mut set = reader.one_line(ORDER, false).unwrap();
+    let mut set = reader.sole_line(ORDER, false).unwrap();
     let with = set.clone().with_value(55, Scalar::from("MSFT")).unwrap();
     set.set(55, Scalar::from("MSFT")).unwrap();
     assert_eq!(with, set);
@@ -210,7 +210,7 @@ fn the_consuming_twin_answers_what_the_setter_leaves() {
 #[test]
 fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
     let (_, reader) = reader();
-    let mut message = reader.one_line(ORDER, false).unwrap();
+    let mut message = reader.sole_line(ORDER, false).unwrap();
     let before = stated(&message);
     let count = message.as_field().fields().len();
 
@@ -236,7 +236,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
 fn a_row_reads_back_into_the_message_that_made_it() {
     let (registry, reader) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let parsed = reader.one_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER, false).unwrap();
     let row = parsed.into_row(&schema).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
@@ -360,7 +360,7 @@ fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
     .unwrap()
     .required_field("line");
     let schema = fix_schema_carrying(&capture, &fix_schema(&registry, "fix").unwrap()).unwrap();
-    let parsed = reader.one_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER, false).unwrap();
 
     // A parsed message has no capture columns: they are null in its row.
     let row = parsed.into_row(&schema).unwrap();
@@ -404,7 +404,7 @@ fn a_row_without_the_entries_column_has_no_entries() {
     let narrow = DataType::from_fields(columns)
         .unwrap()
         .required_field("fix");
-    let parsed = reader.one_line(ORDER, false).unwrap();
+    let parsed = reader.sole_line(ORDER, false).unwrap();
     let row = parsed.into_row(&narrow).unwrap();
 
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &row).unwrap();
@@ -423,7 +423,7 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     // materializes, so the deepest level folds into the JSON leaf.
     const DEEP: &[u8] =
         b"8=FIX.4.4|35=AE|571=T1|552=1|54=1|453=1|448=P1|452=1|802=1|523=S1|803=1|10=0|";
-    let parsed = reader.one_line(DEEP, false).unwrap();
+    let parsed = reader.sole_line(DEEP, false).unwrap();
     fn depth(entries: &[FixEntry]) -> usize {
         entries
             .iter()

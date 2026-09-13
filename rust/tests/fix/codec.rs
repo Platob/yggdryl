@@ -1,6 +1,6 @@
 //! The codec's readers, over the committed dictionary and a real capture.
 
-use super::OneMessage;
+use super::SoleMessage;
 use super::path;
 
 use std::sync::Arc;
@@ -44,26 +44,50 @@ const CAPTURE: &[&str] = &[
     "heartbeat emitted seq=7",
 ];
 
+/// The capture rows that carry no message at all (decision 16): a row that
+/// opens no frame, states no bridge pair and carries no document states
+/// nothing to read. `After Enrichment ->` and `heartbeat emitted seq=7`
+/// write their pairs into a sentence, and a sentence names no separator for
+/// them, so they are prose that happens to hold an `=`; `Referential(...)`
+/// and the two remarks hold no readable pair at all.
+const SILENT: [usize; 5] = [7, 8, 11, 12, 13];
+
 #[test]
-fn every_capture_row_builds_and_none_is_skipped() {
+fn every_capture_row_states_its_messages_and_none_is_skipped() {
     let reader = reader();
-    for row in CAPTURE {
-        let message = reader
-            .one_line(row.as_bytes(), false)
+    for (at, row) in CAPTURE.iter().enumerate() {
+        let messages = reader
+            .parse_line(row.as_bytes())
             .unwrap_or_else(|error| panic!("{row}: {error}"));
-        // A row with no type is named `unknown` rather than refused: every
-        // pair that parsed became a field and the entries record the row.
-        assert!(!message.as_field().name().is_empty(), "{row}");
+        let mut read = 0;
+        for message in messages {
+            let message = message.unwrap_or_else(|error| panic!("{row}: {error}"));
+            // A message with no type is named `unknown` rather than refused:
+            // every pair that parsed became a field and the entries record
+            // the row.
+            assert!(!message.as_field().name().is_empty(), "{row}");
+            read += 1;
+        }
+        assert_eq!(read, usize::from(!SILENT.contains(&at)), "{row}");
     }
 
-    // Empty input is the one typed error: a line that merely held nothing is
-    // `Ok` and says so.
-    assert!(reader.one_line(b"", false).is_err());
-    let empty = reader
-        .one_line(b"no level printed by this plugin", false)
+    // Empty input is the one typed error: a line that merely held nothing to
+    // read is `Ok` and says so by yielding nothing.
+    assert!(reader.parse_line(b"").is_err());
+    assert!(
+        reader
+            .parse_line(b"no level printed by this plugin")
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    // `unknown` names a frame that stated no type, which is what a line
+    // without a frame no longer answers.
+    let typeless = reader
+        .sole_line(b"8=FIX.4.4|49=S|56=T|10=0|", false)
         .unwrap();
-    assert_eq!(empty.as_field().name(), "unknown");
-    assert!(empty.entries().is_empty());
+    assert_eq!(typeless.as_field().name(), "unknown");
+    assert_eq!(typeless.entries().len(), 4);
 }
 
 #[test]
@@ -81,14 +105,14 @@ fn a_framed_row_takes_its_type_from_the_frame_and_its_prefix_is_dropped() {
             "D",
         ),
     ] {
-        let message = reader.one_line(row.as_bytes(), false).expect(row);
+        let message = reader.sole_line(row.as_bytes(), false).expect(row);
         assert_eq!(message.as_field().name(), msgtype, "{row}");
     }
 
     // The prose in front of the frame is not a field, and nothing after the
     // checksum is part of the message.
     let framed = reader
-        .one_line(
+        .sole_line(
             b"sending >> 8=FIX.4.2|9=176|35=D|10=203| << queued seq=1092",
             false,
         )
@@ -111,7 +135,7 @@ fn message_codes_keep_the_complete_text_the_wire_declares() {
                 sep = char::from(separator)
             );
             assert_eq!(FixCodec::infer_msgtype_text(&line), Some(code));
-            let message = reader.one_line(line.as_bytes(), false).unwrap();
+            let message = reader.sole_line(line.as_bytes(), false).unwrap();
             assert_eq!(message.by_tag(35).unwrap().as_str(), Some(code));
             assert_eq!(message.by_tag(55).unwrap().as_str(), Some("AAPL"));
             assert_eq!(
@@ -384,10 +408,10 @@ fn nested_counter_anomalies_follow_each_counter_across_reordered_siblings() {
 fn a_tag_key_and_a_name_key_build_the_same_message() {
     let reader = reader();
     let by_tag = reader
-        .one_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|55=AAPL|54=1|10=0|", false)
         .unwrap();
     let by_name = reader
-        .one_line(b"8=FIX.4.4|MsgType=D|Symbol=AAPL|Side=1|10=0|", false)
+        .sole_line(b"8=FIX.4.4|MsgType=D|Symbol=AAPL|Side=1|10=0|", false)
         .unwrap();
     assert_eq!(by_tag.as_value(), by_name.as_value());
     assert_eq!(by_tag.as_field().dtype(), by_name.as_field().dtype());
@@ -397,7 +421,7 @@ fn a_tag_key_and_a_name_key_build_the_same_message() {
     let id = registry().field_by_tag(35).unwrap().as_fix().id().unwrap();
     for spelling in ["MsgType", "msgtype", "MSG_TYPE", "msg-type", "Msg Type"] {
         let row = format!("8=FIX.4.4|{spelling}=D|10=0|");
-        let message = reader.one_line(row.as_bytes(), false).expect(&row);
+        let message = reader.sole_line(row.as_bytes(), false).expect(&row);
         assert_eq!(message.as_field().name(), "D", "{spelling}");
         assert_eq!(FixId::of(35, spelling).ok(), id, "{spelling}");
     }
@@ -407,7 +431,7 @@ fn a_tag_key_and_a_name_key_build_the_same_message() {
 fn a_value_is_translated_typed_and_kept_as_it_arrived() {
     let reader = reader();
     let message = reader
-        .one_line(b"8=FIX.4.4|35=D|54=Buy|38=100|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|54=Buy|38=100|10=0|", false)
         .unwrap();
 
     // The row holds the translated code and the typed number.
@@ -440,7 +464,7 @@ fn a_value_is_translated_typed_and_kept_as_it_arrived() {
 fn an_unknown_key_is_kept_and_a_bad_value_is_null_rather_than_a_failure() {
     let reader = reader();
     let message = reader
-        .one_line(b"8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|", false)
         .unwrap();
 
     // An unknown name is kept under its own folded spelling, and an unknown
@@ -473,7 +497,7 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
     let reader = reader();
     for spelling in ["", "null", "NULL", "<null>"] {
         let row = format!("8=FIX.4.4|35=D|58={spelling}|10=0|");
-        let message = reader.one_line(row.as_bytes(), false).expect(&row);
+        let message = reader.sole_line(row.as_bytes(), false).expect(&row);
         assert!(message.get_by_tag(58).is_none(), "{spelling}");
         assert!(
             !message.entries().iter().any(|entry| entry.tag() == 58),
@@ -483,14 +507,14 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
     // A value that merely contains `null`, and one a venue means literally,
     // both survive - the listing is a convention and has to be overridable.
     let kept = reader
-        .one_line(b"8=FIX.4.4|35=D|58=nullable|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|58=nullable|10=0|", false)
         .unwrap();
     assert_eq!(kept.by_tag(58).unwrap().as_str(), Some("nullable"));
 
     let literal = reader
         .clone()
         .with_null_values::<[&str; 0], &str>([])
-        .one_line(b"8=FIX.4.4|35=D|58=null|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|58=null|10=0|", false)
         .unwrap();
     assert_eq!(literal.by_tag(58).unwrap().as_str(), Some("null"));
 }
@@ -499,7 +523,7 @@ fn a_stated_absence_produces_no_field_and_no_entry() {
 fn a_bridge_group_becomes_real_nesting_from_its_indexed_keys() {
     let reader = reader();
     let row = "MSGTYPE=D|#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=SYNTH-01\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1";
-    let message = reader.one_line(row.as_bytes(), false).unwrap();
+    let message = reader.sole_line(row.as_bytes(), false).unwrap();
 
     let parties = message.by_name("parties").expect("the group");
     let occurrences = parties.as_sequence().expect("a list of occurrences");
@@ -536,14 +560,14 @@ fn a_bridge_frame_of_raw_bytes_reads_its_types_its_group_and_its_miscount() {
 
     // The dialect is read off the frame, so the bytes entry point and the
     // bridge one answer the same message rather than two spellings of it.
-    let message = reader.one_line(line, false).unwrap();
+    let message = reader.sole_line(line, false).unwrap();
     assert_eq!(message, reader.parse_ullink_line(line).unwrap());
     let without_member_separators: &[u8] =
         b"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2\
 |#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|";
     assert_eq!(
         message,
-        reader.one_line(without_member_separators, false).unwrap()
+        reader.sole_line(without_member_separators, false).unwrap()
     );
 
     // Names resolve to tags, and each value takes its field's own type: a
@@ -626,7 +650,7 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         b"MSGTYPE=D|ORDERID=123|#ORDERID=345".as_slice(),
         b"MSGTYPE=D|#ORDERID=345|ORDERID=123".as_slice(),
     ] {
-        let message = reader.one_line(row, false).unwrap();
+        let message = reader.sole_line(row, false).unwrap();
         let spelled = String::from_utf8_lossy(row);
         assert_eq!(
             message.by_tag(37).unwrap().as_str(),
@@ -651,13 +675,13 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         // the emitted line answers the same message: the twin judgment is
         // idempotent.
         let emitted = message.into_bytes(b'|');
-        let reread = reader.one_line(&emitted, false).expect(&spelled);
+        let reread = reader.sole_line(&emitted, false).expect(&spelled);
         assert_eq!(reread, message, "{spelled}");
     }
 
     // Alone, the `#` is the bridge's own marker and drops: the key is the
     // dictionary field, exactly as a frame of only `#` keys always read.
-    let single = reader.one_line(b"MSGTYPE=D|#ORDERID=345", false).unwrap();
+    let single = reader.sole_line(b"MSGTYPE=D|#ORDERID=345", false).unwrap();
     assert_eq!(single.by_tag(37).unwrap().as_str(), Some("345"));
     assert!(single.by_name("#orderid").is_err());
 
@@ -674,7 +698,7 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
             "ORDERID",
         ),
     ] {
-        let message = reader.one_line(row, false).unwrap();
+        let message = reader.sole_line(row, false).unwrap();
         let spelled = String::from_utf8_lossy(row);
         assert_eq!(
             message.by_tag(37).unwrap().as_str(),
@@ -696,7 +720,7 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
     }
     // A value is a value: two spellings of the bytes are two values.
     let cased = reader
-        .one_line(b"MSGTYPE=D|ORDERID=abc|#ORDERID=ABC", false)
+        .sole_line(b"MSGTYPE=D|ORDERID=abc|#ORDERID=ABC", false)
         .unwrap();
     assert_eq!(cased.by_tag(37).unwrap().as_str(), Some("abc"));
     assert_eq!(cased.by_name("#orderid").unwrap().as_str(), Some("ABC"));
@@ -706,7 +730,7 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
     // mark drops, beside a twin of other bytes it stays, restating a twin it
     // goes.
     let framed = reader
-        .one_line(
+        .sole_line(
             b"sending >> 8=FIX.4.2|35=UL|#SYMBOL=TTF|#SIDE=1|10=044|",
             false,
         )
@@ -720,12 +744,12 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
         .collect();
     assert_eq!(keys, ["8", "35", "SYMBOL", "SIDE", "10"]);
     let twinned = reader
-        .one_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|", false)
+        .sole_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=345|10=0|", false)
         .unwrap();
     assert_eq!(twinned.by_tag(37).unwrap().as_str(), Some("123"));
     assert_eq!(twinned.by_name("#orderid").unwrap().as_str(), Some("345"));
     let restated = reader
-        .one_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=123|10=0|", false)
+        .sole_line(b"8=FIX.4.2|35=UL|ORDERID=123|#ORDERID=123|10=0|", false)
         .unwrap();
     assert_eq!(restated.by_tag(37).unwrap().as_str(), Some("123"));
     assert!(restated.by_name("#orderid").is_err());
@@ -739,7 +763,7 @@ fn a_hash_key_keeps_its_hash_only_beside_its_bare_twin() {
     // separator-less occurrence of a counter half the dictionary shares at
     // the members its own group declares.
     let typed = reader
-        .one_line(b"#MSGTYPE=s|#NOSIDES=1|#NOSIDES[0]=SIDE=1CLORDID=X", false)
+        .sole_line(b"#MSGTYPE=s|#NOSIDES=1|#NOSIDES[0]=SIDE=1CLORDID=X", false)
         .unwrap();
     assert_eq!(typed.by_tag(35).unwrap().as_str(), Some("s"));
     assert_eq!(
@@ -760,7 +784,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
         b"MSGTYPE=D|ORDER_ID=123|#ORDERID=345".as_slice(),
         b"MSGTYPE=D ORDERID=123 #ORDERID=345".as_slice(),
     ] {
-        let message = reader.one_line(row, false).unwrap();
+        let message = reader.sole_line(row, false).unwrap();
         let spelled = String::from_utf8_lossy(row);
         assert_eq!(
             message.by_tag(37).unwrap().as_str(),
@@ -779,7 +803,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // field exactly as a lone `#` key always did.
     for spelling in ["", "null", "<null>"] {
         let row = format!("MSGTYPE=D|ORDERID={spelling}|#ORDERID=345");
-        let message = reader.one_line(row.as_bytes(), false).expect(&row);
+        let message = reader.sole_line(row.as_bytes(), false).expect(&row);
         assert_eq!(message.by_tag(37).unwrap().as_str(), Some("345"), "{row}");
         assert!(message.by_name("#orderid").is_err(), "{row}");
     }
@@ -788,7 +812,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // one key, one value, nothing rewritten under a group name no registry
     // resolves.
     let row: &[u8] = b"MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
-    let message = reader.one_line(row, false).unwrap();
+    let message = reader.sole_line(row, false).unwrap();
     let keys: Vec<&str> = message
         .entries()
         .iter()
@@ -813,7 +837,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
 |NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1"
             .as_slice(),
     ] {
-        let message = reader.one_line(row, false).unwrap();
+        let message = reader.sole_line(row, false).unwrap();
         let spelled = String::from_utf8_lossy(row);
         assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1), "{spelled}");
         let parties = message.by_name("parties").unwrap().as_sequence().unwrap().to_vec();
@@ -876,7 +900,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     // pair goes pair for pair.
     let counted: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=B\x04\x03PARTYROLE=1\
 |#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
-    let message = reader.one_line(counted, false).unwrap();
+    let message = reader.sole_line(counted, false).unwrap();
     assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
     assert_eq!(
         message.by_path(&path("Parties[0].PartyID")).unwrap(),
@@ -902,7 +926,7 @@ fn a_twin_is_judged_by_fold_and_by_carrying_a_value() {
     assert_eq!(message.anomalies().count(), 0);
     let restated: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1\
 |#NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1";
-    let message = reader.one_line(restated, false).unwrap();
+    let message = reader.sole_line(restated, false).unwrap();
     assert_eq!(
         message.by_path(&path("Parties[0].PartyID")).unwrap(),
         &Scalar::from("A")
@@ -928,7 +952,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     let closed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=2\
 |NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03\
 |NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
-    let message = reader.one_line(closed, false).unwrap();
+    let message = reader.sole_line(closed, false).unwrap();
     assert_eq!(
         message
             .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
@@ -995,7 +1019,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     // comes back up to the party, as does everything after it.
     let open: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
 |NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03";
-    let message = reader.one_line(open, false).unwrap();
+    let message = reader.sole_line(open, false).unwrap();
     assert_eq!(
         message
             .by_path(&path("Parties[0].PtysSubGrp[0].PartySubID"))
@@ -1028,7 +1052,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     // dictionary.
     let spaced: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
 |NOPARTYIDS[0]=PARTYID=X\x04\x03 \x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYROLE=1\x04\x03";
-    let message = reader.one_line(spaced, false).unwrap();
+    let message = reader.sole_line(spaced, false).unwrap();
     assert_eq!(
         message
             .by_path(&path("Parties[0].PartyRole"))
@@ -1051,7 +1075,7 @@ fn a_nested_occurrence_ends_at_the_close_the_bridge_wrote_or_at_the_dictionary()
     for _ in 0..2000 {
         deep.extend_from_slice(b"NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03");
     }
-    let message = reader.one_line(&deep, false).unwrap();
+    let message = reader.sole_line(&deep, false).unwrap();
     assert_eq!(message.by_tag(453).unwrap().as_i64(), Some(1));
     // The row is what the two thousand openers built; the arrival record is
     // the one pair the bridge wrote, which is what a range of the line can
@@ -1088,7 +1112,7 @@ fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level
     // party and the second party opens after it.
     let row: &[u8] = b"MSGTYPE=AE|NOSIDES=1\
 |NOSIDES[0]=NOPARTYIDS=2\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03";
-    let message = reader.one_line(row, false).unwrap();
+    let message = reader.sole_line(row, false).unwrap();
     assert_eq!(
         message
             .by_path(&path(
@@ -1123,7 +1147,7 @@ fn an_implicit_run_nests_a_declared_group_at_every_depth_and_lifts_what_no_level
     // bridge meant it to go.
     let lifted: &[u8] = b"MSGTYPE=AE|NOSIDES=1\
 |NOSIDES[0]=NOPARTYIDS=1\x04\x03NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03";
-    let message = reader.one_line(lifted, false).unwrap();
+    let message = reader.sole_line(lifted, false).unwrap();
     let members = |path: &str| -> Vec<String> {
         let group = message.as_field().get_field_by_path(path).expect(path);
         let DataType::List(item) = group.dtype() else {
@@ -1157,7 +1181,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         "8=FIX.4.2|35=UL|#SYMBOL=TTF|212={}|213={nested}|10=0|",
         nested.len()
     );
-    let message = reader.one_line(frame.as_bytes(), false).unwrap();
+    let message = reader.sole_line(frame.as_bytes(), false).unwrap();
     let keys: Vec<&str> = message
         .entries()
         .iter()
@@ -1172,7 +1196,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
     // A key marked twice is judged one mark at a time: `##ORDERID` twins
     // `#ORDERID` as `#ORDERID` twins `ORDERID`.
     let restated = reader
-        .one_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=123", false)
+        .sole_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=123", false)
         .unwrap();
     assert_eq!(restated.by_tag(37).unwrap().as_str(), Some("123"));
     let keys: Vec<&str> = restated
@@ -1182,7 +1206,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         .collect();
     assert_eq!(keys, ["MSGTYPE", "ORDERID"]);
     let beside = reader
-        .one_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345", false)
+        .sole_line(b"MSGTYPE=D|#ORDERID=123|##ORDERID=345", false)
         .unwrap();
     assert_eq!(beside.by_tag(37).unwrap().as_str(), Some("123"));
     let at = beside
@@ -1193,7 +1217,7 @@ fn a_frame_with_a_data_field_judges_its_marks_and_a_key_marked_twice_is_judged_o
         beside.as_value().as_sequence().expect("a row")[at].as_str(),
         Some("345")
     );
-    let alone = reader.one_line(b"MSGTYPE=D|##ORDERID=345", false).unwrap();
+    let alone = reader.sole_line(b"MSGTYPE=D|##ORDERID=345", false).unwrap();
     assert!(alone.get_by_tag(37).is_none());
     let at = alone
         .as_field()
@@ -1304,7 +1328,7 @@ fn a_mark_is_judged_where_a_row_is_split_and_nowhere_else() {
     // unknown group of the party's own.
     let packed: &[u8] = b"MSGTYPE=D|NOPARTYIDS=1\
 |NOPARTYIDS[0]=PARTYID=a\x04\x03#NOPARTYSUBIDS[0]=PARTYSUBID=s\x04\x03PARTYSUBIDTYPE=1\x04\x03\x04\x03PARTYROLE=1\x04\x03";
-    let message = reader.one_line(packed, false).unwrap();
+    let message = reader.sole_line(packed, false).unwrap();
     assert_eq!(
         message
             .by_path(&path("Parties[0].PartyRole"))
@@ -1381,7 +1405,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     );
     let messages = registry.msgtypes().count();
     let none = FixCodec::new(Arc::new(registry.clone()));
-    assert!(grouped(&none.one_line(frame, false).unwrap()));
+    assert!(grouped(&none.sole_line(frame, false).unwrap()));
 
     // Declared under another name: a second message, reached by its name and
     // carrying the code, while the bare code still answers the first holder.
@@ -1393,7 +1417,7 @@ fn a_code_declared_under_another_name_is_a_second_message_and_the_bare_code_answ
     assert_eq!(registry.msgtype("AllocIn").unwrap().as_str(), "J");
     assert_eq!(registry.msgtype("alloc_in").unwrap().name(), "AllocIn");
     let once = FixCodec::new(Arc::new(registry.clone()));
-    let message = once.one_line(frame, false).unwrap();
+    let message = once.sole_line(frame, false).unwrap();
     assert!(grouped(&message), "the first holder's grammar");
     let occurrences = message
         .get_by_name("allocgrp")
@@ -1422,7 +1446,7 @@ fn indexed_occurrences_are_built_by_index_and_a_gap_is_null() {
     let reader = reader();
     // Out of order and gapped: `[2]` before `[0]`, with `[1]` absent.
     let message = reader
-        .one_line(b"MSGTYPE=D|PartyID[2]=third|PartyID[0]=first", false)
+        .sole_line(b"MSGTYPE=D|PartyID[2]=third|PartyID[0]=first", false)
         .unwrap();
     let values = message
         .by_name("partyid")
@@ -1440,7 +1464,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
     let reader = reader();
     let message = reader
         // Header tags out of canonical order, with a body field interleaved.
-        .one_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|", false)
+        .sole_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|", false)
         .unwrap();
     let names: Vec<&str> = message
         .as_field()
@@ -1471,7 +1495,7 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
 fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
     let reader = reader();
     let row = "8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|";
-    let message = reader.one_line(row.as_bytes(), false).unwrap();
+    let message = reader.sole_line(row.as_bytes(), false).unwrap();
 
     // The emit is the wire record, so a translated code cannot leak into it.
     let bytes = message.into_bytes(b'|');
@@ -1502,9 +1526,11 @@ fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
     // 4.2 and `LastQty` from 4.3 on. A row read at 4.2 still builds the
     // dictionary's own column, because a tag that renamed itself per version
     // is a tag no two captures of one venue could be read together on.
-    let at_42 = old.one_line(b"8=FIX.4.2|35=8|32=100|10=0|", false).unwrap();
+    let at_42 = old
+        .sole_line(b"8=FIX.4.2|35=8|32=100|10=0|", false)
+        .unwrap();
     let at_new = newest
-        .one_line(b"8=FIX.4.4|35=8|32=100|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=8|32=100|10=0|", false)
         .unwrap();
     let column = |held: &yggdryl::FixMsg| {
         let at = held
@@ -1539,7 +1565,7 @@ fn a_numeric_frame_nests_its_group_members_as_the_dictionary_declares_them() {
     // delimiter opening each Party while NoPartyIDs keeps the count.
     let row =
         "8=FIX.4.4|35=D|55=AAPL|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|54=1|10=000|";
-    let message = reader.one_line(row.as_bytes(), false).unwrap();
+    let message = reader.sole_line(row.as_bytes(), false).unwrap();
 
     let field = message
         .as_field()
@@ -1592,7 +1618,7 @@ fn a_counter_a_numeric_frame_states_twice_at_one_level_appends_to_its_group() {
     // gathered, and the miscount says the group holds more than one
     // counter stated.
     let row = "8=FIX.4.4|35=x|320=R1|146=2|55=AAPL|454=1|455=US0378331005|456=4|55=MSFT|454=2|455=US5949181045|456=4|455=MSFT.O|456=5|10=0|";
-    let message = reader.one_line(row.as_bytes(), false).unwrap();
+    let message = reader.sole_line(row.as_bytes(), false).unwrap();
     let alternates = message
         .by_name("secaltidgrp")
         .unwrap()
@@ -1664,7 +1690,7 @@ fn a_numeric_frame_nests_a_group_inside_an_occurrence_of_another() {
 
     let row = "35=D|55=AAPL|453=2|448=A|452=1|802=2|523=S1|803=1|523=S2|803=2|448=B|452=3|10=0|";
     let message = FixCodec::new(registry)
-        .one_line(row.as_bytes(), false)
+        .sole_line(row.as_bytes(), false)
         .unwrap();
     let occurrences = message.by_name("parties").unwrap().as_sequence().unwrap();
     assert_eq!(occurrences.len(), 2);
@@ -1696,7 +1722,7 @@ fn a_state_code_is_read_through_the_name_its_field_gives_it() {
     // which is an acknowledgement. The column reads the name the field gives
     // the code, so each lands where its own specification puts it.
     let restated = reader
-        .one_line(b"8=FIX.4.4|35=8|150=D|10=0|", true)
+        .sole_line(b"8=FIX.4.4|35=8|150=D|10=0|", true)
         .unwrap();
     assert_eq!(
         restated.by_tag(150).unwrap().as_str(),
@@ -1707,14 +1733,16 @@ fn a_state_code_is_read_through_the_name_its_field_gives_it() {
         restated.by_tag(yggdryl::STATE_TAG_NAME.0).unwrap().as_str(),
         Some(State::from_spelling("Restated").unwrap().as_str())
     );
-    let bidding = reader.one_line(b"8=FIX.4.4|35=8|39=D|10=0|", true).unwrap();
+    let bidding = reader
+        .sole_line(b"8=FIX.4.4|35=8|39=D|10=0|", true)
+        .unwrap();
     assert_eq!(
         bidding.by_tag(39).unwrap().as_str(),
         Some(State::from_spelling("AcceptedForBidding").unwrap().as_str())
     );
     // A code both sets spell alike reads alike, whichever field carries it.
     let new = reader
-        .one_line(b"8=FIX.4.4|35=8|39=0|150=0|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=8|39=0|150=0|10=0|", false)
         .unwrap();
     assert_eq!(new.by_tag(39).unwrap(), new.by_tag(150).unwrap());
 }
@@ -1726,13 +1754,13 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
     // only tag-first. Resolving it by name alone built a second, tag-less
     // column beside the counter's own and left the counter holding nothing.
     let by_tag = reader
-        .one_line(
+        .sole_line(
             b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE",
             false,
         )
         .unwrap();
     let by_name = reader
-        .one_line(
+        .sole_line(
             b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE|NOPARTYIDS[1]=PARTYID=VENUE",
             false,
         )
@@ -1773,7 +1801,7 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
 #[test]
 fn an_unnamed_occurrence_preserves_raw_input_under_the_declared_component() {
     let message = reader()
-        .one_line(
+        .sole_line(
             b"MSGTYPE=D|NOPARTYIDS=2|NOPARTYIDS[0]=ONE|NOPARTYIDS[1]=TWO",
             false,
         )
@@ -1805,7 +1833,7 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
     // the dictionary holds it by, whatever version the row is read at. What
     // 4.2 called it stays readable through the field's lineage.
     let message = reader
-        .one_line(
+        .sole_line(
             b"MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
             false,
         )
@@ -1880,7 +1908,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
     let registry = Arc::new(registry);
 
     let message = FixCodec::new(registry)
-        .one_line(b"35=D|55=AAPL|453=2|10=0|", false)
+        .sole_line(b"35=D|55=AAPL|453=2|10=0|", false)
         .unwrap();
     let anomalies: Vec<String> = message.anomalies().map(|held| held.to_string()).collect();
     assert_eq!(
@@ -1898,7 +1926,7 @@ fn a_group_the_dictionary_holds_as_a_large_list_still_states_its_count() {
 fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
     let reader = reader();
     let wire = reader
-        .one_line(
+        .sole_line(
             b"recv 8=FIX.4.4\x019=61\x0135=0\x0149=XPAR\x0110=017\x01",
             false,
         )
@@ -1908,7 +1936,7 @@ fn a_printed_soh_spelling_reads_as_the_byte_it_stands_for() {
             "recv 8=FIX.4.4{spelling}9=61{spelling}35=0{spelling}49=XPAR{spelling}10=017{spelling} on session 3"
         );
         let held = reader
-            .one_line(line.as_bytes(), false)
+            .sole_line(line.as_bytes(), false)
             .expect("the same frame, escaped");
         assert_eq!(
             held.get_by_tag(35).and_then(Scalar::as_str),
@@ -1943,7 +1971,7 @@ fn a_group_occurrence_splits_on_explicit_or_declared_boundaries() {
              PARTYROLE=1{separator}PARTYROLEQUALIFIER=0"
         );
         let held = reader
-            .one_line(line.as_bytes(), false)
+            .sole_line(line.as_bytes(), false)
             .expect("a bridge row");
         let parties = held
             .get_by_name("parties")
@@ -1968,7 +1996,7 @@ fn a_group_occurrence_splits_on_explicit_or_declared_boundaries() {
 fn separatorless_group_inference_uses_only_direct_members() {
     let reader = reader();
     let message = reader
-        .one_line(
+        .sole_line(
             b"MSGTYPE=D|NOPARTYIDS=1|\
              NOPARTYIDS[0]=VENUEFLAG=XSymbol=TTFPARTYROLE=1",
             false,
@@ -2034,7 +2062,7 @@ fn separatorless_group_inference_uses_only_direct_members() {
         .insert_definition(FixCategory::Components, definition)
         .unwrap();
     let numeric_name = FixCodec::new(Arc::new(scoped))
-        .one_line(
+        .sole_line(
             b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
             false,
         )
@@ -2081,7 +2109,7 @@ fn a_group_shorter_than_the_schema_declares_still_projects() {
     let reader = FixCodec::new(Arc::clone(&registry));
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
     let held = reader
-        .one_line(
+        .sole_line(
             b"toBridge #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=BUYSIDE",
             false,
         )
@@ -2112,7 +2140,7 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
     // TZTransactTime are 5.0 fields and a 4.4 frame does not know them.
     let read = |frame: &str, value: &str, tag: i32| {
         reader
-            .one_line(
+            .sole_line(
                 format!("{frame}|35=D|{tag}={value}|10=0|").as_bytes(),
                 false,
             )
@@ -2175,7 +2203,7 @@ fn a_dateless_clock_never_becomes_the_capture_instant() {
     let reader = FixCodec::new(Arc::new(narrow));
     let clocked = |value: &str| {
         reader
-            .one_line(format!("8=FIX.4.4|35=D|60={value}|10=0|").as_bytes(), false)
+            .sole_line(format!("8=FIX.4.4|35=D|60={value}|10=0|").as_bytes(), false)
             .expect("a readable message")
             .market_timestamp()
     };
@@ -2243,7 +2271,7 @@ fn read_line_picks_the_reader_the_row_shape_names() {
     let codec = codec();
     let named = |row: &[u8]| {
         codec
-            .one_line(row, false)
+            .sole_line(row, false)
             .expect("a readable row")
             .as_field()
             .name()
@@ -2257,7 +2285,7 @@ fn read_line_picks_the_reader_the_row_shape_names() {
     // An opening `<` is FIXML, and the attribute reaches the field where the
     // bridge splitter would have made one key of the whole element.
     let xml = codec
-        .one_line(br#"<Order ClOrdID="XML-1"/>"#, false)
+        .sole_line(br#"<Order ClOrdID="XML-1"/>"#, false)
         .expect("a FIXML row");
     assert_eq!(xml.by_name("clordid").unwrap().as_str(), Some("XML-1"));
 }
@@ -2400,7 +2428,7 @@ fn a_fixml_document_in_a_data_field_fills_the_line_that_carried_it() {
     frame.extend_from_slice(b"213=");
     frame.extend_from_slice(document);
     frame.extend_from_slice(b"|10=0|");
-    let message = reader.one_line(&frame, false).unwrap();
+    let message = reader.sole_line(&frame, false).unwrap();
 
     // The frame's own statements stay the frame's, and the document inside
     // fills what the frame never said - resolved to real tags, typed by the
@@ -2426,7 +2454,7 @@ fn every_generated_message_carries_the_version_the_read_used() {
 
     // With nothing pinned, the frame's own `BeginString` is what answered it,
     // so the two agree and the message says so once.
-    let read = reader().one_line(frame, false).unwrap();
+    let read = reader().sole_line(frame, false).unwrap();
     assert_eq!(read.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
     assert_eq!(read.version(), Some(Version::new(4, 2, 0)));
 
@@ -2435,7 +2463,7 @@ fn every_generated_message_carries_the_version_the_read_used() {
     // the frame keeps saying what the session said.
     let dated = codec()
         .with_version(Version::new(4, 4, 0))
-        .one_line(frame, false)
+        .sole_line(frame, false)
         .unwrap();
     assert_eq!(dated.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
     assert_eq!(
@@ -2447,7 +2475,7 @@ fn every_generated_message_carries_the_version_the_read_used() {
     // A row that dates itself not at all is read at the dictionary's newest,
     // and the `BeginString` it never stated is filled from the same answer.
     let newest = registry().newest().expect("the seed's newest").version();
-    let bare = reader().one_line(b"MSGTYPE=D|SYMBOL=AAPL", false).unwrap();
+    let bare = reader().sole_line(b"MSGTYPE=D|SYMBOL=AAPL", false).unwrap();
     assert_eq!(bare.version(), Some(newest));
     assert_eq!(
         bare.by_tag(8).unwrap().as_str(),

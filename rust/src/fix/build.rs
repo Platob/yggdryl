@@ -27,6 +27,8 @@
 //! readable through the message's anomalies: a null nobody can explain is
 //! worse than the value that actually arrived.
 
+use std::sync::Arc;
+
 use smol_str::{SmolStr, format_smolstr};
 
 use super::entry::FixEntry;
@@ -379,6 +381,81 @@ pub(super) struct RowExtras<'row> {
     /// The code a line stating no direction takes - the codec's pin on the
     /// batch door - and nothing on the line door, where silence is silence.
     pub(super) direction_pin: Option<&'row str>,
+}
+
+/// What a row stated, owned, for the messages it answers for.
+///
+/// [`RowExtras`] borrows the row it was read from, and one row answers for
+/// as many messages as it carries - every frame of a line, every plugin of a
+/// configuration document - so what the row stated is retained once here and
+/// applied to each of them rather than borrowed across an expansion the
+/// caller drives. One copy per row that expands, never per line: a row of
+/// one message borrows and retains nothing.
+#[derive(Clone, Debug)]
+pub(super) struct RowStamp {
+    /// The version the row is read at, where it stated one.
+    version: Option<Version>,
+    /// The row's own clock.
+    clock: Option<Scalar>,
+    /// The row's own columns, beside the field and tag each fills.
+    fills: Vec<(Field, i32, Scalar)>,
+    /// The direction resolved for the row, a code of tag 385's set.
+    direction: Option<SmolStr>,
+}
+
+impl RowStamp {
+    /// What a row stated, retained; nothing at all where it stated nothing.
+    pub(super) fn retained(extras: RowExtras<'_>) -> Option<Arc<Self>> {
+        if extras.version.is_none()
+            && extras.clock.is_none()
+            && extras.fills.is_empty()
+            && extras.direction.is_none()
+        {
+            return None;
+        }
+        Some(Arc::new(Self {
+            version: extras.version,
+            clock: extras.clock.cloned(),
+            fills: extras
+                .fills
+                .iter()
+                .map(|fill| (fill.field.clone(), fill.tag, fill.value.clone()))
+                .collect(),
+            direction: extras.direction.map(SmolStr::new),
+        }))
+    }
+
+    /// The row's columns as the builder takes them, borrowed from the stamp.
+    pub(super) fn fills(&self) -> Vec<Fill<'_>> {
+        self.fills
+            .iter()
+            .map(|(field, tag, value)| Fill {
+                field,
+                tag: *tag,
+                value,
+            })
+            .collect()
+    }
+
+    /// What the row stated, over the fills [`Self::fills`] answered.
+    pub(super) fn extras<'row>(&'row self, fills: &'row [Fill<'row>]) -> RowExtras<'row> {
+        RowExtras {
+            version: self.version,
+            clock: self.clock.as_ref(),
+            fills,
+            direction: self.direction.as_deref(),
+            direction_pin: None,
+        }
+    }
+
+    /// What a stamp a row never took answers: the extras of a row that
+    /// stated nothing.
+    pub(super) fn held<'row>(
+        stamp: Option<&'row Arc<Self>>,
+        fills: &'row [Fill<'row>],
+    ) -> RowExtras<'row> {
+        stamp.map_or(RowExtras::NONE, |stamp| stamp.extras(fills))
+    }
 }
 
 /// One of a row's own columns, resolved to the field it fills.

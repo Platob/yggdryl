@@ -2,7 +2,7 @@
 //! the dictionary's own field, every retired field and value filling what
 //! stands in for it, the wire untouched, and a second pass changing nothing.
 
-use super::OneMessage;
+use super::SoleMessage;
 use super::path;
 
 use std::sync::Arc;
@@ -367,7 +367,7 @@ fn reader() -> FixCodec {
 /// One line read, restated, and restated again to prove the second pass
 /// changes nothing; the wire and the anomalies are the same before and after.
 fn restated(reader: &FixCodec, line: &[u8]) -> FixMsg {
-    let read = reader.one_line(line, false).expect("a readable line");
+    let read = reader.sole_line(line, false).expect("a readable line");
     let latest = read.clone().into_latest().expect("restated");
     let spelled = String::from_utf8_lossy(line);
     assert_eq!(latest.into_bytes(b'|'), line, "the wire of {spelled}");
@@ -425,7 +425,7 @@ const REPORT: &[u8] = b"8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|
 #[test]
 fn a_fix_42_execution_report_restates_at_the_dictionarys_newest_version() {
     let reader = reader();
-    let read = reader.one_line(REPORT, false).expect("a readable line");
+    let read = reader.sole_line(REPORT, false).expect("a readable line");
     assert_eq!(read.version(), Some(version("4.2")));
     assert_eq!(text(&read, 150), Some(state("1").as_str()), "read at 4.2");
     // Tag 47 is a dictionary field at 4.2 and gone by 4.4; the registry
@@ -594,7 +594,7 @@ fn a_join_and_a_from_read_the_other_tags_at_the_same_level() {
     // spelled with two digits.
     let latest = restated(&reader, b"8=FIX.4.2|35=D|11=A|200=202406|205=5|10=0|");
     let dated = reader
-        .one_line(b"8=FIX.4.4|35=D|11=A|541=20240605|10=0|", false)
+        .sole_line(b"8=FIX.4.4|35=D|11=A|541=20240605|10=0|", false)
         .expect("a readable line");
     assert_eq!(latest.by_tag(541).unwrap(), dated.by_tag(541).unwrap());
     assert_eq!(

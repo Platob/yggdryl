@@ -46,14 +46,17 @@
 //! means a bridge row. Once decided it holds for the whole body, so a `#` or a
 //! `<` inside a *value* is part of that value.
 //!
-//! # Nothing is skipped
+//! # Nothing is skipped, and nothing is invented
 //!
-//! A row with no message type is built anyway and named `unknown`; a value
-//! that will not type is null; a group that will not split stays whole; a
-//! document in `XmlData` that will not parse stays the bytes it is. What
-//! is left - input that is not a row at all - is an `Err` item carrying it,
-//! and the stream continues, because one corrupt line must not end a run over
-//! ten million.
+//! A frame, a bridge row or a document with no message type is built anyway
+//! and named `unknown`; a value that will not type is null; a group that
+//! will not split stays whole; a document in `XmlData` that will not parse
+//! stays the bytes it is. A line that states no message at all - no frame,
+//! no bridge pair, no document - states none, and reads as no message
+//! rather than as an empty one (decision 16): a sentence carrying an `=` is
+//! a sentence. What is left - input that is not a row at all - is an `Err`
+//! item carrying it, and the stream continues, because one corrupt line must
+//! not end a run over ten million.
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
@@ -700,9 +703,12 @@ impl FixCodec {
             .any(|spelling| spelling.as_bytes().eq_ignore_ascii_case(trimmed))
     }
 
-    /// Parses one log line into an iterator of messages, selecting the
-    /// dialect from its frame. A bulk UL configuration yields one message
-    /// per selected MBean; the other dialects yield one message.
+    /// Parses one log line into an iterator of the messages it carries,
+    /// selecting the dialect from its frame.
+    ///
+    /// A row yields none, one or many (decision 16): one per frame the line
+    /// holds, one per selected MBean of a bulk UL configuration, and none at
+    /// all for a line that states no message.
     ///
     /// # A message is the frame; the line is still the line
     ///
@@ -712,8 +718,45 @@ impl FixCodec {
     /// A message begins where the frame the line carries opens and ends at its
     /// checksum: a log printing `ts=` and `thread=` in front of the frame it
     /// quoted states neither field, and a message that swallowed them would
-    /// answer them by name and re-emit them. A line carrying two frames reads
-    /// as the first; the rest of the line is not part of that message.
+    /// answer them by name and re-emit them.
+    ///
+    /// The pairs behind that checksum begin the next message where they open
+    /// a frame of their own - an unmarked `8=`, and where the rest states
+    /// none, an unmarked `35=` - so a line carrying two frames reads as two,
+    /// each re-emitting its own bytes. A frame that stated no checksum ends
+    /// where the next `8=` opens, and the tail of the last frame is the last
+    /// frame's. A bridge row is one message and a frame behind it a second;
+    /// a tag run behind a bridge row that opens no frame stays part of it,
+    /// which is the mixed form a bridge writes. A key the bridge marked is
+    /// the bridge's own spelling, so a `#8=` opens nothing and a `#10=`
+    /// closes nothing.
+    ///
+    /// A row that opens no frame, states no bridge pair and carries no
+    /// document yields nothing: `unknown` names a frame, a bridge row or a
+    /// document that stated no type, never a line that stated no frame. What
+    /// makes a run of named pairs a bridge row rather than prose carrying an
+    /// `=` is the separator the line named for it - a pipe, a `SOH`, or one
+    /// of the spellings a log escapes it with, never whitespace - or a key
+    /// the bridge marked. A numeric frame needs neither.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::{FixCodec, FixRegistry};
+    /// let codec = FixCodec::new(Arc::new(FixRegistry::new()));
+    /// let both = b"8=FIX.4.4|35=D|11=A|10=001|8=FIX.4.4|35=8|37=O|10=002|";
+    /// let read: Vec<Vec<u8>> = codec
+    ///     .parse_line(both)?
+    ///     .map(|message| message.map(|message| message.into_bytes(b'|')))
+    ///     .collect::<yggdryl::Result<_>>()?;
+    /// assert_eq!(read.len(), 2, "a line of two frames is two messages");
+    /// assert_eq!(read[0], b"8=FIX.4.4|35=D|11=A|10=001|", "each its own bytes");
+    /// assert_eq!(read[1], b"8=FIX.4.4|35=8|37=O|10=002|");
+    /// // A sentence states no message, whatever `=` it happens to hold.
+    /// assert!(codec.parse_line(b"heartbeat emitted seq=7")?.next().is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// Which reader owns the frame is one shallow look at what the line
     /// already answered: a frame whose first key is a run of digits is numeric
@@ -735,10 +778,11 @@ impl FixCodec {
     /// Parses a stream of log lines into a stream of messages, lazily.
     ///
     /// The line iterator everything else is built on: each line is read as
-    /// [`Self::parse_line`] reads it, a bulk configuration yielding one
-    /// message per MBean, and a line that is not a row at all is an `Err`
-    /// item - the stream continues past it, because one corrupt line must not
-    /// end a run over ten million. Nothing is collected: the iterator is the
+    /// [`Self::parse_line`] reads it - one message per frame, one per MBean
+    /// of a bulk configuration, none for a line that states no message - and
+    /// a line that is not a row at all is an `Err` item; the stream
+    /// continues past it, because one corrupt line must not end a run over
+    /// ten million. Nothing is collected: the iterator is the
     /// stream. Every stage answers an iterator that owns its codec and
     /// borrows nothing, so the stages compose into [`Self::arrow_reader`]
     /// without the codec outliving the stream.
@@ -747,9 +791,9 @@ impl FixCodec {
     /// reader's error: the completed prefix is yielded, then the error, and
     /// the reader fuses, as every batch reader in the crate does - a
     /// consumer of batches has no row to put a refused line in. A caller
-    /// wanting a row per line, refused lines included, reads the capture
-    /// through [`Self::parse_text_arrow_reader`], which answers such a line
-    /// as a row holding an empty message.
+    /// wanting a row per *line* reads the capture through the text reader;
+    /// a FIX batch answers one row per message, so a line stating none
+    /// answers no row (decision 16).
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -840,7 +884,8 @@ impl FixCodec {
         };
         let page = line.body_bytes();
         if page.is_empty() {
-            return Ok(FixMessages::one(self.empty_with(extras)));
+            // A row with no payload at all carries no message (decision 16).
+            return Ok(FixMessages::none());
         }
         Ok(self
             .parse_page_with(page, extras)
@@ -849,9 +894,10 @@ impl FixCodec {
 
     /// Parses a stream of decoded lines into a stream of messages, lazily.
     ///
-    /// Each line is read as [`Self::parse_text_line`] reads it, and a line
-    /// nobody could read is a row holding an empty message rather than the end
-    /// of the run - one corrupt line must not end a capture of ten million.
+    /// Each line is read as [`Self::parse_text_line`] reads it - none, one or
+    /// many messages a line - and a payload nobody could read is an empty
+    /// message rather than the end of the run: one corrupt line must not end
+    /// a capture of ten million.
     pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator,
@@ -867,10 +913,13 @@ impl FixCodec {
     ///
     /// A row's content can never fail the batch it arrives in: a payload
     /// nobody could read is a row holding an empty message, dated and
-    /// versioned by what the row itself said.
+    /// versioned by what the row itself said. A row that carried no message
+    /// to read is a different fact and answers no message at all
+    /// (decision 16).
     pub(super) fn parse_bytes_with(&self, extras: RowExtras<'_>, bytes: &[u8]) -> FixMessages {
         if bytes.is_empty() {
-            return FixMessages::one(self.empty_with(extras));
+            // A row with no payload at all carries no message (decision 16).
+            return FixMessages::none();
         }
         self.parse_line_with(bytes, extras)
             .unwrap_or_else(|_| FixMessages::one(self.empty_with(extras)))
@@ -890,8 +939,12 @@ impl FixCodec {
         }
     }
 
-    /// A row nobody could read, which is still a row - dated and versioned as
-    /// every row is, by what the row itself stated.
+    /// A payload nobody could read, which is still a row - dated and
+    /// versioned as every row is, by what the row itself stated.
+    ///
+    /// A row that carried nothing to read is not this: it answers no message
+    /// (decision 16). This is the payload that was there and would not
+    /// parse, which a batch must not fail on.
     fn empty_with(&self, extras: RowExtras<'_>) -> FixMsg {
         self.build_pairs_with(&[], extras)
             .expect("an empty message builds")
@@ -935,8 +988,26 @@ impl FixCodec {
             ..extras
         };
         let framed = framed_entries(entries.as_slice(), page.start() as usize + opens);
+        // Where the payload opens among the row's own entries, and where the
+        // row's first message does: the bridge's own row in front of a frame
+        // is a message of its own where the bridge marked one of its keys,
+        // and the transport's prose otherwise (decisions 3 and 16).
+        let payload = entries.as_slice().len() - framed.len();
+        let opened = entries.as_slice()[..payload]
+            .iter()
+            .position(TextEntry::marked)
+            .unwrap_or(payload);
         if framed.first().is_some_and(tag_keyed) {
-            return self.frame_with(framed, extras).map(FixMessages::one);
+            let end = payload + frame_end(framed);
+            if opened == payload && next_frame(entries.as_slice(), end).is_none() {
+                // One frame and nothing in front of it: the row is read
+                // where it stands, which is what a row of one message costs.
+                return self
+                    .frame_with(&entries.as_slice()[payload..end], extras)
+                    .map(FixMessages::one);
+            }
+            let stamp = super::build::RowStamp::retained(extras);
+            return Ok(FixMessages::frames(self.clone(), entries, opened, stamp));
         }
         // An XML document a transport wrote prose in front of opens before
         // any pair the locator could read as a bridge row, and is read as
@@ -959,7 +1030,58 @@ impl FixCodec {
         if body.is_empty() && memchr::memchr(b'<', row).is_some() {
             return self.fixml_with(row, extras).map(FixMessages::one);
         }
-        self.bridge_with(framed, extras).map(FixMessages::one)
+        // A run of named pairs is a bridge row where the line named a
+        // separator for it or the bridge marked one of its keys, and prose
+        // carrying an `=` where it did neither: a row that opens no frame,
+        // states no bridge pair and carries no document yields nothing at
+        // all (decision 16).
+        // The row is the whole run of pairs the line held: a key the bridge
+        // marked is the bridge's own spelling, so a `#8=` the scanner read
+        // as a tag relocated the payload past pairs that are the row's.
+        let held = entries.as_slice();
+        if framed.is_empty() || !(line::names_separator(row) || held.iter().any(TextEntry::marked))
+        {
+            return Ok(FixMessages::none());
+        }
+        if next_frame(held, 0).is_none() {
+            return self.bridge_with(held, extras).map(FixMessages::one);
+        }
+        // A frame opens behind the row, so the row is one message and the
+        // frame the next.
+        let stamp = super::build::RowStamp::retained(extras);
+        Ok(FixMessages::frames(self.clone(), entries, 0, stamp))
+    }
+
+    /// The message opening at `at` among a row's entries, and where the
+    /// row's next one opens.
+    ///
+    /// The one step the lazy source takes: a run opening on a tag is a frame,
+    /// bounded by [`frame_end`]; a run opening on a name is the bridge row in
+    /// front of the next frame. Every message of the row is built over the
+    /// one page behind those entries and owns only its own ranges, so each
+    /// re-emits its own bytes (decision 16).
+    pub(super) fn message_at(
+        &self,
+        entries: &TextEntries,
+        at: usize,
+        stamp: Option<&Arc<super::build::RowStamp>>,
+    ) -> Option<RowMessage> {
+        let held = entries.as_slice();
+        let run = held.get(at..).filter(|run| !run.is_empty())?;
+        let fills = stamp.map(|stamp| stamp.fills()).unwrap_or_default();
+        let extras = super::build::RowStamp::held(stamp, &fills);
+        if tag_keyed(&run[0]) {
+            let end = at + frame_end(run);
+            return Some(RowMessage {
+                message: self.frame_with(&held[at..end], extras),
+                next: next_frame(held, end).unwrap_or(held.len()),
+            });
+        }
+        let end = next_frame(held, at).unwrap_or(held.len());
+        Some(RowMessage {
+            message: self.bridge_with(&held[at..end], extras),
+            next: end,
+        })
     }
 
     /// Parses one numeric FIX frame.
@@ -983,7 +1105,12 @@ impl FixCodec {
     pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
-        self.frame_with(bounded(&page, &entries), self.read_extras(body))
+        let framed = bounded(&page, &entries);
+        if let Some(at) = second_frame_at(framed) {
+            return Err(second_frame("fix", at));
+        }
+        let end = frame_end(framed);
+        self.frame_with(&framed[..end], self.read_extras(body))
     }
 
     /// One numeric frame, from the entries the line answered for it.
@@ -1035,6 +1162,13 @@ impl FixCodec {
     pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg> {
         let page = TextBytes::from_bytes(body)?;
         let entries = TextEntries::from_bytes_direct(&page).unwrap_or_default();
+        // Judged over the row's own entries rather than the bounded run: a
+        // frame behind the row is where the scanner would have opened the
+        // payload, so bounding first would read the frame and refuse
+        // nothing.
+        if let Some(at) = second_frame_at(entries.as_slice()) {
+            return Err(second_frame("ullink", at));
+        }
         self.bridge_with(bounded(&page, &entries), self.read_extras(body))
     }
 
@@ -1401,6 +1535,9 @@ impl FixCodec {
     /// Returns [`Error::Parse`] naming the byte position when the row is not
     /// well-formed XML, and the builder's refusal otherwise.
     pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg> {
+        if let Some(at) = second_root(body)? {
+            return Err(second_frame("fixml", at));
+        }
         self.fixml_with(body, self.read_extras(body))
     }
 
@@ -1480,7 +1617,14 @@ impl FixCodec {
     where
         I: IntoIterator<Item = (&'a [u8], &'a [u8])>,
     {
-        self.build(&own_pairs(pairs)?, &[], RowExtras::NONE)
+        let pairs = own_pairs(pairs)?;
+        // The pairs have no line behind them, so the byte a refusal names is
+        // the offset in the page they were copied into, which is where the
+        // arrival record holds the key.
+        if let Some(at) = second_pair_frame(&pairs) {
+            return Err(second_frame("fix", at));
+        }
+        self.build(&pairs, &[], RowExtras::NONE)
     }
 
     /// The build a reader outside this module funnels into.
@@ -1817,6 +1961,79 @@ fn framed_entries(entries: &[TextEntry], opens: usize) -> &[TextEntry] {
     &entries[at..]
 }
 
+/// What a byte door answers a body holding a second message.
+///
+/// The doors take one frame; a caller holding two holds a row, and a row is
+/// what [`FixCodec::parse_line`] reads (decision 16). `Error::Parse` prints
+/// the byte itself, so the reason names what was expected and nothing else.
+fn second_frame(target: &'static str, position: usize) -> Error {
+    Error::Parse {
+        target,
+        position,
+        reason: crate::text::expected_got("one frame", "a second"),
+    }
+}
+
+/// The byte a second frame opens at among one body's entries, where it holds
+/// one.
+///
+/// The first message is bounded the way the door reads it - a run opening on
+/// a tag is a frame, a run opening on a name is a bridge row - and anything
+/// opening a frame behind it is the second.
+fn second_frame_at(entries: &[TextEntry]) -> Option<usize> {
+    let from = if entries.first().is_some_and(tag_keyed) {
+        frame_end(entries)
+    } else {
+        0
+    };
+    let second = next_frame(entries, from)?;
+    Some(entries[second].key_bytes().start() as usize)
+}
+
+/// One message of a row, and where the row's next one opens.
+pub(super) struct RowMessage {
+    /// The message, or the builder's refusal, which fuses the row.
+    pub(super) message: Result<FixMsg>,
+    /// The entry the next message opens at; the run's end where the row
+    /// holds no more.
+    pub(super) next: usize,
+}
+
+/// Where the frame opening at the first of these entries ends.
+///
+/// One past its checksum, which is what closes a frame; else where the next
+/// frame opens, because a frame stating no checksum ends where the next one
+/// begins; else the run's end (decision 16). Only an unmarked `8=` closes an
+/// open frame: a frame's own `35=` stands behind its `8=`, so a second one
+/// inside it is a duplicate tag and not a new message.
+fn frame_end(entries: &[TextEntry]) -> usize {
+    for (at, entry) in entries.iter().enumerate() {
+        if !tag_keyed(entry) {
+            continue;
+        }
+        match entry.key_bytes().as_bytes() {
+            b"10" => return at + 1,
+            b"8" if at > 0 => return at,
+            _ => {}
+        }
+    }
+    entries.len()
+}
+
+/// Where the next frame opens at or after `from`, where the run holds one.
+///
+/// The rule the scanner locates a line's first frame by, read over the row's
+/// own entries so a key the bridge marked is the bridge's own: an unmarked
+/// `8=`, and where the rest states none, an unmarked `35=`.
+fn next_frame(entries: &[TextEntry], from: usize) -> Option<usize> {
+    let rest = entries.get(from..)?;
+    let opens = |key: &[u8]| {
+        rest.iter()
+            .position(|entry| tag_keyed(entry) && entry.key_bytes().as_bytes() == key)
+    };
+    opens(b"8").or_else(|| opens(b"35")).map(|at| from + at)
+}
+
 /// Whether one entry's key is a tag rather than a name, which is what says a
 /// frame is numeric FIX rather than a bridge row.
 ///
@@ -1906,6 +2123,74 @@ fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived<'_>>, Vec<TextBytes>) {
 ///
 /// Returns [`Error::InvalidRecord`] when the pairs are wider than one page can
 /// address.
+/// The byte a second frame opens at among pairs a caller handed in.
+///
+/// A second `8=`, or a `35=` behind a checksum: the openers a line's own
+/// frames are found by, over pairs that never were a line.
+fn second_pair_frame(pairs: &[FixPair]) -> Option<usize> {
+    let mut at = 0;
+    let mut opened = false;
+    let mut closed = false;
+    for pair in pairs {
+        let key = pair.key();
+        if !key.is_empty() && key.iter().all(u8::is_ascii_digit) {
+            match key {
+                b"8" if opened => return Some(at),
+                b"35" if closed => return Some(at),
+                b"10" => closed = true,
+                _ => {}
+            }
+            opened = true;
+        }
+        at += key.len() + pair.value().len();
+    }
+    None
+}
+
+/// The byte a second root element opens at, where the document holds one.
+///
+/// A FIXML body states one document; two roots are two messages, which is a
+/// row rather than the one frame this door takes.
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`] naming the byte position when the body is not
+/// well-formed XML, exactly as reading it does.
+fn second_root(body: &[u8]) -> Result<Option<usize>> {
+    let mut reader = quick_xml::Reader::from_reader(body);
+    let mut buffer = Vec::new();
+    let mut depth = 0_usize;
+    let mut roots = 0_usize;
+    loop {
+        let opens = reader.buffer_position() as usize;
+        let event = reader
+            .read_event_into(&mut buffer)
+            .map_err(|error| Error::Parse {
+                target: "fixml",
+                position: reader.buffer_position() as usize,
+                reason: SmolStr::new(error.to_string()),
+            })?;
+        match event {
+            Event::Eof => break,
+            Event::Start(_) | Event::Empty(_) => {
+                if depth == 0 {
+                    roots += 1;
+                    if roots > 1 {
+                        return Ok(Some(opens));
+                    }
+                }
+                if matches!(event, Event::Start(_)) {
+                    depth += 1;
+                }
+            }
+            Event::End(_) => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+        buffer.clear();
+    }
+    Ok(None)
+}
+
 fn own_pairs<'a>(pairs: impl IntoIterator<Item = (&'a [u8], &'a [u8])>) -> Result<Vec<FixPair>> {
     spelled_pairs(pairs.into_iter().map(|(key, value)| (key, value, None)))
 }

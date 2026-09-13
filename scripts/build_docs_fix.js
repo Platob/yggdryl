@@ -114,10 +114,9 @@ const FRAMES = [
   ],
   [
     'keyvalue',
-    'An enriched line, no frame at all',
-    'After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR',
+    'An enriched row keyed by name, no frame at all',
+    'ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR',
   ],
-  ['unframed', 'A line nobody framed', 'no level printed by this plugin'],
   [
     UNSEALED,
     'A frame that does not add up',
@@ -297,7 +296,15 @@ function fixedRow(registry) {
   }
 }
 
-/** One captured line, and everything the package answered about it. */
+/** One captured line, and everything the package answered about it.
+ *
+ * Every corpus line here carries exactly one message: a line carries one per
+ * frame and none where it states no frame, no bridge pair and no document
+ * (decision 16), so a sample that answered none or two would be showing the
+ * reader a message the package never built. `After Enrichment -> ACCOUNT=…`
+ * and `no level printed by this plugin` were such samples and are gone; the
+ * enriched row is now written the way a bridge writes one, separated.
+ */
 function frameCase(registry, reader, schema, key, label, line) {
   const bytes = Buffer.from(line, 'binary')
   const messages = reader.parseLine(bytes)

@@ -245012,8 +245012,8 @@
     },
     {
       "key": "keyvalue",
-      "label": "An enriched line, no frame at all",
-      "line": "After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR",
+      "label": "An enriched row keyed by name, no frame at all",
+      "line": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR",
       "root": "unknown",
       "field": {
         "dtype": {
@@ -245139,83 +245139,7 @@
       "clock": "1970-01-01T00:00:00.000000000Z",
       "partition": "0",
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
-      "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"After Enrichment -> ACCOUNT=ACCT-000117 CLIENTID=MCFP2 VENUE=XPAR\", 'binary'))]"
-    },
-    {
-      "key": "unframed",
-      "label": "A line nobody framed",
-      "line": "no level printed by this plugin",
-      "root": "unknown",
-      "field": {
-        "dtype": {
-          "fields": [
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "Identifies beginning of new message and session protocol version by means of a session profile identifier (see FIX Session Layer for details). ALWAYS FIRST FIELD IN MESSAGE. (Always unencrypted).",
-                "display": "BeginString",
-                "fix:codes": "{\"codes\":[{\"value\":\"FIX.4.2\",\"name\":\"FIX42\",\"ep\":270,\"sort\":1,\"doc\":\"Session profile FIX.4.2\"},{\"value\":\"FIX.4.4\",\"name\":\"FIX44\",\"ep\":270,\"sort\":2,\"doc\":\"Session profile FIX4\"},{\"value\":\"FIXT.1.1\",\"name\":\"FIXT11\",\"ep\":270,\"sort\":3,\"doc\":\"Session profile FIXT or LFXIT\"}]}",
-                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"beginstring\",\"type\":{\"type\":\"string\"}}]}",
-                "fix:tag": "8"
-              },
-              "name": "beginstring",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "type": "string"
-              },
-              "metadata": {
-                "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
-                "display": "Version",
-                "fix:tag": "65001"
-              },
-              "name": "version",
-              "nullable": false
-            },
-            {
-              "dtype": {
-                "timezone": "UTC",
-                "type": "datetime64",
-                "unit": "nanosecond"
-              },
-              "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
-                "fix:tag": "65003"
-              },
-              "name": "timestamp",
-              "nullable": false
-            }
-          ],
-          "type": "struct"
-        },
-        "metadata": {},
-        "name": "unknown",
-        "nullable": false
-      },
-      "value": [
-        "FIX.5.0.2",
-        "5.0.2",
-        "1970-01-01T00:00:00.000000000Z"
-      ],
-      "mime": "application/octet-stream",
-      "msgtype": null,
-      "direction": null,
-      "size": 3,
-      "columns": [],
-      "arrivals": [],
-      "unmapped": [],
-      "lift": [],
-      "anomalies": [],
-      "digest": "99aa06d3014798d86001c324468d497f",
-      "ticker": null,
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
-      "emitted": "",
-      "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"no level printed by this plugin\", 'binary'))]"
+      "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR\", 'binary'))]"
     },
     {
       "key": "unsealed",

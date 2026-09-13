@@ -1,6 +1,6 @@
 # Message
 
-`FixMsg` is a value plus the registry that types it: a root Struct field, its ordered row, and the linked registry.
+`FixMsg` is a value plus the registry that types it: a root Struct field, its ordered row, and the linked registry. One message is one frame, one bridge row or one document - never the line, which can carry [several of them or none](decode.md#a-line-yields-none-one-or-many-messages).
 
 ## Contract
 
@@ -253,7 +253,7 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 
 ## Written into the row
 
-A message is read once and then written to: enrichment fills what it implied, the lifecycle stamps what the stream implied, a restatement rewrites a retired spelling. All of them go through one door. `set` writes one value into the row, typed by the field the key reaches; `set_many` lands several with one rebuild, which is what a stream stamping three identities on every message wants; `with_value` is the consuming twin; `remove` takes a child out and answers what it held. Every one of them is row-only: the entries are what arrived, so `into_bytes` still re-emits the received line byte for byte and `digest` still answers the arrival record's.
+A message is read once and then written to: enrichment fills what it implied, the lifecycle stamps what the stream implied, a restatement rewrites a retired spelling. All of them go through one door. `set` writes one value into the row, typed by the field the key reaches; `set_many` lands several with one rebuild, which is what a stream stamping three identities on every message wants; `with_value` is the consuming twin; `remove` takes a child out and answers what it held. Every one of them is row-only: the entries are what arrived, so `into_bytes` still re-emits the bytes this message arrived as, byte for byte, and `digest` still answers the arrival record's.
 
 | Key | Reaches |
 | --- | --- |
@@ -406,7 +406,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the line the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the bytes the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
 
 === "Rust"
 
@@ -494,7 +494,7 @@ A capture holds what each session spoke: a FIX 4.2 report states its fill as `La
 
 | item | contract |
 | --- | --- |
-| Row only | the entries are what arrived and are carried through untouched, so `into_bytes` re-emits the received line byte for byte and `anomalies` answers the same; `BeginString(8)` stays what the message said of itself |
+| Row only | the entries are what arrived and are carried through untouched, so `into_bytes` re-emits the bytes this message arrived as, byte for byte, and `anomalies` answers the same; `BeginString(8)` stays what the message said of itself |
 | Canonicalizes | every child the registry knows - by its `fix:tag`, else its name or alias, else the decimal tag its name spells - is re-expressed under the registry's field: canonical name, datatype, tag, in the position it held; a child no dictionary knows stays exactly as it is |
 | Merges | children reaching one field become one: the canonical-named child's value when stated, else the first stated among the rest; a child whose stated value disagrees with the kept one is left in place, so nothing that arrived is lost |
 | Restates | each child whose field carries `fix:replacements`, in ascending tag order, by the first entry whose `msgtypes`, `in` and `when` hold; a group fill makes or completes one occurrence and sets its counter |

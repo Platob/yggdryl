@@ -12,8 +12,8 @@ A day of session log is a table. This page is the road from one to the other: [`
 | Non-null | `beginstring`, `version`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
-| Expansion | ordinary lines yield one message; a bulk configuration yields one per selected MBean, including every response; empty bulk or wildcard answers yield none |
-| Refuses | nothing a row's content can do; a line the reader cannot read is a message with nothing in it, and the row count still matches the capture's |
+| Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a bulk configuration yields one per selected MBean, including every response; empty bulk or wildcard answers yield none |
+| Refuses | nothing a row's content can do; a payload that was there and would not parse is a message with nothing in it, so a row's content never fails the batch it arrives in. The row count is the capture's messages rather than its lines |
 | Found | a column is `index_of("msgtype")` on the schema itself, and `fix_column_of(&schema, 35)` is the same position read off the column's own `fix:tag`; nothing is cached, resolved or invalidated |
 
 ## Use
@@ -104,13 +104,13 @@ The verb is `parse`, and no reader takes a flag: what happens to a message once 
 
 | Reader | Takes | Answers |
 | --- | --- | --- |
-| `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: one message, or one per MBean of a bulk configuration |
+| `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: [none, one or many](decode.md#a-line-yields-none-one-or-many-messages) - one per frame, one per MBean of a bulk configuration, none for a line that states no message |
 | `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
 | `parse_text_line` | one [decoded line](../media/text.md#row-schema), its body, clock and [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
 | `parse_text_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>` |
 | `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
 | `parse_ulconfig_line` | a bulk or wildcard configuration body | `FixMessages` |
-| `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg` |
+| `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg`; a body holding [a second frame](decode.md#a-line-yields-none-one-or-many-messages) is refused |
 
 A stream adapter owns a clone of the codec and borrows nothing, so `codec.arrow_reader(schema, codec.parse_lines(lines))` composes without the codec outliving the stream. Python exposes native iterators; JavaScript uses `IterableIterator<FixMsg>`. Errors propagate from the native cursor and fuse it. Schema construction and group-plan resolution happen before repeated values are processed.
 
@@ -190,7 +190,7 @@ Each is the core's own method under the same name in all three languages.
 
 ### Lines are a stream
 
-`parse_lines` is the line iterator everything else is built on: nothing is collected, a bulk configuration yields one message per MBean, and a line the reader refuses is an `Err` item the stream continues past - one corrupt line must not end a run over ten million.
+`parse_lines` is the line iterator everything else is built on: nothing is collected, and a line answers [every message it carries](decode.md#a-line-yields-none-one-or-many-messages) - two where a relay wrote two frames on one line, none where the line is a sentence, one per MBean where it is a bulk configuration. A line the reader refuses is an `Err` item the stream continues past: one corrupt line must not end a run over ten million.
 
 === "Rust"
 
@@ -202,15 +202,19 @@ Each is the core's own method under the same name in all three languages.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
 
-    let lines: [&[u8]; 3] = [
+    let lines: [&[u8]; 4] = [
         b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
+        b"heartbeat emitted seq=7",
         b"",
-        b"8=FIX.4.4|35=8|37=O1|11=A|10=0|",
+        b"8=FIX.4.4|35=8|37=O1|11=A|10=0|8=FIX.4.4|35=8|37=O2|11=B|10=0|",
     ];
     let read: Vec<_> = reader.parse_lines(lines).collect();
-    assert_eq!(read.len(), 3, "a line in is an item out");
+    // An item per message: the sentence stated none, the last line two.
+    assert_eq!(read.len(), 4);
+    assert_eq!(read[0].as_ref().expect("an order").by_tag(55)?.as_str(), Some("AAPL"));
     assert!(read[1].is_err(), "an empty line is not a row, and the stream went on");
     assert_eq!(read[2].as_ref().expect("a report").by_tag(37)?.as_str(), Some("O1"));
+    assert_eq!(read[3].as_ref().expect("a report").by_tag(37)?.as_str(), Some("O2"));
     ```
 
 === "Python"
@@ -224,10 +228,16 @@ Each is the core's own method under the same name in all three languages.
 
     reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
 
-    lines = [b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|", b"8=FIX.4.4|35=8|37=O1|11=A|10=0|"]
+    lines = [
+        b"8=FIX.4.4|35=D|11=A|55=AAPL|10=0|",
+        b"heartbeat emitted seq=7",
+        b"8=FIX.4.4|35=8|37=O1|11=A|10=0|8=FIX.4.4|35=8|37=O2|11=B|10=0|",
+    ]
     read = reader.parse_lines(lines)
     assert next(read).by_tag(55).as_py() == "AAPL"
+    # The sentence stated no message; the last line stated both of its frames.
     assert next(read).by_tag(37).as_py() == "O1"
+    assert next(read).by_tag(37).as_py() == "O2"
     assert next(read, None) is None
     # An empty line is not a row: the item raises where it is reached.
     with pytest.raises(ValueError):
@@ -243,11 +253,17 @@ Each is the core's own method under the same name in all three languages.
 
     const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
 
-    const lines = ['8=FIX.4.4|35=D|11=A|55=AAPL|10=0|', '8=FIX.4.4|35=8|37=O1|11=A|10=0|'].map((line) => Buffer.from(line))
+    const lines = [
+      '8=FIX.4.4|35=D|11=A|55=AAPL|10=0|',
+      'heartbeat emitted seq=7',
+      '8=FIX.4.4|35=8|37=O1|11=A|10=0|8=FIX.4.4|35=8|37=O2|11=B|10=0|',
+    ].map((line) => Buffer.from(line))
     const read = [...reader.parseLines(lines)]
-    assert.equal(read.length, 2)
+    // Three lines, three messages: the sentence stated none, the last line two.
+    assert.equal(read.length, 3)
     assert.equal(read[0].byTag(55).asJs(), 'AAPL')
     assert.equal(read[1].byTag(37).asJs(), 'O1')
+    assert.equal(read[2].byTag(37).asJs(), 'O2')
     // An empty line is not a row: the item throws where it is reached.
     assert.throws(() => [...reader.parseLines([Buffer.alloc(0)])])
     ```
@@ -270,7 +286,7 @@ A group packed inside an occurrence is packed behind the same separator, at the 
 
 ### Edges
 
-- Ordinary unframed text can produce an empty message. Malformed configuration input returns a located error; a fallible message iterator stops after that error.
+- Ordinary unframed text produces no message at all - a line that opens no frame, states no bridge pair and carries no document states nothing to read, so it is no row either. A payload that was there and would not parse is a message with nothing in it, so a row's content never fails the batch it arrives in. Malformed configuration input returns a located error; a fallible message iterator stops after that error.
 - A bridge key's `#` is judged against the row's bare spellings, in a bridge row and in the name keys a bridge writes into a numeric frame alike. Alone, it drops: `#ORDERID=123` is the dictionary's `OrderID`. Restating a bare pair's bytes, the marked pair is a second spelling of one pair and goes, row and entries alike: `ORDERID=123|#ORDERID=123` is `OrderID` once, and `into_bytes` re-emits the one pair. Beside a bare twin stating other bytes it stays verbatim, because collapsing the two would merge two values under one name: `ORDERID=123|#ORDERID=345` is `OrderID` 123 beside `#ORDERID` 345 - its own column, its own entry - whichever arrived first. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` twin it too, and by its stem, so a bare `NOPARTYIDS` group claims every `#NOPARTYIDS[n]` however many the two state - each stays whole under its own name, the count beside them, and none lands in the dictionary's group. A marked group goes only whole: a marked count restating the bare one beside occurrences the bare group never numbered stays with them, and only a marked group restating the bare group pair for pair goes. A bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent; a value is compared as its bytes, because `abc` is not `ABC`; and the twin is a spelling, never an identity, so a tag and a marked name - `55=AAPL|#SYMBOL=AAPL` - state two values exactly as a tag and a bare name do. In a numeric frame the marks are judged and the keys kept as they are: a packed occurrence there is one value, as a bare one always was. A key marked twice is judged one mark at a time: `##ORDERID` twins `#ORDERID` as `#ORDERID` twins `ORDERID` - restating it goes, beside other bytes it stays, alone it loses one mark.
 - A row's message type resolves the way every key does, in the one namespace: a name reaches the message of that name, and a bare code the message tag 35's code set names, else the first in name order. A bridge row calling itself `tradecapturereport` reads against the message of that name, which is what places a counter half the dictionary shares - `NoLegs`, `NoSides` - under the group that message declares.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
@@ -823,7 +839,7 @@ That is the rule the whole row keeps: what a message said can never fail the bat
 
 ## A capture's own columns lead the row
 
-A line's URL, line number, timestamp and other capture fields lead its FIX columns. A bulk configuration can produce several message rows; each receives the same carried values from its source row.
+A line's URL, line number, timestamp and other capture fields lead its FIX columns. A source row produces one output row per message - one per frame a line carried, one per configuration a bulk body selected - and each of them receives the same carried values from that row; a row that carried no message produces none.
 
 A carried column whose folded name a FIX column already takes - a `msgCtxId` capture beside `msgctxid`, a text reader's `msgtype` beside the FIX one - is dropped rather than renamed or duplicated: the FIX column is the one a reader spelling it means, and two columns of one name is not a schema. What it stated is not lost, because the row [fills that column from it](arrow.md#a-column-is-the-caller-speaking-per-row). A `msgdirection` column is the row's stated direction, read as a parameter and carried nowhere else.
 

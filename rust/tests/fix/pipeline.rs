@@ -7,13 +7,14 @@
 //! frames and classifies every line; the codec reads every framed body into
 //! the one row shape the dictionary decides before a byte is read. This is
 //! the acceptance test for that composition: the schema never depends on the
-//! data, a line in is a row out, the capture's own columns lead each row and
-//! the captures named after fields fill them instead, every row is stamped
-//! by its header's clock, a document's attributes land typed on the bridge's
-//! own tags, and the batched read agrees with the line read on every tag
-//! both can answer.
+//! data, a message in is a row out - a line carrying none is no row and a
+//! line carrying two frames is two (decision 16) - the capture's own columns
+//! lead each row and the captures named after fields fill them instead,
+//! every row is stamped by its header's clock, a document's attributes land
+//! typed on the bridge's own tags, and the batched read agrees with the line
+//! read on every tag both can answer.
 
-use super::OneMessage;
+use super::SoleMessage;
 use super::path as fpath;
 
 use std::sync::Arc;
@@ -66,11 +67,29 @@ const CAPTURE: [&str; 11] = [
     "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Execution report (ClOrderID : 20260814_TP1_CLIENT_1003) without any route so using not persisted route: [UNDEFINED] --> [Broker_DarkPool_TradeCapture]",
 ];
 
-/// Where each shape sits in the capture.
-const RESPONSE_ROW: usize = 3;
-const HEARTBEAT_ROW: usize = 4;
-const FILL_ROW: usize = 6;
-const ROUTED_ROW: usize = 7;
+/// Which capture lines carry a message, in the order they carry them
+/// (decision 16). Six of the eleven carry none, and each for the same
+/// reason - the line opens no frame, states no bridge pair and carries no
+/// document. Lines 1 and 2 hold runs of named pairs -
+/// `name=Router_TradeCapture,plugin-type=FIX,type=Plugin` and
+/// `attribute=null, objectName = ...` - but a comma and a space are not a
+/// separator a line names and the bridge marked no key, so they are prose
+/// carrying an `=`; lines 3, 9, 10 and 11 are sentences with no pair in them
+/// at all. Every one of the six used to be a row holding an entry-less
+/// `unknown`.
+const CARRYING: [usize; 5] = [3, 4, 5, 6, 7];
+
+/// How many rows the batch door answers for this capture: one per message,
+/// never one per line.
+const MESSAGES: usize = CARRYING.len();
+
+/// Where each shape sits among the messages, which is where its row sits in
+/// every batch the codec answers.
+const RESPONSE_ROW: usize = 0;
+const HEARTBEAT_ROW: usize = 1;
+const RELAY_ROW: usize = 2;
+const FILL_ROW: usize = 3;
+const ROUTED_ROW: usize = 4;
 
 /// The log as the bytes a `.log` file holds.
 fn corpus(lines: &[&str]) -> Buffer {
@@ -121,15 +140,36 @@ fn text_stage(lines: &[&str]) -> RecordBatch {
     batches.into_iter().next().expect("the batch")
 }
 
-/// The whole path, as one batch: the capture is far under the byte target.
-fn read(lines: &[&str]) -> RecordBatch {
-    let batches: Vec<RecordBatch> = codec()
+/// The whole path, as the batches it answers - which is none where the lines
+/// carry no message at all.
+fn read_batches(lines: &[&str]) -> Vec<RecordBatch> {
+    codec()
         .parse_text_arrow_reader(corpus(lines).read_arrow_reader(&text()).expect("a reader"))
         .expect("the batch reader opens")
         .map(|batch| batch.expect("a batch"))
-        .collect();
+        .collect()
+}
+
+/// The whole path, as one batch: the capture is far under the byte target.
+fn read(lines: &[&str]) -> RecordBatch {
+    let batches = read_batches(lines);
     assert_eq!(batches.len(), 1, "one batch, under the byte target");
     batches.into_iter().next().expect("the batch")
+}
+
+/// How many messages each capture line carries, read by the codec over the
+/// very bodies the text reader hands it.
+fn messages_per_line(lines: &[&str]) -> Vec<usize> {
+    let codec = codec();
+    column(&text_stage(lines), "body")
+        .iter()
+        .map(|body| {
+            codec
+                .parse_line(body.as_str().expect("a body").as_bytes())
+                .expect("the line reads")
+                .count()
+        })
+        .collect()
 }
 
 /// One column of one batch, by position, as the values it holds.
@@ -254,10 +294,22 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     );
     assert!(!stamp.is_nullable(), "every row is stamped");
 
+    // A capture whose lines carry no message is no rows and so no batch at
+    // all (decision 16): the first two lines state runs of named pairs whose
+    // only separators are a comma and a space - never a separator a line
+    // names - and open no frame, so the batch door answers nothing for
+    // either. They used to be two rows holding an entry-less `unknown`.
+    assert_eq!(messages_per_line(&CAPTURE[..2]), [0, 0]);
+    assert!(
+        read_batches(&CAPTURE[..2]).is_empty(),
+        "no message, no row, and with no row no batch"
+    );
+
     // The shape is a function of the options and the dictionary alone: a
     // capture of two lines and one of eleven answer the same schema, and it
     // is exactly the composition the two halves publish.
-    let two = read(&CAPTURE[..2]);
+    let two = read(&CAPTURE[CARRYING[RESPONSE_ROW]..=CARRYING[HEARTBEAT_ROW]]);
+    assert_eq!(two.num_rows(), 2, "the document and the heartbeat");
     assert_eq!(two.schema(), held.schema());
     let composed = fix_schema_carrying(
         &text_options().source_field().expect("the text root"),
@@ -269,17 +321,39 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
 }
 
 #[test]
-fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
+fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     let read = read(&CAPTURE);
-    assert_eq!(read.num_rows(), CAPTURE.len());
+    let stage = text_stage(&CAPTURE);
 
-    // The line number is the capture's, one-based as the options said.
+    // Per line, what the line carries (decision 16): the Jolokia answer's
+    // document, three framed messages and the bridge row, and nothing at all
+    // for the other six. The `URI:` and `Request:` lines name no separator
+    // for their runs of pairs - a comma and a space are never one, and the
+    // bridge marked no key - and the four sentences hold no pair and no
+    // frame; none of the six opens a frame or carries a document, so none of
+    // them states a message.
+    assert_eq!(
+        messages_per_line(&CAPTURE),
+        [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0]
+    );
+
+    // The text reader is what answers one row per line; the batch door
+    // answers one row per message, so eleven lines are five rows.
+    assert_eq!(stage.num_rows(), CAPTURE.len());
+    assert_eq!(read.num_rows(), MESSAGES);
+
+    // The line number is the capture's, one-based as the options said - and
+    // it is the number of the line the message was read from, so the six
+    // silent lines are simply missing from it.
     let rownum = read
         .column(read.schema().index_of("rownum").expect("rownum"))
         .as_primitive::<arrow_array::types::Int64Type>();
     assert_eq!(
         rownum.values().iter().copied().collect::<Vec<_>>(),
-        (1..=11).collect::<Vec<i64>>()
+        CARRYING
+            .iter()
+            .map(|line| *line as i64 + 1)
+            .collect::<Vec<i64>>()
     );
 
     // The row header's captures survive the codec untouched: the thread that
@@ -328,7 +402,7 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     let sender = tag_text(&read, yggdryl::SENDERSESSIONNAME_TAG_NAME.0);
     let target = tag_text(&read, yggdryl::TARGETSESSIONNAME_TAG_NAME.0);
     let previous = tag_text(&read, yggdryl::PREVPLUGINID_TAG_NAME.0);
-    for row in 0..CAPTURE.len() {
+    for row in 0..MESSAGES {
         assert_eq!(sender[row], None, "row {row} states no sender session name");
         assert_eq!(target[row], None, "row {row} states no target session name");
         assert_eq!(previous[row], None, "row {row} states no previous plugin");
@@ -346,20 +420,31 @@ fn a_line_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     assert_eq!(mimetype[RESPONSE_ROW].as_deref(), Some("text/ulconfig"));
     assert_eq!(mimetype[HEARTBEAT_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[FILL_ROW].as_deref(), Some("text/fix"));
+    assert_eq!(mimetype[RELAY_ROW].as_deref(), Some("text/fix"));
     assert_eq!(mimetype[ROUTED_ROW].as_deref(), Some("text/ullink"));
-    assert_eq!(mimetype[0].as_deref(), Some("application/octet-stream"));
-    assert_eq!(mimetype[1].as_deref(), Some("text/key-value"));
+    // What a line is classified as and whether it carries a message are two
+    // different answers (decision 16). The text reader still calls line 1
+    // `application/octet-stream` and line 2 `text/key-value` - a run of named
+    // pairs is what a classifier can see without parsing - and neither line
+    // carries a message, so neither reaches the batch: the five rows here are
+    // the document, the three frames and the bridge row, and nothing else.
+    let classified = text_column(&stage, "mimetype");
+    assert_eq!(classified[0].as_deref(), Some("application/octet-stream"));
+    assert_eq!(classified[1].as_deref(), Some("text/key-value"));
+    assert_eq!(mimetype.len(), MESSAGES);
 
-    // Which way each line moved is FIX's own tag 385 (decision 14): the
-    // verb in front of the frame, the `Response:` Jolokia wrote in front of
-    // the document (decision 15), and the codec's pin where a line stated
-    // nothing - a sentence states no direction, and on the batch door the
-    // pin fills it.
+    // Which way each message moved is FIX's own tag 385 (decision 14): the
+    // verb in front of the frame, and the `Response:` Jolokia wrote in front
+    // of the document (decision 15). The codec's pin for a line that states
+    // no direction has nothing left to fill on this capture - the lines that
+    // stated none were the sentences, and a sentence is no row (decision 16)
+    // - so every row here states the direction its own line spelled.
     let fix_direction = tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0);
     assert_eq!(fix_direction[HEARTBEAT_ROW].as_deref(), Some("S"));
     assert_eq!(fix_direction[FILL_ROW].as_deref(), Some("R"));
     assert_eq!(fix_direction[RESPONSE_ROW].as_deref(), Some("R"));
-    assert_eq!(fix_direction[2].as_deref(), Some("S"));
+    assert_eq!(fix_direction[RELAY_ROW].as_deref(), Some("R"));
+    assert_eq!(fix_direction[ROUTED_ROW].as_deref(), Some("S"));
 }
 
 #[test]
@@ -374,7 +459,16 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         Some("8"),
         "a bridge row names its type"
     );
-    assert_eq!(msgtype[0], None, "prose states no type");
+    // `unknown` names a frame, a bridge row or a document that states no
+    // type - never a line that states no frame (decision 16). The Jolokia
+    // answer is the one row here that states none; the capture's sentences
+    // used to be `unknown` rows too and are now no rows at all, which is
+    // what the five-row count says.
+    assert_eq!(
+        msgtype[RESPONSE_ROW], None,
+        "a configuration document states no type"
+    );
+    assert_eq!(msgtype.len(), MESSAGES, "no sentence is a row");
 
     // Header facts, by tag.
     let sender = tag_text(&read, 49);
@@ -391,7 +485,17 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         "{:?}",
         sent[HEARTBEAT_ROW]
     );
-    assert!(sent[2].is_null(), "prose states no time");
+    assert!(
+        matches!(sent[RELAY_ROW], Scalar::Temporal(_)),
+        "{:?}",
+        sent[RELAY_ROW]
+    );
+    // A row that states no sending time is a document, not prose: prose
+    // carries no row here to state one (decision 16).
+    assert!(
+        sent[RESPONSE_ROW].is_null(),
+        "a configuration document states no sending time"
+    );
 
     // The fill's body: symbol, side, quantities and prices, typed.
     assert_eq!(tag_text(&read, 55)[FILL_ROW].as_deref(), Some("EXAMPLECO"));
@@ -419,10 +523,18 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert_eq!(tag_column(&read, 38)[ROUTED_ROW].as_f64(), Some(982.0));
     assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
 
-    // The crate's own columns: a digest for every row that carried anything -
-    // the framed fill and the routed row state different tag sets, so they
-    // digest apart - and the clock every row is stamped with.
+    // The crate's own columns: a digest on every row - a row exists only
+    // where a message did (decision 16), so there is no longer an empty
+    // `unknown` row with nothing to digest - the framed fill and the routed
+    // row state different tag sets, so they digest apart, and the clock
+    // every row is stamped with.
     let digest = tag_column(&read, yggdryl::MSGHASH_TAG_NAME.0);
+    for (row, held) in digest.iter().enumerate() {
+        assert!(
+            held.as_bytes().is_some_and(|held| held.len() == 16),
+            "row {row} carried a message, so it digests"
+        );
+    }
     assert!(
         digest[FILL_ROW]
             .as_bytes()
@@ -446,17 +558,21 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
 
     // The row's own clock outranks every clock the message carries - the fill
     // states 04:46:36 and is stamped when the bridge wrote its line,
-    // 06:46:36.887 - and a line carrying no clock at all is stamped too. The
-    // text read declared UTC, so the capture and the stamp are one instant,
-    // on every row.
+    // 06:46:36.887 - and a message carrying no clock at all is stamped too.
+    // The text read declared UTC, so the capture and the stamp are one
+    // instant, on every row. The stage holds one row per line and the codec
+    // one per message (decision 16), so the clock a stamp must equal is the
+    // clock of the line the message was read from: `CARRYING` names it.
     let clock = column(&stage, "timestamp");
     let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
-    for row in 0..CAPTURE.len() {
+    assert_eq!(stamp.len(), MESSAGES);
+    assert_eq!(clock.len(), CAPTURE.len());
+    for (row, line) in CARRYING.into_iter().enumerate() {
         assert!(!stamp[row].is_null(), "row {row} is stamped");
         assert_eq!(
             stamp[row].temporal_count_at(TimeUnit::Nanosecond),
-            clock[row].temporal_count_at(TimeUnit::Nanosecond),
-            "row {row} is stamped by its header clock",
+            clock[line].temporal_count_at(TimeUnit::Nanosecond),
+            "row {row} is stamped by the header clock of line {line}",
         );
     }
     let millis = |row: usize| stamp[row].temporal_count_at(TimeUnit::Millisecond);
@@ -478,7 +594,9 @@ fn every_row_is_stamped_by_its_header_clock_and_says_which_fix_it_was_read_as() 
 
     // Every row says which FIX it was read as: the wire's own `BeginString`
     // where the frame stated one, and `FIX.` and the version the row was read
-    // at where it did not - the routed row keyed by name, and the prose.
+    // at where it did not - the routed row, keyed by name, and the Jolokia
+    // document. A sentence answers no version because it answers no row
+    // (decision 16).
     let version = tag_text(&read, 8);
     for (row, held) in version.iter().enumerate() {
         assert!(held.is_some(), "row {row} states a version");
@@ -563,7 +681,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     let body = &RESPONSE[ROWHEADER_WIDTH..];
     assert!(body.starts_with("Response: {"), "{body}");
     let message = codec
-        .one_line(body.as_bytes(), false)
+        .sole_line(body.as_bytes(), false)
         .expect("the document the line carries");
 
     // The envelope is what the exchange was, and it types.
@@ -658,10 +776,14 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let read = read(&CAPTURE);
 
     // The text reader's bodies are what the codec reads, so the line read
-    // runs over them rather than over the raw lines. Where the line alone
-    // answers nothing, what the batch answers is what the row's own columns
-    // stated - here the header's `seqNum`. The reader states no message type
-    // of its own: a line's type is what its frame says, read by the codec.
+    // runs over them rather than over the raw lines. Every row of the batch
+    // came from a line carrying exactly one message here, so `sole_line` is
+    // the line read for all five - and it is the line the row came from,
+    // `CARRYING[row]`, whose columns the batch filled from. Where the line
+    // alone answers nothing, what the batch answers is what that row's own
+    // columns stated - here the header's `seqNum`. The reader states no
+    // message type of its own: a line's type is what its frame says, read by
+    // the codec.
     let stage = text_stage(&CAPTURE);
     let sequenced = column(&stage, "seqNum");
     let bodies = column(&read, "body");
@@ -677,11 +799,11 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         for (row, body) in bodies.iter().enumerate() {
             let body = body.as_str().expect("a body").as_bytes();
             let message = codec
-                .one_line(body, false)
+                .sole_line(body, false)
                 .unwrap_or_else(|error| panic!("row {row}: {error}"));
             let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
             let expected = match (tag, &alone) {
-                (34, Scalar::Null) => rendered(&sequenced[row]),
+                (34, Scalar::Null) => rendered(&sequenced[CARRYING[row]]),
                 _ => rendered(&alone),
             };
             assert_eq!(
@@ -698,7 +820,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // context, the plugin or the clock - so the arrival record is still the
     // line alone.
     let routed = bodies[ROUTED_ROW].as_str().expect("a body").as_bytes();
-    let alone = codec.one_line(routed, false).expect("the routed row");
+    let alone = codec.sole_line(routed, false).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
     let entries = column(&read, "nofixentries");
@@ -728,7 +850,9 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // The wire is rebuilt from each row's arrival record: every framed line
     // comes back byte for byte behind the prose the text reader left in
     // front of it - the routed row too, because what the row filled from its
-    // header is not an entry and so is not re-emitted.
+    // header is not an entry and so is not re-emitted. One line is written
+    // per message, not per source line (decision 16), so the six lines that
+    // carried none write nothing and eleven lines come back as five.
     let mut written: Vec<u8> = Vec::new();
     let emitting = codec.clone().with_separator(b'|');
     let source = emitting
@@ -741,11 +865,12 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let rows = emitting
         .write_arrow_reader(source, &mut written)
         .expect("the capture writes");
-    assert_eq!(rows, CAPTURE.len() as u64);
+    assert_eq!(rows, MESSAGES as u64);
     let lines: Vec<&str> = std::str::from_utf8(&written)
         .expect("text")
         .lines()
         .collect();
+    assert_eq!(lines.len(), MESSAGES, "{lines:?}");
     for (row, line, opens) in [
         (HEARTBEAT_ROW, HEARTBEAT, "8=FIX"),
         (FILL_ROW, FILL, "8=FIX"),
@@ -754,4 +879,110 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
         let frame = &line[line.find(opens).expect("a frame")..];
         assert_eq!(lines[row], frame, "row {row} re-emits its frame");
     }
+}
+
+/// A relay that batched two frames into one log write, and a sentence the
+/// bridge wrote after it: two lines carrying two messages between them.
+const BATCHED: [&str; 2] = [
+    "2026-08-14 06:46:30.947 [402-e7254b20:9f015ed023:935] [ULMSG_BROKER_TO_DMZ] (DEBUG) Receiving : 8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|8=FIX.4.2|9=55|35=0|49=ULB_DMZ|56=ULB_BRK|34=935|52=20260814-04:46:30.967|10=186|",
+    "2026-08-14 06:46:37.153 [15333-e7254b22:9f015ee861:4507] [ULBridge] (INFO) Filtering - Message for RiskMonitor",
+];
+
+/// The two frames of that one line, as the bytes each carries.
+const FIRST_FRAME: &str =
+    "8=FIX.4.4|9=68|35=0|49=CLIAUDITX1|56=OMSAUDITX1|34=696|52=20260814-04:46:30.415655|10=159|";
+const SECOND_FRAME: &str =
+    "8=FIX.4.2|9=55|35=0|49=ULB_DMZ|56=ULB_BRK|34=935|52=20260814-04:46:30.967|10=186|";
+
+#[test]
+fn a_line_of_two_frames_is_two_rows_and_a_sentence_is_none() {
+    let read = read(&BATCHED);
+
+    // A row yields none, one or many (decision 16). The first line holds two
+    // frames - the second opens at the `8=` behind the first's `10=` checksum
+    // - and the second line is a sentence with no frame and no pair in it, so
+    // it holds none. Two lines in, two rows out, and neither count is the
+    // other's: the text reader still reads both lines.
+    assert_eq!(messages_per_line(&BATCHED), [2, 0]);
+    assert_eq!(text_stage(&BATCHED).num_rows(), BATCHED.len());
+    assert_eq!(read.num_rows(), 2);
+
+    // Both rows came from line 1, because line 2 contributed none.
+    let rownum = read
+        .column(read.schema().index_of("rownum").expect("rownum"))
+        .as_primitive::<arrow_array::types::Int64Type>();
+    assert_eq!(rownum.values().iter().copied().collect::<Vec<_>>(), [1, 1]);
+
+    // Each message owns the entries of its own frame and none of its
+    // neighbour's: two versions, two senders, two sequence numbers.
+    assert_eq!(
+        tag_text(&read, 8),
+        [Some("FIX.4.4".to_owned()), Some("FIX.4.2".to_owned())]
+    );
+    assert_eq!(
+        tag_text(&read, 49),
+        [Some("CLIAUDITX1".to_owned()), Some("ULB_DMZ".to_owned())]
+    );
+    assert_eq!(tag_column(&read, 34)[0].as_i64(), Some(696));
+    assert_eq!(tag_column(&read, 34)[1].as_i64(), Some(935));
+
+    // What the row carried, both messages share once (decision 8): the
+    // header's clock, the plugin that wrote the line and the direction its
+    // verb stated.
+    let stamp = tag_column(&read, yggdryl::TIMESTAMP_TAG_NAME.0);
+    assert_eq!(stamp[0], stamp[1]);
+    assert_eq!(
+        stamp[0].temporal_count_at(TimeUnit::Millisecond),
+        Some(1_786_689_990_947)
+    );
+    assert_eq!(
+        tag_text(&read, yggdryl::PLUGINID_TAG_NAME.0),
+        vec![Some("ULMSG_BROKER_TO_DMZ".to_owned()); 2]
+    );
+    assert_eq!(
+        tag_text(&read, yggdryl::MSGDIRECTION_TAG_NAME.0),
+        vec![Some("R".to_owned()); 2]
+    );
+
+    // The classifier describes the line's first frame, which is what it can
+    // know without parsing, and both rows of that line carry its answer.
+    assert_eq!(
+        text_column(&read, "mimetype"),
+        vec![Some("text/fix".to_owned()); 2]
+    );
+
+    // Written back out, each message re-emits only its own bytes, and the
+    // sentence writes nothing.
+    let emitting = codec().with_separator(b'|');
+    let mut written: Vec<u8> = Vec::new();
+    let source = emitting
+        .parse_text_arrow_reader(
+            corpus(&BATCHED)
+                .read_arrow_reader(&text())
+                .expect("a reader"),
+        )
+        .expect("the batch reader opens");
+    let rows = emitting
+        .write_arrow_reader(source, &mut written)
+        .expect("the capture writes");
+    assert_eq!(rows, 2);
+    let lines: Vec<&str> = std::str::from_utf8(&written)
+        .expect("text")
+        .lines()
+        .collect();
+    assert_eq!(lines, [FIRST_FRAME, SECOND_FRAME]);
+
+    // The single-frame door refuses a body holding a second: a caller
+    // holding two frames has a row, not a frame.
+    let body = column(&text_stage(&BATCHED), "body");
+    let held = body[0].as_str().expect("a body");
+    let refused = codec()
+        .parse_fix_line(held.as_bytes())
+        .expect_err("the door refuses a second frame");
+    assert!(
+        refused
+            .to_string()
+            .contains("expected one frame, got a second"),
+        "{refused}"
+    );
 }

@@ -2260,7 +2260,7 @@ fn a_message_resolves_the_spelling_two_of_its_tags_share() {
     let reader = FixCodec::new(Arc::new(registry));
     let row: &[u8] = b"MSGTYPE=tradecapturereport|HEDGECURRENCY=USD|TR_FIXINGCENTER=LN\
 |NOHEDGEGROUPS=1|NOHEDGEGROUPS[0]=HEDGESETTLDATE=20260818\x04\x03HEDGECURRENCY=XAU\x04\x03";
-    let message = <FixCodec as super::OneMessage>::one_line(&reader, row, false)
+    let message = <FixCodec as super::SoleMessage>::sole_line(&reader, row, false)
         .expect("the bridge row builds");
     assert_eq!(message.by_tag(11025).unwrap().as_str(), Some("USD"));
     assert_eq!(message.by_tag(11033).unwrap().as_str(), Some("LN"));
@@ -2313,7 +2313,7 @@ fn the_captures_trade_capture_frame_reads_against_the_dialect_that_declares_it()
         .expect("the trade capture frame");
     let (registry, _) = parse(HEDGED);
     let reader = FixCodec::new(Arc::new(registry));
-    let message = <FixCodec as super::OneMessage>::one_line(&reader, logged.as_bytes(), false)
+    let message = <FixCodec as super::SoleMessage>::sole_line(&reader, logged.as_bytes(), false)
         .expect("the captured frame builds");
 
     // The frame's own type stays the frame's.
