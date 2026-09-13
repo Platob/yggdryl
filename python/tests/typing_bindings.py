@@ -1361,7 +1361,6 @@ fix_read_fixml: fix.FixMsg = fix_reader.parse_fixml_line(b"<Order ClOrdID='A'/>"
 fix_read_pairs: fix.FixMsg = fix_reader.parse_pairs([("55", "AAPL")])
 fix_read_filled: fix.FixMsg = fix_reader.enrich_message(fix_read_text)
 fix_read_filled_stream: fix.FixMessages = fix_reader.enrich_messages([fix_read_text])
-fix_read_latest: fix.FixMsg = fix_read_text.into_latest()
 fix_read_stamped: fix.FixMessages = fix_reader.lifecycle(iter([fix_read_text]))
 fix_capture: pa.Table = pa.table({"body": pa.array([b"8=FIX.4.4|35=D|10=0|"], pa.binary())})
 fix_parsed: pa.RecordBatchReader = fix_reader.parse_text_arrow_reader(fix_capture)

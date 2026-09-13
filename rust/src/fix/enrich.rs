@@ -590,6 +590,97 @@ static RULES: &[FixRule] = &[
         when: &[],
         from: FixDerivation::Same(31),
     },
+    // A forward price is quoted as a spot rate and the points away from it,
+    // and the points are already in price units, so the two add. The same
+    // shape answers a two-sided quote on each side.
+    FixRule {
+        tag: 31,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Sum(194, 195),
+    },
+    FixRule {
+        tag: 132,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Sum(188, 189),
+    },
+    FixRule {
+        tag: 133,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Sum(190, 191),
+    },
+    // A pegged order's price is the reference it pegs to plus its own
+    // offset, which is signed: a peg below the reference is a negative one.
+    FixRule {
+        tag: 839,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Sum(1_095, 211),
+    },
+    // A contract's quantity in units is its quantity in contracts times what
+    // one contract multiplies to, and an increment in money is the same
+    // product of the increment in price.
+    FixRule {
+        tag: 2_368,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Product(32, 231),
+    },
+    FixRule {
+        tag: 2_370,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Product(2_367, 231),
+    },
+    FixRule {
+        tag: 1_146,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Product(969, 231),
+    },
+    FixRule {
+        tag: 2_367,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Product(32, 2_353),
+    },
+    FixRule {
+        tag: 2_369,
+        msgtypes: &[],
+        when: &[],
+        from: FixDerivation::Product(31, 2_367),
+    },
+    // What a canceled order asked for is what it did plus what was canceled.
+    FixRule {
+        tag: 38,
+        msgtypes: REPORTS,
+        when: &[],
+        from: FixDerivation::Sum(14, 84),
+    },
+    // A possible duplicate carries the clock of the send it repeats, and the
+    // session layer says that is what its original sending time is.
+    FixRule {
+        tag: 122,
+        msgtypes: &[],
+        when: &[FixWhen {
+            tag: 43,
+            values: &["Y"],
+        }],
+        from: FixDerivation::Same(52),
+    },
+    // FIX writes a currency as ISO 4217 and in no other source, so a stated
+    // currency states its source too.
+    FixRule {
+        tag: 2_897,
+        msgtypes: &[],
+        when: &[FixWhen {
+            tag: 15,
+            values: &[],
+        }],
+        from: FixDerivation::Constant("6"),
+    },
 ];
 
 /// The value one derivation answers, or nothing when it cannot be certain.
@@ -842,6 +933,116 @@ impl Remembered {
     }
 }
 
+/// Fills every field a composed key names and the row left absent.
+///
+/// A bridge writes a field under its own namespace - `TECH.CLIENTID`,
+/// `ULLINK.INSTRUMENTID`, `FIRM.ORIG.ULFROMSESSIONNAME` - and the fact is
+/// the field's however the writer spelled the key. Where the last dotted
+/// segment of a child's name resolves to a dictionary field and that field
+/// is absent, the composed key fills it, and the filled child takes the
+/// field's tag so every rule below reads it like any other (decision 20).
+///
+/// One voice or silence. Where a row names one absent field under several
+/// composed keys and they disagree, none of them fills it: on nine lines of
+/// the committed corpus `FIRM.ORIG.CLIENTID` is a firm account number and
+/// `ULLINK.CLIENTID` a trader login, both naming an absent `CLIENTID`, and
+/// nothing in the row says which one the field means. Filling from either
+/// would invent a fact.
+///
+/// Read where the row is read, rather than in the enriching pass. A composed
+/// key is the row's own statement of the field under a spelling of its own,
+/// not an inference from other fields, so it belongs with the reading of the
+/// row - and that is the only placement under which both enriching doors
+/// agree, because a child the dictionary does not name has no column and so
+/// does not survive a row: the batch door would never see it.
+pub(super) fn compose(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+    // What each absent field is named under, and by how many voices: the
+    // first value seen, and whether a later one disagreed with it.
+    let mut named: Vec<(i32, Scalar, bool)> = Vec::new();
+    for child in msg.as_field().fields() {
+        let Some((_, last)) = child.name().rsplit_once('.') else {
+            continue;
+        };
+        // A segment naming no field of this dictionary names nothing.
+        let Ok(field) = registry.field_by_name(last) else {
+            continue;
+        };
+        let Ok(Some(tag)) = field.as_fix().tag() else {
+            continue;
+        };
+        // What the message already states is never a thing to fill.
+        if msg.get_by_tag(tag).is_some_and(|held| !held.is_null()) {
+            continue;
+        }
+        let Some(value) = msg.get_by_name(child.name()).filter(|held| !held.is_null()) else {
+            continue;
+        };
+        match named.iter_mut().find(|(held, _, _)| *held == tag) {
+            Some(entry) => entry.2 |= entry.1 != *value,
+            None => named.push((tag, value.clone(), false)),
+        }
+    }
+    let mut msg = msg;
+    for (tag, value, disagreed) in named {
+        if disagreed {
+            continue;
+        }
+        let _ = msg.set(tag, value);
+    }
+    msg
+}
+
+/// The fields the arrival record names that the message no longer holds.
+///
+/// A row is a projection. [`fix_schema`](super::fix_schema) names a column
+/// for the tags a book, a blotter, a quote feed and a monitor read, and a
+/// field outside that list reaches a message rebuilt from a row only through
+/// the arrival record - which the row carries whole, under
+/// [`ENTRIES_COLUMN`](super::schema::ENTRIES_COLUMN), whatever the columns
+/// made of it. `ExecBroker(76)` and `ClientID(109)` are two such fields, and
+/// the replacements that restate them write the `parties` group and its
+/// `NoPartyIDs(453)` counter, which do have columns. A pass reading only the
+/// columns would therefore answer two parties on the line door and none on
+/// the batch door for one message, which is the one thing the two doors may
+/// never do.
+///
+/// So the pass opens on the record rather than on the columns, and it costs
+/// nothing where nothing was dropped: a message parsed from a line already
+/// holds a child for every tag its record names, so the walk writes nothing
+/// and allocates nothing. Only a tag the message holds no child for at all is
+/// taken - a stated null is a child, and a message that said "nothing sent"
+/// said it.
+fn recovered(mut msg: FixMsg) -> FixMsg {
+    let mut dropped: Vec<(i32, Scalar)> = Vec::new();
+    for entry in msg.entries() {
+        let tag = entry.tag();
+        // `0` is a key that named no tag, and a tag the message holds needs
+        // nothing: the record is read for what the projection lost, never to
+        // restate what survived it.
+        if tag <= 0 || msg.get_by_tag(tag).is_some() {
+            continue;
+        }
+        // A pair that headed a subtree is that subtree's. Recovering a
+        // group's counter alone would state a count with no occurrences
+        // under it, which is a worse answer than the silence the projection
+        // left: only a leaf pair comes back here.
+        if !entry.children().is_empty() || dropped.iter().any(|(held, _)| *held == tag) {
+            continue;
+        }
+        let Some(text) = entry.value().as_str() else {
+            continue;
+        };
+        dropped.push((tag, Scalar::from(text.to_owned())));
+    }
+    for (tag, value) in dropped {
+        // The dictionary's own field types the text on the way in, and a tag
+        // no dictionary explains is refused - which is the whole of what an
+        // unmapped pair should get here.
+        let _ = msg.set(tag, value);
+    }
+    msg
+}
+
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
 ///
 /// Every answer lands through [`FixMsg::set`]: a row already holding the tag
@@ -853,7 +1054,15 @@ impl Remembered {
 /// refuses, an identifier the check digit does not close, is silence: a
 /// refused write leaves the row exactly as it was, and there is nothing
 /// else here that can fail.
-pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
+    // What the row's projection dropped comes back off the arrival record
+    // first, because restatement reads what the document stated and a row
+    // states only its columns (decision 20).
+    let msg = recovered(msg);
+    // Restatement next, and not as a step a caller may skip: every rule
+    // below reads by tag, and a child stored under an alias with no tag is
+    // invisible until it has been canonicalized (decision 20).
+    let msg = super::latest::restate(msg)?;
     let msgtype = msg
         .get_by_tag(35)
         .and_then(Scalar::as_str)
@@ -887,5 +1096,5 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
         // the end.
         let _ = held.set(rule.tag, value);
     }
-    held
+    Ok(held)
 }

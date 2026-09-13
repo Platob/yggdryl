@@ -244,7 +244,6 @@ try {
   benchmark('fix/message_get_by_id', () => message.getById(SYMBOL_ID))
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
   benchmark('fix/message_get_by_path', () => message.getByPath('Parties.0.PartyID'))
-  benchmark('fix/message_into_latest', () => message.intoLatest())
   benchmark('fix/infer_fixml_protocol', () => MimeType.inferBytes(FIXML_LINE))
   benchmark('fix/infer_ullink_msgtype', () => fix.FixCodec.inferMsgtypeText(ULLINK_LINE))
   for (const category of ['fields', 'components', 'groups']) {
@@ -307,6 +306,7 @@ try {
   benchmark('fix/message_set', () => parsed.clone().set(55, 'MSFT'))
   benchmark('fix/message_remove', () => parsed.clone().remove(55))
   benchmark('fix/message_from_row', () => fix.FixMsg.fromRow(fixedSchema, parsedRow, registry))
+  benchmark('fix/enrich_message', () => seedCodec.enrichMessage(message))
   const streams = Math.max(1, Math.round(iterations / 50))
   benchmarkStreams(`fix/parse_lines_drain/${LINES.length}`, streams, () => drain(seedCodec.parseLines(LINES)))
   benchmarkStreams(`fix/parse_text_lines_drain/${LINES.length}`, streams, () =>

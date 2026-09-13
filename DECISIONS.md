@@ -1453,3 +1453,161 @@ nothing; a configuration then a bare row on one plugin, the row filled; two
 configurations for one plugin, the later winning; a stated 49 never
 overwritten; and the memory crossing a batch boundary in
 `enrich_messages_arrow_reader`.
+
+## 20. Enrichment is one pass, and it fills everything one message implies
+
+**Rule.** There is one enriching pass and it is `FixCodec::enrich_message`,
+`enrich_messages` and `enrich_messages_arrow_reader`. Three steps run on one
+message, in this order.
+
+**Restate.** What `latest::restate` decides today, unchanged: each child
+canonicalized to the registry field its tag, name, alias or decimal spelling
+reaches; children reaching one field merged into the most complete;
+`fix:replacements` applied in ascending tag order; the crate `version`
+stamped with the registry's newest. `FixMsg::into_latest` is deleted and
+`latest.rs` becomes the pass's first step, because restatement was never a
+stage a caller should be able to skip: every rule below reads by tag, and a
+child stored under an alias with no tag is invisible until it has been
+canonicalized. A pass whose first step is optional is two passes.
+
+**Complete - and completion is a read.** A consumer addressing `lastshares`
+finds the `lastqty` the message states, because `FixMsg::get_by_name`
+resolves the spelling through the registry, which answers a field for any
+alias it holds. That is already true and nothing needs writing to make it so.
+
+No alias twin is added as a second child, and the reason is not economy.
+Two of the forty-two shipped aliases are another field's canonical name -
+`quoteackstatus` is an alias of `quotestatus` (297) and the name of 1865,
+`tradetype` an alias of `bidtradetype` (418) and the name of 3006 - so a
+message stating both would hold two children of one name and
+`DataType::from_fields` would refuse the whole pass. A twin cannot cross the
+batch door: `fix_schema` names a column for a canonical field and for no
+alias, so `enrich_messages_arrow_reader` would discard on the way out what
+`enrich_messages` had just added, and the two doors would stop being one
+pass. And `get_by_tag` answers the earliest child on a tag, so where a twin
+was placed would silently decide what every column, every rule, every lift
+and the lifecycle read. A spelling is a way of asking, not a thing to store.
+
+**Fill.** What the message implies and does not state, never over anything it
+states - the rule that makes the pass idempotent. Three sources, in order,
+because each may feed the next: the composed keys the row carried, then the
+rules the specification licenses, then the plugin configuration this stream
+has already passed (decision 19).
+
+**Composed keys.** A bridge writes a field under its own namespace -
+`TECH.CLIENTID`, `ULLINK.INSTRUMENTID`, `FIRM.ORIG.ULFROMSESSIONNAME`,
+`OMSVENDOR.CALC.EXECBROKER`. Where the last dotted segment of a child's name
+resolves to a dictionary field and that field is absent, the composed key
+fills it, and the filled child takes the field's tag so every rule below can
+read it.
+
+One voice or silence. Where a row names one absent field under several
+composed keys and they do not agree, none of them fills it. This is not a
+precaution: on nine lines of the committed corpus `FIRM.ORIG.CLIENTID` is
+`3000090.006` and `ULLINK.CLIENTID` is `trader1` with `CLIENTID` absent -
+a firm account number and a trader login, and nothing in the row says which
+one the field means. Filling from either would invent a fact; filling from
+neither states what the row actually settled, which is nothing.
+
+Never overwriting is load-bearing here too, and the same corpus proves it:
+`CLIENT.SYMBOL` is `XAU` where `SYMBOL` is `XAU/USD`, and
+`OMSVENDOR.CALC.EXECBROKER` is `SWXCCP` where `EXECBROKER` is
+`2003103.001`. A namespace's spelling of a fact is not the fact.
+
+**The rules the specification licenses.** Beside what the table already
+derives, and each only where every input is stated and the output is not:
+`LastPx` from `LastSpotRate` plus `LastForwardPoints`, and `BidPx` and
+`OfferPx` from their own spot and forward points, because a forward price is
+quoted that way and the points are already in price units; `PeggedPrice`
+from `PeggedRefPrice` plus the signed `PegOffsetValue`; `LastMultipliedQty`
+from `LastQty` times `ContractMultiplier`, `TotalTradeMultipliedQty` from
+`TotalTradeQty` the same way, and `MinPriceIncrementAmount` from
+`MinPriceIncrement` times `ContractMultiplier`; `TotalGrossTradeAmt` from
+`LastPx` times `TotalTradeQty`; `OrderQty` from `CumQty` plus `CxlQty`,
+which is what a canceled order's two halves add to;
+`OrigSendingTime` from `SendingTime` on a possible duplicate, which is what
+the session layer says one is; and `CurrencyCodeSource` as ISO 4217 wherever
+a `Currency` is stated, because that is the only source FIX's own
+`Currency` field is written in.
+
+What is deliberately not filled: any amount whose scale depends on a
+convention the message does not state. `GrossTradeAmt` from a percent-of-par
+price needs a division by one hundred that the specification writes in price
+units and leaves to the reader; an FX gross amount is a product or a
+quotient depending on `SettlPriceFxRateCalc`, and absent that tag the
+quoting convention decides; `NetMoney` needs `Commission` resolved through
+`CommType` and every `MiscFeeAmt` through `MiscFeeBasis`. A capture reader
+that guesses a notional is worse than one that leaves it null.
+
+Nor anything that needs a second message. `OrigClOrdID` from the request a
+report answers, `ListID` from the list an order belonged to, a bust's effect
+on `CumQty` - each is a fact about a chain rather than about a message, and
+chains are the lifecycle's (decisions 21 to 24).
+
+**Why.** Three passes a caller composes is three chances to compose them
+wrongly, and the order was never free: restatement has to precede filling
+because filling reads by tag, and the plugin memory has to follow the rules
+because a rule may state what the memory would otherwise fill. Making the
+order a fact of the pass rather than a convention in the documentation is
+the whole change. The docs' three composable stages become two: enrich, then
+lifecycle.
+
+**What one pass made visible.** Composing the two steps on both doors
+exposed a divergence that was always there and that nothing asserted,
+because nobody had composed them: the fixed schema carries no column for
+`ExecBroker` (76), `ClientID` (109), or five other tags the shipped
+dictionary's `fix:replacements` read - 92, 166, 370, 439, 440. Those rules
+synthesize a root `parties` group and its `NoPartyIDs` counter, and those
+two do have columns. So the line door restated a parsed message and
+answered two parties, while the batch door restated a message rebuilt from
+a row whose 76 and 109 were dropped on the way in, and answered none. Four
+corpus lines showed it - 111, 122, 123 and 125 - and it reproduces at the
+commit before this one, through `into_latest`.
+
+A row is a projection, and a field with no column cannot carry what
+restatement would have derived from it. But a row carries more than its
+columns: it carries the arrival record whole, and the record is what the
+document stated. So the pass opens on the record - every leaf pair it names
+that the message holds no child for is taken back before restatement runs -
+and three of the four lines close, because their 76 and 109 arrived as pairs
+and a pair is an entry. Only a leaf: a pair that headed a subtree is that
+subtree's, and recovering a group's counter without its occurrences would
+state a count of nothing, which is a worse answer than the silence the
+projection left. Restating before the projection instead, in the parse
+door, was tried and is wrong: restatement rewrites values as well as deriving
+them - `ExecType(150)` `2` becomes `F` - so a parse door that restated would
+answer something the line parse door does not, and the two parse doors
+agreeing is the older promise. It would also put enrichment outside the
+enriching pass, which is the thing this decision exists to stop.
+
+Line 111 stays, and it is the honest bound: its body arrived as a FIXML
+document behind `XmlData(213)`, and the reader lifts the document's fields
+into the message without recording them as entries - the record of a
+document-bodied message is its envelope's ten pairs and the document whole.
+So 76 and 109 are in no column and in no entry, and nothing can rebuild them
+from the row. Closing that means recording what a document stated as entries
+of its own, which moves every `.entry[i]` the equivalence snapshot pins and
+is its own decision rather than a corner of this one. It is written down as
+a list of two pairs in `dataset.rs` and asserted to be exactly the set that
+diverges, so the day a row carries one of them the list stops being true and
+says so. Widening the schema is the other repair not taken: it would change
+three public arrays whose length is in their type and would still leave the
+next replacement rule outside the list.
+
+**Written in:** `fix/enrich.rs`, which gains the recovery off the arrival
+record and then the restatement as its first two steps, and the composed
+keys as the first of its fills; `fix/latest.rs`, which
+stops being a door; `fix/msg.rs`, where `into_latest` is deleted;
+`fix/codec.rs` and `fix/batch.rs`, the three doors; both bindings;
+`docs/fix/message.md`, `docs/fix/capture.md`, `docs/fix/arrow.md`.
+**Fixtures:** every case of `rust/tests/fix/latest.rs` through
+`enrich_message`; the `enrich` group of the snapshot regenerated with its
+moved lines named; `lastshares` reading the `lastqty` a message states, and
+no second child under either name; `version` stamped once and a second pass
+equal to the first; the corpus's `TECH.ACCOUNT` filling an absent `ACCOUNT`
+and its `CLIENTID` staying absent under two disagreeing namespaces;
+`CLIENT.SYMBOL` never landing over a stated `SYMBOL`; one fixture per
+new rule, with the excluded conventions stated as the reason a neighbouring
+amount stays null; and the corpus read both ways, row by row and in batches,
+required to agree on every tag but the two pairs written down as what a
+document-bodied row cannot carry.

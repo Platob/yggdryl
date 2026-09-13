@@ -15,7 +15,7 @@
 | Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
 | Serialization | inherited: `into_json` renders the schema, [`into_json_scalar`](../text/json.md) the value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root |
-| Restated | `into_latest` re-expresses the row at the [registry's newest version](#restated-at-the-dictionarys-newest-version) from the dictionary alone; the entries never change |
+| Restated | the [enriching pass's first step](#restated-at-the-dictionarys-newest-version) re-expresses the row at the registry's newest version from the dictionary alone; the entries never change |
 | Bindings | Rust, Python, JavaScript |
 
 ## Use
@@ -490,7 +490,9 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## Restated at the dictionary's newest version
 
-A capture holds what each session spoke: a FIX 4.2 report states its fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as `Rule80A(47)` and a partial fill as `ExecType(150)` `1` - four things the newest specification spells as `LastQty`, a `Parties` occurrence, `OrderCapacity(528)` and `Trade`. `into_latest` restates the message once, from what the dictionary itself says: the registry's field for every tag, the aliases and lineage that reach it, and the [`fix:replacements`](registry.md#a-field-carries-what-replaced-it) each retired field or value carries. Nothing in Rust holds a table of rules, so a registry edit is a rule edit.
+A capture holds what each session spoke: a FIX 4.2 report states its fill as `LastShares`, its broker as `ExecBroker(76)`, its capacity as `Rule80A(47)` and a partial fill as `ExecType(150)` `1` - four things the newest specification spells as `LastQty`, a `Parties` occurrence, `OrderCapacity(528)` and `Trade`. The [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates the message once as its first step, from what the dictionary itself says: the registry's field for every tag, the aliases and lineage that reach it, and the [`fix:replacements`](registry.md#a-field-carries-what-replaced-it) each retired field or value carries. Nothing in Rust holds a table of rules, so a registry edit is a rule edit.
+
+Restatement is a step of that pass and not a door of its own: the order is the pass's rather than the caller's, because a first step a caller can skip makes two passes out of one, and two passes are two chances to compose them wrongly.
 
 | item | contract |
 | --- | --- |
@@ -504,10 +506,10 @@ A capture holds what each session spoke: a FIX 4.2 report states its fill as `La
 | Levels | the root, then every occurrence of every repeating group to any depth, each canonicalized and restated in turn; `in` is compared with the occurrence's group, `msgtypes` with the root's `MsgType(35)` |
 | Stamps | the crate's `version` (65001) with `registry.newest()`, replacing a stated one or appending; a registry no field dates stamps nothing |
 | Idempotent | a second pass answers an equal message: what one pass wrote is what the next finds stated |
-| Batch | a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) the caller composes over `messages` and `arrow_reader`, after enrichment and before the lifecycle stamp where both are wanted, so an enriched value is a stated one to the rules and the chain reads the restated row |
-| Bindings | Rust `into_latest`, Python `into_latest`, JavaScript `intoLatest` |
+| Batch | inside the enriching [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), which the caller composes over `messages` and `arrow_reader` before the lifecycle stamp, so the fills read a restated row and the chain reads a filled one |
+| Bindings | reached through `enrich_message`, `enrich_messages` and `enrich_messages_arrow_reader` in all three languages; there is no door of its own |
 
-A FIX 4.2 execution report, read as it was sent and then restated. The entries, the wire and the anomalies are the same before and after, and a second pass changes nothing.
+A FIX 4.2 execution report, read as it was sent and then enriched, which restates it before anything else. The entries, the wire and the anomalies are the same before and after, and a second pass changes nothing.
 
 === "Rust"
 
@@ -530,7 +532,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     let partial = State::from_spelling("1").expect("a lifecycle code");
     assert_eq!(read.by_tag(150)?.as_str(), Some(partial.as_str()), "read at 4.2");
 
-    let latest = read.clone().into_latest()?;
+    let latest = reader.enrich_message(read.clone())?;
 
     // ExecTransType Cancel wrote ExecType TradeCancel over the retired
     // PartiallyFilled before ExecType's own rule read it; the source stays.
@@ -557,7 +559,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     assert_eq!(latest.by_tag(8)?.as_str(), Some("FIX.4.2"));
     assert_eq!(latest.entries(), read.entries());
     assert_eq!(latest.into_bytes(b'|'), line);
-    assert_eq!(latest.clone().into_latest()?, latest, "a second pass changes nothing");
+    assert_eq!(reader.enrich_message(latest.clone())?, latest, "a second pass changes nothing");
     ```
 
 === "Python"
@@ -577,7 +579,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     assert read.by_name("version").as_py() == "4.2"
     assert read.by_tag(150).as_py() == "40PARTFILL", "read at 4.2"
 
-    latest = read.into_latest()
+    latest = reader.enrich_message(read)
 
     # ExecTransType Cancel wrote ExecType TradeCancel over the retired
     # PartiallyFilled before ExecType's own rule read it; the source stays.
@@ -602,7 +604,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     assert latest.by_tag(8).as_py() == "FIX.4.2"
     assert latest.entries() == read.entries()
     assert latest.into_bytes(ord("|")) == line
-    assert latest.into_latest() == latest, "a second pass changes nothing"
+    assert reader.enrich_message(latest) == latest, "a second pass changes nothing"
     ```
 
 === "JavaScript"
@@ -622,7 +624,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     assert.equal(read.byName('version').toJSON(), '4.2')
     assert.equal(read.byTag(150).toJSON(), '40PARTFILL', 'read at 4.2')
 
-    const latest = read.intoLatest()
+    const latest = reader.enrichMessage(read)
 
     // ExecTransType Cancel wrote ExecType TradeCancel over the retired
     // PartiallyFilled before ExecType's own rule read it; the source stays.
@@ -646,7 +648,7 @@ A FIX 4.2 execution report, read as it was sent and then restated. The entries, 
     assert.equal(latest.byName('version').toJSON(), '5.0.2')
     assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
     assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
-    assert.ok(latest.intoLatest().equals(latest), 'a second pass changes nothing')
+    assert.ok(reader.enrichMessage(latest).equals(latest), 'a second pass changes nothing')
     ```
 
 ### What a held value is, to a rule
@@ -674,7 +676,7 @@ A value written into a target is re-typed for the target's field through the cod
 - `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.
 - `from_row` on a row whose entries column holds something that is not an arrival entry, or a leaf the JSON reader cannot decode -> refused; on a schema without the column -> a message with no entries and an empty wire.
-- `into_latest` on a message whose registry dates no field -> every rule still applies, nothing is stamped, and `version()` still reads `BeginString(8)`.
+- A message whose registry dates no field -> every restatement rule still applies, nothing is stamped, and `version()` still reads `BeginString(8)`.
 - Two children reaching one field, both stated and different (`lastqty` `50` beside `LastShares` `100`) -> both kept as they arrived; equal once re-typed, or one null -> one child.
 - A child named by a tag's digits (`"32"`) that the registry knows -> re-expressed under the registry's field like any other; one it does not know (`"9999"`) -> kept exactly, name, datatype and value.
 - A List no `fix:counter` heads, and any nested value that is not a repeating group -> kept exactly; only group occurrences are levels.
@@ -684,7 +686,7 @@ A value written into a target is re-typed for the target's field through the cod
 - A group fill whose constants match an existing occurrence (`ClearingFirm` made the role-4 party, `ClearingAccount` adds its sub-identifier) -> merged into it and the counter unchanged; a stated occurrence of the same role with another identifier -> the fill is blocked, the occurrence stands.
 - A rule scoped by `msgtypes` on a message stating no `MsgType(35)` -> does not apply; one scoped by `in` at the root -> does not apply.
 - A removed field the specification replaced with nothing (`SendingDate(51)`) -> kept as read, and `get_field_at(4.4, 51)` still answers none.
-- Over a batch -> `into_latest` is a call between `messages` and `arrow_reader`, so where it runs relative to `enrich_messages` and `lifecycle` is where it is written; after enrichment an enriched value is a stated one to the rules, and before the lifecycle the chain reads the restated row.
+- Over a batch -> restatement is no call of its own: `enrich_messages_arrow_reader` runs it between `messages` and `arrow_reader` as the pass's first step, so the only order left to compose is enrichment before the lifecycle, and the chain reads a row already restated and filled.
 
 ## Commands
 
@@ -696,7 +698,6 @@ A value written into a target is re-typed for the target's field through the cod
     cargo test -p yggdryl --test fix message::
     cargo test -p yggdryl --test fix latest::
     cargo test -p yggdryl --test fix latest::a_fix_42_execution_report_restates_at_the_dictionarys_newest_version
-    cargo bench -p yggdryl --bench fix -- fix/pipeline/into_latest
     ```
 
 === "Python"

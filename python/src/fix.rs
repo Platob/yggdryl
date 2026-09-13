@@ -1636,23 +1636,6 @@ impl PyFixMsg {
         PyBytes::new(py, &self.inner.into_bytes(separator))
     }
 
-    /// This message restated at its registry's newest version.
-    ///
-    /// Every child lands under the dictionary's own field, a retired field or
-    /// value fills what stands in for it, and the crate `version` says which
-    /// version the row now speaks. Only the row is restated: the arrival
-    /// record is what the wire carried and is left alone, so `into_bytes`
-    /// re-emits the received line either way, and a second pass answers an
-    /// equal message.
-    #[allow(clippy::wrong_self_convention)]
-    fn into_latest(&self) -> PyResult<Self> {
-        self.inner
-            .clone()
-            .into_latest()
-            .map(Self::from_inner)
-            .map_err(value_error)
-    }
-
     /// A copy that takes writes again, whatever hashed the original.
     fn __copy__(&self) -> Self {
         Self::from_inner(self.inner.clone())
@@ -1956,6 +1939,11 @@ impl PyFixCodec {
     }
 
     /// Fills what one message implies but did not carry.
+    ///
+    /// Restatement is the pass's first step rather than a door of its own:
+    /// every rule below it reads by tag, and a child stored under an alias
+    /// has no tag until the registry's field has canonicalized it, so the
+    /// row comes back at the dictionary's newest version.
     ///
     /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
     /// Only the row is filled: the arrival record is what the wire carried

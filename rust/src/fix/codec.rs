@@ -1560,14 +1560,30 @@ impl FixCodec {
         self.build(&pairs, &[], extras)
     }
 
-    /// Fills what one message implies but did not carry.
+    /// Restates one message and fills what it implies but did not carry.
     ///
-    /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is,
-    /// and a fill stating `LastQty` and `LastPx` has said what it was worth.
-    /// The rules are the specification's own tables read as
-    /// implications - FIX 4.4's Appendix D for an order's life, 4.2's
-    /// Appendix O for what a foreign exchange trade settles on - and a rule
-    /// answers only where every input is stated and typed.
+    /// The one enriching pass, three steps in order (decision 20). First the
+    /// message is restated: every child canonicalized to the field its tag,
+    /// name, alias or decimal spelling reaches, children reaching one field
+    /// merged, `fix:replacements` applied, the crate `version` stamped with
+    /// the registry's newest. That is not a step a caller may skip, because
+    /// every rule below reads by tag and a child stored under an alias with
+    /// no tag is invisible until it has been canonicalized.
+    ///
+    /// Nothing is written to complete a spelling: a consumer addressing
+    /// `lastshares` finds the `lastqty` the message states, because
+    /// [`FixMsg::get_by_name`] resolves the name through the registry. A
+    /// spelling is a way of asking rather than a thing to store.
+    ///
+    /// Then the filling, from three sources in order, each of which may feed
+    /// the next. A composed key the row carried - `TECH.CLIENTID` naming an
+    /// absent `ClientID` - fills the field its last segment names, where the
+    /// row names that field with one voice. Then the rules, which are the
+    /// specification's own tables read as implications: FIX 4.4's Appendix D
+    /// for an order's life, 4.2's Appendix O for what a foreign exchange
+    /// trade settles on, and a rule answers only where every input is stated
+    /// and typed. Then, on the stream doors, the plugin configuration this
+    /// stream has already passed (decision 19).
     ///
     /// Only the row is filled. The entries are what arrived and are carried
     /// through untouched, so [`FixMsg::into_bytes`] re-emits the received line
@@ -1576,11 +1592,11 @@ impl FixCodec {
     ///
     /// # Errors
     ///
-    /// Never fails: a derived value the column refuses is silence rather
-    /// than a refusal, and the `Result` is the shape every stage of a
-    /// message stream answers in.
+    /// Returns the schema grammar's refusal where the restated children do
+    /// not make a root. The filling itself cannot fail: a derived value the
+    /// column refuses is silence rather than a refusal.
     pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg> {
-        Ok(super::enrich::enrich(&self.registry, message))
+        super::enrich::enrich(&self.registry, message)
     }
 
     /// Fills a stream of messages, lazily, remembering what it passes.
@@ -1606,7 +1622,7 @@ impl FixCodec {
         let mut plugins = super::enrich::Remembered::default();
         messages
             .into_iter()
-            .map(move |message| Ok(plugins.fill(super::enrich::enrich(&registry, message))))
+            .map(move |message| Ok(plugins.fill(super::enrich::enrich(&registry, message)?)))
     }
 
     /// Stamps a stream of messages with the identities it implies, in order.
@@ -1746,10 +1762,20 @@ impl FixCodec {
                 });
             }
             let built = builder.finish(name, extras.clock)?;
-            return Ok(FixMsg::from_built(Arc::clone(&self.registry), built));
+            return Ok(super::enrich::compose(
+                &self.registry,
+                FixMsg::from_built(Arc::clone(&self.registry), built),
+            ));
         }
         let built = builder.finish(root_name(stated.as_deref()).as_str(), extras.clock)?;
-        Ok(FixMsg::from_built(Arc::clone(&self.registry), built))
+        // What the row stated under a namespace of its own is what the row
+        // stated, so it is read here rather than left to the enriching pass:
+        // a child the dictionary does not name has no column, so one read
+        // any later would be invisible to the batch door (decision 20).
+        Ok(super::enrich::compose(
+            &self.registry,
+            FixMsg::from_built(Arc::clone(&self.registry), built),
+        ))
     }
 
     /// Reads one row a data field carried into the line it arrived on.

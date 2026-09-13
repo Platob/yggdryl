@@ -14,7 +14,7 @@
 | --- | --- |
 | Enums | Each scalar field carries its own canonical `fix:codes` metadata, every version's values included: a code an older version declared and the newest dropped is dated `deprecated`, and an older spelling of a surviving code is one of its aliases |
 | History | `fix:lineage` dates a field's names and types; the generator writes `deprecated` and `removed` entries, so a field FIX retired is in the dictionary with the version that retired it |
-| Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how a message's `into_latest` restates it at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
+| Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
 | Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
 | Definition tags | The specification names components, groups and messages rather than tagging them, so each carries a `fix:tag` derived from its name into `[100000, 1100000)`, clear of every published tag; a reference occurrence never restates it |
 | References | `fix:field`, `fix:component`, and `fix:group` resolve once at catalog intake; live definitions hold resolved native fields |
@@ -626,7 +626,7 @@ The committed dictionary's own history, read the same way:
 
 ## A field carries what replaced it
 
-The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `fix:replacements`: one canonical document, read borrowed, that a [message's `into_latest`](message.md#restated-at-the-dictionarys-newest-version) applies. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
+The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `fix:replacements`: one canonical document, read borrowed, that the [enriching pass's restatement](message.md#restated-at-the-dictionarys-newest-version) applies. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
 
 Entries are in **document order**, and the order is semantic: the first entry whose conditions a held value meets answers, so a catch-all entry stating no `when` comes last.
 
@@ -636,7 +636,7 @@ Entries are in **document order**, and the order is semantic: the first entry wh
 
 | Entry key | Required | Value | Meaning |
 | --- | --- | --- | --- |
-| `since` | yes | dotted version | the version the specification replaced the feature at; `into_latest` applies every entry whatever its date |
+| `since` | yes | dotted version | the version the specification replaced the feature at; the restatement applies every entry whatever its date |
 | `ep` | no | integer | the extension pack that dated the replacement |
 | `msgtypes` | no | wire codes, exact case | the entry applies only when the root's `MsgType(35)` is one of them; absent is every message |
 | `in` | no | folded group names | the entry applies only when the source sits inside an occurrence of one of these repeating groups; absent is wherever the field sits |
@@ -706,7 +706,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     // Every reader linked to the registry restates by the edited rule.
     let reader = FixCodec::new(Arc::new(registry));
     let read = reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|")?.next().expect("one frame")?;
-    let latest = read.into_latest()?;
+    let latest = reader.enrich_message(read)?;
     assert_eq!(latest.by_tag(528)?.as_str(), Some("P"));
     assert_eq!(latest.by_tag(47)?.as_str(), Some("A"), "the source stays as read");
     ```
@@ -730,7 +730,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     # Every reader linked to the registry restates by the edited rule.
     reader = FixCodec(registry)
     read = next(reader.parse_line(b"8=FIX.4.2|35=D|11=A|47=A|10=0|"))
-    latest = read.into_latest()
+    latest = reader.enrich_message(read)
     assert latest.by_tag(528).as_py() == "P"
     assert latest.by_tag(47).as_py() == "A", "the source stays as read"
     ```
@@ -755,7 +755,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     // Every reader linked to the registry restates by the edited rule.
     const reader = new fix.FixCodec(registry)
     const read = reader.parseLine(Buffer.from('8=FIX.4.2|35=D|11=A|47=A|10=0|')).next().value
-    const latest = read.intoLatest()
+    const latest = reader.enrichMessage(read)
     assert.equal(latest.byTag(528).toJSON(), 'P')
     assert.equal(latest.byTag(47).toJSON(), 'A', 'the source stays as read')
     ```

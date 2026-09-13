@@ -205,10 +205,6 @@ def _message_get_by_path() -> object:
     return MESSAGE.get_by_path("Parties[0].PartyID")
 
 
-def _message_into_latest() -> object:
-    return MESSAGE.into_latest()
-
-
 def _infer_fixml_protocol() -> object:
     return MimeType.infer_bytes(FIXML_LINE)
 
@@ -291,6 +287,10 @@ def _parse_text_lines_pluginid_drain() -> int:
 
 def _parse_text_arrow_reader() -> int:
     return CODEC.parse_text_arrow_reader(CAPTURE).read_all().num_rows
+
+
+def _enrich_message() -> object:
+    return CODEC.enrich_message(MESSAGE)
 
 
 def _enrich_messages_arrow_reader() -> int:
@@ -417,7 +417,6 @@ def main() -> None:
         _measure("message get_by_id", _message_get_by_id, args.iterations)
         _measure("message get_by_name", _message_get_by_name, args.iterations)
         _measure("message get_by_path", _message_get_by_path, args.iterations)
-        _measure("message into_latest", _message_into_latest, args.iterations)
         _measure("infer FIXML protocol", _infer_fixml_protocol, args.iterations)
         _measure("infer Ullink MsgType", _infer_ullink_msgtype, args.iterations)
         for category in ("fields", "components", "groups"):
@@ -446,6 +445,7 @@ def main() -> None:
         _measure("message set", _message_set, args.iterations)
         _measure("message remove", _message_remove, args.iterations)
         _measure("message from_row", _message_from_row, args.iterations)
+        _measure("enrich_message", _enrich_message, args.iterations)
         streams = max(1, args.iterations // 50)
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
         _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)

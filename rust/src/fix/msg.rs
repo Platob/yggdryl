@@ -749,68 +749,6 @@ impl FixMsg {
             .and_then(|rest| rest.parse().ok())
     }
 
-    /// This message restated at its registry's newest version.
-    ///
-    /// Row only: the entries are carried through untouched, so
-    /// [`Self::into_bytes`] still re-emits the received line byte for byte,
-    /// and a second call answers an equal message. Every child the registry
-    /// knows - by its tag, by its name or alias, or by the decimal tag its
-    /// name spells - is re-expressed under the registry's field with its
-    /// value re-typed, children reaching one field are merged into the most
-    /// complete one, every `fix:replacements` rule the dictionary states for
-    /// a held value fills the fields that stand in for it, and the crate's
-    /// `version` child takes [`FixRegistry::newest`]. A child no dictionary
-    /// explains, a stated value that disagrees with the one kept, and a
-    /// registry with no dated field each leave things exactly as they are.
-    ///
-    /// ```
-    /// use std::sync::Arc;
-    ///
-    /// use yggdryl::fix::{FixLineageEntry, FixPedigree};
-    /// use yggdryl::{DataType, FixMsg, FixRegistry, Scalar, Version};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// // LastQty(32) was LastShares, an integer, until FIX 4.3.
-    /// let mut qty = DataType::Float64.nullable_field("lastqty");
-    /// qty.as_fix_mut().set_tag(32)?;
-    /// qty.as_fix_mut().set_lineage(&[
-    ///     FixLineageEntry::new(FixPedigree::new("4.0".parse::<Version>()?, None))
-    ///         .with_name("lastshares")
-    ///         .with_dtype("int32"),
-    ///     FixLineageEntry::new(FixPedigree::new("4.3".parse::<Version>()?, None))
-    ///         .with_name("lastqty")
-    ///         .with_dtype("float64"),
-    /// ])?;
-    /// let registry = Arc::new(FixRegistry::from_fields([qty])?);
-    ///
-    /// let root = DataType::from_fields([
-    ///     DataType::Int64.required_field("LastShares"),
-    ///     DataType::utf8().nullable_field("9999"),
-    /// ])?
-    /// .required_field("8");
-    /// let value = Scalar::from_record([
-    ///     ("LastShares", Scalar::from(100)),
-    ///     ("9999", Scalar::from("custom")),
-    /// ])?;
-    /// let latest = FixMsg::with_registry(registry, root, value)?.into_latest()?;
-    ///
-    /// assert_eq!(latest.as_field().fields()[0].name(), "lastqty");
-    /// assert_eq!(latest.by_tag(32)?, &Scalar::from(100.0_f64));
-    /// assert_eq!(latest.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is kept");
-    /// assert_eq!(latest.version(), Some("4.3".parse::<Version>()?));
-    /// assert_eq!(latest.clone().into_latest()?, latest, "a second pass changes nothing");
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns the schema grammar's refusal when the restated children do
-    /// not make a root, or the refusal [`Self::with_registry`] raises.
-    pub fn into_latest(self) -> Result<Self> {
-        super::latest::restate(self)
-    }
-
     /// Returns the registry this message resolves against.
     pub const fn registry(&self) -> &Arc<FixRegistry> {
         &self.registry

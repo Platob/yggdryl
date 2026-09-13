@@ -1264,6 +1264,11 @@ export declare class FixCodec {
   /**
    * Fills what one message implies but did not carry.
    *
+   * Restatement is the pass's first step rather than a door of its own:
+   * every rule below it reads by tag, and a child stored under an alias
+   * has no tag until the registry's field has canonicalized it, so the row
+   * comes back at the dictionary's newest version.
+   *
    * An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
    * Only the row is filled: the arrival record is what the wire carried and
    * is left alone, so `intoBytes` re-emits the received line either way, and
@@ -1595,16 +1600,6 @@ export declare class FixMsg {
   intoRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
   intoBytes(separator?: number | undefined | null): Buffer
-  /**
-   * This message restated at its registry's newest version.
-   *
-   * Every child lands under the dictionary's own field, a retired field or
-   * value fills what stands in for it, and the crate `version` says which
-   * version the row now speaks. Only the row is restated: the arrival
-   * record is left alone, so `intoBytes` re-emits the received line either
-   * way, and a second pass answers an equal message.
-   */
-  intoLatest(): FixMsg
   /** Whether two messages carry the same schema, value and dictionary. */
   equals(other: FixMsg): boolean
   /** Deterministic hash bits over the schema and the value. */

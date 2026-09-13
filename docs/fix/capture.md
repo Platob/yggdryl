@@ -554,7 +554,11 @@ The root's children are the standard header in its declared order, the body as i
 
 ## What a message implied is filled in
 
-A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, which fills a message from what an earlier one in the stream said too, [remembering the plugin configurations it passed](#a-stream-remembers-the-configurations-it-passed); and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again.
+A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, which fills a message from what an earlier one in the stream said too, [remembering the plugin configurations it passed](#a-stream-remembers-the-configurations-it-passed); and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again. Those three are the whole of it: there is one enriching pass, and they are its doors.
+
+The pass is three steps on one message, and their order is the pass's own rather than something a caller composes. It **restates** first - the row [re-expressed at the dictionary's newest version](message.md#restated-at-the-dictionarys-newest-version) - because every rule below reads by tag, and a child a session spelled under an alias with no tag is invisible until it has been canonicalized. It then **completes**, which is a read rather than a write, so that step adds nothing to the row. And it **fills** what the message implies and did not state, from three sources in turn: the composed keys the row carried, then the rules the specification licenses, then the plugin configurations this stream has already passed - in that order, because each may feed the next.
+
+Completion writes nothing because a spelling is a way of asking rather than a thing to store. A consumer addressing `lastshares` finds the `lastqty` the message states: `get_by_name` resolves the spelling through the registry, which answers a field for any alias it holds. No alias twin is added as a second child, and the reason is not economy. Two of the forty-two shipped aliases are another field's canonical name - `quoteackstatus` is an alias of `QuoteStatus(297)` and the name of tag 1865, `tradetype` an alias of `BidTradeType(418)` and the name of tag 3006 - so a message stating both would hold two children of one name, and the root the pass builds would be refused whole. A twin could not cross the batch door either: [`fix_schema`](#the-columns-are-the-folded-names) names a column for a canonical field and for no alias, so `enrich_messages_arrow_reader` would discard on the way out what `enrich_messages` had just added, and the two doors would stop being one pass. And `get_by_tag` answers the earliest child on a tag, so where the twin was placed would silently decide what every column, every rule, every lift and the lifecycle read.
 
 Three things hold whatever the rule. Only the row is filled, never the entries, so `into_bytes` re-emits the wire byte for byte either way. A rule answers only where every input is stated and typed: an identifier no check digit closes, a CFI whose category several security types share and a security type outside every group the specification files answer nothing rather than a guess. And a stated value is never overwritten, which is what makes a second pass change nothing - a value derived once is a stated value the second time.
 
@@ -580,8 +584,21 @@ The rules are the specification's own tables read as the implications they are, 
 | `SettlCurrAmt(119)` | `GrossTradeAmt(381)` × `SettlCurrFxRate(155)` | Appendix O |
 | `Currency(15)`, `SettlCurrency(120)` | each other | Appendix O: a trade settling in the currency it was dealt in states it once |
 | `AvgPx(6)` | `LastPx(31)` | Appendix D, only where `CumQty(14)` says the whole done quantity is this fill |
+| `LastPx(31)` | `LastSpotRate(194)` + `LastForwardPoints(195)` | a forward price is quoted as a spot rate and the points away from it, and the points are already in price units, so the two add |
+| `BidPx(132)`, `OfferPx(133)` | `BidSpotRate(188)` + `BidForwardPoints(189)`, `OfferSpotRate(190)` + `OfferForwardPoints(191)` | the same quoting, read on each side of a two-sided quote |
+| `PeggedPrice(839)` | `PeggedRefPrice(1095)` + `PegOffsetValue(211)` | a pegged order's price is the reference it pegs to plus its own offset, which is signed: a peg below the reference is a negative one |
+| `LastMultipliedQty(2368)` | `LastQty(32)` × `ContractMultiplier(231)` | a quantity in contracts times what one contract multiplies to is that quantity in units |
+| `TotalTradeMultipliedQty(2370)` | `TotalTradeQty(2367)` × `ContractMultiplier(231)` | the same product, over the whole trade rather than one fill |
+| `MinPriceIncrementAmount(1146)` | `MinPriceIncrement(969)` × `ContractMultiplier(231)` | the same product again: an increment in money is the increment in price times the multiplier |
+| `TotalTradeQty(2367)` | `LastQty(32)` × `TradingUnitPeriodMultiplier(2353)` | a trade covering several trading unit periods trades its quantity once in each of them |
+| `TotalGrossTradeAmt(2369)` | `LastPx(31)` × `TotalTradeQty(2367)` | the whole trade's worth, as `GrossTradeAmt` is the fill's |
+| `OrderQty(38)` | `CumQty(14)` + `CxlQty(84)`, on a report | what a canceled order asked for is what it did plus what was canceled |
+| `OrigSendingTime(122)` | `SendingTime(52)`, where `PossDupFlag(43)` is `Y` | the session layer's own definition: a possible duplicate carries the clock of the send it repeats |
+| `CurrencyCodeSource(2897)` | `Currency(15)` stated | ISO 4217, `6` - the only source FIX's own `Currency` field is written in |
 
 The rules run in one order, laid out so every chain ends in one pass: a `SecurityID`'s validation states the source, under which the ISIN column is read; an ISIN found only among the alternate identifiers becomes the `SecurityID`, whose validation states the source in turn; the country is read after either; a security type read off a CFI places the product; a status read off an execution type decides what is left. The primary identifier is read before the alternate ones, as the column is defined, so a message stating an ISIN in both places states it in `SecurityID`.
+
+What the pass leaves null it leaves null on purpose, and a reader needs to be able to tell that from a gap. No amount is filled whose scale depends on a convention the message does not state: `GrossTradeAmt(381)` from a percent-of-par price needs a division by one hundred that the specification writes in price units and leaves to the reader; an FX gross amount is a product or a quotient depending on `SettlPriceFxRateCalc(2366)`, and absent that tag the quoting convention decides; `NetMoney(118)` needs `Commission(12)` resolved through `CommType(13)` and every `MiscFeeAmt(137)` through `MiscFeeBasis(891)`. A capture reader that guesses a notional is worse than one that leaves it null. Nor is anything filled that needs a second message - `OrigClOrdID(41)` from the request a report answers, `ListID(66)` from the list an order belonged to, a bust's effect on `CumQty(14)` - because each is a fact about a chain rather than about a message, and chains are the [lifecycle's](lifecycle.md).
 
 === "Rust"
 
@@ -666,6 +683,94 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     assert.equal(held.intoBytes('|'.charCodeAt(0)).toString(), line)
     // And a second pass changes nothing.
     assert.ok(reader.enrichMessage(held).equals(held))
+    ```
+
+### A composed key fills the field its last segment names
+
+A bridge writes a field under its own namespace, so one row carries `TECH.CLIENTID`, `ULLINK.INSTRUMENTID`, `FIRM.ORIG.ULFROMSESSIONNAME` and `OMSVENDOR.CALC.EXECBROKER` beside its plain keys. The fact is the field's however the writer spelled the key: where the last dotted segment of a child's name resolves to a dictionary field and that field is absent, the composed key fills it, and the filled child takes the field's tag, so every rule after it reads the value like any other. A segment naming no field of this dictionary names nothing, and the composed child stays in the row exactly as it arrived.
+
+One voice or silence. Where a row names one absent field under several composed keys and they do not agree, none of them fills it. That is not a precaution: on nine lines of the committed corpus `FIRM.ORIG.CLIENTID` is `3000090.006` and `ULLINK.CLIENTID` is `trader1` with `CLIENTID` absent - a firm account number and a trader login, and nothing in the row says which one the field means. Filling from either would invent a fact; filling from neither states what the row actually settled, which is nothing.
+
+Never overwriting is load-bearing here too, and the same corpus proves it: `CLIENT.SYMBOL` is `XAU` where `SYMBOL` is `XAU/USD`, and `OMSVENDOR.CALC.EXECBROKER` is `SWXCCP` where `EXECBROKER` is `2003103.001`. A namespace's spelling of a fact is not the fact.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let reader = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
+    let enriched = |row: &[u8]| -> yggdryl::Result<FixMsg> {
+        reader.enrich_message(reader.parse_line(row)?.next().expect("one row")?)
+    };
+
+    // The namespace is the writer's; the fact is the field's.
+    let filled = enriched(b"MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|")?;
+    assert_eq!(filled.by_name("Account")?.as_str(), Some("ACCT-000117"));
+
+    // Two namespaces naming one absent field, disagreeing: nothing fills it.
+    let split = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")?;
+    assert_eq!(split.get_by_name("ClientID"), None);
+
+    // Agreeing, they fill; and a namespace never lands over a stated value.
+    let agreed = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|")?;
+    assert_eq!(agreed.by_name("ClientID")?.as_str(), Some("trader1"));
+    let stated = enriched(b"MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|")?;
+    assert_eq!(stated.by_name("Symbol")?.as_str(), Some("XAU/USD"));
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    reader = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
+
+    def enriched(row):
+        return reader.enrich_message(next(reader.parse_line(row)))
+
+    # The namespace is the writer's; the fact is the field's.
+    filled = enriched(b"MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|")
+    assert filled.by_name("Account").as_py() == "ACCT-000117"
+
+    # Two namespaces naming one absent field, disagreeing: nothing fills it.
+    split = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")
+    assert split.get_by_name("ClientID") is None
+
+    # Agreeing, they fill; and a namespace never lands over a stated value.
+    agreed = enriched(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|")
+    assert agreed.by_name("ClientID").as_py() == "trader1"
+    stated = enriched(b"MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|")
+    assert stated.by_name("Symbol").as_py() == "XAU/USD"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const reader = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+    const enriched = (row) => reader.enrichMessage(reader.parseLine(Buffer.from(row)).next().value)
+
+    // The namespace is the writer's; the fact is the field's.
+    const filled = enriched('MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|')
+    assert.equal(filled.byName('Account').asJs(), 'ACCT-000117')
+
+    // Two namespaces naming one absent field, disagreeing: nothing fills it.
+    const split = enriched('MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|')
+    assert.equal(split.getByName('ClientID'), null)
+
+    // Agreeing, they fill; and a namespace never lands over a stated value.
+    const agreed = enriched('MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|')
+    assert.equal(agreed.byName('ClientID').asJs(), 'trader1')
+    const stated = enriched('MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|')
+    assert.equal(stated.byName('Symbol').asJs(), 'XAU/USD')
     ```
 
 ### A stream remembers the configurations it passed

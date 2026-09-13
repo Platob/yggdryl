@@ -1,6 +1,9 @@
-//! A message restated at its registry's newest version: every child under
+//! A message restated at its registry's newest version - the first step of
+//! the one enriching pass, and reached only through it: every child under
 //! the dictionary's own field, every retired field and value filling what
 //! stands in for it, the wire untouched, and a second pass changing nothing.
+//! What the pass fills after restating lands in these cases too, because
+//! there is one door and no way to stop at the first step.
 
 use super::SoleMessage;
 use super::path;
@@ -58,6 +61,15 @@ fn built(registry: Arc<FixRegistry>, children: Vec<Field>, record: &[(&str, Scal
         .required_field("8");
     let value = Scalar::from_record(record.iter().cloned()).expect("a record");
     FixMsg::with_registry(registry, root, value).expect("a message")
+}
+
+/// One message through the enriching pass, whose first step is the
+/// restatement: the codec is the pass's only door, and it reads the same
+/// registry the message already resolves against.
+fn enriched(message: FixMsg) -> FixMsg {
+    FixCodec::new(Arc::clone(message.registry()))
+        .enrich_message(message)
+        .expect("enriched")
 }
 
 /// The names of the root's children, in order.
@@ -118,7 +130,7 @@ fn an_alias_named_child_is_re_expressed_under_the_registry_field() {
             ("symbol", Scalar::from("AAPL")),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     // Renamed in place, re-typed to the registry's datatype, the tag now
     // carried so the message answers by it.
     assert_eq!(names(&latest), ["lastqty", "symbol"]);
@@ -137,7 +149,7 @@ fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
         vec![DataType::utf8().nullable_field("32")],
         &[("32", Scalar::from("100"))],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["lastqty"]);
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
 }
@@ -158,7 +170,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
             ("LastShares", Scalar::from(100)),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["lastqty", "symbol"]);
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(100.0_f64));
 
@@ -175,7 +187,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
             ("LastShares", Scalar::from(100)),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["lastqty", "LastShares"]);
     assert_eq!(latest.by_tag(32).unwrap(), &Scalar::from(50.0_f64));
     assert_eq!(child(&latest, "LastShares"), &Scalar::from(100));
@@ -192,7 +204,7 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
             ("LastShares", Scalar::from(100)),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["lastqty"]);
 }
 
@@ -211,7 +223,7 @@ fn a_child_the_registry_does_not_know_is_kept_exactly() {
             ("LastShares", Scalar::from(100)),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["9999", "VenueOwnThing", "lastqty"]);
     assert_eq!(latest.by_tag(9999).unwrap(), &Scalar::from("custom"));
     assert_eq!(
@@ -228,7 +240,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
         &[("LastShares", Scalar::from(100))],
     );
     assert_eq!(message.version(), None);
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(latest.version(), Some(version("4.3")));
     assert_eq!(text(&latest, VERSION_TAG_NAME.0), Some("4.3"));
     assert_eq!(names(&latest), ["lastqty", "version"]);
@@ -238,7 +250,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
         &Scalar::from(100.0_f64)
     );
 
-    let again = latest.clone().into_latest().expect("a second pass");
+    let again = enriched(latest.clone());
     assert_eq!(again, latest);
 
     // A stated version is replaced in place rather than stood beside.
@@ -255,7 +267,7 @@ fn the_version_is_stamped_from_a_dated_registry_and_a_second_pass_is_equal() {
             ("LastShares", Scalar::from(100)),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["version", "lastqty"]);
     assert_eq!(latest.version(), Some(version("4.3")));
 }
@@ -306,7 +318,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
         vec![rule80a()],
         &[("rule80a", Scalar::from("A"))],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(text(&latest, 528), Some("A"));
     assert_eq!(
         text(&latest, 47),
@@ -322,7 +334,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
             ("rule80a", Scalar::from("A")),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(names(&latest), ["ordercapacity", "rule80a", "version"]);
     assert_eq!(text(&latest, 528), Some("A"));
     // A stated current code stands, and blocks the rule.
@@ -334,7 +346,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
             ("rule80a", Scalar::from("A")),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(text(&latest, 528), Some("P"));
     // A code the set no longer declares at the newest version is written over.
     let message = built(
@@ -345,7 +357,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
             ("rule80a", Scalar::from("A")),
         ],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(text(&latest, 528), Some("A"));
     // A value the rule does not speak for fills nothing.
     let message = built(
@@ -353,7 +365,7 @@ fn a_target_takes_a_value_unless_it_states_a_current_code() {
         vec![rule80a()],
         &[("rule80a", Scalar::from("B"))],
     );
-    let latest = message.into_latest().expect("restated");
+    let latest = enriched(message);
     assert_eq!(latest.get_by_tag(528), None);
     assert_eq!(latest.version(), Some(version("4.4")));
 }
@@ -364,11 +376,11 @@ fn reader() -> FixCodec {
     FixCodec::new(super::committed_registry())
 }
 
-/// One line read, restated, and restated again to prove the second pass
+/// One line read, enriched, and enriched again to prove the second pass
 /// changes nothing; the wire and the anomalies are the same before and after.
 fn restated(reader: &FixCodec, line: &[u8]) -> FixMsg {
     let read = reader.sole_line(line, false).expect("a readable line");
-    let latest = read.clone().into_latest().expect("restated");
+    let latest = reader.enrich_message(read.clone()).expect("enriched");
     let spelled = String::from_utf8_lossy(line);
     assert_eq!(latest.into_bytes(b'|'), line, "the wire of {spelled}");
     assert_eq!(latest.entries(), read.entries(), "the entries of {spelled}");
@@ -377,7 +389,9 @@ fn restated(reader: &FixCodec, line: &[u8]) -> FixMsg {
         anomalies(&read),
         "the anomalies of {spelled}"
     );
-    let again = latest.clone().into_latest().expect("a second pass");
+    let again = reader
+        .enrich_message(latest.clone())
+        .expect("a second pass");
     assert_eq!(again, latest, "a second pass over {spelled}");
     assert_eq!(
         latest.version(),
@@ -691,12 +705,14 @@ fn a_batch_read_lands_at_the_newest_version_when_asked() {
     let newest = registry.newest().expect("a dated dictionary").version();
     let codec = FixCodec::new(Arc::clone(&registry));
     let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
-    // A stage is a call: the restatement composes over the message stream
-    // between the parse and the batch.
+    // A stage is a call: the enriching pass, whose first step is the
+    // restatement, composes over the message stream between the parse and
+    // the batch.
     let rows = |on: bool| {
+        let staged = codec.clone();
         let messages = codec.parse_lines([REPORT]).map(move |held| {
             if on {
-                held.and_then(FixMsg::into_latest)
+                held.and_then(|message| staged.enrich_message(message))
             } else {
                 held
             }
@@ -724,7 +740,7 @@ fn a_batch_read_lands_at_the_newest_version_when_asked() {
         .expect("a readable line")
         .next()
         .expect("one message")
-        .and_then(FixMsg::into_latest)
+        .and_then(|message| codec.enrich_message(message))
         .expect("a message");
     assert_eq!(message.version(), Some(newest));
     assert_eq!(text(&message, 528), Some("A"));
@@ -822,9 +838,7 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
         .expect("parties")
         .clone();
     list.set_nullable(true);
-    let latest = declared_parties(list, Scalar::Null)
-        .into_latest()
-        .expect("restated");
+    let latest = enriched(declared_parties(list, Scalar::Null));
     assert_eq!(
         names(&latest),
         ["parties", "execbroker", "nopartyids", "version"]
@@ -860,9 +874,7 @@ fn a_group_that_arrived_as_a_large_list_keeps_its_shape() {
     let mut list = DataType::large_list(item).nullable_field("parties");
     list.set_metadata(definition.as_metadata().iter())
         .expect("the definition's metadata");
-    let latest = declared_parties(list, Scalar::from_sequence([occurrence]))
-        .into_latest()
-        .expect("restated");
+    let latest = enriched(declared_parties(list, Scalar::from_sequence([occurrence])));
     let at = latest.as_field().index_of("parties").expect("parties");
     assert!(
         matches!(

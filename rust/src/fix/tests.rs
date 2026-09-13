@@ -5474,3 +5474,45 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     let row = towering.into_row(&schema).expect("no depth refusal");
     assert!(row.as_sequence().is_some());
 }
+
+#[test]
+fn a_composed_key_fills_the_field_its_last_segment_names() {
+    let codec = plugin_codec();
+    let one = |row: &str| {
+        codec
+            .parse_line(row.as_bytes())
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+    };
+    let enriched = |row: &str| codec.enrich_message(one(row)).unwrap();
+
+    // A bridge writes a field under its own namespace, and the fact is the
+    // field's however the writer spelled the key (decision 20).
+    let filled = enriched("MSGTYPE=8|TECH.ACCOUNT=ACCT-000117|SIDE=1|");
+    assert_eq!(
+        filled.by_name("Account").unwrap().as_str(),
+        Some("ACCT-000117")
+    );
+
+    // What the row states is never overwritten: a namespace's spelling of a
+    // fact is not the fact. The corpus states both on one line, disagreeing.
+    let stated = enriched("MSGTYPE=8|CLIENT.SYMBOL=XAU|SYMBOL=XAU/USD|");
+    assert_eq!(stated.by_name("Symbol").unwrap().as_str(), Some("XAU/USD"));
+
+    // One voice or silence: two namespaces naming one absent field, and
+    // disagreeing, fill nothing. Nine lines of the corpus do exactly this.
+    let split = enriched("MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|");
+    assert_eq!(split.get_by_name("ClientID"), None);
+    // Agreeing, they fill.
+    let agreed = enriched("MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|");
+    assert_eq!(
+        agreed.by_name("ClientID").unwrap().as_str(),
+        Some("trader1")
+    );
+
+    // A segment naming no field of this dictionary names nothing.
+    let stranger = enriched("MSGTYPE=8|METAL.LOCO=LDN|");
+    assert!(stranger.get_by_name("Loco").is_none());
+}

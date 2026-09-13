@@ -14,9 +14,9 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Encode](encode.md) | Native wire emission from captured message entries |
 | [Registry](registry.md) | `FixRegistry`: one-namespace resolution, `FixKey`, mutation, protocol inference, the process-wide default |
 | [Store](store.md) | Shard trees under one `IOBase` folder, `from_handle`, `write_into`, the tracked seed |
-| [Message](message.md) | `FixMsg`: root Struct plus row and registry, accessors, `set`/`remove` writing the row, `from_row` reading a fixed row back, JSON, `into_latest` restating a message at the dictionary's newest version |
+| [Message](message.md) | `FixMsg`: root Struct plus row and registry, accessors, `set`/`remove` writing the row, `from_row` reading a fixed row back, JSON, and what restating a message at the dictionary's newest version decides |
 | [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `enrich_messages_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
-| [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, `enrich_message`: a day of session log as one table |
+| [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, `enrich_message` and the one enriching pass behind it: a day of session log as one table |
 | [Lifecycle](lifecycle.md) | `FixLifecycle`, `FixCodec::lifecycle`: the instrument, the message and the order chain, stamped across a stream |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 

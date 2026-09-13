@@ -278,7 +278,6 @@ const fromFixml: FixMsg = reader.parseFixmlLine(Buffer.from("<Order ClOrdID='A'/
 const fromPairs: FixMsg = reader.parsePairs([['55', 'AAPL']])
 const enriched: FixMsg = reader.enrichMessage(fromText)
 const enrichedStream: FixMessages = reader.enrichMessages([fromText, enriched])
-const restated: FixMsg = fromText.intoLatest()
 const readerCopy: FixCodec = reader.clone()
 
 // The lifecycle is a class over one dictionary, or over the process default,
@@ -310,7 +309,6 @@ void fromLines
 void fromFixml
 void enriched
 void enrichedStream
-void restated
 void lifeClass
 void defaultLife
 void alive

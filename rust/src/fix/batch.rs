@@ -220,10 +220,12 @@ impl FixCodec {
     /// not make a message of is an error item; either fuses the stream.
     ///
     /// This is one half of what [`Self::enrich_messages_arrow_reader`]
-    /// composes, public because [`Self::lifecycle`], [`FixDedup`](super::FixDedup)
-    /// and [`FixMsg::into_latest`] compose over batches the same way: the
+    /// composes, public because [`Self::lifecycle`] and
+    /// [`FixDedup`](super::FixDedup) compose over batches the same way: the
     /// messages a batch holds, through the stage, into [`Self::arrow_reader`]
-    /// under the schema read off the batch.
+    /// under the schema read off the batch. There are two such stages now,
+    /// not three: restatement is the first step of the enriching pass rather
+    /// than a stage of its own (decision 20).
     pub fn messages(
         &self,
         source: BatchReader,

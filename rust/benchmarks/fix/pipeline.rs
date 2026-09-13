@@ -15,9 +15,10 @@
 //! rows, the codec alone over the framed bodies, the record reader over the
 //! same bodies with each row naming the plugin that logged it - so the
 //! `pluginid` capture's fill is measured on its own - and then what a message
-//! costs after it is built - its row, the batch the rows land in, the rules
-//! that fill what it implies, the restatement at the dictionary's newest
-//! version, the stamp that joins it to its order's life, and its digest.
+//! costs after it is built - its row, the batch the rows land in, the one
+//! enriching pass that restates it at the dictionary's newest version and
+//! fills what it implies, the stamp that joins it to its order's life, and
+//! its digest.
 //!
 //! The registry carries the bridge's own fields beside the standard ones in
 //! the one namespace, which is what a capture holding configuration
@@ -225,17 +226,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 codec
                     .enrich_messages(held)
                     .map(|message| message.expect("enriched").entries().len())
-                    .sum::<usize>()
-            },
-            BatchSize::LargeInput,
-        );
-    });
-    group.bench_function("into_latest", |bencher| {
-        bencher.iter_batched(
-            || messages.clone(),
-            |held| {
-                held.into_iter()
-                    .map(|message| message.into_latest().expect("restated").entries().len())
                     .sum::<usize>()
             },
             BatchSize::LargeInput,

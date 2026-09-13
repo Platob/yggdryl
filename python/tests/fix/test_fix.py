@@ -1547,15 +1547,16 @@ REPORT = (
 )
 
 
-def test_a_message_restates_at_the_dictionarys_newest_version(seed: FixRegistry) -> None:
-    """Restatement is a method; the rules are the dictionary's."""
-    read = next(FixCodec(seed).parse_line(REPORT))
+def test_the_enriching_pass_restates_before_it_fills(seed: FixRegistry) -> None:
+    """Restatement is the pass's first step; the rules are the dictionary's."""
+    codec = FixCodec(seed)
+    read = next(codec.parse_line(REPORT))
     assert read.by_tag(65001).as_py() == "4.2"
     assert read.by_tag(150).as_py() == "40PARTFILL"
     assert read.get_by_tag(528) is None
     assert read.get_by_tag(453) is None
 
-    latest = read.into_latest()
+    latest = codec.enrich_message(read)
     # ExecTransType Cancel wrote ExecType TradeCancel over the retired
     # PartiallyFilled, and the source stays.
     assert latest.by_tag(150).as_py() == "40TRDCXL"
@@ -1569,20 +1570,30 @@ def test_a_message_restates_at_the_dictionarys_newest_version(seed: FixRegistry)
     assert latest.by_path("parties[0].partyrole").as_py() == 1
     assert latest.by_path("parties[1].partyid").as_py() == "CLIENT1"
     assert latest.by_path("parties[1].partyrole").as_py() == 3
-    # The fill under its newest spelling, reachable by the old one too.
+    # The fill under its newest spelling, reachable by the old one too, and
+    # reachable is all it is: the registry answers a field for any alias it
+    # holds, so an alias is a way of asking rather than a child to store.
     assert latest.by_tag(32).as_py() == 100.0
     assert latest.by_name("LastShares").as_py() == 100.0
+    assert [name for name, _ in latest].count("lastqty") == 1
+    assert not any(name == "lastshares" for name, _ in latest)
     # The row speaks the dictionary's newest version; the wire still says 4.2.
     assert latest.by_tag(65001).as_py() == "5.0.2"
     assert latest.by_tag(8).as_py() == "FIX.4.2"
 
-    # Only the row was restated: the wire comes back byte for byte, the
-    # arrival record and the anomalies are the same, and a second pass
-    # changes nothing.
+    # One pass, and the filling read the restated row: a report stating no
+    # time in force is a day order, one fill's average is that fill's price,
+    # and what it was worth is the quantity times the price.
+    assert latest.by_tag(59).as_py() == "0"
+    assert latest.by_tag(6).as_py() == 10.5
+    assert latest.by_tag(381).as_py() == 1050.0
+
+    # Only the row was touched: the wire comes back byte for byte, the arrival
+    # record and the anomalies are the same, and a second pass changes nothing.
     assert latest.into_bytes(ord("|")) == REPORT
     assert latest.entries() == read.entries()
     assert latest.anomalies() == read.anomalies()
-    assert latest.into_latest() == latest
+    assert codec.enrich_message(latest) == latest
 
 
 # A Jolokia answer as a log line writes it: a timestamp and a reader in front
@@ -2513,20 +2524,20 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
 
 
 def test_a_batch_read_lands_at_the_newest_version_when_asked(seed: FixRegistry) -> None:
-    """A stage is a call: the restatement composes between the parse and the batch."""
+    """A stage is a call: the enriching pass composes between the parse and the batch."""
     codec = FixCodec(seed)
     source = pa.table({"body": pa.array([REPORT], pa.binary())})
-    # Restated as messages, before the row: the fixed row has no column for a
-    # retired field such as `ExecTransType(20)`, so a row read back would
-    # restate without it.
+    # Enriched as messages, before the row: the pass restates first, and the
+    # fixed row has no column for a retired field such as `ExecTransType(20)`,
+    # so a row read back would restate without it.
     restated = codec.arrow_reader(
-        fix_schema(seed), (message.into_latest() for message in codec.parse_lines([REPORT]))
+        fix_schema(seed), codec.enrich_messages(codec.parse_lines([REPORT]))
     ).read_all()
     assert restated.column("version").to_pylist() == ["5.0.2"]
     assert restated.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40TRDCXL"
     assert restated.column("nopartyids").to_pylist() == [2]
     assert restated.column("parties").to_pylist()[0][0]["partyid"] == "BRKR"
-    # Unrestated, the row speaks the version it was read at.
+    # Unenriched, the row speaks the version it was read at.
     read = codec.parse_text_arrow_reader(source).read_all()
     assert read.column("version").to_pylist() == ["4.2"]
     assert read.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40PARTFILL"

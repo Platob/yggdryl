@@ -1305,19 +1305,21 @@ test('the enriching stream fills a row from the configuration that named its plu
   assert.equal(codec.enrichMessage(one(pluginRow(named))).getByTag(49), null)
 })
 
-test('a message restates at the dictionary\'s newest version', () => {
+test('the enriching pass restates before it fills', () => {
   // A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
   // capacity and two identities the specification later moved into `Parties`.
   const line =
     '8=FIX.4.2|35=8|37=O1|17=E1|20=1|150=1|39=1|55=AAPL|54=1|32=100|31=10.5|14=100|151=0|47=A|109=CLIENT1|76=BRKR|10=0|'
-  const read = new fix.FixCodec(seed()).parseLine(Buffer.from(line)).next().value
+  const codec = new fix.FixCodec(seed())
+  const read = codec.parseLine(Buffer.from(line)).next().value
   assert.equal(read.byTag(65001).toJSON(), '4.2')
   assert.equal(read.byTag(150).toJSON(), '40PARTFILL')
   assert.equal(read.getByTag(528), null)
   assert.equal(read.getByTag(453), null)
 
-  // Restatement is a method; the rules are the dictionary's.
-  const latest = read.intoLatest()
+  // Restatement is the pass's first step, not a door of its own: the rules
+  // are the dictionary's, and the row is canonical before anything fills it.
+  const latest = codec.enrichMessage(read)
   // ExecTransType Cancel wrote ExecType TradeCancel over the retired
   // PartiallyFilled, and the source stays.
   assert.equal(latest.byTag(150).toJSON(), '40TRDCXL')
@@ -1331,20 +1333,31 @@ test('a message restates at the dictionary\'s newest version', () => {
   assert.equal(latest.byPath('parties[0].partyrole').asJs(), 1)
   assert.equal(latest.byPath('parties[1].partyid').asJs(), 'CLIENT1')
   assert.equal(latest.byPath('parties[1].partyrole').asJs(), 3)
-  // The fill under its newest spelling, reachable by the old one too.
+  // The fill under its newest spelling, reachable by the old one too, and
+  // reachable is all it is: the registry answers a field for any alias it
+  // holds, so an alias is a way of asking rather than a child to store.
   assert.equal(latest.byTag(32).asJs(), 100)
   assert.equal(latest.byName('LastShares').asJs(), 100)
+  const names = [...latest].map(([name]) => name)
+  assert.equal(names.filter((name) => name === 'lastqty').length, 1)
+  assert.ok(!names.includes('lastshares'))
   // The row speaks the dictionary's newest version; the wire still says 4.2.
   assert.equal(latest.byTag(65001).toJSON(), '5.0.2')
   assert.equal(latest.byTag(8).toJSON(), 'FIX.4.2')
 
-  // Only the row was restated: the wire comes back byte for byte, the
-  // arrival record and the anomalies are the same, and a second pass
-  // changes nothing.
+  // One pass, and the filling read the restated row: a report stating no time
+  // in force is a day order, one fill's average is that fill's price, and what
+  // it was worth is the quantity times the price.
+  assert.equal(latest.byTag(59).toJSON(), '0')
+  assert.equal(latest.byTag(6).asJs(), 10.5)
+  assert.equal(latest.byTag(381).asJs(), 1050)
+
+  // Only the row was touched: the wire comes back byte for byte, the arrival
+  // record and the anomalies are the same, and a second pass changes nothing.
   assert.equal(latest.intoBytes('|'.charCodeAt(0)).toString(), line)
   assert.deepEqual(latest.arrivals(), read.arrivals())
   assert.deepEqual(latest.anomalies(), read.anomalies())
-  assert.ok(latest.intoLatest().equals(latest))
+  assert.ok(codec.enrichMessage(latest).equals(latest))
 })
 
 // The messages of one order's life, as a venue and its client tell it.
