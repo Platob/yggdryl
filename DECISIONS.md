@@ -2297,3 +2297,51 @@ Regenerate equivalence ONLY after intentional changes and exact moved keys are
 catalogued, with WRITE=1 in this decision's commit. Never exempt the new clocks
 or identities from the tripwire to conceal nondeterminism. Registry hash pins
 change for the renamed/added/retired definitions and seeded standard clocks.
+
+## 27. A live chain carries its first creation instant
+
+NEXT_STEPS section 3, after decision 26; msghash stays retired. The settled
+message identity and epoch grid are unchanged.
+
+- A live incarnation retains the exact native createdat from its first
+  successfully accepted message. First means arrival order, not minimum
+  event time or the truncated grid. Later stated creation instants do not
+  replace this fact.
+- Every later message selecting that live chain receives that same createdat,
+  including late, already-aligned, suppressed and terminal arrivals. Explicit
+  code still selects globally; otherwise existing scoped identifier ownership
+  selects the chain. An unrelated or occupied identifier cannot transfer its
+  creation instant to another chain.
+- Unnamed messages and standalone terminal messages preserve their own settled
+  creation instant and retain no creation state. Closing or clearing forgets
+  the instant with the live chain. Reopening the same code/puuid establishes a
+  new live incarnation from that new first message, even in the same bucket.
+- Carry the creation instant in the existing atomic lifecycle stamp, before
+  the message identity finalizer. No new writer, clock read or dispatch. The
+  chain publishes only after the complete message succeeds, so a failed first
+  or subsequent arrival cannot establish, replace, close or advance creation
+  state. State grows by one native Scalar clock per live chain, no historical
+  record, pending message, extra container or tombstone.
+- Decision 26 continues to own updatedat truncation, snapshotat preservation,
+  code/puuid, named-content UUID and previous-message history. Since createdat
+  is excluded from content identity and already present in every message,
+  carrying it alone does not change uuid or puuid. Previous stamps still refer
+  to the finalized preceding full message, not the filtered snapshot stream.
+- A fresh or cleared lifecycle replaying the same settled raw stream produces
+  exactly the same full results and snapshots. Replaying the already-filled
+  full stream through a fresh or cleared full lifecycle is also identical;
+  its aligned inputs emit no snapshots while rebuilding the same live state.
+  Feeding an earlier message into already-advanced state remains a new arrival,
+  never an implicit rewind.
+
+Pins: distinct explicit creation instants (first not the minimum or grid);
+explicit-code cross-scope joins and occupied-key isolation; aligned-first,
+suppressed and late arrivals; terminal/reopen/clear/no-name lifetimes; failed
+first/subsequent publication; raw and already-filled replay; equal projection
+through Arrow; the 83-message capture and its existing exact live-chain counts.
+Extend the existing lifecycle benchmark inputs/assertions without executing
+measurements. Update Rust ownership docs and inventory; binding additions
+remain deferred until the complete Rust story per the user's stage order.
+
+No equivalence regeneration is expected: that tripwire does not run lifecycle,
+and neither registry definitions nor canonical digest bytes change here.

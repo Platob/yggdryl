@@ -723,15 +723,15 @@ impl FixCodec
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
 
 ### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
-pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each chain retains code, last full-message clock/UUID and highest consumed grid bucket; capacity bounded by peak live state)
+pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each chain retains code, first accepted createdat, last full-message clock/UUID and highest consumed grid bucket; capacity bounded by peak live state)
   pub const DEFAULT_INTERVAL_NS: i64 = 1_000_000_000;
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn interval_ns(&self) -> i64
   pub fn set_interval_ns(&mut self, interval_ns: i64) -> Result<()>  (positive; changing cadence requires no live chains; same value is a no-op)
   pub fn try_with_interval_ns(self, interval_ns: i64) -> Result<Self>
   pub fn alive(&self) -> usize
-  pub fn clear(&mut self)  (forgets live chains/history/buckets/keys, retains cadence)
-  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (one atomic code/history/grid transition; all messages normalize updatedat, snapshotat remains the event clock; native non-null previous statements remain authoritative)
+  pub fn clear(&mut self)  (forgets live chains/creation/history/buckets/keys, retains cadence)
+  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (one atomic code/creation/history/grid transition; joined messages inherit the first accepted createdat; all messages normalize updatedat, snapshotat remains the event clock; native non-null previous statements remain authoritative)
   pub fn snapshot(&mut self, message: FixMsg) -> Result<Option<FixMsg>>  (same transition; emits only an off-grid arrival above that live chain's highest consumed bucket)
   pub fn snapshots<I>(self, messages: I) -> impl FusedIterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = Result<FixMsg>>  (filters successful suppression only; errors yield without advancing state; fuses exhaustion)
 

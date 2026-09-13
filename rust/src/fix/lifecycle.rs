@@ -13,12 +13,15 @@
 //! result; `snapshot` emits only an off-grid arrival above its live chain's
 //! highest consumed bucket. Suppression changes neither processing nor history.
 //! Already-aligned arrivals consume a bucket without emitting a snapshot.
+//! The first accepted message's `createdat` belongs to its live incarnation;
+//! every later join carries it, even when late, suppressed or terminal.
 //!
 //! State is bounded to live chains and their distinct attached identifiers:
-//! code, last clock/UUID and highest bucket, never pending rows or historical
-//! tombstones. A terminal message receives its previous pair, then closes the
-//! chain even when suppressed. Reopening starts fresh and may emit in the same
-//! bucket. Late arrivals advance history but cannot lower the high-water mark.
+//! code, first creation clock, last clock/UUID and highest bucket, never pending
+//! rows or historical tombstones. A terminal receives its previous pair and
+//! creation clock, then closes the chain even when suppressed. Reopening starts
+//! fresh and may emit in the same bucket. Late arrivals advance history but
+//! cannot lower the high-water mark or replace the first creation instant.
 //! All stamps affect the semantic row alone, not wire entries or arrival digest.
 
 use std::collections::{HashMap, hash_map::Entry};
@@ -35,9 +38,9 @@ use super::msg::FixMsg;
 use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    ALTIDS_TAG_NAME, CODE_TAG_NAME, FixKey, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, STATE_TAG_NAME, UPDATEDAT_TAG_NAME,
-    UUID_TAG_NAME,
+    ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, INSTUUID_TAG_NAME,
+    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME,
+    STATE_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
 /// The separator between the parts an instrument's identity digests.
@@ -56,7 +59,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -67,8 +70,11 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///     b"8=FIX.4.4|35=D|52=20260102-10:15:30.250|10=0|",
 /// )?.with_value(CODE_TAG_NAME.0, Scalar::from("order/A1"))?;
 /// let first = life.fill(event.clone())?;
-/// let second = life.fill(event)?;
+/// let later = event.with_value(CREATEDAT_TAG_NAME.0, first.updatedat().clone())?;
+/// assert_ne!(later.createdat(), first.createdat());
+/// let second = life.fill(later)?;
 /// assert_eq!(first.puuid(), second.puuid());
+/// assert_eq!(first.createdat(), second.createdat());
 /// assert!(first.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
 /// assert!(first.by_tag(PREVTIMESTAMP_TAG_NAME.0)?.is_null());
 /// assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0)?, first.uuid());
@@ -98,6 +104,8 @@ struct Chain {
     code: SmolStr,
     /// Every attached scope is forgotten together when this chain closes.
     keys: Vec<(Option<Uuid>, SmolStr)>,
+    /// The first successful arrival, never replaced by a later join.
+    createdat: Scalar,
     /// Only the last successful message, under the shared clock datatype.
     timestamp: Scalar,
     uuid: Uuid,
@@ -171,7 +179,7 @@ impl FixLifecycle {
         self.chains.len()
     }
 
-    /// Forgets every chain and bucket, retaining the configured interval.
+    /// Forgets every chain's creation, history and bucket, retaining the interval.
     pub fn clear(&mut self) {
         self.chains.clear();
         self.keys.clear();
@@ -182,6 +190,8 @@ impl FixLifecycle {
     /// A nonempty code selects its chain globally. Otherwise the first scoped
     /// identifier reaching a live chain wins; the first identifier names a new
     /// chain when none match. Occupied identifiers are never stolen.
+    /// A live chain supplies its first accepted creation instant, overriding a
+    /// later statement. Unnamed and standalone terminal messages keep their own.
     /// Each absent/null previous stamp comes from the selected chain's last
     /// message; each stated non-null stamp is preserved. A fresh or cleared
     /// replay rebuilds the same state from the carried identities. Feeding an
@@ -270,14 +280,7 @@ impl FixLifecycle {
                 self.close(persistent);
             } else {
                 let uuid = native_uuid(message.uuid(), UUID_TAG_NAME.1)?;
-                self.join(
-                    persistent,
-                    code,
-                    keys,
-                    message.updatedat().clone(),
-                    uuid,
-                    grid,
-                );
+                self.join(persistent, code, keys, &message, uuid, grid);
             }
         }
         Ok((message, emitted))
@@ -337,7 +340,7 @@ impl FixLifecycle {
         persistent: Uuid,
         code: SmolStr,
         mut keys: Vec<(Option<Uuid>, SmolStr)>,
-        timestamp: Scalar,
+        message: &FixMsg,
         uuid: Uuid,
         bucket: i64,
     ) {
@@ -356,7 +359,8 @@ impl FixLifecycle {
                 entry.insert(Chain {
                     code,
                     keys,
-                    timestamp,
+                    createdat: message.createdat().clone(),
+                    timestamp: message.updatedat().clone(),
                     uuid,
                     highest_bucket: bucket,
                 });
@@ -364,7 +368,7 @@ impl FixLifecycle {
             Entry::Occupied(mut entry) => {
                 let chain = entry.get_mut();
                 chain.keys.extend(keys);
-                chain.timestamp = timestamp;
+                chain.timestamp = message.updatedat().clone();
                 chain.uuid = uuid;
                 chain.highest_bucket = chain.highest_bucket.max(bucket);
             }
@@ -468,6 +472,7 @@ impl FixMsg {
     ) -> Result<()> {
         let previous_id_stated = stated_uuid(self, PREVUUID_TAG_NAME)?.is_some();
         let previous_clock_stated = stated_previous_clock(self)?.is_some();
+        let created = previous.map(|chain| (CREATEDAT_TAG_NAME.0, chain.createdat.clone()));
         let previous = [
             (!previous_clock_stated).then(|| {
                 (
@@ -488,13 +493,16 @@ impl FixMsg {
                 (UPDATEDAT_TAG_NAME.0, updatedat),
             ]
             .into_iter()
+            .chain(created)
             .chain(instrument.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(value))))
             .chain(previous.into_iter().flatten()),
             |key, field| {
                 let expected = match key {
                     FixKey::Tag(tag) if *tag == CODE_TAG_NAME.0 => &DataType::utf8(),
                     FixKey::Tag(tag)
-                        if *tag == UPDATEDAT_TAG_NAME.0 || *tag == PREVTIMESTAMP_TAG_NAME.0 =>
+                        if *tag == UPDATEDAT_TAG_NAME.0
+                            || *tag == CREATEDAT_TAG_NAME.0
+                            || *tag == PREVTIMESTAMP_TAG_NAME.0 =>
                     {
                         &CLOCK_DATATYPE
                     }
@@ -650,14 +658,18 @@ mod tests {
 
     #[test]
     fn duplicate_occurrences_do_not_enlarge_a_live_chains_key_buffer() {
+        let registry = Arc::new(FixRegistry::new());
+        let message = super::super::FixCodec::new(Arc::clone(&registry))
+            .parse_fix_line(b"8=FIX.4.4|35=D|52=19700101-00:00:00|10=0|")
+            .unwrap();
         for count in [1, 64, 1024] {
-            let mut life = FixLifecycle::new(Arc::new(FixRegistry::new()));
+            let mut life = FixLifecycle::new(Arc::clone(&registry));
             let persistent = Uuid::new(1);
             life.join(
                 persistent,
                 SmolStr::new("same"),
                 vec![(None, SmolStr::new("same")); count],
-                Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+                &message,
                 Uuid::new(2),
                 0,
             );
@@ -701,7 +713,7 @@ mod tests {
                 persistent,
                 SmolStr::new("a different live code"),
                 vec![(None, SmolStr::new("OWNED"))],
-                Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+                &message,
                 Uuid::new(7),
                 0,
             );

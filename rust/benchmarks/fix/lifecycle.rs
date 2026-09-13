@@ -1,4 +1,4 @@
-//! Scoped chain lookup and epoch-grid snapshots through the same transition.
+//! Scoped chain creation, history and grid snapshots through one transition.
 
 use std::collections::HashSet;
 use std::hint::black_box;
@@ -7,8 +7,9 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::types::Uuid;
 use yggdryl::{
-    ALTIDS_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME,
-    PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
+    ALTIDS_TAG_NAME, CREATEDAT_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME,
+    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
+    UPDATEDAT_TAG_NAME,
 };
 
 use super::seed;
@@ -30,16 +31,42 @@ pub fn benchmarks(criterion: &mut Criterion) {
         1,
         "the registered component selects the order identifier",
     );
+    let created = message.createdat().as_datetime64().unwrap().0;
     let mut derived = Vec::with_capacity(SCOPES * 2);
     for scope in 0..SCOPES {
         let mut scoped = message.clone();
         scoped
+            .set_many([
+                (
+                    INSTUUID_TAG_NAME.0,
+                    Scalar::Uuid(Uuid::from_v8(scope as u128)),
+                ),
+                (
+                    CREATEDAT_TAG_NAME.0,
+                    Scalar::datetime64(
+                        created + 100 + scope as i64,
+                        TimeUnit::Nanosecond,
+                        Timezone::UTC,
+                    )
+                    .unwrap(),
+                ),
+            ])
+            .expect("a native scope and creation clock");
+        let mut later = scoped.clone();
+        later
             .set(
-                INSTUUID_TAG_NAME.0,
-                Scalar::Uuid(Uuid::from_v8(scope as u128)),
+                CREATEDAT_TAG_NAME.0,
+                Scalar::datetime64(
+                    created - 100 - scope as i64,
+                    TimeUnit::Nanosecond,
+                    Timezone::UTC,
+                )
+                .unwrap(),
             )
-            .expect("a native instrument UUID");
-        derived.extend([scoped.clone(), scoped]);
+            .expect("a later arrival stating an earlier creation instant");
+        assert_ne!(scoped.createdat(), later.createdat());
+        assert_eq!(scoped.uuid(), later.uuid(), "creation alone is not content");
+        derived.extend([scoped, later]);
     }
     let stated = codec
         .enrich_messages(derived.clone())
@@ -65,6 +92,12 @@ pub fn benchmarks(criterion: &mut Criterion) {
         let mut previous = None;
         for (index, message) in rows.iter().enumerate() {
             let stamped = life.fill(message.clone()).expect("a scoped message");
+            let created = if expected_chains == 0 {
+                message.createdat()
+            } else {
+                rows[index - index % 2].createdat()
+            };
+            assert_eq!(stamped.createdat(), created, "{name}");
             if expected_chains != 0 && index % 2 == 1 {
                 let (timestamp, uuid) = previous.as_ref().expect("the scope's first message");
                 assert_eq!(stamped.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(), timestamp);
@@ -123,8 +156,9 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .collect::<yggdryl::Result<Vec<_>>>()
             .expect("the same transition filters only repeated buckets");
         assert_eq!(snapshots.len(), expected_chains, "{name}");
-        for snapshot in &snapshots {
+        for (index, snapshot) in snapshots.iter().enumerate() {
             assert_eq!(snapshot.updatedat(), message.updatedat());
+            assert_eq!(snapshot.createdat(), rows[index * 2].createdat());
             assert!(snapshot.by_tag(PREVUUID_TAG_NAME.0).unwrap().is_null());
         }
         group.bench_function(format!("{name}_snapshots"), |bencher| {

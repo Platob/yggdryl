@@ -70,6 +70,13 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
         chains.iter().all(|held| *held == chains[0]),
         "the replace's new identifier joined the chain the old one opened"
     );
+    assert!(
+        stamped
+            .iter()
+            .all(|message| message.createdat() == stamped[0].createdat()),
+        "the first creation instant survives replacement and terminal fill"
+    );
+    assert_eq!(stamped[0].createdat(), stamped[0].by_tag(60).unwrap());
     let ids: Vec<_> = stamped
         .iter()
         .map(|held| bytes(held, UUID_TAG_NAME.0).expect("an id"))
@@ -124,6 +131,8 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
         .fill(reader.sole_line(tomorrow.as_bytes(), false).unwrap())
         .unwrap();
     assert_eq!(bytes(&again, PUUID_TAG_NAME.0).unwrap(), chains[0]);
+    assert_eq!(again.createdat(), again.by_tag(60).unwrap());
+    assert_ne!(again.createdat(), stamped[0].createdat());
     assert!(again.by_tag(PREVUUID_TAG_NAME.0).unwrap().is_null());
     assert_eq!(life.alive(), 1);
     life.clear();
@@ -135,6 +144,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
         .unwrap();
     assert_eq!(bytes(&replayed, PUUID_TAG_NAME.0).unwrap(), chains[0]);
     assert_eq!(bytes(&replayed, UUID_TAG_NAME.0), Some(ids[0]));
+    assert_eq!(replayed.createdat(), stamped[0].createdat());
 }
 
 #[test]
