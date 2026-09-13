@@ -1134,6 +1134,9 @@ impl FixRegistry {
     }
 
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
+        // Even a declaration whose category does not consume the counter must
+        // not publish malformed protocol metadata. Groups reuse this reading.
+        let counter = field.as_fix().counter()?;
         let map_group =
             category == FixCategory::Groups && matches!(field.dtype(), DataType::Map(_));
         if map_group {
@@ -1141,10 +1144,7 @@ impl FixRegistry {
                 .as_fix()
                 .tag()?
                 .ok_or_else(|| Error::absent("fix:tag", field.name()))?;
-            let counter = field
-                .as_fix()
-                .counter()?
-                .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+            let counter = counter.ok_or_else(|| Error::absent("fix:counter", field.name()))?;
             if !super::is_crate_tag(tag) || counter != tag {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
@@ -1237,10 +1237,7 @@ impl FixRegistry {
         }
         check_shape(category, field)?;
         if category == FixCategory::Groups {
-            let tag = field
-                .as_fix()
-                .counter()?
-                .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+            let tag = counter.ok_or_else(|| Error::absent("fix:counter", field.name()))?;
             if !map_group {
                 let counter = self.field_by_tag(tag)?;
                 if counter.dtype() != &DataType::Int32 {

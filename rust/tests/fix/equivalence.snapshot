@@ -693,7 +693,7 @@ ulbridge[004]:0.field.snapshotat	"2026-08-14T12:46:39.743000000Z"
 ulbridge[004]:0.field.msgdirection	"S"
 ulbridge[004].messages	1
 ulbridge[005]:0.type	8
-ulbridge[005]:0.digest	6ed51fb64d51f8b6bdec655e2d92814a
+ulbridge[005]:0.digest	26c26c9e3eff966bf876b04436cf06f4
 ulbridge[005]:0.wire	8=FIX.4.4|9=938|35=8|34=40218|49=OMSAUDITX1|56=FIRMAUDITX1|43=N|52=20260814-12:46:39.761|9435=trader1|38=600|40=2|59=0|386=1|336=1|21=1|14=340|39=1|151=260|150=F|454=1|455=CH0012221716|456=4|6=83.08|11=00026877711XOEA0.1|15=CHF|1524=CHF|17=00011377089XEEA0|30=XSWX|31=83.08|32=21|37=00026877711XOEA0|44=83.08|48=CH0012221716|22=4|54=1|55=ABBN.S|60=20260814-12:46:39.743016|75=20260814|100=XSWX|113=N|2524=6|126=20260814-16:25:00.000000|167=CS|198=20260814-2419724|207=XSWX|228=1|442=1|461=ESVTFR|453=6|448=HIGH_TOUCH|452=3|447=C|448=SWXCCP|452=1|447=C|448=STANDARD|452=1|447=P|448=PBRK6_EDA|452=24|447=D|528=A|851=2|880=035B40AQK6702PNQ|1029=Y|1031=Y|1032=2|1057=Y|1907=1|1903=035B40AQK6702PNQ|1906=5|9432=00011377089XEEA01|9211=XTP-EA|9501=EXEC_NEW|9502=To Client|9503=Order Fill|9505=20260814-12:46:39.754609|9507=OD9EOEDJ000|9508=EXECUTION|9509=8|9513=trader1|9514=FALSE|9730=2|31027=N|7117=BO|10=200|
 ulbridge[005]:0.entry[0]	t8 8=FIX.4.4
 ulbridge[005]:0.entry[1]	t9 9=938
@@ -703,7 +703,7 @@ ulbridge[005]:0.entry[4]	t49 49=OMSAUDITX1
 ulbridge[005]:0.entry[5]	t56 56=FIRMAUDITX1
 ulbridge[005]:0.entry[6]	t43 43=N
 ulbridge[005]:0.entry[7]	t52 52=20260814-12:46:39.761
-ulbridge[005]:0.entry[8]	t9435 9435=trader1
+ulbridge[005]:0.entry[8]	t0 9435=trader1
 ulbridge[005]:0.entry[9]	t38 38=600
 ulbridge[005]:0.entry[10]	t40 40=2
 ulbridge[005]:0.entry[11]	t59 59=0
@@ -766,20 +766,20 @@ ulbridge[005]:0.entry[53]	t1057 1057=Y
 ulbridge[005]:0.entry[54]	t1907 1907=1
 ulbridge[005]:0.entry[54.0]	t1903 1903=035B40AQK6702PNQ
 ulbridge[005]:0.entry[54.1]	t1906 1906=5
-ulbridge[005]:0.entry[55]	t9432 9432=00011377089XEEA01
-ulbridge[005]:0.entry[56]	t9211 9211=XTP-EA
-ulbridge[005]:0.entry[57]	t9501 9501=EXEC_NEW
-ulbridge[005]:0.entry[58]	t9502 9502=To Client
-ulbridge[005]:0.entry[59]	t9503 9503=Order Fill
-ulbridge[005]:0.entry[60]	t9505 9505=20260814-12:46:39.754609
-ulbridge[005]:0.entry[61]	t9507 9507=OD9EOEDJ000
-ulbridge[005]:0.entry[62]	t9508 9508=EXECUTION
-ulbridge[005]:0.entry[63]	t9509 9509=8
-ulbridge[005]:0.entry[64]	t9513 9513=trader1
-ulbridge[005]:0.entry[65]	t9514 9514=FALSE
-ulbridge[005]:0.entry[66]	t9730 9730=2
-ulbridge[005]:0.entry[67]	t31027 31027=N
-ulbridge[005]:0.entry[68]	t7117 7117=BO
+ulbridge[005]:0.entry[55]	t0 9432=00011377089XEEA01
+ulbridge[005]:0.entry[56]	t0 9211=XTP-EA
+ulbridge[005]:0.entry[57]	t0 9501=EXEC_NEW
+ulbridge[005]:0.entry[58]	t0 9502=To Client
+ulbridge[005]:0.entry[59]	t0 9503=Order Fill
+ulbridge[005]:0.entry[60]	t0 9505=20260814-12:46:39.754609
+ulbridge[005]:0.entry[61]	t0 9507=OD9EOEDJ000
+ulbridge[005]:0.entry[62]	t0 9508=EXECUTION
+ulbridge[005]:0.entry[63]	t0 9509=8
+ulbridge[005]:0.entry[64]	t0 9513=trader1
+ulbridge[005]:0.entry[65]	t0 9514=FALSE
+ulbridge[005]:0.entry[66]	t0 9730=2
+ulbridge[005]:0.entry[67]	t0 31027=N
+ulbridge[005]:0.entry[68]	t0 7117=BO
 ulbridge[005]:0.entry[69]	t10 10=200
 ulbridge[005]:0.field.beginstring	"FIX.4.4"
 ulbridge[005]:0.field.bodylength	938
@@ -5659,7 +5659,7 @@ ulbridge[033]:0.field.snapshotat	"2026-08-14T12:46:39.757000000Z"
 ulbridge[033]:0.field.msgdirection	"S"
 ulbridge[033].messages	1
 ulbridge[034]:0.type	8
-ulbridge[034]:0.digest	237ce9ac5eea3c60fd60cda25943a2c3
+ulbridge[034]:0.digest	d8f6acd11831427219be3e6ddeb0eba9
 ulbridge[034]:0.wire	8=FIX.4.4|9=886|35=8|50=89680|34=40219|49=OMSAUDITX1|56=FIRMAUDITX1|43=N|52=20260814-12:46:39.762|38=600|40=2|59=0|386=1|336=1|21=1|151=0|150=F|454=1|455=CH0012221716|456=4|6=83.08|15=CHF|1524=CHF|17=00011377090XEEA0|30=XSWX|31=83.08|32=57|37=00026877711XOEA0|44=83.08|48=CH0012221716|22=4|54=1|55=ABBN.S|60=20260814|75=20260814|100=XSWX|113=N|2524=6|126=20260814-16:25:00.000000|167=CS|198=20260814-2419724|207=XSWX|228=1|434=8|442=1|461=ESVTFR|453=3|448=HIGH_TOUCH|452=3|447=C|448=SWXCCP|452=1|447=C|448=STANDARD|452=1|447=D|528=R|851=2|880=035B40AQK6702PNR|1029=Y|1031=Y|1032=2|1057=Y|1907=1|1903=035B40AQK6702PNR|1906=5|9432=00011377090XEEA01|9211=XTP-EA|9501=EXEC_NEW|9502=From Exchange|9503=Order Fill|9505=20260814-12:46:39.754596|9507=OD9EOEDJ000|9508=EXECUTION|9509=8|9513=trader1|9514=FALSE|9519=FIRMGE-S04.P01|9520=00023770097XREA000026877711XOEA0|9521=1|9730=2|31027=N|7117=BO|10=073|
 ulbridge[034]:0.entry[0]	t8 8=FIX.4.4
 ulbridge[034]:0.entry[1]	t9 9=886
@@ -5727,23 +5727,23 @@ ulbridge[034]:0.entry[51]	t1057 1057=Y
 ulbridge[034]:0.entry[52]	t1907 1907=1
 ulbridge[034]:0.entry[52.0]	t1903 1903=035B40AQK6702PNR
 ulbridge[034]:0.entry[52.1]	t1906 1906=5
-ulbridge[034]:0.entry[53]	t9432 9432=00011377090XEEA01
-ulbridge[034]:0.entry[54]	t9211 9211=XTP-EA
-ulbridge[034]:0.entry[55]	t9501 9501=EXEC_NEW
-ulbridge[034]:0.entry[56]	t9502 9502=From Exchange
-ulbridge[034]:0.entry[57]	t9503 9503=Order Fill
-ulbridge[034]:0.entry[58]	t9505 9505=20260814-12:46:39.754596
-ulbridge[034]:0.entry[59]	t9507 9507=OD9EOEDJ000
-ulbridge[034]:0.entry[60]	t9508 9508=EXECUTION
-ulbridge[034]:0.entry[61]	t9509 9509=8
-ulbridge[034]:0.entry[62]	t9513 9513=trader1
-ulbridge[034]:0.entry[63]	t9514 9514=FALSE
-ulbridge[034]:0.entry[64]	t9519 9519=FIRMGE-S04.P01
-ulbridge[034]:0.entry[65]	t9520 9520=00023770097XREA000026877711XOEA0
-ulbridge[034]:0.entry[66]	t9521 9521=1
-ulbridge[034]:0.entry[67]	t9730 9730=2
-ulbridge[034]:0.entry[68]	t31027 31027=N
-ulbridge[034]:0.entry[69]	t7117 7117=BO
+ulbridge[034]:0.entry[53]	t0 9432=00011377090XEEA01
+ulbridge[034]:0.entry[54]	t0 9211=XTP-EA
+ulbridge[034]:0.entry[55]	t0 9501=EXEC_NEW
+ulbridge[034]:0.entry[56]	t0 9502=From Exchange
+ulbridge[034]:0.entry[57]	t0 9503=Order Fill
+ulbridge[034]:0.entry[58]	t0 9505=20260814-12:46:39.754596
+ulbridge[034]:0.entry[59]	t0 9507=OD9EOEDJ000
+ulbridge[034]:0.entry[60]	t0 9508=EXECUTION
+ulbridge[034]:0.entry[61]	t0 9509=8
+ulbridge[034]:0.entry[62]	t0 9513=trader1
+ulbridge[034]:0.entry[63]	t0 9514=FALSE
+ulbridge[034]:0.entry[64]	t0 9519=FIRMGE-S04.P01
+ulbridge[034]:0.entry[65]	t0 9520=00023770097XREA000026877711XOEA0
+ulbridge[034]:0.entry[66]	t0 9521=1
+ulbridge[034]:0.entry[67]	t0 9730=2
+ulbridge[034]:0.entry[68]	t0 31027=N
+ulbridge[034]:0.entry[69]	t0 7117=BO
 ulbridge[034]:0.entry[70]	t10 10=073
 ulbridge[034]:0.field.beginstring	"FIX.4.4"
 ulbridge[034]:0.field.bodylength	886
@@ -9155,7 +9155,7 @@ enrich.ulbridge[053]:0.field.snapshotat	"2026-08-14T12:46:39.743000000Z"
 ulbridge[053].messages	1
 ulbridge[054].messages	0
 ulbridge[055]:0.type	8
-ulbridge[055]:0.digest	a2abdda6c20a61f9d1d87948a5d2d62b
+ulbridge[055]:0.digest	304562ee0045ac91c65012be6326c306
 ulbridge[055]:0.wire	8=FIX.4.4|9=938|35=8|34=40220|49=OMSAUDITX1|56=FIRMAUDITX1|43=N|52=20260814-12:46:39.762|9435=trader1|38=600|40=2|59=0|386=1|336=1|21=1|14=397|39=1|151=203|150=F|454=1|455=CH0012221716|456=4|6=83.08|11=00026877711XOEA0.1|15=CHF|1524=CHF|17=00011377090XEEA0|30=XSWX|31=83.08|32=57|37=00026877711XOEA0|44=83.08|48=CH0012221716|22=4|54=1|55=ABBN.S|60=20260814-12:46:39.743016|75=20260814|100=XSWX|113=N|2524=6|126=20260814-16:25:00.000000|167=CS|198=20260814-2419724|207=XSWX|228=1|442=1|461=ESVTFR|453=6|448=HIGH_TOUCH|452=3|447=C|448=SWXCCP|452=1|447=C|448=STANDARD|452=1|447=D|528=A|851=2|880=035B40AQK6702PNR|1029=Y|1031=Y|1032=2|1057=Y|1907=1|1903=035B40AQK6702PNR|1906=5|9432=00011377090XEEA01|9211=XTP-EA|9501=EXEC_NEW|9502=To Client|9503=Order Fill|9505=20260814-12:46:39.754725|9507=OD9EOEDJ000|9508=EXECUTION|9509=8|9513=trader1|9514=FALSE|9730=2|31027=N|7117=BO|10=197|
 ulbridge[055]:0.entry[0]	t8 8=FIX.4.4
 ulbridge[055]:0.entry[1]	t9 9=938
@@ -9165,7 +9165,7 @@ ulbridge[055]:0.entry[4]	t49 49=OMSAUDITX1
 ulbridge[055]:0.entry[5]	t56 56=FIRMAUDITX1
 ulbridge[055]:0.entry[6]	t43 43=N
 ulbridge[055]:0.entry[7]	t52 52=20260814-12:46:39.762
-ulbridge[055]:0.entry[8]	t9435 9435=trader1
+ulbridge[055]:0.entry[8]	t0 9435=trader1
 ulbridge[055]:0.entry[9]	t38 38=600
 ulbridge[055]:0.entry[10]	t40 40=2
 ulbridge[055]:0.entry[11]	t59 59=0
@@ -9225,20 +9225,20 @@ ulbridge[055]:0.entry[53]	t1057 1057=Y
 ulbridge[055]:0.entry[54]	t1907 1907=1
 ulbridge[055]:0.entry[54.0]	t1903 1903=035B40AQK6702PNR
 ulbridge[055]:0.entry[54.1]	t1906 1906=5
-ulbridge[055]:0.entry[55]	t9432 9432=00011377090XEEA01
-ulbridge[055]:0.entry[56]	t9211 9211=XTP-EA
-ulbridge[055]:0.entry[57]	t9501 9501=EXEC_NEW
-ulbridge[055]:0.entry[58]	t9502 9502=To Client
-ulbridge[055]:0.entry[59]	t9503 9503=Order Fill
-ulbridge[055]:0.entry[60]	t9505 9505=20260814-12:46:39.754725
-ulbridge[055]:0.entry[61]	t9507 9507=OD9EOEDJ000
-ulbridge[055]:0.entry[62]	t9508 9508=EXECUTION
-ulbridge[055]:0.entry[63]	t9509 9509=8
-ulbridge[055]:0.entry[64]	t9513 9513=trader1
-ulbridge[055]:0.entry[65]	t9514 9514=FALSE
-ulbridge[055]:0.entry[66]	t9730 9730=2
-ulbridge[055]:0.entry[67]	t31027 31027=N
-ulbridge[055]:0.entry[68]	t7117 7117=BO
+ulbridge[055]:0.entry[55]	t0 9432=00011377090XEEA01
+ulbridge[055]:0.entry[56]	t0 9211=XTP-EA
+ulbridge[055]:0.entry[57]	t0 9501=EXEC_NEW
+ulbridge[055]:0.entry[58]	t0 9502=To Client
+ulbridge[055]:0.entry[59]	t0 9503=Order Fill
+ulbridge[055]:0.entry[60]	t0 9505=20260814-12:46:39.754725
+ulbridge[055]:0.entry[61]	t0 9507=OD9EOEDJ000
+ulbridge[055]:0.entry[62]	t0 9508=EXECUTION
+ulbridge[055]:0.entry[63]	t0 9509=8
+ulbridge[055]:0.entry[64]	t0 9513=trader1
+ulbridge[055]:0.entry[65]	t0 9514=FALSE
+ulbridge[055]:0.entry[66]	t0 9730=2
+ulbridge[055]:0.entry[67]	t0 31027=N
+ulbridge[055]:0.entry[68]	t0 7117=BO
 ulbridge[055]:0.entry[69]	t10 10=197
 ulbridge[055]:0.field.beginstring	"FIX.4.4"
 ulbridge[055]:0.field.bodylength	938
@@ -12090,7 +12090,7 @@ enrich.ulbridge[070]:0.field.snapshotat	"2026-08-14T12:46:39.743000000Z"
 ulbridge[070].messages	1
 ulbridge[071].messages	0
 ulbridge[072]:0.type	8
-ulbridge[072]:0.digest	40e7514c58c35beff1d5eaa987901ea8
+ulbridge[072]:0.digest	d6671e8a1f693aa8c5b9f38ade122633
 ulbridge[072]:0.wire	8=FIX.4.4|9=886|35=8|50=89680|34=40221|49=OMSAUDITX1|56=FIRMAUDITX1|43=N|52=20260814-12:46:39.762|38=600|40=2|59=0|386=1|336=1|21=1|151=0|150=F|454=1|455=CH0012221716|456=4|6=83.08|15=CHF|1524=CHF|17=00011377091XEEA0|30=XSWX|31=83.08|32=75|37=00026877711XOEA0|44=83.08|48=CH0012221716|22=4|54=1|55=ABBN.S|60=20260814-12:46:39.743016|75=20260814|100=XSWX|113=N|2524=6|126=20260814-16:25:00.000000|167=CS|198=20260814-2419724|207=XSWX|228=1|442=1|461=ESVTFR|453=3|448=HIGH_TOUCH|452=3|447=C|448=SWXCCP|452=1|447=C|448=STANDARD|452=1|447=D|528=R|851=2|880=035B40AQK6702PNS|1029=Y|1031=Y|1032=2|1057=Y|1907=1|1903=035B40AQK6702PNS|1906=5|9432=00011377091XEEA01|9211=XTP-EA|9501=EXEC_NEW|9502=From Exchange|9503=Order Fill|9505=20260814-12:46:39.754631|9507=OD9EOEDJ000|9508=EXECUTION|9509=8|9513=trader1|9514=FALSE|9519=FIRMGE-S04.P01|9520=00023770097XREA000026877711XOEA0|9521=1|9730=2|31027=N|7117=BO|10=060|
 ulbridge[072]:0.entry[0]	t8 8=FIX.4.4
 ulbridge[072]:0.entry[1]	t9 9=886
@@ -12157,23 +12157,23 @@ ulbridge[072]:0.entry[50]	t1057 1057=Y
 ulbridge[072]:0.entry[51]	t1907 1907=1
 ulbridge[072]:0.entry[51.0]	t1903 1903=035B40AQK6702PNS
 ulbridge[072]:0.entry[51.1]	t1906 1906=5
-ulbridge[072]:0.entry[52]	t9432 9432=00011377091XEEA01
-ulbridge[072]:0.entry[53]	t9211 9211=XTP-EA
-ulbridge[072]:0.entry[54]	t9501 9501=EXEC_NEW
-ulbridge[072]:0.entry[55]	t9502 9502=From Exchange
-ulbridge[072]:0.entry[56]	t9503 9503=Order Fill
-ulbridge[072]:0.entry[57]	t9505 9505=20260814-12:46:39.754631
-ulbridge[072]:0.entry[58]	t9507 9507=OD9EOEDJ000
-ulbridge[072]:0.entry[59]	t9508 9508=EXECUTION
-ulbridge[072]:0.entry[60]	t9509 9509=8
-ulbridge[072]:0.entry[61]	t9513 9513=trader1
-ulbridge[072]:0.entry[62]	t9514 9514=FALSE
-ulbridge[072]:0.entry[63]	t9519 9519=FIRMGE-S04.P01
-ulbridge[072]:0.entry[64]	t9520 9520=00023770097XREA000026877711XOEA0
-ulbridge[072]:0.entry[65]	t9521 9521=1
-ulbridge[072]:0.entry[66]	t9730 9730=2
-ulbridge[072]:0.entry[67]	t31027 31027=N
-ulbridge[072]:0.entry[68]	t7117 7117=BO
+ulbridge[072]:0.entry[52]	t0 9432=00011377091XEEA01
+ulbridge[072]:0.entry[53]	t0 9211=XTP-EA
+ulbridge[072]:0.entry[54]	t0 9501=EXEC_NEW
+ulbridge[072]:0.entry[55]	t0 9502=From Exchange
+ulbridge[072]:0.entry[56]	t0 9503=Order Fill
+ulbridge[072]:0.entry[57]	t0 9505=20260814-12:46:39.754631
+ulbridge[072]:0.entry[58]	t0 9507=OD9EOEDJ000
+ulbridge[072]:0.entry[59]	t0 9508=EXECUTION
+ulbridge[072]:0.entry[60]	t0 9509=8
+ulbridge[072]:0.entry[61]	t0 9513=trader1
+ulbridge[072]:0.entry[62]	t0 9514=FALSE
+ulbridge[072]:0.entry[63]	t0 9519=FIRMGE-S04.P01
+ulbridge[072]:0.entry[64]	t0 9520=00023770097XREA000026877711XOEA0
+ulbridge[072]:0.entry[65]	t0 9521=1
+ulbridge[072]:0.entry[66]	t0 9730=2
+ulbridge[072]:0.entry[67]	t0 31027=N
+ulbridge[072]:0.entry[68]	t0 7117=BO
 ulbridge[072]:0.entry[69]	t10 10=060
 ulbridge[072]:0.field.beginstring	"FIX.4.4"
 ulbridge[072]:0.field.bodylength	886
@@ -17267,12 +17267,12 @@ frames[006]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 frames[006].messages	1
 frames[007].line	8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|
 frames[007]:0.type	D
-frames[007]:0.digest	ef88a286fc44886bf26b5ea0fc567c25
+frames[007]:0.digest	b72af3d3aae9f0e3c786eebf80e9f3ae
 frames[007]:0.wire	8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|
 frames[007]:0.entry[0]	t8 8=FIX.4.4
 frames[007]:0.entry[1]	t35 35=D
 frames[007]:0.entry[2]	t0 VenueOwnThing=x
-frames[007]:0.entry[3]	t9999 9999=y
+frames[007]:0.entry[3]	t0 9999=y
 frames[007]:0.entry[4]	t9 9=abc
 frames[007]:0.entry[5]	t10 10=0
 frames[007]:0.field.beginstring	"FIX.4.4"
@@ -19887,12 +19887,12 @@ verbatim[006]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 verbatim[006].messages	1
 verbatim[007].line	8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|
 verbatim[007]:0.type	D
-verbatim[007]:0.digest	ef88a286fc44886bf26b5ea0fc567c25
+verbatim[007]:0.digest	b72af3d3aae9f0e3c786eebf80e9f3ae
 verbatim[007]:0.wire	8=FIX.4.4|35=D|VenueOwnThing=x|9999=y|9=abc|10=0|
 verbatim[007]:0.entry[0]	t8 8=FIX.4.4
 verbatim[007]:0.entry[1]	t35 35=D
 verbatim[007]:0.entry[2]	t0 VenueOwnThing=x
-verbatim[007]:0.entry[3]	t9999 9999=y
+verbatim[007]:0.entry[3]	t0 9999=y
 verbatim[007]:0.entry[4]	t9 9=abc
 verbatim[007]:0.entry[5]	t10 10=0
 verbatim[007]:0.field.beginstring	"FIX.4.4"

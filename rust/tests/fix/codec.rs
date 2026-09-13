@@ -326,6 +326,19 @@ fn an_unknown_numeric_group_member_closes_the_scope_without_losing_pairs() {
     );
     assert_eq!(message.by_tag(9999).unwrap().as_str(), Some("outside"));
     assert_eq!(message.by_tag(447).unwrap().as_str(), Some("D"));
+    assert_eq!(
+        message
+            .entries()
+            .iter()
+            .map(FixEntry::tag)
+            .collect::<Vec<_>>(),
+        [35, 453, 0, 447, 55, 10]
+    );
+    assert_eq!(message.entries()[1].children()[0].tag(), 448);
+    assert!(!message.anomalies().any(|anomaly| matches!(
+        anomaly,
+        yggdryl::FixAnomaly::Miscounted { .. } | yggdryl::FixAnomaly::Untyped { .. }
+    )));
     assert_eq!(message.into_bytes(b'|'), wire);
 }
 

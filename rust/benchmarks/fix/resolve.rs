@@ -113,11 +113,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
     // The identifier's own derivation and render: an id is the fold of a tag
     // and a name, computed on every read of a field, and spelled as its
     // decimal digest wherever it crosses a boundary.
-    let symbol_id = FixId::of(55, "Symbol").expect("a non-negative tag");
-    assert_eq!(
-        symbol_id,
-        FixId::of(55, "SYMBOL").expect("a non-negative tag")
-    );
+    let symbol_id = FixId::of(55, "Symbol").expect("a positive tag");
+    assert_eq!(symbol_id, FixId::of(55, "SYMBOL").expect("a positive tag"));
     group.bench_function("id_render", |bencher| {
         bencher.iter(|| black_box(&symbol_id).to_string());
     });

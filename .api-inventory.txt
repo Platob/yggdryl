@@ -536,8 +536,8 @@ impl<'field> FixField<'field>
   pub fn branches(&self) -> FixSpellings<'field>  (the dialects that contributed this field, folded and sorted; empty for a field the specification alone defines)
   pub fn has_branch(&self, dialect: &str) -> bool
   pub fn id(&self) -> Result<Option<FixId>>  (derived from `fix:tag` and the field's name, never stored)
-  pub fn tag(&self) -> Result<Option<i32>>
-  pub fn tags(&self) -> Result<Vec<i32>>
+  pub fn tag(&self) -> Result<Option<i32>>  (positive decimal digits only)
+  pub fn tags(&self) -> Result<Vec<i32>>  (positive decimal digits only)
   pub fn aliases(&self) -> FixSpellings<'field>
   pub fn identifiers(&self) -> FixSpellings<'field>  (canonical direct scalar members in component order; borrowed)
   pub fn description(&self) -> Option<&'field str>
@@ -545,14 +545,14 @@ impl<'field> FixField<'field>
   pub fn field_ref(&self) -> Option<&'field str>
   pub fn group(&self) -> Option<&'field str>
   pub fn msgtype(&self) -> Option<&'field str>
-  pub fn counter(&self) -> Result<Option<i32>>
+  pub fn counter(&self) -> Result<Option<i32>>  (positive decimal digits only)
   pub fn replacements(&self) -> FixReplacements<'field>
   pub fn directions(&self) -> FixDirections<'field>  (tag 385's fix:directions rules in document order; nothing where absent, which reads by the defaults)
   impl FixFieldMut<'_>
   pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
   pub fn add_branch(&mut self, dialect: &str) -> Result<()>
-  pub fn set_tag(&mut self, tag: i32) -> Result<()>  (any non-negative tag)
-  pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
+  pub fn set_tag(&mut self, tag: i32) -> Result<()>  (any positive tag; zero is unresolved arrival provenance only)
+  pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>  (positive, distinct; empty removes)
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
   pub fn set_identifiers<I, S>(&mut self, identifiers: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>  (resolve names, aliases or tags once against direct scalar members; atomic, empty removes)
   pub fn set_description(&mut self, value: impl Into<String>) -> Result<()>
@@ -564,7 +564,7 @@ impl<'field> FixField<'field>
   pub fn remove_group(&mut self) -> Option<String>
   pub fn set_msgtype(&mut self, name: &str) -> Result<()>
   pub fn remove_msgtype(&mut self) -> Option<String>
-  pub fn set_counter(&mut self, tag: i32) -> Result<()>
+  pub fn set_counter(&mut self, tag: i32) -> Result<()>  (positive tag)
   pub fn remove_counter(&mut self) -> Result<Option<i32>>
   pub fn set_replacements(&mut self, entries: &[FixReplacement]) -> Result<()>
   pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
@@ -662,7 +662,7 @@ pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKe
   pub const DEFINITION_TAG_MIN: i32  (the block a named definition's derived tag is taken from)
   pub const DEFINITION_TAG_MAX: i32
   pub const fn is_definition_tag(tag: i32) -> bool
-  pub fn of(tag: i32, name: &str) -> Result<Self>  (refuses a negative tag; `MsgType`, `msgtype` and `Msg_Type` under one tag are one id)
+  pub fn of(tag: i32, name: &str) -> Result<Self>  (refuses a nonpositive tag - zero is unresolved arrival provenance only; `MsgType`, `msgtype` and `Msg_Type` under one tag are one id)
   pub const fn digest(self) -> i32
   pub const fn from_digest(digest: i32) -> Self
   impl Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash for FixId
@@ -701,16 +701,16 @@ pub struct FixCodec
   pub fn infer_msgtype_bytes(line: &[u8]) -> Option<&[u8]>
   pub fn infer_msgtype_text(line: &str) -> Option<&str>
   pub fn parse_line(&self, row: &[u8]) -> Result<FixMessages>  (none, one or many messages a row: one per frame the row opens, one per configuration a bulk answer named, and none at all where the row opens no frame, states no bridge pair and carries no document a Jolokia answer names a configuration in; decisions 16 and 17)
-  pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item)
+  pub fn parse_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: AsRef<[u8]>  (owns a codec clone; a line that is not a row is an `Err` item; fuses source exhaustion)
   pub fn parse_fix_line(&self, body: &[u8]) -> Result<FixMsg>  (one frame; a body holding a second is refused at the byte it opens at - `invalid fix expression at byte N: expected one frame, got a second`; decision 16)
   pub fn parse_ullink_line(&self, body: &[u8]) -> Result<FixMsg>  (one bridge row; likewise refused, at the frame opening behind the row, target `ullink`)
   pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>  (one document; likewise refused, at a second root element, target `fixml`)
   pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>  (one frame; likewise refused, at the second frame's key in the page the pairs were copied into)
   pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; malformed syntax may recover as one `unknown` message; mandatory clock/layout/content failures remain error items)
-  pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Borrow<TextLine>
+  pub fn parse_text_lines<I, L>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I, L> where I: IntoIterator, I::Item: Into<Result<L>>, L: Borrow<TextLine>  (owned or borrowed lines and either Result; borrows without cloning, moves errors unchanged, fuses source exhaustion)
   pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (the one enriching pass, three steps on one message in this order: the row restated at the registry's newest version, completion - which is a read and writes nothing, because the registry answers a field for any alias it holds - and the fills licensed by the specification. Namespace composition already ran at initial intake before clock defaults. Settled clocks are retained and identities recomputed atomically; decisions 20 and 26)
-  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none; decision 19. Every message crosses the same three-step pass `enrich_message` runs, the plugin fill last because a rule may state what it would otherwise fill; decision 20)
-  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instuuid-scoped identifiers; grid/history semantics of decision 26)
+  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none; decision 19. Every message crosses the same three-step pass `enrich_message` runs, the plugin fill last because a rule may state what it would otherwise fill; decision 20)
+  pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (one default-cadence FixLifecycle over the full stream; code-hash chains and instuuid-scoped identifiers; grid/history semantics of decision 26)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 
@@ -719,7 +719,7 @@ impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row; batches close on the payload column's raw bytes read once per input batch)
   pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, restated and filled FIX rows out under the same schema; no re-parse; the same pass `enrich_message` runs; one memory of the configurations passed crosses every batch, because a capture split into batches is one capture; decisions 19 and 20)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
-  pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator<Item = Result<FixMsg>>, I::IntoIter: Send + 'static  (each message through `FixMsg::into_row`; batches close on the arrival record's raw bytes)
+  pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row`; batches close on the arrival record's raw bytes; completed prefix then error and fusion)
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
 
 ### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
@@ -778,6 +778,7 @@ impl FixRegistry
 
 ### yggdryl::fix::msg  [rust\src\fix\msg.rs]
 pub struct FixMsg
+  impl From<FixMsg> for Result<FixMsg>  (Ok wrapper; permits infallible and fallible stream intake through one standard conversion)
   pub fn stable_hash(&self) -> u64
   pub fn new(field: Field, value: Scalar) -> Result<Self>
   pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>
@@ -958,7 +959,6 @@ pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 49]
 pub const GROUP_TAGS: [i32; 3]
 pub const ENTRIES_COLUMN: &str = "nofixentries";
-pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
 pub fn fix_schema_tags() -> Vec<i32>
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
@@ -2073,6 +2073,8 @@ pub struct TextEntries
 
 ### yggdryl::media::text::line  [rust\src\media\text\line.rs]
 pub struct TextLine
+  impl From<TextLine> for Result<TextLine>
+  impl<'a> From<&'a TextLine> for Result<&'a TextLine>  (Ok wrappers; borrowed input remains borrowed)
   pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
   pub const fn set_index(&mut self, index: u64)
@@ -2111,10 +2113,10 @@ pub struct TextLines
   pub fn read_text_lines(handle: &(impl IOBase + ?Sized), options: &TextOptions) -> Result<TextLines>
 
 ### yggdryl::media::text::batch  [rust\src\media\text\batch.rs]
-  pub fn into_arrow_batch(lines: impl IntoIterator<Item = TextLine>, options: &TextOptions) -> Result<arrow_array::RecordBatch>
-  pub fn into_arrow_reader<I>(lines: I, options: &TextOptions) -> Result<BatchReader> where I: IntoIterator<Item = Result<TextLine>>, I::IntoIter: Send + 'static,
+  pub fn into_arrow_batch<I>(lines: I, options: &TextOptions) -> Result<arrow_array::RecordBatch> where I: IntoIterator, I::Item: Into<Result<TextLine>>
+  pub fn into_arrow_reader<I>(lines: I, options: &TextOptions) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<TextLine>>, I::IntoIter: Send + 'static
   pub fn from_arrow_batch(batch: &arrow_array::RecordBatch, options: &TextOptions) -> Result<Vec<TextLine>>
-  pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl Iterator<Item = Result<TextLine>> + Send + 'static>
+  pub fn from_arrow_reader(batches: BatchReader, options: &TextOptions) -> Result<impl FusedIterator<Item = Result<TextLine>> + Send + 'static>  (one resolved intake, one batch and row cursor; schema/row/source error fuses; rownum subtracts configured start, absent rownum uses continuous stream ordinal; typed captures render canonically and retain index holes)
 
 ### yggdryl::media::text::handle  [rust\src\media\text\handle.rs]
 pub struct Text<H: IOBase>

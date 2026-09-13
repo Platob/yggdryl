@@ -196,16 +196,7 @@ impl FixCodec {
     /// reader's own failure are error batches.
     pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
         let schema = Self::row_field(source.schema().as_ref())?;
-        let codec = self.clone();
-        // One memory over every batch the reader reads, because a capture
-        // split into batches is one capture: a configuration in the first
-        // batch fills a row in the twentieth (decision 19).
-        let mut plugins = super::enrich::Remembered::default();
-        let filled = self.messages(source).map(move |held| {
-            held.and_then(|message| codec.enrich_message(message))
-                .map(|message| plugins.fill(message))
-        });
-        self.arrow_reader(schema, filled)
+        self.arrow_reader(schema, self.enrich_messages(self.messages(source)))
     }
 
     /// A stream of batches of FIX rows as the stream of messages it holds.
@@ -246,6 +237,7 @@ impl FixCodec {
     /// key and value it holds, walked without allocating - against
     /// [`Self::with_batch_byte_size`]. An error item yields the completed
     /// prefix, then the error, and fuses the reader.
+    /// Owned messages and their fallible counterparts are accepted directly.
     ///
     /// # Errors
     ///
@@ -253,28 +245,33 @@ impl FixCodec {
     /// schema.
     pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader>
     where
-        I: IntoIterator<Item = Result<FixMsg>>,
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
         I::IntoIter: Send + 'static,
     {
         let root = schema.clone();
         let target = self.batch_byte_size();
         let mut carried = 0_u64;
-        let rows = messages.into_iter().map(move |held| match held {
-            Err(error) => Closing(Err(error), false),
-            Ok(message) => {
-                // A message with no arrival record - built by hand, or read
-                // back from rows that carried only lifted columns - has no
-                // wire to be measured by, and charging it the bare row width
-                // would leave such a stream with no bound but the row count:
-                // it is charged the leaves of the row it fills instead.
-                let wire = (!message.entries().is_empty()).then(|| wire_size(message.entries()));
-                let row = message.into_row(&schema);
-                let charge =
-                    wire.unwrap_or_else(|| row.as_ref().map_or(ROW_OVERHEAD, appended_bytes));
-                let closes = closes(&mut carried, charge, target);
-                Closing(row, closes)
-            }
-        });
+        let rows = messages
+            .into_iter()
+            .fuse()
+            .map(move |held| match held.into() {
+                Err(error) => Closing(Err(error), false),
+                Ok(message) => {
+                    // A message with no arrival record - built by hand, or read
+                    // back from rows that carried only lifted columns - has no
+                    // wire to be measured by, and charging it the bare row width
+                    // would leave such a stream with no bound but the row count:
+                    // it is charged the leaves of the row it fills instead.
+                    let wire =
+                        (!message.entries().is_empty()).then(|| wire_size(message.entries()));
+                    let row = message.into_row(&schema);
+                    let charge =
+                        wire.unwrap_or_else(|| row.as_ref().map_or(ROW_OVERHEAD, appended_bytes));
+                    let closes = closes(&mut carried, charge, target);
+                    Closing(row, closes)
+                }
+            });
         Ok(canonical_closing_reader(&root, rows)?)
     }
 

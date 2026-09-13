@@ -2345,3 +2345,84 @@ remain deferred until the complete Rust story per the user's stage order.
 
 No equivalence regeneration is expected: that tripwire does not run lifecycle,
 and neither registry definitions nor canonical digest bytes change here.
+
+## 28. One composable pipeline and one arrival record
+
+NEXT_STEPS section 4 and the user's tag-zero instruction. The existing doors
+are the pipeline; add no alternate converter, entry family or representation.
+
+- parse_text_lines accepts owned or borrowed TextLine and fallible versions;
+  enrich_messages, lifecycle and arrow_reader accept owned FixMsg or its
+  Result. Standard Into<Result<T>> intake moves the original typed error unchanged,
+  borrows lines without cloning them, and resolves before invoking the stage.
+  The parsing target Result<T> fixes inference with T: Borrow<TextLine>;
+  local From implementations wrap owned/borrowed lines in Ok, while fallible
+  input uses the standard identity conversion. Ownership-required doors fix
+  T to TextLine or FixMsg. No clone, custom trait or intermediate value family.
+  Stream enrichment remembers successful messages only. Source/parse/enrich
+  errors remain items, and exhaustion is fused. Arrow converters keep their
+  completed prefix then error and fuse, as their existing batch contract says.
+- TextLine's Arrow reverse reader holds one batch and one row cursor, never
+  a Vec of decoded lines for that batch. Resolve its column plan once at
+  intake and use the existing indexed Arrow value reader rather than making
+  one-row array slices. Both directions accept fallible and infallible owned
+  lines where ownership is required; the single-batch door may collect its
+  explicitly bounded answer. A changed source schema refuses and fuses.
+  Every row refusal is located by the stream ordinal and column, never by a
+  row number an earlier column of the same row restored.
+- A persisted rownum is start_rownum plus the original physical index; reverse
+  conversion subtracts that same configured start and refuses underflow.
+  Without that column, indices are continuous stream ordinals across batches,
+  not recovered physical positions: dropped physical gaps are unrecoverable.
+  Captures keep their declared index even across projected holes. Typed
+  captures render through the canonical core scalar text implementation;
+  their original lexical spelling is not promised after typing (0007 becomes
+  7). Missing cells remain absent; malformed present values refuse rather than
+  silently becoming zero or disappearing.
+- nofixentries alone carries the complete recursive arrival record.
+  Delete nounmappedfixentries, its exported constant, secondary projection,
+  filtering traversal and identity exemption. No alias, duplicate column or
+  new "unmapped" family. Unresolved names AND unresolved numeric wire keys
+  have entry tag 0, preserving the exact raw key, value, order and children.
+  Known scalar and group keys retain their resolved canonical positive tags;
+  an occurrence key (indexed or packed) names no field and also records 0.
+  The builder's existing resolution owns that distinction; no second lookup
+  walk. Members of an unresolved counter still nest under its entry: while
+  building, the unresolved key carries its parsed number negated, which no
+  resolved tag can meet, and finish publishes it as 0. Dynamic semantic
+  columns keep their existing raw names and values. The digest's envelope
+  exclusion reads resolved tags, so under a registry that does not define a
+  header tag that key is an unresolved arrival hashed with its raw key.
+  Tag 0 means unresolved arrival provenance, not a registry identity:
+  fix:tag, fix:counter and the existing fix:tags alternate-tag list admit
+  positive i32 values only; FixId::of refuses zero for the same reason.
+- Arrival serialization retains three materialized entry levels and the
+  existing canonical JSON folded subtree beyond them. Its inverse validates
+  every folded entry's four-member shape, nonnegative i32 or null tag (null
+  reads as 0, as the nullable materialized tag column does), text/null
+  key/value and sequence-or-binary children, refusing malformed present data,
+  an undecodable folded leaf included, at the arrival path instead of
+  silently dropping it. Empty binary is an
+  empty subtree; nonempty binary must decode to an entry sequence.
+- Retain decision 20's exact LIFTED_OUT_OF_A_DOCUMENT bound: FIXML behind
+  XmlData(213) is recorded as envelope pairs plus the whole document, not
+  invented child arrivals. Closing it requires an emission provenance model
+  so re-emission does not duplicate the document, outside this converter
+  change. The suite asserts the exact divergent pairs, never a broad exemption.
+  Non-UTF8 entry bytes likewise retain the existing explicit UTF8 row bound.
+- The 129-line/83-message capture pins direct lazy composition and both Arrow
+  directions, one decode, source error identity with fusion, restored row
+  numbers, bodies and capture presence; the existing row-by-row/batch
+  agreement keeps carried/lifted columns and LIFTED_OUT_OF_A_DOCUMENT exact.
+  Synthetic sources pin per-door fusion, bounded first-row work at three
+  widths, capture holes and located refusals. The existing pipeline and
+  text-line benchmark groups gain the composed decoded-line read and the
+  reverse reader's first row and round trip; no benchmark measurements.
+  Binding and documentation updates follow the full Rust story.
+
+Unknown numeric entry tags deliberately change from their unregistered
+numbers to zero, so their arrival digest now includes the raw key under the
+existing zero-tag framing. Only those entry lines and their enclosing digest
+lines may move in equivalence; semantic rows, wire and message counts must
+remain unchanged. Review exact moved keys before the sole WRITE=1 regeneration
+in this decision's commit, and name those keys in its message.

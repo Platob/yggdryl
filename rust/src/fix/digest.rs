@@ -19,7 +19,7 @@
 //! messages equal. `("1", "23")` and `("12", "3")` are the shortest case and
 //! the test that pins it.
 //!
-//! # The standard header and trailer are excluded, and only those
+//! # The resolved standard header and trailer are excluded, and only those
 //!
 //! This is a digest of what a message *says*, not of the frame it said it in,
 //! so the two components FIX wraps every message in are left out and the body
@@ -49,6 +49,12 @@
 //! recognising a redelivery all need. A consumer that wants to tell two
 //! deliveries apart reads the sequence number and the time, which are columns
 //! of their own beside it.
+//!
+//! The exclusion reads an entry's resolved tag, so it holds wherever the
+//! registry defines those fields. A key the registry does not resolve is an
+//! unresolved arrival - tag `0`, whether it was a name or a number such as `34`
+//! under a bare [`FixRegistry::new`](super::FixRegistry::new) - and is hashed
+//! with its raw key like any other unresolved pair.
 //!
 //! This crate's own derived fields are excluded too, for the plainer reason
 //! that a value cannot cover itself: the digest is one of them.

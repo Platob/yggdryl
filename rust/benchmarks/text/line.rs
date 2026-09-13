@@ -6,7 +6,8 @@ use criterion::{Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{
-    TextBytes, TextEntries, TextOptions, into_arrow_batch, read_text_lines,
+    TextBytes, TextEntries, TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch,
+    into_arrow_reader, read_text_lines,
 };
 use yggdryl::{IOMedia, MimeType, Url};
 
@@ -225,6 +226,34 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
     building.bench_function("build/plain", |bencher| {
         bencher.iter(|| {
             into_arrow_batch(black_box(decoded.clone()), black_box(&plain)).expect("a batch")
+        });
+    });
+    let batch = into_arrow_batch(decoded.clone(), &plain).expect("a batch");
+    assert_eq!(
+        from_arrow_batch(&batch, &plain).expect("lines").len(),
+        decoded.len()
+    );
+    building.bench_function("read/plain", |bencher| {
+        bencher.iter(|| from_arrow_batch(black_box(&batch), black_box(&plain)).expect("lines"));
+    });
+    building.bench_function("stream/first_row", |bencher| {
+        bencher.iter(|| {
+            let source = arrow_array::RecordBatchIterator::new([Ok(batch.clone())], batch.schema());
+            from_arrow_reader(Box::new(source), black_box(&plain))
+                .expect("reader")
+                .next()
+                .expect("first row")
+                .expect("line")
+        });
+    });
+    building.bench_function("stream/roundtrip", |bencher| {
+        bencher.iter(|| {
+            let source =
+                into_arrow_reader(black_box(decoded.clone()), black_box(&plain)).expect("reader");
+            from_arrow_reader(source, &plain)
+                .expect("reverse")
+                .map(|line| line.expect("line").body().len())
+                .sum::<usize>()
         });
     });
     building.finish();

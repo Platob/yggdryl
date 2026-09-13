@@ -212,10 +212,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         ],
         "{names:?}"
     );
-    assert_eq!(
-        &names[names.len() - 2..],
-        ["nofixentries", "nounmappedfixentries"],
-    );
+    assert_eq!(names.last(), Some(&"nofixentries"));
     // The standard header, the body a consumer queries, the groups worth
     // keeping whole, the trailer, and this crate's own derived facts - each
     // found by the tag its column carries.
@@ -668,6 +665,185 @@ fn a_refused_line_ends_the_batch_stream_after_the_completed_prefix() {
 }
 
 #[test]
+fn decoded_line_intake_accepts_owned_borrowed_and_both_fallible_forms() {
+    let codec = codec();
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|8=FIX.4.4|35=D|11=B|10=0|").unwrap(),
+    )
+    .unwrap();
+    let expected = codec
+        .parse_text_line(&line)
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(expected.len(), 2);
+    for actual in [
+        codec
+            .parse_text_lines([line.clone()])
+            .collect::<yggdryl::Result<Vec<_>>>(),
+        codec
+            .parse_text_lines([&line])
+            .collect::<yggdryl::Result<Vec<_>>>(),
+        codec
+            .parse_text_lines([Ok::<_, yggdryl::Error>(line.clone())])
+            .collect::<yggdryl::Result<Vec<_>>>(),
+        codec
+            .parse_text_lines([Ok::<_, yggdryl::Error>(&line)])
+            .collect::<yggdryl::Result<Vec<_>>>(),
+    ] {
+        assert_eq!(actual.unwrap(), expected);
+    }
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let owned = batches(
+        codec
+            .arrow_reader(schema.clone(), expected.clone())
+            .unwrap(),
+    );
+    let fallible = batches(
+        codec
+            .arrow_reader(schema, expected.into_iter().map(Ok))
+            .unwrap(),
+    );
+    assert_eq!(owned, fallible);
+}
+
+#[derive(Debug)]
+struct SourceFailure(Arc<()>);
+
+impl std::fmt::Display for SourceFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("source failure")
+    }
+}
+
+impl std::error::Error for SourceFailure {}
+
+pub(super) fn source_failure(marker: &Arc<()>) -> yggdryl::Error {
+    std::io::Error::other(SourceFailure(Arc::clone(marker))).into()
+}
+
+pub(super) fn same_source_failure(error: yggdryl::Error, marker: &Arc<()>) {
+    let yggdryl::Error::Io(error) = error else {
+        panic!("the source error changed type: {error}");
+    };
+    let held = error
+        .get_ref()
+        .unwrap()
+        .downcast_ref::<SourceFailure>()
+        .unwrap();
+    assert!(Arc::ptr_eq(&held.0, marker));
+}
+
+#[test]
+fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
+    let codec = codec();
+    let line = |body: &[u8]| TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap()).unwrap();
+    let first = line(b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:30|10=0|");
+    let last = line(b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:31|10=0|");
+    let marker = Arc::new(());
+    let mut items = [Ok(first), Err(source_failure(&marker)), Ok(last)].into_iter();
+    let pulls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let count = std::rc::Rc::clone(&pulls);
+    let source = std::iter::from_fn(move || {
+        count.set(count.get() + 1);
+        assert!(count.get() <= 4, "the exhausted source was pulled again");
+        items.next()
+    });
+    let mut pipeline = codec.lifecycle(codec.enrich_messages(codec.parse_text_lines(source)));
+    drop(codec);
+    assert_eq!(pulls.get(), 0);
+    let first = pipeline.next().unwrap().unwrap();
+    assert_eq!(pulls.get(), 1);
+    same_source_failure(pipeline.next().unwrap().unwrap_err(), &marker);
+    assert_eq!(pulls.get(), 2);
+    let last = pipeline.next().unwrap().unwrap();
+    assert_eq!(pulls.get(), 3);
+    assert_eq!(
+        last.by_tag(yggdryl::PREVUUID_TAG_NAME.0).unwrap(),
+        first.uuid()
+    );
+    assert_eq!(last.createdat(), first.createdat());
+    assert!(pipeline.next().is_none());
+    assert!(pipeline.next().is_none());
+    assert_eq!(pulls.get(), 4);
+}
+
+/// A source that answers `item`, then `None` once, then resumes a bounded
+/// number of times: a door that did not fuse would read the resumed items.
+fn resuming<T: Clone>(item: T) -> impl Iterator<Item = T> {
+    let mut pulls = 0;
+    std::iter::from_fn(move || {
+        pulls += 1;
+        (pulls != 2 && pulls < 8).then(|| item.clone())
+    })
+}
+
+#[test]
+fn every_stream_door_fuses_its_own_source() {
+    let codec = codec();
+    let line = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"8=FIX.4.4|35=D|11=A|10=0|").unwrap(),
+    )
+    .unwrap();
+    let message = codec
+        .parse_text_line(&line)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let mut parsed = codec.parse_text_lines(resuming(line));
+    let mut enriched = codec.enrich_messages(resuming(message.clone()));
+    let mut lived = codec.lifecycle(resuming(message.clone()));
+    for stream in [
+        &mut parsed as &mut dyn Iterator<Item = yggdryl::Result<FixMsg>>,
+        &mut enriched,
+        &mut lived,
+    ] {
+        assert!(stream.next().unwrap().is_ok());
+        assert!(stream.next().is_none());
+        assert!(stream.next().is_none());
+    }
+    let schema = fix_schema(codec.registry(), "fix").unwrap();
+    let rows: usize = codec
+        .arrow_reader(schema, resuming(message))
+        .unwrap()
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(rows, 1);
+}
+
+#[test]
+fn stream_enrichment_keeps_successful_configuration_across_source_errors() {
+    let codec = super::fixed_codec(Arc::new(FixRegistry::new().with_plugin_fields().unwrap()))
+        .with_capture_names(["pluginid"]);
+    let line = |body: &[u8]| {
+        TextLine::from_bytes(0, TextBytes::from_bytes(body).unwrap())
+            .unwrap()
+            .with_captures(vec![Some(TextBytes::from_bytes(b"STREAM").unwrap())])
+            .unwrap()
+    };
+    let configuration = line(br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=STREAM,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"STREAM","SenderCompID":"SOURCE","TargetCompID":"SINK"},"status":200}"#);
+    let message = line(b"8=FIX.4.4|35=0|10=0|");
+    let marker = Arc::new(());
+    let mut stream = codec.enrich_messages(codec.parse_text_lines([
+        Ok(configuration),
+        Err(source_failure(&marker)),
+        Ok(message),
+    ]));
+    assert_eq!(
+        stream.next().unwrap().unwrap().as_field().name(),
+        "pluginconfig"
+    );
+    same_source_failure(stream.next().unwrap().unwrap_err(), &marker);
+    let filled = stream.next().unwrap().unwrap();
+    assert_eq!(filled.by_tag(49).unwrap().as_str(), Some("SOURCE"));
+    assert_eq!(filled.by_tag(56).unwrap().as_str(), Some("SINK"));
+    assert!(stream.next().is_none());
+}
+
+#[test]
 fn the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_record_alone() {
     const REPORT: &str = "8=FIX.4.4|35=8|39=1|150=F|38=100|14=40|32=40|31=10.5|54=1|10=0|";
     let codec = codec();
@@ -694,7 +870,7 @@ fn the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_record_al
         .next()
         .expect("one batch");
     let message = codec
-        .enrich_messages(codec.parse_lines([REPORT]).map(Result::unwrap))
+        .enrich_messages(codec.parse_lines([REPORT]))
         .next()
         .expect("one message")
         .expect("a filled message");

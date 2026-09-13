@@ -6,7 +6,7 @@ use crate::hashing::{txhash::TxHash, xxhash};
 use crate::types::Uuid;
 use crate::{DataType, Digest, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
-use super::schema::{CLOCK_DATATYPE, ENTRIES_COLUMN, UNMAPPED_COLUMN};
+use super::schema::{CLOCK_DATATYPE, ENTRIES_COLUMN};
 use super::{
     CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME,
     UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
@@ -149,7 +149,7 @@ impl Plan {
                     }
                 }
             }
-            if !matches!(field.name(), ENTRIES_COLUMN | UNMAPPED_COLUMN)
+            if field.name() != ENTRIES_COLUMN
                 && !tag.is_some_and(|tag| {
                     [UUID_TAG_NAME.0, UPDATEDAT_TAG_NAME.0, CREATEDAT_TAG_NAME.0].contains(&tag)
                 })

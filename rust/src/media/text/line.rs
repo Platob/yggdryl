@@ -365,6 +365,18 @@ impl fmt::Display for TextLine {
     }
 }
 
+impl From<TextLine> for Result<TextLine> {
+    fn from(value: TextLine) -> Self {
+        Ok(value)
+    }
+}
+
+impl<'a> From<&'a TextLine> for Result<&'a TextLine> {
+    fn from(value: &'a TextLine) -> Self {
+        Ok(value)
+    }
+}
+
 /// The bytes as text, and how many of them had to be decoded to be so.
 ///
 /// Valid UTF-8 costs nothing: the range is answered as it is, and `0`. Any

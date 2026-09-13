@@ -1186,7 +1186,7 @@ fn an_identifier_is_one_integer_over_the_tag_and_the_folded_name() {
             "{name:?}: {error}"
         );
     }
-    assert!(FixId::of(0, "").is_ok());
+    assert!(FixId::of(0, "").is_err());
     assert!(FixId::of(i32::MAX, "MsgType").is_ok());
 }
 
@@ -1408,16 +1408,19 @@ fn nothing_gates_a_tag_on_the_dictionary_that_speaks_it() {
     assert!(spoken.as_fix().has_branch("cme"));
     assert_eq!(spoken.as_fix().id().unwrap(), Some(id_of(35, "MsgType")));
 
-    // Every door that takes a tag takes any non-negative one, whatever the
+    // Metadata takes any positive tag, whatever the
     // field's membership: the identity is the tag and the name, and the
     // dictionary is not consulted.
     let mut vendor = member("TradeID", "cme", 5001);
     vendor.as_fix_mut().set_tag(35).unwrap();
-    vendor.as_fix_mut().set_tags(&[5002, 40_000, 0]).unwrap();
+    vendor
+        .as_fix_mut()
+        .set_tags(&[5002, 40_000, 40_001])
+        .unwrap();
     assert_eq!(vendor.as_fix().tag().unwrap(), Some(35));
-    assert_eq!(vendor.as_fix().tags().unwrap(), [5002, 40_000, 0]);
+    assert_eq!(vendor.as_fix().tags().unwrap(), [5002, 40_000, 40_001]);
     assert!(vendor.as_fix().has_branch("cme"));
-    for tag in [0, 35, 4_999, 5_000, 39_999, 40_000, i32::MAX] {
+    for tag in [1, 35, 4_999, 5_000, 39_999, 40_000, i32::MAX] {
         assert!(FixId::of(tag, "TradeID").is_ok(), "{tag}");
     }
     let mut counted = member("NoPartyIDs", "cme", 453);
@@ -5435,45 +5438,44 @@ fn an_entry_is_a_range_of_its_line_and_the_registry_names_its_field() {
 #[test]
 fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     let root = super::fix_schema(&FixRegistry::new(), "row").unwrap();
-    for column in [super::ENTRIES_COLUMN, super::UNMAPPED_COLUMN] {
-        let held = root
-            .fields()
-            .iter()
-            .find(|field| field.name() == column)
-            .unwrap_or_else(|| panic!("a {column} column"));
-        let DataType::List(item) = held.dtype() else {
-            panic!("a list, got {}", held.dtype());
-        };
-        // Exactly three fixentry levels on every root-to-leaf path, each with
-        // the same four members - what the line said and what FIX added, and
-        // nothing the message already answers - the fourth a non-null
-        // nofixentries that is a deeper list twice and the binary leaf at the
-        // bottom.
-        let mut held = item;
-        for level in 1..=3 {
-            assert_eq!(held.name(), "fixentry", "{column} level {level}");
-            assert!(!held.is_nullable(), "{column} level {level}");
-            let members = held.dtype().as_fields().expect("an occurrence struct");
-            let names: Vec<&str> = members.iter().map(Field::name).collect();
-            assert_eq!(
-                names,
-                ["tag", "key", "value", "nofixentries"],
-                "{column} level {level}",
-            );
-            assert_eq!(
-                members[0].dtype(),
-                &DataType::Int32,
-                "{column} level {level}"
-            );
-            let tail = &members[3];
-            assert!(!tail.is_nullable(), "{column} level {level} tail");
-            match tail.dtype() {
-                DataType::List(deeper) if level < 3 => held = deeper,
-                DataType::Bytes(bytes) if level == 3 && *bytes == BytesParameters::default() => {
-                    break;
-                }
-                other => panic!("{column} level {level}: {other}"),
+    let column = super::ENTRIES_COLUMN;
+    let held = root
+        .fields()
+        .iter()
+        .find(|field| field.name() == column)
+        .unwrap_or_else(|| panic!("a {column} column"));
+    let DataType::List(item) = held.dtype() else {
+        panic!("a list, got {}", held.dtype());
+    };
+    // Exactly three fixentry levels on every root-to-leaf path, each with
+    // the same four members - what the line said and what FIX added, and
+    // nothing the message already answers - the fourth a non-null
+    // nofixentries that is a deeper list twice and the binary leaf at the
+    // bottom.
+    let mut held = item;
+    for level in 1..=3 {
+        assert_eq!(held.name(), "fixentry", "{column} level {level}");
+        assert!(!held.is_nullable(), "{column} level {level}");
+        let members = held.dtype().as_fields().expect("an occurrence struct");
+        let names: Vec<&str> = members.iter().map(Field::name).collect();
+        assert_eq!(
+            names,
+            ["tag", "key", "value", "nofixentries"],
+            "{column} level {level}",
+        );
+        assert_eq!(
+            members[0].dtype(),
+            &DataType::Int32,
+            "{column} level {level}"
+        );
+        let tail = &members[3];
+        assert!(!tail.is_nullable(), "{column} level {level} tail");
+        match tail.dtype() {
+            DataType::List(deeper) if level < 3 => held = deeper,
+            DataType::Bytes(bytes) if level == 3 && *bytes == BytesParameters::default() => {
+                break;
             }
+            other => panic!("{column} level {level}: {other}"),
         }
     }
 }
@@ -5531,7 +5533,9 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     let schema = super::fix_schema(&registry, "row").unwrap();
     let row = deep.into_row(&schema).unwrap();
     let columns = row.as_sequence().expect("a row").to_vec();
-    let entries = columns[columns.len() - 2]
+    let entries = columns
+        .last()
+        .unwrap()
         .as_sequence()
         .expect("the arrival column");
     let level1 = entries[1].as_sequence().expect("the counter entry");

@@ -211,8 +211,8 @@ pub use replacements::{
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{
-    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNMAPPED_COLUMN,
-    fix_column_of, fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
+    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, fix_column_of,
+    fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 
 /// A digest as everything outside this crate holds it.
@@ -291,13 +291,13 @@ impl FixId {
     ///
     /// # Errors
     ///
-    /// Returns a typed failure naming `fix:tag` for a negative tag, which
-    /// no FIX field has.
+    /// Returns a typed failure naming `fix:tag` for a nonpositive tag.
+    /// Zero belongs only to unresolved arrival entries, never a definition.
     pub fn of(tag: i32, name: &str) -> Result<Self> {
-        if tag < 0 {
+        if tag <= 0 {
             return Err(Error::InvalidMetadataValue {
                 key: SmolStr::new_static(field::TAG_KEY),
-                reason: format_smolstr!("expected a non-negative FIX tag, got {tag}"),
+                reason: format_smolstr!("expected a positive FIX tag, got {tag}"),
             });
         }
         let mut state = crate::hashing::xxhash::Xxh32::with_seed(IDENTITY_SEED);

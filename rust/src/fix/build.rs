@@ -25,7 +25,8 @@
 //! and dropping them loses data. A value that will not type is null rather
 //! than a failure, with the raw text still in the entries and the refusal
 //! readable through the message's anomalies: a null nobody can explain is
-//! worse than the value that actually arrived.
+//! worse than the value that actually arrived. An unresolved numeric or named
+//! key records tag zero; its parsed number is not a dictionary identity.
 
 use std::sync::Arc;
 
@@ -664,6 +665,16 @@ struct Arrived {
     named: bool,
 }
 
+/// The build-time arrival tag of a key no dictionary resolved.
+///
+/// The parsed number negated, or `0` where none parsed: members arriving under
+/// an unresolved numeric counter still nest beneath it, while a negative tag
+/// can never meet a resolved one. [`Builder::finish`] publishes every such
+/// tag as `0`, the unresolved-arrival sentinel.
+const fn unresolved(tag: i32) -> i32 {
+    if tag > 0 { -tag } else { 0 }
+}
+
 /// One repeating group a numeric frame has opened and not yet closed.
 struct OpenGroup {
     /// The group's own field name, as a located key spells it.
@@ -1275,7 +1286,11 @@ impl<'registry> Builder<'registry> {
             return;
         }
         let value = self.typed_root(&field, source, tag, raw, text);
-        self.record(tag);
+        self.record(if source.is_some() {
+            tag
+        } else {
+            unresolved(tag)
+        });
         self.slot_for(field, tag, source.is_some())
             .values
             .push(value);
@@ -1398,7 +1413,11 @@ impl<'registry> Builder<'registry> {
             return;
         }
         let value = self.typed_root(&field, source, tag, raw, text);
-        self.record(tag);
+        self.record(if source.is_some() {
+            tag
+        } else {
+            unresolved(tag)
+        });
         let slot = self.slot_for(field, tag, source.is_some());
         // Indices may be partial or out of order, so occurrences are built by
         // index and a gap is null.
@@ -1492,11 +1511,17 @@ impl<'registry> Builder<'registry> {
                 Located::Flat => break,
             }
         }
-        let parent_tag = levels.last().expect("the top group at least").1;
+        // An unresolved level nests its members under the build-time tag its
+        // own counter recorded, so the tree keeps what arrived under it.
+        let parent_tag = levels
+            .last()
+            .map(|(_, tag, known, _)| if *known { *tag } else { unresolved(*tag) })
+            .expect("the top group at least");
         // The leaf: a value under its field, or a nested group's counter
         // opening that group in the occurrence - resolved as the flat
         // counter resolves, through the dictionary's nested half first.
         let mut source = None;
+        let mut leaf_known = false;
         let (leaf_field, leaf_tag, nested_counter) = if leaf.is_empty() {
             (
                 DataType::utf8()
@@ -1507,6 +1532,7 @@ impl<'registry> Builder<'registry> {
         } else {
             let located = self.known(leaf);
             if let Some((field, tag)) = self.counter_from(&located) {
+                leaf_known = true;
                 (field, tag, true)
             } else {
                 // The occurrence's own members are the level this leaf
@@ -1517,7 +1543,8 @@ impl<'registry> Builder<'registry> {
                 // level is this line's own.
                 source = located.field.map(|(field, _)| field);
                 let scope = Scope::Members(member_fields(&levels.last().expect("a level").0));
-                let (field, tag, _) = self.field_from(leaf, located.field, scope);
+                let (field, tag, declaration) = self.field_from(leaf, located.field, scope);
+                leaf_known = declaration.is_some();
                 (field, tag, false)
             }
         };
@@ -1528,7 +1555,14 @@ impl<'registry> Builder<'registry> {
         };
         // Recorded after the path resolves, so the entry can ride under the
         // counter pair that heads it - when that pair actually arrived.
-        self.record_under(parent_tag, leaf_tag);
+        self.record_under(
+            parent_tag,
+            if leaf_known {
+                leaf_tag
+            } else {
+                unresolved(leaf_tag)
+            },
+        );
         let (top_field, top_tag, top_known, _) = levels.remove(0);
         let mut slot = self.slot_for(top_field, top_tag, top_known);
         slot.group = true;
@@ -1592,6 +1626,10 @@ impl<'registry> Builder<'registry> {
     }
 
     /// Records what arrived under the counter that heads it, where one did.
+    ///
+    /// `counter_tag` is a build-time tag: an unresolved counter's is the
+    /// [`unresolved`] negation, so its members nest under it exactly as under
+    /// a resolved counter while no resolved tag can match it.
     ///
     /// The counter pair itself must have arrived: an entry is the arrival
     /// record, and a parent nobody sent would be an invention. A member whose
@@ -1674,13 +1712,17 @@ impl<'registry> Builder<'registry> {
             beginstring,
             version,
             mut slots,
-            entries,
+            mut entries,
+            recorded,
             failure,
             composed,
             ..
         } = self;
         if let Some(error) = failure {
             return Err(error);
+        }
+        if recorded.iter().any(|tag| *tag < 0) {
+            entries.iter_mut().for_each(FixEntry::settle_unresolved);
         }
         if !slots
             .iter()

@@ -1360,6 +1360,12 @@ fn admit(index: &mut Vec<(i32, usize)>, key: Option<i32>, at: usize) {
     }
 }
 
+impl From<FixMsg> for Result<FixMsg> {
+    fn from(message: FixMsg) -> Self {
+        Ok(message)
+    }
+}
+
 impl Clone for FixMsg {
     /// The message, without the name table: a cache derived from the
     /// children, rebuilt by the clone on its own first miss rather than

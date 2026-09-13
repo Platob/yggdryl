@@ -61,9 +61,9 @@ const MSGTYPE: &str = "msgtype";
 const SEPARATOR: char = ',';
 
 /// What a tag is, spelled once for every refusal.
-const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 0 to 2147483647";
+const TAG_SHAPE: &str = "a FIX tag, a decimal integer from 1 to 2147483647";
 
-/// Parse one tag strictly: decimal digits only, never negative, never signed.
+/// Parse one positive tag strictly: decimal digits only, never signed.
 ///
 /// `i32::from_str` would also accept `+35`, which the writer never emits, so
 /// the digits are checked first and the width second.
@@ -71,7 +71,7 @@ pub(super) fn parse_tag(text: &str) -> Option<i32> {
     if text.is_empty() || !text.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    text.parse().ok()
+    text.parse().ok().filter(|tag| *tag > 0)
 }
 
 impl<'field> FixField<'field> {
@@ -95,7 +95,7 @@ impl<'field> FixField<'field> {
         self.get(MSGTYPE)
     }
 
-    /// The tag of a group's separate integer count field.
+    /// The positive tag of a group's count field or intrinsic Map counter.
     pub fn counter(&self) -> Result<Option<i32>> {
         self.get(COUNTER)
             .map(|stored| parse_tag(stored).ok_or_else(|| self.invalid(COUNTER, TAG_SHAPE, stored)))
@@ -627,9 +627,9 @@ impl FixFieldMut<'_> {
         self.store(MSGTYPE, value.to_owned())
     }
 
-    /// Declares the tag of the group's separate integer count field.
+    /// Declares the positive tag of the group's count field or Map counter.
     pub fn set_counter(&mut self, tag: i32) -> Result<()> {
-        if tag < 0 {
+        if tag <= 0 {
             return Err(self.rejected(COUNTER, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
         self.store(COUNTER, tag.to_string())
@@ -738,11 +738,11 @@ impl FixFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when the tag is negative, or when the property write
+    /// Returns an error when the tag is not positive, or when the property write
     /// fails the validation every metadata write goes through. Either leaves
     /// the field unchanged.
     pub fn set_tag(&mut self, tag: i32) -> Result<()> {
-        if tag < 0 {
+        if tag <= 0 {
             return Err(self.rejected(TAG, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
         self.store(TAG, tag.to_string())
@@ -754,7 +754,7 @@ impl FixFieldMut<'_> {
     ///
     /// # Errors
     ///
-    /// Returns an error when a tag is negative or repeated, leaving the field
+    /// Returns an error when a tag is not positive or repeated, leaving the field
     /// unchanged.
     pub fn set_tags(&mut self, tags: &[i32]) -> Result<()> {
         if tags.is_empty() {
@@ -763,7 +763,7 @@ impl FixFieldMut<'_> {
         }
         let mut rendered = String::new();
         for (index, tag) in tags.iter().enumerate() {
-            if *tag < 0 {
+            if *tag <= 0 {
                 return Err(self.rejected(TAGS, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
             }
             if tags[..index].contains(tag) {

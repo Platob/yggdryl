@@ -30,7 +30,7 @@
 //! stops being a message, or starts being two, is a change nobody would see in
 //! a digest that is no longer taken.
 //!
-//! The two entries columns are left out of the row on purpose: they are the
+//! The entries column is left out of the row on purpose: it holds the
 //! entries again, in the shape a row materializes them, and pinning one fact
 //! twice would mean a deliberate change to the entry column has to be
 //! re-blessed in two places. The entries above are the owner.
@@ -69,7 +69,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use yggdryl::fix::{ENTRIES_COLUMN, UNMAPPED_COLUMN};
+use yggdryl::fix::ENTRIES_COLUMN;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
@@ -195,7 +195,7 @@ impl Pinned {
         let values = row.as_sequence().expect("a row is a sequence");
         for (column, value) in schema.fields().iter().zip(values) {
             let name = column.name();
-            if name == ENTRIES_COLUMN || name == UNMAPPED_COLUMN || value.is_null() {
+            if name == ENTRIES_COLUMN || value.is_null() {
                 continue;
             }
             self.push(

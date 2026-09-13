@@ -29,10 +29,10 @@ use crate::media::text::TextBytes;
 
 /// One key/value pair as it arrived, beside the field it named.
 ///
-/// Every part is present. `tag` is `0` when the key named no field, which is
-/// safe rather than a hack: the specification numbers tags from `1`, so no
-/// field can carry it, and a key that literally parses to `0` names no field
-/// either way, so the sentinel and the parse agree.
+/// Every part is present. A resolved scalar or group key carries its canonical
+/// positive tag. An unresolved numeric or named key carries `0`, retaining its
+/// raw spelling rather than treating an unregistered number as an identity.
+/// Registry tags start at `1`; a literal `0` key is unresolved too.
 ///
 /// The tag is the whole of what FIX adds here. A key, a value and what nested
 /// under them are what the line said, and the text reader already says them;
@@ -52,6 +52,7 @@ pub struct FixEntry {
 
 impl FixEntry {
     /// Records one arriving pair, as the ranges of the line that carried it.
+    /// Tag `0` is the unresolved-arrival sentinel, not a registry identity.
     #[must_use]
     pub const fn new(tag: i32, key: TextBytes, value: TextBytes) -> Self {
         Self {
@@ -74,7 +75,15 @@ impl FixEntry {
         self
     }
 
-    /// Returns the tag this entry's key named, or `0` when it named none.
+    /// Publishes a build's negated unresolved tags as `0`, at every depth.
+    pub(super) fn settle_unresolved(&mut self) {
+        self.tag = self.tag.max(0);
+        self.children
+            .iter_mut()
+            .for_each(FixEntry::settle_unresolved);
+    }
+
+    /// Returns the resolved canonical tag, or `0` for an unresolved key.
     #[must_use]
     pub const fn tag(&self) -> i32 {
         self.tag

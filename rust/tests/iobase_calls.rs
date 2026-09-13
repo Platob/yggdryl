@@ -90,7 +90,7 @@ const CAPTURE: &[u8] = include_bytes!("fix/ulbridge.log");
 #[test]
 fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     use yggdryl::media::RecordOptions;
-    use yggdryl::media::text::TextOptions;
+    use yggdryl::media::text::{TextOptions, read_text_lines};
     use yggdryl::{FixCodec, FixRegistry, IOMedia, Timezone};
 
     /// How many lines the capture holds, which is how many rows the text
@@ -108,6 +108,10 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
     /// built from any of it.
     const DECODE: &str =
         "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 is_container=1 parent=1";
+    /// The same bounded stream through the text door directly: the record
+    /// dispatcher's container probe is the only call it does not make.
+    const LINE_DECODE: &str =
+        "pstream_bytes=1 url=1 bound_location=3 mtime=1 media_type=1 parent=1";
 
     let handle = source(CAPTURE, "file:///bridge.log");
     let calls = Arc::clone(handle.calls());
@@ -145,6 +149,22 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
                 .expect("a FIX reader")
                 .map(|batch| batch.expect("a batch").num_rows())
                 .sum();
+            assert_eq!(read, ROWS);
+        },
+    );
+    costs(
+        "the decoded capture composed through FIX enrichment",
+        &calls,
+        LINE_DECODE,
+        || {
+            let RecordOptions::Text(options) = &options else {
+                panic!("text options")
+            };
+            let lines = read_text_lines(&handle, options).expect("a text reader");
+            let read = codec
+                .enrich_messages(codec.parse_text_lines(lines))
+                .try_fold(0_usize, |read, message| message.map(|_| read + 1))
+                .expect("an enriched message");
             assert_eq!(read, ROWS);
         },
     );

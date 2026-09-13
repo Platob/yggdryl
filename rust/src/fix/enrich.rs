@@ -957,7 +957,8 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
     let mut dropped: Vec<(i32, Scalar)> = Vec::new();
     for entry in msg.entries() {
         let tag = entry.tag();
-        // `0` is a key that named no tag, and a tag the message holds needs
+        // `0` is an unresolved key - a name or number with no registry
+        // identity - and a tag the message holds needs
         // nothing: the record is read for what the projection lost, never to
         // restate what survived it.
         if tag <= 0 || msg.get_by_tag(tag).is_some() {
@@ -976,9 +977,10 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
         dropped.push((tag, Scalar::from(text.to_owned())));
     }
     for (tag, value) in dropped {
-        // The dictionary's own field types the text on the way in, and a tag
-        // no dictionary explains is refused - which is the whole of what an
-        // unmapped pair should get here.
+        // The dictionary's own field types the text on the way in. Unresolved
+        // keys recorded tag 0 and were skipped above, so only a positive tag
+        // reaches this write; one the dictionary lacks is kept under its decimal
+        // spelling, as `set` keeps any such tag.
         let _ = msg.set(tag, value);
     }
     msg

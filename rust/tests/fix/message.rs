@@ -4,7 +4,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::fix::{ENTRIES_COLUMN, UNMAPPED_COLUMN};
+use yggdryl::fix::ENTRIES_COLUMN;
 
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::{
@@ -409,7 +409,7 @@ fn a_row_without_the_entries_column_has_no_entries() {
     let columns: Vec<Field> = wide
         .fields()
         .iter()
-        .filter(|column| !matches!(column.name(), ENTRIES_COLUMN | UNMAPPED_COLUMN))
+        .filter(|column| column.name() != ENTRIES_COLUMN)
         .cloned()
         .collect();
     let narrow = DataType::from_fields(columns)
@@ -497,4 +497,71 @@ fn an_entries_column_holding_no_entry_is_refused() {
     let row = Scalar::from_sequence(values);
     let refused = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap_err();
     assert!(!refused.to_string().is_empty());
+}
+
+#[test]
+fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let message = reader.sole_line(ORDER, false).unwrap();
+    let original = message.into_row(&schema).unwrap();
+    let at = schema.index_of(ENTRIES_COLUMN).unwrap();
+    let row = |leaf: &[u8]| {
+        let mut tail = Scalar::from(leaf);
+        for _ in 0..3 {
+            tail = Scalar::from_sequence([Scalar::from_sequence([
+                Scalar::from(0_i32),
+                Scalar::from("raw"),
+                Scalar::from("value"),
+                tail,
+            ])]);
+        }
+        let mut values = original.as_sequence().unwrap().to_vec();
+        values[at] = tail;
+        Scalar::from_sequence(values)
+    };
+    for leaf in [
+        "null",
+        "true",
+        "{}",
+        "[1]",
+        "[[0,\"key\",\"value\"]]",
+        "[[0,\"key\",\"value\",[],0]]",
+        "[[-1,\"key\",\"value\",[]]]",
+        "[[2147483648,\"key\",\"value\",[]]]",
+        "[[\"0\",\"key\",\"value\",[]]]",
+        "[[0,1,\"value\",[]]]",
+        "[[0,\"key\",false,[]]]",
+        "[[0,\"key\",\"value\",null]]",
+        "[[0,\"key\",\"value\",[false]]]",
+    ] {
+        let error =
+            FixMsg::from_row(Arc::clone(&registry), &schema, &row(leaf.as_bytes())).unwrap_err();
+        assert!(
+            matches!(&error, yggdryl::Error::InvalidRecord { path, .. }
+            if path.starts_with("$.nofixentries[0].nofixentries[0].nofixentries[0].nofixentries")),
+            "{leaf}: {error}"
+        );
+    }
+    // Null optional members are meaningful defaults, unlike an absent member.
+    let accepted = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &row(b"[[null,null,null,[]]]"),
+    )
+    .unwrap();
+    let leaf = &accepted.entries()[0].children()[0].children()[0].children()[0];
+    assert_eq!(leaf.tag(), 0);
+    assert!(leaf.key().is_empty());
+    assert!(leaf.value().is_empty());
+    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"[]")).is_ok());
+    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"")).is_ok());
+    let undecodable =
+        FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"not json")).unwrap_err();
+    assert!(
+        matches!(&undecodable, yggdryl::Error::InvalidRecord { path, .. }
+            if path == "$.nofixentries[0].nofixentries[0].nofixentries[0].nofixentries"),
+        "{undecodable}"
+    );
+    assert_eq!(message.into_row(&schema).unwrap(), original);
 }

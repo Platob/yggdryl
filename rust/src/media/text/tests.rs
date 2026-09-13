@@ -2198,7 +2198,8 @@ mod decoding {
     #[test]
     fn an_empty_object_answers_its_columns_and_no_rows() {
         let options = TextOptions::new();
-        let batch = into_arrow_batch(Vec::new(), &options).expect("a batch");
+        let batch = into_arrow_batch(Vec::<crate::media::text::TextLine>::new(), &options)
+            .expect("a batch");
         assert_eq!(batch.num_rows(), 0);
         assert!(batch.column_by_name("body").is_some());
     }

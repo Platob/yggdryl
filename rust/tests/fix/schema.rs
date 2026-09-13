@@ -1,5 +1,5 @@
 //! The fixed row: columns spelled by name and filled by tag, derived facts,
-//! and the two closing lists.
+//! and the one closing arrival record.
 
 use super::SoleMessage;
 
@@ -50,7 +50,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     assert_eq!(
-        &names[names.len() - 8..],
+        &names[names.len() - 7..],
         [
             "prevtimestamp",
             "prevuuid",
@@ -59,7 +59,6 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             "snapshotat",
             "msgdirection",
             "nofixentries",
-            "nounmappedfixentries"
         ]
     );
     for tag in [
@@ -91,10 +90,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(schema.index_of("msgtype"), Some(2));
     assert_eq!(column_of(&schema, 35), 2);
     assert_eq!(names[column_of(&schema, 32)], "lastqty");
-    assert_eq!(
-        &names[names.len() - 2..],
-        ["nofixentries", "nounmappedfixentries"],
-    );
+    assert_eq!(names.last(), Some(&"nofixentries"));
 
     // The dictionary's own typing reaches the column, so a currency column is
     // the packed currency and a side is the packed side.
@@ -480,18 +476,17 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
         .into_row(&schema)
         .unwrap();
     let held = row.as_sequence().expect("a row");
-    let entries = held[held.len() - 2].as_sequence().expect("the record");
-    let unmapped = held[held.len() - 1].as_sequence().expect("the unmapped");
+    let entries = held.last().unwrap().as_sequence().expect("the record");
 
     // The record is everything that arrived, in arrival order, so the wire is
     // rebuilt from it and never from the columns.
     assert_eq!(entries.len(), 6);
-    // The view is the part of it nothing explained, and holds nothing the
-    // record does not.
-    assert_eq!(unmapped.len(), 2);
-    for entry in unmapped {
-        assert!(entries.contains(entry));
-    }
+    let unknown: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
+        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .collect();
+    assert_eq!(unknown, ["9999", "VenueOwnThing"]);
 }
 
 /// The two documents a datatype writes name it the same way.

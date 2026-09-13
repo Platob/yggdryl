@@ -58,6 +58,8 @@ mod pipeline;
 mod schema;
 #[path = "fix/store.rs"]
 mod store;
+#[path = "fix/zero_entries.rs"]
+mod zero_entries;
 
 /// What a reader warned about while it ran, on this thread alone.
 ///

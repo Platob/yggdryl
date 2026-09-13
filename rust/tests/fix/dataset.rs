@@ -186,9 +186,7 @@ impl Enriched for FixCodec {
         &self,
         line: &TextLine,
     ) -> yggdryl::Result<impl Iterator<Item = yggdryl::Result<FixMsg>>> {
-        Ok(self
-            .parse_text_line(line)?
-            .map(|held| held.and_then(|held| self.enrich_message(held))))
+        Ok(self.enrich_messages(self.parse_text_line(line)?))
     }
 }
 
@@ -246,6 +244,118 @@ pub(super) fn text_lines() -> Vec<TextLine> {
         .expect("a line reader")
         .map(|line| line.expect("a line"))
         .collect()
+}
+
+#[test]
+fn the_full_capture_composes_through_both_arrow_boundaries() {
+    let codec = codec();
+    let RecordOptions::Text(options) = reading() else {
+        panic!("a text read")
+    };
+    let schema = yggdryl::fix_schema(codec.registry(), "fix").unwrap();
+    let expected = codec
+        .enrich_messages(codec.parse_text_lines(text_lines()))
+        .map(|message| message.and_then(|message| message.into_row(&schema)))
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(expected.len(), ROWS);
+
+    let direct = codec
+        .arrow_reader(
+            schema.clone(),
+            codec.enrich_messages(
+                codec.parse_text_lines(read_text_lines(source(), &options).unwrap()),
+            ),
+        )
+        .unwrap();
+    let text_batches = yggdryl::media::text::into_arrow_reader(
+        read_text_lines(source(), &options).unwrap(),
+        &options,
+    )
+    .unwrap();
+    let restored_lines = yggdryl::media::text::from_arrow_reader(text_batches, &options).unwrap();
+    let restored = codec
+        .arrow_reader(
+            schema.clone(),
+            codec.enrich_messages(codec.parse_text_lines(restored_lines)),
+        )
+        .unwrap();
+    for reader in [direct, restored] {
+        let actual = codec
+            .messages(reader)
+            .map(|message| message.and_then(|message| message.into_row(&schema)))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    // The reverse reader restores each physical row number through the
+    // configured start, every body, and every capture's presence at its index.
+    let original = text_lines();
+    let restored = yggdryl::media::text::from_arrow_reader(
+        yggdryl::media::text::into_arrow_reader(original.clone(), &options).unwrap(),
+        &options,
+    )
+    .unwrap()
+    .collect::<yggdryl::Result<Vec<_>>>()
+    .unwrap();
+    assert_eq!(restored.len(), LINES);
+    for (line, back) in original.iter().zip(&restored) {
+        assert_eq!(back.index(), line.index());
+        assert_eq!(back.body(), line.body());
+        assert_eq!(
+            back.captures()
+                .iter()
+                .map(Option::is_some)
+                .collect::<Vec<_>>(),
+            line.captures()
+                .iter()
+                .map(Option::is_some)
+                .collect::<Vec<_>>(),
+            "line {}",
+            line.index()
+        );
+    }
+}
+
+#[test]
+fn a_source_error_inside_the_capture_moves_through_and_the_stream_fuses() {
+    const FAILED_AFTER: usize = 5;
+    let codec = codec();
+    let lines = text_lines();
+    let before = codec
+        .enrich_messages(codec.parse_text_lines(&lines[..FAILED_AFTER]))
+        .count();
+    let marker = Arc::new(());
+    let mut items = lines
+        .into_iter()
+        .map(Ok)
+        .collect::<Vec<yggdryl::Result<TextLine>>>();
+    items.insert(FAILED_AFTER, Err(super::batch::source_failure(&marker)));
+    let mut items = items.into_iter();
+    let pulls = std::rc::Rc::new(std::cell::Cell::new(0_usize));
+    let counted = std::rc::Rc::clone(&pulls);
+    let source = std::iter::from_fn(move || {
+        counted.set(counted.get() + 1);
+        items.next()
+    });
+    let mut stream = codec.enrich_messages(codec.parse_text_lines(source));
+    // Nothing is pulled before the first message is asked for.
+    assert_eq!(pulls.get(), 0);
+    for _ in 0..before {
+        stream.next().unwrap().unwrap();
+    }
+    super::batch::same_source_failure(stream.next().unwrap().unwrap_err(), &marker);
+    assert_eq!(pulls.get(), FAILED_AFTER + 1);
+    let after = stream
+        .by_ref()
+        .try_fold(0_usize, |read, message| message.map(|_| read + 1))
+        .unwrap();
+    assert_eq!(before + after, ROWS);
+    let exhausted = pulls.get();
+    assert_eq!(exhausted, LINES + 2);
+    assert!(stream.next().is_none());
+    assert_eq!(pulls.get(), exhausted);
 }
 
 /// Where one column sits, by name.

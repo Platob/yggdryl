@@ -27,18 +27,13 @@
 //!
 //! # Nothing is lost at the end
 //!
-//! Two lists close every row.
-//!
-//! `entries` is the whole arrival record: every pair, in arrival order,
+//! `nofixentries` closes every row with the whole arrival record: every pair, in arrival order,
 //! untranslated. It is what makes a row lossless - the fixed columns are a
 //! reading of the message and the entries are the message, so the wire is
 //! rebuilt from them and never from the columns.
 //!
-//! `unmapped` is a *view* over that record rather than the rest of it: the
-//! pairs no dictionary explained, in the order they arrived. It holds nothing
-//! `entries` does not, and it exists because a venue onboarding a new field
-//! should find it by reading one column instead of filtering a million rows.
-//! On a well-known dialect it is empty on every row and costs a validity bit.
+//! Unresolved keys have tag zero in that same record; their original key,
+//! value and children remain in place. No second projection duplicates them.
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -100,23 +95,14 @@ pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 /// to the fixed row, outside the registry and its dictionary shards.
 pub const ENTRIES_COLUMN: &str = "nofixentries";
 
-/// The column holding what no dictionary explained.
-pub const UNMAPPED_COLUMN: &str = "nounmappedfixentries";
-
 /// What one arrival record is called wherever it is materialized.
-///
-/// Both columns name their occurrence this. The generic rule would derive
-/// `UnmappedFixEntry` from the second counter, but the crate owns this
-/// component and one component must not answer to two names: an unexplained
-/// entry is the same kind of thing as an explained one, seen through a
-/// narrower window.
 const ENTRY_COMPONENT: &str = "fixentry";
 
 /// One row's columns, in order, as tags.
 ///
 /// Header, body, groups, then the crate's own derived fields. The trailer
-/// sits before the two lists because it is still the message; the lists are
-/// not columns of the message, they are the message.
+/// sits before the arrival list because it is still the message; the list
+/// records the message rather than a projection of its fields.
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     let crated = super::fix_crate_fields().unwrap_or_default();
@@ -165,7 +151,7 @@ fn is_required(tag: i32) -> bool {
 /// struct, or when this crate's own fields do not build.
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
     let tags = fix_schema_tags();
-    let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 2);
+    let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
         if let Some(held) = registry.get_field_by_tag(tag) {
             let mut held = held.clone();
@@ -190,16 +176,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
             fields.push(group);
         }
     }
-    fields.push(entries_field(
-        ENTRIES_COLUMN,
-        "NoFixEntries",
-        "Every pair the message carried, in arrival order and untranslated.",
-    )?);
-    fields.push(entries_field(
-        UNMAPPED_COLUMN,
-        "NoUnmappedFixEntries",
-        "The pairs no dictionary explained, a view over the arrival record.",
-    )?);
+    fields.push(entries_field()?);
     let schema = DataType::from_fields(fields)?.required_field(name);
     column_plan(&schema, registry)?
         .identity
@@ -398,16 +375,11 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
 /// this constant, not rewriting shapes by hand.
 const ENTRY_DEPTH: usize = 3;
 
-/// A counter-named list of arrival records, typed once for both columns.
-///
-/// One function types both, so the two cannot drift: they are the same
-/// component seen through different windows. The unexplained column carries
-/// the same recursive type and is never populated below level 1, because it
-/// is a view of unexplained entries rather than a second copy of the tree.
-fn entries_field(name: &str, display: &str, description: &str) -> Result<Field> {
-    let mut field = DataType::list(entry_item(1)?).nullable_field(name);
-    field.set_display(display)?;
-    field.set_description(description)?;
+/// The single counter-named list of arrival records.
+fn entries_field() -> Result<Field> {
+    let mut field = DataType::list(entry_item(1)?).nullable_field(ENTRIES_COLUMN);
+    field.set_display("NoFixEntries")?;
+    field.set_description("Every pair the message carried, in arrival order and untranslated.")?;
     Ok(field)
 }
 
@@ -507,57 +479,91 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 /// the level holds one and as the leaf's JSON - decoded through the crate's
 /// one parser - where the level folded them. A leaf that cannot be decoded is
 /// a refusal rather than a hole, because a message rebuilt with a pair
-/// missing is a different message. An absent tag reads as `0`, the tag of a
-/// key that named no field, and an absent key or value as empty text. The key
+/// missing is a different message. A null tag reads as `0`, the tag of a
+/// key that named no field, and a null key or value as empty text. The key
 /// and the value are copied here, because a row is where a message stops being
 /// a range of a line: the column holds the text, and the entry rebuilt from it
 /// owns a page of its own.
 ///
 /// # Errors
 ///
-/// Returns [`crate::Error::InvalidRecord`] for a value that is not an entry,
-/// or the JSON reader's failure on an undecodable leaf.
-fn entry_from_scalar(pair: &crate::Scalar) -> Result<super::FixEntry> {
-    let Some(held) = pair.as_sequence() else {
-        return Err(crate::Error::InvalidRecord {
-            path: SmolStr::new_static(ENTRIES_COLUMN),
-            reason: crate::text::expected_got("an arrival entry", pair.kind()),
-        });
+/// Returns [`crate::Error::InvalidRecord`] at the arrival path for a value
+/// that is not an entry, including a folded leaf that does not decode.
+fn entry_from_scalar(
+    pair: &crate::Scalar,
+    path: &crate::path::Path<'_>,
+) -> Result<super::FixEntry> {
+    let held = pair
+        .as_sequence()
+        .ok_or_else(|| entry_error(path, "a four-member arrival entry", pair.kind()))?;
+    let [tag, key, value, tail] = held else {
+        return Err(entry_error(path, "four arrival members", held.len()));
     };
-    let integer = |at: usize| {
-        held.get(at)
-            .and_then(crate::Scalar::as_i128)
+    let tag = if tag.is_null() {
+        0
+    } else {
+        tag.as_i128()
             .and_then(|value| i32::try_from(value).ok())
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| {
+                entry_error(
+                    &path.field("tag"),
+                    "a nonnegative i32 tag or null",
+                    format_args!("{tag:?}"),
+                )
+            })?
     };
-    let text = |at: usize| {
-        held.get(at)
-            .and_then(crate::Scalar::as_str)
-            .unwrap_or_default()
+    let text = |value: &crate::Scalar, name| {
+        if value.is_null() {
+            Ok(crate::media::text::TextBytes::new())
+        } else {
+            let text = value
+                .as_str()
+                .ok_or_else(|| entry_error(&path.field(name), "text or null", value.kind()))?;
+            crate::media::text::TextBytes::from_bytes(text)
+        }
     };
-    let children = match held.get(3) {
-        Some(tail) if tail.as_sequence().is_some() => tail
-            .as_sequence()
-            .unwrap_or_default()
-            .iter()
-            .map(entry_from_scalar)
-            .collect::<Result<Vec<_>>>()?,
-        Some(tail) => match tail.as_bytes() {
-            Some(bytes) if !bytes.is_empty() => crate::from_json_scalar(bytes)?
-                .as_sequence()
-                .unwrap_or_default()
-                .iter()
-                .map(entry_from_scalar)
-                .collect::<Result<Vec<_>>>()?,
-            _ => Vec::new(),
-        },
-        None => Vec::new(),
-    };
-    let entry = super::FixEntry::new(
-        integer(0).unwrap_or(0),
-        crate::media::text::TextBytes::from_bytes(text(1))?,
-        crate::media::text::TextBytes::from_bytes(text(2))?,
-    );
+    let children = entries_from_scalar(tail, &path.field(ENTRIES_COLUMN))?;
+    let entry = super::FixEntry::new(tag, text(key, "key")?, text(value, "value")?);
     Ok(entry.with_children(children))
+}
+
+fn entry_error(
+    path: &crate::path::Path<'_>,
+    expected: impl std::fmt::Display,
+    actual: impl std::fmt::Display,
+) -> crate::Error {
+    crate::Error::InvalidRecord {
+        path: path.render().into(),
+        reason: crate::text::expected_got(expected, crate::text::elide_display(&actual)),
+    }
+}
+
+/// Decode one folded subtree, then walk the same entry shape as materialized rows.
+fn entries_from_scalar(
+    value: &crate::Scalar,
+    path: &crate::path::Path<'_>,
+) -> Result<Vec<super::FixEntry>> {
+    let decoded;
+    let value = if let Some(bytes) = value.as_bytes() {
+        if bytes.is_empty() {
+            return Ok(Vec::new());
+        }
+        decoded = crate::from_json_scalar(bytes)
+            .map_err(|error| entry_error(path, "a JSON sequence of arrival entries", error))?;
+        &decoded
+    } else {
+        value
+    };
+    value
+        .as_sequence()
+        .ok_or_else(|| entry_error(path, "a sequence of arrival entries", value.kind()))?
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            entry_from_scalar(entry, &path.child(crate::path::Segment::Index(index)))
+        })
+        .collect()
 }
 
 impl super::FixMsg {
@@ -613,9 +619,9 @@ impl super::FixMsg {
     /// # Errors
     ///
     /// Returns the refusal [`Self::with_registry`] raises when the row does
-    /// not fit the schema, [`crate::Error::InvalidRecord`] when the entries
-    /// column holds something that is not an arrival entry, or the JSON
-    /// reader's failure on a leaf it cannot decode.
+    /// not fit the schema, or [`crate::Error::InvalidRecord`] at the arrival
+    /// path when the entries column holds something that is not an arrival
+    /// entry, a folded leaf that does not decode included.
     pub fn from_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
@@ -636,8 +642,13 @@ impl super::FixMsg {
             .and_then(|at| built.as_value().get(at))
             .and_then(crate::Scalar::as_sequence)
             .map(|held| {
+                let root = crate::path::Path::root();
+                let path = root.field(ENTRIES_COLUMN);
                 held.iter()
-                    .map(entry_from_scalar)
+                    .enumerate()
+                    .map(|(index, entry)| {
+                        entry_from_scalar(entry, &path.child(crate::path::Segment::Index(index)))
+                    })
                     .collect::<Result<Vec<_>>>()
             })
             .transpose()?
@@ -659,9 +670,8 @@ impl super::FixMsg {
     /// supplies its prefix before validation, not after projection.
     ///
     /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
-    /// stays lossless whatever the columns made of it, and [`UNMAPPED_COLUMN`]
-    /// holds the part of that record no dictionary explained - a view over
-    /// the first rather than the rest of it.
+    /// stays lossless whatever the columns made of it. Keys no dictionary
+    /// explained have tag zero in that same record, with their raw text intact.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -679,9 +689,10 @@ impl super::FixMsg {
     /// // The columns are the folded names, so `msgtype` is where the type is.
     /// let at = schema.index_of("msgtype").expect("the msgtype column");
     /// assert_eq!(held[at].as_str(), Some("D"));
-    /// // A tag no dictionary explains is still there, in its own column.
-    /// let unmapped = held.last().and_then(yggdryl::Scalar::as_sequence);
-    /// assert_eq!(unmapped.map(<[yggdryl::Scalar]>::len), Some(1));
+    /// // An unresolved numeric key stays in the one arrival record as tag zero.
+    /// let entries = held.last().and_then(yggdryl::Scalar::as_sequence).unwrap();
+    /// let entry = entries.iter().find(|entry| entry.get(1).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
+    /// assert_eq!(entry.get(0).and_then(yggdryl::Scalar::as_i128), Some(0));
     /// # Ok(())
     /// # }
     /// ```
@@ -720,18 +731,6 @@ impl super::FixMsg {
             ));
         }
         let mut front = front.into_iter();
-        // The arrival record answers both closing columns and is walked once,
-        // because the second is a view over the first rather than a second
-        // record. A schema holding neither pays nothing for either.
-        let (mut known, mut unknown) = (None, None);
-        if columns
-            .iter()
-            .any(|held| matches!(held.name(), ENTRIES_COLUMN | UNMAPPED_COLUMN))
-        {
-            let (record, unexplained) = self.divided()?;
-            known = Some(record);
-            unknown = Some(unexplained);
-        }
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
         for (column, planned) in columns.iter().zip(plan.iter()) {
             if let Some(value) = front.next() {
@@ -739,8 +738,12 @@ impl super::FixMsg {
                 continue;
             }
             let value = match column.name() {
-                ENTRIES_COLUMN => known.take().unwrap_or(crate::Scalar::Null),
-                UNMAPPED_COLUMN => unknown.take().unwrap_or(crate::Scalar::Null),
+                ENTRIES_COLUMN => crate::Scalar::from_sequence(
+                    self.entries()
+                        .iter()
+                        .map(|entry| entry_scalar(entry, 1))
+                        .collect::<Result<Vec<_>>>()?,
+                ),
                 // A column declaring a group's `fix:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one that
@@ -938,53 +941,6 @@ impl super::FixMsg {
             .find(|occurrence| occurrence.get(by).and_then(crate::Scalar::as_str) == Some(wanted))
             .and_then(|occurrence| occurrence.get(member).cloned())
             .filter(|held| !held.is_null())
-    }
-
-    /// Whether this message's dictionary has a field at one tag.
-    fn explains(&self, tag: i32) -> bool {
-        tag != 0 && self.registry().get_field_by_tag(tag).is_some()
-    }
-
-    /// The arrival record, and the part of it nothing explained.
-    ///
-    /// The record carries the tree, folded past the materialization depth.
-    /// The unexplained view stays flat: every entry the dictionary does not
-    /// explain, found pre-order at any depth, appears once at level 1 with
-    /// empty children and nothing folded, because it is a view of unexplained
-    /// entries and not a second recursive copy.
-    ///
-    /// # Errors
-    ///
-    /// Returns the JSON writer's failure rendering a truncated subtree.
-    fn divided(&self) -> Result<(crate::Scalar, crate::Scalar)> {
-        let mut known = Vec::new();
-        let mut unknown = Vec::new();
-        for entry in self.entries() {
-            known.push(entry_scalar(entry, 1)?);
-        }
-        self.unexplained(self.entries(), &mut unknown);
-        Ok((
-            crate::Scalar::from_sequence(known),
-            crate::Scalar::from_sequence(unknown),
-        ))
-    }
-
-    /// Collects every entry nothing explains, pre-order, flat.
-    fn unexplained(&self, entries: &[super::FixEntry], out: &mut Vec<crate::Scalar>) {
-        for entry in entries {
-            // Explained means the dictionary has the field, not that the key
-            // parsed: `9999=x` names a tag and still names nothing, and a
-            // venue onboarding it wants to find it in exactly one column.
-            if !self.explains(entry.tag()) {
-                out.push(crate::Scalar::from_sequence([
-                    crate::Scalar::from(entry.tag()),
-                    crate::Scalar::from(entry.key_text()),
-                    crate::Scalar::from(entry.value_text()),
-                    crate::Scalar::from_sequence(Vec::new()),
-                ]));
-            }
-            self.unexplained(entry.children(), out);
-        }
     }
 }
 

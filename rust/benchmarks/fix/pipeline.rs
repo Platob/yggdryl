@@ -31,7 +31,7 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
-use yggdryl::media::text::{TextBytes, TextLine, TextOptions};
+use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, IOMedia, Timezone, Url, fix_schema};
 
 use super::seed;
@@ -137,6 +137,22 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .sum::<usize>()
         });
     });
+    let RecordOptions::Text(options) = text() else {
+        unreachable!("the capture uses text options")
+    };
+    let composed = codec.clone().with_capture_names(options.capture_names());
+    let read_composed = || {
+        composed
+            .enrich_messages(composed.parse_text_lines(
+                read_text_lines(&source, &options).expect("a decoded line stream"),
+            ))
+            .try_fold(0_usize, |read, message| message.map(|_| read + 1))
+            .expect("an enriched message")
+    };
+    assert_eq!(read_composed(), 83 * REPEATS);
+    group.bench_function("decoded_lines_enrich", |bencher| {
+        bencher.iter(|| black_box(read_composed()));
+    });
 
     // The codec alone, over the framed bodies: what a message costs to
     // build, without the frame it was cut from or the batch it lands in. A
@@ -224,7 +240,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 || rows.clone(),
                 |held| {
                     codec
-                        .arrow_reader(schema.clone(), held.into_iter().map(Ok))
+                        .arrow_reader(schema.clone(), held)
                         .expect("a reader")
                         .map(|batch| batch.expect("a batch").num_rows())
                         .sum::<usize>()

@@ -744,7 +744,8 @@ fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
         let mut registry = FixRegistry::new();
         for index in 0..size {
             let mut field = DataType::utf8().nullable_field(format!("Code{index}"));
-            field.as_fix_mut().set_tag(index).unwrap();
+            // Registry tags are positive; zero is only unresolved arrival provenance.
+            field.as_fix_mut().set_tag(index + 1).unwrap();
             field
                 .as_fix_mut()
                 .set_codes(&[FixCode::new("Buy", "1")])
@@ -759,7 +760,7 @@ fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
                     .required_field("component"),
             )
             .unwrap();
-        let field = registry.field(size - 1).unwrap();
+        let field = registry.field(size).unwrap();
         free("field code metadata lookup", || {
             assert_eq!(black_box(field.as_fix().code_name("1")), Some("Buy"));
         });
@@ -2136,6 +2137,48 @@ fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
                         .expect("a readable line"),
                 );
             },
+        );
+    }
+}
+
+#[test]
+fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
+    use arrow_array::RecordBatchIterator;
+    use yggdryl::media::text::{from_arrow_reader, into_arrow_batch};
+
+    let options = TextOptions::new();
+    let mut first_cost = None;
+    for rows in [1, 64, 1024] {
+        let lines = (0..rows).map(|index| {
+            TextLine::from_bytes(index, TextBytes::from_bytes("one body").unwrap()).unwrap()
+        });
+        let batch = into_arrow_batch(lines, &options).unwrap();
+        let stream = || {
+            Box::new(RecordBatchIterator::new(
+                [Ok(batch.clone())],
+                batch.schema(),
+            )) as yggdryl::arrow::BatchReader
+        };
+        // Warm shared datatype caches outside the measured row operation.
+        black_box(
+            from_arrow_reader(stream(), &options)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap(),
+        );
+        let mut reader = from_arrow_reader(stream(), &options).unwrap();
+        let (allocations, line) = counted(|| reader.next().unwrap().unwrap());
+        assert_eq!(line.body(), "one body");
+        assert_eq!(line.index(), 0);
+        assert_eq!(
+            allocations,
+            *first_cost.get_or_insert(allocations),
+            "first-row work grew with {rows} source rows"
+        );
+        assert!(
+            allocations <= 8,
+            "one decoded body owns bounded text state, got {allocations}"
         );
     }
 }

@@ -272,10 +272,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // Which way a line moved is FIX's own `msgdirection` (decision 14).
     assert!(names.contains(&"msgdirection"), "{names:?}");
     assert!(!names.contains(&"direction"), "{names:?}");
-    assert_eq!(
-        &names[names.len() - 2..],
-        ["nofixentries", "nounmappedfixentries"]
-    );
+    assert_eq!(names.last(), Some(&"nofixentries"));
 
     // The timestamp capture was typed from its pattern before a byte was
     // read and took the zone the options declared; updatedat is independently
@@ -787,16 +784,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     );
     // Nothing in the document went unexplained on a dictionary that has the
     // bridge's own fields.
-    let unmapped = column(&read, "nounmappedfixentries");
-    assert_eq!(
-        unmapped[RESPONSE_ROW]
-            .as_sequence()
-            .map(<[Scalar]>::len)
-            .unwrap_or_default(),
-        0,
-        "{:?}",
-        unmapped[RESPONSE_ROW]
-    );
+    assert!(keyed.iter().all(|(tag, _)| *tag > 0), "{keyed:?}");
 }
 
 /// How many bytes the row header takes off the front of every line here.

@@ -859,6 +859,7 @@ impl FixCodec {
         let codec = self.clone();
         lines
             .into_iter()
+            .fuse()
             .flat_map(move |line| FixMessages::from_result(codec.parse_line(line.as_ref())))
     }
 
@@ -930,16 +931,25 @@ impl FixCodec {
     /// Each line is read as [`Self::parse_text_line`] reads it - none, one or
     /// many messages a line - and a payload nobody could read is an empty
     /// message rather than the end of the run: one corrupt line must not end
-    /// a capture of ten million.
-    pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
+    /// a capture of ten million. Owned and borrowed lines, or their fallible
+    /// counterparts, compose directly. Source errors move through unchanged;
+    /// borrowed lines are not cloned, and source exhaustion is fused.
+    pub fn parse_text_lines<I, L>(
+        &self,
+        lines: I,
+    ) -> impl Iterator<Item = Result<FixMsg>> + use<I, L>
     where
         I: IntoIterator,
-        I::Item: Borrow<TextLine>,
+        I::Item: Into<Result<L>>,
+        L: Borrow<TextLine>,
     {
         let codec = self.clone();
-        lines
-            .into_iter()
-            .flat_map(move |line| FixMessages::from_result(codec.parse_text_line(line.borrow())))
+        lines.into_iter().fuse().flat_map(move |line| {
+            FixMessages::from_result(
+                line.into()
+                    .and_then(|line: L| codec.parse_text_line(line.borrow())),
+            )
+        })
     }
 
     /// One payload read under what its row stated, a row of nothing included.
@@ -1667,15 +1677,18 @@ impl FixCodec {
     /// the configuration it printed at startup, and every line after it names
     /// only the plugin. The memory dies with the iterator, and
     /// [`Self::enrich_message`] - one message, not a stream - has none.
+    /// Owned messages and their fallible counterparts compose directly.
+    /// Errors move through without touching that memory; exhaustion is fused.
     pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
-        I: IntoIterator<Item = FixMsg>,
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
     {
         let registry = Arc::clone(&self.registry);
         let mut plugins = super::enrich::Remembered::default();
-        messages
-            .into_iter()
-            .map(move |message| Ok(plugins.fill(super::enrich::enrich(&registry, message)?)))
+        messages.into_iter().fuse().map(move |message| {
+            Ok(plugins.fill(super::enrich::enrich(&registry, message.into()?)?))
+        })
     }
 
     /// Stamps a stream of messages with the identities it implies, in order.
@@ -1685,12 +1698,18 @@ impl FixCodec {
     /// identifier - the `puuid` of the chain that identifier reaches,
     /// and a terminal state closes the chain. Nothing is collected: the
     /// iterator is the stream, and what is held is the orders still alive.
+    /// Owned messages and their fallible counterparts compose directly;
+    /// source errors do not advance the lifecycle, and exhaustion is fused.
     pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
-        I: IntoIterator<Item = FixMsg>,
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
     {
         let mut life = super::FixLifecycle::new(Arc::clone(&self.registry));
-        messages.into_iter().map(move |message| life.fill(message))
+        messages
+            .into_iter()
+            .fuse()
+            .map(move |message| message.into().and_then(|message| life.fill(message)))
     }
 
     /// Builds one message from pairs the caller already split.
