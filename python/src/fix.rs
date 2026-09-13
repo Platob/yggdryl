@@ -1968,10 +1968,18 @@ impl PyFixCodec {
             .map_err(value_error)
     }
 
-    /// Fills a stream of messages, lazily.
+    /// Fills a stream of messages, lazily, remembering what it passes.
     ///
     /// `messages` is any iterable of `FixMsg`; an item that is not one raises
     /// `TypeError` where it is met.
+    ///
+    /// What the stream remembers is every `pluginconfig` it passes, by the
+    /// plugin's `Name`: a later message naming that plugin takes its
+    /// `SenderCompID` and `TargetCompID` where it stated none of its own. A
+    /// bridge says a session's two ends once, in the configuration it printed
+    /// at startup, and every line after it names only the plugin. The memory
+    /// dies with the iterator, and `enrich_message` - one message, not a
+    /// stream - has none.
     fn enrich_messages(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -2502,6 +2510,21 @@ impl PyPlugin {
 pub(crate) fn fix_plugin_fields() -> PyResult<Vec<PyField>> {
     yggdryl::fix_plugin_fields()
         .map(|held| held.iter().cloned().map(PyField::from_inner).collect())
+        .map_err(value_error)
+}
+
+/// The message a plugin configuration is: the `pluginconfig` component.
+///
+/// FIX's own `MsgType` beside every plugin attribute and the `BeginString`,
+/// `SenderCompID` and `TargetCompID` a configuration also states, under the
+/// code `PLUGINCONFIG_CODE_NAME` names it by. Registering it is nobody's
+/// choice: `FixRegistry()` holds it as it holds the crate's own fields, so a
+/// configuration reads as `pluginconfig` whatever dictionary met it.
+#[pyfunction]
+#[pyo3(name = "fix_plugin_message")]
+pub(crate) fn fix_plugin_message() -> PyResult<PyField> {
+    yggdryl::fix_plugin_message()
+        .map(|held| PyField::from_inner(held.clone()))
         .map_err(value_error)
 }
 

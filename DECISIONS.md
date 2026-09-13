@@ -1368,3 +1368,88 @@ stranger and that no binding carries a `ULCONFIG` constant - go with the
 spelling: a crate that never had the name has nothing to say about it, an
 unknown name is already pinned on one that was never ours, and the vocabulary
 count guards the constant list.
+
+## 19. A plugin configuration is a message, and the enricher remembers one
+
+**Rule.** A plugin configuration is a message type of the crate's own:
+`pluginconfig`, a component carrying `fix:msgtype` with the user-defined code
+`UCFG`. FIX reserves `U` for user-defined messages, and `UCFG` is this
+crate's, chosen here so that no dictionary has to be edited for a
+configuration to read as what it is. Its members are the plugin attributes
+(20010 to 20047) beside FIX's `BeginString` (8), `SenderCompID` (49) and
+`TargetCompID` (56), which is the whole of what a configuration states.
+
+A configuration message carries `35=UCFG` as a built child rather than as a
+pair: the arrival record is what the document stated, and the exchange never
+sent a `35=`. So the wire re-emits byte for byte as it did (decision 17), and
+the type is a fact the crate adds rather than one the document made. Its
+`.type` is `pluginconfig`, the name, where a message typed off the wire keeps
+whatever the wire spelled - `D`, `8`, `ExecutionReport`. The two are
+different facts: a spelling a row wrote is the row's word and is kept
+verbatim; a code the crate supplies is the crate's, and the crate knows the
+name it registered it under.
+
+The component is registered twice over, because two callers need it and
+neither can wait for the other. `with_plugin_fields` registers it beside the
+attribute fields, where it belongs. `FixRegistry::new` registers it too, so
+every registry has it exactly as every registry has `pluginid`: a codec
+meeting a configuration cannot write a shared registry, so the message type
+has to be there before the first document arrives. Registering the component
+does not register its members as dictionary fields - a component is a
+definition and holds its members by value - so a registry that never called
+`with_plugin_fields` still types a `UCFG` message from the component's own
+members, and still answers no `plugin` dialect and no `CurrentPort` by name.
+Those are two different questions and they keep two different answers.
+
+**The enricher remembers.** `enrich_messages` is stateful: it holds the last
+`pluginconfig` it passed for each plugin, keyed by the folded `Name` (20013 -
+not 20012, which is `PluginType`). For every later message whose `PluginId`
+capture folds equal to a remembered name it fills `SenderCompID` (49) and
+`TargetCompID` (56) from that configuration, and only where the message
+states none of its own: a fill never lands over a value the message already
+stated, which is what makes the pass idempotent and is what `enrich` has
+always done. A configuration seen later replaces the one remembered for its
+name. A message with no `PluginId`, and one whose `PluginId` no configuration
+has named, are untouched.
+
+`BeginString` (8) is not among them, and cannot be. Every built message fills
+it non-null from the version the row was read at - it is one of the five
+columns a message always has - so a configuration's begin string would never
+find a message stating none, and a rule that can never fire has no business
+being written down. What a plugin's configuration says about its version is
+already what the row says about it.
+
+The memory is the iterator's and dies with it. `enrich_message`, the door
+that takes one message, stays stateless: one message is not a stream and has
+nothing to remember from. `enrich_messages_arrow_reader` carries one memory
+across every batch it reads, because a capture split into batches is one
+capture.
+
+**Why.** A configuration that reads as `unknown` is a row the dictionary has
+no opinion about, and everything downstream then has to special-case it by
+shape rather than by type. Registering it makes it addressable the way every
+other message is: `35=` answers, the schema has a column, a lifecycle can
+skip it by type rather than by guessing.
+
+The fill is the other half. A bridge log states a plugin's comp ids once, in
+the configuration it printed at startup, and then writes ten million lines
+that name only the plugin. Those lines are about a session whose two ends are
+known - the reader just read them - and leaving them null makes every
+consumer join back to a configuration it would have to have kept. The
+never-overwrite rule keeps this honest: a line that stated its own comp ids
+keeps them, so the fill can only ever add what the capture already implied.
+
+**Written in:** `fix/plugin.rs`, where the component is built and the code
+lives; `fix/registry.rs`, where every registry gains it; `fix/enrich.rs` and
+`fix/codec.rs`, where the pass becomes stateful; `fix/batch.rs`, where the
+memory crosses batches; `docs/fix/capture.md`.
+**Fixtures:** a configuration message typed `pluginconfig` with `35=UCFG`
+answering, and its wire re-emitting byte for byte without a `35=`; the same
+document read by a registry that never called `with_plugin_fields`, typing
+its attributes from the component's members while still answering no `plugin`
+dialect; the corpus, where the `SmartTrade_OrderRouting` frame keeps the
+49/56 it stated and a row naming a plugin no configuration named gains
+nothing; a configuration then a bare row on one plugin, the row filled; two
+configurations for one plugin, the later winning; a stated 49 never
+overwritten; and the memory crossing a batch boundary in
+`enrich_messages_arrow_reader`.

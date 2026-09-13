@@ -1722,7 +1722,15 @@ impl JsFixCodec {
             .map_err(napi_error)
     }
 
-    /// Fills a stream of messages, lazily.
+    /// Fills a stream of messages, lazily, remembering what it passes.
+    ///
+    /// What the stream remembers is every `pluginconfig` it passes, by the
+    /// plugin's `Name`: a later message naming that plugin takes its
+    /// `SenderCompID` and `TargetCompID` where it stated none of its own. A
+    /// bridge says a session's two ends once, in the configuration it printed
+    /// at startup, and every line after it names only the plugin. The memory
+    /// dies with the iterator, and `enrichMessage` - one message, not a
+    /// stream - has none.
     #[napi(js_name = "_enrichMessagesNative", skip_typescript)]
     pub fn enrich_messages_native(
         &self,
@@ -2023,6 +2031,21 @@ pub fn fix_crate_fields() -> Result<Vec<JsField>> {
 pub fn fix_plugin_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_plugin_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
+        .map_err(napi_error)
+}
+
+/// The message a plugin configuration is: the `pluginconfig` component.
+///
+/// FIX's own `MsgType` beside every plugin attribute and the `BeginString`,
+/// `SenderCompID` and `TargetCompID` a configuration also states. Its name is
+/// the type a configuration reads as and `field.fix.msgtype` the wire code it
+/// answers on tag 35. Registering it is nobody's choice: every registry holds
+/// it as it holds the crate's own fields, so a configuration reads as itself
+/// whatever dictionary met it.
+#[napi(js_name = "fixPluginMessage")]
+pub fn fix_plugin_message() -> Result<JsField> {
+    yggdryl::fix_plugin_message()
+        .map(|held| JsField::from_core(held.clone()))
         .map_err(napi_error)
 }
 

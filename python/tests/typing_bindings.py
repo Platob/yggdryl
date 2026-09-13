@@ -1202,6 +1202,7 @@ fix_branches: list[str] = fix_field.fix.branches
 fix_has_branch: bool = fix_field.fix.has_branch("BLOOMBERG")
 fix_id: int | None = fix_field.fix.id
 fix_plugin_dialect: str = fix.PLUGIN_DIALECT
+fix_configuration_code_name: tuple[str, str] = fix.PLUGINCONFIG_CODE_NAME
 
 python_field: Field = Field("Quote", "int64", nullable=False)
 python_field.python.class_metadata = PythonMetadata(
@@ -1453,6 +1454,8 @@ fix_configuration_pickle: tuple[Any, tuple[str, str | None]] = fix_configuration
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
 fix_crated: list[Field] = fix.fix_crate_fields()
+fix_plugin_vocabulary: list[Field] = fix.fix_plugin_fields()
+fix_plugin_component: Field = fix.fix_plugin_message()
 fix_cblock: list[Field] = fix.fix_cfb_fields("cblocks/bloomberg.cfb")
 fix_cblock_named: list[Field] = fix.fix_cfb_fields(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"

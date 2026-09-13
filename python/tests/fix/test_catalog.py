@@ -133,6 +133,9 @@ def test_category_iterators_and_singletons_pin_their_registry() -> None:
     # name order.
     assert next(iterator).name == "NewOrderSingle"
     assert next(iterator).name == "Party"
+    # The crate's own message is behind them: every registry carries
+    # `pluginconfig` as it carries the crate's own fields (decision 19).
+    assert next(iterator).name == "pluginconfig"
     assert next(iterator, None) is None
     assert next(iterator, None) is None
     with pytest.raises(ValueError, match="shared"):
@@ -165,8 +168,10 @@ def test_singleton_iteration_keeps_identity_when_a_name_is_another_wire_code() -
     registry.create_definition("components", _message("D", "X"))
     registry.create_definition("components", _message("NewOrderSingle", "D"))
     registry.create_definition("components", _message("BridgeReport", "P Report Ack"))
+    # In name order, and the crate's own `pluginconfig` iterates among them:
+    # every registry has it before a caller creates anything (decision 19).
     values = list(registry.msgtypes())
-    assert [(value.name, value.value) for value in values] == [("BridgeReport", "P Report Ack"), ("D", "X"), ("NewOrderSingle", "D")]
+    assert [(value.name, value.value) for value in values] == [("BridgeReport", "P Report Ack"), ("D", "X"), ("NewOrderSingle", "D"), ("pluginconfig", "UCFG")]
     assert registry.msgtype("D").name == "NewOrderSingle"
     assert registry.msgtype("bridgereport").value == "P Report Ack"
     assert registry.get_msgtype("p report ack") is None
@@ -187,6 +192,7 @@ def test_singleton_iteration_keeps_identity_when_a_name_is_another_wire_code() -
         ("BridgeReport", "P Report Ack"),
         ("D", "X"),
         ("NewOrderSingle", "D"),
+        ("pluginconfig", "UCFG"),
     ]
 
 

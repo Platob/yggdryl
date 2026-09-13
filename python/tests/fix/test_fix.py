@@ -34,6 +34,7 @@ from yggdryl.fix import (
     FixLifecycle,
     FixRegistry,
     PLUGIN_DIALECT,
+    PLUGINCONFIG_CODE_NAME,
     Plugin,
     fix_cfb_fields,
     fix_crate_fields,
@@ -41,6 +42,7 @@ from yggdryl.fix import (
     fix_schema_carrying,
     fix_schema_tags,
     fix_plugin_fields,
+    fix_plugin_message,
     global_registry,
     install_global_registry,
 )
@@ -723,13 +725,19 @@ def test_registry_round_trips_through_the_three_categories(
     seed.write_into(root)
 
     assert (root / "fields" / "0.json").is_file()
+    # Every category comes back exactly as heavy as the committed catalog.
+    # The crate's own `pluginconfig` is not written, for the reason the
+    # crate's own fields are not: every registry holds it from construction,
+    # so a store that wrote it would claim to define what it inherited
+    # (decision 19).
     for category in ("fields", "components", "groups"):
         assert len(list((root / category).glob("*.json"))) == len(
             list((SEED / category).glob("*.json"))
         )
-    # The crate's own fields are never written: they are the crate's rather
-    # than the store's, so the shard their tag block would take is in no
-    # category at all, and the reload holds them all the same.
+    assert not (root / "components" / "pluginconfig.json").exists()
+    # The crate's own fields are never written either: they are the crate's
+    # rather than the store's, so the shard their tag block would take is in
+    # no category at all, and the reload holds them all the same.
     assert not (root / "fields" / f"{CRATE_TAG_MIN // 100}.json").exists()
     assert FixRegistry.from_handle(root) == seed
 
@@ -1676,6 +1684,94 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     assert min(field.fix.tag for field in fix_plugin_fields()) == 20010
     # `parse_line` finds the same document behind the same prose.
     assert next(reader.parse_line(LOGGED)) == message
+
+
+# A bridge line on one plugin, with no comp ids of its own: what ten million
+# lines behind one configuration look like.
+def _plugin_row(plugin: str) -> bytes:
+    return f"MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID={plugin}|".encode()
+
+
+def test_a_configuration_is_a_message_the_crate_registered(bridge: FixRegistry) -> None:
+    """A configuration types as `pluginconfig` and the wire still says no 35."""
+    message = next(FixCodec(bridge).parse_line(LOGGED))
+    # The name the crate registered the code under, and the code itself.
+    assert PLUGINCONFIG_CODE_NAME == ("UCFG", "pluginconfig")
+    assert message.field.name == PLUGINCONFIG_CODE_NAME[1]
+    assert message.by_tag(35).as_py() == PLUGINCONFIG_CODE_NAME[0]
+
+    # Registering it is nobody's choice: a registry that never asked for the
+    # plugin fields still holds the message, because a component holds its
+    # members by value and the code is the crate's own (decision 19).
+    plain = FixRegistry()
+    assert plain.msgtype("UCFG").name == "pluginconfig"
+    held = plain.definition("components", "pluginconfig")
+    assert held.name == fix_plugin_message().name
+    assert held.dtype == fix_plugin_message().dtype
+    assert held.fix.msgtype == PLUGINCONFIG_CODE_NAME[0]
+    assert plain.get_field_by_tag(20010) is None
+    assert plain.dialects() == []
+    # FIX's own `MsgType` opens the component, the plugin attributes follow,
+    # and the three FIX fields a configuration also states close it.
+    members = [fix_plugin_message()[at].name for at in range(len(fix_plugin_message()))]
+    assert members[0] == "MsgType"
+    assert members[1:-3] == [field.name for field in fix_plugin_fields()]
+    assert members[-3:] == ["BeginString", "SenderCompID", "TargetCompID"]
+
+    # A built child, not a pair: the document sent no `35=`, so the arrival
+    # record holds none and the wire re-emits exactly as it did before the
+    # type existed (decision 17 still holds).
+    wire = message.into_bytes(ord("|"))
+    assert b"35=" not in wire
+    assert b"MsgType" not in wire
+    assert wire.startswith(b"SessionInterface=com.ullink.ulbridge")
+
+
+def test_the_enriching_stream_fills_a_row_from_the_configuration_that_named_its_plugin(
+    bridge: FixRegistry,
+) -> None:
+    """A bridge states its two ends once; the lines behind it name only the plugin."""
+    codec = FixCodec(bridge)
+
+    def one(body: bytes) -> FixMsg:
+        return next(codec.parse_line(body))
+
+    named = "Router_OrderRouting"
+    config = one(LOGGED)
+
+    # Alone, a row naming a plugin states no comp ids and gains none: there
+    # is nothing yet to fill them from.
+    (bare,) = codec.enrich_messages([one(_plugin_row(named))])
+    assert bare.get_by_tag(49) is None
+    assert bare.get_by_tag(56) is None
+
+    # Behind the configuration that named it, the same row takes the
+    # session's two ends (decision 19).
+    filled = list(codec.enrich_messages([config, one(_plugin_row(named))]))
+    assert filled[0].field.name == "pluginconfig"
+    assert filled[1].by_tag(49).as_py() == "CLI.PROD.TRD"
+    assert filled[1].by_tag(56).as_py() == "ST.PROD"
+    # Not the begin string: every built message already fills tag 8 from the
+    # version its row was read at, so there is never one absent to fill.
+    assert filled[1].by_tag(8) == bare.by_tag(8)
+
+    # A row that stated its own 49 keeps it, which is what makes the pass
+    # idempotent; the one it did not state is still filled.
+    stated = f"MSGTYPE=8|PLUGINID={named}|SENDERCOMPID=ITS.OWN|".encode()
+    held = list(codec.enrich_messages([config, one(stated)]))[1]
+    assert held.by_tag(49).as_py() == "ITS.OWN"
+    assert held.by_tag(56).as_py() == "ST.PROD"
+
+    # A row naming a plugin no configuration named gains nothing, and so
+    # does one naming no plugin at all.
+    for untouched in (_plugin_row("Someone_Else"), b"MSGTYPE=8|ACCOUNT=ACCT-000117|"):
+        last = list(codec.enrich_messages([config, one(untouched)]))[1]
+        assert last.get_by_tag(49) is None
+        assert last.get_by_tag(56) is None
+
+    # The memory is the stream's: one message is not a stream, so the door
+    # that takes one remembers nothing and fills nothing.
+    assert codec.enrich_message(one(_plugin_row(named))).get_by_tag(49) is None
 
 
 def test_every_plugin_a_document_answers_for_crosses_both_ways(

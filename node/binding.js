@@ -3518,6 +3518,7 @@ const fix = Object.freeze({
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,
   pluginFields: binding.fixPluginFields,
+  pluginMessage: binding.fixPluginMessage,
   globalRegistry: binding.fixGlobalRegistryNative,
   installGlobalRegistry: binding.fixInstallGlobalRegistryNative,
 })

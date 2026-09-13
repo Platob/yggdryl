@@ -196,9 +196,14 @@ impl FixCodec {
     pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
         let schema = Self::row_field(source.schema().as_ref())?;
         let codec = self.clone();
-        let filled = self
-            .messages(source)
-            .map(move |held| held.and_then(|message| codec.enrich_message(message)));
+        // One memory over every batch the reader reads, because a capture
+        // split into batches is one capture: a configuration in the first
+        // batch fills a row in the twentieth (decision 19).
+        let mut plugins = super::enrich::Remembered::default();
+        let filled = self.messages(source).map(move |held| {
+            held.and_then(|message| codec.enrich_message(message))
+                .map(|message| plugins.fill(message))
+        });
         self.arrow_reader(schema, filled)
     }
 
@@ -638,6 +643,7 @@ impl Rows {
             fills: &fills,
             direction: direction.as_deref(),
             direction_pin: self.codec.direction(),
+            msgtype: None,
         };
         let messages = self.codec.parse_bytes_with(extras, &payload);
         // By position: the columns kept were decided from the schema, and a

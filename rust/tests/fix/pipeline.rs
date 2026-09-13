@@ -466,13 +466,16 @@ fn every_framed_line_fills_its_tag_columns_typed() {
         "a bridge row names its type"
     );
     // `unknown` names a frame, a bridge row or a document that states no
-    // type - never a line that states no frame (decision 16). The Jolokia
-    // answer is the one row here that states none; the capture's sentences
-    // used to be `unknown` rows too and are now no rows at all, which is
-    // what the five-row count says.
+    // type - never a line that states no frame (decision 16). The capture's
+    // sentences used to be `unknown` rows and are now no rows at all, which
+    // is what the five-row count says. The Jolokia answer used to be one
+    // too: it states no type of its own, and now the crate states one for
+    // it, because a plugin configuration is a message the crate registered
+    // (decision 19).
     assert_eq!(
-        msgtype[RESPONSE_ROW], None,
-        "a configuration document states no type"
+        msgtype[RESPONSE_ROW].as_deref(),
+        Some("UCFG"),
+        "a configuration is typed by the crate, not by the document"
     );
     assert_eq!(msgtype.len(), MESSAGES, "no sentence is a row");
 

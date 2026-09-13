@@ -81,7 +81,7 @@ line carries and nothing for a line that carries none.
 | a frame stating no checksum | one, ending where the next unmarked `8=` opens |
 | a bridge row, then a frame | two: the row is a message and the frame the next; a tag run behind a bridge row that opens no frame stays part of it, which is the mixed form a bridge writes |
 | a FIXML document | one, whatever prose a transport wrote in front of it |
-| a bulk [configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) | one per configuration a response named |
+| a bulk [configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) | one per configuration a response named, each reading as `pluginconfig` |
 | a document naming no configuration | none at all: an error-only answer, a request with no value, a wildcard that selected nothing, or a JSON body that is not a Jolokia answer |
 | a sentence | none at all |
 
@@ -101,7 +101,9 @@ it, so a space-separated frame still reads. `ACCOUNT=A1|SIDE=1` is a message and
 `After Enrichment -> ACCOUNT=A1 SIDE=1` is a sentence.
 
 `unknown` names a frame, a bridge row or a document that stated no type - never
-a line that stated no frame.
+a line that stated no frame, and never a
+[configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own),
+whose type the crate states where the document stated none.
 
 === "Rust"
 

@@ -553,7 +553,12 @@ fn add_fields_counts_what_arrived_and_what_folded() {
         .unwrap();
     assert_eq!(instrument.description(), Some("by name"));
     assert_eq!(names(instrument), ["Symbol"]);
-    assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
+    // The crate's own message is a component too, so it counts here beside
+    // `Instrument` and `Header`.
+    assert_eq!(
+        registry.definitions(FixCategory::Components).count(),
+        2 + super::crated_messages()
+    );
 
     // One mutation: a refusal in the middle writes nothing.
     let before = registry.clone();
@@ -1303,7 +1308,7 @@ fn message_codes_live_in_one_namespace() {
         names(registry.msgtype("venue_order").unwrap().as_field()),
         ["VenueID"]
     );
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
     assert_eq!(
         registry
             .definition(FixCategory::Components, "VenueOrder")
@@ -1327,7 +1332,7 @@ fn message_codes_live_in_one_namespace() {
     let order = registry.msgtype("D").unwrap();
     assert_eq!(order.name(), "NewOrderSingle");
     assert_eq!(names(order.as_field()), ["NoPartyIDs", "Parties", "Text"]);
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
     assert_eq!(
         FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
         registry
@@ -1342,7 +1347,7 @@ fn message_codes_live_in_one_namespace() {
     assert_eq!(target.merge_with(&source).unwrap(), (0, 0));
     assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(target.msgtype("VenueOrder").unwrap().as_str(), "D");
-    assert_eq!(target.msgtypes().count(), 2);
+    assert_eq!(target.msgtypes().count(), 2 + super::crated_messages());
     assert_eq!(
         names(target.msgtype("D").unwrap().as_field()),
         ["NoPartyIDs", "Parties"]
@@ -1367,7 +1372,7 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
             .unwrap()
     );
     assert_eq!(registry.msgtype("AlgoOrder").unwrap().as_str(), "D");
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(registry.msgtypes().count(), 2 + super::crated_messages());
     assert_eq!(registry.msgtype("D").unwrap().name(), "AlgoOrder");
     assert_eq!(registry.msgtype("NewOrderSingle").unwrap().as_str(), "D");
 

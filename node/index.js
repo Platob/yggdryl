@@ -560,6 +560,7 @@ module.exports.codecInferFormat = nativeBinding.codecInferFormat
 module.exports.codecNormalizeFormat = nativeBinding.codecNormalizeFormat
 module.exports.fixCrateFields = nativeBinding.fixCrateFields
 module.exports.fixPluginFields = nativeBinding.fixPluginFields
+module.exports.fixPluginMessage = nativeBinding.fixPluginMessage
 module.exports.fixSchema = nativeBinding.fixSchema
 module.exports.fixSchemaCarrying = nativeBinding.fixSchemaCarrying
 module.exports.fixSchemaTags = nativeBinding.fixSchemaTags

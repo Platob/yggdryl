@@ -411,6 +411,81 @@ pub fn fix_plugin_fields() -> Result<&'static [Field]> {
         })
 }
 
+/// The message type a plugin configuration is, built once.
+static MESSAGE: std::sync::LazyLock<Option<Field>> = std::sync::LazyLock::new(|| message().ok());
+
+/// The code FIX leaves to a user, and this crate spends on a configuration.
+///
+/// The specification reserves every type opening with `U` for messages it
+/// does not define, so a code here collides with no dictionary's own and
+/// needs no dictionary edited to be read (decision 19).
+pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");
+
+/// The `pluginconfig` component: what a configuration message is made of.
+///
+/// The plugin attributes beside the three fields FIX publishes that a
+/// configuration also states, which is the whole of it. The members are held
+/// by value, so registering the component states the shape of a `UCFG`
+/// message without registering its attributes as dictionary fields - two
+/// different questions, and [`FixRegistry::with_plugin_fields`] is the
+/// answer to the other one.
+fn message() -> Result<Field> {
+    let mut members: Vec<Field> = Vec::new();
+    // A message states its type, so the component carries the field that
+    // holds it: what a `UCFG` message is, is part of the message.
+    members.push(
+        msgtype_field()
+            .cloned()
+            .ok_or_else(|| crate::Error::InvalidRecord {
+                path: PLUGIN_DIALECT.into(),
+                reason: crate::text::expected_got("FIX's own MsgType", "a build failure"),
+            })?,
+    );
+    members.extend(fix_plugin_fields()?.iter().cloned());
+    for (name, tag) in [
+        ("BeginString", 8),
+        ("SenderCompID", 49),
+        ("TargetCompID", 56),
+    ] {
+        let mut field = DataType::utf8().nullable_field(name);
+        field.as_fix_mut().set_tag(tag)?;
+        members.push(field);
+    }
+    let mut message = DataType::from_fields(members)?.required_field(PLUGINCONFIG_CODE_NAME.1);
+    message.as_fix_mut().set_msgtype(PLUGINCONFIG_CODE_NAME.0)?;
+    Ok(message)
+}
+
+/// FIX's own `MsgType`, built here so a configuration can carry one.
+///
+/// A message states its type, and a registry that holds only the crate's own
+/// fields names no tag 35 to hang it on. The code the crate supplies is the
+/// crate's, so the field it lands in is the crate's too rather than
+/// something a dictionary has to publish first (decision 19).
+static MSGTYPE_FIELD: std::sync::LazyLock<Option<Field>> = std::sync::LazyLock::new(|| {
+    let mut field = DataType::utf8().nullable_field(super::MSGTYPE_TAG_NAME.1);
+    field.as_fix_mut().set_tag(super::MSGTYPE_TAG_NAME.0).ok()?;
+    Some(field)
+});
+
+/// The field a supplied message code is built into.
+pub(super) fn msgtype_field() -> Option<&'static Field> {
+    MSGTYPE_FIELD.as_ref()
+}
+
+/// The `pluginconfig` message component, for a registry to hold.
+///
+/// # Errors
+///
+/// Returns the schema grammar's refusal when the component does not build,
+/// which is a defect in this module rather than anything a caller did.
+pub fn fix_plugin_message() -> Result<&'static Field> {
+    MESSAGE.as_ref().ok_or_else(|| crate::Error::InvalidRecord {
+        path: PLUGIN_DIALECT.into(),
+        reason: crate::text::expected_got("the plugin message component", "a build failure"),
+    })
+}
+
 impl super::FixRegistry {
     /// Adds the plugin dictionary's scalar fields, one configuration per message.
     ///
@@ -426,6 +501,16 @@ impl super::FixRegistry {
     /// hold a field under one of these tags and names.
     pub fn with_plugin_fields(mut self) -> Result<Self> {
         self.add_fields(fix_plugin_fields()?.iter().cloned())?;
+        // The message type is registered beside the fields, where it belongs
+        // - and by `FixRegistry::new` too, so a registry that never came
+        // through here still has it (decision 19). Whichever ran first, the
+        // component is already there and this is not a second one.
+        if self.get_msgtype(PLUGINCONFIG_CODE_NAME.0).is_none() {
+            self.create_definition(
+                crate::FixCategory::Components,
+                fix_plugin_message()?.clone(),
+            )?;
+        }
         Ok(self)
     }
 }
@@ -697,7 +782,11 @@ impl Plugin {
             .as_ref()
             .map(|stamp| stamp.fills())
             .unwrap_or_default();
-        let extras = RowStamp::held(self.stamp.as_ref(), &fills);
+        let mut extras = RowStamp::held(self.stamp.as_ref(), &fills);
+        // What this message is, said by the crate rather than by the
+        // document: a configuration carries `35=UCFG` as a built child and
+        // reads as `pluginconfig` (decision 19).
+        extras.msgtype = Some(&PLUGINCONFIG_CODE_NAME);
         codec.build_pairs_with(&borrowed, extras)
     }
 

@@ -554,7 +554,7 @@ The root's children are the standard header in its declared order, the body as i
 
 ## What a message implied is filled in
 
-A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again.
+A venue sends what its counterparty needs and nothing more, so a row is routinely missing values the message itself already determines: a report stating `OrderQty` and `CumQty` has said what `LeavesQty` is, a fill stating `LastQty` and `LastPx` has said what it was worth, and a message naming its instrument by an ISIN has said which country issued it. Enrichment is a call over what the reader built: `enrich_message` fills one message, `enrich_messages` a stream of them, which fills a message from what an earlier one in the stream said too, [remembering the plugin configurations it passed](#a-stream-remembers-the-configurations-it-passed); and [`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) a stream of batches, without parsing anything again.
 
 Three things hold whatever the rule. Only the row is filled, never the entries, so `into_bytes` re-emits the wire byte for byte either way. A rule answers only where every input is stated and typed: an identifier no check digit closes, a CFI whose category several security types share and a security type outside every group the specification files answer nothing rather than a guess. And a stated value is never overwritten, which is what makes a second pass change nothing - a value derived once is a stated value the second time.
 
@@ -668,6 +668,153 @@ The rules run in one order, laid out so every chain ends in one pass: a `Securit
     assert.ok(reader.enrichMessage(held).equals(held))
     ```
 
+### A stream remembers the configurations it passed
+
+A bridge states a plugin's two ends once, in the
+[configuration](#a-bridge-configuration-is-a-dictionary-of-its-own) it printed
+at startup, and then writes ten million lines that name only the plugin. Those
+lines are about a session the reader has already read both ends of, so leaving
+them null makes every consumer join back to a document it would have to have
+kept. `enrich_messages` therefore remembers: every `pluginconfig` it passes is
+held under the plugin's `Name` (20013), and every later message whose
+[`pluginid`](#the-crates-own-columns) folds equal to a remembered name takes
+that configuration's `SenderCompID` (49) and `TargetCompID` (56).
+
+Not `BeginString` (8). Every built message fills it non-null from the version
+its row was read at, so a configuration's begin string would never find a
+message stating none, and a rule that can never fire is not written down. What
+a plugin's configuration says about its version, the row already says about
+itself.
+
+The rule the whole pass keeps holds here too: a stated value is never
+overwritten, so a line that spelled its own comp ids keeps them and the fill
+can only ever add what the capture already implied. A configuration passes
+untouched - it is the statement rather than a thing to fill - and one seen
+later replaces the one remembered for its name, because a bridge that
+reconfigures a session has said the later word. A message naming a plugin no
+configuration named is left alone, and so is one naming no plugin at all. The
+memory is the iterator's and dies with it: `enrich_message` takes one message,
+which is not a stream and has nothing to remember from, and over batches
+[`enrich_messages_arrow_reader`](arrow.md#filled-where-it-sits) is one memory
+the length of the reader.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixCodec, FixMsg, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root)?)?.with_plugin_fields()?;
+    let reader = FixCodec::new(Arc::new(registry));
+
+    // What the bridge printed at startup, and a line naming only the plugin.
+    let configuration = br#"{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"ULMSG_BROKER","SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG"},"status":200}"#;
+    let row = b"MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID=ULMSG_BROKER|";
+
+    let held: Vec<FixMsg> = reader
+        .enrich_messages([
+            reader.parse_line(configuration)?.next().expect("the configuration")?,
+            reader.parse_line(row)?.next().expect("the row")?,
+        ])
+        .collect::<yggdryl::Result<_>>()?;
+    // The configuration passed untouched; the line behind it took both ends.
+    assert_eq!(held[0].as_field().name(), "pluginconfig");
+    assert_eq!(held[1].by_tag(49)?.as_str(), Some("ULB_BKRBDG"));
+    assert_eq!(held[1].by_tag(56)?.as_str(), Some("ULB_PTBDG"));
+
+    // A line that stated its own sender keeps it; the one it left unsaid fills.
+    let stated = b"MSGTYPE=8|PLUGINID=ULMSG_BROKER|SENDERCOMPID=ITS.OWN|";
+    let kept = reader
+        .enrich_messages([
+            reader.parse_line(configuration)?.next().expect("the configuration")?,
+            reader.parse_line(stated)?.next().expect("the row")?,
+        ])
+        .last()
+        .expect("the row")?;
+    assert_eq!(kept.by_tag(49)?.as_str(), Some("ITS.OWN"));
+    assert_eq!(kept.by_tag(56)?.as_str(), Some("ULB_PTBDG"));
+
+    // One message is not a stream, so this door remembers nothing.
+    let alone = reader.enrich_message(reader.parse_line(row)?.next().expect("the row")?)?;
+    assert_eq!(alone.get_by_tag(49), None);
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    registry.with_plugin_fields()
+    reader = FixCodec(registry)
+
+    # What the bridge printed at startup, and a line naming only the plugin.
+    configuration = b'{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"ULMSG_BROKER","SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG"},"status":200}'
+    row = b"MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID=ULMSG_BROKER|"
+
+    held = list(reader.enrich_messages([
+        next(reader.parse_line(configuration)),
+        next(reader.parse_line(row)),
+    ]))
+    # The configuration passed untouched; the line behind it took both ends.
+    assert held[0].field.name == "pluginconfig"
+    assert held[1].by_tag(49).as_py() == "ULB_BKRBDG"
+    assert held[1].by_tag(56).as_py() == "ULB_PTBDG"
+
+    # A line that stated its own sender keeps it; the one it left unsaid fills.
+    stated = b"MSGTYPE=8|PLUGINID=ULMSG_BROKER|SENDERCOMPID=ITS.OWN|"
+    kept = list(reader.enrich_messages([
+        next(reader.parse_line(configuration)),
+        next(reader.parse_line(stated)),
+    ]))[-1]
+    assert kept.by_tag(49).as_py() == "ITS.OWN"
+    assert kept.by_tag(56).as_py() == "ULB_PTBDG"
+
+    # One message is not a stream, so this door remembers nothing.
+    assert reader.enrich_message(next(reader.parse_line(row))).get_by_tag(49) is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    registry.withPluginFields()
+    const reader = new fix.FixCodec(registry)
+
+    // What the bridge printed at startup, and a line naming only the plugin.
+    const configuration = Buffer.from('{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=ULMSG_BROKER,plugin-type=FIX,type=Plugin","type":"read"},"value":{"Name":"ULMSG_BROKER","SenderCompID":"ULB_BKRBDG","TargetCompID":"ULB_PTBDG"},"status":200}')
+    const row = Buffer.from('MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID=ULMSG_BROKER|')
+
+    const held = [...reader.enrichMessages([
+      reader.parseLine(configuration).next().value,
+      reader.parseLine(row).next().value,
+    ])]
+    // The configuration passed untouched; the line behind it took both ends.
+    assert.equal(held[0].field.name, 'pluginconfig')
+    assert.equal(held[1].byTag(49).asJs(), 'ULB_BKRBDG')
+    assert.equal(held[1].byTag(56).asJs(), 'ULB_PTBDG')
+
+    // A line that stated its own sender keeps it; the one it left unsaid fills.
+    const stated = Buffer.from('MSGTYPE=8|PLUGINID=ULMSG_BROKER|SENDERCOMPID=ITS.OWN|')
+    const kept = [...reader.enrichMessages([
+      reader.parseLine(configuration).next().value,
+      reader.parseLine(stated).next().value,
+    ])].pop()
+    assert.equal(kept.byTag(49).asJs(), 'ITS.OWN')
+    assert.equal(kept.byTag(56).asJs(), 'ULB_PTBDG')
+
+    // One message is not a stream, so this door remembers nothing.
+    assert.equal(reader.enrichMessage(reader.parseLine(row).next().value).getByTag(49), null)
+    ```
+
 ### Edges
 
 - A value the column refuses is silence, not a failure: `SecurityID` under source `4` spelling `XX0000000001`, whose check digit does not close it, leaves `isincode` null, and nothing downstream reads a country off it.
@@ -710,8 +857,33 @@ field `PluginState` (20019) and its `Version` is `PluginVersion` (20021). The
 row holds them under the dictionary's names; the arrival entry keeps the
 document's spelling, exactly as a line keeps what it wrote.
 
+A configuration is a message type of the crate's own: `pluginconfig`, whose
+wire code is `UCFG`. FIX reserves every code opening with `U` for the messages
+it does not define, so this one collides with no dictionary's own and no
+dictionary has to be edited for a configuration to read as what it is.
+`PLUGINCONFIG_CODE_NAME` is the pair, and `fix_plugin_message` the component
+it names: FIX's `MsgType` beside the plugin attributes and the three fields
+FIX publishes, which is the whole of what a configuration states.
+`FixRegistry::new` registers it, so every registry answers `UCFG` exactly as
+every registry holds the crate's own fields - a codec meeting a configuration
+cannot write a registry it shares, so the type is there before the first
+document arrives. A component holds its members by value, so a registry that
+never called `with_plugin_fields` still types a configuration's attributes
+from the message while still answering no `plugin` dialect and no
+`CurrentPort` by name: those are two questions and they keep two answers.
+
+The code is a built child rather than a pair. The exchange sent no `35=`, the
+arrival record is what the document stated, and the wire therefore re-emits
+byte for byte without one. What the message reads as is `pluginconfig`, the
+name the crate registered the code under, where a message typed off the wire
+keeps whatever the wire spelled - `D`, `8`, `ExecutionReport`. The two are
+different facts: a spelling a document wrote is the document's word and is
+kept verbatim, and a code the crate supplies is the crate's, which knows the
+name it registered it under.
+
 | Source | Flat message |
 | --- | --- |
+| the crate | `MsgType` (35) holding `UCFG`, built rather than arrived |
 | selected ObjectName | `SessionInterface` (20010), `MBeanType`, `PluginType` |
 | selected attribute map | typed fields such as `Name`, `CurrentPort`, `NeedReload`; `State` and `Version` land in `PluginState` and `PluginVersion` |
 
@@ -724,7 +896,8 @@ restating it.
 The first response below names two configurations, the first of them stating
 its `State` and `Version`. The second member is a request with no value: it
 names no configuration and therefore states no message. Parsing produces two
-messages, one per configuration a response named.
+messages, one per configuration a response named, each reading as
+`pluginconfig` and each re-emitting its own bytes with no `35=` among them.
 
 === "Rust"
 
@@ -758,6 +931,12 @@ messages, one per configuration a response named.
     assert_eq!(entry.key().as_bytes(), b"State");
     assert_eq!(Plugin::from_fixmsg(&message)?.name(), Some("A"));
     assert_eq!(Plugin::from_fixmsg(&message)?.state(), Some("logged"));
+    // The type is the crate's: every registry answers `UCFG`, and the code is
+    // a built child, so the wire the document sent still holds no `35=`.
+    assert_eq!(message.as_field().name(), "pluginconfig");
+    assert_eq!(message.by_tag(35)?.as_str(), Some("UCFG"));
+    assert_eq!(FixRegistry::new().msgtype("UCFG")?.name(), "pluginconfig");
+    assert!(!message.into_text('|')?.contains("35="));
     let mut count = 0;
     for message in codec.parse_line(body)? {
         message?;
@@ -799,6 +978,12 @@ messages, one per configuration a response named.
     assert (20_019, "State", "logged") in message.entries()
     assert Plugin.from_fixmsg(message).name == "A"
     assert Plugin.from_fixmsg(message).state == "logged"
+    # The type is the crate's: every registry answers `UCFG`, and the code is
+    # a built child, so the wire the document sent still holds no `35=`.
+    assert message.field.name == "pluginconfig"
+    assert message.by_tag(35).as_py() == "UCFG"
+    assert FixRegistry().msgtype("UCFG").name == "pluginconfig"
+    assert b"35=" not in message.into_bytes(ord("|"))
     assert sum(1 for _ in codec.parse_line(body)) == 2, "the request-only member named no configuration"
     # A body that is not a Jolokia answer names none, and refuses nothing.
     assert list(Plugin.from_json_bytes(b'{"a":1}')) == []
@@ -836,6 +1021,12 @@ messages, one per configuration a response named.
     assert.ok(message.arrivals().some(([tag, key]) => tag === 20_019 && key === 'State'))
     assert.equal(fix.Plugin.fromFixmsg(message).name, 'A')
     assert.equal(fix.Plugin.fromFixmsg(message).state, 'logged')
+    // The type is the crate's: every registry answers `UCFG`, and the code is
+    // a built child, so the wire the document sent still holds no `35=`.
+    assert.equal(message.field.name, 'pluginconfig')
+    assert.equal(message.byTag(35).asJs(), 'UCFG')
+    assert.equal(new fix.FixRegistry().msgtype('UCFG').name, 'pluginconfig')
+    assert.ok(!Buffer.from(message.intoBytes(124)).toString().includes('35='))
     assert.equal([...codec.parseLine(body)].length, 2, 'the request-only member named no configuration')
     // A body that is not a Jolokia answer names none, and refuses nothing.
     assert.equal([...fix.Plugin.fromJsonBytes(Buffer.from('{"a":1}'))].length, 0)

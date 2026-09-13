@@ -30,7 +30,14 @@ exchange wrapped them in is the transport's. :class:`Plugins` lazily yields
 the configurations a single or bulk document names, and none where it names
 none, and :meth:`Plugin.into_fixmsg` converts one to a flat typed message. :func:`fix_plugin_fields` is the dictionary
 those attributes type against, which
-:meth:`FixRegistry.with_plugin_fields` registers.
+:meth:`FixRegistry.with_plugin_fields` registers. :func:`fix_plugin_message`
+is the message they make up - the attributes beside FIX's own ``MsgType``,
+``BeginString``, ``SenderCompID`` and ``TargetCompID`` - and registering that
+one is nobody's choice: ``FixRegistry()`` holds it as it holds the crate's own
+fields, so a configuration reads as ``pluginconfig`` and answers
+``PLUGINCONFIG_CODE_NAME[0]`` on tag 35 whatever dictionary met it. The code
+is a fact the crate adds rather than one the document made, so it is a built
+child and the wire re-emits without a ``35=``.
 
 :class:`FixCodec` parses lines into messages and enriches messages, each
 as an iterator and each with an Arrow-batch twin. :meth:`FixCodec.parse_line`
@@ -59,8 +66,13 @@ or a bridge's ``seqNum`` for ``MsgSeqNum`` - fills that field where the frame
 did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
 :meth:`FixCodec.enrich_messages` fill what a message implied but did not carry,
 and :meth:`FixCodec.enrich_messages_arrow_reader` does the same over batches
-of rows without parsing them again, through the two converters every stage
-composes over batches: :meth:`FixCodec.messages` reads a batch back as the
+of rows without parsing them again. :meth:`FixCodec.enrich_messages`
+remembers every configuration it passes, by the plugin's ``Name``, and fills
+the ``SenderCompID`` and ``TargetCompID`` of a later message naming that
+plugin where it stated none of its own; :meth:`FixCodec.enrich_message` - one
+message, not a stream - remembers nothing. Both compose through the two
+converters every stage composes over batches:
+:meth:`FixCodec.messages` reads a batch back as the
 messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
 batches under a schema. :meth:`FixCodec.write_arrow_reader` is the encode
 direction, re-emitting every row's wire. A pin - ``version``,
@@ -99,7 +111,9 @@ A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
 and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every
 field the file produces, :meth:`FixRegistry.dialects` lists the names any
 field or definition carries, and ``PLUGIN_DIALECT`` is the one this crate
-stamps itself, on :func:`fix_plugin_fields`.
+stamps itself, on :func:`fix_plugin_fields`. A message type is not one:
+``pluginconfig`` is registered by every registry and carries no membership,
+because the code it answers to is the crate's own rather than a dictionary's.
 
 The registry stores scalar ``fields`` and named ``components`` and ``groups``;
 a message is a component carrying ``fix:msgtype``. Enum codes remain inline in
@@ -113,6 +127,7 @@ from __future__ import annotations
 
 from ._native import (
     PLUGIN_DIALECT,
+    PLUGINCONFIG_CODE_NAME,
     FixMsg,
     FixCodec,
     FixLifecycle,
@@ -127,12 +142,14 @@ from ._native import (
     fix_schema_carrying,
     fix_schema_tags,
     fix_plugin_fields,
+    fix_plugin_message,
     global_registry,
     install_global_registry,
 )
 
 __all__ = [
     "PLUGIN_DIALECT",
+    "PLUGINCONFIG_CODE_NAME",
     "FixMsg",
     "FixCodec",
     "FixLifecycle",
@@ -147,6 +164,7 @@ __all__ = [
     "fix_schema_carrying",
     "fix_schema_tags",
     "fix_plugin_fields",
+    "fix_plugin_message",
     "global_registry",
     "install_global_registry",
 ]

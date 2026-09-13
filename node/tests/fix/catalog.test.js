@@ -185,6 +185,9 @@ test('native category cursors release holds on exhaustion and early close', () =
   assert.equal(cursor.next().value.name, 'NewOrderSingle')
   assert.throws(() => registry.insert(tagged('Extra', 9000)), /shared/)
   assert.equal(cursor.next().value.name, 'Party')
+  // The crate's own message is behind them: every registry carries
+  // `pluginconfig` as it carries the crate's own fields (decision 19).
+  assert.equal(cursor.next().value.name, 'pluginconfig')
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)
   registry.insert(tagged('Extra', 9000))
@@ -201,8 +204,10 @@ test('message singleton indices distinguish names from another wire code', () =>
   registry.createDefinition('components', message('D', 'X'))
   registry.createDefinition('components', message('NewOrderSingle', 'D'))
   registry.createDefinition('components', message('BridgeReport', 'P Report Ack'))
+  // In name order, and the crate's own `pluginconfig` iterates among them:
+  // every registry has it before a caller creates anything (decision 19).
   const values = [...registry.msgtypes()]
-  assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D']])
+  assert.deepEqual(values.map(value => [value.name, value.asStr()]), [['BridgeReport', 'P Report Ack'], ['D', 'X'], ['NewOrderSingle', 'D'], ['pluginconfig', 'UCFG']])
   assert.equal(registry.msgtype('D').name, 'NewOrderSingle')
   assert.equal(registry.msgtype('bridgereport').asStr(), 'P Report Ack')
   assert.equal(registry.getMsgtype('p report ack'), null)
@@ -228,7 +233,7 @@ test('message singleton indices distinguish names from another wire code', () =>
   assert.equal(second.msgtype('D').name, 'AnotherOrder')
   assert.equal(second.msgtype('newordersingle').asStr(), 'D')
   assert.equal(second.msgtype('anotherorder').asStr(), 'D')
-  assert.equal([...second.msgtypes()].length, 4)
+  assert.equal([...second.msgtypes()].length, 5)
   const held = catalog().msgtype('D')
   assert.equal(held.getGroupByCounter(453).name, 'Parties')
   assert.equal(held.getGroupByCounter(999), null)

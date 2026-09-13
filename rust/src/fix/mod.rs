@@ -195,7 +195,10 @@ pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
 pub use messages::FixMessages;
 pub use msg::FixMsg;
 pub use msgtype::MsgType;
-pub use plugin::{PLUGIN_DIALECT, PLUGIN_TAG_MIN, Plugin, Plugins, fix_plugin_fields};
+pub use plugin::{
+    PLUGIN_DIALECT, PLUGIN_TAG_MIN, PLUGINCONFIG_CODE_NAME, Plugin, Plugins, fix_plugin_fields,
+    fix_plugin_message,
+};
 pub use registry::{FixFieldIter, FixRegistry};
 pub use replacements::{
     FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,

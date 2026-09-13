@@ -704,7 +704,7 @@ pub struct FixCodec
   pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; a payload that was there and would not parse is one empty `unknown` message, which is what keeps a row's content from failing a batch)
   pub fn parse_text_lines<I>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Borrow<TextLine>
   pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg>  (never fails; the `Result` is the shape every stage answers in)
-  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
+  pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>  (stateful: it remembers every `pluginconfig` it passes under the plugin's folded Name - tag 20013, not PluginType - and fills SenderCompID and TargetCompID on a later message whose PluginId folds equal to one it remembers, never over a value that message stated; a later configuration replaces the one held for its name. Not BeginString: every built message already fills tag 8 from the version its row was read at, so that fill could never fire. The memory dies with the iterator, and `enrich_message` - one message, not a stream - has none; decision 19)
   pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = FixMsg>
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -712,7 +712,7 @@ pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
 ### yggdryl::fix::batch  [rust\src\fix\batch.rs]  (arrow feature)
 impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row; batches close on the payload column's raw bytes read once per input batch)
-  pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, filled FIX rows out under the same schema; no re-parse)
+  pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, filled FIX rows out under the same schema; no re-parse; one memory of the configurations passed crosses every batch, because a capture split into batches is one capture; decision 19)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
   pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator<Item = Result<FixMsg>>, I::IntoIter: Send + 'static  (each message through `FixMsg::into_row`; batches close on the arrival record's raw bytes)
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
@@ -952,7 +952,9 @@ impl FixRegistry
 ### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
 pub const PLUGIN_DIALECT: &str = "plugin";  (the membership every field here carries in `fix:branches`)
 pub const PLUGIN_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
+pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read; decision 19)
 pub fn fix_plugin_fields() -> Result<&'static [Field]>
+pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for; decision 19)
 impl FixRegistry
   pub fn with_plugin_fields(mut self) -> Result<Self>
 impl FixCodec

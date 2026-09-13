@@ -219,6 +219,16 @@ fn states_no_envelope(message: &yggdryl::FixMsg) {
 /// equal.
 const SESSIONINTERFACE_TAG: i32 = 20_010;
 
+/// How many message types every registry holds before a test registers one.
+///
+/// The crate's own, which `FixRegistry::new` seeds beside its fields exactly
+/// as it seeds `pluginid`: `pluginconfig` is the one of them (decision 19).
+/// Counted rather than spelled `1`, the way [`crated`] counts the fields, so
+/// every total below stays true of the next one.
+fn crated_messages() -> usize {
+    usize::from(yggdryl::fix_plugin_message().is_ok())
+}
+
 const ISOLATED_FIX_TEST: &str = "YGGDRYL_ISOLATED_FIX_TEST";
 
 /// Run a process-global case in a child containing only that selected test.

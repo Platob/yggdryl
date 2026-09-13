@@ -337,6 +337,8 @@ const at: number | null = fixedSchema.indexOf('msgtype')
 const fixedRow: Scalar = fromText.intoRow(fixedSchema)
 const fixedSchemaTags: number[] = fix.schemaTags()
 const crateFields: Field[] = fix.crateFields()
+const pluginVocabulary: Field[] = fix.pluginFields()
+const pluginComponent: Field = fix.pluginMessage()
 
 // Everything the core derives about a message.
 const digest: Buffer = fromText.digest()
@@ -366,6 +368,8 @@ void fixedRow
 void fixedSchema
 void fixedSchemaTags
 void crateFields
+void pluginVocabulary
+void pluginComponent
 void digest
 void ticker
 void clock

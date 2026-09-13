@@ -290,6 +290,15 @@ fn is_crate_field(field: &Field) -> bool {
         .is_some_and(super::is_crate_tag)
 }
 
+/// Whether one definition is the crate's own message.
+///
+/// `pluginconfig` is to the components what the crate's own fields are to
+/// the fields: every registry holds it from construction, so a store that
+/// wrote it would claim to define what it only inherited (decision 19).
+fn is_crate_message(field: &Field) -> bool {
+    field.name() == super::PLUGINCONFIG_CODE_NAME.1
+}
+
 impl FixRegistry {
     /// Reads a complete registry snapshot from JSON.
     ///
@@ -337,8 +346,11 @@ impl FixRegistry {
                     .map(Field::into_value)
                     .collect()
             } else {
+                // And the crate's own message is not a store's to state,
+                // for the reason its own fields are not.
                 self.catalog
                     .iter(category)
+                    .filter(|field| !is_crate_message(field))
                     .cloned()
                     .map(|field| compact(field, true).map(Field::into_value))
                     .collect::<Result<Vec<_>>>()?
@@ -385,6 +397,11 @@ impl FixRegistry {
                     }
                     registry.create_definition(category, field)?;
                 } else {
+                    // Likewise a snapshot that states the crate's own
+                    // message: read past, never over the held copy.
+                    if is_crate_message(&field) {
+                        continue;
+                    }
                     let key = definition_key(category, &field);
                     if raw.insert(key, field).is_some() {
                         return Err(Error::conflict(
@@ -612,6 +629,11 @@ impl FixRegistry {
             );
         }
         for entry in self.catalog.all() {
+            // And the crate's own message, for the reason its own fields
+            // are skipped above.
+            if is_crate_message(entry.field.as_field()) {
+                continue;
+            }
             let path = format!("{}/{}.json", entry.category, entry.field.name());
             documents.insert(
                 path,

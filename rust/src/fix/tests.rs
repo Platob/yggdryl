@@ -88,6 +88,14 @@ fn crated() -> usize {
     crate::fix_crate_fields().unwrap().len()
 }
 
+/// How many message types every registry holds before a test registers one:
+/// the crate's own, which `FixRegistry::new` seeds beside its fields.
+/// `pluginconfig` is the one of them (decision 19), and counting rather than
+/// spelling `1` keeps every total below true of the next one too.
+fn crated_messages() -> usize {
+    usize::from(crate::fix_plugin_message().is_ok())
+}
+
 /// The crate's own field names, in the order every registry iterates them:
 /// last, because their tags are above every tag a test claims.
 fn crate_names() -> Vec<&'static str> {
@@ -607,7 +615,10 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     );
     assert_states_no_envelope(&rebuilt);
     // A dictionary without ULBridge's fields keeps every key rather than
-    // dropping it: a venue sends fields no dictionary has.
+    // dropping it: a venue sends fields no dictionary has. And a registry
+    // that never registered the plugin fields still types these, because
+    // `pluginconfig` is the crate's own and every registry has it, and a
+    // component holds its members by value (decision 19).
     let bare = crate::FixCodec::new(Arc::new(FixRegistry::new()));
     let plain = bare
         .parse_line(PLUGIN_WILDCARD)
@@ -617,14 +628,24 @@ fn a_wildcard_read_is_one_flat_message_per_mbean() {
     assert_eq!(plain.len(), 2);
     assert!(plain[0].get_by_name("sessioninterface").is_some());
     assert!(plain[0].get_by_name("Name").is_some());
-    // Kept, but explained by nothing: a dictionary without these fields
-    // names no tag for any key the document stated.
-    assert!(!plain[0].entries().is_empty());
-    assert!(
-        plain[0].entries().iter().all(|entry| entry.tag() == 0),
-        "{:?}",
-        plain[0].entries(),
+    assert_eq!(plain[0].as_field().name(), crate::PLUGINCONFIG_CODE_NAME.1);
+    assert_eq!(
+        plain[0]
+            .by_tag(crate::fix::MSGTYPE_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some(crate::PLUGINCONFIG_CODE_NAME.0)
     );
+    assert_eq!(
+        plain[0].by_name("SessionInterface").unwrap().as_str(),
+        Some(
+            "com.ullink.ulbridge.sessioninterfaces.plugins:name=A,plugin-type=FIX,type=ConfigurationPlugin"
+        )
+    );
+    // The message shapes them; the dictionary still does not hold them, and
+    // those are two different questions with two different answers.
+    assert!(bare.registry().get_field_by_tag(20_010).is_none());
+    assert!(bare.registry().dialects().is_empty());
     assert_states_no_envelope(&plain[0]);
 }
 
@@ -782,14 +803,143 @@ fn a_body_that_is_no_jolokia_answer_names_no_plugin_and_refuses_nothing() {
     }
 }
 
+/// A bridge row on one plugin, with no comp ids of its own.
+fn plugin_row(plugin: &str) -> Vec<u8> {
+    format!("MSGTYPE=8|ACCOUNT=ACCT-000117|PLUGINID={plugin}|").into_bytes()
+}
+
+#[test]
+fn a_configuration_is_a_message_the_crate_registered() {
+    let codec = plugin_codec();
+    let msg = codec
+        .parse_line(PLUGIN_SINGLE)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+
+    // The type is the crate's, and the code the crate spends on it.
+    assert_eq!(msg.as_field().name(), crate::PLUGINCONFIG_CODE_NAME.1);
+    assert_eq!(msg.as_field().name(), "pluginconfig");
+    assert_eq!(
+        msg.by_tag(super::MSGTYPE_TAG_NAME.0).unwrap().as_str(),
+        Some("UCFG")
+    );
+    // Every registry has it, because the crate registers it beside its own
+    // fields: a codec meeting a document cannot write a shared registry.
+    assert_eq!(
+        FixRegistry::new().msgtype("UCFG").unwrap().name(),
+        "pluginconfig"
+    );
+
+    // A built child, not a pair: the document sent no `35=`, so the arrival
+    // record does not hold one and the wire re-emits exactly as it did
+    // before the type existed (decision 17 still holds).
+    assert!(
+        msg.entries().iter().all(|entry| entry.tag() != 35),
+        "{:?}",
+        msg.entries()
+    );
+    let wire = String::from_utf8(msg.into_bytes(b'|')).unwrap();
+    assert!(!wire.contains("35="), "{wire}");
+    assert!(!wire.contains("MsgType"), "{wire}");
+    assert!(wire.starts_with("SessionInterface="), "{wire}");
+}
+
+#[test]
+fn the_enriching_stream_fills_a_row_from_the_configuration_that_named_its_plugin() {
+    let codec = plugin_codec();
+    let one = |body: &[u8]| codec.parse_line(body).unwrap().next().unwrap().unwrap();
+    let config = one(PLUGIN_SINGLE);
+    let named = "ULMSG_BROKER_TO_POSTTRADE";
+
+    // Alone, a row naming a plugin states no comp ids and gains none: there
+    // is nothing yet to fill them from.
+    let bare = codec
+        .enrich_messages([one(&plugin_row(named))])
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(bare.get_by_tag(49), None);
+
+    // Behind the configuration that named it, the same row takes the
+    // session's two ends (decision 19).
+    let filled: Vec<crate::FixMsg> = codec
+        .enrich_messages([config.clone(), one(&plugin_row(named))])
+        .collect::<crate::Result<Vec<_>>>()
+        .unwrap();
+    assert_eq!(filled[1].by_tag(49).unwrap().as_str(), Some("ULB_BKRBDG"));
+    assert_eq!(filled[1].by_tag(56).unwrap().as_str(), Some("ULB_PTBDG"));
+    // Not the begin string: every built message already fills tag 8 from the
+    // version its row was read at, so there is never one absent to fill.
+    assert_eq!(bare.by_tag(8).unwrap(), filled[1].by_tag(8).unwrap());
+    // The configuration itself is the statement, and passes untouched.
+    assert_eq!(filled[0].as_field().name(), "pluginconfig");
+
+    // A row naming a plugin no configuration named is left alone, which is
+    // what the corpus does with every plugin the log never configured.
+    let other = codec
+        .enrich_messages([config.clone(), one(&plugin_row("Someone_Else"))])
+        .last()
+        .unwrap()
+        .unwrap();
+    assert_eq!(other.get_by_tag(49), None);
+    // And so is a message with no plugin named at all.
+    let anonymous = codec
+        .enrich_messages([config.clone(), one(b"MSGTYPE=8|ACCOUNT=ACCT-000117|")])
+        .last()
+        .unwrap()
+        .unwrap();
+    assert_eq!(anonymous.get_by_tag(49), None);
+}
+
+#[test]
+fn a_fill_never_overwrites_and_a_later_configuration_replaces_the_one_before_it() {
+    let codec = plugin_codec();
+    let one = |body: &[u8]| codec.parse_line(body).unwrap().next().unwrap().unwrap();
+    let named = "ULMSG_BROKER_TO_POSTTRADE";
+    let config = one(PLUGIN_SINGLE);
+
+    // A row that stated its own 49 keeps it: a fill never lands over a value
+    // the message already stated, which is what makes the pass idempotent.
+    let stated = format!("MSGTYPE=8|PLUGINID={named}|SENDERCOMPID=ITS.OWN|").into_bytes();
+    let held = codec
+        .enrich_messages([config.clone(), one(&stated)])
+        .last()
+        .unwrap()
+        .unwrap();
+    assert_eq!(held.by_tag(49).unwrap().as_str(), Some("ITS.OWN"));
+    // The two it did not state are still filled.
+    assert_eq!(held.by_tag(56).unwrap().as_str(), Some("ULB_PTBDG"));
+
+    // A second configuration for one plugin replaces the first: a bridge
+    // reconfigures a session and the later word is the true one.
+    let moved = String::from_utf8(PLUGIN_SINGLE.to_vec())
+        .unwrap()
+        .replace("ULB_PTBDG", "ULB_MOVED");
+    let filled = codec
+        .enrich_messages([config, one(moved.as_bytes()), one(&plugin_row(named))])
+        .last()
+        .unwrap()
+        .unwrap();
+    assert_eq!(filled.by_tag(56).unwrap().as_str(), Some("ULB_MOVED"));
+
+    // One message is not a stream, so the door that takes one remembers
+    // nothing and fills nothing.
+    let alone = codec.enrich_message(one(&plugin_row(named))).unwrap();
+    assert_eq!(alone.get_by_tag(49), None);
+}
+
 #[test]
 fn plugin_fields_are_a_dictionary_of_their_own() {
     let held = crate::fix_plugin_fields().unwrap();
     // The membership is text, and text is hashed: a registry carrying these
     // fields digests to this and to nothing else, so the one value decision
-    // 18's rename moves is stated here rather than left to be discovered.
+    // 18's rename moved is stated here rather than left to be discovered.
+    // Decision 19 moved it again, and for the same reason: every registry
+    // now also carries the `pluginconfig` component, which is more text.
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
-    assert_eq!(carrying.stable_hash(), 4_011_410_089_001_341_530);
+    assert_eq!(carrying.stable_hash(), 13_635_197_835_649_938_560);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -1217,7 +1367,7 @@ fn registering_a_message_type_names_it_describes_it_and_never_rewrites_it() {
         .register_msgtype("P Report Ack", Some("allocationreportack"), Some("Other"))
         .unwrap();
     assert_eq!(code(&registry), initial);
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(registry.msgtypes().count(), crated_messages() + 2);
 
     registry
         .register_msgtype("D", None, Some("Order - Single"))
@@ -1545,7 +1695,7 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
             .add_definition(FixCategory::Components, message("new_order_single", "D"))
             .unwrap()
     );
-    assert_eq!(registry.msgtypes().count(), 1);
+    assert_eq!(registry.msgtypes().count(), crated_messages() + 1);
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
 
     // Under another name it is a second message, whose bare code answers
@@ -1555,15 +1705,17 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
             .add_definition(FixCategory::Components, message("VenueOrder", "D"))
             .unwrap()
     );
-    assert_eq!(registry.msgtypes().count(), 2);
+    assert_eq!(registry.msgtypes().count(), crated_messages() + 2);
     assert_eq!(registry.msgtype("D").unwrap().name(), "NewOrderSingle");
     assert_eq!(registry.msgtype("VenueOrder").unwrap().name(), "VenueOrder");
     assert_eq!(registry.msgtype("venue_order").unwrap().as_str(), "D");
     assert_eq!(registry.msgtype("neworder_single").unwrap().as_str(), "D");
+    // The two this test added, behind the one every registry starts with.
     assert_eq!(
         registry
             .definitions(FixCategory::Components)
             .map(Field::name)
+            .filter(|name| *name != crate::PLUGINCONFIG_CODE_NAME.1)
             .collect::<Vec<_>>(),
         ["NewOrderSingle", "VenueOrder"]
     );
@@ -4641,8 +4793,13 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     }
     assert_eq!(groups.len(), 580);
     assert_eq!(entries.len(), 580);
-    assert_eq!(registry.definitions(FixCategory::Components).count(), 928);
-    assert_eq!(registry.msgtypes().count(), 181);
+    // The shipped dictionary's own, beside the crate's `pluginconfig`,
+    // which every registry carries (decision 19).
+    assert_eq!(
+        registry.definitions(FixCategory::Components).count(),
+        928 + crated_messages()
+    );
+    assert_eq!(registry.msgtypes().count(), 181 + crated_messages());
 }
 
 #[test]

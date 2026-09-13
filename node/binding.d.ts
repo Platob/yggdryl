@@ -486,7 +486,14 @@ declare module './index' {
     parseLines(lines: Iterable<string | ArrayBufferLike | ArrayBufferView>): FixMessages
     /** A stream of lines, pulled one at a time; each as `parseTextLine` reads it. */
     parseTextLines(lines: Iterable<TextLine>): FixMessages
-    /** A stream of messages filled with what each implies, one at a time. */
+    /**
+     * A stream of messages filled with what each implies, one at a time,
+     * remembering every `pluginconfig` it passes by the plugin's `Name`: a
+     * later message naming that plugin takes its `SenderCompID` and
+     * `TargetCompID` where it stated none of its own. The memory dies with
+     * the iterator, and `enrichMessage` - one message, not a stream - has
+     * none.
+     */
     enrichMessages(messages: Iterable<FixMsg>): FixMessages
     /** One lifecycle over a whole stream of messages, one at a time. */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
@@ -3060,6 +3067,14 @@ export interface Fix {
   crateFields(): Field[]
   /** The native ULBridge scalar definitions. */
   pluginFields(): Field[]
+  /**
+   * The message those definitions make up: FIX's own `MsgType` beside every
+   * plugin attribute and the `BeginString`, `SenderCompID` and
+   * `TargetCompID` a configuration also states. Its name is the type a
+   * configuration reads as and `field.fix.msgtype` the code it answers on
+   * tag 35; every registry holds it from construction.
+   */
+  pluginMessage(): Field
   /** The process-wide registry, loading it on the first call. */
   globalRegistry(): FixRegistry
   /** Install the process-wide registry before anything resolves it. */

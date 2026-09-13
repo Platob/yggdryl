@@ -16,7 +16,9 @@ use crate::{Error, Result};
 /// let mut registry = FixRegistry::new();
 /// let component = DataType::from_fields([])?.required_field("Party");
 /// registry.create_definition(FixCategory::Components, component)?;
-/// assert_eq!(registry.definitions(FixCategory::Components).count(), 1);
+/// // Beside the crate's own `pluginconfig`, which every registry holds
+/// // from construction as it holds the crate's own fields (decision 19).
+/// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
 /// assert!(registry.get_field("Party").is_none());
 /// # Ok(())
 /// # }

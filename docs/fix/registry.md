@@ -26,6 +26,7 @@
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
 | Crate fields | `new()` holds this crate's [twenty fields](capture.md#the-crates-own-columns), standard tags from 65000, before anything is inserted, so every registry - loaded, built or left empty - resolves `timestamp` and `sendersessionid`; a [store](store.md) never writes them and reads past a stored copy |
+| Crate message | `new()` holds the one message type the crate defines beside them, [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) under the code `UCFG`, because a codec meeting a plugin configuration cannot write the registry it shares; its members are held by value, so the component states the shape of a `UCFG` message without registering the plugin attributes as fields of this dictionary |
 
 ## Use
 
@@ -876,7 +877,7 @@ A CBlock is read for what it says. A real one is megabytes over hundreds of thou
     assert.equal(message.compare(message.clone()), 0)
     ```
 
-Registration updates tag 35's inline vocabulary and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
+Registration updates tag 35's inline vocabulary and, if no message owns that code, creates an empty component carrying it in `components`. Codes may contain spaces and have no artificial width limit; empty text and control characters are refused. One code answers before a caller registers anything: `UCFG`, the [plugin configuration](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) the crate defines, which `new()` seeds beside the crate's own fields. Python's `message.field` is read-only, while Node `asField()` returns an independent mutable projection that cannot alter the singleton.
 
 ## One default registry per process
 
@@ -938,7 +939,7 @@ namespace scan already found, so nothing is looked for twice.
 
 ### A bridge configuration is a shape the codec recognizes
 
-An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `Plugins` and `FixMessages`; each configuration a response named becomes one flat typed message, and a response that named none - an error-only answer, a request with no value, a wildcard that selected nothing - becomes no message at all, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_plugin_fields` registers them, every one a member of `PLUGIN_DIALECT` (`plugin`) with tags inside the range `PLUGIN_TAG_MIN` (20001) floors, the four the Jolokia envelope held retired rather than reused so the smallest one defined is `SessionInterface` (20010) - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
+An ObjectName's `type=` property supplies its raw configuration type; otherwise the request operation supplies it. Bulk and wildcard documents expand lazily through `Plugins` and `FixMessages`; each configuration a response named becomes one flat [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) message, and a response that named none - an error-only answer, a request with no value, a wildcard that selected nothing - becomes no message at all, as described in [Capture](capture.md). The bridge's attributes are a dictionary of their own - `with_plugin_fields` registers them, every one a member of `PLUGIN_DIALECT` (`plugin`) with tags inside the range `PLUGIN_TAG_MIN` (20001) floors, the four the Jolokia envelope held retired rather than reused so the smallest one defined is `SessionInterface` (20010) - and what FIX publishes keeps FIX's tags: `SenderCompID`, `TargetCompID` and `BeginString` are 49, 56 and 8. Every registry already holds the crate's `state` and `version`, so the document's `State` and `Version` attributes are the fields `PluginState` (20019) and `PluginVersion` (20021): the row holds them under those names, and the arrival entry keeps the document's spelling.
 
 ### A direction is what the rules on tag 385 read in front of the payload
 

@@ -763,6 +763,85 @@ fn single_fill(msg: &FixMsg) -> bool {
     }
 }
 
+/// What a stream of messages remembers as it passes them.
+///
+/// A bridge states a plugin's comp ids once, in the configuration it printed
+/// at startup, and then writes lines that name only the plugin. Those lines
+/// are about a session whose two ends the reader has already read, so the
+/// pass that fills what a message left unsaid can fill them too - from the
+/// configuration, by name, and never over a value the message stated
+/// (decision 19).
+///
+/// The memory is one entry per plugin, replaced when a later configuration
+/// names it again, and it dies with the iterator that holds it.
+#[derive(Debug, Default)]
+pub(super) struct Remembered {
+    /// The plugin's folded `Name`, beside the two ends its configuration
+    /// named: `SenderCompID` and `TargetCompID`.
+    plugins: std::collections::HashMap<String, [Option<Scalar>; 2]>,
+}
+
+/// The fields a configuration answers for on a later message.
+///
+/// Not `BeginString`: every built message fills tag 8 non-null from the
+/// version its row was read at, so a configuration's would never find a
+/// message stating none (decision 19).
+const REMEMBERED_TAGS: [i32; 2] = [49, 56];
+
+impl Remembered {
+    /// Reads one message, and fills it from what an earlier one said.
+    ///
+    /// A `pluginconfig` is remembered under its `Name` and passed on
+    /// untouched: it is the statement, not a thing to fill. Anything else
+    /// naming a plugin some configuration named takes that configuration's
+    /// comp ids where it stated none of its own.
+    pub(super) fn fill(&mut self, msg: FixMsg) -> FixMsg {
+        if msg.as_field().name() == super::PLUGINCONFIG_CODE_NAME.1 {
+            self.remember(&msg);
+            return msg;
+        }
+        let Some(named) = msg
+            .get_by_tag(super::PLUGINID_TAG_NAME.0)
+            .and_then(Scalar::as_str)
+        else {
+            return msg;
+        };
+        let Some(held) = self.plugins.get(&crate::types::normalized(named)) else {
+            return msg;
+        };
+        let mut msg = msg;
+        for (tag, value) in REMEMBERED_TAGS.iter().zip(held) {
+            let Some(value) = value else {
+                continue;
+            };
+            // A stated value is never overwritten, which is the rule this
+            // whole pass keeps.
+            if msg
+                .get_by_tag(*tag)
+                .is_some_and(|held| held != &Scalar::Null)
+            {
+                continue;
+            }
+            let _ = msg.set(*tag, value.clone());
+        }
+        msg
+    }
+
+    /// Holds what one configuration said, replacing what an earlier one did.
+    fn remember(&mut self, msg: &FixMsg) {
+        let Some(name) = msg.get_by_name("Name").and_then(Scalar::as_str) else {
+            return;
+        };
+        let stated = |tag: i32| {
+            msg.get_by_tag(tag)
+                .filter(|value| *value != &Scalar::Null)
+                .cloned()
+        };
+        self.plugins
+            .insert(crate::types::normalized(name), [stated(49), stated(56)]);
+    }
+}
+
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
 ///
 /// Every answer lands through [`FixMsg::set`]: a row already holding the tag

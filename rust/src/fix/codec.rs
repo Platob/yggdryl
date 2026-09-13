@@ -883,6 +883,7 @@ impl FixCodec {
             fills: &fills,
             direction: None,
             direction_pin: None,
+            msgtype: None,
         };
         let page = line.body_bytes();
         if page.is_empty() {
@@ -1582,19 +1583,30 @@ impl FixCodec {
         Ok(super::enrich::enrich(&self.registry, message))
     }
 
-    /// Fills a stream of messages, lazily.
+    /// Fills a stream of messages, lazily, remembering what it passes.
     ///
     /// Nothing is collected: the iterator is the stream, so a capture of ten
     /// million messages costs one at a time. [`Self::enrich_messages_arrow_reader`]
     /// is the same pass over batches of rows.
+    ///
+    /// What the stream remembers is every `pluginconfig` it passes, by the
+    /// plugin's `Name`: a later message naming that plugin takes its
+    /// `SenderCompID` and `TargetCompID` where it stated none of its own
+    /// (decision 19). Not its `BeginString` - every built message already
+    /// fills tag 8 from the version its row was read at, so there is never
+    /// one absent to fill. A bridge says a session's two ends once, in
+    /// the configuration it printed at startup, and every line after it names
+    /// only the plugin. The memory dies with the iterator, and
+    /// [`Self::enrich_message`] - one message, not a stream - has none.
     pub fn enrich_messages<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I>
     where
         I: IntoIterator<Item = FixMsg>,
     {
         let registry = Arc::clone(&self.registry);
+        let mut plugins = super::enrich::Remembered::default();
         messages
             .into_iter()
-            .map(move |message| Ok(super::enrich::enrich(&registry, message)))
+            .map(move |message| Ok(plugins.fill(super::enrich::enrich(&registry, message))))
     }
 
     /// Stamps a stream of messages with the identities it implies, in order.
@@ -1672,11 +1684,17 @@ impl FixCodec {
         // The version is the row's, else the pin, else what the line implies.
         let pinned = extras.version.or(self.version);
         let version = pinned.or_else(|| self.infer_version(pairs));
-        let msgtype = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
-
-        let message = msgtype
+        // What the payload spelled, else the code the reader supplies for a
+        // payload that states none of its own (decision 19). A stated one
+        // wins, as a stated value always does.
+        let stated = msgtype_of(pairs.iter().map(|pair| (pair.key(), pair.value())));
+        let supplied = stated.is_none().then_some(extras.msgtype).flatten();
+        // Borrowed either way: the code decides the message and names the
+        // root, and neither reading owns a string a build would pay for.
+        let code = stated
             .as_deref()
-            .and_then(|code| self.declared_message(code));
+            .or_else(|| supplied.map(|(code, _)| *code));
+        let message = code.and_then(|code| self.declared_message(code));
         let mut builder = Builder::new(
             &self.registry,
             message,
@@ -1705,7 +1723,32 @@ impl FixCodec {
                 value: &value,
             });
         }
-        let built = builder.finish(root_name(msgtype.as_deref()).as_str(), extras.clock)?;
+        // A code the crate supplied is a built child rather than a pair: the
+        // arrival record is what the payload stated, and the payload sent no
+        // `35=`. The root then takes the name the crate registered the code
+        // under, where a spelling the wire wrote is kept as the wire's own
+        // word (decision 19).
+        if let Some((code, name)) = supplied {
+            let value = Scalar::from(*code);
+            // The dictionary's own `MsgType` where it publishes one, else
+            // the crate's: a registry holding only the crate's fields names
+            // no tag 35, and the code is the crate's to state either way.
+            let field = self
+                .registry
+                .field(super::MSGTYPE_TAG_NAME.0)
+                .ok()
+                .or_else(|| super::plugin::msgtype_field());
+            if let Some(field) = field {
+                builder.fill(&Fill {
+                    field,
+                    tag: super::MSGTYPE_TAG_NAME.0,
+                    value: &value,
+                });
+            }
+            let built = builder.finish(name, extras.clock)?;
+            return Ok(FixMsg::from_built(Arc::clone(&self.registry), built));
+        }
+        let built = builder.finish(root_name(stated.as_deref()).as_str(), extras.clock)?;
         Ok(FixMsg::from_built(Arc::clone(&self.registry), built))
     }
 

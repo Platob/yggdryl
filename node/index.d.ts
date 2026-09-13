@@ -5218,6 +5218,18 @@ export interface FixDirection {
 export declare function fixPluginFields(): Array<JsField>
 
 /**
+ * The message a plugin configuration is: the `pluginconfig` component.
+ *
+ * FIX's own `MsgType` beside every plugin attribute and the `BeginString`,
+ * `SenderCompID` and `TargetCompID` a configuration also states. Its name is
+ * the type a configuration reads as and `field.fix.msgtype` the wire code it
+ * answers on tag 35. Registering it is nobody's choice: every registry holds
+ * it as it holds the crate's own fields, so a configuration reads as itself
+ * whatever dictionary met it.
+ */
+export declare function fixPluginMessage(): JsField
+
+/**
  * The fixed root every message answers as, built from one dictionary.
  *
  * Header, the fields a consumer reads, the groups worth persisting whole, the

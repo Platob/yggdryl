@@ -327,6 +327,15 @@ impl FixRegistry {
         for field in super::fix_crate_fields().unwrap_or_default() {
             let _ = registry.insert(field.clone());
         }
+        // The crate's own message type, beside the crate's own fields: a
+        // codec meeting a plugin configuration cannot write a shared
+        // registry, so `pluginconfig` has to be here before the first
+        // document arrives (decision 19). Its members are held by value, so
+        // this states the shape of a `UCFG` message without registering the
+        // plugin attributes as fields of this dictionary.
+        if let Ok(message) = super::plugin::fix_plugin_message() {
+            let _ = registry.create_definition(crate::FixCategory::Components, message.clone());
+        }
         registry
     }
 
@@ -915,7 +924,8 @@ impl FixRegistry {
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
-    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 1);
+    /// // `Instrument`, beside the crate's own `pluginconfig` (decision 19).
+    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
     /// # Ok(())
     /// # }
     /// ```
