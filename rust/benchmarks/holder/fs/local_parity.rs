@@ -1,9 +1,10 @@
-//! Deterministic local-filesystem parity gate.
+//! Local-filesystem parity: untimed smoke checks and benchmark-only medians.
 //!
 //! The ordinary Criterion groups describe performance. This focused gate
 //! compares the same 64 MiB operation, at the same 64 KiB chunk size, through
-//! the public filesystem handle and directly through `std::fs`. One warm-up is
-//! discarded and five samples produce the reported median.
+//! the public filesystem handle and directly through `std::fs`. Benchmark mode
+//! discards one warm-up and reports the median of five samples. Test invocations
+//! execute each leg once, untimed, and verify its result.
 
 use std::any::Any;
 use std::fs::OpenOptions;
@@ -25,6 +26,7 @@ const CHUNK_BYTES: usize = 64 * 1024;
 const SAMPLES: usize = 5;
 
 pub(crate) fn local_parity_benchmarks(_: &mut Criterion) {
+    let measure = crate::measurement::enabled();
     let scratch = Scratch::new();
     let source_path = scratch.path("source.bin");
     let direct_write_path = scratch.path("direct-write.bin");
@@ -47,6 +49,7 @@ pub(crate) fn local_parity_benchmarks(_: &mut Criterion) {
         .expect("the cross-domain local target must bind");
 
     let read = measure_pair(
+        measure,
         "read",
         || {},
         || read_direct(&source_path),
@@ -54,6 +57,7 @@ pub(crate) fn local_parity_benchmarks(_: &mut Criterion) {
         || read_wrapped(&source),
     );
     let write = measure_pair(
+        measure,
         "write",
         || remove_file_if_present(&direct_write_path),
         || write_direct(&direct_write_path, &chunk),
@@ -61,6 +65,7 @@ pub(crate) fn local_parity_benchmarks(_: &mut Criterion) {
         || write_wrapped(&wrapped_write, &chunk),
     );
     let copy = measure_pair(
+        measure,
         "copy",
         || {
             remove_file_if_present(&direct_copy_path);
@@ -80,12 +85,16 @@ pub(crate) fn local_parity_benchmarks(_: &mut Criterion) {
     verify_file(&direct_copy_path, &chunk);
     verify_file(&wrapped_copy_path, &chunk);
 
+    if !measure {
+        println!("local filesystem parity smoke: read, write and copy verified without timing");
+        return;
+    }
     println!(
         "local filesystem parity: median throughput after warm-up, {} MiB, {} KiB chunks",
         PAYLOAD_BYTES / (1024 * 1024),
         CHUNK_BYTES / 1024
     );
-    for metric in [read, write, copy] {
+    for metric in [read, write, copy].into_iter().flatten() {
         let direct = throughput(metric.direct);
         let wrapped = throughput(metric.wrapped);
         let ratio = wrapped / direct;
@@ -108,12 +117,20 @@ struct Metric {
 }
 
 fn measure_pair(
+    measure: bool,
     name: &'static str,
     mut prepare_direct: impl FnMut(),
     mut direct: impl FnMut() -> u64,
     mut prepare_wrapped: impl FnMut(),
     mut wrapped: impl FnMut() -> u64,
-) -> Metric {
+) -> Option<Metric> {
+    if !measure {
+        prepare_direct();
+        assert_eq!(direct(), PAYLOAD_BYTES, "the complete payload must move");
+        prepare_wrapped();
+        assert_eq!(wrapped(), PAYLOAD_BYTES, "the complete payload must move");
+        return None;
+    }
     let _ = elapsed(&mut prepare_direct, &mut direct);
     let _ = elapsed(&mut prepare_wrapped, &mut wrapped);
 
@@ -130,11 +147,11 @@ fn measure_pair(
     }
     direct_samples.sort_unstable();
     wrapped_samples.sort_unstable();
-    Metric {
+    Some(Metric {
         name,
         direct: direct_samples[SAMPLES / 2],
         wrapped: wrapped_samples[SAMPLES / 2],
-    }
+    })
 }
 
 fn elapsed(prepare: &mut impl FnMut(), operation: &mut impl FnMut() -> u64) -> Duration {

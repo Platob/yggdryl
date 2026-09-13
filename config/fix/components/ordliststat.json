@@ -138,6 +138,7 @@
   "nullable": false,
   "metadata": {
     "display": "OrdListStat",
+    "fix:identifiers": "clordid,orderid,secondaryclordid",
     "fix:tag": "610418"
   }
 }

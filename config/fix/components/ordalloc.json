@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "display": "OrdAlloc",
+    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid,listid",
     "fix:tag": "171733"
   }
 }

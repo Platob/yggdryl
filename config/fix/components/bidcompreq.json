@@ -98,6 +98,7 @@
   "nullable": false,
   "metadata": {
     "display": "BidCompReq",
+    "fix:identifiers": "listid",
     "fix:tag": "122072"
   }
 }

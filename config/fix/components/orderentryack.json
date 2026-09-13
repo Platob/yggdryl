@@ -188,6 +188,7 @@
   "nullable": false,
   "metadata": {
     "display": "OrderEntryAck",
+    "fix:identifiers": "clordid,origclordid,orderid",
     "fix:tag": "615042"
   }
 }

@@ -539,6 +539,7 @@ impl<'field> FixField<'field>
   pub fn tag(&self) -> Result<Option<i32>>
   pub fn tags(&self) -> Result<Vec<i32>>
   pub fn aliases(&self) -> FixSpellings<'field>
+  pub fn identifiers(&self) -> FixSpellings<'field>  (canonical direct scalar members in component order; borrowed)
   pub fn description(&self) -> Option<&'field str>
   pub fn component(&self) -> Option<&'field str>
   pub fn field_ref(&self) -> Option<&'field str>
@@ -553,6 +554,7 @@ impl<'field> FixField<'field>
   pub fn set_tag(&mut self, tag: i32) -> Result<()>  (any non-negative tag)
   pub fn set_tags(&mut self, tags: &[i32]) -> Result<()>
   pub fn set_aliases<I, S>(&mut self, aliases: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,
+  pub fn set_identifiers<I, S>(&mut self, identifiers: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>  (resolve names, aliases or tags once against direct scalar members; atomic, empty removes)
   pub fn set_description(&mut self, value: impl Into<String>) -> Result<()>
   pub fn set_component(&mut self, name: &str) -> Result<()>
   pub fn remove_component(&mut self) -> Option<String>
@@ -745,6 +747,7 @@ pub const INSTID_TAG_NAME: (i32, &str) = (65_016, "instid");
 pub const ID_TAG_NAME: (i32, &str) = (65_017, "id");
 pub const PERSISTENTID_TAG_NAME: (i32, &str) = (65_018, "persistentid");
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
+pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
@@ -870,6 +873,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub fn name(&self) -> &str
   pub fn as_str(&self) -> &str
   pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
+  pub fn identifier_values<'a>(&'a self, message: &'a FixMsg) -> impl Iterator<Item = (&'a Field, &'a Scalar)>  (borrowed direct members selected by a registration-time plan; no metadata parsing or allocation)
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
 
 ### yggdryl::fix::catalog  [rust\src\fix\catalog.rs]

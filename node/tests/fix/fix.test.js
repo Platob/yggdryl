@@ -22,8 +22,8 @@ const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix } = require(
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
 // What every registry holds before anything is inserted: the crate's own
-// twenty fields, standard fields from tag 65000 up, which
-// `new fix.FixRegistry()` seeds and `fix.crateFields()` lists.
+// twenty scalar fields, standard fields from tag 65000 up. The complete
+// `fix.crateFields()` inventory also lists the altids Map group at 65020.
 const CRATED = 20
 // The first tag the crate claims; every tag from it up is one of its own.
 const CRATE_TAG_MIN = 65000
@@ -96,6 +96,7 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => view.tag, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.tags, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.aliases, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.identifiers, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.description, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.branches, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.hasBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
@@ -111,12 +112,51 @@ test('the typed vocabulary answers only on the fix view', () => {
       view.aliases = ['Ticker']
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
+      view.identifiers = []
+    }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
       view.branches = ['cme']
     }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => view.addBranch('cme'), { name: 'TypeError', message: new RegExp(scheme) })
   }
   // The Map-like surface still works on every view, this one included.
   assert.equal(field.protocol('fix').get('tag'), '55')
+})
+
+test('identifier declarations resolve aliases and decimal tags into direct member order', () => {
+  const client = fixField('clordid', 'utf8', 11, { aliases: ['ClientOrder'] })
+  const order = fixField('orderid', 'utf8', 37)
+  const declaration = fields.struct('order', [client, order], { nullable: false })
+  const view = declaration.fix
+  assert.deepEqual(view.identifiers, [])
+  view.identifiers = ['37', 'ClientOrder']
+  assert.deepEqual(view.identifiers, ['clordid', 'orderid'])
+  assert.equal(declaration.get('fix:identifiers'), 'clordid,orderid')
+  assert.deepEqual(Field.fromJSON(declaration.toJSON()).fix.identifiers, ['clordid', 'orderid'])
+  view.identifiers = ['ORDERID']
+  assert.deepEqual(view.identifiers, ['orderid'])
+  view.identifiers = []
+  assert.deepEqual(view.identifiers, [])
+  assert.equal(declaration.has('fix:identifiers'), false)
+})
+
+test('identifier declaration refusals leave the entire field unchanged', () => {
+  const client = fixField('clordid', 'utf8', 11)
+  const nested = fields.struct('nested', [Field.from('child: utf8')])
+  const declaration = fields.struct('order', [client, nested], { nullable: false })
+  declaration.fix.identifiers = ['clordid']
+  const before = declaration.toJSON()
+  for (const invalid of [[''], ['absent'], ['nested'], ['nested.child'], ['clordid,orderid'], ['clordid', '11']]) {
+    assert.throws(() => { declaration.fix.identifiers = invalid }, /order.fix:identifiers/)
+    assert.deepEqual(declaration.toJSON(), before)
+  }
+  for (const invalid of [
+    'clordid', 11, null, ['clordid', 11], new Set(['clordid']),
+    (function* () { yield 'clordid' })(), [, 'clordid'],
+  ]) {
+    assert.throws(() => { declaration.fix.identifiers = invalid })
+    assert.deepEqual(declaration.toJSON(), before)
+  }
 })
 
 test('direction rules cross as a typed list', () => {
@@ -582,7 +622,7 @@ test('the registry iterates lazily in ascending identifier order', () => {
   // order. The venue fields therefore precede the later standard tag, and
   // the crate's own fields close the walk: standard fields whose tags sit
   // above any a test claims.
-  const crated = fix.crateFields().map((field) => field.fix.tag)
+  const crated = fix.crateFields().slice(0, CRATED).map((field) => field.fix.tag)
   assert.deepEqual(crated, Array.from({ length: CRATED }, (_, at) => CRATE_TAG_MIN + at))
   assert.deepEqual(
     [...registry].map((field) => field.fix.tag),
@@ -629,7 +669,7 @@ test('the seed iterates in canonical-tag order and every field is standard', () 
   assert.deepEqual(registry.dialects(), [])
   assert.deepEqual(
     tags.filter((tag) => tag >= CRATE_TAG_MIN),
-    fix.crateFields().map((field) => field.fix.tag),
+    fix.crateFields().slice(0, CRATED).map((field) => field.fix.tag),
   )
 })
 
@@ -1524,10 +1564,10 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the columns, and FIX's own `MsgDirection`
   // after them, because it is read off the line where the wire states none.
-  assert.deepEqual(fix.schemaTags().slice(-21), [
+  assert.deepEqual(fix.schemaTags().slice(-22), [
     65000, 65001, 65002, 65003, 65004, 65005, 65006, 65007, 65008, 65009,
     65010, 65011, 65012, 65013, 65014, 65015, 65016, 65017, 65018, 65019,
-    385,
+    65020, 385,
   ])
 
   // A column is found by its folded name, and nothing else is needed.
@@ -1535,6 +1575,11 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.equal(schema.indexOf('35'), null)
   assert.equal(schema.indexOf('999999'), null)
   assert.equal(schema.name, 'FixMessage')
+  const mapping = schema.fieldAt(schema.indexOf('altids'))
+  assert.equal(mapping.fix.counter, 65020)
+  assert.equal(mapping.fix.tag, 65020)
+  assert.equal(mapping.nullable, true)
+  assert.equal([...Array(schema.fieldLen).keys()].filter((at) => schema.fieldAt(at).name === 'altids').length, 1)
 
   // The four columns every message fills are declared so; every other is
   // nullable, because a message that carried nothing there must answer null
@@ -1610,7 +1655,7 @@ test("a capture's own columns lead the row", () => {
 
 test('the crate fields declare their own protocols', () => {
   const held = fix.crateFields()
-  assert.equal(held.length, CRATED)
+  assert.equal(held.length, CRATED + 1)
   assert.deepEqual(
     held.map((field) => field.name),
     [
@@ -1634,6 +1679,7 @@ test('the crate fields declare their own protocols', () => {
       'id',
       'persistentid',
       'targetsessionid',
+      'altids',
     ],
   )
   assert.deepEqual(
@@ -1659,6 +1705,7 @@ test('the crate fields declare their own protocols', () => {
       'Id',
       'PersistentId',
       'TargetSessionId',
+      'AltIds',
     ],
   )
   // In tag order from 65000 up: above every tag FIX or a venue publishes, so
@@ -1669,6 +1716,17 @@ test('the crate fields declare their own protocols', () => {
   )
   assert.ok(held.every((field) => field.fix.branches.length === 0))
   assert.ok(held.every((field) => Number.isInteger(field.fix.id)))
+  const mapping = held.at(-1)
+  assert.equal(mapping.fix.counter, 65020)
+  assert.equal(mapping.nullable, true)
+  assert.match(mapping.dtype.toString(), /keys_sorted=true/)
+  for (const registry of [new fix.FixRegistry(), seed()]) {
+    assert.ok(registry.definition('groups', 'altids').equals(mapping))
+    assert.ok(registry.groupByCounter(65020).equals(mapping))
+    assert.equal(registry.getFieldByTag(65020), null)
+    assert.equal(registry.getFieldByName('altids'), null)
+    assert.equal(registry.getFieldById(mapping.fix.id), null)
+  }
 
   const digest = held[0]
   assert.equal(digest.getProperty('digest', 'role'), 'holder')
@@ -1825,7 +1883,12 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
   assert.deepEqual(registry.fieldByTag(55).fix.branches, ['bloomberg'])
   assert.ok(registry.fieldByTag(10001).fix.hasBranch('BLOOMBERG'))
   assert.deepEqual(registry.dialects(), ['bloomberg'])
-  assert.ok(fix.crateFields().every((field) => !registry.fieldByTag(field.fix.tag).fix.hasBranch('bloomberg')))
+  assert.ok(fix.crateFields().every((field) => {
+    const declared = field.fix.counter === null
+      ? registry.fieldByTag(field.fix.tag)
+      : registry.groupByCounter(field.fix.counter)
+    return !declared.fix.hasBranch('bloomberg')
+  }))
 
   // Membership is provenance: the codec reads the one namespace with no pin
   // and the venue's field resolves like any other.
@@ -1842,6 +1905,67 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
   assert.equal(fix.FixRegistry.fromCfbFile(file, null)[0].dialects().length, 0)
   assert.throws(() => fix.FixRegistry.fromCfbFile(file, 'a,b'), /fix:branches/)
   assert.throws(() => fix.FixRegistry.fromCfbFile(file, ''), /fix:branches/)
+})
+
+test('generated identifier membership fills native sorted altids without changing the record', () => {
+  const registry = seed()
+  assert.deepEqual(registry.msgtype('D').asField().fix.identifiers, [
+    'clordid', 'secondaryclordid', 'allocid', 'quoteid', 'reforderid', 'refclordid',
+  ])
+  assert.deepEqual(registry.msgtype('8').asField().fix.identifiers, [
+    'orderid', 'secondaryorderid', 'secondaryclordid', 'secondaryexecid',
+    'clordid', 'origclordid', 'quoterespid', 'listid', 'execid', 'execrefid',
+    'allocid', 'reforderid', 'refclordid',
+  ])
+  const codec = new fix.FixCodec(registry)
+  const wire = Buffer.from('8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|')
+  const original = codec.parseFixLine(wire)
+  const filled = codec.enrichMessage(original)
+  const expected = new Map([['clordid', 'C-001'], ['execid', 'E-09'], ['orderid', 'O-01']])
+  assert.equal(filled.byTag(65020).kind, 'mapping')
+  assert.ok(filled.byName('AltIds').asJs() instanceof Map)
+  assert.deepEqual(filled.byTag(65020).asJs(), expected)
+  assert.deepEqual([...filled.byName('AltIds').asJs().keys()], [...expected.keys()])
+  assert.deepEqual(filled.arrivals(), original.arrivals())
+  assert.deepEqual(filled.intoBytes(124), wire)
+  assert.deepEqual(filled.digest(), original.digest())
+  assert.ok(codec.enrichMessage(filled).equals(filled))
+  const schema = fix.schema(registry)
+  const restored = fix.FixMsg.fromRow(schema, filled.intoRow(schema), registry)
+  assert.ok(restored.byName('altids').equals(filled.byName('altids')))
+  assert.deepEqual(restored.arrivals(), filled.arrivals())
+  const stamped = [...codec.lifecycle([filled])]
+  assert.equal(stamped.length, 1)
+  assert.deepEqual(stamped[0].byName('altids').asJs(), expected)
+  assert.deepEqual(stamped[0].arrivals(), filled.arrivals())
+  assert.deepEqual(stamped[0].digest(), filled.digest())
+})
+
+test('a stated altids Map is preserved even when it is empty', () => {
+  const codec = new fix.FixCodec(seed())
+  for (const stated of [new Map(), new Map([['venue', '001']])]) {
+    const value = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=C-1|10=0|'))
+    const before = [value.arrivals(), value.intoBytes(124), value.digest()]
+    value.set('altids', stated)
+    const filled = codec.enrichMessage(value)
+    assert.deepEqual(filled.byTag(65020).asJs(), stated)
+    assert.deepEqual([filled.arrivals(), filled.intoBytes(124), filled.digest()], before)
+    assert.ok(codec.enrichMessage(filled).equals(filled))
+  }
+})
+
+test('altids distinguishes known empty messages from unknown messages without flattening groups', () => {
+  const codec = new fix.FixCodec(seed())
+  for (const code of ['0', 'D']) {
+    const filled = codec.enrichMessage(codec.parseFixLine(Buffer.from(`8=FIX.4.4|35=${code}|10=0|`)))
+    assert.deepEqual(filled.byTag(65020).asJs(), new Map())
+  }
+  const unknown = codec.enrichMessage(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=ZZ|11=C-1|10=0|')))
+  assert.equal(unknown.getByTag(65020), null)
+  const nested = codec.enrichMessage(codec.parseLine(Buffer.from(
+    'MSGTYPE=E|#LISTID=L-1|#NOORDERS=1|#NOORDERS[0]=CLORDID=C-nested\x04\x03SYMBOL=EXAMPLE',
+  )).next().value)
+  assert.deepEqual(nested.byTag(65020).asJs(), new Map([['listid', 'L-1']]))
 })
 
 test('a message type keeps its complete wire code and immutable schema', () => {

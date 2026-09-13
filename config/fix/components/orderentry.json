@@ -118,6 +118,7 @@
   "nullable": false,
   "metadata": {
     "display": "OrderEntry",
+    "fix:identifiers": "clordid,origclordid,orderid",
     "fix:tag": "1024274"
   }
 }

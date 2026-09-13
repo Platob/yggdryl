@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "display": "OrderAggregation",
+    "fix:identifiers": "clordid,orderid",
     "fix:tag": "883544"
   }
 }

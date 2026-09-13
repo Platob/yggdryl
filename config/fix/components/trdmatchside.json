@@ -558,6 +558,7 @@
   "nullable": false,
   "metadata": {
     "display": "TrdMatchSide",
+    "fix:identifiers": "sideexecid,sideexecrefid,sidetradeid,sidetradereportid,allocid",
     "fix:tag": "371869"
   }
 }

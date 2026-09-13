@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "display": "NotAffectedOrd",
+    "fix:identifiers": "notafforigclordid,notaffectedorderid,notaffsecondaryorderid",
     "fix:tag": "917460"
   }
 }

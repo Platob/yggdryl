@@ -169,6 +169,7 @@
   "metadata": {
     "description": "MsgType = BH",
     "display": "ConfirmationRequest",
+    "fix:identifiers": "allocid,secondaryallocid,individualallocid",
     "fix:msgtype": "BH",
     "fix:tag": "162059"
   }

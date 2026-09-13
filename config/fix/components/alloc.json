@@ -678,6 +678,7 @@
   "nullable": false,
   "metadata": {
     "display": "Alloc",
+    "fix:identifiers": "individualallocid,parentallocid,secondaryindividualallocid",
     "fix:tag": "467894"
   }
 }

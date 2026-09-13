@@ -161,6 +161,7 @@ assert_eq!(rows, 3);
 - Root not a bounded, non-nullable Struct -> `combined_as` and `cast_reader` return `Err`.
 - A cast the two schemas alone refuse - an unsupported conversion, an ambiguous name, a required column missing under [`strict`](../types/cast.md#strict-nullability) -> `cast_reader` returns `Err` rather than a reader that fails on its first batch.
 - Dropping a cast reader before it is drained -> the source is dropped with it, so a C stream behind it is released there.
+- Python batch export caches the exact schema before any pull, retains [nested Map flags and shared buffers](values.md#exact-map-schemas), and releases the native reader on exhaustion or failure. A batch with no columns still retains its row count.
 
 ## Commands
 

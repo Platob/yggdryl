@@ -119,6 +119,7 @@
   "metadata": {
     "description": "MsgType = K",
     "display": "ListCancelRequest",
+    "fix:identifiers": "listid",
     "fix:msgtype": "K",
     "fix:tag": "1096950"
   }

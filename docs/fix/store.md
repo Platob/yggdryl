@@ -8,14 +8,15 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | --- | --- |
 | Owner | `FixRegistry::from_handle` and `write_into`; bindings redirect to the native loader/writer |
 | Fields | `fields/<tag / 100>.json`; each document is an array of tagged scalar fields, tag-major, the holder of a shared tag first |
-| Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `fix:msgtype` and is written beside the others; one native `Field` per document, stating the `fix:tag` derived from the definition's name |
+| Named definitions | `components/<name>.json`, `groups/<name>.json`; a message is a component carrying `fix:msgtype` and is written beside the others; one native `Field` per document, with a derived tag for a component or List/LargeList group and an own reserved tag for a Map group |
 | Enums | Inline `fix:codes` metadata on each scalar field |
-| References | Compact native child fields retain reference metadata and use `Null` as the unresolved datatype; intake resolves them to canonical native fields |
+| References | Ordinary compact child fields use `Null` as the unresolved datatype; a Map's referenced entries keep the Struct its datatype requires. Both retain reference metadata and resolve to canonical native fields at intake |
+| Identifiers | `fix:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
 | Membership | `fix:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
 | Identity | Derived on every read from `fix:tag` and the field's name; no document holds an id |
-| Crate fields | The crate's own twenty fields, standard tags from 65000, are never written; every registry holds them from construction, and a stored copy of one is read past |
-| Validation | Category shape, shard arithmetic, tag and name identity, references, codes, cycles, and depth are checked before exposing the registry |
-| Missing folder | Loads an empty registry and creates nothing |
+| Builtins | The crate listing has twenty scalar fields and the `altids(65020)` Map group; `pluginconfig` is a separate builtin component/message. Every registry constructs them, and persistence omits them rather than storing another owner; a stored document cannot override them |
+| Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, codes, cycles, and depth are checked before exposing the registry |
+| Missing folder | Loads only the builtins and creates nothing |
 | Passed over | A directory inside a category, and a file that is not `<n>.json` under `fields/` or `<name>.json` under a named category; a reader ignores them and a writer leaves the directories alone |
 | Publication | Writes populated documents, then removes every `.json` document it did not write from the categories it holds and every empty category directory; separate file writes are not a directory-wide transaction |
 | Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |
@@ -40,7 +41,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     let mut registry = FixRegistry::from_fields([count, id])?;
     let mut member = registry.field(448)?.clone();
     member.as_fix_mut().set_field_ref("PartyID")?;
-    let party = DataType::from_fields([member])?.required_field("Party");
+    let mut party = DataType::from_fields([member])?.required_field("Party");
+    party.as_fix_mut().set_identifiers(["448"])?;
     registry.create_definition(FixCategory::Components, party.clone())?;
     let mut group = DataType::list(party).nullable_field("Parties");
     group.as_fix_mut().set_counter(453)?;
@@ -55,6 +57,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     assert!(path.join("components/Party.json").is_file());
     assert!(path.join("groups/Parties.json").is_file());
     assert!(path.join("components/Order.json").is_file());
+    assert!(!path.join("groups/altids.json").exists());
+    assert!(!path.join("components/pluginconfig.json").exists());
     // The three category directories are the whole layout.
     assert_eq!(std::fs::read_dir(&path)?.count(), 3);
     let reloaded = FixRegistry::from_handle(&root)?;
@@ -63,6 +67,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     // Membership travels inside the field's own document.
     assert!(reloaded.field(448)?.as_fix().has_branch("venue"));
     assert_eq!(reloaded.dialects(), ["venue"]);
+    assert_eq!(reloaded.definition(FixCategory::Components, "Party")?.as_fix().identifiers().collect::<Vec<_>>(), ["PartyID"]);
+    assert_eq!(reloaded.definition(FixCategory::Groups, "altids")?.as_fix().counter()?, Some(65020));
     root.remove(true)?;
     ```
 
@@ -83,6 +89,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     member = registry.field(448)
     member.fix.field_ref = "PartyID"
     party = Field("Party", DataType.from_fields([member]), nullable=False)
+    party.fix.identifiers = ["448"]
     registry.create_definition("components", party)
     group = types.list("Parties", party)
     group.fix.counter = 453
@@ -99,6 +106,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         assert (root / "components/Party.json").is_file()
         assert (root / "groups/Parties.json").is_file()
         assert (root / "components/Order.json").is_file()
+        assert not (root / "groups/altids.json").exists()
+        assert not (root / "components/pluginconfig.json").exists()
         # The three category directories are the whole layout.
         assert sorted(child.name for child in root.iterdir()) == ["components", "fields", "groups"]
         reloaded = FixRegistry.from_handle(root)
@@ -107,6 +116,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
         # Membership travels inside the field's own document.
         assert reloaded.field(448).fix.branches == ["venue"]
         assert reloaded.dialects() == ["venue"]
+        assert reloaded.definition("components", "Party").fix.identifiers == ["PartyID"]
+        assert reloaded.definition("groups", "altids").fix.counter == 65020
     ```
 
 === "JavaScript"
@@ -127,6 +138,7 @@ The counter is a scalar field; a reusable component defines one occurrence and t
     const member = registry.field(448)
     member.fix.fieldRef = 'PartyID'
     const party = fields.struct('Party', [member], { nullable: false })
+    party.fix.identifiers = ['448']
     registry.createDefinition('components', party)
     const group = fields.list('Parties', party)
     group.fix.counter = 453
@@ -142,6 +154,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
       for (const file of ['fields/4.json', 'components/Party.json', 'groups/Parties.json', 'components/Order.json']) {
         assert.ok(fs.existsSync(path.join(root, file)))
       }
+      assert.equal(fs.existsSync(path.join(root, 'groups/altids.json')), false)
+      assert.equal(fs.existsSync(path.join(root, 'components/pluginconfig.json')), false)
       // The three category directories are the whole layout.
       assert.deepEqual(fs.readdirSync(root).sort(), ['components', 'fields', 'groups'])
       const reloaded = fix.FixRegistry.fromHandle(root)
@@ -150,6 +164,8 @@ The counter is a scalar field; a reusable component defines one occurrence and t
       // Membership travels inside the field's own document.
       assert.deepEqual(reloaded.field(448).fix.branches, ['venue'])
       assert.deepEqual(reloaded.dialects(), ['venue'])
+      assert.deepEqual(reloaded.definition('components', 'Party').fix.identifiers, ['PartyID'])
+      assert.equal(reloaded.definition('groups', 'altids').fix.counter, 65020)
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
@@ -182,7 +198,11 @@ A persisted child refers to one canonical definition using `fix:field`, `fix:com
 }
 ```
 
-A group stores a List or LargeList whose non-null item references the occurrence component; its root records the counter tag and component relationship, beside its own `fix:tag`, which is derived from the group's name and is never the counter's. The writer compacts resolved references again, keeping each canonical definition in one document. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors. Independent occurrence metadata overrides are refused; canonical metadata updates refresh their references atomically.
+A List/LargeList group stores a non-null item referencing its occurrence component; its root records the separate scalar counter and component relationship beside the group's own derived `fix:tag`. A Map instead keeps its required entries Struct, non-null key and sortedness; a referenced entries component carries only reference metadata, and reload uses the same occurrence resolver.
+
+The writer compacts resolved references again, keeping each canonical definition in one document; references to `altids` resolve against the registry-owned builtin even though no `groups/altids.json` exists. Missing targets, conflicting reference kinds, cycles, and nesting beyond 64 are located intake errors; independent occurrence metadata overrides are refused, and canonical updates refresh references atomically.
+
+Identifier declarations normalize through the [component setter](registry.md#component-identifiers) after these references resolve, so stored aliases or decimal tags become canonical direct member names in final component order. A malformed or ambiguous declaration fails the complete load rather than losing a selection silently.
 
 ## Membership
 
@@ -190,13 +210,17 @@ A dictionary is a membership, not a namespace: the store has no document for one
 
 ## Complete JSON snapshots
 
-`FixRegistry::into_json` and `from_json` use one object with `fields`, `components`, and `groups` arrays and no other key; a snapshot carrying a `messages` key is refused by name. They reuse the folder store's compact references and resolver, so a snapshot retains named definitions, contextual groups, inline enums, and every field's membership; collecting ordinary scalar iteration does not preserve a catalog.
+`FixRegistry::into_json` and `from_json` use one object with `fields`, `components`, and `groups` arrays and no other key; a snapshot carrying a `messages` key is refused by name. They reuse the folder store's compact references, builtin omission and resolver, so a snapshot retains named definitions, contextual groups, identifier declarations, inline enums and every field's membership; collecting ordinary scalar iteration does not preserve a catalog.
 
 Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `toJSON`, and `clone` do the same; `stable_hash` / `stableHash` derives from native registry state, membership included like any other metadata.
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,271,670 bytes. It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 named definitions states the tag derived from its name - `groups/parties.json` is 209321 - and no two share one. Thirty-eight of the fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all. No document states a `fix:branches` and no document states an id.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,285,138 bytes. Loading it adds twenty builtin scalars, the `altids` group and the separate `pluginconfig` component/message, giving 6,261 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
+
+It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
+
+Thirty-eight fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all. No document states a `fix:branches` and no document stores the derived `FixId`.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 
@@ -204,7 +228,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
 
     ```rust
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixId, FixRegistry, FieldPath};
+    use yggdryl::{fix_crate_fields, FixCategory, FixId, FixRegistry, FieldPath};
 
     let seed = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("config").join("fix");
     let registry = FixRegistry::from_handle(&Folder::new(seed)?)?;
@@ -225,8 +249,12 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // field names a dialect that contributed it.
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
-    // The whole published dictionary, not a sample of it.
-    assert!(registry.len() > 6_000);
+    // Live counts include the builtins omitted from persistence.
+    assert_eq!(fix_crate_fields()?.len(), 21);
+    assert_eq!(registry.len(), 6_261);
+    assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
+    assert_eq!(registry.definitions(FixCategory::Components).count(), 929);
+    assert_eq!(registry.msgtypes().count(), 182);
     ```
 
 === "Python"
@@ -254,9 +282,12 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     # field names a dialect that contributed it.
     assert registry.dialects() == []
     assert all(field.fix.branches == [] for field in registry)
-    assert len(fix_crate_fields()) == 20
-    # The whole published dictionary, not a sample of it.
-    assert len(registry) > 6_000
+    # Live counts include the builtins omitted from persistence.
+    assert len(fix_crate_fields()) == 21
+    assert len(registry) == 6_261
+    assert len(list(registry.definitions("groups"))) == 581
+    assert len(list(registry.definitions("components"))) == 929
+    assert len(list(registry.msgtypes())) == 182
     ```
 
 === "JavaScript"
@@ -283,9 +314,12 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     // field names a dialect that contributed it.
     assert.deepEqual(registry.dialects(), [])
     assert.ok([...registry].every((field) => field.fix.branches.length === 0))
-    assert.equal(fix.crateFields().length, 20)
-    // The whole published dictionary, not a sample of it.
-    assert.ok(registry.size > 6_000)
+    // Live counts include the builtins omitted from persistence.
+    assert.equal(fix.crateFields().length, 21)
+    assert.equal(registry.size, 6261)
+    assert.equal([...registry.definitions('groups')].length, 581)
+    assert.equal([...registry.definitions('components')].length, 929)
+    assert.equal([...registry.msgtypes()].length, 182)
     ```
 
 ### Datatypes in the seed
@@ -309,14 +343,14 @@ python scripts/generate_fix_dictionary.py --check
 
 ## Edges
 
-- A missing category is empty; reading a missing root creates nothing.
+- A missing category contributes no persisted definitions; a missing root still answers the builtins and creates nothing.
 - Two documents declaring one identity - the same tag under the same folded name - or one named declaration twice fail instead of replacing an earlier source record; the same tag under another name is a second field beside the holder, as in memory.
 - Scalar arrays and individual named documents have distinct shapes; loading the wrong shape names the document.
 - Wrong shard, category datatype, counter type, or reference target is refused before a registry is returned.
 - Canonical definition names must form safe single path segments: nonempty ASCII letters, digits, underscore, hyphen, or dot, and never `.` or `..`.
 - A directory inside a category is not a store's layout: what it holds is passed over on read and left alone by publication, so nothing is read as a dialect's own shard.
 - A `README` beside the field shards is ignored on read and left alone by publication; only `<n>.json` with a decimal `n` is read.
-- A stored document holding one of the crate's own fields, a standard tag from 65000, is read past, and `write_into` writes none of them, so a store never holds a copy that could drift from the crate's.
+- Builtin scalar, Map group and `pluginconfig` definitions are omitted on write and restored by their native owner on read; an incoming document cannot override a builtin by restating its name under another tag.
 - A `fix:branches` value is validated as an alias is: a name that is empty or carries a comma is refused naming the key.
 - Removing the last definition from a shard or category removes its owned document or directory on the next write.
 - Folder writes publish individual documents; a backend failure can leave already published files visible.
@@ -372,7 +406,7 @@ Different processes and sample counts make these observed boundary costs, not a 
 | Content hash | 3.02 us | 365,490 ops/s |
 | Independent copy | 2.00 us | 177,936 ops/s |
 
-The small boundary fixture contains two fields plus one component, group, and message. It is intentionally distinct from the full-seed Rust snapshot fixture.
+The small boundary fixture adds two fields plus one component, group and message beside the builtins. It is intentionally distinct from the full-seed Rust snapshot fixture; the displayed measurements predate identifier declarations and the `altids` group and were not rerun for this change.
 
 Root navigation is asserted with `Counted`: loading resolves the three category roots (`child_by_path=3`); writing a one-shard catalog resolves those three paths plus its shard (`child_by_path=4`). These counts cover the root handle only; document reads/writes occur on child handles and are outside that tally.
 

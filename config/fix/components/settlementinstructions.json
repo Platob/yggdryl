@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = T",
     "display": "SettlementInstructions",
+    "fix:identifiers": "clordid",
     "fix:msgtype": "T",
     "fix:tag": "936330"
   }

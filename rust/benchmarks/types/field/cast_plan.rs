@@ -6,12 +6,10 @@
 //! wide enough to dominate the plan would hide it - so 1, 10, and 1,000 of
 //! them are measured, which is also the range a streamed read actually pulls.
 //!
-//! The last loop is a gate rather than a measurement: it compares the two
-//! warmed medians and refuses a build where reusing the plan is slower than
-//! rebuilding it, because that would mean the plan has started carrying
-//! per-batch work it has no business carrying. It runs only in an optimized
-//! build - `cargo test --all-targets` runs this target once as a smoke test,
-//! and a debug timing on a shared runner measures the profile, not the plan.
+//! The benchmark-only gate compares warmed medians and refuses reuse more
+//! than 25% slower than replanning. Only optimized, explicit benchmark
+//! invocations time it; test invocations retain the result assertions without
+//! collecting medians, including when the test build is optimized.
 
 use std::hint::black_box;
 use std::sync::Arc;
@@ -151,7 +149,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
 /// them is noise. Every count above it is a structural difference, and that is
 /// what this holds.
 fn gate(root: &Field, source: &SchemaRef) {
-    if cfg!(debug_assertions) {
+    if !crate::measurement::enabled() {
         return;
     }
     for count in COUNTS.into_iter().filter(|count| *count > 1) {

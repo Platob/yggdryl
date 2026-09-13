@@ -1,6 +1,8 @@
 #[path = "bench_profile.rs"]
 mod bench_profile;
 
+mod measurement;
+
 #[path = "holder/buffered.rs"]
 mod buffered;
 #[path = "holder/calls.rs"]

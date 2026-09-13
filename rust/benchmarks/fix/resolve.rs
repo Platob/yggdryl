@@ -38,6 +38,25 @@ pub fn benchmarks(criterion: &mut Criterion) {
     );
     let mut group = criterion.benchmark_group("fix/resolve");
 
+    let identifiers = registry.msgtype("D").unwrap();
+    let identifier_message = FixCodec::new(std::sync::Arc::new(registry.clone()))
+        .parse_fix_line(b"8=FIX.4.4|35=D|11=ORDER-1|37=VENUE-1|10=000|")
+        .unwrap();
+    group.bench_function("identifier_declaration", |bencher| {
+        bencher.iter(|| {
+            for name in black_box(identifiers).as_field().as_fix().identifiers() {
+                black_box(name);
+            }
+        });
+    });
+    group.bench_function("identifier_selection", |bencher| {
+        bencher.iter(|| {
+            for value in black_box(identifiers).identifier_values(black_box(&identifier_message)) {
+                black_box(value);
+            }
+        });
+    });
+
     // The four outcomes a lookup has, over the tracked seed.
     group.bench_function("tag_hit", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));

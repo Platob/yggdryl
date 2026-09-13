@@ -1058,6 +1058,7 @@
   "nullable": false,
   "metadata": {
     "display": "ListOrd",
+    "fix:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid",
     "fix:tag": "984847"
   }
 }

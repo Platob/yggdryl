@@ -8,8 +8,9 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | standard header, the fields a consumer reads, three groups, the trailer, this crate's own twenty, FIX's own `msgdirection`, then `nofixentries` and `nounmappedfixentries` |
-| Non-null | `beginstring`, `version`, `msghash`, `timestamp`, `unixpartition` - every built message [fills them](#every-message-is-dated-and-versioned); every other column is nullable |
+| Shape | standard header, the fields a consumer reads, three List groups, the trailer, twenty built-in scalar fields and the `altids` Map group, FIX's own `msgdirection`, then `nofixentries` and `nounmappedfixentries`: 106 columns with the shipped registry |
+| Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
+| Non-null | `beginstring`, `msghash`, `timestamp`, `unixpartition`; `version` is populated at construction but its column remains nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a bulk configuration yields one per configuration a response named, and none for a response that named none - an error-only answer, a request-only document, an empty bulk or wildcard answer |
@@ -298,7 +299,7 @@ A group packed inside an occurrence is packed behind the same separator, at the 
 
 The tag is still the identity. Each column carries its field's `fix:tag`, its `display`, its lineage and its code set, and the row is [filled by that tag](#a-column-is-filled-by-the-tag-its-field-carries) rather than by the spelling, so a venue that renames a field between versions changes nothing about where its value lands. `fix_schema_tags` is the same row as tags, in the same order.
 
-A named group column carries `fix:counter` beside the `fix:tag` its definition derives from its own name: the numeric count keeps its own column, and the group column beside it holds the occurrences as a List.
+A List group column carries `fix:counter` beside the `fix:tag` its definition derives from its own name: the numeric count keeps its own column, and the group column beside it holds the occurrences. The built-in `altids` Map instead carries tag and counter 65020 on one group column, with no scalar count field; the Map's entries already determine its cardinality.
 
 === "Rust"
 
@@ -375,7 +376,7 @@ An entry says what arrived and only that. A key and a value are ranges of the li
 
 ## The crate's own columns
 
-Twenty fields carry what a capture states, or what a message implies, that no dictionary publishes. Each is an ordinary field with a tag from 65000 up - a block above every tag FIX or a venue publishes - so it lifts, columns, serializes and resolves with no special case anywhere, and a bridge row spelling `SESSIONID` or `ULFROMSESSIONNAME` reaches it by name like any other field. Every registry holds them from construction: `FixRegistry::new()` inserts them before anything else, so a dictionary loaded from a [store](store.md), built from fields or left empty answers `timestamp` and `sendersessionid` alike, and the store never writes them. `fix_crate_fields` is the listing, in tag order; `SENDERSESSIONID_TAG_NAME` and its siblings are each field's `(tag, name)` pair - `.0` the tag, `.1` the column - because that pair is what identifies it; `CRATE_TAG_MIN` is the first tag of the block and `is_crate_tag` whether a tag is one.
+Twenty scalar fields and one Map group carry capture facts that no dictionary publishes. Every registry holds them from construction, and the [store](store.md) omits their definitions: `fix_crate_fields` lists all 21 in tag order, while scalar registry iteration still counts only twenty. Their tags start at 65000; `SENDERSESSIONID_TAG_NAME` and its siblings hold each `(tag, name)` pair, `CRATE_TAG_MIN` starts the reserved block, and `is_crate_tag` tests its ownership. `altids` is a group reached by `group_by_counter(65020)` or group definition name, not by the registry's scalar-field doors.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
@@ -399,10 +400,11 @@ Twenty fields carry what a capture states, or what a message implies, that no di
 | `id` | `Id` | 65017 | the message: the instant closest to the market impact, then the xxh3 digest of what it said, so ids sort by time and never repeat |
 | `persistentid` | `PersistentId` | 65018 | the order chain: the instant it was created, then the xxh3 digest of its instrument and first identifier, the same on every later message that shares one of its identifiers |
 | `targetsessionid` | `TargetSessionId` | 65019 | the session the message went to, as the message itself states it |
+| `altids` | `AltIds` | 65020 | a nullable sorted Map of this message's direct declared identifiers, keyed by canonical member name; group members are not flattened |
 
 The envelope `msghash` drops is the standard header and the standard trailer whole, read from the same two tag lists the row shape is ordered by, so a tag either component gains leaves the digest without a second listing learning about it. `MsgType` is the one exception and stays in: a message type is what a message *is* rather than how it travelled, so an order and a report carrying the same tags are not one message. The consequence is the point - two identical orders sent a second apart hash equal, and so do the same order relayed through two sessions or replayed on a resend.
 
-The nine after `prevpluginid` are read from two places. A bridge row states its own session and plugin sessions in `SESSIONID`, `ULFROMSESSIONNAME` and `ULTOSESSIONNAME`, which reach the fields by name; and a bridge's log states the session instance and the message context in the bracket after its clock, and the plugin that wrote the line in front of it, which a [row header](arrow.md#a-bridge-log-names-what-it-fills) captures and the row fills - the instance landing on the sender's session identifier, the plugin on the sender's session name for a line the plugin sent and on the target's for one it received, never over a value the row stated itself. The three after them are derived when a message becomes a row, from the tags the table names, so a monitor filters an instrument, a market or a lifecycle without knowing which of several tags a venue put it in. The last three are stamped by the [lifecycle](lifecycle.md), which reads a stream in order and is the one place a message learns which order it belongs to. FIX publishes the counterparties in `SenderCompID` and `TargetCompID`; the plugin that carried a message inside a bridge is a fact about the bridge, and one FIX never states.
+Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. `isincode`, `miccode` and `state` are derived when a message becomes a row; `instid`, `id` and `persistentid` are stamped by the [lifecycle](lifecycle.md). `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
 
 Two of them declare more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for. `msghash` is a digest holder, so it says which algorithm filled it and what it read. `unixpartition` is a derived partition column, so it says which column it derives from and how.
 
@@ -683,6 +685,108 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
     assert.equal(held.intoBytes('|'.charCodeAt(0)).toString(), line)
     // And a second pass changes nothing.
     assert.ok(reader.enrichMessage(held).equals(held))
+    ```
+
+### A message's direct identifiers fill one Map
+
+`fix:identifiers` on the message component selects direct scalar members; its compiled `MsgType` supplies their values in declaration order, and enrichment writes their canonical names and UTF-8 values into the sorted `altids` Map. Nested groups are not flattened, non-null keys are required, and nullable values remain nullable across the native row and Arrow doors.
+
+A known message with no selected values gets `{}`; an unknown message leaves `altids` absent, so its fixed column is null. A stated map, including an empty one, is preserved; enrichment is idempotent and changes neither arrival entries, emitted bytes nor the digest. This Map has no separate scalar count and introduces no numeric FIX group wire syntax.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{FixCodec, FixRegistry, Scalar, fix_schema};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let wire = b"8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|";
+    let original = codec.parse_fix_line(wire)?;
+    let filled = codec.enrich_message(original.clone())?;
+    assert_eq!(filled.by_tag(65_020)?.get_key_str("clordid"), Some(&Scalar::from("C-1")));
+    assert_eq!(filled.entries(), original.entries());
+    assert_eq!(filled.into_bytes(b'|'), wire);
+    assert_eq!(filled.digest(), original.digest());
+    assert_eq!(codec.enrich_message(filled.clone())?, filled);
+
+    let schema = fix_schema(&registry, "FixMessage")?;
+    let batches = codec.arrow_reader(schema, [Ok(filled.clone())])?;
+    let mut restored = codec.messages(batches);
+    assert_eq!(restored.next().expect("one row")?.by_tag(65_020)?, filled.by_tag(65_020)?);
+    assert!(restored.next().is_none());
+    let mut stated = filled.clone();
+    stated.set("altids", Scalar::from_mapping([])?)?;
+    assert!(codec.enrich_message(stated)?.by_tag(65_020)?.as_mapping().expect("a map").is_empty());
+    let empty = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|")?)?;
+    assert!(empty.by_tag(65_020)?.as_mapping().expect("a map").is_empty());
+    let unknown = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=ZZ|10=0|")?)?;
+    assert!(unknown.get_by_tag(65_020).is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+    from yggdryl.fix import FixCodec, FixRegistry, fix_schema
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    codec = FixCodec(registry)
+    wire = b"8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|"
+    original = codec.parse_fix_line(wire)
+    filled = codec.enrich_message(original)
+    expected = {"clordid": "C-1", "execid": "E-1", "orderid": "O-1"}
+    assert filled.by_tag(65_020).as_py() == expected
+    assert filled.entries() == original.entries()
+    assert filled.into_bytes(124) == wire and filled.digest() == original.digest()
+    assert codec.enrich_message(filled) == filled
+
+    table = codec.arrow_reader(fix_schema(registry), [filled]).read_all()
+    assert table.schema.field("altids").type.keys_sorted
+    restored, = codec.messages(table)
+    assert restored.by_name("altids").as_py() == expected
+    filled.set("altids", {})
+    assert codec.enrich_message(filled).by_name("altids").as_py() == {}
+    empty = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=0|10=0|"))
+    assert empty.by_name("altids").as_py() == {}
+    unknown = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=ZZ|10=0|"))
+    assert unknown.get_by_name("altids") is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+    const codec = new fix.FixCodec(registry)
+    const wire = Buffer.from('8=FIX.4.4|35=8|37=O-1|11=C-1|17=E-1|10=0|')
+    const original = codec.parseFixLine(wire)
+    const filled = codec.enrichMessage(original)
+    const expected = new Map([['clordid', 'C-1'], ['execid', 'E-1'], ['orderid', 'O-1']])
+    assert.ok(filled.byTag(65020).asJs() instanceof Map)
+    assert.deepEqual(filled.byTag(65020).asJs(), expected)
+    assert.deepEqual(filled.arrivals(), original.arrivals())
+    assert.deepEqual(filled.intoBytes(124), wire)
+    assert.deepEqual(filled.digest(), original.digest())
+    assert.ok(codec.enrichMessage(filled).equals(filled))
+
+    const table = codec.arrowReader(fix.schema(registry), [filled]).intoTable()
+    assert.equal(table.schema.fields.find((field) => field.name === 'altids').type.keysSorted, true)
+    assert.deepEqual([...table.getChild('altids').get(0)], [...expected])
+    const restored = [...codec.messages(table)]
+    assert.equal(restored.length, 1)
+    assert.deepEqual(restored[0].byName('altids').asJs(), expected)
+    filled.set('altids', new Map())
+    assert.deepEqual(codec.enrichMessage(filled).byName('altids').asJs(), new Map())
+    const empty = codec.enrichMessage(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=0|10=0|')))
+    assert.deepEqual(empty.byName('altids').asJs(), new Map())
+    const unknown = codec.enrichMessage(codec.parseFixLine(Buffer.from('8=FIX.4.4|35=ZZ|10=0|')))
+    assert.equal(unknown.getByName('altids'), null)
     ```
 
 ### A composed key fills the field its last segment names
@@ -1160,13 +1264,13 @@ messages, one per configuration a response named, each reading as
 
 Every message in a capture asks for the same tags in the same order, and each ask through the ordinary [lookup](registry.md) would be a hash and a verification. None of that runs per row: the schema is fixed, its columns are named `msgtype` and `symbol`, each carries its field's `fix:tag`, and `into_row` fills each one by that tag. `fix_column_tags` reads the tags off a schema once, so a batch of a million rows reads them once rather than once per row; a caller-declared root that spells a column by its tag's digits is read the same way, the digits answering where the field carries no tag.
 
-So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A named group column is filled by the counter its `fix:counter` states, which is read ahead of the tag the group derives from its own name, while the numeric count stays in its own column.
+So there is nothing beside the schema to build, hold, or invalidate. A caller finds a column with `index_of` on the schema it already has - or with `fix_column_of` and the tag - and two captures sharing a dictionary share both the schema and every position in it. A List group column is filled by its `fix:counter`, while the numeric count stays in its own column; the self-counting `altids` Map occupies only its own column.
 
 ### A group is laid out the way the column declares it
 
 A message's group holds the members that occurrence stated, in the order it stated them; the fixed column declares the dictionary's. `into_row` places them by name and leaves the rest null, so an occurrence a bridge packed into one member lands in the same columns as one that spelled every member out - and an occurrence shorter than the dictionary declares is a row rather than a refusal.
 
-That is the rule the whole row keeps: what a message said can never fail the batch it arrives in.
+Map groups use the same row and Arrow doors, preserving key/value fields, non-null keys and `keys_sorted`; a null map, an empty map and a map with a null value remain distinct.
 
 ## A capture's own columns lead the row
 
@@ -1260,6 +1364,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 - A clock a narrow dictionary types as text is still an instant in the derived `timestamp` column: FIX's own spelling is read there, and text that is not a clock leaves the message to its next clock, else the epoch - never a refusal.
 - `unixpartition` is floored from the clock's nanoseconds, so a clock stated to the microsecond has a partition rather than a null for not being a whole second.
 - A column of the crate's own is typed by the crate's definition, on a tag from 65000 that no dictionary publishes: `timestamp` is an instant, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
+- `altids` is filled by enrichment, never derived by `into_row` alone. A known message with no stated identifiers gets an empty map; an unknown message remains null in the fixed row. Invalid UTF-8 in a selected binary identifier raises the core's located conversion error.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.
 - `index_of` on a column the schema does not carry -> `None`, never a wrong column.
 - Two captures sharing a dictionary share a schema exactly, because the shape is built without reading a single message.

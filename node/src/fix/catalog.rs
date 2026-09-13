@@ -6,6 +6,8 @@ use napi::bindgen_prelude::{Generator, Result};
 use napi_derive::napi;
 use yggdryl::{FixCategory, FixRegistry, MsgType};
 
+use super::JsFixMsg;
+use crate::text::codec::JsScalar;
 use crate::types::field::JsField;
 use crate::{exact_i32, napi_error, ordering_value};
 
@@ -86,6 +88,26 @@ impl JsMsgType {
     #[napi]
     pub fn as_field(&self) -> JsField {
         JsField::from_core(self.inner().as_field().clone())
+    }
+
+    /// The compiled selection of non-null direct identifiers, in member order.
+    ///
+    /// Fields are independent mutable declaration copies; Scalars retain the
+    /// message's actual types. Repeating groups are not traversed.
+    #[napi(
+        ts_args_type = "message: FixMsg",
+        ts_return_type = "Array<[Field, Scalar]>"
+    )]
+    pub fn identifier_values(&self, message: &JsFixMsg) -> Vec<(JsField, JsScalar)> {
+        self.inner()
+            .identifier_values(&message.inner)
+            .map(|(field, value)| {
+                (
+                    JsField::from_core(field.clone()),
+                    JsScalar::from_core(value.clone()),
+                )
+            })
+            .collect()
     }
 
     /// Look up the unique repeating group for a native counter tag.

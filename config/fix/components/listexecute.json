@@ -99,6 +99,7 @@
   "metadata": {
     "description": "MsgType = L",
     "display": "ListExecute",
+    "fix:identifiers": "listid",
     "fix:msgtype": "L",
     "fix:tag": "185663"
   }

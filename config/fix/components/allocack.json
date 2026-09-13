@@ -328,6 +328,7 @@
   "nullable": false,
   "metadata": {
     "display": "AllocAck",
+    "fix:identifiers": "individualallocid,parentallocid,secondaryindividualallocid",
     "fix:tag": "332386"
   }
 }

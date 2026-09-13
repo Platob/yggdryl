@@ -439,6 +439,7 @@
   "metadata": {
     "description": "MsgType = BZ",
     "display": "OrderMassActionReport",
+    "fix:identifiers": "clordid,secondaryclordid",
     "fix:msgtype": "BZ",
     "fix:tag": "182726"
   }

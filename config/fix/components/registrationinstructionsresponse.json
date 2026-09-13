@@ -139,6 +139,7 @@
   "metadata": {
     "description": "MsgType = p (lowercase P)",
     "display": "RegistrationInstructionsResponse",
+    "fix:identifiers": "clordid",
     "fix:msgtype": "p",
     "fix:tag": "849606"
   }

@@ -206,19 +206,33 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    group.bench_function("arrow_reader", |bencher| {
-        bencher.iter_batched(
-            || messages.clone(),
-            |held| {
-                codec
-                    .arrow_reader(schema.clone(), held.into_iter().map(Ok))
-                    .expect("a reader")
-                    .map(|batch| batch.expect("a batch").num_rows())
-                    .sum::<usize>()
-            },
-            BatchSize::LargeInput,
-        );
-    });
+    let enriched = codec
+        .enrich_messages(messages.clone())
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("the capture enriches");
+    assert!(enriched.iter().any(|message| {
+        message
+            .get_by_tag(yggdryl::ALTIDS_TAG_NAME.0)
+            .is_some_and(|value| value.as_mapping().is_some_and(|pairs| !pairs.is_empty()))
+    }));
+    for (name, rows) in [
+        ("arrow_reader", &messages),
+        ("arrow_reader_altids", &enriched),
+    ] {
+        group.bench_function(name, |bencher| {
+            bencher.iter_batched(
+                || rows.clone(),
+                |held| {
+                    codec
+                        .arrow_reader(schema.clone(), held.into_iter().map(Ok))
+                        .expect("a reader")
+                        .map(|batch| batch.expect("a batch").num_rows())
+                        .sum::<usize>()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
     group.bench_function("enrich_messages", |bencher| {
         bencher.iter_batched(
             || messages.clone(),

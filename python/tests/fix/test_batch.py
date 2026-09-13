@@ -357,6 +357,58 @@ def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
     assert first.equals(second)
 
 
+def test_altids_maps_cross_native_rows_and_arrow_without_changing_nullability(seed: FixRegistry) -> None:
+    codec = FixCodec(seed)
+    schema = Field("maprow", DataType.from_fields([seed.group_by_counter(65020)]), nullable=False)
+    values = [None, {}, {"clordid": "C-1", "orderid": "O-1"}]
+    messages = [FixMsg.from_row(schema, {"altids": value}, seed) for value in values]
+    table = codec.arrow_reader(schema, messages).read_all()
+    mapping = table.schema.field("altids")
+    assert mapping.nullable
+    assert mapping.type.equals(pa.map_(pa.string(), pa.string(), keys_sorted=True))
+    assert not mapping.type.key_field.nullable
+    assert mapping.type.item_field.nullable
+    assert _column(table, "altids") == [None, [], [("clordid", "C-1"), ("orderid", "O-1")]]
+    restored = list(codec.messages(table))
+    assert len(restored) == len(messages) == len(values) == 3
+    for held, original, value in zip(restored, messages, values):
+        assert held.by_name("altids").as_py() == value
+        assert held.into_row(schema) == original.into_row(schema)
+        assert held.get_by_path("altids['missing']") is None
+    assert restored[-1].by_path("altids['clordid']").as_py() == "C-1"
+    restored[-1].set("ALTIDS", {"clordid": None})
+    assert restored[-1].by_path("altids['clordid']").is_null()
+    assert restored[-1].get_by_path("altids.clordid") is None
+
+
+def test_altids_fill_agrees_between_message_and_arrow_streams(seed: FixRegistry) -> None:
+    codec = FixCodec(seed)
+    lines = [
+        b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|",
+        b"8=FIX.4.4|35=D|10=0|",
+        b"8=FIX.4.4|35=ZZ|11=C-1|10=0|",
+    ]
+    direct = list(codec.enrich_messages(codec.parse_lines(lines)))
+    bare = codec.parse_text_arrow_reader(_capture(lines, 1)).read_all()
+    filled = codec.enrich_messages_arrow_reader(bare).read_all()
+    expected = [[("clordid", "C-001"), ("execid", "E-09"), ("orderid", "O-01")], [], None]
+    assert _column(filled, "altids") == expected
+    assert _column(filled, "nofixentries") == _column(bare, "nofixentries")
+    assert filled.schema == bare.schema
+    assert codec.enrich_messages_arrow_reader(filled).read_all().equals(filled)
+    native = codec.arrow_reader(fix_schema(seed), direct).read_all()
+    assert _column(native, "altids") == expected
+    restored_messages = list(codec.messages(filled))
+    assert len(restored_messages) == len(direct) == len(lines) == 3
+    for restored, message in zip(restored_messages, direct):
+        assert restored.by_name("altids").as_py() == (
+            message.by_name("altids").as_py() if message.get_by_name("altids") is not None else None
+        )
+        assert restored.entries() == message.entries()
+        assert restored.into_bytes(124) == message.into_bytes(124)
+        assert restored.digest() == message.digest()
+
+
 def test_messages_pull_from_the_reader_one_batch_at_a_time(seed: FixRegistry) -> None:
     codec = FixCodec(seed)
     source = codec.parse_text_arrow_reader(_capture(CAPTURE, 3))

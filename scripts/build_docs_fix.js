@@ -178,6 +178,41 @@ function dictionary() {
   return fix.FixRegistry.fromHandle(CONFIG)
 }
 
+/** Live definitions, retaining persisted references and native-only builtins. */
+function liveCatalog(registry) {
+  const catalog = {}
+  for (const [category, documents] of Object.entries(registry.toJSON())) {
+    const compact = new Map(documents.map((field) => [field.name, field]))
+    if (compact.size !== documents.length) {
+      throw new Error(`compact ${category} contain duplicate canonical names`)
+    }
+    const names = new Set()
+    const live = []
+    for (const field of registry.definitions(category)) {
+      const name = field.name
+      if (names.has(name)) throw new Error(`native ${category} repeat ${name}`)
+      names.add(name)
+      live.push(compact.get(name) ?? field.toJSON())
+      compact.delete(name)
+    }
+    if (compact.size !== 0) {
+      throw new Error(`compact ${category} have no native definition: ${[...compact.keys()].join(', ')}`)
+    }
+    catalog[category] = live
+  }
+  if (catalog.fields.length !== registry.size) {
+    throw new Error('live scalar catalog count differs from the native registry')
+  }
+  const messages = new Set([...registry.msgtypes()].map((message) => message.asStr()))
+  const declared = catalog.components
+    .map((field) => field.metadata?.['fix:msgtype'])
+    .filter((code) => code !== undefined)
+  if (declared.length !== messages.size || declared.some((code) => !messages.delete(code))) {
+    throw new Error('live message catalog differs from the native message inventory')
+  }
+  return catalog
+}
+
 /** One stored JSON document, or null where the field carries none. */
 function document(field, key) {
   const held = field.get(key)
@@ -249,7 +284,7 @@ function counts(records, catalog, row, dialects) {
     if (record.g) alternates += record.g.length
   }
   return {
-    fields: records.length,
+    fields: catalog.fields.length,
     groups: catalog.groups.length,
     enumFields,
     codes,
@@ -377,9 +412,13 @@ function manifest() {
   const registry = dictionary()
   const reader = new fix.FixCodec(registry)
   const schema = fix.schema(registry, 'FixMessage')
-  const catalog = registry.toJSON()
+  const catalog = liveCatalog(registry)
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
   const records = fieldRecords(registry)
+  if (records.length !== catalog.fields.length ||
+      records.some((record, index) => record.n !== catalog.fields[index]?.name)) {
+    throw new Error('live scalar catalog order differs from native scalar iteration')
+  }
   const row = fixedRow(registry)
   const kpi = counts(records, catalog, row, registry.dialects())
 
@@ -399,7 +438,7 @@ function manifest() {
       })),
     },
     kpi,
-    // Native compact Field documents preserve category and contextual references.
+    // Native Field documents preserve category and contextual references.
     // The browser displays this graph; it does not resolve or union schemas.
     catalog,
     row,

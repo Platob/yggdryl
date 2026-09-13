@@ -329,6 +329,7 @@
   "metadata": {
     "description": "MsgType = F",
     "display": "OrderCancelRequest",
+    "fix:identifiers": "origclordid,orderid,clordid,secondaryclordid,listid",
     "fix:msgtype": "F",
     "fix:tag": "803010"
   }

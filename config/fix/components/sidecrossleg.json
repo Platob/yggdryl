@@ -228,6 +228,7 @@
   "nullable": false,
   "metadata": {
     "display": "SideCrossLeg",
+    "fix:identifiers": "legallocid",
     "fix:tag": "1067797"
   }
 }

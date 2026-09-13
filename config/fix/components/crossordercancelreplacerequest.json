@@ -749,6 +749,7 @@
   "metadata": {
     "description": "MsgType = t (lowercase T)",
     "display": "CrossOrderCancelReplaceRequest",
+    "fix:identifiers": "orderid,quoteid",
     "fix:msgtype": "t",
     "fix:tag": "393258"
   }

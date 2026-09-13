@@ -1,11 +1,11 @@
 # The decisions the TextLine adaptation rests on
 
-Twenty-four decisions and three amendments, settled while the FIX layer was
+Decisions and amendments settled while the FIX layer was
 moved onto the text reader that landed in `main`, then made text, then given
-one namespace, then met the charset layer, and then - decisions 13 to 24 - had
+one namespace, then met the charset layer, and then - from decision 13 - had
 its messages folded into its components, its direction made FIX's, its rows
 read for every message they carry, its bridge configuration read as a plugin,
-its two passes made one, and its identities made UUIDs. Each is one rule, and
+its two passes made one, and its identifiers declared by components. Each is one rule, and
 the module doc named beside it is where the rule is written down.
 
 They are here rather than in a scratchpad because they are the contract the work
@@ -20,8 +20,8 @@ decision 10 when the line became text, decision 11 when the registry's branches
 went, and decision 12 when the charset layer and the text line met in one
 merge - each written, like the others, before the code that keeps it. The
 amendments record where a decision turned out to over-claim once it met the
-code - which is the part most worth keeping. Decisions 13 to 24 were settled
-one per commit from `FIX_DIRECTION_MESSAGES_PROMPT.md`, each written before
+code - which is the part most worth keeping. Decisions from 13 follow
+`FIX_DIRECTION_MESSAGES_PROMPT.md` one per commit, each written before
 its code and each named in the commit that keeps it.
 
 ## 1. A frame narrows the scan; outside a frame the generic rule stands
@@ -1611,3 +1611,151 @@ new rule, with the excluded conventions stated as the reason a neighbouring
 amount stays null; and the corpus read both ways, row by row and in batches,
 required to agree on every tag but the two pairs written down as what a
 document-bodied row cannot carry.
+
+## 21. A component declares its identifiers; a Map group carries their values
+
+**Rule.** `fix:identifiers` is an ordered list of the component's own scalar
+member names. Its setter accepts a member's name, alias or decimal tag,
+resolves it against that component once, and stores canonical names in
+component order. An absent member, a nested member, an empty spelling, an
+embedded comma, or two spellings resolving to one member is a located typed
+refusal; failure changes nothing. Empty input removes the property.
+`identifiers()` borrows the existing `FixSpellings` iterator. On merge the
+incoming list wins whole, as a replacements or directions document does:
+two ordered declarations are not an unordered union.
+The same owner normalizes stored metadata after references resolve, so the
+final member order owns the stored order on create, reload and merge.
+
+**The families.** The generator owns one explicit suffix table, beside
+`CODED_TAGS`: `clordid`, `origclordid`, `secondaryclordid`, `orderid`,
+`secondaryorderid`, `listid`, `quoteid`, `quotereqid`, `quoterespid`,
+`quoteentryid`, `execid`, `execrefid`, `secondaryexecid`, `tradeid`,
+`secondarytradeid`, `tradereportid`, `tradereportrefid`, `firmtradeid`,
+`regulatorytradeid`, `allocid`, `secondaryallocid`, `individualallocid`.
+Matching the folded name's suffix includes the published side, leg, ref,
+orig and affected forms; a general `id` or `reportid` suffix is not a family.
+The FIX Latest field reference supplies the meanings, including
+[ClOrdID](https://fiximate.fixtrading.org/en/FIX.Latest/tag11.html),
+[ExecRefID](https://fiximate.fixtrading.org/en/FIX.Latest/tag19.html),
+[RegulatoryTradeID](https://fiximate.fixtrading.org/en/FIX.Latest/tag1903.html)
+and [IndividualAllocID](https://fiximate.fixtrading.org/en/FIX.Latest/tag467.html).
+Every generated component, including a group's occurrence and a marked
+message, declares its direct scalar identifiers in member order. No group
+is traversed to invent a root identifier. Empty membership means no property.
+The generated dictionary census and five literal message lists pin this rule.
+
+**The group.** `altids` (`AltIds`, 65020) is a nullable
+`map<utf8, utf8>` with sorted keys, registered in `Groups`, never `Fields`.
+A Map's occurrence is its existing non-null entries Struct. Crate-owned
+Map groups address their mapping through their own counter: `fix:tag` and
+`fix:counter` must agree, lie in the crate's reserved range, and collide
+with no scalar field; scalar alternate tags cannot claim that counter either.
+Their cardinality is already the mapping's length,
+so no second scalar counter or count state is introduced. Persisted
+declarations omit builtin groups, as they omit builtin scalars; a component's
+reference to one resolves against the registry-owned builtin on reload.
+The crate-tag listing has
+twenty-one definitions: twenty scalar fields and this group. Tags 65021 and
+65022 remain available for decision 24. Ordinary List/LargeList groups keep
+their derived definition tag and separate Int32 wire counter; a nested
+datatype is still refused in `Fields` without exception.
+
+One occurrence accessor serves List, LargeList and Map. A reconstructed
+group preserves its layout and a Map's sortedness; its entries and key never
+become nullable. A persisted Map retains the entries Struct required by its
+datatype; a referenced entries component carries only its reference metadata
+and resolves through the same occurrence owner as a List item. Component
+updates refresh it, metadata overrides fail, and an update that cannot retain
+the two-member non-null-key Map shape fails atomically. Ordinary stored
+references still require the Null placeholder. `GROUP_TAGS` still selects
+the three dictionary groups:
+the crate-tag enumeration already selects 65020. Schema construction asks
+for a scalar and a group independently, so the absence of a scalar cannot
+hide a group. The native Mapping and Arrow Map doors carry `altids`; its
+key and value gain no invented numeric FIX tags or numeric delimiter.
+The native name door prefers a canonical Map name over a scalar alias;
+identical folded canonical scalar/Map names are a conflict in either
+registration order, because the message door cannot distinguish them.
+Builtin construction and registration failures are reported rather than
+silently swallowed, and a census proves every builtin is registered in its
+own category. Persisted references resolve builtin definitions from their
+registry owner when the store omits them; an incoming document cannot
+override a builtin by restating its name under another tag.
+
+The generated explorer catalog enumerates the live native categories, not
+only the compact persistence document: persistence deliberately omits
+builtins. It keeps each native compact document where one exists and uses
+the native Field document for an implicit definition. This preserves stored
+references without rebuilding a schema and includes the scalar builtins,
+`altids`, and `pluginconfig` under their actual categories. Displayed counts
+come from those same collections; shipped and live inventories stay distinct.
+
+**The fill.** A registered message definition compiles its identifier
+selection once; per-message work reads the selected fields and moves their
+values without parsing metadata, resolving input spellings or rebuilding a schema.
+An exact canonical member name wins. A renamed member is reached by its tag
+only where that tag is unique in both the component and the row; an ambiguous
+tag selects nothing rather than assigning one member another's value.
+One core implementation answers that selection for enrichment and the
+lifecycle that follows. After restatement and the existing fills, enrichment
+builds `altids` from identifiers stated at this message's own level, keyed by
+canonical field name and retaining each identifier's text. Null identifiers
+contribute nothing. A known component with no stated identifiers yields an
+empty map. Non-text scalar identifiers use the existing UTF-8 scalar
+conversion's canonical spelling, never a second identifier renderer. An
+unrepresentable spelling propagates that conversion's typed refusal at the
+identifier's field path; it is not silently omitted. An
+unknown message type yields no map. A stated non-null map,
+including an empty one, is preserved; a second enrichment is equal.
+
+The producer sorts keys and makes them unique before the map crosses
+`Field::scalar`. This is a producer invariant, not an assumption that
+`schema::fitted` checks it: that function accepts an already matching
+datatype ID. `column_value` gains no derivation for 65020; enrichment owns
+the fill and the group column simply carries it. Arrival entries, wire bytes
+and the arrival digest do not change.
+
+**Python exchange.** A sorted Map must retain its flags through batch and
+stream export, not only a standalone Field. Arrow 59.2's aggregate Field
+C Schema exporter overwrites the Map sortedness flag. The Python boundary
+therefore reuses the core's existing recursive Field exporter and the
+existing C Data array importer for every batch. A private, thread-safe
+iterator owns the native reader, resolves its root and transport metadata
+once, pulls no batch at construction, and exports one batch per request.
+Exhaustion or an error fuses and releases that reader. Native failures retain
+the C Stream boundary's exception categories: invalid input is `ArrowInvalid`
+(also a `ValueError`), with distinct I/O, memory and not-implemented errors.
+Foreign array-import errors retain their own exception, never a blanket
+`ArrowException`. Arrays share their buffers, including
+nested Maps; batch metadata and zero-column row counts are preserved.
+Standalone batches use the same exporter. There is no FIX-specific bridge,
+foreign cast, alternate schema builder, or unsafe callback. Pins cover
+sortedness, nested flags, transport metadata, row counts, shared buffers,
+lazy pulls, failure fusion, and consumption from a Python worker thread.
+The import direction already preserves the flags. Its redundant second
+datatype import and per-field schema reconstruction are removed: a foreign
+Field or Schema is imported once, then resolved by the native owner.
+
+**Pins.** Atomic property refusal and canonicalization; merge precedence;
+the full generated membership census and literal lists for `newordersingle`,
+`executionreport`, `tradecapturereport`, `quote`, `allocationinstruction`;
+Map category, counter and key invariants; unchanged List counter refusals;
+exactly one nullable sorted `altids` column; map-preserving group merge;
+scalar-member and entries-component reference refresh and store round trips;
+native row and Arrow round trips; preserved stated maps, empty and unknown
+cases, no flattened group identifiers, second-pass equality; allocation-free
+borrowed declaration/compiled selection at several corpus sizes. The
+equivalence regeneration changes only enriched projections and appended
+identifier fixtures, including `enrich.ulbridge[...]` for the capture's
+execution reports, with every changed key named in this decision's commit.
+
+**Validation mode.** The required all-target test command must not run
+benchmark measurements. Two custom median gates bypassed Criterion's test
+mode: local-filesystem parity, and cast-plan parity in optimized tests.
+Their shared mode predicate permits custom timing only in an optimized
+invocation explicitly carrying `--bench`, without `--test` or `--list`.
+Profiling-only and rejected-all invocations also perform no custom timing.
+Test mode retains transfer-size/content and cast-result assertions without
+warm-up, median samples or throughput thresholds. The benchmark thresholds
+and full benchmark fixtures remain unchanged. Mode combinations are pinned;
+this is a validation-harness correction, not a storage-performance change.

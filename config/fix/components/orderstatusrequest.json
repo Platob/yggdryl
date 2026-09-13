@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = H",
     "display": "OrderStatusRequest",
+    "fix:identifiers": "orderid,clordid,secondaryclordid",
     "fix:msgtype": "H",
     "fix:tag": "426679"
   }

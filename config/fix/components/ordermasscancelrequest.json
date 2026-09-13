@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = q (lowercase Q)",
     "display": "OrderMassCancelRequest",
+    "fix:identifiers": "clordid,secondaryclordid",
     "fix:msgtype": "q",
     "fix:tag": "495019"
   }

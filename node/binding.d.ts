@@ -3019,7 +3019,10 @@ export interface Fix {
    * and the Arrow twin of each - a pin is on the codec, a stage is a call.
    */
   readonly FixCodec: typeof FixCodec
-  /** Immutable registry-owned message definitions. */
+  /**
+   * Immutable registry-owned message definitions; `identifierValues` returns
+   * independent mutable declaration Fields beside native Scalar values.
+   */
   readonly MsgType: abstract new () => MsgType
   /** A lazy stream of messages: what every stage of `FixCodec` answers. */
   readonly FixMessages: abstract new () => FixMessages
@@ -3056,13 +3059,15 @@ export interface Fix {
   /** One row's columns, in order, as tags. */
   schemaTags(): number[]
   /**
-   * The twenty fields this crate defines, in tag order: standard fields
-   * from 65000 up, above every tag FIX or a venue publishes - the digest,
+   * The twenty-one crate definitions in tag order from 65000: twenty scalar
+   * fields and the sorted `altids` Map group at 65020 - the digest,
    * the clock and its partition, the session a message states, the bridge's
    * message context, the plugins and plugin sessions a line moved between,
    * the ISIN, MIC and order state a row derives, and the instrument, message
-   * and order-chain identities a lifecycle pass stamps. Every registry holds
-   * them from construction.
+   * and order-chain identities a lifecycle pass stamps, plus the direct
+   * identifiers enrichment records in `altids`. Every registry holds them
+   * in their category from construction; `size` counts the twenty scalar
+   * members of this listing, not the group.
    */
   crateFields(): Field[]
   /** The native ULBridge scalar definitions. */

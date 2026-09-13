@@ -278,6 +278,7 @@
   "nullable": false,
   "metadata": {
     "display": "LegOrd",
+    "fix:identifiers": "legallocid",
     "fix:tag": "580623"
   }
 }

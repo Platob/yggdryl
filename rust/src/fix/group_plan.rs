@@ -1,4 +1,4 @@
-//! Immutable numeric-group routing and nullable output projection.
+//! Immutable group routing and nullable output projection.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -32,15 +32,10 @@ impl GroupPlan {
 
     fn from_projection(field: Field, depth: usize) -> Result<Self> {
         check_depth(&field, depth)?;
-        let item = match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => item,
-            _ => {
-                return Err(Error::InvalidRecord {
-                    path: field.name().into(),
-                    reason: "expected a numeric FIX group List or LargeList".into(),
-                });
-            }
-        };
+        let item = super::catalog::occurrence_of(&field).ok_or_else(|| Error::InvalidRecord {
+            path: field.name().into(),
+            reason: "expected a FIX group List, LargeList or Map".into(),
+        })?;
         let mut columns = Vec::new();
         let mut paths = Vec::new();
         Self::columns(item, &mut Vec::new(), &mut columns, &mut paths, depth + 1)?;
@@ -138,10 +133,8 @@ impl GroupPlan {
             .map(|nested| (nested.path.as_slice(), &nested.plan))
     }
     pub(super) fn row(&self, values: Vec<Scalar>) -> Scalar {
-        let item = match self.field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => item,
-            _ => unreachable!("a compiled group is a list"),
-        };
+        let item =
+            super::catalog::occurrence_of(&self.field).expect("a compiled group has an occurrence");
         component_value(item, &mut values.into_iter(), true)
     }
 }
@@ -168,6 +161,8 @@ fn nullable_layout(field: &Field, nullable: bool, depth: usize) -> Result<Field>
         )?,
         DataType::List(item) => DataType::list(nullable_layout(item, false, depth + 1)?),
         DataType::LargeList(item) => DataType::large_list(nullable_layout(item, false, depth + 1)?),
+        // Native maps are already complete values, not sparse wire groups:
+        // their entry and key nullability must remain exactly as declared.
         _ => field.dtype().clone(),
     };
     held.set_dtype(dtype)?;
@@ -311,5 +306,33 @@ mod tests {
         assert!(!std::ptr::eq(original, current));
         assert_eq!(original.delimiter(), Some(448));
         assert_eq!(current.delimiter(), Some(452));
+    }
+
+    #[test]
+    fn maps_keep_native_key_shape_and_declare_no_numeric_wire_layout() {
+        let mut field = DataType::map_of(DataType::utf8(), DataType::utf8(), true)
+            .unwrap()
+            .nullable_field("nativeids");
+        field.as_fix_mut().set_tag(65_090).unwrap();
+        field.as_fix_mut().set_counter(65_090).unwrap();
+        let plan = GroupPlan::from_field(&field).unwrap();
+        let DataType::Map(map) = plan.field().dtype() else {
+            panic!("the native Map layout is preserved")
+        };
+        assert!(map.keys_sorted());
+        assert!(!map.entries().is_nullable());
+        assert!(!map.entries().fields()[0].is_nullable());
+        assert_eq!(plan.delimiter(), None);
+        assert!(plan.tags.is_empty());
+        assert_eq!(
+            plan.row(vec![Scalar::from("orderid"), Scalar::from("O-1")]),
+            Scalar::from_sequence([Scalar::from("orderid"), Scalar::from("O-1")]),
+        );
+        let mut registry = FixRegistry::new();
+        registry
+            .insert_definition(FixCategory::Groups, field)
+            .unwrap();
+        assert!(registry.get_group_by_counter(65_090).is_some());
+        assert!(registry.get_group_plan_by_counter(65_090).is_none());
     }
 }

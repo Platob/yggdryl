@@ -48,6 +48,7 @@
   "nullable": false,
   "metadata": {
     "display": "ExecutionAggregation",
+    "fix:identifiers": "execid,tradeid",
     "fix:tag": "596879"
   }
 }

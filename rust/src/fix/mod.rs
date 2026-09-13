@@ -15,6 +15,7 @@
 //! | branches | `fix:branches` | ordered name list | the dictionaries that contributed this field, folded and sorted; absent for a field the specification alone defines |
 //! | tags | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 //! | aliases | `fix:aliases` | ordered name list | alternate names, highest priority first |
+//! | identifiers | `fix:identifiers` | ordered member name list | a component's direct scalar identifiers, in declaration order |
 //! | description | `description` | text | the specification's own wording, on the key every catalog reads |
 //! | lineage | `fix:lineage` | canonical JSON, oldest first | what this field was called and typed at each FIX version |
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
@@ -23,11 +24,12 @@
 //! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `fix:component` | name | the component defining a group occurrence |
 //!
-//! Scalar wire fields, messages, components and groups are
-//! separate catalog categories. A component or message is a Struct Field;
-//! a group is a List of a non-null component. Its `fix:counter` references a
-//! separate int32 wire field: `NoPartyIDs` is tag 453, while `Parties` contains
-//! `Party` values. Each field keeps its enumeration in `fix:codes` metadata.
+//! The categories are scalar wire fields, components and groups. A message
+//! is a component carrying `fix:msgtype`. List groups hold non-null Struct
+//! occurrences and reference a separate int32 counter: `NoPartyIDs` is tag
+//! 453, while `Parties` contains `Party` values. A crate-owned Map group
+//! holds its native entries under its own counter, without a scalar count
+//! column. Each field keeps its enumeration in `fix:codes` metadata.
 //!
 //! # Identity
 //!
@@ -175,8 +177,8 @@ pub use codes::{FixCode, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG_NAME, INSTID_TAG_NAME,
-    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
+    ALTIDS_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_PARTITION_SECONDS, ID_TAG_NAME,
+    INSTID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
     MSGHASH_TAG_NAME, MSGTYPE_TAG_NAME, PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME,
     PERSISTENTID_TAG_NAME, PLUGINID_TAG_NAME, PREVPLUGINID_TAG_NAME, SENDERSESSIONID_TAG_NAME,
     SENDERSESSIONNAME_TAG_NAME, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME, TARGETSESSIONID_TAG_NAME,

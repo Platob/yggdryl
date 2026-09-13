@@ -138,6 +138,7 @@
   "nullable": false,
   "metadata": {
     "display": "InstrmtStrkPx",
+    "fix:identifiers": "clordid,secondaryclordid",
     "fix:tag": "132613"
   }
 }

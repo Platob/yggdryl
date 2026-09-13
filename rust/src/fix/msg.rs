@@ -839,6 +839,16 @@ impl FixMsg {
             .map(|(_, index)| *index)
     }
 
+    /// A tag identifies a member only when exactly one root child carries it.
+    pub(super) fn unique_index_of_tag(&self, tag: i32) -> Option<usize> {
+        let at = self.tags.partition_point(|(held, _)| *held < tag);
+        let (held, index) = self.tags.get(at)?;
+        if *held != tag || self.tags.get(at + 1).is_some_and(|(next, _)| *next == tag) {
+            return None;
+        }
+        Some(*index)
+    }
+
     pub(super) fn index_of_group(&self, counter: i32) -> Option<usize> {
         let index = self
             .groups
@@ -962,12 +972,16 @@ impl FixMsg {
 
     /// The field a bare tag names: the tag's first holder in the registry.
     pub(super) fn known_by_tag(&self, tag: i32) -> Option<&Field> {
-        self.registry.get_field_by_tag(tag)
+        self.registry.get_field_by_tag(tag).or_else(|| {
+            self.registry
+                .get_group_by_counter(tag)
+                .filter(|group| matches!(group.dtype(), DataType::Map(_)))
+        })
     }
 
     /// The field a bare name reaches, canonical spelling or alias.
     pub(super) fn known_by_name(&self, name: &str) -> Option<&Field> {
-        self.registry.get_field_by_name(name)
+        self.registry.get_message_field_by_name(name)
     }
 
     /// The position of the child `name` reaches under `parent`: the
@@ -1049,6 +1063,12 @@ impl FixMsg {
                     usize::try_from(*position).ok()?
                 };
                 Some((item.as_ref(), value.get(at)?))
+            }
+            DataType::Map(map) => {
+                let FieldSegment::Key(key) = segment else {
+                    return None;
+                };
+                Some((map.entries().fields().get(1)?, value.get_key(key.value())?))
             }
             _ => None,
         }

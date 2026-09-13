@@ -238,6 +238,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "id",
             "persistentid",
             "targetsessionid",
+            "altids",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -264,6 +265,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Id"),
             Some("PersistentId"),
             Some("TargetSessionId"),
+            Some("AltIds"),
         ],
     );
 
@@ -324,12 +326,36 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
 
     // Every registry holds them from construction, and inserting them again
     // replaces rather than collides.
-    assert_eq!(FixRegistry::new().len(), held.len());
-    let registry = FixRegistry::from_fields(held.iter().cloned())
-        .expect("the crate's own fields insert into a registry already holding them");
-    assert_eq!(registry.len(), held.len());
+    let scalar_count = held
+        .iter()
+        .filter(|field| !field.dtype().is_nested())
+        .count();
+    assert_eq!(held.len(), 21);
+    assert_eq!(scalar_count, 20);
+    let (mut registry, warnings) = super::warned::during(FixRegistry::new);
+    assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
+    assert_eq!(registry.len(), scalar_count);
     for field in held {
-        let id = field.as_fix().id().unwrap().expect("an identity");
-        assert_eq!(registry.field_by_id(id).unwrap().name(), field.name());
+        let category = if field.dtype().is_nested() {
+            yggdryl::FixCategory::Groups
+        } else {
+            yggdryl::FixCategory::Fields
+        };
+        assert_eq!(registry.definition(category, field.name()).unwrap(), field);
+        registry.insert_definition(category, field.clone()).unwrap();
     }
+    assert_eq!(registry.len(), scalar_count);
+    let map = registry
+        .get_group_by_counter(yggdryl::ALTIDS_TAG_NAME.0)
+        .unwrap();
+    assert_eq!(map.name(), yggdryl::ALTIDS_TAG_NAME.1);
+    assert_eq!(
+        map.dtype(),
+        &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
+    );
+    assert!(
+        registry
+            .get_field_by_tag(yggdryl::ALTIDS_TAG_NAME.0)
+            .is_none()
+    );
 }

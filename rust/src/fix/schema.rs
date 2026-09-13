@@ -166,32 +166,23 @@ const REQUIRED_TAGS: [i32; 4] = [
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
     let mut fields: Vec<Field> = Vec::with_capacity(fix_schema_tags().len() + 2);
     for tag in fix_schema_tags() {
-        // The standard branch answers first, and the crate's own fields are
-        // on it: every registry holds them, so every tag here resolves.
-        let Some(held) = registry.get_field_by_tag(tag) else {
-            continue;
-        };
-        let mut held = held.clone();
-        // Named as the dictionary names the field, which is already folded;
-        // the display spelling rides on the field so a renderer can show
-        // `MsgType` over the column `msgtype`.
-        let spelling = held.name().to_owned();
-        if held.as_metadata().get("display").is_none() {
-            let carried: Vec<(String, String)> = held
-                .as_metadata()
+        if let Some(held) = registry.get_field_by_tag(tag) {
+            let mut held = held.clone();
+            // The scalar's canonical name is folded; its display preserves
+            // the dictionary's spelling independently of that identity.
+            if held.display().is_none() {
+                let spelling = held.name().to_owned();
+                held.set_display(spelling)?;
+            }
+            held.set_nullable(!REQUIRED_TAGS.contains(&tag));
+            if !fields
                 .iter()
-                .map(|(key, value)| (key.to_owned(), value.to_owned()))
-                .chain([("display".to_owned(), spelling)])
-                .collect();
-            let _ = held.set_metadata(carried);
+                .any(|known| crate::types::folds_equal(known.name(), held.name()))
+            {
+                fields.push(held);
+            }
         }
-        held.set_nullable(!REQUIRED_TAGS.contains(&tag));
-        if !fields
-            .iter()
-            .any(|known| crate::types::folds_equal(known.name(), held.name()))
-        {
-            fields.push(held);
-        }
+        // A native Map group owns its counter; no scalar has to precede it.
         if let Some(group) = registry.get_group_by_counter(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
@@ -533,14 +524,10 @@ pub(super) fn as_instant(held: crate::Scalar) -> crate::Scalar {
 
 /// The members one repeating-group field declares, or None for anything else.
 ///
-/// The one reading of a group's item Struct: the row projection, the
-/// restatement and the builder each ask it, so a List no Struct item heads is
-/// "not a group" in exactly one place.
+/// The row projection, restatement and builder share the catalog's reading
+/// of a group's occurrence, including a Map's entries Struct.
 pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
-    let item = match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => item.as_ref(),
-        _ => return None,
-    };
+    let item = super::catalog::occurrence_of(field)?;
     item.dtype().as_fields()
 }
 

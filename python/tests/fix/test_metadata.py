@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from yggdryl import DataType, Field
@@ -99,3 +101,66 @@ def test_reference_properties_refuse_other_protocols_and_frozen_fields(
         with pytest.raises(TypeError, match="read-only"):
             setattr(frozen.fix, property_name, replacement)
         assert frozen.into_json() == before
+
+
+def test_identifiers_resolve_python_iterables_into_canonical_member_order() -> None:
+    client = Field("clordid", "utf8")
+    client.fix.tag = 11
+    client.fix.aliases = ["ClientOrder"]
+    order = Field("orderid", "utf8")
+    order.fix.tag = 37
+    component = Field("order", DataType.from_fields([client, order]), nullable=False)
+    view = component.fix
+    assert view.identifiers == []
+    view.identifiers = (name for name in ["37", "ClientOrder"])
+    assert view.identifiers == ["clordid", "orderid"]
+    assert component.metadata["fix:identifiers"] == "clordid,orderid"
+    assert Field.from_arrow(component.into_arrow()).fix.identifiers == view.identifiers
+    view.identifiers = ("ORDERID",)
+    assert view.identifiers == ["orderid"]
+    view.identifiers = []
+    assert view.identifiers == []
+    assert "fix:identifiers" not in component.metadata
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [[""], ["absent"], ["nested"], ["nested.child"], ["clordid,orderid"], ["clordid", "11"]],
+)
+def test_identifier_refusals_leave_the_complete_field_unchanged(invalid: list[str]) -> None:
+    client = Field("clordid", "utf8", metadata={"fix:tag": "11"})
+    nested = Field("nested", DataType.from_fields([Field("child", "utf8")]))
+    component = Field("order", DataType.from_fields([client, nested]), nullable=False)
+    component.fix.identifiers = ["clordid"]
+    before = component.into_json()
+    with pytest.raises(ValueError, match="order.fix:identifiers"):
+        component.fix.identifiers = invalid
+    assert component.into_json() == before
+
+
+def test_identifiers_refuse_nontext_other_protocols_and_readonly_declarations() -> None:
+    component = Field("order", DataType.from_fields([Field("clordid", "utf8")]), nullable=False)
+    component.fix.identifiers = ["clordid"]
+    before = component.into_json()
+    for invalid in ("clordid", 11, ["clordid", 11]):
+        with pytest.raises(TypeError):
+            component.fix.identifiers = invalid  # type: ignore[assignment]
+        assert component.into_json() == before
+
+    def interrupted() -> Iterator[str]:
+        yield "clordid"
+        raise RuntimeError("identifier input failed")
+
+    with pytest.raises(RuntimeError, match="identifier input failed"):
+        component.fix.identifiers = interrupted()
+    assert component.into_json() == before
+    with pytest.raises(TypeError, match="fix property"):
+        component.iceberg.identifiers
+    with pytest.raises(TypeError, match="fix property"):
+        component.iceberg.identifiers = ["clordid"]
+    assert component.into_json() == before
+    frozen = component.into_dataclass(name="IdentifierOrder").into_field()
+    before = frozen.into_json()
+    with pytest.raises(TypeError, match="read-only"):
+        frozen.fix.identifiers = []
+    assert frozen.into_json() == before

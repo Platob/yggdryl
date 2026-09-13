@@ -68,6 +68,356 @@ fn catalog() -> FixRegistry {
 }
 
 #[test]
+fn crate_map_groups_are_inherited_instead_of_stored_or_overridden() {
+    let registry = FixRegistry::new();
+    let map = registry.get_group_by_counter(65_020).unwrap();
+    let mut stated = map.clone();
+    stated.set_comment("not the crate's declaration").unwrap();
+    let snapshot = registry.into_json().unwrap();
+    assert!(!snapshot.contains("altids"));
+    assert_eq!(FixRegistry::from_json(&snapshot).unwrap(), registry);
+
+    let document = Scalar::from_record([
+        ("fields", Scalar::from_sequence([])),
+        ("components", Scalar::from_sequence([])),
+        (
+            "groups",
+            Scalar::from_sequence([stated.clone().into_value()]),
+        ),
+    ])
+    .unwrap();
+    let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
+    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
+
+    let root = scratch("crate-map");
+    let mut folder = Folder::new(&root).unwrap();
+    registry.write_into(&mut folder).unwrap();
+    assert!(!root.join("groups/altids.json").exists());
+    folder
+        .child_by_path("groups/altids.json")
+        .unwrap()
+        .write_all_bytes(&stated.into_json_bytes().unwrap())
+        .unwrap();
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
+    let mut registry = FixRegistry::new();
+    let mut map = registry.get_group_by_counter(65_020).unwrap().clone();
+    map.as_fix_mut().set_group("altids").unwrap();
+    let component = DataType::from_fields([map])
+        .unwrap()
+        .required_field("identified");
+    registry
+        .create_definition(FixCategory::Components, component)
+        .unwrap();
+    let snapshot = registry.into_json().unwrap();
+    let loaded = FixRegistry::from_json(&snapshot).unwrap();
+    assert_eq!(loaded, registry);
+
+    let root = scratch("crate-map-reference");
+    let mut folder = Folder::new(&root).unwrap();
+    registry.write_into(&mut folder).unwrap();
+    assert!(!root.join("groups/altids.json").exists());
+    assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
+    for sorted in [false, true] {
+        let mut key = tagged("lookupkey", 9001, DataType::utf8());
+        key.set_nullable(false);
+        let value = tagged("lookupvalue", 9002, DataType::utf8());
+        let mut registry = FixRegistry::from_fields([key.clone(), value.clone()]).unwrap();
+        key.as_fix_mut().set_field_ref("lookupkey").unwrap();
+        let mut value = value;
+        value.as_fix_mut().set_field_ref("lookupvalue").unwrap();
+        let entries = DataType::from_fields([key, value])
+            .unwrap()
+            .required_field("entries");
+        let mapping = DataType::map(entries, sorted)
+            .unwrap()
+            .nullable_field("pairs");
+        let component = DataType::from_fields([mapping])
+            .unwrap()
+            .required_field("lookup");
+        registry
+            .create_definition(FixCategory::Components, component)
+            .unwrap();
+
+        let json = registry.into_json().unwrap();
+        let snapshot = yggdryl::from_json_scalar(&json).unwrap();
+        let component = Field::from_value(
+            snapshot.as_record().unwrap()["components"]
+                .get(0)
+                .unwrap()
+                .clone(),
+        )
+        .unwrap();
+        let DataType::Map(map) = component.fields()[0].dtype() else {
+            panic!("compacting references preserves the Map")
+        };
+        assert_eq!(map.keys_sorted(), sorted);
+        assert!(!map.entries().is_nullable());
+        for (index, name) in ["lookupkey", "lookupvalue"].into_iter().enumerate() {
+            let child = &map.entries().fields()[index];
+            assert_eq!(child.dtype(), &DataType::Null);
+            assert_eq!(child.as_fix().field_ref(), Some(name));
+            assert_eq!(child.is_nullable(), index == 1);
+        }
+        assert_eq!(FixRegistry::from_json(&json).unwrap(), registry);
+
+        // A metadata-only update recompacts and resolves the graph. Each
+        // Map child inherits its owner's update without relaxing the key.
+        for tag in [9001, 9002] {
+            let mut changed = registry.field_by_tag(tag).unwrap().clone();
+            changed
+                .as_fix_mut()
+                .set_description("Reviewed lookup member")
+                .unwrap();
+            registry
+                .update_definition(FixCategory::Fields, changed)
+                .unwrap();
+        }
+        let component = registry
+            .definition(FixCategory::Components, "lookup")
+            .unwrap();
+        let DataType::Map(map) = component.fields()[0].dtype() else {
+            panic!("reference refresh preserves the Map")
+        };
+        assert_eq!(map.keys_sorted(), sorted);
+        assert!(component.fields()[0].is_nullable());
+        assert!(!map.entries().is_nullable());
+        for (index, tag) in [9001, 9002].into_iter().enumerate() {
+            let child = &map.entries().fields()[index];
+            let owner = registry.field_by_tag(tag).unwrap();
+            assert_eq!(child.dtype(), owner.dtype());
+            assert_eq!(child.as_fix().description(), owner.as_fix().description());
+            assert_eq!(child.as_fix().field_ref(), Some(owner.name()));
+            assert_eq!(child.is_nullable(), index == 1);
+        }
+        assert_eq!(
+            FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+            registry
+        );
+        let root = scratch(if sorted {
+            "sorted-map-members"
+        } else {
+            "map-members"
+        });
+        let mut folder = Folder::new(&root).unwrap();
+        registry.write_into(&mut folder).unwrap();
+        assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn map_entries_component_references_refresh_without_losing_the_storage_contract() {
+    for sorted in [false, true] {
+        let mut component = DataType::from_fields([
+            DataType::utf8().required_field("key"),
+            DataType::utf8().nullable_field("value"),
+        ])
+        .unwrap()
+        .required_field("lookupentry");
+        component.set_comment("Original entries").unwrap();
+        let mut registry = FixRegistry::new();
+        registry
+            .create_definition(FixCategory::Components, component)
+            .unwrap();
+        let mut entries = registry
+            .definition(FixCategory::Components, "lookupentry")
+            .unwrap()
+            .clone();
+        entries.as_fix_mut().set_component("lookupentry").unwrap();
+        let mapping = DataType::map(entries, sorted)
+            .unwrap()
+            .nullable_field("nativepairs");
+        let containing = DataType::from_fields([mapping])
+            .unwrap()
+            .required_field("mappedlookup");
+        registry
+            .create_definition(FixCategory::Components, containing)
+            .unwrap();
+
+        let json = registry.into_json().unwrap();
+        let document = yggdryl::from_json_scalar(&json).unwrap();
+        let mut stored = Field::from_value(
+            document.as_record().unwrap()["components"]
+                .get(1)
+                .unwrap()
+                .clone(),
+        )
+        .unwrap();
+        assert_eq!(stored.name(), "mappedlookup");
+        let DataType::Map(map) = stored.fields()[0].dtype() else {
+            panic!("a persisted Map keeps its entries Struct")
+        };
+        assert_eq!(map.keys_sorted(), sorted);
+        assert!(!map.entries().is_nullable());
+        assert!(!map.entries().fields()[0].is_nullable());
+        assert_eq!(map.entries().as_fix().component(), Some("lookupentry"));
+        assert_eq!(map.entries().comment(), None);
+        assert_eq!(map.entries().as_fix().tag().unwrap(), None);
+        assert_eq!(FixRegistry::from_json(&json).unwrap(), registry);
+
+        // The storage envelope permits a Struct, not an occurrence override.
+        let mut overridden = map.entries().clone();
+        overridden.set_comment("An occurrence override").unwrap();
+        let mut mapping = stored.fields()[0].clone();
+        mapping
+            .set_dtype(DataType::map(overridden, sorted).unwrap())
+            .unwrap();
+        stored
+            .set_dtype(DataType::from_fields([mapping]).unwrap())
+            .unwrap();
+        let refused =
+            Scalar::from_record(document.as_record().unwrap().iter().map(|(key, value)| {
+                (
+                    key.clone(),
+                    if key == "components" {
+                        Scalar::from_sequence([
+                            value.get(0).unwrap().clone(),
+                            stored.clone().into_value(),
+                        ])
+                    } else {
+                        value.clone()
+                    },
+                )
+            }))
+            .unwrap();
+        let error =
+            FixRegistry::from_json(&yggdryl::into_json_scalar(&refused).unwrap()).unwrap_err();
+        assert!(matches!(error, yggdryl::Error::Conflict { .. }));
+        assert!(error.to_string().contains("occurrence metadata override"));
+
+        let mut changed = registry
+            .definition(FixCategory::Components, "lookupentry")
+            .unwrap()
+            .clone();
+        changed.set_comment("Reviewed entries").unwrap();
+        registry
+            .update_definition(FixCategory::Components, changed)
+            .unwrap();
+        let containing = registry
+            .definition(FixCategory::Components, "mappedlookup")
+            .unwrap();
+        let mapping = &containing.fields()[0];
+        let DataType::Map(map) = mapping.dtype() else {
+            panic!("reference refresh preserves Map")
+        };
+        assert!(mapping.is_nullable());
+        assert_eq!(map.keys_sorted(), sorted);
+        assert!(!map.entries().is_nullable());
+        assert!(!map.entries().fields()[0].is_nullable());
+        assert!(map.entries().fields()[1].is_nullable());
+        assert_eq!(map.entries().comment(), Some("Reviewed entries"));
+        assert_eq!(map.entries().as_fix().component(), Some("lookupentry"));
+        assert_eq!(
+            FixRegistry::from_json(&registry.into_json().unwrap()).unwrap(),
+            registry
+        );
+
+        // A component fold cannot turn the entries into a three-member Struct.
+        let before = registry.clone();
+        let mut extended = registry
+            .definition(FixCategory::Components, "lookupentry")
+            .unwrap()
+            .clone();
+        extended
+            .set_dtype(
+                DataType::from_fields(
+                    extended
+                        .fields()
+                        .iter()
+                        .cloned()
+                        .chain([DataType::utf8().nullable_field("extra")]),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        assert!(
+            registry
+                .add_definition(FixCategory::Components, extended)
+                .is_err()
+        );
+        assert_eq!(registry, before);
+        assert_eq!(registry.stable_hash(), before.stable_hash());
+
+        let root = scratch(if sorted {
+            "sorted-map-component"
+        } else {
+            "map-component"
+        });
+        let mut folder = Folder::new(&root).unwrap();
+        registry.write_into(&mut folder).unwrap();
+        assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn ordinary_stored_component_references_still_require_null_placeholders() {
+    let component = DataType::from_fields([DataType::utf8().nullable_field("value")])
+        .unwrap()
+        .required_field("ordinary");
+    let mut occurrence = component.clone();
+    occurrence.as_fix_mut().set_component("ordinary").unwrap();
+    let containing = DataType::from_fields([occurrence])
+        .unwrap()
+        .required_field("containing");
+    let document = Scalar::from_record([
+        ("fields", Scalar::from_sequence([])),
+        (
+            "components",
+            Scalar::from_sequence([component.into_value(), containing.into_value()]),
+        ),
+        ("groups", Scalar::from_sequence([])),
+    ])
+    .unwrap();
+    let error = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap_err();
+    assert!(error.to_string().contains("Null placeholder datatype"));
+}
+
+#[test]
+fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
+    let registry = FixRegistry::new();
+    let map = registry.get_group_by_counter(65_020).unwrap();
+    let mut substituted = map.clone();
+    substituted.as_fix_mut().set_tag(9001).unwrap();
+    substituted.as_fix_mut().set_counter(9001).unwrap();
+    let document = Scalar::from_record([
+        ("fields", Scalar::from_sequence([])),
+        ("components", Scalar::from_sequence([])),
+        (
+            "groups",
+            Scalar::from_sequence([substituted.clone().into_value()]),
+        ),
+    ])
+    .unwrap();
+    let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
+    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
+    assert!(loaded.get_group_by_counter(9001).is_none());
+
+    let root = scratch("crate-map-substitution");
+    let folder = Folder::new(&root).unwrap();
+    folder
+        .child_by_path("groups/altids.json")
+        .unwrap()
+        .write_all_bytes(&substituted.into_json_bytes().unwrap())
+        .unwrap();
+    let loaded = FixRegistry::from_handle(&folder).unwrap();
+    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
+    assert!(loaded.get_group_by_counter(9001).is_none());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     let mut registry = catalog();
     let mut venue = tagged("VenueTrade", 5001, DataType::utf8());
@@ -241,7 +591,7 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
         928 + super::crated_messages()
     );
     assert_eq!(loaded.msgtypes().count(), 181 + super::crated_messages());
-    assert_eq!(loaded.definitions(FixCategory::Groups).count(), 580);
+    assert_eq!(loaded.definitions(FixCategory::Groups).count(), 581);
 }
 
 #[test]
@@ -629,7 +979,7 @@ fn contexts_sharing_a_counter_are_explicitly_ambiguous() {
         .unwrap();
     assert!(registry.get_group_by_counter(453).is_none());
     assert!(registry.group_by_counter(453).is_err());
-    assert_eq!(registry.definitions(FixCategory::Groups).count(), 2);
+    assert_eq!(registry.definitions(FixCategory::Groups).count(), 3);
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
 }
 
@@ -750,7 +1100,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
         (FixCategory::Components, 928 + super::crated_messages()),
-        (FixCategory::Groups, 580),
+        (FixCategory::Groups, 581),
     ] {
         assert_eq!(registry.definitions(category).count(), count, "{category}");
     }
@@ -849,6 +1199,13 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
             .map(|field| (FixCategory::Components, field));
         let groups = original
             .definitions(FixCategory::Groups)
+            .filter(|field| {
+                !field
+                    .as_fix()
+                    .tag()
+                    .unwrap()
+                    .is_some_and(yggdryl::is_crate_tag)
+            })
             .map(|field| (FixCategory::Groups, field));
         let messages = original
             .msgtypes()

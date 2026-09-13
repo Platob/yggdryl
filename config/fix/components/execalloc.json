@@ -158,6 +158,7 @@
   "nullable": false,
   "metadata": {
     "display": "ExecAlloc",
+    "fix:identifiers": "execid,secondaryexecid,tradeid,firmtradeid",
     "fix:tag": "440637"
   }
 }

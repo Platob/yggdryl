@@ -9,7 +9,6 @@
 //! never taken as a string literal, because a filter that silently matches
 //! everything is the worst failure this layer could have.
 
-use arrow_pyarrow::IntoPyArrow;
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
@@ -859,7 +858,7 @@ impl PyBound {
         if filtered.num_rows() == source.num_rows() {
             return Ok(batch.clone());
         }
-        filtered.into_pyarrow(py)
+        crate::iomedia::batch_to_pyarrow(py, filtered)
     }
 
     /// Filter every batch a reader yields, lazily.
@@ -1196,10 +1195,8 @@ impl PyBoundStatement {
         batch: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = record_batch_from_value(batch)?;
-        self.inner
-            .project(&batch)
-            .map_err(value_error)?
-            .into_pyarrow(py)
+        let projected = self.inner.project(&batch).map_err(value_error)?;
+        crate::iomedia::batch_to_pyarrow(py, projected)
     }
 
     /// Lazily filter, project, and limit one `pyarrow.RecordBatchReader`.
@@ -1255,10 +1252,8 @@ impl PyBoundStatement {
         batch: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = record_batch_from_value(batch)?;
-        self.inner
-            .sort(&batch)
-            .map_err(value_error)?
-            .into_pyarrow(py)
+        let sorted = self.inner.sort(&batch).map_err(value_error)?;
+        crate::iomedia::batch_to_pyarrow(py, sorted)
     }
 }
 

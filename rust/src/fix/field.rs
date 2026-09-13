@@ -31,6 +31,8 @@ pub(super) const TAG_KEY: &str = "fix:tag";
 const TAGS: &str = "tags";
 /// The alternate names, comma-separated, highest priority first.
 const ALIASES: &str = "aliases";
+/// The direct scalar members identifying one component, in member order.
+const IDENTIFIERS: &str = "identifiers";
 /// The spellings that mean "nothing was sent" for this field.
 const NULLS: &str = "nulls";
 /// The specification's own wording.
@@ -184,6 +186,82 @@ impl<'field> FixField<'field> {
     /// nothing.
     pub fn aliases(&self) -> FixSpellings<'field> {
         FixSpellings::over(self.get(ALIASES))
+    }
+
+    /// Borrows the canonical identifier member names, in component order.
+    /// An absent declaration yields nothing; the iterator allocates nothing.
+    pub fn identifiers(&self) -> FixSpellings<'field> {
+        FixSpellings::over(self.get(IDENTIFIERS))
+    }
+
+    /// Resolves intake spellings once against this component's own children.
+    pub(super) fn identifier_positions<I, S>(&self, spellings: I) -> Result<Vec<usize>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut positions = Vec::new();
+        for (offset, spelling) in spellings.into_iter().enumerate() {
+            let spelling = spelling.as_ref();
+            let refused = |expected: &str| {
+                self.invalid(
+                    IDENTIFIERS,
+                    &format!(
+                        "{expected} at {}.fix:identifiers[{offset}]",
+                        self.as_field().name()
+                    ),
+                    spelling,
+                )
+            };
+            if spelling.is_empty() || spelling.contains(SEPARATOR) {
+                return Err(refused("a nonempty member spelling without a comma"));
+            }
+            if !matches!(self.as_field().dtype(), DataType::Struct(_)) {
+                return Err(refused(
+                    "a Struct component declaring its own scalar members",
+                ));
+            }
+            let tag = parse_tag(spelling);
+            let mut reached = None;
+            for (position, child) in self.as_field().fields().iter().enumerate() {
+                let view = child.as_fix();
+                let named = folds_equal(child.name(), spelling)
+                    || view.aliases().any(|alias| folds_equal(alias, spelling));
+                let tagged = match tag {
+                    Some(tag) => view.tag()? == Some(tag) || view.tags()?.contains(&tag),
+                    None => false,
+                };
+                if !named && !tagged {
+                    continue;
+                }
+                if reached.replace(position).is_some() {
+                    return Err(refused("one unambiguous direct scalar member"));
+                }
+                if child.dtype().is_nested() {
+                    return Err(refused("a direct scalar member, not a nested member"));
+                }
+                if child.name().is_empty() || child.name().contains(SEPARATOR) {
+                    return Err(refused(
+                        "a canonical member name without an empty element or comma",
+                    ));
+                }
+            }
+            let position = reached.ok_or_else(|| refused("an existing direct scalar member"))?;
+            if positions.contains(&position) {
+                return Err(refused("each identifier member exactly once"));
+            }
+            positions.push(position);
+        }
+        positions.sort_unstable();
+        Ok(positions)
+    }
+
+    pub(super) fn compiled_identifier_positions(&self) -> Result<Vec<usize>> {
+        self.identifier_positions(
+            self.get(IDENTIFIERS)
+                .into_iter()
+                .flat_map(|text| text.split(SEPARATOR)),
+        )
     }
 
     /// Iterates the spellings that mean "nothing was sent" for this field.
@@ -752,6 +830,54 @@ impl FixFieldMut<'_> {
         self.store(ALIASES, rendered)
     }
 
+    /// Declares direct scalar identifiers by member name, alias or decimal tag.
+    ///
+    /// Names are stored canonically in component order. Empty input removes
+    /// the declaration. Refused, ambiguous, repeated or nested members leave
+    /// the field unchanged.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = DataType::utf8().nullable_field("clordid");
+    /// order.as_fix_mut().set_tag(11)?;
+    /// let mut component = DataType::from_fields([order])?.required_field("order");
+    /// component.as_fix_mut().set_identifiers(["11"])?;
+    /// assert_eq!(component.as_fix().identifiers().collect::<Vec<_>>(), ["clordid"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_identifiers<I, S>(&mut self, identifiers: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let positions = self.as_protocol().identifier_positions(identifiers)?;
+        self.store_identifier_positions(positions)
+    }
+
+    /// Reorders a stored declaration at a schema mutation's intake, keeping
+    /// malformed empty elements visible to the same resolver as the setter.
+    pub(super) fn normalize_identifiers(&mut self) -> Result<()> {
+        let positions = self.as_protocol().compiled_identifier_positions()?;
+        self.store_identifier_positions(positions)
+    }
+
+    fn store_identifier_positions(&mut self, positions: Vec<usize>) -> Result<()> {
+        if positions.is_empty() {
+            self.remove(IDENTIFIERS);
+            return Ok(());
+        }
+        let mut rendered = String::new();
+        for position in positions {
+            if !rendered.is_empty() {
+                rendered.push(SEPARATOR);
+            }
+            rendered.push_str(self.as_field().fields()[position].name());
+        }
+        self.store(IDENTIFIERS, rendered)
+    }
+
     /// Records the spellings that mean "nothing was sent" for this field.
     ///
     /// Empty input removes the property. A spelling is stored exactly as
@@ -1140,6 +1266,7 @@ impl FixFieldMut<'_> {
     /// | `fix:codes` | merged by wire value, incoming winning a shared value |
     /// | `fix:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
     /// | `fix:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
+    /// | `fix:identifiers` | incoming wins whole: identifiers are one ordered component declaration |
     /// | any other `fix:` key | incoming wins; stored keeps what only it has |
     ///
     /// Precedence is the caller's ordering rather than a field on the merge:
@@ -1361,7 +1488,7 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 9] = [
+const MERGED_KEYS: [&str; 10] = [
     TAG,
     BRANCHES,
     TAGS,
@@ -1371,6 +1498,7 @@ const MERGED_KEYS: [&str; 9] = [
     CODES,
     REPLACEMENTS,
     DIRECTIONS,
+    IDENTIFIERS,
 ];
 
 /// Render aliases the way the setter renders them.

@@ -34,12 +34,12 @@
 //! proceed without it - reading rows *into* a frame - and its absence is
 //! reported as the missing dependency it is.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use arrow_array::RecordBatch;
 use arrow_array::ffi_stream::ArrowArrayStreamReader;
-use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
-use arrow_schema::{Schema as ArrowSchema, SchemaRef};
+use arrow_array::{ArrayRef, RecordBatch, StructArray};
+use arrow_pyarrow::FromPyArrow;
+use arrow_schema::{ArrowError, Schema as ArrowSchema, SchemaRef};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyImportError, PyStopIteration, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -55,8 +55,10 @@ use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::PyExpression;
-use crate::types::datatype::{PyDataType, core_dtype_from_value};
-use crate::types::field::{PyField, core_field_from_value, core_schema_from_pyarrow};
+use crate::types::datatype::{
+    PyDataType, arrow_array_to_pyarrow_with_type, core_dtype_from_value, core_field_to_pyarrow,
+};
+use crate::types::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
 use crate::types::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
@@ -77,7 +79,7 @@ pub(crate) fn core_root_field_from_value(
         return core_field_from_value(value);
     }
     if is_pyarrow_schema(value) {
-        let schema = core_schema_from_pyarrow(value)?;
+        let schema = ArrowSchema::from_pyarrow_bound(value)?;
         return CoreField::from_arrow_schema(name, &schema).map_err(value_error);
     }
     core_field_from_value(value)
@@ -594,15 +596,7 @@ fn row_reader(
 ) -> PyResult<BatchReader> {
     let py = items.py();
     let declared = match options.field() {
-        Some(field) => Some(
-            field
-                .clone()
-                .into_arrow_schema()
-                .map_err(value_error)?
-                .as_ref()
-                .clone()
-                .into_pyarrow(py)?,
-        ),
+        Some(field) => Some(core_schema_to_pyarrow(py, &field)?),
         None => None,
     };
     let mut rows = Rows {
@@ -955,22 +949,110 @@ pub(crate) fn frame_from_reader(
 
 /// Hand a core batch reader to Python as a `pyarrow.RecordBatchReader`.
 ///
-/// The reader stays lazy across the boundary: `PyArrow` pulls one batch at a time
-/// through the C stream, so a resource larger than memory is readable from
-/// Python exactly as it is from Rust.
+/// The root and transport metadata resolve once. A private iterator exports
+/// shared buffers under that exact datatype when `PyArrow` requests a batch,
+/// preserving nested flags the aggregate Arrow C Schema exporter drops.
 pub(crate) fn batch_reader_to_pyarrow(
     py: Python<'_>,
     reader: BatchReader,
 ) -> PyResult<Bound<'_, PyAny>> {
-    reader.into_pyarrow(py)
+    let field =
+        CoreField::from_arrow_schema("row", reader.schema().as_ref()).map_err(value_error)?;
+    let schema = core_schema_to_pyarrow(py, &field)?;
+    let dtype = core_field_to_pyarrow(py, &field)?.getattr("type")?.unbind();
+    let pyarrow = py.import("pyarrow")?;
+    let batches = Py::new(
+        py,
+        PyArrowBatchIterator {
+            reader: Mutex::new(Some(reader)),
+            dtype,
+            metadata: schema.getattr("metadata")?.unbind(),
+            from_struct_array: pyarrow
+                .getattr("RecordBatch")?
+                .getattr("from_struct_array")?
+                .unbind(),
+        },
+    )?;
+    pyarrow
+        .getattr("RecordBatchReader")?
+        .call_method1("from_batches", (schema, batches))
+}
+
+/// Export one standalone batch through the same exact, buffer-sharing boundary.
+pub(crate) fn batch_to_pyarrow(py: Python<'_>, batch: RecordBatch) -> PyResult<Bound<'_, PyAny>> {
+    let reader = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+    batch_reader_to_pyarrow(py, reader)?.call_method0("read_next_batch")
+}
+
+/// Preserve the exception categories of Arrow's C Stream error boundary.
+fn arrow_stream_error(py: Python<'_>, error: ArrowError) -> PyErr {
+    let class = match &error {
+        ArrowError::NotYetImplemented(_) => "ArrowNotImplementedError",
+        ArrowError::MemoryError(_) => "ArrowMemoryError",
+        ArrowError::IoError(_, _) => "ArrowIOError",
+        _ => "ArrowInvalid",
+    };
+    let message = yggdryl::arrow::from_reader_error(error).to_string();
+    py.import("pyarrow")
+        .and_then(|module| module.getattr(class))
+        .and_then(|class| class.call1((message,)))
+        .map_or_else(std::convert::identity, PyErr::from_value)
+}
+
+/// One native batch per pull; no public iterator vocabulary or retained batches.
+#[pyclass(name = "_ArrowBatchIterator", module = "yggdryl._native")]
+struct PyArrowBatchIterator {
+    // BatchReader is Send, not Sync; PyArrow may pull from a worker thread.
+    reader: Mutex<Option<BatchReader>>,
+    dtype: Py<PyAny>,
+    metadata: Py<PyAny>,
+    from_struct_array: Py<PyAny>,
+}
+
+#[pymethods]
+impl PyArrowBatchIterator {
+    #[classattr]
+    const __hash__: Option<Py<PyAny>> = None;
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let reader = self
+            .reader
+            .get_mut()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let next = py.detach(|| reader.as_mut().and_then(Iterator::next));
+        let Some(batch) = next else {
+            *reader = None;
+            return Ok(None);
+        };
+        let result = batch
+            .map_err(|error| arrow_stream_error(py, error))
+            .and_then(|batch| {
+                // From<RecordBatch> keeps its explicit length even with zero columns.
+                let array: ArrayRef = Arc::new(StructArray::from(batch));
+                let array = arrow_array_to_pyarrow_with_type(py, &array, self.dtype.bind(py))?;
+                let batch = self.from_struct_array.call1(py, (array,))?;
+                batch
+                    .bind(py)
+                    .call_method1("replace_schema_metadata", (self.metadata.bind(py),))
+                    .map(Bound::unbind)
+            });
+        if result.is_err() {
+            *reader = None;
+        }
+        result.map(Some)
+    }
 }
 
 /// Chain two readers onto the root their two schemas merge into.
 ///
 /// The lazy crossing is preserved in both directions: the merge is derived
 /// from the two schemas alone, which a `RecordBatchReader` answers without
-/// pulling a batch, and the result is handed back over the C stream so `PyArrow`
-/// pulls one batch at a time.
+/// pulling a batch, and the result is handed back through the shared exporter
+/// so `PyArrow` pulls one batch at a time.
 ///
 /// Columns unite by name (ASCII case-insensitively), left's order first and
 /// right-only columns after; a column present in only one side becomes
@@ -1670,7 +1752,7 @@ impl PyRecordOptions {
             .inner
             .apply_arrow_batch(batch, existing.as_ref())
             .map_err(value_error)?;
-        cast.into_pyarrow(py)
+        batch_to_pyarrow(py, cast)
     }
 
     /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.
@@ -2204,7 +2286,7 @@ impl PyTextOptions {
             .inner
             .apply_arrow_batch(batch, existing.as_ref())
             .map_err(value_error)?;
-        cast.into_pyarrow(py)
+        batch_to_pyarrow(py, cast)
     }
 
     /// Shape a whole reader the way `apply_arrow_batch` shapes one batch.

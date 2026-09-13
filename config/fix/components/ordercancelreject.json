@@ -319,6 +319,7 @@
   "metadata": {
     "description": "MsgType = 9",
     "display": "OrderCancelReject",
+    "fix:identifiers": "orderid,secondaryorderid,secondaryclordid,clordid,origclordid,listid",
     "fix:msgtype": "9",
     "fix:tag": "458702"
   }

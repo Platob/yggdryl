@@ -1273,6 +1273,10 @@ export declare class FixCodec {
    * Only the row is filled: the arrival record is what the wire carried and
    * is left alone, so `intoBytes` re-emits the received line either way, and
    * a stated value is never replaced.
+   * A known message also fills a sorted `altids` map from its direct
+   * identifiers, without flattening groups or replacing a stated map,
+   * including an empty one. Unknown types gain no map. A scalar identifier
+   * that cannot convert to UTF-8 raises the native located refusal.
    */
   enrichMessage(message: FixMsg): FixMsg
   /**
@@ -1683,14 +1687,12 @@ export declare class FixRegistry {
   /** Add the native scalar plugin fields atomically. */
   withPluginFields(): void
   /**
-   * A registry holding nothing but this crate's own fields.
+   * A registry holding the built-in definitions.
    *
-   * Every registry starts here: the twenty standard fields from tag 65000
-   * that `fixCrateFields` lists - the digest, the clock and its partition,
-   * the session a message states, the bridge's message context, the plugin
-   * that logged a line and the session names it spells, and the identities
-   * a lifecycle pass stamps - are what a row is typed by, so a dictionary
-   * loaded from a store, built from fields or left alone holds them alike.
+   * Every registry holds the twenty scalar fields and sorted `altids` Map
+   * group that `fixCrateFields` lists, and the `pluginconfig` component.
+   * A dictionary loaded from a store, built from fields or left alone
+   * holds them alike; scalar lookups and `size` exclude groups and components.
    */
   constructor()
   /**
@@ -1749,7 +1751,7 @@ export declare class FixRegistry {
    * already.
    */
   writeInto(location: LocationInput): void
-  /** How many fields are held, the crate's own twenty among them. */
+  /** How many scalar fields are held, the crate's own twenty among them. */
   get size(): number
   /**
    * The field one identifier names exactly, or `null`.
@@ -2727,6 +2729,13 @@ export declare class MsgType {
   asStr(): string
   /** Project an independent copy of the native message Struct field. */
   asField(): JsField
+  /**
+   * The compiled selection of non-null direct identifiers, in member order.
+   *
+   * Fields are independent mutable declaration copies; Scalars retain the
+   * message's actual types. Repeating groups are not traversed.
+   */
+  identifierValues(message: FixMsg): Array<[Field, Scalar]>
   /** Look up the unique repeating group for a native counter tag. */
   getGroupByCounter(tag: number): JsField | null
   /** Compare the complete native values. */
@@ -3111,6 +3120,18 @@ export declare class ProtocolField {
   get aliases(): Array<string>
   /** Record the aliases; an empty array removes the property. */
   set aliases(values: Array<string>)
+  /**
+   * The component's direct scalar identifier names, in member order.
+   *
+   * An absent property is an empty array.
+   */
+  get identifiers(): Array<string>
+  /**
+   * Resolve member names, aliases or decimal tags through the native setter.
+   *
+   * Empty input removes the property; a refused selection leaves it unchanged.
+   */
+  set identifiers(values: Array<string>)
   /**
    * The spellings that mean "nothing was sent" for this field.
    *
@@ -5187,15 +5208,16 @@ export interface FixCodecOptions {
 }
 
 /**
- * The twenty fields this crate defines, in tag order: standard fields from
- * 65000 up, above every tag FIX or a venue publishes.
+ * The twenty-one definitions this crate owns, in tag order from 65000:
+ * twenty scalar fields and the sorted `altids` Map group at 65020.
  *
  * The digest, the version read at, the ticker, the clock and its partition,
  * the parent identifiers, the session the message states, the bridge's
  * message context, the plugin that logged the line and the one it came
  * through before that, the two session names the line spells, the ISIN, MIC
  * and order state a row derives, and the instrument, message and order-chain
- * identities a lifecycle pass stamps. Every registry already holds them, so
+ * identities a lifecycle pass stamps, plus the direct identifiers enrichment
+ * records in `altids`. Every registry already holds them in their category, so
  * this is the listing a schema or a document walks rather than something a
  * caller registers.
  */

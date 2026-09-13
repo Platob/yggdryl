@@ -158,6 +158,7 @@
   "nullable": false,
   "metadata": {
     "display": "BidCompRsp",
+    "fix:identifiers": "listid",
     "fix:tag": "972640"
   }
 }

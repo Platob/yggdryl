@@ -2106,6 +2106,34 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
+    /// The component's direct scalar identifier names, in member order.
+    ///
+    /// An absent property is an empty array.
+    #[napi(getter)]
+    pub fn identifiers(&self, env: Env) -> Result<Vec<String>> {
+        self.require_fix(env, "identifiers")?;
+        Ok(self
+            .field
+            .inner
+            .as_fix()
+            .identifiers()
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    /// Resolve member names, aliases or decimal tags through the native setter.
+    ///
+    /// Empty input removes the property; a refused selection leaves it unchanged.
+    #[napi(setter)]
+    pub fn set_identifiers(&mut self, env: Env, values: Vec<String>) -> Result<()> {
+        self.require_fix(env, "identifiers")?;
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_identifiers(values)
+            .map_err(napi_error)
+    }
+
     /// The spellings that mean "nothing was sent" for this field.
     ///
     /// A value the list names types as null in a row while the arrival record

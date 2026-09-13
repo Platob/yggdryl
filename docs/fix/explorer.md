@@ -6,15 +6,24 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 | Surface | Contract |
 | --- | --- |
-| Source | `scripts/build_docs_fix.js` runs the native package over `config/fix` and adds the crate's capture fields. |
-| Catalog | Four categories of native `Field` documents, with enum codes inline on scalar fields. |
-| Search | Filters stored names, tags, aliases and descriptions; it does not invoke registry lookup or parse FIX input. |
+| Source | `scripts/build_docs_fix.js` runs the native package over `config/fix`, retaining compact stored documents and adding native built-ins omitted by persistence. |
+| Catalog | Three categories of native `Field` documents: `fields`, `components`, `groups`; messages are components carrying `fix:msgtype`, and enum codes stay inline on fields. |
+| Search | Filters names, tags, aliases, `fix:identifiers` and descriptions; it does not invoke registry lookup or parse FIX input. |
 | References | A member button selects a search in its target category. The browser does not resolve or merge schemas. |
 | Samples | [Decode](decode.md) and [Encode](encode.md) display recorded native codec results and emitted bytes. |
 
 ## Use
 
-A count and its logical collection have separate definitions. `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The count below is the dictionary this repository ships plus the twenty fields of the crate's own that every registry holds.
+A List group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `altids` Map group instead owns tag and counter 65020 together, with no scalar counter column.
+
+| Collection | Shipped documents | Live registry |
+| --- | ---: | ---: |
+| Scalar fields | 6,241 | 6,261 |
+| Groups | 580 | 581 |
+| Components, including messages | 928 | 929 |
+| Messages, a subset of components | 181 | 182 |
+
+The live additions are twenty scalar fields, the `altids` group and the `pluginconfig` message component. The native fixed capture schema has 106 columns.
 
 === "Rust"
 
@@ -29,6 +38,12 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     let parties = registry.definition(FixCategory::Groups, "parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
+    let altids = registry.group_by_counter(65_020)?;
+    assert_eq!(altids.name(), "altids");
+    assert_eq!(altids.as_fix().tag()?, Some(65_020));
+    assert_eq!(altids.as_fix().counter()?, Some(65_020));
+    assert!(matches!(altids.dtype(), DataType::Map(map) if map.keys_sorted()));
+    assert!(registry.get_field_by_tag(65_020).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65000, held by every registry;
     // an identity is the tag and the name together.
@@ -51,6 +66,11 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     parties = registry.definition("groups", "parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
+    altids = registry.group_by_counter(65_020)
+    assert altids.name == "altids" and altids.fix.tag == 65_020
+    assert altids.fix.counter == 65_020
+    assert altids.into_arrow().type.keys_sorted
+    assert registry.get_field_by_tag(65_020) is None
     assert registry.msgtype("D").value == "D"
     # The crate's own columns are fields from tag 65000, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
@@ -73,6 +93,12 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
     const parties = registry.definition('groups', 'parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
+    const altids = registry.groupByCounter(65020)
+    assert.equal(altids.name, 'altids')
+    assert.equal(altids.fix.tag, 65020)
+    assert.equal(altids.fix.counter, 65020)
+    assert.match(altids.dtype.toString(), /keys_sorted=true/)
+    assert.equal(registry.getFieldByTag(65020), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
     // The crate's own columns are fields from tag 65000, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.
@@ -88,7 +114,7 @@ A count and its logical collection have separate definitions. `NoPartyIDs` is th
 This section displays the generated native registry counts and needs JavaScript.
 </div>
 
-## Search all four categories
+## Search all three categories
 
 Search `453` to see the scalar counter and group definitions that reference it. Select `groups` and search `Parties`, then open its declared occurrence to navigate to the `Party` component. Each result also exposes its exact native `Field` JSON.
 
@@ -96,11 +122,11 @@ Search `453` to see the scalar counter and group definitions that reference it. 
 This section searches the generated native catalog and needs JavaScript.
 </div>
 
-Codes appear inside their owning field's detail panel. A group carries the `fix:tag` derived from its own name, beside a `fix:counter` reference; it does not take the counter's tag or scalar datatype. Different message contexts remain separate definitions.
+Codes and `fix:identifiers` appear inside their owning field's detail panel. List groups carry a name-derived `fix:tag` beside their scalar `fix:counter`; the built-in `altids` Map uses its own reserved tag as its counter, and its entries Field is displayed directly from the native document. Search `altids` for that group, or `clordid` for declarations selecting that direct identifier; no browser-side reference expansion is involved.
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the ninety-three fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
+The [Capture](capture.md#find-a-column) page searches the 106 fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
 
 ## Where it came from
 
@@ -121,5 +147,5 @@ This section displays the pinned source documents and needs JavaScript.
 ```bash
 node scripts/build_docs_fix.js
 node scripts/build_docs_fix.js --check
-python -m mkdocs build --strict
+/usr/bin/python3 -m mkdocs build --strict
 ```

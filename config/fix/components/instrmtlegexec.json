@@ -348,6 +348,7 @@
   "nullable": false,
   "metadata": {
     "display": "InstrmtLegExec",
+    "fix:identifiers": "legallocid",
     "fix:tag": "147310"
   }
 }

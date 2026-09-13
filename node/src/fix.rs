@@ -306,14 +306,12 @@ impl JsFixRegistry {
         Ok(())
     }
 
-    /// A registry holding nothing but this crate's own fields.
+    /// A registry holding the built-in definitions.
     ///
-    /// Every registry starts here: the twenty standard fields from tag 65000
-    /// that `fixCrateFields` lists - the digest, the clock and its partition,
-    /// the session a message states, the bridge's message context, the plugin
-    /// that logged a line and the session names it spells, and the identities
-    /// a lifecycle pass stamps - are what a row is typed by, so a dictionary
-    /// loaded from a store, built from fields or left alone holds them alike.
+    /// Every registry holds the twenty scalar fields and sorted `altids` Map
+    /// group that `fixCrateFields` lists, and the `pluginconfig` component.
+    /// A dictionary loaded from a store, built from fields or left alone
+    /// holds them alike; scalar lookups and `size` exclude groups and components.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -411,7 +409,7 @@ impl JsFixRegistry {
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many fields are held, the crate's own twenty among them.
+    /// How many scalar fields are held, the crate's own twenty among them.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -1703,6 +1701,10 @@ impl JsFixCodec {
     /// Only the row is filled: the arrival record is what the wire carried and
     /// is left alone, so `intoBytes` re-emits the received line either way, and
     /// a stated value is never replaced.
+    /// A known message also fills a sorted `altids` map from its direct
+    /// identifiers, without flattening groups or replacing a stated map,
+    /// including an empty one. Unknown types gain no map. A scalar identifier
+    /// that cannot convert to UTF-8 raises the native located refusal.
     #[napi]
     pub fn enrich_message(&self, message: &JsFixMsg) -> Result<JsFixMsg> {
         self.inner
@@ -1997,15 +1999,16 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The twenty fields this crate defines, in tag order: standard fields from
-/// 65000 up, above every tag FIX or a venue publishes.
+/// The twenty-one definitions this crate owns, in tag order from 65000:
+/// twenty scalar fields and the sorted `altids` Map group at 65020.
 ///
 /// The digest, the version read at, the ticker, the clock and its partition,
 /// the parent identifiers, the session the message states, the bridge's
 /// message context, the plugin that logged the line and the one it came
 /// through before that, the two session names the line spells, the ISIN, MIC
 /// and order state a row derives, and the instrument, message and order-chain
-/// identities a lifecycle pass stamps. Every registry already holds them, so
+/// identities a lifecycle pass stamps, plus the direct identifiers enrichment
+/// records in `altids`. Every registry already holds them in their category, so
 /// this is the listing a schema or a document walks rather than something a
 /// caller registers.
 #[napi(js_name = "fixCrateFields")]

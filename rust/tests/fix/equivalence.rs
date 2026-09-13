@@ -512,6 +512,8 @@ fn enrichments() -> Vec<Vec<u8>> {
         "8=FIX.4.4|35=D|11=A|167=NOSUCH|10=0|",
         "8=FIX.4.4|35=F|11=B|41=A|10=0|",
         "MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946",
+        "8=FIX.4.4|35=8|11=ORDER-1|37=VENUE-1|17=EXEC-1|198=SECONDARY-1|10=0|",
+        "8=FIX.4.4|35=AE|571=REPORT-1|1003=TRADE-1|10=0|",
     ])
 }
 
@@ -584,7 +586,15 @@ fn capture(pinned: &mut Pinned) {
             answered += 1;
             let at = format!("{at}:{ordinal}");
             match message {
-                Ok(message) => pinned.message(&at, &codec, &message, &schema),
+                Ok(message) => {
+                    pinned.message(&at, &codec, &message, &schema);
+                    if message.as_field().name() == "executionreport" {
+                        let enriched = codec
+                            .enrich_message(message)
+                            .expect("a captured execution report enriches");
+                        pinned.message(&format!("enrich.{at}"), &codec, &enriched, &schema);
+                    }
+                }
                 Err(refused) => pinned.push(format!("{at}.refused"), refused.to_string()),
             }
         }

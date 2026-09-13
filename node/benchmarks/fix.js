@@ -177,6 +177,16 @@ const LINES = Array.from({ length: 256 }, (_, index) =>
 )
 const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.Binary()) })
 const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
+const orderType = registry.msgtype('D')
+const orderDeclaration = orderType.asField()
+const enriched = seedCodec.enrichMessage(parsed)
+const alternateIds = enriched.byName('altids').asJs()
+if (!(alternateIds instanceof Map) || alternateIds.get('clordid') !== 'ORDER-000000') {
+  throw new Error('enrichment must carry the declared identifier in a native Map')
+}
+if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
+  throw new Error('the compiled selector must reach the stated order identifier')
+}
 const parsedRow = parsed.intoRow(fixedSchema)
 const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
 // The line door, each line as a text reader answers it.
@@ -240,6 +250,9 @@ try {
   benchmark('fix/field_branches', () => tagged.fix.branches)
   benchmark('fix/field_has_branch', () => tagged.fix.hasBranch(VENDOR_DIALECT))
   benchmark('fix/field_id', () => tagged.fix.id)
+  benchmark('fix/declared_identifiers', () => orderDeclaration.fix.identifiers)
+  benchmark('fix/identifier_values', () => orderType.identifierValues(parsed))
+  benchmark('fix/altids_native_map', () => enriched.byName('altids').asJs())
   benchmark('fix/message_get_by_tag', () => message.getByTag(55))
   benchmark('fix/message_get_by_id', () => message.getById(SYMBOL_ID))
   benchmark('fix/message_get_by_name', () => message.getByName('ticker'))
@@ -307,6 +320,9 @@ try {
   benchmark('fix/message_remove', () => parsed.clone().remove(55))
   benchmark('fix/message_from_row', () => fix.FixMsg.fromRow(fixedSchema, parsedRow, registry))
   benchmark('fix/enrich_message', () => seedCodec.enrichMessage(message))
+  benchmark('fix/identified_message_arrow', () =>
+    seedCodec.arrowReader(fixedSchema, [enriched]).intoTable().numRows,
+  )
   const streams = Math.max(1, Math.round(iterations / 50))
   benchmarkStreams(`fix/parse_lines_drain/${LINES.length}`, streams, () => drain(seedCodec.parseLines(LINES)))
   benchmarkStreams(`fix/parse_text_lines_drain/${LINES.length}`, streams, () =>

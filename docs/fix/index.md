@@ -25,7 +25,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixId`; no second field class |
-| Keys | `fix:tag`, `fix:tags`, `fix:aliases`, `fix:branches`; name, datatype, `display` and `description` stay the field's own |
+| Keys | `fix:tag`, `fix:tags`, `fix:aliases`, `fix:branches`, `fix:identifiers`; name, datatype, `display` and `description` stay the field's own |
 | Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a negative tag; `Copy`, four bytes, its own hash key |
 | Spelling | Rendered as its decimal digest wherever it crosses a boundary - `FixKey::Id`, `FixMsg::get_by_id`, Python `int`, JavaScript `number`, a row column; `FixId::from_digest` reads that integer back; a bare integer anywhere else (`FixKey::from(i32)`, `registry.field(55)`, `msg.get(55)`) is a tag |
 | Fold | ASCII case, `_`, `-` and space are not part of the name, so `Msg_Type`, `msgtype` and `MsgType` under tag 35 are one id, the one every name lookup already answers |
@@ -34,9 +34,10 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | Dialect | The name `from_cfb_file(handle, Some("cme"))` stamps on every field, group, component and message the file produces, standard tags included; `FixRegistry::dialects()` lists the distinct names; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
 | Tag range | Any non-negative tag holds an identity; nothing gates a tag on its dictionary. `set_tag`, `set_tags` and `set_counter` refuse only a negative tag, naming their key. Derived definition tags take `FixId::DEFINITION_TAG_MIN..FixId::DEFINITION_TAG_MAX`, `[100000, 1100000)` |
 | Order | Tag-major, the tag's holder first, then id: `FixFieldIter`, `next_field_after`, the bindings' iteration and the store all follow it, so the bare tag comes back to the field that held it across a round trip |
-| List properties | Comma-separated text; `aliases()` and `branches()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
+| List properties | Comma-separated text; `aliases()`, `branches()` and `identifiers()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
+| Identifiers | A component declares its own direct scalar members through `fix:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` Lists of components |
+| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `fix:msgtype`; `groups/` List/LargeList occurrences and Map entries |
 | Bindings | Python `field.fix` and [`yggdryl.fix`](../extensions/python.md); JavaScript `field.fix` and the [`fix` namespace](../extensions/javascript.md); the id crosses as an integer, membership as a list of strings |
 
 ## Use
@@ -174,9 +175,10 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `tag` | `fix:tag` | `i32` | canonical tag, never negative |
 | `tags` | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
 | `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
+| `identifiers` | `fix:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
 | `codes` | `fix:codes` | canonical JSON, by wire value | the inline enum values declared by this field; see [Registry](registry.md#a-field-carries-its-code-set) |
-| `counter` | `fix:counter` | `i32` | the scalar count field's tag, on a group definition |
+| `counter` | `fix:counter` | `i32` | on a List/LargeList group, the separate scalar count field's tag; on a crate Map group, its own tag, without a scalar counter |
 | `component` | `fix:component` | name | component reference, including a group's occurrence |
 | `field_ref` / `fieldRef` | `fix:field` | name | scalar field reference in a definition |
 | `group` | `fix:group` | name | group reference in a definition |
@@ -367,8 +369,14 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 `NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate List of the
 `Party` Struct, linked to that count through `fix:counter`. Fields, components
 and groups are the three registry categories, a message being a component that
-carries `fix:msgtype`; a group member is also a scalar field in the field
-catalog.
+carries `fix:msgtype`.
+
+The crate's `altids(65020)` is also a group: a nullable, sorted-key
+`map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
+separate scalar counter and no invented numeric tags for its key or value.
+Its [enrichment](capture.md#what-a-message-implied-is-filled-in) uses the
+message's [declared identifiers](registry.md#component-identifiers), while
+ordinary List/LargeList groups keep their existing counter rules.
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
 and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)
@@ -391,6 +399,9 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.definition(FixCategory::Components, "Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
+    let altids = registry.definition(FixCategory::Groups, "altids")?;
+    assert_eq!(altids.as_fix().counter()?, Some(65020));
+    assert!(registry.get_field_by_tag(65020).is_none());
     ```
 
 === "Python"
@@ -405,6 +416,8 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.definition("components", "Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
+    assert registry.definition("groups", "altids").fix.counter == 65020
+    assert registry.get_field_by_tag(65020) is None
     ```
 
 === "JavaScript"
@@ -420,11 +433,14 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.definition('components', 'Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
+    assert.equal(registry.definition('groups', 'altids').fix.counter, 65020)
+    assert.equal(registry.getFieldByTag(65020), null)
     ```
 
 ## Edges
 
 - Empty element, duplicate (aliases ASCII-folded), alias with a comma, or negative tag -> refused naming `fix:tags` / `fix:aliases` / `fix:tag`; field unchanged.
+- An identifier spelling that is empty, contains a comma, names no member, names a nested member, is ambiguous, or repeats a selected member -> a located `fix:identifiers` refusal; the whole field stays unchanged. Empty input removes the declaration.
 - Folding is ASCII only: `Größe` and `GRÖSSE` are two names.
 - A tag is decimal `0` to `i32::MAX`; readers refuse stored `+35`, `-35`, `3x`.
 - Python `tag = True` -> `TypeError`; `2**31` -> `OverflowError`. JavaScript `2 ** 31` -> "signed 32-bit integer"; `field.iceberg.tag` -> `TypeError`.

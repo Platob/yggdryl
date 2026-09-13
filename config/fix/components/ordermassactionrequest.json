@@ -299,6 +299,7 @@
   "metadata": {
     "description": "MsgType = CA",
     "display": "OrderMassActionRequest",
+    "fix:identifiers": "clordid,secondaryclordid",
     "fix:msgtype": "CA",
     "fix:tag": "806153"
   }

@@ -239,6 +239,7 @@
   "metadata": {
     "description": "MsgType = i (lowercase I)",
     "display": "MassQuote",
+    "fix:identifiers": "quotereqid,quoteid",
     "fix:msgtype": "i",
     "fix:tag": "720778"
   }

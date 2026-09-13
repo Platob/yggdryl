@@ -97,15 +97,15 @@
   },
   "kpi": {
     "fields": 6261,
-    "groups": 580,
+    "groups": 581,
     "enumFields": 2026,
     "codes": 27209,
     "lineage": 1603,
     "aliases": 45,
     "alternates": 0,
-    "messages": 181,
-    "components": 928,
-    "columns": 105,
+    "messages": 182,
+    "components": 929,
+    "columns": 106,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 19,
@@ -1246,6 +1246,7 @@
         },
         "metadata": {
           "display": "AffectedOrd",
+          "fix:identifiers": "affectedorigclordid,affectedorderid,affectedsecondaryorderid",
           "fix:tag": "463320"
         },
         "name": "affectedord",
@@ -2682,6 +2683,7 @@
         },
         "metadata": {
           "display": "Alloc",
+          "fix:identifiers": "individualallocid,parentallocid,secondaryindividualallocid",
           "fix:tag": "467894"
         },
         "name": "alloc",
@@ -3015,6 +3017,7 @@
         },
         "metadata": {
           "display": "AllocAck",
+          "fix:identifiers": "individualallocid,parentallocid,secondaryindividualallocid",
           "fix:tag": "332386"
         },
         "name": "allocack",
@@ -4129,6 +4132,7 @@
         "metadata": {
           "description": "MsgType = J",
           "display": "AllocationInstruction",
+          "fix:identifiers": "allocid,secondaryallocid,refallocid",
           "fix:msgtype": "J",
           "fix:tag": "424150"
         },
@@ -4424,6 +4428,7 @@
         "metadata": {
           "description": "MsgType = P",
           "display": "AllocationInstructionAck",
+          "fix:identifiers": "allocid,secondaryallocid",
           "fix:msgtype": "P",
           "fix:tag": "550194"
         },
@@ -5469,6 +5474,7 @@
         "metadata": {
           "description": "MsgType = BM",
           "display": "AllocationInstructionAlert",
+          "fix:identifiers": "allocid,secondaryallocid,refallocid",
           "fix:msgtype": "BM",
           "fix:tag": "454673"
         },
@@ -6884,6 +6890,7 @@
         "metadata": {
           "description": "MsgType = AS",
           "display": "AllocationReport",
+          "fix:identifiers": "allocid,secondaryallocid,refallocid",
           "fix:msgtype": "AS",
           "fix:tag": "591464"
         },
@@ -7249,6 +7256,7 @@
         "metadata": {
           "description": "MsgType = AT",
           "display": "AllocationReportAck",
+          "fix:identifiers": "allocid,secondaryallocid",
           "fix:msgtype": "AT",
           "fix:tag": "971168"
         },
@@ -7602,6 +7610,7 @@
         },
         "metadata": {
           "display": "AllocRegulatoryTradeID",
+          "fix:identifiers": "allocregulatorytradeid",
           "fix:tag": "849313"
         },
         "name": "allocregulatorytradeidcomponent",
@@ -9344,6 +9353,7 @@
         },
         "metadata": {
           "display": "BidCompReq",
+          "fix:identifiers": "listid",
           "fix:tag": "122072"
         },
         "name": "bidcompreq",
@@ -9507,6 +9517,7 @@
         },
         "metadata": {
           "display": "BidCompRsp",
+          "fix:identifiers": "listid",
           "fix:tag": "972640"
         },
         "name": "bidcomprsp",
@@ -11687,6 +11698,7 @@
         "metadata": {
           "description": "MsgType = AY",
           "display": "CollateralAssignment",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
           "fix:msgtype": "AY",
           "fix:tag": "720980"
         },
@@ -12252,6 +12264,7 @@
         "metadata": {
           "description": "MsgType = BB",
           "display": "CollateralInquiry",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
           "fix:msgtype": "BB",
           "fix:tag": "1078953"
         },
@@ -12677,6 +12690,7 @@
         "metadata": {
           "description": "MsgType = BG",
           "display": "CollateralInquiryAck",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
           "fix:msgtype": "BG",
           "fix:tag": "656331"
         },
@@ -13495,6 +13509,7 @@
         "metadata": {
           "description": "MsgType = BA",
           "display": "CollateralReport",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
           "fix:msgtype": "BA",
           "fix:tag": "482029"
         },
@@ -14205,6 +14220,7 @@
         "metadata": {
           "description": "MsgType = AX",
           "display": "CollateralRequest",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
           "fix:msgtype": "AX",
           "fix:tag": "844452"
         },
@@ -14940,6 +14956,7 @@
         "metadata": {
           "description": "MsgType = AZ",
           "display": "CollateralResponse",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
           "fix:msgtype": "AZ",
           "fix:tag": "480403"
         },
@@ -17531,6 +17548,7 @@
         "metadata": {
           "description": "MsgType = AK",
           "display": "Confirmation",
+          "fix:identifiers": "allocid,secondaryallocid,individualallocid",
           "fix:msgtype": "AK",
           "fix:tag": "489272"
         },
@@ -17901,6 +17919,7 @@
         "metadata": {
           "description": "MsgType = BH",
           "display": "ConfirmationRequest",
+          "fix:identifiers": "allocid,secondaryallocid,individualallocid",
           "fix:msgtype": "BH",
           "fix:tag": "162059"
         },
@@ -19000,6 +19019,7 @@
         "metadata": {
           "description": "MsgType = t (lowercase T)",
           "display": "CrossOrderCancelReplaceRequest",
+          "fix:identifiers": "orderid,quoteid",
           "fix:msgtype": "t",
           "fix:tag": "393258"
         },
@@ -19215,6 +19235,7 @@
         "metadata": {
           "description": "MsgType = u (lowercase U)",
           "display": "CrossOrderCancelRequest",
+          "fix:identifiers": "orderid",
           "fix:msgtype": "u",
           "fix:tag": "109341"
         },
@@ -23207,6 +23228,7 @@
         "metadata": {
           "description": "MsgType = Q",
           "display": "DontKnowTrade",
+          "fix:identifiers": "orderid,secondaryorderid,execid",
           "fix:msgtype": "Q",
           "fix:tag": "579859"
         },
@@ -23462,6 +23484,7 @@
         "metadata": {
           "description": "MsgType = C",
           "display": "Email",
+          "fix:identifiers": "orderid,clordid",
           "fix:msgtype": "C",
           "fix:tag": "688909"
         },
@@ -23978,6 +24001,7 @@
         },
         "metadata": {
           "display": "ExecAlloc",
+          "fix:identifiers": "execid,secondaryexecid,tradeid,firmtradeid",
           "fix:tag": "440637"
         },
         "name": "execalloc",
@@ -24001,6 +24025,7 @@
         },
         "metadata": {
           "display": "ExecColl",
+          "fix:identifiers": "execid",
           "fix:tag": "542962"
         },
         "name": "execcoll",
@@ -24318,6 +24343,7 @@
         "metadata": {
           "description": "MsgType = BN",
           "display": "ExecutionAck",
+          "fix:identifiers": "orderid,secondaryorderid,clordid,execid",
           "fix:msgtype": "BN",
           "fix:tag": "380966"
         },
@@ -24372,6 +24398,7 @@
         },
         "metadata": {
           "display": "ExecutionAggregation",
+          "fix:identifiers": "execid,tradeid",
           "fix:tag": "596879"
         },
         "name": "executionaggregation",
@@ -27476,6 +27503,7 @@
         "metadata": {
           "description": "MsgType = 8",
           "display": "ExecutionReport",
+          "fix:identifiers": "orderid,secondaryorderid,secondaryclordid,secondaryexecid,clordid,origclordid,quoterespid,listid,execid,execrefid,allocid,reforderid,refclordid",
           "fix:msgtype": "8",
           "fix:tag": "684272"
         },
@@ -27656,6 +27684,7 @@
         },
         "metadata": {
           "display": "Fill",
+          "fix:identifiers": "fillexecid",
           "fix:tag": "174061"
         },
         "name": "fill",
@@ -28832,6 +28861,7 @@
         },
         "metadata": {
           "display": "InstrmtLegExec",
+          "fix:identifiers": "legallocid",
           "fix:tag": "147310"
         },
         "name": "instrmtlegexec",
@@ -29477,6 +29507,7 @@
         },
         "metadata": {
           "display": "InstrmtStrkPx",
+          "fix:identifiers": "clordid,secondaryclordid",
           "fix:tag": "132613"
         },
         "name": "instrmtstrkpx",
@@ -39862,6 +39893,7 @@
         },
         "metadata": {
           "display": "LegOrd",
+          "fix:identifiers": "legallocid",
           "fix:tag": "580623"
         },
         "name": "legord",
@@ -44604,6 +44636,7 @@
         },
         "metadata": {
           "display": "LegPreAlloc",
+          "fix:identifiers": "legindividualallocid",
           "fix:tag": "895422"
         },
         "name": "legprealloc",
@@ -50035,6 +50068,7 @@
         "metadata": {
           "description": "MsgType = K",
           "display": "ListCancelRequest",
+          "fix:identifiers": "listid",
           "fix:msgtype": "K",
           "fix:tag": "1096950"
         },
@@ -50140,6 +50174,7 @@
         "metadata": {
           "description": "MsgType = L",
           "display": "ListExecute",
+          "fix:identifiers": "listid",
           "fix:msgtype": "L",
           "fix:tag": "185663"
         },
@@ -51204,6 +51239,7 @@
         },
         "metadata": {
           "display": "ListOrd",
+          "fix:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid",
           "fix:tag": "984847"
         },
         "name": "listord",
@@ -51388,6 +51424,7 @@
         "metadata": {
           "description": "MsgType = N",
           "display": "ListStatus",
+          "fix:identifiers": "listid",
           "fix:msgtype": "N",
           "fix:tag": "881014"
         },
@@ -51463,6 +51500,7 @@
         "metadata": {
           "description": "MsgType = M",
           "display": "ListStatusRequest",
+          "fix:identifiers": "listid",
           "fix:msgtype": "M",
           "fix:tag": "743358"
         },
@@ -51548,6 +51586,7 @@
         "metadata": {
           "description": "MsgType = m (lowercase M)",
           "display": "ListStrikePrice",
+          "fix:identifiers": "listid",
           "fix:msgtype": "m",
           "fix:tag": "869150"
         },
@@ -54563,6 +54602,7 @@
         "metadata": {
           "description": "MsgType = DP",
           "display": "MarketDataStatisticsReport",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "DP",
           "fix:tag": "480519"
         },
@@ -54858,6 +54898,7 @@
         "metadata": {
           "description": "MsgType = DO",
           "display": "MarketDataStatisticsRequest",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "DO",
           "fix:tag": "419692"
         },
@@ -57127,6 +57168,7 @@
         "metadata": {
           "description": "MsgType = i (lowercase I)",
           "display": "MassQuote",
+          "fix:identifiers": "quotereqid,quoteid",
           "fix:msgtype": "i",
           "fix:tag": "720778"
         },
@@ -57402,6 +57444,7 @@
         "metadata": {
           "description": "MsgType = b (lowercase B)",
           "display": "MassQuoteAck",
+          "fix:identifiers": "quotereqid,quoteid",
           "fix:msgtype": "b",
           "fix:tag": "185574"
         },
@@ -58984,6 +59027,7 @@
         },
         "metadata": {
           "display": "MDFull",
+          "fix:identifiers": "orderid,secondaryorderid,quoteentryid,tradeid",
           "fix:tag": "1059469"
         },
         "name": "mdfull",
@@ -60357,6 +60401,7 @@
         },
         "metadata": {
           "display": "MDInc",
+          "fix:identifiers": "orderid,secondaryorderid,quoteentryid,tradeid",
           "fix:tag": "631337"
         },
         "name": "mdinc",
@@ -62566,6 +62611,7 @@
         "metadata": {
           "description": "MsgType = AC",
           "display": "MultilegOrderCancelReplace",
+          "fix:identifiers": "orderid,origclordid,clordid,secondaryclordid,allocid,quoteid",
           "fix:msgtype": "AC",
           "fix:tag": "968044"
         },
@@ -63786,6 +63832,7 @@
         "metadata": {
           "description": "MsgType = s (lowercase S)",
           "display": "NewOrderCross",
+          "fix:identifiers": "quoteid",
           "fix:msgtype": "s",
           "fix:tag": "898316"
         },
@@ -64071,6 +64118,7 @@
         "metadata": {
           "description": "MsgType = E",
           "display": "NewOrderList",
+          "fix:identifiers": "listid",
           "fix:msgtype": "E",
           "fix:tag": "962450"
         },
@@ -65456,6 +65504,7 @@
         "metadata": {
           "description": "MsgType = AB",
           "display": "NewOrderMultileg",
+          "fix:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
           "fix:msgtype": "AB",
           "fix:tag": "790509"
         },
@@ -67071,6 +67120,7 @@
         "metadata": {
           "description": "MsgType = D",
           "display": "NewOrderSingle",
+          "fix:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
           "fix:msgtype": "D",
           "fix:tag": "244936"
         },
@@ -67476,6 +67526,7 @@
         },
         "metadata": {
           "display": "NotAffectedOrd",
+          "fix:identifiers": "notafforigclordid,notaffectedorderid,notaffsecondaryorderid",
           "fix:tag": "917460"
         },
         "name": "notaffectedord",
@@ -68489,6 +68540,7 @@
         },
         "metadata": {
           "display": "OrdAlloc",
+          "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid,listid",
           "fix:tag": "171733"
         },
         "name": "ordalloc",
@@ -68542,6 +68594,7 @@
         },
         "metadata": {
           "display": "OrderAggregation",
+          "fix:identifiers": "clordid,orderid",
           "fix:tag": "883544"
         },
         "name": "orderaggregation",
@@ -68899,6 +68952,7 @@
         "metadata": {
           "description": "MsgType = 9",
           "display": "OrderCancelReject",
+          "fix:identifiers": "orderid,secondaryorderid,secondaryclordid,clordid,origclordid,listid",
           "fix:msgtype": "9",
           "fix:tag": "458702"
         },
@@ -70424,6 +70478,7 @@
         "metadata": {
           "description": "MsgType = G",
           "display": "OrderCancelReplaceRequest",
+          "fix:identifiers": "orderid,origclordid,clordid,secondaryclordid,listid,allocid",
           "fix:msgtype": "G",
           "fix:tag": "777699"
         },
@@ -70759,6 +70814,7 @@
         "metadata": {
           "description": "MsgType = F",
           "display": "OrderCancelRequest",
+          "fix:identifiers": "origclordid,orderid,clordid,secondaryclordid,listid",
           "fix:msgtype": "F",
           "fix:tag": "803010"
         },
@@ -70883,6 +70939,7 @@
         },
         "metadata": {
           "display": "OrderEntry",
+          "fix:identifiers": "clordid,origclordid,orderid",
           "fix:tag": "1024274"
         },
         "name": "orderentry",
@@ -71076,6 +71133,7 @@
         },
         "metadata": {
           "display": "OrderEntryAck",
+          "fix:identifiers": "clordid,origclordid,orderid",
           "fix:tag": "615042"
         },
         "name": "orderentryack",
@@ -71159,6 +71217,7 @@
         },
         "metadata": {
           "display": "OrderEvent",
+          "fix:identifiers": "ordereventexecid",
           "fix:tag": "698149"
         },
         "name": "orderevent",
@@ -71603,6 +71662,7 @@
         "metadata": {
           "description": "MsgType = BZ",
           "display": "OrderMassActionReport",
+          "fix:identifiers": "clordid,secondaryclordid",
           "fix:msgtype": "BZ",
           "fix:tag": "182726"
         },
@@ -71908,6 +71968,7 @@
         "metadata": {
           "description": "MsgType = CA",
           "display": "OrderMassActionRequest",
+          "fix:identifiers": "clordid,secondaryclordid",
           "fix:msgtype": "CA",
           "fix:tag": "806153"
         },
@@ -72223,6 +72284,7 @@
         "metadata": {
           "description": "MsgType = r (lowercase R)",
           "display": "OrderMassCancelReport",
+          "fix:identifiers": "clordid,secondaryclordid,orderid,secondaryorderid",
           "fix:msgtype": "r",
           "fix:tag": "203677"
         },
@@ -72438,6 +72500,7 @@
         "metadata": {
           "description": "MsgType = q (lowercase Q)",
           "display": "OrderMassCancelRequest",
+          "fix:identifiers": "clordid,secondaryclordid",
           "fix:msgtype": "q",
           "fix:tag": "495019"
         },
@@ -72852,6 +72915,7 @@
         "metadata": {
           "description": "MsgType = H",
           "display": "OrderStatusRequest",
+          "fix:identifiers": "orderid,clordid,secondaryclordid",
           "fix:msgtype": "H",
           "fix:tag": "426679"
         },
@@ -72996,6 +73060,7 @@
         },
         "metadata": {
           "display": "OrdListStat",
+          "fix:identifiers": "clordid,orderid,secondaryclordid",
           "fix:tag": "610418"
         },
         "name": "ordliststat",
@@ -76219,6 +76284,7 @@
         "metadata": {
           "description": "MsgType = DF",
           "display": "PartyRiskLimitCheckRequest",
+          "fix:identifiers": "reforderid",
           "fix:msgtype": "DF",
           "fix:tag": "516801"
         },
@@ -76594,6 +76660,7 @@
         "metadata": {
           "description": "MsgType = DG",
           "display": "PartyRiskLimitCheckRequestAck",
+          "fix:identifiers": "reforderid",
           "fix:msgtype": "DG",
           "fix:tag": "424918"
         },
@@ -83889,6 +83956,553 @@
           "fields": [
             {
               "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "fix:tag": "35"
+              },
+              "name": "MsgType",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The ObjectName of the MBean this occurrence answers for.",
+                "display": "SessionInterface",
+                "fix:branches": "plugin",
+                "fix:tag": "20010"
+              },
+              "name": "SessionInterface",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The ObjectName's own type property: what this MBean is.",
+                "display": "MBeanType",
+                "fix:branches": "plugin",
+                "fix:tag": "20011"
+              },
+              "name": "MBeanType",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The ObjectName's plugin-type property: the protocol the plugin speaks.",
+                "display": "PluginType",
+                "fix:branches": "plugin",
+                "fix:tag": "20012"
+              },
+              "name": "PluginType",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The name the bridge knows this session interface by.",
+                "display": "Name",
+                "fix:branches": "plugin",
+                "fix:tag": "20013"
+              },
+              "name": "Name",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The category the bridge files this session interface under.",
+                "display": "Category",
+                "fix:branches": "plugin",
+                "fix:tag": "20014"
+              },
+              "name": "Category",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The identifier the bridge holds this session interface under.",
+                "display": "Guid",
+                "fix:branches": "plugin",
+                "fix:tag": "20015"
+              },
+              "name": "Guid",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "Prepended to every identifier this session interface issues.",
+                "display": "Prefix",
+                "fix:branches": "plugin",
+                "fix:tag": "20016"
+              },
+              "name": "Prefix",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "Appended to every identifier this session interface issues.",
+                "display": "Suffix",
+                "fix:branches": "plugin",
+                "fix:tag": "20017"
+              },
+              "name": "Suffix",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "Whatever an operator wrote about this session interface.",
+                "display": "Comment",
+                "fix:branches": "plugin",
+                "fix:tag": "20018"
+              },
+              "name": "Comment",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "What the session is doing now: logged, stopped, and the rest; the document spells it State.",
+                "display": "PluginState",
+                "fix:branches": "plugin",
+                "fix:tag": "20019"
+              },
+              "name": "PluginState",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "Which side of the connection this is: A accepts, I initiates.",
+                "display": "Type",
+                "fix:branches": "plugin",
+                "fix:tag": "20020"
+              },
+              "name": "Type",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The plugin version this session interface runs; the document spells it Version.",
+                "display": "PluginVersion",
+                "fix:branches": "plugin",
+                "fix:tag": "20021"
+              },
+              "name": "PluginVersion",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The host the session connects to first.",
+                "display": "PrimaryHost",
+                "fix:branches": "plugin",
+                "fix:tag": "20022"
+              },
+              "name": "PrimaryHost",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The port on the primary host.",
+                "display": "PrimaryPort",
+                "fix:branches": "plugin",
+                "fix:tag": "20023"
+              },
+              "name": "PrimaryPort",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The host the session falls back to.",
+                "display": "BackupHost",
+                "fix:branches": "plugin",
+                "fix:tag": "20024"
+              },
+              "name": "BackupHost",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The port on the backup host; -1 where none is declared.",
+                "display": "BackupPort",
+                "fix:branches": "plugin",
+                "fix:tag": "20025"
+              },
+              "name": "BackupPort",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The host the session is connected to now.",
+                "display": "CurrentHost",
+                "fix:branches": "plugin",
+                "fix:tag": "20026"
+              },
+              "name": "CurrentHost",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The port the session is connected on now.",
+                "display": "CurrentPort",
+                "fix:branches": "plugin",
+                "fix:tag": "20027"
+              },
+              "name": "CurrentPort",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The sequence number the session expects to receive next.",
+                "display": "IncomingMsgSeqNum",
+                "fix:branches": "plugin",
+                "fix:tag": "20028"
+              },
+              "name": "IncomingMsgSeqNum",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The sequence number the session will send next.",
+                "display": "OutgoingMsgSeqNum",
+                "fix:branches": "plugin",
+                "fix:tag": "20029"
+              },
+              "name": "OutgoingMsgSeqNum",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The log level this session interface runs at; -1 inherits.",
+                "display": "LogLevel",
+                "fix:branches": "plugin",
+                "fix:tag": "20030"
+              },
+              "name": "LogLevel",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "The scheduling priority the bridge gives this session.",
+                "display": "PriorityLevel",
+                "fix:branches": "plugin",
+                "fix:tag": "20031"
+              },
+              "name": "PriorityLevel",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "int64"
+              },
+              "metadata": {
+                "description": "Which isolation pool the session's load is placed in.",
+                "display": "LoadIsolation",
+                "fix:branches": "plugin",
+                "fix:tag": "20032"
+              },
+              "name": "LoadIsolation",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "description": "Whether the session raises notifications.",
+                "display": "NotificationsStatus",
+                "fix:branches": "plugin",
+                "fix:tag": "20033"
+              },
+              "name": "NotificationsStatus",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "description": "Whether the configuration on disk is ahead of the running one.",
+                "display": "NeedReload",
+                "fix:branches": "plugin",
+                "fix:tag": "20034"
+              },
+              "name": "NeedReload",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The jar the plugin class was loaded from.",
+                "display": "BinaryName",
+                "fix:branches": "plugin",
+                "fix:tag": "20035"
+              },
+              "name": "BinaryName",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The plugin class this session interface runs.",
+                "display": "ClassName",
+                "fix:branches": "plugin",
+                "fix:tag": "20036"
+              },
+              "name": "ClassName",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The revision string the plugin build carries.",
+                "display": "RevisionInformation",
+                "fix:branches": "plugin",
+                "fix:tag": "20037"
+              },
+              "name": "RevisionInformation",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The oldest bridge revision this plugin will run on.",
+                "display": "MinimumBridgeRevision",
+                "fix:branches": "plugin",
+                "fix:tag": "20038"
+              },
+              "name": "MinimumBridgeRevision",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The session's init file, as the INI text it is.",
+                "display": "InitFileContent",
+                "fix:branches": "plugin",
+                "fix:tag": "20039"
+              },
+              "name": "InitFileContent",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The actions this session interface offers, as the JSON array it is.",
+                "display": "ExtendedActions",
+                "fix:branches": "plugin",
+                "fix:tag": "20040"
+              },
+              "name": "ExtendedActions",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The enrichment chain attached to this session interface, as the JSON array it is.",
+                "display": "Enrichments",
+                "fix:branches": "plugin",
+                "fix:tag": "20041"
+              },
+              "name": "Enrichments",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The plugin's class hierarchy and revisions, as the JSON array it is.",
+                "display": "ClassHierarchy",
+                "fix:branches": "plugin",
+                "fix:tag": "20042"
+              },
+              "name": "ClassHierarchy",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The extensions this session interface declares, as the JSON array it is.",
+                "display": "Resources",
+                "fix:branches": "plugin",
+                "fix:tag": "20043"
+              },
+              "name": "Resources",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "boolean"
+              },
+              "metadata": {
+                "description": "Whether the session's CBlock has changed under it since it loaded.",
+                "display": "NeedCFBReload",
+                "fix:branches": "plugin",
+                "fix:tag": "20044"
+              },
+              "name": "NeedCFBReload",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The CBlocks this session interface loaded and their revisions, as the JSON array it is.",
+                "display": "CFBInfos",
+                "fix:branches": "plugin",
+                "fix:tag": "20045"
+              },
+              "name": "CFBInfos",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The products this plugin is built for, as the JSON array it is.",
+                "display": "targetProducts",
+                "fix:branches": "plugin",
+                "fix:tag": "20046"
+              },
+              "name": "targetProducts",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The configuration-manager extension version this plugin declares.",
+                "display": "cm-extension",
+                "fix:branches": "plugin",
+                "fix:tag": "20047"
+              },
+              "name": "cm-extension",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "fix:tag": "8"
+              },
+              "name": "BeginString",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "fix:tag": "49"
+              },
+              "name": "SenderCompID",
+              "nullable": true
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "fix:tag": "56"
+              },
+              "name": "TargetCompID",
+              "nullable": true
+            }
+          ],
+          "type": "struct"
+        },
+        "metadata": {
+          "fix:msgtype": "UCFG",
+          "fix:tag": "368812"
+        },
+        "name": "pluginconfig",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "fields": [
+            {
+              "dtype": {
                 "type": "null"
               },
               "metadata": {
@@ -87415,6 +88029,7 @@
         },
         "metadata": {
           "display": "PreAlloc",
+          "fix:identifiers": "individualallocid",
           "fix:tag": "462272"
         },
         "name": "prealloc",
@@ -87558,6 +88173,7 @@
         },
         "metadata": {
           "display": "PreAllocMleg",
+          "fix:identifiers": "individualallocid",
           "fix:tag": "669211"
         },
         "name": "preallocmleg",
@@ -90993,6 +91609,7 @@
         "metadata": {
           "description": "MsgType = S",
           "display": "Quote",
+          "fix:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,reforderid",
           "fix:msgtype": "S",
           "fix:tag": "449484"
         },
@@ -91208,6 +91825,7 @@
         "metadata": {
           "description": "MsgType = CW",
           "display": "QuoteAck",
+          "fix:identifiers": "quoteid,quotereqid,secondaryquoteid",
           "fix:msgtype": "CW",
           "fix:tag": "898973"
         },
@@ -91456,6 +92074,7 @@
         "metadata": {
           "description": "MsgType = Z",
           "display": "QuoteCancel",
+          "fix:identifiers": "quotereqid,quoteid,secondaryquoteid",
           "fix:msgtype": "Z",
           "fix:tag": "416241"
         },
@@ -91800,6 +92419,7 @@
         },
         "metadata": {
           "display": "QuotEntry",
+          "fix:identifiers": "quoteentryid",
           "fix:tag": "1017441"
         },
         "name": "quotentry",
@@ -92143,6 +92763,7 @@
         },
         "metadata": {
           "display": "QuotEntryAck",
+          "fix:identifiers": "quoteentryid",
           "fix:tag": "174647"
         },
         "name": "quotentryack",
@@ -92377,6 +92998,7 @@
         "metadata": {
           "description": "MsgType = R",
           "display": "QuoteRequest",
+          "fix:identifiers": "quotereqid,clordid",
           "fix:msgtype": "R",
           "fix:tag": "231968"
         },
@@ -92542,6 +93164,7 @@
         "metadata": {
           "description": "MsgType = AG",
           "display": "QuoteRequestReject",
+          "fix:identifiers": "quotereqid",
           "fix:msgtype": "AG",
           "fix:tag": "1016263"
         },
@@ -93457,6 +94080,7 @@
         "metadata": {
           "description": "MsgType = AJ",
           "display": "QuoteResponse",
+          "fix:identifiers": "quoterespid,quoteid,quotereqid,clordid",
           "fix:msgtype": "AJ",
           "fix:tag": "576238"
         },
@@ -94575,6 +95199,7 @@
         "metadata": {
           "description": "MsgType = AI",
           "display": "QuoteStatusReport",
+          "fix:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,bidquoteid,offerquoteid",
           "fix:msgtype": "AI",
           "fix:tag": "729973"
         },
@@ -94790,6 +95415,7 @@
         "metadata": {
           "description": "MsgType = a (lowercase A)",
           "display": "QuoteStatusRequest",
+          "fix:identifiers": "quoteid",
           "fix:msgtype": "a",
           "fix:tag": "765769"
         },
@@ -95497,6 +96123,7 @@
         },
         "metadata": {
           "display": "QuotReq",
+          "fix:identifiers": "quoteid,secondaryquoteid",
           "fix:tag": "1087733"
         },
         "name": "quotreq",
@@ -96669,6 +97296,7 @@
         "metadata": {
           "description": "MsgType = o (lowercase O)",
           "display": "RegistrationInstructions",
+          "fix:identifiers": "clordid",
           "fix:msgtype": "o",
           "fix:tag": "619440"
         },
@@ -96814,6 +97442,7 @@
         "metadata": {
           "description": "MsgType = p (lowercase P)",
           "display": "RegistrationInstructionsResponse",
+          "fix:identifiers": "clordid",
           "fix:msgtype": "p",
           "fix:tag": "849606"
         },
@@ -96888,6 +97517,7 @@
         },
         "metadata": {
           "display": "RegulatoryTradeID",
+          "fix:identifiers": "regulatorytradeid",
           "fix:tag": "950635"
         },
         "name": "regulatorytradeidcomponent",
@@ -97242,6 +97872,7 @@
         },
         "metadata": {
           "display": "RelatedOrder",
+          "fix:identifiers": "relatedorderid",
           "fix:tag": "832135"
         },
         "name": "relatedorder",
@@ -97590,6 +98221,7 @@
         },
         "metadata": {
           "display": "RelatedTrade",
+          "fix:identifiers": "relatedtradeid",
           "fix:tag": "909958"
         },
         "name": "relatedtrade",
@@ -102951,6 +103583,7 @@
         "metadata": {
           "description": "MsgType = y (lowercase Y)",
           "display": "SecurityList",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "y",
           "fix:tag": "164224"
         },
@@ -103226,6 +103859,7 @@
         "metadata": {
           "description": "MsgType = x (lowercase X)",
           "display": "SecurityListRequest",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "x",
           "fix:tag": "858799"
         },
@@ -103481,6 +104115,7 @@
         "metadata": {
           "description": "MsgType = BK",
           "display": "SecurityListUpdateReport",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "BK",
           "fix:tag": "664955"
         },
@@ -103716,6 +104351,7 @@
         "metadata": {
           "description": "MsgType = CO",
           "display": "SecurityMassStatus",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "CO",
           "fix:tag": "835895"
         },
@@ -103831,6 +104467,7 @@
         "metadata": {
           "description": "MsgType = CN",
           "display": "SecurityMassStatusRequest",
+          "fix:identifiers": "securitylistid",
           "fix:msgtype": "CN",
           "fix:tag": "995544"
         },
@@ -106153,6 +106790,7 @@
         "metadata": {
           "description": "MsgType = T",
           "display": "SettlementInstructions",
+          "fix:identifiers": "clordid",
           "fix:msgtype": "T",
           "fix:tag": "936330"
         },
@@ -107933,6 +108571,7 @@
         "metadata": {
           "description": "May be used to identify the trade via the known Confirmation(35=AK) message.",
           "display": "SettlTradeDetails",
+          "fix:identifiers": "allocid,individualallocid,secondaryallocid",
           "fix:tag": "1036155"
         },
         "name": "settltradedetails",
@@ -108402,6 +109041,7 @@
         },
         "metadata": {
           "display": "SideCrossLeg",
+          "fix:identifiers": "legallocid",
           "fix:tag": "1067797"
         },
         "name": "sidecrossleg",
@@ -108595,6 +109235,7 @@
         },
         "metadata": {
           "display": "SideCrossOrdCxl",
+          "fix:identifiers": "origclordid,clordid,secondaryclordid",
           "fix:tag": "739733"
         },
         "name": "sidecrossordcxl",
@@ -109118,6 +109759,7 @@
         },
         "metadata": {
           "display": "SideCrossOrdMod",
+          "fix:identifiers": "origclordid,clordid,secondaryclordid,allocid",
           "fix:tag": "955765"
         },
         "name": "sidecrossordmod",
@@ -109191,6 +109833,7 @@
         },
         "metadata": {
           "display": "SideRegulatoryTradeID",
+          "fix:identifiers": "sideregulatorytradeid",
           "fix:tag": "203596"
         },
         "name": "sideregulatorytradeidcomponent",
@@ -112863,6 +113506,7 @@
         },
         "metadata": {
           "display": "TestOrder",
+          "fix:identifiers": "testorderid",
           "fix:tag": "108569"
         },
         "name": "testorder",
@@ -114185,6 +114829,7 @@
         "metadata": {
           "description": "MsgType = DX",
           "display": "TradeAggregationReport",
+          "fix:identifiers": "tradeid",
           "fix:msgtype": "DX",
           "fix:tag": "978335"
         },
@@ -116511,6 +117156,7 @@
         "metadata": {
           "description": "MsgType = AE",
           "display": "TradeCaptureReport",
+          "fix:identifiers": "tradereportid,tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,origtradeid,origsecondarytradeid,tradereportrefid,secondarytradereportrefid,secondarytradereportid,execid,execrefid,secondaryexecid",
           "fix:msgtype": "AE",
           "fix:tag": "162094"
         },
@@ -117646,6 +118292,7 @@
         "metadata": {
           "description": "MsgType = AR",
           "display": "TradeCaptureReportAck",
+          "fix:identifiers": "tradereportid,tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,origtradeid,origsecondarytradeid,tradereportrefid,secondarytradereportrefid,secondarytradereportid,execid,secondaryexecid",
           "fix:msgtype": "AR",
           "fix:tag": "988102"
         },
@@ -118161,6 +118808,7 @@
         "metadata": {
           "description": "MsgType = AD",
           "display": "TradeCaptureReportRequest",
+          "fix:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,tradereportid,secondarytradereportid,secondaryexecid,execid,orderid,clordid",
           "fix:msgtype": "AD",
           "fix:tag": "395821"
         },
@@ -118426,6 +119074,7 @@
         "metadata": {
           "description": "MsgType = AQ",
           "display": "TradeCaptureReportRequestAck",
+          "fix:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid",
           "fix:msgtype": "AQ",
           "fix:tag": "977882"
         },
@@ -119330,6 +119979,7 @@
         "metadata": {
           "description": "In the case of quotes can be mapped to QuoteMsgID(1166) of a single Quote(MsgType=S) or QuoteID(117) of a MassQuote(MsgType=i).",
           "display": "TradeReportOrderDetail",
+          "fix:identifiers": "orderid,secondaryorderid,clordid,secondaryclordid,listid,reforderid",
           "fix:tag": "479593"
         },
         "name": "tradereportorderdetail",
@@ -120949,6 +121599,7 @@
         },
         "metadata": {
           "display": "TrdAlloc",
+          "fix:identifiers": "individualallocid,parentallocid,secondaryindividualallocid",
           "fix:tag": "517903"
         },
         "name": "trdalloc",
@@ -121965,6 +122616,7 @@
         },
         "metadata": {
           "display": "TrdCapRptAckSide",
+          "fix:identifiers": "sideexecid,sidetradeid,sideorigtradeid,allocid,secondaryallocid,sidetradereportid",
           "fix:tag": "668146"
         },
         "name": "trdcaprptackside",
@@ -123218,6 +123870,7 @@
         },
         "metadata": {
           "display": "TrdCapRptSide",
+          "fix:identifiers": "sideexecid,sidetradereportid,sidetradeid,sideorigtradeid,allocid,secondaryallocid",
           "fix:tag": "905222"
         },
         "name": "trdcaprptside",
@@ -123251,6 +123904,7 @@
         },
         "metadata": {
           "display": "TrdColl",
+          "fix:identifiers": "tradereportid,secondarytradereportid",
           "fix:tag": "278824"
         },
         "name": "trdcoll",
@@ -123920,6 +124574,7 @@
         },
         "metadata": {
           "display": "TrdInstrmtLegExec",
+          "fix:identifiers": "legexecid,legexecrefid,legtradeid,legtradereportid",
           "fix:tag": "120241"
         },
         "name": "trdinstrmtlegexec",
@@ -124483,6 +125138,7 @@
         },
         "metadata": {
           "display": "TrdMatchSide",
+          "fix:identifiers": "sideexecid,sideexecrefid,sidetradeid,sidetradereportid,allocid",
           "fix:tag": "371869"
         },
         "name": "trdmatchside",
@@ -221687,6 +222343,264 @@
         },
         "name": "batchprocessmode",
         "nullable": true
+      },
+      {
+        "dtype": {
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
+        },
+        "metadata": {
+          "description": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out.",
+          "digest:algorithm": "xxh3-128",
+          "digest:role": "holder",
+          "digest:sources": "[\"nofixentries\"]",
+          "display": "MsgHash",
+          "fix:tag": "65000"
+        },
+        "name": "msghash",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The FIX version the message was read at, which is not always the one its BeginString claims.",
+          "display": "Version",
+          "fix:tag": "65001"
+        },
+        "name": "version",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them.",
+          "display": "SymbolTicker",
+          "fix:tag": "65002"
+        },
+        "name": "symbolticker",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
+          "display": "Timestamp",
+          "fix:tag": "65003"
+        },
+        "name": "timestamp",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "int64"
+        },
+        "metadata": {
+          "description": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width.",
+          "display": "UnixPartition",
+          "fix:tag": "65004",
+          "iceberg:transform": "truncate[3600]",
+          "partition:sources": "[\"timestamp\"]"
+        },
+        "name": "unixpartition",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The client order identifier this order descends from, which no standard tag names.",
+          "display": "ParentClOrdID",
+          "fix:tag": "65005"
+        },
+        "name": "parentclordid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The venue order identifier this order descends from, which no standard tag names.",
+          "display": "ParentOrderID",
+          "fix:tag": "65006"
+        },
+        "name": "parentorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The session a message came from: the message's own statement, else the session instance its bridge handled the line on.",
+          "display": "SenderSessionId",
+          "fix:aliases": "SessionId",
+          "fix:tag": "65007"
+        },
+        "name": "sendersessionid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The message context a bridge handled the message in, as its own log names it.",
+          "display": "MsgCtxId",
+          "fix:tag": "65008"
+        },
+        "name": "msgctxid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own pluginid column, never derived.",
+          "display": "PluginId",
+          "fix:tag": "65009"
+        },
+        "name": "pluginid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The plugin the message came through before the one that logged it, as the bridge names it: the row's own prevpluginid column, never derived.",
+          "display": "PrevPluginId",
+          "fix:tag": "65010"
+        },
+        "name": "prevpluginid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The name of the session a message came from, as the bridge row states it.",
+          "display": "SenderSessionName",
+          "fix:aliases": "ULFromSessionName",
+          "fix:tag": "65011"
+        },
+        "name": "sendersessionname",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The name of the session a message went to, as the bridge row states it.",
+          "display": "TargetSessionName",
+          "fix:aliases": "ULToSessionName",
+          "fix:tag": "65012"
+        },
+        "name": "targetsessionname",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "isin"
+        },
+        "metadata": {
+          "description": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN.",
+          "display": "ISINCode",
+          "fix:tag": "65013"
+        },
+        "name": "isincode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "mic"
+        },
+        "metadata": {
+          "description": "The market the message names, as an ISO 10383 MIC: the message's own, else SecurityExchange, ExDestination or LastMkt.",
+          "display": "MICCode",
+          "fix:tag": "65014"
+        },
+        "name": "miccode",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "state"
+        },
+        "metadata": {
+          "description": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary.",
+          "display": "State",
+          "fix:tag": "65015"
+        },
+        "name": "state",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
+        },
+        "metadata": {
+          "description": "The instrument's own identity: the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
+          "display": "InstId",
+          "fix:tag": "65016"
+        },
+        "name": "instid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
+        },
+        "metadata": {
+          "description": "The message's own identity: the instant closest to the market impact in microseconds, then the xxh3 digest of what it said.",
+          "display": "Id",
+          "fix:tag": "65017"
+        },
+        "name": "id",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
+        },
+        "metadata": {
+          "description": "The order chain's identity: the instant it was created, then the xxh3 digest of its instrument and first identifier, carried by every later message sharing one of its identifiers.",
+          "display": "PersistentId",
+          "fix:tag": "65018"
+        },
+        "name": "persistentid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The session a message went to, as the message states it.",
+          "display": "TargetSessionId",
+          "fix:tag": "65019"
+        },
+        "name": "targetsessionid",
+        "nullable": true
       }
     ],
     "groups": [
@@ -221977,6 +222891,46 @@
         },
         "name": "alloctrdregtimestamps",
         "nullable": false
+      },
+      {
+        "dtype": {
+          "entries": {
+            "dtype": {
+              "fields": [
+                {
+                  "dtype": {
+                    "type": "string"
+                  },
+                  "metadata": {},
+                  "name": "key",
+                  "nullable": false
+                },
+                {
+                  "dtype": {
+                    "type": "string"
+                  },
+                  "metadata": {},
+                  "name": "value",
+                  "nullable": true
+                }
+              ],
+              "type": "struct"
+            },
+            "metadata": {},
+            "name": "entries",
+            "nullable": false
+          },
+          "keys_sorted": true,
+          "type": "map"
+        },
+        "metadata": {
+          "description": "The identifiers this message states at its own level, keyed by canonical field name in sorted order; repeating-group members are not flattened.",
+          "display": "AltIds",
+          "fix:counter": "65020",
+          "fix:tag": "65020"
+        },
+        "name": "altids",
+        "nullable": true
       },
       {
         "dtype": {
@@ -236308,6 +237262,13 @@
         "x": "The session a message went to, as the message states it."
       },
       {
+        "c": "altids",
+        "t": 65020,
+        "n": "AltIds",
+        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+        "x": "The identifiers this message states at its own level, keyed by canonical field name in sorted order; repeating-group members are not flattened."
+      },
+      {
         "c": "msgdirection",
         "t": 385,
         "n": "MsgDirection",
@@ -239517,7 +240478,8 @@
                             },
                             "metadata": {
                               "display": "RegulatoryTradeID",
-                              "fix:component": "regulatorytradeidcomponent"
+                              "fix:component": "regulatorytradeidcomponent",
+                              "fix:identifiers": "regulatorytradeid"
                             },
                             "name": "regulatorytradeidcomponent",
                             "nullable": false
@@ -240071,7 +241033,8 @@
                             },
                             "metadata": {
                               "display": "RelatedTrade",
-                              "fix:component": "relatedtrade"
+                              "fix:component": "relatedtrade",
+                              "fix:identifiers": "relatedtradeid"
                             },
                             "name": "relatedtrade",
                             "nullable": false
@@ -240946,7 +241909,8 @@
                   },
                   "metadata": {
                     "display": "MDFull",
-                    "fix:component": "mdfull"
+                    "fix:component": "mdfull",
+                    "fix:identifiers": "orderid,secondaryorderid,quoteentryid,tradeid"
                   },
                   "name": "mdfull",
                   "nullable": false

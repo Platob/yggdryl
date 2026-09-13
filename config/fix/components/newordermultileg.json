@@ -1379,6 +1379,7 @@
   "metadata": {
     "description": "MsgType = AB",
     "display": "NewOrderMultileg",
+    "fix:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
     "fix:msgtype": "AB",
     "fix:tag": "790509"
   }

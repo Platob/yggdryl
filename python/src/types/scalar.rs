@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, RecordBatch};
-use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
+use arrow_pyarrow::FromPyArrow;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{
     PyArithmeticError, PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError,
@@ -35,7 +35,7 @@ use yggdryl::{
     Float32, Float64, I256, Scalar, TemporalFamily, TimeUnit, Timezone,
 };
 
-use crate::iomedia::core_root_field_from_value;
+use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
 use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::types::field::{PyField, core_field_from_value};
 use crate::types::timezone::core_timezone_from_value;
@@ -1059,7 +1059,7 @@ impl PyScalar {
             || self.inner.inferred_struct_field().map_err(value_error),
             |field| core_root_field_from_value(field, "row"),
         )?;
-        value_into_arrow_batch(&root, &self.inner)?.into_pyarrow(py)
+        batch_to_pyarrow(py, value_into_arrow_batch(&root, &self.inner)?)
     }
 
     /// Materialize an outer Sequence of rows as one `PyArrow` Table.

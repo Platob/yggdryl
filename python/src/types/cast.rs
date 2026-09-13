@@ -10,13 +10,14 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::{FromPyArrow, ToPyArrow};
+use arrow_pyarrow::FromPyArrow;
 use arrow_schema::Schema as ArrowSchema;
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use yggdryl::ArrowCastPlan;
 
-use crate::types::field::{PyField, core_field_from_value};
+use crate::iomedia::batch_to_pyarrow;
+use crate::types::field::{PyField, arrow_schema_to_pyarrow, core_field_from_value};
 use crate::{cast_options, value_error};
 
 /// One Arrow cast compiled from a source schema and a declared root.
@@ -76,13 +77,13 @@ impl PyArrowCastPlan {
     /// one plan reusable without a per-batch check.
     #[getter]
     fn source_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        self.inner.as_source_schema().to_pyarrow(py)
+        arrow_schema_to_pyarrow(py, self.inner.as_source_schema())
     }
 
     /// The schema every batch this plan answers carries.
     #[getter]
     fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        self.inner.as_schema().to_pyarrow(py)
+        arrow_schema_to_pyarrow(py, self.inner.as_schema())
     }
 
     /// Whether a present value may be converted.
@@ -134,7 +135,7 @@ impl PyArrowCastPlan {
         {
             return Ok(batch.clone());
         }
-        cast.to_pyarrow(py)
+        batch_to_pyarrow(py, cast)
     }
 
     fn __repr__(&self) -> String {

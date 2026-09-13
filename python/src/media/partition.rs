@@ -7,11 +7,11 @@
 //! either side of a read or a write.
 
 use arrow_array::RecordBatch;
-use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
+use arrow_pyarrow::FromPyArrow;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyModule};
 
-use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
+use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
 use crate::types::field::core_field_from_value;
 use crate::types::scalar::from_py;
 use crate::value_error;
@@ -58,7 +58,7 @@ pub(crate) fn with_partitions<'py>(
     if let Ok(batch) = RecordBatch::from_pyarrow_bound(rows) {
         let widened = yggdryl::media::partition::with_partitions(&batch, &pairs, field.as_ref())
             .map_err(value_error)?;
-        return widened.into_pyarrow(py);
+        return batch_to_pyarrow(py, widened);
     }
     let reader = batch_reader_from_arrow_reader(rows)?;
     let widened =
@@ -82,7 +82,7 @@ pub(crate) fn without_partitions<'py>(
     if let Ok(batch) = RecordBatch::from_pyarrow_bound(rows) {
         let narrowed =
             yggdryl::media::partition::without_partitions(&batch, &pairs).map_err(value_error)?;
-        return narrowed.into_pyarrow(py);
+        return batch_to_pyarrow(py, narrowed);
     }
     let reader = batch_reader_from_arrow_reader(rows)?;
     // The narrowed schema is what the first batch would answer, so it is

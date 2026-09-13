@@ -1229,6 +1229,7 @@
   "metadata": {
     "description": "MsgType = S",
     "display": "Quote",
+    "fix:identifiers": "quotereqid,quoteid,secondaryquoteid,quoterespid,reforderid",
     "fix:msgtype": "S",
     "fix:tag": "449484"
   }

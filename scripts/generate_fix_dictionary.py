@@ -157,6 +157,19 @@ LOGICAL_NAMES = {
 # code set - and the registry reads it (decision 14).
 CODED_TAGS = {39: "state", 54: "side", 150: "state"}
 
+# FIX Latest's order, quote, execution, trade and allocation identifier
+# families (decision 21). Suffixes admit side/leg/ref/orig/affected forms;
+# neither a general ID nor an administrative ReportID is an identifier here.
+# Meanings: https://fiximate.fixtrading.org/en/FIX.Latest/tag11.html,
+# tag19.html, tag1903.html and tag467.html. Source revisions stay pinned above.
+IDENTIFIER_FAMILIES = (
+    "clordid", "origclordid", "secondaryclordid", "orderid",
+    "secondaryorderid", "listid", "quoteid", "quotereqid", "quoterespid",
+    "quoteentryid", "execid", "execrefid", "secondaryexecid", "tradeid",
+    "secondarytradeid", "tradereportid", "tradereportrefid", "firmtradeid",
+    "regulatorytradeid", "allocid", "secondaryallocid", "individualallocid",
+)
+
 
 def folded(name: str) -> str:
     """The crate's one fold: case folded, `_`, `-` and space dropped."""
@@ -1280,6 +1293,11 @@ def build_catalog(
         if definition.get("doc"):
             metadata["description"] = definition["doc"]
         children = members(key)
+        identifiers = ",".join(
+            child["name"] for child in children
+            if "fix:field" in child["metadata"]
+            and child["name"].endswith(IDENTIFIER_FAMILIES)
+        )
         if category == "groups":
             counter = definition["tag"]
             if counter not in by_tag or by_tag[counter]["dtype"] != {"type": "int32"}:
@@ -1290,12 +1308,16 @@ def build_catalog(
                 "nullable": False,
                 "metadata": {"display": entry_displays[identifier]},
             }
+            if identifiers:
+                entry["metadata"]["fix:identifiers"] = identifiers
             result["components"].append(entry)
             dtype = {"type": "list", "field": reference(entries[identifier], "component", True)}
             metadata["fix:counter"] = str(counter)
             metadata["fix:component"] = entries[identifier]
         else:
             dtype = {"type": "struct", "fields": children}
+            if identifiers:
+                metadata["fix:identifiers"] = identifiers
         if category == "messages":
             metadata["fix:msgtype"] = next(
                 wire for wire, held in latest["messages"].items() if held["id"] == identifier

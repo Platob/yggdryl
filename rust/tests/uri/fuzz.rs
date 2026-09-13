@@ -12,7 +12,7 @@
 //! coverage-guided fuzzer: it runs in the ordinary suite and costs a second.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use yggdryl::{Authority, Error, Scheme, Uri, UriPath, Url, Urn};
 
@@ -599,13 +599,37 @@ fn every_generated_file_name_survives_a_platform_join() {
             }
             built
         };
-        // An absolute component replaces the URL, so it is checked against the
-        // conversion of the whole path rather than against a join under `lake`.
-        if name.starts_with('/') {
-            failures.check(
-                lake.join_path(&name).ok() == Url::from_path(&name).ok(),
-                || format!("{name:?} did not replace the URL it was joined to"),
-            );
+        // Native roots and prefixes replace the URL. On Windows `a:b` is
+        // drive-relative, not one filename, even though is_absolute is false.
+        if matches!(
+            Path::new(&name).components().next(),
+            Some(Component::Prefix(_) | Component::RootDir)
+        ) {
+            match (lake.join_path(&name), Url::from_path(&name)) {
+                (Ok(joined), Ok(expected)) => failures.check(joined == expected, || {
+                    format!("{name:?} did not replace the URL it was joined to")
+                }),
+                (
+                    Err(Error::Parse {
+                        target,
+                        position,
+                        reason,
+                    }),
+                    Err(Error::Parse {
+                        target: expected_target,
+                        position: expected_position,
+                        reason: expected_reason,
+                    }),
+                ) => failures.check(
+                    target == expected_target
+                        && position == expected_position
+                        && reason == expected_reason,
+                    || format!("{name:?} did not preserve its platform-path parse refusal"),
+                ),
+                (joined, expected) => failures.entries.push(format!(
+                    "{name:?} platform replacement differed: {joined:?}, expected {expected:?}"
+                )),
+            }
             continue;
         }
         // A component a platform path cannot carry is not a name to begin with.
@@ -654,4 +678,29 @@ fn every_generated_file_name_survives_a_platform_join() {
         failures.entries.len(),
         shown.len()
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn drive_relative_prefixes_keep_the_platform_refusal_while_colon_names_join() {
+    let lake = Url::from_str("file:///lake").unwrap();
+    for name in ["a:b", "C:", "c:x"] {
+        assert!(!Path::new(name).is_absolute());
+        let Error::Parse {
+            target,
+            position,
+            reason,
+        } = lake.join_path(name).unwrap_err()
+        else {
+            panic!("{name:?} must preserve the typed URL refusal")
+        };
+        assert_eq!((target, position), ("url", 5));
+        assert_eq!(
+            reason,
+            "URL requires hierarchical authority syntax and non-file URLs require a host"
+        );
+    }
+    let joined = lake.join_path("abc:def").unwrap();
+    assert_eq!(joined.file_name(), Some("abc:def"));
+    assert_eq!(joined.into_path().unwrap(), Path::new("/lake/abc:def"));
 }

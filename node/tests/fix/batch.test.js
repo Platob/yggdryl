@@ -104,6 +104,14 @@ function column(table, name) {
   return table.getChild(name).toJSON()
 }
 
+function mapColumn(table, name) {
+  return Array.from(table.getChild(name), (value) => {
+    if (value === null) return null
+    assert.ok(value instanceof arrow.MapRow)
+    return [...value]
+  })
+}
+
 function rowCounts(reader) {
   return [...reader].map((batch) => batch.numRows)
 }
@@ -400,6 +408,107 @@ test('messages and arrowReader invert each other', () => {
   const first = codec.arrowReader(schema, parsed).intoIpc()
   const second = codec.arrowReader(schema, again).intoIpc()
   assert.deepEqual(first, second)
+})
+
+test('altids crosses native rows and Arrow as a nullable sorted Map with non-null keys', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry)
+  const schema = fields.struct('maprow', [registry.groupByCounter(65020)], { nullable: false })
+  const values = [null, new Map(), new Map([['clordid', 'C-1'], ['orderid', null]])]
+  const messages = values.map((altids) => fix.FixMsg.fromRow(schema, { altids }, registry))
+  const table = codec.arrowReader(schema, messages).intoTable()
+  const mapping = table.schema.fields.find((field) => field.name === 'altids')
+  assert.equal(mapping.nullable, true)
+  assert.equal(mapping.type.typeId, arrow.Type.Map)
+  assert.equal(mapping.type.keysSorted, true)
+  const entries = mapping.type.children[0]
+  assert.equal(entries.nullable, false)
+  assert.equal(entries.type.children[0].nullable, false)
+  assert.equal(entries.type.children[1].nullable, true)
+  assert.equal(mapping.type.keyType.typeId, arrow.Type.Utf8)
+  assert.equal(mapping.type.valueType.typeId, arrow.Type.Utf8)
+  assert.deepEqual(mapColumn(table, 'altids'), [null, [], [['clordid', 'C-1'], ['orderid', null]]])
+  const restored = [...codec.messages(table)]
+  assert.equal(restored.length, values.length)
+  assert.equal(restored.length, 3)
+  for (const [at, held] of restored.entries()) {
+    assert.deepEqual(held.byName('altids').asJs(), values[at])
+    assert.ok(held.intoRow(schema).equals(messages[at].intoRow(schema)))
+    assert.equal(held.getByPath("altids['missing']"), null)
+  }
+  const last = restored.at(-1)
+  assert.equal(last.byPath("altids['clordid']").asJs(), 'C-1')
+  assert.equal(last.byPath("altids['orderid']").kind, 'null')
+  // A named record is accepted by the core Map boundary, but stored as a Map.
+  last.set('altids', { clordid: 'record input' })
+  assert.ok(last.byName('altids').asJs() instanceof Map)
+  assert.deepEqual(last.byName('altids').asJs(), new Map([['clordid', 'record input']]))
+  const empty = fix.FixMsg.fromRow(schema, { altids: {} }, registry)
+  assert.deepEqual(empty.byName('altids').asJs(), new Map())
+  const before = last.value
+  assert.throws(() => last.set('altids', new Map([[null, 'invalid key']])), /key/)
+  assert.ok(last.value.equals(before))
+  assert.throws(() => fix.FixMsg.fromRow(schema, { altids: new Map([[null, 'invalid key']]) }, registry), /key/)
+  last.set('ALTIDS', new Map([['clordid', null]]))
+  assert.equal(last.byPath("altids['clordid']").kind, 'null')
+  assert.equal(last.getByPath('altids.clordid'), null)
+})
+
+test('altids filling agrees between message and Arrow streams for all three rows', () => {
+  const registry = seed()
+  const codec = new fix.FixCodec(registry)
+  const lines = [
+    '8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|',
+    '8=FIX.4.4|35=D|10=0|',
+    '8=FIX.4.4|35=ZZ|11=C-1|10=0|',
+  ]
+  const direct = [...codec.enrichMessages(codec.parseLines(lines))]
+  const bare = codec.parseTextArrowReader(capture(lines, 1)).intoTable()
+  const filled = codec.enrichMessagesArrowReader(bare).intoTable()
+  const expected = [[['clordid', 'C-001'], ['execid', 'E-09'], ['orderid', 'O-01']], [], null]
+  assert.deepEqual(mapColumn(filled, 'altids'), expected)
+  assert.equal(JSON.stringify(column(filled, 'nofixentries')), JSON.stringify(column(bare, 'nofixentries')))
+  assert.deepEqual(filled.schema, bare.schema)
+  const second = codec.enrichMessagesArrowReader(filled).intoTable()
+  assert.deepEqual(mapColumn(second, 'altids'), expected)
+  assert.deepEqual(second.schema, filled.schema)
+  const native = codec.arrowReader(fix.schema(registry), direct).intoTable()
+  assert.deepEqual(mapColumn(native, 'altids'), expected)
+  const restored = [...codec.messages(filled)]
+  const secondMessages = [...codec.messages(second)]
+  assert.equal(restored.length, direct.length)
+  assert.equal(restored.length, secondMessages.length)
+  assert.equal(restored.length, lines.length)
+  assert.equal(restored.length, 3)
+  for (const [at, held] of restored.entries()) {
+    assert.ok(held.equals(secondMessages[at]))
+    assert.deepEqual(held.byName('altids').asJs(), direct[at].getByName('altids')?.asJs() ?? null)
+    assert.deepEqual(held.arrivals(), direct[at].arrivals())
+    assert.deepEqual(held.intoBytes(PIPE), direct[at].intoBytes(PIPE))
+    assert.deepEqual(held.digest(), direct[at].digest())
+  }
+})
+
+test('the canonical altids Map name wins over a scalar alias at native name and key paths', () => {
+  const scalar = fields.utf8('venueid')
+  scalar.fix.tag = 9001
+  scalar.fix.aliases = ['AltIds']
+  const registry = fix.FixRegistry.fromFields([scalar])
+  const mapping = registry.groupByCounter(65020)
+  const schema = fields.struct('row', [scalar, mapping], { nullable: false })
+  const value = fix.FixMsg.fromRow(schema, {
+    venueid: 'scalar',
+    altids: new Map([['clordid', 'C-1']]),
+  }, registry)
+  assert.equal(registry.fieldByName('altids').name, 'venueid')
+  assert.equal(registry.fieldByPath('altids').name, 'altids')
+  assert.equal(registry.fieldByPath("altids['clordid']").name, 'value')
+  assert.ok(value.byName('ALTIDS').asJs() instanceof Map)
+  assert.ok(value.byPath('altids').equals(value.byName('altids')))
+  assert.equal(value.byPath("altids['clordid']").asJs(), 'C-1')
+  value.set('AltIds', new Map([['clordid', 'C-2']]))
+  assert.equal(value.byPath("altids['clordid']").asJs(), 'C-2')
+  assert.equal(value.byTag(9001).asJs(), 'scalar')
 })
 
 test('messages pull from the reader one batch at a time', () => {

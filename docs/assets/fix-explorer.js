@@ -117,7 +117,7 @@
         definitions: CATEGORIES.flatMap((category) => data.catalog[category].map((field) => ({
           category,
           field,
-          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:aliases', 'fix:tags', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:branches'].map((key) => metadata(field)[key] ?? '')].join(' ')),
+          text: searchText([category, field.name, ...['display', 'description', 'fix:tag', 'fix:aliases', 'fix:tags', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'fix:branches'].map((key) => metadata(field)[key] ?? '')].join(' ')),
         }))),
       }))
     }
@@ -138,7 +138,7 @@
       card.append(make('span', 'ygg-fx__card-label', label))
       cards.append(card)
     }
-    root.append(cards, note('Counts from the native registry, including this crate\'s capture fields.'))
+    root.append(cards, note('Counts from the live native registry, including its built-in scalar fields, Map group and message component. Messages are a subset of components.'))
   }
 
   function fieldDetail(field, category, navigate) {
@@ -148,13 +148,15 @@
     body.append(grid(['Property', 'Native value'], [
       ['category', category], ['name', field.name],
       ['datatype', field.dtype.type], ['nullable', field.nullable],
-      ...['fix:tag', 'fix:tags', 'fix:aliases', 'fix:counter', 'fix:component', 'fix:msgtype', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, meta[key]]),
+      ...(field.dtype.keys_sorted === undefined ? [] : [['keys_sorted', field.dtype.keys_sorted]]),
+      ...['fix:tag', 'fix:tags', 'fix:aliases', 'fix:counter', 'fix:component', 'fix:msgtype', 'fix:identifiers', 'description'].filter((key) => meta[key] !== undefined).map((key) => [key, meta[key]]),
       // Membership is provenance, shown only where a dictionary recorded it.
       ...(held.length ? [['membership', held.join(', ')]] : []),
     ]))
     // Direct occurrences are already present in the native Field document.
     // A reference button changes the search; it never expands a target schema.
-    const members = field.dtype.fields ?? (field.dtype.field ? [field.dtype.field] : [])
+    const occurrence = field.dtype.field ?? field.dtype.entries
+    const members = field.dtype.fields ?? (occurrence ? [occurrence] : [])
     if (members.length) {
       body.append(make('h4', null, 'Declared occurrences'))
       body.append(grid(['Occurrence', 'Presence', 'Reference'], members.map((member) => {
@@ -193,7 +195,7 @@
     query.type = 'search'
     query.placeholder = '453, Parties, Party, symbol, D...'
     const category = make('select', 'ygg-fx__select')
-    category.append(new Option('All four categories', 'all'))
+    category.append(new Option('All three categories', 'all'))
     for (const name of CATEGORIES) category.append(new Option(name, name))
     const coded = make('select', 'ygg-fx__select')
     coded.append(new Option('All definitions', 'all'), new Option('Fields with inline codes', 'codes'))

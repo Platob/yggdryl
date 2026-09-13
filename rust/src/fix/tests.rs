@@ -85,7 +85,11 @@ fn scratch(label: &str) -> PathBuf {
 /// How many fields every registry holds before a test inserts one: the
 /// crate's own, which `FixRegistry::new` seeds.
 fn crated() -> usize {
-    crate::fix_crate_fields().unwrap().len()
+    crate::fix_crate_fields()
+        .unwrap()
+        .iter()
+        .filter(|field| !field.dtype().is_nested())
+        .count()
 }
 
 /// How many message types every registry holds before a test registers one:
@@ -102,6 +106,7 @@ fn crate_names() -> Vec<&'static str> {
     crate::fix_crate_fields()
         .unwrap()
         .iter()
+        .filter(|field| !field.dtype().is_nested())
         .map(Field::name)
         .collect()
 }
@@ -939,7 +944,8 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // Decision 19 moved it again, and for the same reason: every registry
     // now also carries the `pluginconfig` component, which is more text.
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
-    assert_eq!(carrying.stable_hash(), 13_635_197_835_649_938_560);
+    // Decision 21 adds the registry-owned altids group.
+    assert_eq!(carrying.stable_hash(), 1_843_389_073_732_761_117);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -2787,7 +2793,7 @@ fn scalar_iteration_and_named_category_iteration_have_distinct_orders() {
             .definitions(FixCategory::Groups)
             .map(Field::name)
             .collect::<Vec<_>>(),
-        ["Parties"]
+        ["Parties", "altids"]
     );
     assert_ne!(
         registry,
@@ -4775,6 +4781,16 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     let mut entries = HashSet::new();
     for field in registry.definitions(FixCategory::Groups) {
         assert!(groups.insert(field.name()));
+        if let DataType::Map(map) = field.dtype() {
+            assert_eq!(field.name(), "altids");
+            assert_eq!(field.as_fix().tag().unwrap(), Some(65_020));
+            assert_eq!(field.as_fix().counter().unwrap(), Some(65_020));
+            assert!(map.keys_sorted());
+            assert!(!map.entries().is_nullable());
+            assert!(!map.entries().fields()[0].is_nullable());
+            assert!(registry.get_field_by_tag(65_020).is_none());
+            continue;
+        }
         let DataType::List(item) = field.dtype() else {
             panic!("{}", field.dtype());
         };
@@ -4791,7 +4807,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
             .unwrap();
         assert_eq!(counter.dtype(), &DataType::Int32);
     }
-    assert_eq!(groups.len(), 580);
+    assert_eq!(groups.len(), 581);
     assert_eq!(entries.len(), 580);
     // The shipped dictionary's own, beside the crate's `pluginconfig`,
     // which every registry carries (decision 19).
@@ -4815,7 +4831,9 @@ fn a_group_path_reaches_members_and_skips_its_occurrence_component() {
     );
     for field in registry.definitions(FixCategory::Groups) {
         let DataType::List(item) = field.dtype() else {
-            unreachable!()
+            assert_eq!(field.name(), "altids");
+            assert!(matches!(field.dtype(), DataType::Map(_)));
+            continue;
         };
         for child in item.fields() {
             let path = format!("{}.{}", field.name(), child.name());

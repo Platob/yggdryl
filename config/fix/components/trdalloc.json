@@ -378,6 +378,7 @@
   "nullable": false,
   "metadata": {
     "display": "TrdAlloc",
+    "fix:identifiers": "individualallocid,parentallocid,secondaryindividualallocid",
     "fix:tag": "517903"
   }
 }

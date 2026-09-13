@@ -212,12 +212,12 @@ impl PyFixRegistry {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
-    /// A registry holding nothing but this crate's own fields.
+    /// A registry holding this crate's own definitions.
     ///
-    /// Every registry starts here: the twenty standard fields from tag 65000
-    /// that `fix_crate_fields` lists are what a row is typed by, so a
-    /// dictionary loaded from a store, built from fields or left alone holds
-    /// them alike.
+    /// `fix_crate_fields` lists twenty scalar fields from tag 65000 and the
+    /// `altids` Map group at 65020. A dictionary loaded from a store, built
+    /// from fields or left alone holds them alike; `len` counts only scalar
+    /// fields. The crate's `pluginconfig` component is also registered.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -858,6 +858,21 @@ impl PyMsgType {
             .get_group_by_counter(tag.0)
             .cloned()
             .map(PyField::from_inner)
+    }
+    /// This component's non-null identifiers at the message's own level.
+    ///
+    /// The result follows component order, without descending into groups.
+    /// Declaration fields are read-only; values retain their native types.
+    fn identifier_values(&self, message: &PyFixMsg) -> Vec<(PyField, PyScalar)> {
+        self.inner()
+            .identifier_values(message.as_inner())
+            .map(|(field, value)| {
+                (
+                    PyField::from_inner_with_read_only(field.clone(), true),
+                    PyScalar::from_inner(value.clone()),
+                )
+            })
+            .collect()
     }
     fn stable_hash(&self) -> u64 {
         self.inner().stable_hash()
@@ -1949,6 +1964,10 @@ impl PyFixCodec {
     /// Only the row is filled: the arrival record is what the wire carried
     /// and is left alone, so `into_bytes` re-emits the received line either
     /// way, and a stated value is never replaced.
+    /// The component's identifiers fill its own-level `altids` Map without
+    /// flattening groups or replacing a stated map, including an empty one.
+    /// A declared identifier that cannot spell UTF-8 raises the core's
+    /// located `ValueError`.
     fn enrich_message(&self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
         self.inner
             .enrich_message(message.inner.clone())
@@ -2191,8 +2210,8 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The fields this crate defines, in tag order: twenty standard fields from
-/// tag 65000, above every tag FIX or a venue publishes.
+/// The twenty-one definitions this crate lists in tag order: twenty scalar
+/// fields from tag 65000, then the `altids` Map group at 65020.
 ///
 /// The digest, the version read, the cross-venue symbol, the market clock, the
 /// partition it falls in, the two parent order identifiers no standard tag
@@ -2202,8 +2221,9 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// spells - the three facts a row derives from what the message said: its
 /// ISIN, its market and the order's state - and the three identities a
 /// stream implies, which `FixLifecycle` stamps: the instrument, the message
-/// and the order chain. Every registry holds them from construction; this is
-/// the listing.
+/// and the order chain. The Map holds the message's own-level identifiers.
+/// Every registry holds these definitions from construction; only the scalar
+/// fields contribute to its length.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {

@@ -124,6 +124,77 @@ fn categories_expose_all_crud_operations_and_examples() {
 }
 
 #[test]
+fn component_identifier_flags_reach_the_core_setter_and_replace_on_update() {
+    let workspace = Workspace::new();
+    workspace.success(&[
+        "components",
+        "create",
+        "Order",
+        "struct<ClOrdID: utf8, OrderID: utf8>",
+        "--identifiers",
+        "OrderID",
+        "--identifiers",
+        "ClOrdID",
+    ]);
+    assert_eq!(
+        workspace
+            .read("components", "Order")
+            .as_fix()
+            .identifiers()
+            .collect::<Vec<_>>(),
+        ["ClOrdID", "OrderID"],
+    );
+    workspace.success(&[
+        "components",
+        "update",
+        "Order",
+        "struct<ClOrdID: utf8, OrderID: utf8>",
+        "--identifiers",
+        "OrderID",
+    ]);
+    let before = workspace.read("components", "Order");
+    assert_eq!(
+        before.as_fix().identifiers().collect::<Vec<_>>(),
+        ["OrderID"]
+    );
+    for bad in ["Missing", "ClOrdID,OrderID"] {
+        let refusal = workspace.failure(&[
+            "components",
+            "update",
+            "Order",
+            "struct<ClOrdID: utf8, OrderID: utf8>",
+            "--identifiers",
+            bad,
+        ]);
+        assert!(output_text(&refusal).contains("fix:identifiers"));
+        assert_eq!(workspace.read("components", "Order"), before);
+    }
+    let document = workspace.document(&before);
+    workspace.failure(&[
+        "components",
+        "update",
+        "--input",
+        document.to_str().unwrap(),
+        "--identifiers",
+        "OrderID",
+    ]);
+    workspace.success(&[
+        "components",
+        "update",
+        "Order",
+        "struct<ClOrdID: utf8, OrderID: utf8>",
+    ]);
+    assert_eq!(
+        workspace
+            .read("components", "Order")
+            .as_fix()
+            .identifiers()
+            .count(),
+        0
+    );
+}
+
+#[test]
 fn all_categories_roundtrip_update_and_delete_in_dependency_order() {
     let workspace = Workspace::new();
     let mut side = DataType::Int32.nullable_field("Side");

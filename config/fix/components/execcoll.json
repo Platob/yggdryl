@@ -18,6 +18,7 @@
   "nullable": false,
   "metadata": {
     "display": "ExecColl",
+    "fix:identifiers": "execid",
     "fix:tag": "542962"
   }
 }

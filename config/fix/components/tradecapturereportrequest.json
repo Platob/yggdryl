@@ -509,6 +509,7 @@
   "metadata": {
     "description": "MsgType = AD",
     "display": "TradeCaptureReportRequest",
+    "fix:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid,tradereportid,secondarytradereportid,secondaryexecid,execid,orderid,clordid",
     "fix:msgtype": "AD",
     "fix:tag": "395821"
   }

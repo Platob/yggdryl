@@ -9,7 +9,7 @@
 //! instant and the resolution is the only thing settled here.
 
 use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::{FromPyArrow, ToPyArrow};
+use arrow_pyarrow::FromPyArrow;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDate, PyDateTime, PyTuple, PyType};
@@ -381,10 +381,11 @@ impl PyTxHasher {
     ) -> PyResult<Bound<'py, PyAny>> {
         let root = core_field_from_value(root)?;
         let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
-        self.inner
+        let applied = self
+            .inner
             .apply_arrow_batch(&root, batch, force)
-            .map_err(value_error)?
-            .to_pyarrow(py)
+            .map_err(value_error)?;
+        crate::iomedia::batch_to_pyarrow(py, applied)
     }
 
     /// Couple every row's seeded digest with the instant beside it.

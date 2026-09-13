@@ -7,7 +7,7 @@
 | Aspect | Rule |
 | --- | --- |
 | Owner | `yggdryl-cli` parses arguments and renders results; the Rust registry owns schema validation, references, mutations, and persistence |
-| Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with only the crate's own fields rather than failing |
+| Root | `--root`, default `config/fix`; relative locations resolve against the working directory; a folder holding no catalog opens with the crate's built-in definitions rather than failing |
 | Categories | `fields`, `components`, `groups`; a message is a component carrying `fix:msgtype` |
 | Operations | Every category supports `list`, `read`, `create`, `update`, and `delete` |
 | Writes | Successful one-shot mutations save automatically; an interactive session saves only with `save` |
@@ -18,6 +18,7 @@
 | Delete | Refuses absence and live references |
 | Enums | Scalar `fix:codes` metadata; `--codes` accepts its canonical JSON document |
 | Direction rules | Tag 385's `fix:directions` metadata; `--directions` accepts its canonical JSON document |
+| Identifiers | A component's direct scalar members; repeat `--identifiers` for names, aliases or decimal tags, resolved by the native setter into member order |
 | Output | Plain stable text when redirected; terminal styling only when supported and `NO_COLOR` is unset |
 | Workflow | `--annotate`, also enabled by `GITHUB_ACTIONS`, prints workflow findings; failed checks and refused commands exit nonzero |
 
@@ -52,7 +53,7 @@ python scripts/stage_cli.py
 maturin build --manifest-path python/Cargo.toml --out dist
 ```
 
-## Four command trees
+## Three category command trees
 
 | Operation | Arguments and behavior |
 | --- | --- |
@@ -70,10 +71,11 @@ A field key is a decimal tag or a name; named categories use their definition na
 
 | Flag | Applies to |
 | --- | --- |
-| `--tag N` | Scalar fields, including group counters |
-| `--counter N` | Groups; identifies an existing `int32` scalar field |
+| `--tag N` | Scalar fields, including wire group counters; a crate Map group carries its own reserved tag |
+| `--counter N` | List/LargeList groups identify an existing `int32` scalar; a crate Map group uses its own reserved tag, with no scalar counter |
 | `--component NAME` | Groups; identifies the existing occurrence component |
 | `--msgtype CODE` | Components; makes the component a message; full nonempty wire text, including spaces |
+| `--identifiers MEMBER` | Components; repeat for each direct scalar identifier. Canonical names, aliases and decimal tags resolve once; input order does not change member order |
 | `--codes JSON` | Scalar inline enum metadata |
 | `--directions JSON` | Tag 385's scalar; its [direction rules](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) as `fix:directions`, one entry per code of the set; an empty list removes the property so the crate's defaults read again |
 | `--dialect NAME` | Membership: a dictionary this definition belongs to, recorded in `fix:branches`; repeat the flag for several. Names are lowercased, deduplicated and sorted; an empty name or one carrying a comma is refused |
@@ -87,7 +89,7 @@ ygg fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
 ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
 ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
 ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
-ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D
+ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
 ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}'
 ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}' --directions '{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]}'
 ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
@@ -98,6 +100,12 @@ ygg fix --root scratch/catalog fields list --dialect desk
 The read shows `identity -630917675`, the signed XXH32 of the tag and the folded name, and `dialects desk, venue`; the listing filtered on `desk` holds that one row. A field's identity is its tag and its name, so a second field on a held tag under another name is a new definition beside the holder: `fields create OtherName int64 --tag 5001` succeeds, `fields read OtherName` answers it, the bare `5001` keeps answering `DeskValue`, whose `aliases` entry now names `OtherName`, and `fields list 5001` shows both rows. The same folded name on the same tag - `desk_value` with `--tag 5001` - is the existing identity and is refused, as is a held name on another tag. `update` replaces membership with what it states: an update without `--dialect` leaves the field a member of nothing.
 
 A datatype expression embeds its child definitions. To preserve explicit canonical field/component/group references, use a resolved native `Field` document, such as the output of `read --json`; the compact unresolved placeholders in [folder storage](store.md#compact-references) are handled by the folder loader.
+
+Identifier selection follows the [component declaration](registry.md): missing,
+nested, ambiguous or duplicate members are refused atomically. Repeated flags
+replace the declaration as a whole, and a positional `update` without them
+removes it. `--input` takes the document's `fix:identifiers` instead and cannot
+be combined with `--identifiers`.
 
 ## Review and update a complete definition
 
@@ -122,7 +130,7 @@ ygg fix --root scratch/catalog fields delete 453
 
 ## Ingest and sync
 
-`ingest` reads an Ullink CBlock into all four categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types. Both take `--dialect NAME`: the dictionary name stamped into `fix:branches` on every field, group, component and message the file produces, standard tags included, because membership means "this dictionary speaks it".
+`ingest` reads an Ullink CBlock into all three categories, replacing matching definitions by default; `--merge` uses the native metadata fold. `sync` always folds a catalog directory or `.cfb` file, and refuses other location types. Both take `--dialect NAME`: the dictionary name stamped into `fix:branches` on every field, group, component and message the file produces, standard tags included, because membership means "this dictionary speaks it".
 
 ```bash
 ygg fix --root scratch/catalog ingest cblocks/venue.cfb --dialect venue
@@ -159,11 +167,11 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 
 ## Edges
 
-- A catalog root holding no `fields/`, `components/`, or `groups/` folder loads with only the crate's own fields; a read does not create it.
+- A catalog root holding no `fields/`, `components/`, or `groups/` folder loads with the crate's built-in definitions; a read does not create it.
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
-- Group count fields remain separate `int32` values and are not replaced by lists.
+- Wire group counters remain separate `int32` fields. The built-in `altids` Map group at 65020 has no scalar counter; its length is its cardinality.
 - Deleting a referenced field, component, or group fails before saving.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.
 - `sync` of a location that is neither a folder nor a `.cfb` is refused, naming the location and the role it turned out to be; a location that does not exist yet is `unknown` and refused the same way.

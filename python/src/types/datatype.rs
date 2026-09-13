@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::num::IntErrorKind;
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch as ArrowRecordBatch, ffi::to_ffi, make_array};
+use arrow_array::{ArrayRef, RecordBatch as ArrowRecordBatch, ffi::FFI_ArrowArray, make_array};
 use arrow_data::ArrayData;
-use arrow_pyarrow::{FromPyArrow, PyArrowType, ToPyArrow};
+use arrow_pyarrow::{FromPyArrow, PyArrowType};
 use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
@@ -65,19 +65,7 @@ pub(crate) fn default_arrow_scalar_to_pyarrow<'py>(
     field: &yggdryl::Field,
     array: &ArrayRef,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let data = array.to_data();
-    let (ffi_array, _dtype_schema) = to_ffi(&data).map_err(value_error)?;
-    let ffi_field = field.clone().into_arrow_ffi().map_err(value_error)?;
-    py.import("pyarrow")?
-        .getattr("Array")?
-        .call_method1(
-            "_import_from_c",
-            (
-                std::ptr::from_ref(&ffi_array) as usize,
-                std::ptr::from_ref(&ffi_field) as usize,
-            ),
-        )?
-        .get_item(0)
+    arrow_array_to_pyarrow(py, array, Some(field))?.get_item(0)
 }
 
 /// Imports one `PyArrow` Array through the Arrow C Data Interface.
@@ -91,25 +79,28 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
     array: &ArrayRef,
     field: Option<&yggdryl::Field>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let data = array.to_data();
-    let (ffi_array, ffi_dtype) = to_ffi(&data).map_err(value_error)?;
-    let array_class = py.import("pyarrow")?.getattr("Array")?;
-    if let Some(field) = field {
-        let ffi_field = field.clone().into_arrow_ffi().map_err(value_error)?;
-        return array_class.call_method1(
-            "_import_from_c",
-            (
-                std::ptr::from_ref(&ffi_array) as usize,
-                std::ptr::from_ref(&ffi_field) as usize,
-            ),
-        );
-    }
-    array_class.call_method1(
+    let schema = match field {
+        Some(field) => field.clone().into_arrow_ffi().map_err(value_error)?,
+        None => CoreDataType::from_arrow(array.data_type())
+            .and_then(CoreDataType::into_arrow_ffi)
+            .map_err(value_error)?,
+    };
+    let schema_address = (std::ptr::from_ref(&schema) as usize).into_pyobject(py)?;
+    arrow_array_to_pyarrow_with_type(py, array, schema_address.as_any())
+}
+
+/// Imports shared buffers under a resolved `PyArrow` datatype or an owned C
+/// schema address. The foreign importer owns both forms; streamed batches
+/// reuse the datatype without reconstructing its schema on every pull.
+pub(crate) fn arrow_array_to_pyarrow_with_type<'py>(
+    py: Python<'py>,
+    array: &ArrayRef,
+    dtype: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let array = FFI_ArrowArray::new(&array.to_data());
+    py.import("pyarrow")?.getattr("Array")?.call_method1(
         "_import_from_c",
-        (
-            std::ptr::from_ref(&ffi_array) as usize,
-            std::ptr::from_ref(&ffi_dtype) as usize,
-        ),
+        (std::ptr::from_ref(&array) as usize, dtype),
     )
 }
 
@@ -1077,7 +1068,7 @@ impl PyDataType {
         {
             return Ok(value.clone());
         }
-        cast.to_pyarrow(py)
+        crate::iomedia::batch_to_pyarrow(py, cast)
     }
 
     #[allow(clippy::wrong_self_convention)]

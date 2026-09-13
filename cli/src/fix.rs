@@ -136,7 +136,7 @@ pub struct DefinitionArgs {
     #[arg(required_unless_present = "input")]
     dtype: Option<String>,
     /// Read one native Field JSON document; replaces positional inputs and flags.
-    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "dialect", "description", "counter", "component", "codes", "directions", "msgtype", "required"])]
+    #[arg(long, conflicts_with_all = ["name", "dtype", "tag", "dialect", "description", "counter", "component", "codes", "directions", "identifiers", "msgtype", "required"])]
     input: Option<PathBuf>,
     /// Numeric tag for a scalar field, including a group counter.
     #[arg(long)]
@@ -159,6 +159,9 @@ pub struct DefinitionArgs {
     /// Direction rules JSON for tag 385: {"directions":[{"code":"S","patterns":["(?i)^TX\\b"]}]}.
     #[arg(long)]
     directions: Option<String>,
+    /// Direct scalar identifier member; repeat for several, in any input order.
+    #[arg(long)]
+    identifiers: Vec<String>,
     /// FIX message type making a component a message (for example, D).
     #[arg(long)]
     msgtype: Option<String>,
@@ -220,6 +223,7 @@ impl DefinitionArgs {
         if let Some(value) = &self.msgtype {
             view.set_msgtype(value)?;
         }
+        view.set_identifiers(&self.identifiers)?;
         Ok(field)
     }
 }
@@ -490,6 +494,7 @@ fn dictionary_words(registry: &FixRegistry) -> Vec<String> {
         "--component",
         "--codes",
         "--directions",
+        "--identifiers",
         "--msgtype",
     ]
     .into_iter()

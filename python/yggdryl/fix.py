@@ -2,7 +2,7 @@
 
 A FIX field is an ordinary :class:`~yggdryl.Field` whose ``fix:`` metadata the
 protocol view ``field.fix`` reads and writes as typed properties - ``id``,
-``tag``, ``tags``, ``branches``, ``aliases``, ``description`` - so nothing here
+``tag``, ``tags``, ``branches``, ``aliases``, ``identifiers``, ``description`` - so nothing here
 is a second field class. A field is its tag and its name together: ``id`` is
 the ``int`` the core derives from both under the one fold, never stored, and
 what the dictionaries that contributed the field say is ``branches``, a
@@ -12,9 +12,10 @@ identifier, by tag, by name or by dotted path and persists them as JSON
 shards through any ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
 was resolved against, written through :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
-Every registry holds this crate's own fields from
-construction - ``FixRegistry()`` is those twenty fields, never nothing - and a
-store neither writes them nor overrides them. Resolution, folding, merging,
+Every registry holds twenty crate-owned scalar fields, the ``altids`` Map
+group and the separate ``pluginconfig`` component/message from construction;
+ordinary size and iteration count only the scalars. A store neither writes
+these builtins nor overrides them. Resolution, folding, merging,
 sharding and validation are native; this module only names them.
 
 :func:`fix_cfb_fields` reads one Ullink ``CBlock`` for the vocabulary it
@@ -66,7 +67,16 @@ or a bridge's ``seqNum`` for ``MsgSeqNum`` - fills that field where the frame
 did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
 :meth:`FixCodec.enrich_messages` fill what a message implied but did not carry,
 and :meth:`FixCodec.enrich_messages_arrow_reader` does the same over batches
-of rows without parsing them again. :meth:`FixCodec.enrich_messages`
+of rows without parsing them again. After restatement and existing fills,
+``altids`` carries the message's declared direct identifiers as sorted,
+unique canonical-name/text pairs, a native Map that crosses as a Python dict
+and an Arrow Map with sorted keys. Null identifiers contribute nothing;
+a known message with no stated identifiers gets an empty map, an unknown
+message type gets none, and a stated non-null map, including an empty one,
+is preserved. Scalar text conversion is native and an unrepresentable value
+raises its typed error at the identifier's field path; no group is flattened,
+no arrival entry is synthesized, and a second enrichment is equal.
+:meth:`FixCodec.enrich_messages`
 remembers every configuration it passes, by the plugin's ``Name``, and fills
 the ``SenderCompID`` and ``TargetCompID`` of a later message naming that
 plugin where it stated none of its own; :meth:`FixCodec.enrich_message` - one
@@ -85,17 +95,20 @@ to be resolved per row; the tag stays on each column's ``fix:tag``.
 :func:`fix_schema_carrying` puts a capture's own columns in front of them,
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
-specification: twenty standard fields from tag 65000, above every tag FIX or
-a venue publishes. ``msghash``,
+specification: 21 definitions from tag 65000, twenty scalar fields and the
+nullable sorted-key ``map<utf8, utf8>`` group ``altids`` at 65020. The scalar
+fields are ``msghash``,
 ``version``, ``symbolticker``, ``timestamp``, ``unixpartition``,
 ``parentclordid`` and ``parentorderid``; what a bridge's own log states about a
-line - ``sendersessionid``, the session the message itself names, ``msgctxid``,
+line - ``sendersessionid`` and ``targetsessionid``, the sessions the message
+itself names, ``msgctxid``,
 the plugin ``pluginid`` that logged it and the ``prevpluginid`` it came
 through before that, and the session names ``sendersessionname`` and
 ``targetsessionname`` the line spells; the three facts a row derives from what
 the message said - ``isincode``,
 ``miccode`` and ``state``; and the three identities a stream implies -
-``instid``, ``id`` and ``persistentid``.
+``instid``, ``id`` and ``persistentid``. The separate ``pluginconfig``
+component/message is not part of this tag listing.
 
 :class:`FixLifecycle` stamps those three. It reads a stream once, in order,
 through :meth:`FixLifecycle.fill`: every message gets the instrument's identity
@@ -119,8 +132,22 @@ The registry stores scalar ``fields`` and named ``components`` and ``groups``;
 a message is a component carrying ``fix:msgtype``. Enum codes remain inline in
 each field's ``fix:codes`` metadata.
 Repeating counts such as ``NoPartyIDs`` are ``int32`` fields; ``Parties`` is a
-separate list of ``Party`` components. :class:`MsgType` borrows one immutable,
-registry-owned message definition and keeps its complete case-sensitive wire code.
+separate list of ``Party`` components. A crate Map is a group too: its occurrence is
+its non-null entries Struct, its key stays non-null and its own tag is its
+counter, with no second scalar counter or numeric wire tags for key/value.
+
+A component's ``field.fix.identifiers`` accepts an iterable of its direct
+scalar member names, aliases or decimal tags and stores canonical names in
+component order; empty input removes the property. Empty, comma-bearing,
+missing, nested, ambiguous or duplicate selections fail atomically, and
+registry intake resolves raw metadata through the same owner after references
+load. An incoming declaration replaces the previous one whole on merge.
+:class:`MsgType` borrows one immutable, registry-owned message definition,
+keeps its complete case-sensitive wire code and compiles identifier selection
+once. :meth:`MsgType.identifier_values` returns a list of read-only declaration
+Field clones paired with native Scalar wrappers in declaration order, skipping
+absent/null members and never flattening a group. Exact canonical names win;
+a renamed member's tag is used only when unique in both declaration and row.
 """
 
 from __future__ import annotations

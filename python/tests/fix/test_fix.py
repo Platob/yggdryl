@@ -51,8 +51,8 @@ REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
 # What every registry holds before anything is inserted: the crate's own
-# fields, which ``FixRegistry()`` seeds and :func:`fix_crate_fields` lists -
-# twenty standard fields, one tag block from 65000.
+# scalar fields. ``fix_crate_fields`` also lists the Map group at 65020;
+# registry length and scalar iteration still count only these twenty.
 CRATE_TAG_MIN = 65000
 CRATED = 20
 CRATE_TAGS = list(range(CRATE_TAG_MIN, CRATE_TAG_MIN + CRATED))
@@ -735,6 +735,7 @@ def test_registry_round_trips_through_the_three_categories(
             list((SEED / category).glob("*.json"))
         )
     assert not (root / "components" / "pluginconfig.json").exists()
+    assert not (root / "groups" / "altids.json").exists()
     # The crate's own fields are never written either: they are the crate's
     # rather than the store's, so the shard their tag block would take is in
     # no category at all, and the reload holds them all the same.
@@ -1539,6 +1540,61 @@ def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     assert opaque.get_by_tag(65013) is None
 
 
+def test_identifier_membership_and_enriched_altids_are_the_core_answers(seed: FixRegistry) -> None:
+    assert seed.msgtype("D").field.fix.identifiers == [
+        "clordid", "secondaryclordid", "allocid", "quoteid", "reforderid", "refclordid"
+    ]
+    assert seed.msgtype("8").field.fix.identifiers == [
+        "orderid", "secondaryorderid", "secondaryclordid", "secondaryexecid",
+        "clordid", "origclordid", "quoterespid", "listid", "execid", "execrefid",
+        "allocid", "reforderid", "refclordid"
+    ]
+    codec = FixCodec(seed)
+    wire = b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|"
+    original = codec.parse_fix_line(wire)
+    filled = codec.enrich_message(original)
+    expected = {"clordid": "C-001", "execid": "E-09", "orderid": "O-01"}
+    assert filled.by_tag(65020).as_py() == expected
+    assert list(filled.by_name("AltIds").as_py()) == list(expected)
+    assert filled.entries() == original.entries()
+    assert filled.into_bytes(124) == wire
+    assert filled.digest() == original.digest()
+    assert codec.enrich_message(filled) == filled
+    schema = fix_schema(seed)
+    restored = FixMsg.from_row(schema, filled.into_row(schema), seed)
+    assert restored.by_name("altids") == filled.by_name("altids")
+    assert restored.entries() == filled.entries()
+    stamped = next(codec.lifecycle([filled]))
+    assert stamped.by_name("altids").as_py() == expected
+    assert stamped.entries() == filled.entries()
+    assert stamped.digest() == filled.digest()
+
+
+@pytest.mark.parametrize("stated", [{}, {"venue": "001"}])
+def test_stated_altids_maps_are_preserved_even_when_empty(seed: FixRegistry, stated: dict[str, str]) -> None:
+    codec = FixCodec(seed)
+    message = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=C-1|10=0|")
+    before = message.entries(), message.into_bytes(124), message.digest()
+    message.set("altids", stated)
+    filled = codec.enrich_message(message)
+    assert filled.by_tag(65020).as_py() == stated
+    assert (filled.entries(), filled.into_bytes(124), filled.digest()) == before
+    assert codec.enrich_message(filled) == filled
+
+
+def test_identifier_maps_distinguish_known_empty_unknown_and_nested_messages(seed: FixRegistry) -> None:
+    codec = FixCodec(seed)
+    for code in (b"0", b"D"):
+        filled = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=" + code + b"|10=0|"))
+        assert filled.by_tag(65020).as_py() == {}
+    unknown = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=ZZ|11=C-1|10=0|"))
+    assert unknown.get_by_tag(65020) is None
+    nested = codec.enrich_message(next(codec.parse_line(
+        b"MSGTYPE=E|#LISTID=L-1|#NOORDERS=1|#NOORDERS[0]=CLORDID=C-nested\x04\x03SYMBOL=EXAMPLE"
+    )))
+    assert nested.by_tag(65020).as_py() == {"listid": "L-1"}
+
+
 # A FIX 4.2 execution report: a transaction type, a partial fill, a Rule80A
 # capacity and two identities the specification later moved into `Parties`.
 REPORT = (
@@ -1902,17 +1958,22 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.index_of("999999") is None
     assert schema.name == "FixMessage"
     # The crate's own columns are spelled the same way, with the FIX-style
-    # spelling kept as the display: twenty of them after the trailer, then
+    # spelling kept as the display: twenty scalars and a Map after the trailer, then
     # FIX's own `msgdirection`, read from the line where the wire states
     # none, then the two lists.
-    assert fix_schema_tags()[-(CRATED + 1) :] == [*CRATE_TAGS, 385]
-    assert [child.fix.tag for child in schema][-(CRATED + 3) :] == [
+    assert fix_schema_tags()[-(CRATED + 2) :] == [*CRATE_TAGS, 65020, 385]
+    assert [child.fix.tag for child in schema][-(CRATED + 4) :] == [
         *CRATE_TAGS,
+        65020,
         385,
         None,
         None,
     ]
-    assert columns[-(CRATED + 3) : -3] == [field.name for field in fix_crate_fields()]
+    assert columns[-(CRATED + 4) : -3] == [field.name for field in fix_crate_fields()]
+    assert columns.count("altids") == 1
+    altids = schema[schema.index_of("altids")]
+    assert altids.nullable and altids.fix.counter == 65020
+    assert altids.into_arrow().type.equals(pa.map_(pa.string(), pa.string(), keys_sorted=True))
     assert schema[schema.index_of("timestamp")].display == "Timestamp"
     assert schema[schema.index_of("sendersessionid")].display == "SenderSessionId"
     # The three columns a row derives from what the message said are typed
@@ -2001,7 +2062,7 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 def test_the_crate_fields_declare_their_own_protocols() -> None:
     """The digest says how it was taken, the partition what it derives from."""
     fields = {field.name: field for field in fix_crate_fields()}
-    assert len(fields) == CRATED
+    assert len(fields) == CRATED + 1
     # In tag order, one block from 65000, above every tag FIX or a venue
     # publishes, and none is a dictionary's contribution.
     assert list(fields) == [
@@ -2025,6 +2086,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "id",
         "persistentid",
         "targetsessionid",
+        "altids",
     ]
     assert [field.display for field in fields.values()] == [
         "MsgHash",
@@ -2047,11 +2109,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "Id",
         "PersistentId",
         "TargetSessionId",
+        "AltIds",
     ]
-    assert [field.fix.tag for field in fields.values()] == CRATE_TAGS
+    assert [field.fix.tag for field in fields.values()] == [*CRATE_TAGS, 65020]
     assert all(field.fix.branches == [] for field in fields.values())
     assert [field.fix.id for field in fields.values()] == [
-        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, CRATE_TAGS)
+        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, [*CRATE_TAGS, 65020])
     ]
     # Every one is nullable as a field - the fixed row is what declares the
     # four every message fills - and every one says what it holds.
@@ -2109,6 +2172,13 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert len(registry) == CRATED
     assert registry.dialects() == []
     for name, field in fields.items():
+        if name == "altids":
+            assert registry.definition("groups", name) == field
+            assert registry.group_by_counter(65020) == field
+            assert registry.get_field_by_name(name) is None
+            assert registry.get_field_by_id(field.fix.id) is None
+            assert registry.get_field_by_tag(65020) is None
+            continue
         assert registry.field_by_name(name) == field
         assert registry.field_by_id(field.fix.id) == field
         assert registry.field_by_tag(field.fix.tag) == field

@@ -585,6 +585,57 @@ fn fix_hash_state_allocation_is_constant_across_catalog_sizes() {
 }
 
 #[test]
+fn fix_identifier_declarations_and_compiled_selection_allocate_nothing() {
+    for size in [4, 16, 64] {
+        let fields: Vec<_> = (0..size)
+            .map(|index| {
+                let mut field = DataType::utf8().nullable_field(format!("Identifier{index}"));
+                field.as_fix_mut().set_tag(10_000 + index).unwrap();
+                field
+            })
+            .collect();
+        let mut definition = DataType::from_fields(fields.clone())
+            .unwrap()
+            .required_field("identifierfixture");
+        definition.as_fix_mut().set_msgtype("UIDS").unwrap();
+        definition
+            .as_fix_mut()
+            .set_identifiers(fields.iter().map(Field::name))
+            .unwrap();
+        let mut registry = FixRegistry::from_fields(fields).unwrap();
+        registry
+            .create_definition(yggdryl::FixCategory::Components, definition.clone())
+            .unwrap();
+        let registry = Arc::new(registry);
+        let message = FixMsg::with_registry(
+            Arc::clone(&registry),
+            definition,
+            Scalar::from_sequence(
+                (0..size)
+                    .map(|index| Scalar::from(format!("VALUE-{index}")))
+                    .collect::<Vec<_>>(),
+            ),
+        )
+        .unwrap();
+        let compiled = registry.msgtype("UIDS").unwrap();
+        assert_eq!(
+            compiled.identifier_values(&message).count(),
+            usize::try_from(size).unwrap()
+        );
+        free("borrowed FIX identifier declaration", || {
+            for name in compiled.as_field().as_fix().identifiers() {
+                black_box(name);
+            }
+        });
+        free("compiled FIX identifier selection", || {
+            for (field, value) in compiled.identifier_values(&message) {
+                black_box((field, value));
+            }
+        });
+    }
+}
+
+#[test]
 fn fix_field_code_metadata_and_category_cursors_allocate_nothing() {
     for size in [1, 32, 512] {
         let mut registry = FixRegistry::new();

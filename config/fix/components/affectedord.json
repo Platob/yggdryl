@@ -38,6 +38,7 @@
   "nullable": false,
   "metadata": {
     "display": "AffectedOrd",
+    "fix:identifiers": "affectedorigclordid,affectedorderid,affectedsecondaryorderid",
     "fix:tag": "463320"
   }
 }

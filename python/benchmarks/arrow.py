@@ -89,6 +89,22 @@ HELD_BATCH = ArrowValue.from_py(BATCH)
 HELD_COLUMN = ArrowValue.from_py(COLUMN)
 HELD_SCALAR = ArrowValue.from_py(SCALAR)
 
+MAP_TYPE = pa.map_(pa.string(), pa.string(), keys_sorted=True)
+MAP_SCHEMA = pa.schema(
+    [pa.field("identifiers", pa.struct([pa.field("values", MAP_TYPE)]))],
+    metadata={b"fixture": b"sorted-map-exchange"},
+)
+MAP_BATCH = pa.RecordBatch.from_arrays(
+    [
+        pa.array(
+            [{"values": [("orderid", "ORDER-000001")]}] * ROW_COUNT,
+            type=MAP_SCHEMA.field(0).type,
+        )
+    ],
+    schema=MAP_SCHEMA,
+)
+HELD_MAP_BATCH = ArrowValue.from_py(MAP_BATCH)
+
 STORE = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrow-bench-"))
 # The store is made at import, before any argument is read, so its removal is
 # registered here too: `--help` and a refused argument both exit before `main`
@@ -277,6 +293,17 @@ def _cases(
             small,
         ),
         ("into_arrow_batch", lambda: HELD_BATCH.into_arrow_batch(), small),
+        ("sorted Map batch export", lambda: HELD_MAP_BATCH.into_arrow_batch(), small),
+        (
+            "sorted Map reader construction",
+            lambda: HELD_MAP_BATCH.into_arrow_reader(),
+            small,
+        ),
+        (
+            "sorted Map reader first batch",
+            lambda: HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),
+            small,
+        ),
         ("into_arrow_table (yggdryl)", lambda: HELD_BATCH.into_arrow_table(), small),
         (
             "into_arrow_table (pyarrow)",
@@ -359,6 +386,11 @@ def main() -> None:
         f"{ROW_COUNT:,} rows, median of 7"
     )
     try:
+        for exported in (
+            HELD_MAP_BATCH.into_arrow_batch(),
+            HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),
+        ):
+            assert exported.equals(MAP_BATCH, check_metadata=True)
         STREAM.write_arrow_value(TABLE)
         LINES.write_arrow_value(TEXT_TABLE)
         _write_jsonl_baseline()

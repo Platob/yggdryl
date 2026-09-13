@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "display": "RelatedTrade",
+    "fix:identifiers": "relatedtradeid",
     "fix:tag": "909958"
   }
 }

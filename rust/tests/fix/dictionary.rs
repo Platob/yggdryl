@@ -136,7 +136,11 @@ fn every_generated_name_is_folded_and_no_two_collide() {
                     .expect("valid tag")
                     .expect("a derived definition tag");
                 assert!(
-                    yggdryl::FixId::is_definition_tag(derived),
+                    yggdryl::FixId::is_definition_tag(derived)
+                        || (category == FixCategory::Groups
+                            && matches!(field.dtype(), DataType::Map(_))
+                            && yggdryl::is_crate_tag(derived)
+                            && field.as_fix().counter().unwrap() == Some(derived)),
                     "{category}/{name} tag {derived}"
                 );
                 assert!(
@@ -504,15 +508,16 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// shipped document - moves this number on purpose, in the commit that
 /// says why. Decision 19 moved it: every registry now carries the crate's
 /// own `pluginconfig` beside the shipped dictionary's own components, as
-/// every registry already carries the crate's own fields.
+/// every registry already carries the crate's own fields. Decision 21 adds
+/// the builtin altids group and generated component identifier declarations.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 15_285_008_827_338_738_506);
+    assert_eq!(registry.stable_hash(), 6_587_658_543_028_168_332);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
         928 + super::crated_messages()
     );
-    assert_eq!(registry.definitions(FixCategory::Groups).count(), 580);
+    assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
 }

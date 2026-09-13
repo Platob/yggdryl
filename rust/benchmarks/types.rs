@@ -1,6 +1,9 @@
 #[path = "bench_profile.rs"]
 mod bench_profile;
 
+#[path = "measurement.rs"]
+mod measurement;
+
 #[path = "types/datatype/mod.rs"]
 mod datatype;
 #[path = "types/enums.rs"]

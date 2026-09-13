@@ -818,7 +818,7 @@ lazy iterators. The namespace holds no constant: a dictionary is one namespace
 of tags and names, an identity is the number `field.fix.id` derives from both,
 and a dictionary's membership is `fix:branches` on the field it contributed
 to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
-`id`, `tag`, `tags`, `aliases`, `branches`, `nulls`, `directions`,
+`id`, `tag`, `tags`, `aliases`, `branches`, `nulls`, `directions`, `identifiers`,
 `description`, and the definition metadata `counter`, `component` and
 `msgtype`; `codes` has no accessor pair in JavaScript - `codeName(value)` and
 `codeValue(text)` read the inline enumeration, which is written as the raw
@@ -831,6 +831,7 @@ to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
 | `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | name or path key | a `string`, folded once - ASCII case, `_`, `-` and space dropped; a bare string is a name, never an identifier |
 | membership | `field.fix.branches` is a `string[]`, sorted and lowercase, `[]` where `fix:branches` is absent; assigning an array replaces the list, folded and deduplicated, and `[]` removes the property; `addBranch(name)` is idempotent under the fold and `hasBranch(name)` folds the same way; a name that is empty or carries a comma is refused. `registry.dialects()` lists the distinct names any field or definition carries. Membership is provenance a caller filters on; no lookup consults it |
+| identifier declaration | `field.fix.identifiers` answers `string[]` and accepts an array only, not an arbitrary iterable; the core resolves selectors to direct scalar member names in component order, with no nested-group flattening; `[]` removes the property, and a refusal leaves the field unchanged |
 | direction rules | `field.fix.directions` is the `FixDirection[]` a tag-385 field carries as `fix:directions`, each `{ code, patterns }` - one record per code of the set, the patterns decoded, `[]` where the property is absent; assigning an array replaces the table whole and `[]` removes the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling throws leaving the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | `fieldByName`, `fieldByPath` | one namespace, no branch argument: the canonical fold answers first, then an alias fold; a path is decided by the one grammar |
 | `fieldByTag` | the canonical holder of a tag answers first, then the field holding it as an alternate |
@@ -840,14 +841,18 @@ to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
 | iteration | registry tag-major, the tag's holder first, then by identifier; message in the root's declared order |
-| categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
+| categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
+| crate inventory | `fix.crateFields()` answers 21 definitions: 20 scalar fields plus the `altids` Map group; `registry.size` and registry iteration count scalar fields only, while `definitions('groups')` includes `altids` |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
-| `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; complete UTF-8 wire code |
+| `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; `asField()` answers an independent mutable `Field` clone, and its wire code remains complete UTF-8 text |
+| `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until enrichment needs UTF-8 |
 | `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parsePluginLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
 | Plugin | `Plugin.fromJsonBytes` / `fromJsonScalar` return lazy `Plugins`; each selection converts to one flat message with `intoFixmsg` |
+
+`altids` uses ordinary `Map` input and answers a `Map` through `Scalar.asJs()`, with no FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -954,8 +959,8 @@ assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
 assert.equal(venue.remove('TradeID').name, 'TradeID')
-// What remains is the crate's own fields, which every registry holds.
-assert.equal(venue.size, 1 + fix.crateFields().length)
+// Symbol remains beside the crate's scalar fields; altids is a group.
+assert.equal(venue.size, 1 + fix.crateFields().filter(field => field.fix.counter === null).length)
 assert.deepEqual(venue.dialects(), [])
 
 // Both collections are lazy native iterators the loader gives the protocol.
@@ -1207,11 +1212,11 @@ assert.equal(codec.parsePluginLine(Buffer.from('{"a":1}')).next().done, true)
   identity, and answers `null` for one that is not there.
 - FIX absence -> the native refusal, or `null` from the `get`-prefixed twins,
   for a key that parses.
-- A missing FIX folder -> a registry holding only the crate's own fields.
+- A missing FIX folder -> a registry holding only the built-in definitions.
 - A registry write -> `fields/<shard>.json` with the shard a tag's hundred,
   and `components/` and `groups/` with every definition directly below its
   category, a message among the components; membership travels inside each field's metadata, and
-  the crate's own fields are never written.
+  the built-in definitions are never written.
 - `message.getById`/`byId` -> exact: no fold, no tiering; a field the
   dictionary does not hold under the identifier misses.
 

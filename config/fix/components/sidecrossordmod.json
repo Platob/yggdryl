@@ -518,6 +518,7 @@
   "nullable": false,
   "metadata": {
     "display": "SideCrossOrdMod",
+    "fix:identifiers": "origclordid,clordid,secondaryclordid,allocid",
     "fix:tag": "955765"
   }
 }

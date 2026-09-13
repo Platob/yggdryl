@@ -259,6 +259,11 @@ PARSED_ROW = PARSED.into_row(FIXED_SCHEMA)
 PARSED_BATCH = CODEC.parse_text_arrow_reader(CAPTURE).read_all()
 assert PARSED_BATCH.num_rows == len(LINES)
 assert len(list(CODEC.parse_lines(LINES))) == len(LINES)
+ORDER_TYPE = SEED_REGISTRY.msgtype("D")
+ORDER_DECLARATION = ORDER_TYPE.field
+ENRICHED = CODEC.enrich_message(PARSED)
+assert ENRICHED.by_tag(65020).as_py() == {"clordid": "ORDER-000000"}
+assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
 
 # The record door with a `pluginid` capture on every row: the capture fills
 # the crate's `pluginid` field and selects nothing, so this is what a row
@@ -291,6 +296,22 @@ def _parse_text_arrow_reader() -> int:
 
 def _enrich_message() -> object:
     return CODEC.enrich_message(MESSAGE)
+
+
+def _field_identifiers() -> object:
+    return ORDER_DECLARATION.fix.identifiers
+
+
+def _identifier_values() -> object:
+    return ORDER_TYPE.identifier_values(PARSED)
+
+
+def _altids_map() -> object:
+    return ENRICHED.by_tag(65020).as_py()
+
+
+def _arrow_reader_with_altids() -> int:
+    return CODEC.arrow_reader(FIXED_SCHEMA, (ENRICHED for _ in LINES)).read_all().num_rows
 
 
 def _enrich_messages_arrow_reader() -> int:
@@ -446,7 +467,11 @@ def main() -> None:
         _measure("message remove", _message_remove, args.iterations)
         _measure("message from_row", _message_from_row, args.iterations)
         _measure("enrich_message", _enrich_message, args.iterations)
+        _measure("field.fix.identifiers", _field_identifiers, args.iterations)
+        _measure("MsgType.identifier_values", _identifier_values, args.iterations)
+        _measure("altids native map crossing", _altids_map, args.iterations)
         streams = max(1, args.iterations // 50)
+        _measure(f"arrow_reader with altids/{len(LINES)}", _arrow_reader_with_altids, streams)
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
         _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)
         _measure(

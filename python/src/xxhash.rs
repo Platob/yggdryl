@@ -12,7 +12,7 @@
 //! proportionally to the payload.
 
 use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::{FromPyArrow, ToPyArrow};
+use arrow_pyarrow::FromPyArrow;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -392,10 +392,11 @@ macro_rules! state {
             ) -> PyResult<Bound<'py, PyAny>> {
                 let root = core_field_from_value(root)?;
                 let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
-                self.inner
+                let applied = self
+                    .inner
                     .apply_arrow_batch(&root, batch, force)
-                    .map_err(value_error)?
-                    .to_pyarrow(py)
+                    .map_err(value_error)?;
+                crate::iomedia::batch_to_pyarrow(py, applied)
             }
 
             /// Answer the digest of everything fed so far.
@@ -624,10 +625,11 @@ impl PyDigester {
     ) -> PyResult<Bound<'py, PyAny>> {
         let root = core_field_from_value(root)?;
         let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
-        self.inner
+        let applied = self
+            .inner
             .apply_arrow_batch(&root, batch, force)
-            .map_err(value_error)?
-            .to_pyarrow(py)
+            .map_err(value_error)?;
+        crate::iomedia::batch_to_pyarrow(py, applied)
     }
 
     /// Answer the digest of everything fed so far, without consuming it.

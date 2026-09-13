@@ -188,6 +188,7 @@
   "nullable": false,
   "metadata": {
     "display": "SideCrossOrdCxl",
+    "fix:identifiers": "origclordid,clordid,secondaryclordid",
     "fix:tag": "739733"
   }
 }

@@ -210,6 +210,9 @@ const tags: number[] = field.fix.tags
 field.fix.tags = [1088]
 const aliases: string[] = field.fix.aliases
 field.fix.aliases = ['Ticker']
+const identifiers: string[] = field.fix.identifiers
+field.fix.identifiers = ['11', 'OrderIdentifier']
+field.fix.identifiers = []
 const description: string | null = field.fix.description
 field.fix.description = 'Ticker symbol.'
 const nulls: string[] = field.fix.nulls
@@ -225,6 +228,7 @@ void identity
 void tag
 void tags
 void aliases
+void identifiers
 void description
 void nulls
 void directions
@@ -239,6 +243,16 @@ field.fix.branches = [55]
 field.fix.id = 5001
 // @ts-expect-error aliases are strings
 field.fix.aliases = [55]
+// @ts-expect-error identifiers are an array of spellings, never one spelling
+field.fix.identifiers = '11'
+// @ts-expect-error decimal tags are spelled as strings
+field.fix.identifiers = [11]
+// @ts-expect-error native list intake accepts arrays, not arbitrary iterables
+field.fix.identifiers = new Set(['11'])
+// @ts-expect-error native list intake accepts arrays, not generators
+field.fix.identifiers = (function* () { yield '11' })()
+// @ts-expect-error a sparse selection contains an absent spelling
+field.fix.identifiers = [, '11']
 // @ts-expect-error a rule states a code and its patterns
 field.fix.directions = [{ code: 'S' }]
 // @ts-expect-error the patterns are a list, never one pattern
@@ -406,6 +420,13 @@ const messageTypes: IterableIterator<MsgType> = loaded.msgtypes()
 const registered: MsgType = loaded.registerMsgtype('ConfigurationPlugin', 'configurationplugin')
 const wireCode: string = order.asStr()
 const messageDefinition: Field = order.asField()
+const identifierValues: Array<[Field, Scalar]> = order.identifierValues(fromText)
+for (const [identifierField, identifierValue] of identifierValues) {
+  const declaration: Field = identifierField
+  const nativeValue: Scalar = identifierValue
+  declaration.setName('independent')
+  void nativeValue
+}
 const scoped: Field | null = order.getGroupByCounter(453)
 const singletonHash: bigint = order.stableHash()
 const singletonEqual: boolean = order.equals(order.clone())
@@ -451,6 +472,10 @@ message.toBytes()
 new fix.MsgType('D')
 // @ts-expect-error singleton classes have no public constructor
 new fix.MsgType()
+// @ts-expect-error compiled identifier selection takes a native message, not a Field
+order.identifierValues(field)
+// @ts-expect-error compiled identifier selection takes a native message, not a row object
+order.identifierValues({ clordid: 'ORDER-1' })
 // @ts-expect-error message cursors are constructed by the native codec
 new fix.FixMessages()
 // @ts-expect-error counter metadata requires a number
@@ -458,6 +483,6 @@ field.fix.counter = '453'
 
 void [group, counter, component, definitions, previous, replaced, deleted, groupByCounter,
   requiredGroup, restored, order, optionalOrder, messageTypes, registered, wireCode,
-  messageDefinition, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
+  messageDefinition, identifierValues, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
   componentRef, groupRef, fieldRef, messageCode, parsedConfigurations, nativeConfigurations,
   configAttributes, recovered, configHash, nextMessage, allMessages, single]

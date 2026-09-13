@@ -279,6 +279,7 @@
   "metadata": {
     "description": "MsgType = E",
     "display": "NewOrderList",
+    "fix:identifiers": "listid",
     "fix:msgtype": "E",
     "fix:tag": "962450"
   }

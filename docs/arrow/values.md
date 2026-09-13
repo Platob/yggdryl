@@ -160,6 +160,77 @@ A held shape shares its buffers back, so it stays readable; a stream crosses onc
         raise AssertionError("a stream is one-shot")
     ```
 
+## Exact Map schemas
+
+A batch and its reader retain the declared Map sortedness, nested field
+metadata and non-null keys. Python exports share the original Arrow buffers;
+creating the reader and inspecting its schema pull no batch. The schema is
+resolved once for the stream, not rebuilt for each batch. Rust and Python
+support `ArrowValue`; JavaScript uses its separate copied-IPC `BatchReader`.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::{ArrowValue, DataType, Scalar};
+
+    let entries = DataType::from_fields([
+        DataType::utf8().required_field("key"),
+        DataType::utf8().nullable_field("value"),
+    ])?.required_field("entries");
+    let lookup = DataType::map(entries, true)?.nullable_field("lookup");
+    let nested = DataType::from_fields([lookup])?.required_field("nested");
+    let root = DataType::from_fields([nested])?.required_field("row");
+    let mapping = Scalar::from_mapping([
+        (Scalar::from("first"), Scalar::from("one")),
+        (Scalar::from("second"), Scalar::Null),
+    ])?;
+    let rows = Scalar::from_sequence([Scalar::from_sequence([
+        Scalar::from_sequence([mapping]),
+    ])]);
+    let source = ArrowValue::from_rows(&root, &rows)?.into_batch()?;
+    let mut reader = ArrowValue::from_batch(source.clone())?.into_reader()?;
+    assert_eq!(reader.schema(), source.schema());
+    let result = reader.next().expect("one batch")?;
+    assert_eq!(result, source);
+    assert!(Arc::ptr_eq(result.column(0), source.column(0)));
+    assert!(reader.next().is_none());
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+    from yggdryl import ArrowValue
+
+    mapping = pa.map_(pa.string(), pa.string(), keys_sorted=True)
+    nested = pa.struct([pa.field("lookup", mapping)])
+    schema = pa.schema(
+        [pa.field("nested", nested, metadata={b"owner": b"lookup"})],
+        metadata={b"owner": b"root"},
+    )
+    values = pa.array([{"lookup": [("first", "one"), ("second", None)]}], type=nested)
+    source = pa.RecordBatch.from_arrays([values], schema=schema)
+    pulled = []
+
+    def batches():
+        pulled.append("batch")
+        yield source
+
+    incoming = pa.RecordBatchReader.from_batches(schema, batches())
+    reader = ArrowValue.from_py(incoming).into_arrow_reader()
+    assert reader.schema.equals(schema, check_metadata=True)
+    assert pulled == []
+    result = reader.read_next_batch()
+    assert pulled == ["batch"]
+    assert result.equals(source, check_metadata=True)
+    assert result.schema.field("nested").type.field("lookup").type.keys_sorted
+    for original, exported in zip(source.column(0).buffers(), result.column(0).buffers()):
+        assert (None if original is None else original.address) == (
+            None if exported is None else exported.address
+        )
+    ```
+
 ## A handle reads and writes it whatever it holds
 
 `read_arrow_value` is the Arrow-shaped sibling of `read_scalar`: a record

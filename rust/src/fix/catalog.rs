@@ -357,9 +357,9 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
         FixCategory::Components if !matches!(field.dtype(), DataType::Struct(_)) => {
             Err(invalid(field, "a Struct datatype"))
         }
-        FixCategory::Groups if definition_category(field) != Some(FixCategory::Groups) => {
-            Err(invalid(field, "a List of non-null Struct occurrences"))
-        }
+        FixCategory::Groups if definition_category(field) != Some(FixCategory::Groups) => Err(
+            invalid(field, "a List of non-null Struct occurrences or a Map"),
+        ),
         _ => Ok(()),
     }
 }
@@ -367,8 +367,8 @@ fn check_shape(category: FixCategory, field: &Field) -> Result<()> {
 /// The category a nested field's shape names, for a caller handing the
 /// registry a definition without saying which it is.
 ///
-/// A repeating group is the one shape a List has in FIX - occurrences of a
-/// non-null Struct - and every Struct is a component, a message among them
+/// A repeating group holds non-null Struct occurrences, in a List or a Map,
+/// and every Struct is a component, a message among them
 /// being the component whose `fix:msgtype` names a wire code (decision 13).
 /// The shape alone answers; the marker is a property of the component. A
 /// nested datatype that is neither is no definition at all, and answers
@@ -380,16 +380,31 @@ pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
         {
             Some(FixCategory::Groups)
         }
+        DataType::Map(_) => Some(FixCategory::Groups),
         DataType::Struct(_) => Some(FixCategory::Components),
         _ => None,
     }
 }
 
-/// The occurrence a group's list holds.
-fn occurrence_of(group: &Field) -> Result<&Field> {
+/// The occurrence a group's list or map holds.
+pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => Ok(item),
-        _ => Err(invalid(group, "a List of non-null Struct occurrences")),
+        DataType::List(item) | DataType::LargeList(item) => Some(item),
+        DataType::Map(map) => Some(map.entries()),
+        _ => None,
+    }
+}
+
+/// Rebuilds only the occurrence, keeping the group's storage contract.
+fn group_dtype(group: &Field, occurrence: Field) -> Result<DataType> {
+    match group.dtype() {
+        DataType::List(_) => Ok(DataType::list(occurrence)),
+        DataType::LargeList(_) => Ok(DataType::large_list(occurrence)),
+        DataType::Map(map) => DataType::map(occurrence, map.keys_sorted()),
+        _ => Err(invalid(
+            group,
+            "a List of non-null Struct occurrences or a Map",
+        )),
     }
 }
 
@@ -435,6 +450,13 @@ fn merge_root(stored: &Field, incoming: &Field) -> Result<Field> {
     }
     merged.as_fix_mut().merge_with(&stored.as_fix())?;
     Ok(merged)
+}
+
+fn set_merged_dtype(field: &mut Field, dtype: DataType) -> Result<()> {
+    field.set_dtype(dtype)?;
+    // The incoming declaration wins, but member order is the merged
+    // component's. Resolve it against that final shape once at intake.
+    field.as_fix_mut().normalize_identifiers()
 }
 
 /// The compact documents a fold writes over, in the shape the resolver reads.
@@ -521,19 +543,19 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?),
-        DataType::List(item) => Some(DataType::list(canonical_occurrences(
-            item.as_ref().clone(),
-            false,
-        )?)),
-        DataType::LargeList(item) => Some(DataType::large_list(canonical_occurrences(
-            item.as_ref().clone(),
-            false,
-        )?)),
+        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) => {
+            let item = occurrence_of(&field).expect("a group has an occurrence");
+            Some(group_dtype(
+                &field,
+                canonical_occurrences(item.clone(), false)?,
+            )?)
+        }
         _ => None,
     };
     if let Some(dtype) = dtype {
         field.set_dtype(dtype)?;
     }
+    field.as_fix_mut().normalize_identifiers()?;
     Ok(field)
 }
 
@@ -624,24 +646,20 @@ impl FixRegistry {
         if category == FixCategory::Groups {
             if let Some(name) = field.as_fix().component().map(str::to_owned) {
                 let component = self.definition(FixCategory::Components, &name)?;
-                if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
+                if let Some(item) = occurrence_of(&field) {
                     // Against the canonical shape: the stored component holds
                     // no derived tag on its own occurrences, and an item a
                     // caller cloned out of the catalog still does.
-                    let stated = canonical_occurrences(item.as_ref().clone(), true)?;
+                    let stated = canonical_occurrences(item.clone(), true)?;
                     if stated.dtype() != component.dtype() {
                         return Err(invalid(
                             &field,
                             format_args!("component {name:?} datatype {}", component.dtype()),
                         ));
                     }
-                    let mut item = item.as_ref().clone();
+                    let mut item = item.clone();
                     item.as_fix_mut().set_component(&name)?;
-                    let dtype = if matches!(field.dtype(), DataType::LargeList(_)) {
-                        DataType::large_list(item)
-                    } else {
-                        DataType::list(item)
-                    };
+                    let dtype = group_dtype(&field, item)?;
                     field.set_dtype(dtype)?;
                 }
             }
@@ -830,6 +848,9 @@ impl FixRegistry {
             self.insert_definition(category, field)?;
             return Ok(true);
         }
+        // Resolve raw identifier spellings before compacting references,
+        // whose Null placeholders no longer carry their scalar tags.
+        let field = canonical_occurrences(field, true)?;
         let mut documents = Documents::from_registry(self)?;
         self.fold_document(&mut documents, category, &field)?;
         self.resolve_catalog(documents.raw)?;
@@ -870,7 +891,10 @@ impl FixRegistry {
     ) -> Result<Field> {
         let mut merged = merge_root(stored, incoming)?;
         let dtype = if category == FixCategory::Groups {
-            let (held, item) = (occurrence_of(stored)?, occurrence_of(incoming)?);
+            let held =
+                occurrence_of(stored).ok_or_else(|| invalid(stored, "a group occurrence"))?;
+            let item =
+                occurrence_of(incoming).ok_or_else(|| invalid(incoming, "a group occurrence"))?;
             let occurrence = match (reference(held), reference(item)) {
                 // The stored occurrence is a component's, so what the incoming
                 // one adds belongs to that component: its members are folded
@@ -890,7 +914,7 @@ impl FixRegistry {
                         component.fields(),
                         item.fields(),
                     )?;
-                    component.set_dtype(DataType::from_fields(members)?)?;
+                    set_merged_dtype(&mut component, DataType::from_fields(members)?)?;
                     documents.put(key, component);
                     held.clone()
                 }
@@ -902,7 +926,7 @@ impl FixRegistry {
                         held.fields(),
                         item.fields(),
                     )?;
-                    occurrence.set_dtype(DataType::from_fields(members)?)?;
+                    set_merged_dtype(&mut occurrence, DataType::from_fields(members)?)?;
                     occurrence
                 }
                 _ => {
@@ -910,11 +934,7 @@ impl FixRegistry {
                     held.clone()
                 }
             };
-            if matches!(stored.dtype(), DataType::LargeList(_)) {
-                DataType::large_list(occurrence)
-            } else {
-                DataType::list(occurrence)
-            }
+            group_dtype(stored, occurrence)?
         } else {
             DataType::from_fields(self.merge_children(
                 documents,
@@ -923,7 +943,7 @@ impl FixRegistry {
                 incoming.fields(),
             )?)?
         };
-        merged.set_dtype(dtype)?;
+        set_merged_dtype(&mut merged, dtype)?;
         Ok(merged)
     }
 
@@ -1049,7 +1069,9 @@ impl FixRegistry {
     pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
-            DefinitionField::Group(_, plan) => Some(plan),
+            DefinitionField::Group(field, plan) if !matches!(field.dtype(), DataType::Map(_)) => {
+                Some(plan)
+            }
             _ => None,
         }
     }
@@ -1113,10 +1135,93 @@ impl FixRegistry {
     }
 
     pub(super) fn validate_definition(&self, category: FixCategory, field: &Field) -> Result<()> {
+        let map_group =
+            category == FixCategory::Groups && matches!(field.dtype(), DataType::Map(_));
+        if map_group {
+            let tag = field
+                .as_fix()
+                .tag()?
+                .ok_or_else(|| Error::absent("fix:tag", field.name()))?;
+            let counter = field
+                .as_fix()
+                .counter()?
+                .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
+            if !super::is_crate_tag(tag) || counter != tag {
+                return Err(Error::InvalidRecord {
+                    path: field.name().into(),
+                    reason: crate::text::expected_got(
+                        "equal fix:tag and fix:counter in the crate's reserved range",
+                        format_args!("fix:tag={tag}, fix:counter={counter}"),
+                    ),
+                });
+            }
+            if let Some(scalar) = self
+                .get_field_by_name(field.name())
+                .filter(|scalar| folds_equal(scalar.name(), field.name()))
+            {
+                return Err(Error::conflict(
+                    "a Map group name free of canonical scalar names",
+                    "scalar field",
+                    format_args!(
+                        "{}: canonical name belongs to {}",
+                        field.name(),
+                        scalar.name()
+                    ),
+                ));
+            }
+            if let Some(scalar) = self.get_field_by_tag(tag) {
+                return Err(Error::conflict(
+                    "a Map group counter free of scalar fields",
+                    "scalar field",
+                    format_args!("{}: tag {tag} belongs to {}", field.name(), scalar.name()),
+                ));
+            }
+            if let Some(group) = self.catalog.iter(FixCategory::Groups).find(|group| {
+                group.as_fix().counter().ok().flatten() == Some(tag)
+                    && !folds_equal(group.name(), field.name())
+            }) {
+                return Err(Error::conflict(
+                    "one Map group per counter",
+                    "another group",
+                    format_args!(
+                        "{}: counter {tag} belongs to {}",
+                        field.name(),
+                        group.name()
+                    ),
+                ));
+            }
+        } else if category == FixCategory::Fields {
+            if let Some(group) = self
+                .get_definition(FixCategory::Groups, field.name())
+                .filter(|group| matches!(group.dtype(), DataType::Map(_)))
+            {
+                return Err(Error::conflict(
+                    "a scalar field name free of canonical Map group names",
+                    "Map group",
+                    format_args!(
+                        "{}: canonical name belongs to {}",
+                        field.name(),
+                        group.name()
+                    ),
+                ));
+            }
+            if let Some(group) = field
+                .as_fix()
+                .tag()?
+                .and_then(|tag| self.get_group_by_counter(tag))
+                .filter(|group| matches!(group.dtype(), DataType::Map(_)))
+            {
+                return Err(Error::conflict(
+                    "a scalar field tag free of Map group counters",
+                    "Map group",
+                    format_args!("{}: tag belongs to {}", field.name(), group.name()),
+                ));
+            }
+        }
         if category != FixCategory::Fields {
             validate_name(field)?;
             if let Some(tag) = field.as_fix().tag()? {
-                if !FixId::is_definition_tag(tag) {
+                if !map_group && !FixId::is_definition_tag(tag) {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
                         reason: crate::text::expected_got(
@@ -1137,12 +1242,14 @@ impl FixRegistry {
                 .as_fix()
                 .counter()?
                 .ok_or_else(|| Error::absent("fix:counter", field.name()))?;
-            let counter = self.field_by_tag(tag)?;
-            if counter.dtype() != &DataType::Int32 {
-                return Err(invalid(counter, "an int32 repeating-group counter"));
+            if !map_group {
+                let counter = self.field_by_tag(tag)?;
+                if counter.dtype() != &DataType::Int32 {
+                    return Err(invalid(counter, "an int32 repeating-group counter"));
+                }
             }
             if let Some(component) = field.as_fix().component() {
-                if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
+                if let Some(item) = occurrence_of(field) {
                     if !item
                         .as_fix()
                         .component()
@@ -1165,6 +1272,7 @@ impl FixRegistry {
             return Err(invalid(field, "FIX references nested at most 64 levels"));
         }
         let view = field.as_fix();
+        view.compiled_identifier_positions()?;
         for code in view.codes() {
             code?;
         }
@@ -1182,10 +1290,7 @@ impl FixRegistry {
         if let Some((category, name)) = reference {
             let target = self.definition(category, name)?;
             let occurrence = if category == FixCategory::Components {
-                match field.dtype() {
-                    DataType::List(item) | DataType::LargeList(item) => item.as_ref(),
-                    _ => field,
-                }
+                occurrence_of(field).unwrap_or(field)
             } else {
                 field
             };
@@ -1239,14 +1344,11 @@ impl FixRegistry {
             // occurrence again would turn a shared graph into repeated walks.
             return Ok(());
         }
-        match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => {
-                self.validate_references(item, depth + 1)?;
-            }
-            _ => {
-                for child in field.fields() {
-                    self.validate_references(child, depth + 1)?;
-                }
+        if let Some(item) = occurrence_of(field) {
+            self.validate_references(item, depth + 1)?;
+        } else {
+            for child in field.fields() {
+                self.validate_references(child, depth + 1)?;
             }
         }
         Ok(())

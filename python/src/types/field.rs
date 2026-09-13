@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::{FromPyArrow, ToPyArrow};
-use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema};
+use arrow_pyarrow::FromPyArrow;
+use arrow_schema::{Field as ArrowField, Schema as ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -21,7 +21,7 @@ use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
 };
 use crate::fix::FixTag;
-use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow};
+use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
 use crate::types::datatype::{
     PyDataType, PyDataTypeIterator, PyStringEnum, arrow_array_from_pyarrow, arrow_array_to_pyarrow,
     arrow_scalar_to_pyarrow_type, core_arrow_scalar, core_dtype_from_value, core_field_to_pyarrow,
@@ -52,24 +52,8 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
         return Ok(field.inner.clone());
     }
 
-    let imported: PyResult<CoreField> = (|| {
-        let arrow_field = ArrowField::from_pyarrow_bound(value)?;
-        let mut field = CoreField::try_from(arrow_field).map_err(value_error)?;
-
-        // PyArrow's Field C Schema bridge can omit datatype-only flags such as
-        // Map.keys_sorted. Its standalone datatype bridge is lossless, so use
-        // that authoritative type when it differs from the field's own Arrow
-        // projection; a recognized extension projects to its storage type and
-        // keeps its identity.
-        let py_dtype = value.getattr("type")?;
-        let arrow_dtype = ArrowDataType::from_pyarrow_bound(&py_dtype)?;
-        let projected = field.dtype().clone().into_arrow().map_err(value_error)?;
-        if projected != arrow_dtype {
-            let dtype = CoreDataType::try_from(arrow_dtype).map_err(value_error)?;
-            field = field.try_with_dtype(dtype).map_err(value_error)?;
-        }
-        Ok(field)
-    })();
+    let imported = ArrowField::from_pyarrow_bound(value)
+        .and_then(|field| CoreField::try_from(field).map_err(value_error));
     imported.map_err(|error| {
         if error.is_instance_of::<PyTypeError>(value.py()) {
             PyTypeError::new_err(
@@ -92,24 +76,6 @@ fn python_field<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
         let _field = field.extract::<PyRef<'_, PyField>>()?;
     }
     Ok(field)
-}
-
-/// Import a complete `PyArrow` Schema without trusting its lossy aggregate C
-/// Schema children.  `PyArrow`'s standalone Field/DataType bridge carries
-/// nested flags such as `Map.keys_sorted`, while its Schema bridge does not.
-/// Root transport metadata still comes from the aggregate schema so native
-/// record-schema rules can consume reserved sidecars exactly once.
-pub(crate) fn core_schema_from_pyarrow(value: &Bound<'_, PyAny>) -> PyResult<ArrowSchema> {
-    let imported = ArrowSchema::from_pyarrow_bound(value)?;
-    let mut fields = Vec::with_capacity(imported.fields().len());
-    for value in value.try_iter()? {
-        let field = core_field_from_value(&value?)?;
-        fields.push(field.into_arrow_ref().map_err(value_error)?);
-    }
-    Ok(ArrowSchema::new_with_metadata(
-        fields,
-        imported.metadata().clone(),
-    ))
 }
 
 /// Export a complete `PyArrow` Schema from exact standalone native Fields.
@@ -136,6 +102,15 @@ pub(crate) fn core_schema_to_pyarrow<'py>(
     py.import("pyarrow")?
         .getattr("schema")?
         .call((fields,), Some(&kwargs))
+}
+
+/// Resolve an Arrow root once and use the same exact native schema exporter.
+pub(crate) fn arrow_schema_to_pyarrow<'py>(
+    py: Python<'py>,
+    schema: &ArrowSchema,
+) -> PyResult<Bound<'py, PyAny>> {
+    let root = CoreField::from_arrow_schema("row", schema).map_err(value_error)?;
+    core_schema_to_pyarrow(py, &root)
 }
 
 fn extend_metadata_pairs(
@@ -356,7 +331,7 @@ impl PyField {
     #[staticmethod]
     #[pyo3(signature = (schema, name = "row"))]
     fn from_arrow_schema(schema: &Bound<'_, PyAny>, name: &str) -> PyResult<Self> {
-        let schema = core_schema_from_pyarrow(schema)?;
+        let schema = ArrowSchema::from_pyarrow_bound(schema)?;
         CoreField::from_arrow_schema(name, &schema)
             .map(Self::from_inner)
             .map_err(value_error)
@@ -632,10 +607,11 @@ impl PyField {
     ) -> PyResult<Bound<'py, PyAny>> {
         let options = cast_options(safe, nullability, representation)?;
         let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
-        self.inner
+        let applied = self
+            .inner
             .apply_arrow_batch(&batch, digest, partition, cast, options)
-            .map_err(value_error)?
-            .to_pyarrow(py)
+            .map_err(value_error)?;
+        batch_to_pyarrow(py, applied)
     }
 
     /// Answers the `pyarrow.Schema` `apply_arrow_batch` produces, with no rows.
@@ -660,10 +636,11 @@ impl PyField {
     ) -> PyResult<Bound<'py, PyAny>> {
         let options = cast_options(safe, nullability, representation)?;
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
-        self.inner
+        let applied = self
+            .inner
             .apply_arrow_schema(schema, digest, partition, cast, options)
-            .map_err(value_error)?
-            .to_pyarrow(py)
+            .map_err(value_error)?;
+        arrow_schema_to_pyarrow(py, &applied)
     }
 
     /// Wraps a `pyarrow.RecordBatchReader` so every batch it yields is applied.
@@ -719,7 +696,7 @@ impl PyField {
         {
             return Ok(value.clone());
         }
-        cast.to_pyarrow(py)
+        batch_to_pyarrow(py, cast)
     }
 
     /// Casts one `PyArrow` scalar - or a one-row Array - to this exact Field.
@@ -2909,6 +2886,34 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
+    /// The component's direct scalar identifiers, in member order.
+    ///
+    /// Names, aliases and decimal tags resolve through the core setter;
+    /// assigning an empty iterable removes the property.
+    #[getter]
+    fn identifiers(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        self.require_fix("identifiers")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .identifiers()
+            .map(str::to_owned)
+            .collect())
+    }
+
+    #[setter]
+    fn set_identifiers(&self, identifiers: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("identifiers")?;
+        let parsed = crate::enums::strings_from_iterable(identifiers, "identifiers")?;
+        let mut field = self.borrow_field_mut(identifiers.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_identifiers(parsed)
+            .map_err(value_error)
+    }
+
     /// The spellings that mean "nothing was sent" for this field.
     ///
     /// A value the list names types as null in a row while the arrival record
@@ -3271,7 +3276,7 @@ impl PyProtocolField {
                 self.scheme.as_str()
             )));
         };
-        applied.map_err(value_error)?.to_pyarrow(py)
+        batch_to_pyarrow(py, applied.map_err(value_error)?)
     }
 
     /// The declaring Python class, on the `python` view.

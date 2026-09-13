@@ -1368,6 +1368,7 @@
   "nullable": false,
   "metadata": {
     "display": "MDInc",
+    "fix:identifiers": "orderid,secondaryorderid,quoteentryid,tradeid",
     "fix:tag": "631337"
   }
 }

@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = CW",
     "display": "QuoteAck",
+    "fix:identifiers": "quoteid,quotereqid,secondaryquoteid",
     "fix:msgtype": "CW",
     "fix:tag": "898973"
   }

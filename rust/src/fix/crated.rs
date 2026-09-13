@@ -1,4 +1,4 @@
-//! The fields this crate invents, above every published tag.
+//! The definitions this crate invents, above every published tag.
 //!
 //! A capture states things about a message that no dictionary publishes: what
 //! its bytes hash to, which way its line moved, which version it was read at,
@@ -8,9 +8,8 @@
 //! bridge's own log states about the line it wrote: the session and the
 //! message context it handled the message under, the plugin that logged the
 //! line and the one the message came through before it, and the sessions
-//! the message moved between. Each belongs in a column, so each is an
-//! ordinary field: they lift, column, serialize and resolve like every other
-//! field with no special case anywhere.
+//! the message moved between. Each belongs in a column: a scalar registers
+//! as a field, and the identifiers Map as a group of entries.
 //!
 //! # Why 65000, and why each is a tag and a name
 //!
@@ -39,7 +38,7 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! One mechanism, twenty fields.
+//! Twenty scalar fields and one Map group, each registered by its shape.
 
 use std::sync::LazyLock;
 
@@ -52,7 +51,7 @@ pub const CRATE_TAG_MIN: i32 = 65_000;
 ///
 /// Bounded rather than open-ended, because a derived definition tag lives
 /// above it: see [`crate::FixId::DEFINITION_TAG_MIN`]. A hundred slots is
-/// several times the twenty fields this crate defines, so the block has room
+/// several times the definitions this crate holds, so the block has room
 /// to grow without ever reaching the one above it.
 pub const CRATE_TAG_MAX: i32 = 65_100;
 
@@ -126,6 +125,9 @@ pub const PERSISTENTID_TAG_NAME: (i32, &str) = (65_018, "persistentid");
 /// states it.
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 
+/// The tag and name of the Map group carrying the message's identifiers.
+pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -152,7 +154,13 @@ const DIGEST_WIDTH: u32 = 16;
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
 
 /// The fields, built once and shared.
-static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| build().ok());
+static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
+    Ok(fields) => Some(fields),
+    Err(error) => {
+        log::warn!("building FIX crate definitions: {error}");
+        None
+    }
+});
 
 /// The crate's `timestamp` field as a built message carries it: non-null,
 /// resolved once for every message the builder stamps.
@@ -229,6 +237,14 @@ fn aliased(
 /// `partition:` beside `iceberg:` - rather than in a spelling only a FIX
 /// reader would know to look for.
 fn build() -> Result<Vec<Field>> {
+    let mut altids = crated(
+        ALTIDS_TAG_NAME,
+        "AltIds",
+        DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
+        "The identifiers this message states at its own level, keyed by canonical \
+         field name in sorted order; repeating-group members are not flattened.",
+    )?;
+    altids.as_fix_mut().set_counter(ALTIDS_TAG_NAME.0)?;
     // `FixedSizeBinary`, big-endian, because a digest is not a string and
     // must not become one. Big-endian is the one layout where byte order and
     // numeric order agree on every machine: a little-endian digest sorts
@@ -468,6 +484,7 @@ fn build() -> Result<Vec<Field>> {
             DataType::utf8(),
             "The session a message went to, as the message states it.",
         )?,
+        altids,
     ])
 }
 

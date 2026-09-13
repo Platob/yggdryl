@@ -269,6 +269,7 @@
   "metadata": {
     "description": "MsgType = x (lowercase X)",
     "display": "SecurityListRequest",
+    "fix:identifiers": "securitylistid",
     "fix:msgtype": "x",
     "fix:tag": "858799"
   }

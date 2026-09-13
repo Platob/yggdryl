@@ -349,6 +349,7 @@
   "metadata": {
     "description": "MsgType = DP",
     "display": "MarketDataStatisticsReport",
+    "fix:identifiers": "securitylistid",
     "fix:msgtype": "DP",
     "fix:tag": "480519"
   }

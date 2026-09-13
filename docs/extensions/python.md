@@ -284,13 +284,15 @@ assert prices.into_arrow_array().type == pa.float64()
 | `into_arrow_array()` | `pyarrow.Array` |
 | `into_arrow_batch()` | `pyarrow.RecordBatch` |
 | `into_arrow_table()` | `pyarrow.Table`, read from this value's own stream |
-| `into_arrow_reader()` | `pyarrow.RecordBatchReader`, the cheapest crossing: nothing is collected |
+| `into_arrow_reader()` | `pyarrow.RecordBatchReader`, pulling one batch at a time without collecting the stream |
 | `into_pandas()` / `into_polars()` | one frame |
 | `into_numpy()` | one `numpy.ndarray`; NumPy has no null mask and no nested layout, so this crossing copies |
 | `into_scalar()` | the native `Scalar`: one value for a scalar, a sequence for every other shape |
 | `as_py()` | Python's own types, named by the `Field`, so a row is a `dict` |
 
 Only a stream is one-shot. A scalar, a column, and a table share their Arrow buffers back and stay readable; a stream has nothing to share until it is drained, so reading a consumed one is a `ValueError`.
+
+Exports use the core's recursive C-schema exporter and Arrow C Data arrays; a reader caches its exact schema once and pulls batches lazily, sharing buffers while retaining nested Map flags, dictionary and extension metadata, and zero-column row counts ([exact Map schemas](../arrow/values.md#exact-map-schemas)). Incoming C Stream producers remain accepted; an outgoing reader fuses after an error and preserves the native error category as `pyarrow.ArrowNotImplementedError`, `ArrowMemoryError`, `ArrowIOError`, or `ArrowInvalid`.
 
 ```python
 import pyarrow as pa
@@ -1358,25 +1360,28 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `Plugin`, `Plugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_plugin_fields()`, `global_registry()`, `install_global_registry()`, and `PLUGIN_DIALECT` (`"plugin"`, the membership every field a plugin dictionary defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `Plugin`, `Plugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_plugin_fields()`, `global_registry()`, `install_global_registry()`, and `PLUGIN_DIALECT` (`"plugin"`, the membership every field a plugin dictionary defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `identifiers`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
 | keys | an `int` is a tag, a `str` a name or dotted path; a bare tag or name uses the core's deterministic best match - the canonical holder before an alternate tag, the canonical name before an alias, under the one fold; a colon-bearing string is a name, never an identifier |
 | identity | `field.fix.id` is the `int` the core derives from the tag and the folded name - `MsgType`, `msgtype` and `Msg_Type` under 35 are one id - on every read and never stored, so it is read-only and `None` exactly when `fix:tag` is absent; `field_by_id`, `get_field_by_id`, `remove_by_id`, `FixMsg.by_id` and `get_by_id` take that `int` exactly, and only a method spelled `id` reads an `int` as one |
 | membership | `field.fix.branches` is the sorted, lowercase `list[str]` of the dialects that contributed the field, assignable from any iterable of names - an empty or comma-bearing name is a `ValueError`; `add_branch` and `has_branch` fold ASCII case; `FixRegistry.dialects()` lists the distinct names any field or definition carries; no lookup consults it |
+| identifier declaration | `field.fix.identifiers` answers `list[str]` and accepts `Iterable[str]`; the core resolves selectors to direct scalar member names in component order, with no nested-group flattening; an empty iterable removes the property, and a refusal leaves the field unchanged |
 | direction rules | `field.fix.directions` is the `list[FixDirection]` a tag-385 field carries as `fix:directions`, each a TypedDict `{"code": str, "patterns": list[str]}` - one record per code of the set, the patterns decoded, `[]` when the property is absent - assignable from any iterable of such mappings, an empty one removing the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling is a `ValueError` that leaves the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | lookups | `field_by_tag`, `field_by_name` and `field_by_path` take one argument each; a held tag under another name is a second field beside the holder, reached by its name or its id while the bare tag keeps answering the holder, and iteration is tag-major with the holder first |
-| categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; enums stay inline in a field's `fix:codes` metadata, and a named definition carries the `fix:tag` derived from its name, in `[100000, 1100000)`, which a reference occurrence inside it never restates |
+| categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
+| crate inventory | `fix_crate_fields()` answers 21 definitions: 20 scalar fields plus the `altids` Map group; `len(registry)` and registry iteration count scalar fields only, while `definitions("groups")` includes `altids` |
 | CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a store is `fields/<shard>.json` beside `components/` and `groups/`, one file per name, with membership inside each field's metadata |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | ingest | `from_cfb_file(location, dialect=None)` and `add_cfb_file(location, dialect=None)` stamp every field, group, component and message the file produces with the dialect, `add_cfb_file` taking the file's stem when none is given; the root element's version is read past, so `FixCodec(version=...)` dates a capture |
 | `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
 | `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
-| `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; its wire code remains complete UTF-8 text |
+| `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; `field` answers a read-only `Field` clone, and its wire code remains complete UTF-8 text |
+| `MsgType.identifier_values(message)` | takes a `FixMsg` and answers `list[tuple[Field, Scalar]]` in declaration order, omitting absent or null values; each field is a read-only declaration clone, each scalar retains its native datatype and width, and binary values remain bytes until enrichment needs UTF-8 |
 | `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_plugin_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
-| Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`, over the C Stream interface; `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
+| Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`; incoming readers cross C Stream, outgoing readers use the shared lazy [Arrow export](#arrow-values); `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
 | `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
 | Plugin | `Plugin.from_json_bytes` / `from_json_scalar` return lazy `Plugins`; each selection converts to one flat message with `into_fixmsg` |
@@ -1528,7 +1533,7 @@ direction.fix.directions = []
 assert "fix:directions" not in direction.metadata
 ```
 
-A `dict` is the obvious Python spelling of a named row, and the declared root is what says so. `FixMsg` reads one as the record its Struct field declares, while a `Map` field keeps its mapping.
+A `dict` is the Python spelling of a named row under a Struct field, while a Map field such as `altids` keeps the ordinary mapping input; neither needs a FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
 Bulk configuration responses stream one flat message per configuration a
 response named, and none for a response that named none - so an error-only
@@ -1629,9 +1634,9 @@ assert list(codec.parse_plugin_line(b'{"a":1}')) == []
 - `apply_arrow_batch` -> retains a stored non-default holder without consuming the state; `force=True` recomputes it.
 - a signed digest holder column -> high-bit results read as negative Python integers, and every digest bit is retained.
 - a `fix:` property on another protocol's view -> `TypeError` naming that view's scheme.
-- an absent registry folder -> loads empty and creates nothing.
+- an absent registry folder -> loads only the built-in definitions and creates nothing.
 - `registry[key]`, `registry.get`, `key in registry`, and `FixMsg[key]` -> the same int-tag or str-name pair.
-- `FixRegistry` -> mutable, so unhashable; equality and `stable_hash()` cover all four categories, a field's `fix:branches` included like any other metadata.
+- `FixRegistry` -> mutable, so unhashable; equality and `stable_hash()` cover all three categories, a field's `fix:branches` included like any other metadata.
 - a registry linked by a `FixMsg`, `MsgType`, live iterator or process default -> mutations raise `ValueError`; copy the registry for independent edits.
 - `remove(key)` -> reads an `int` as a tag, so it reaches the tag's holder; `remove_by_id` is how a field sharing its tag with the holder leaves on its own.
 - `msg.by_id` / `msg.get_by_id` -> take the `int` a field's `fix.id` answers and match it exactly, no alias, alternate tag or fold consulted; `msg.lift_source(facet)` answers the `int` tag a facet was read from.

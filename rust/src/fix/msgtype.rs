@@ -5,9 +5,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use super::catalog::occurrence_of;
 use super::group_plan::GroupPlan;
 use super::registry::name_digest;
-use crate::{DataType, Error, Field, Result};
+use crate::{DataType, Error, Field, FixMsg, Result, Scalar};
 
 /// The seed the child index folds names under.
 const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
@@ -39,6 +40,9 @@ pub struct MsgType {
     /// probe rather than by a walk of a wide message's three hundred
     /// children for each of a bridge row's dozens of unknown keys.
     children: HashMap<u64, usize>,
+    /// At most one entry per direct scalar member. Positions address our
+    /// definition; tags address a message's independently ordered row.
+    identifiers: Vec<(usize, Option<i32>)>,
 }
 
 #[derive(Clone, Debug)]
@@ -83,6 +87,27 @@ impl MsgType {
             .msgtype()
             .ok_or_else(|| Error::absent("fix:msgtype", field.name()))?;
         validate_code(code)?;
+        let tags = field
+            .fields()
+            .iter()
+            .map(|child| {
+                if child.dtype().is_nested() {
+                    Ok(None)
+                } else {
+                    child.as_fix().tag()
+                }
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let identifiers = field
+            .as_fix()
+            .compiled_identifier_positions()?
+            .into_iter()
+            .map(|index| {
+                let tag = tags[index]
+                    .filter(|tag| tags.iter().filter(|held| **held == Some(*tag)).count() == 1);
+                (index, tag)
+            })
+            .collect();
         let mut groups = HashMap::new();
         Self::index_groups(&field, &mut Vec::new(), &mut groups, &mut HashMap::new())?;
         // Only a scalar child carrying a tag answers for a key: a nested
@@ -92,7 +117,7 @@ impl MsgType {
         // name keeps the index, exactly as a walk would answer it first.
         let mut children = HashMap::new();
         for (index, child) in field.fields().iter().enumerate() {
-            if child.dtype().is_nested() || child.as_fix().tag().ok().flatten().is_none() {
+            if tags[index].is_none() {
                 continue;
             }
             children
@@ -103,6 +128,53 @@ impl MsgType {
             field,
             groups,
             children,
+            identifiers,
+        })
+    }
+
+    /// Borrows this component's non-null identifiers at the message's own level.
+    ///
+    /// Selection is compiled at registration. Iteration allocates nothing,
+    /// parses no metadata and does not descend into repeating groups. The
+    /// field is the declaration's member, beside the message's actual value.
+    /// An exact member name wins; a renamed child is selected by tag only
+    /// when that tag is unique in both the definition and the message.
+    /// Ambiguous unnamed tags contribute no identifier.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar};
+    /// let mut id = DataType::utf8().nullable_field("clordid");
+    /// id.as_fix_mut().set_tag(11)?;
+    /// let mut field = DataType::from_fields([id])?.required_field("order");
+    /// field.as_fix_mut().set_msgtype("D")?;
+    /// field.as_fix_mut().set_identifiers(["11"])?;
+    /// let mut registry = FixRegistry::new();
+    /// registry.create_definition(FixCategory::Components, field.clone())?;
+    /// let registry = Arc::new(registry);
+    /// let message = FixMsg::with_registry(
+    ///     Arc::clone(&registry), field, Scalar::from_sequence([Scalar::from("O-1")]),
+    /// )?;
+    /// let values: Vec<_> = registry.msgtype("D")?.identifier_values(&message)
+    ///     .map(|(field, value)| (field.name(), value.as_str())).collect();
+    /// assert_eq!(values, [("clordid", Some("O-1"))]);
+    /// # Ok::<(), yggdryl::Error>(())
+    /// ```
+    pub fn identifier_values<'a>(
+        &'a self,
+        message: &'a FixMsg,
+    ) -> impl Iterator<Item = (&'a Field, &'a Scalar)> {
+        self.identifiers.iter().filter_map(move |(position, tag)| {
+            let field = &self.field.fields()[*position];
+            let index = message
+                .as_field()
+                .index_of(field.name())
+                .or_else(|| tag.and_then(|tag| message.unique_index_of_tag(tag)))?;
+            let value = message
+                .as_value()
+                .get(index)
+                .filter(|value| !value.is_null())?;
+            Some((field, value))
         })
     }
 
@@ -146,10 +218,7 @@ impl MsgType {
         for step in path {
             field = match step {
                 GroupStep::Child(index) => field.fields().get(*index)?,
-                GroupStep::Item => match field.dtype() {
-                    DataType::List(item) | DataType::LargeList(item) => item,
-                    _ => return None,
-                },
+                GroupStep::Item => occurrence_of(field)?,
             };
         }
         Some(field)
@@ -160,7 +229,8 @@ impl MsgType {
     }
 
     pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
-        Some(&self.groups.get(&tag)?.as_ref()?.plan)
+        let plan = &self.groups.get(&tag)?.as_ref()?.plan;
+        (!matches!(plan.field().dtype(), DataType::Map(_))).then_some(plan)
     }
 
     fn index_groups(
@@ -175,7 +245,7 @@ impl MsgType {
                 reason: "message schemas are nested at most 64 levels".into(),
             });
         }
-        if let DataType::List(item) | DataType::LargeList(item) = field.dtype() {
+        if let Some(item) = occurrence_of(field) {
             if let Some(tag) = field.as_fix().counter()? {
                 let plan = match plans.remove(path) {
                     Some(plan) => plan,

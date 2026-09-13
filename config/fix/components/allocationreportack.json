@@ -359,6 +359,7 @@
   "metadata": {
     "description": "MsgType = AT",
     "display": "AllocationReportAck",
+    "fix:identifiers": "allocid,secondaryallocid",
     "fix:msgtype": "AT",
     "fix:tag": "971168"
   }

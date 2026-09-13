@@ -1019,6 +1019,7 @@
   "metadata": {
     "description": "MsgType = AK",
     "display": "Confirmation",
+    "fix:identifiers": "allocid,secondaryallocid,individualallocid",
     "fix:msgtype": "AK",
     "fix:tag": "489272"
   }

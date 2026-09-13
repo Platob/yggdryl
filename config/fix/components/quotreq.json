@@ -678,6 +678,7 @@
   "nullable": false,
   "metadata": {
     "display": "QuotReq",
+    "fix:identifiers": "quoteid,secondaryquoteid",
     "fix:tag": "1087733"
   }
 }

@@ -28,6 +28,7 @@
   "nullable": false,
   "metadata": {
     "display": "TrdColl",
+    "fix:identifiers": "tradereportid,secondarytradereportid",
     "fix:tag": "278824"
   }
 }

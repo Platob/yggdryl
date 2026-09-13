@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `fields` | Tagged scalar `Field`; group counters are `int32` | The tag and the folded name together; the id is derived from the pair on every read, never stored |
 | `components` | Named Struct `Field`; one carrying `fix:msgtype` is a message - non-null, owned by an immutable `MsgType` singleton, iterated by `msgtypes` | Folded name; `fix:msgtype` carries the complete wire code |
-| `groups` | Named List or LargeList of a non-null Struct occurrence | Folded name; `fix:counter` identifies a separate scalar field |
+| `groups` | Named List/LargeList of a non-null Struct occurrence, or Map with a non-null entries Struct | Folded name; a List/LargeList names its separate scalar counter, while a crate Map uses its own tag as `fix:counter` |
 
 | Aspect | Rule |
 | --- | --- |
@@ -16,16 +16,17 @@
 | History | `fix:lineage` dates a field's names and types; the generator writes `deprecated` and `removed` entries, so a field FIX retired is in the dictionary with the version that retired it |
 | Replacements | A field FIX retired or whose values it replaced carries `fix:replacements`: how the [enriching pass](capture.md#what-a-message-implied-is-filled-in) restates a message at the newest version; Rust holds no rule table, so a registry edit is a rule edit |
 | Directions | Tag 385's field may carry `fix:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
-| Definition tags | The specification names components, groups and messages rather than tagging them, so each carries a `fix:tag` derived from its name into `[100000, 1100000)`, clear of every published tag; a reference occurrence never restates it |
+| Identifiers | `fix:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
+| Definition tags | Components and List/LargeList groups carry a `fix:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
 | References | `fix:field`, `fix:component`, and `fix:group` resolve once at catalog intake; live definitions hold resolved native fields |
-| Planning | Message identity, contextual counter lookup, and group layouts are compiled before parsing rows |
+| Planning | Message identity, contextual counter lookup, group layouts and identifier selection are compiled before parsing rows |
 | Mutation | A refusal leaves every category and index unchanged; metadata edits refresh referenced occurrences atomically |
 | Identity spelling | A case-only replacement preserves the stored canonical name; an identity or referenced datatype change is refused |
 | Membership | `fix:branches` lists the dialects that contributed a field - provenance a caller filters on; no lookup consults it, and a message root the codec builds carries none |
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate fields | `new()` holds this crate's [twenty fields](capture.md#the-crates-own-columns), standard tags from 65000, before anything is inserted, so every registry - loaded, built or left empty - resolves `timestamp` and `sendersessionid`; a [store](store.md) never writes them and reads past a stored copy |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 21 definitions from tag 65000: twenty scalar fields and the sorted Map group `altids(65020)`. `new()` registers each in its own category; ordinary size and iteration count only the twenty scalars. A [store](store.md) omits these builtins and cannot override them |
 | Crate message | `new()` holds the one message type the crate defines beside them, [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) under the code `UCFG`, because a codec meeting a plugin configuration cannot write the registry it shares; its members are held by value, so the component states the shape of a `UCFG` message without registering the plugin attributes as fields of this dictionary |
 
 ## Use
@@ -65,7 +66,7 @@
     let message = registry.msgtype("D")?;
     assert_eq!(message.name(), "Order");
     assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
-    assert_eq!(registry.definitions(FixCategory::Groups).count(), 1);
+    assert_eq!(registry.definitions(FixCategory::Groups).map(|field| field.name()).collect::<Vec<_>>(), ["Parties", "altids"]);
     ```
 
 === "Python"
@@ -102,7 +103,7 @@
     message = registry.msgtype("D")
     assert message.name == "Order"
     assert message.get_group_by_counter(453).name == "Parties"
-    assert [field.name for field in registry.definitions("groups")] == ["Parties"]
+    assert [field.name for field in registry.definitions("groups")] == ["Parties", "altids"]
     ```
 
 === "JavaScript"
@@ -139,7 +140,7 @@
     const message = registry.msgtype('D')
     assert.equal(message.name, 'Order')
     assert.equal(message.getGroupByCounter(453).name, 'Parties')
-    assert.deepEqual([...registry.definitions('groups')].map(field => field.name), ['Parties'])
+    assert.deepEqual([...registry.definitions('groups')].map(field => field.name), ['Parties', 'altids'])
     ```
 
 ### Group names
@@ -147,6 +148,119 @@
 The standard calls the repeating block `Parties` and its counter `NoPartyIDs`; Orchestra separately identifies a group's counter and members. See the [FIX Parties description](https://www.fixtrading.org/online-specification/introduction/) and the [pinned Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml).
 
 The generator preserves official group names, including `Grp` suffixes. It derives an occurrence name deterministically: `Parties` becomes `Party`, and `NestedParties2` becomes `NestedParty2`; these singular occurrence names are local naming choices. A collision with an existing field produces an explicit suffix, such as `RateSourceGrp`, `LegRateSourceGrp`, or an occurrence's `Component` suffix. Source display names remain metadata.
+
+## Component identifiers
+
+`fix:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the original typed values, skipping absent/null members and never descending into groups.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+    use yggdryl::{DataType, FixCategory, FixMsg, FixRegistry, Scalar};
+
+    let mut client = DataType::utf8().nullable_field("clordid");
+    client.as_fix_mut().set_tag(11)?;
+    client.as_fix_mut().set_aliases(["ClientOrder"])?;
+    let mut server = DataType::utf8().nullable_field("orderid");
+    server.as_fix_mut().set_tag(37)?;
+    let mut order = DataType::from_fields([client.clone(), server.clone()])?.required_field("order");
+    order.as_fix_mut().set_msgtype("D")?;
+    order.as_fix_mut().set_identifiers(["37", "ClientOrder"])?;
+    assert_eq!(order.as_fix().identifiers().collect::<Vec<_>>(), ["clordid", "orderid"]);
+    assert_eq!(order.get_metadata("fix:identifiers"), Some("clordid,orderid"));
+    let before = order.clone();
+    assert!(order.as_fix_mut().set_identifiers(["clordid", "11"]).is_err());
+    assert_eq!(order, before);
+
+    let mut registry = FixRegistry::new();
+    registry.create_definition(FixCategory::Components, order)?;
+    let registry = Arc::new(registry);
+    // The row is reordered; the result still follows declaration order.
+    let row = DataType::from_fields([server, client])?.required_field("row");
+    let message = FixMsg::with_registry(
+        Arc::clone(&registry), row,
+        Scalar::from_sequence([Scalar::from("O-1"), Scalar::from("C-1")]),
+    )?;
+    let values = registry.msgtype("D")?.identifier_values(&message)
+        .map(|(field, value)| (field.name(), value.as_str())).collect::<Vec<_>>();
+    assert_eq!(values, [("clordid", Some("C-1")), ("orderid", Some("O-1"))]);
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+    from yggdryl import DataType, Field
+    from yggdryl.fix import FixMsg, FixRegistry
+
+    client = Field("clordid", "utf8")
+    client.fix.tag = 11
+    client.fix.aliases = ["ClientOrder"]
+    server = Field("orderid", "utf8")
+    server.fix.tag = 37
+    order = Field("order", DataType.from_fields([client, server]), nullable=False)
+    order.fix.msgtype = "D"
+    order.fix.identifiers = ["37", "ClientOrder"]
+    assert order.fix.identifiers == ["clordid", "orderid"]
+    assert order.metadata["fix:identifiers"] == "clordid,orderid"
+    before = order.into_json()
+    with pytest.raises(ValueError, match="fix:identifiers"):
+        order.fix.identifiers = ["clordid", "11"]
+    assert order.into_json() == before
+
+    registry = FixRegistry()
+    registry.create_definition("components", order)
+    # The row is reordered; the result still follows declaration order.
+    row = Field("row", DataType.from_fields([server, client]), nullable=False)
+    message = FixMsg(row, ["O-1", "C-1"], registry)
+    values = registry.msgtype("D").identifier_values(message)
+    assert [(field.name, value.as_py()) for field, value in values] == [
+        ("clordid", "C-1"), ("orderid", "O-1"),
+    ]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, fields, fix } = require('yggdryl')
+
+    const client = Field.from('clordid: utf8')
+    client.fix.tag = 11
+    client.fix.aliases = ['ClientOrder']
+    const server = Field.from('orderid: utf8')
+    server.fix.tag = 37
+    const order = fields.struct('order', [client, server], { nullable: false })
+    order.fix.msgtype = 'D'
+    order.fix.identifiers = ['37', 'ClientOrder']
+    assert.deepEqual(order.fix.identifiers, ['clordid', 'orderid'])
+    assert.equal(order.get('fix:identifiers'), 'clordid,orderid')
+    const before = order.toJSON()
+    assert.throws(() => { order.fix.identifiers = ['clordid', '11'] }, /fix:identifiers/)
+    assert.deepEqual(order.toJSON(), before)
+
+    const registry = new fix.FixRegistry()
+    registry.createDefinition('components', order)
+    // The row is reordered; the result still follows declaration order.
+    const row = fields.struct('row', [server, client], { nullable: false })
+    const message = new fix.FixMsg(row, ['O-1', 'C-1'], registry)
+    const values = registry.msgtype('D').identifierValues(message)
+    assert.deepEqual(values.map(([field, value]) => [field.name, value.asJs()]), [
+      ['clordid', 'C-1'], ['orderid', 'O-1'],
+    ])
+    ```
+
+| Boundary | Contract |
+| --- | --- |
+| Declaration | Rust `set_identifiers`, Python `field.fix.identifiers = iterable`, JavaScript `field.fix.identifiers = array`; an empty input removes the property, while a bare string is not a list of spellings |
+| Refusal | Empty/comma-bearing spelling, missing or nested member, ambiguous spelling, or two spellings of one member: typed, located, whole-field atomic |
+| Stored metadata | The same setter normalizes hand-written declarations after references resolve; reload and merge retain final component order, not the caller's spelling order |
+| Selection | Exact canonical member name first; a renamed member's tag only when unique in both the declaration and row; an ambiguous tag selects nothing |
+| Ownership | Rust borrows both values without allocation; Python returns read-only declaration Field clones and Scalar wrappers; Node returns independent mutable Field clones and Scalar wrappers, never a mutable registry member |
+| Enrichment | After restatement and existing fills, [`altids`](capture.md#what-a-message-implied-is-filled-in) carries selected values as sorted, unique canonical-name/text pairs at this message's own level |
+
+The generator's one explicit identifier-family table annotates every matching direct member across all 928 shipped components, including 181 message definitions; a group member is not flattened into its enclosing message. The [CLI definition flags](cli.md#definition-flags) expose the same native setter through `--identifiers`; category replacement and the [whole-list merge rule](#one-merge-with-a-rule-per-key) remain distinct operations.
 
 ## One namespace
 
@@ -157,12 +271,14 @@ A field is its tag and its name, and a lookup asks for one of them: canonical be
 | `field(55)` | The canonical holder of the tag, then a field listing it as an alternate; a tag two fields hold under different names answers the first holder |
 | `field_by_id(FixId)` | Exact: the one field whose tag and folded name digest to that id |
 | `field_by_name(name)` | The canonical fold, then an alias fold |
-| `field_by_path(path)` | Scalar first, then a named message/component/group head and nested members |
+| `field_by_path(path)` | Canonical Map name before a scalar alias; otherwise scalar lookup, then a named message/component/group head and nested members |
 | `definition(category, name)` | One explicit category |
 | `group_by_counter(tag)` | Globally unique group for that counter tag |
 | `MsgType::get_group_by_counter(tag)` | Unique group within that message's structure |
 
 The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a list, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
+
+A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `altids` is reached by its canonical name or group counter, never by scalar `field_by_tag(65020)`; its key/value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
 
 Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a negative tag and displays as its decimal digest. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 
@@ -395,7 +511,7 @@ The size and ordinary iteration count scalar fields only. Named iterators hold a
 | Scalar `update` | Merges metadata for the existing identity - same tag and folded name - using the native per-key rules |
 | Scalar `remove` | Returns no field when absent or still referenced |
 
-These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically. A named definition stating no tag takes the one derived from its name - XXH32 of the name into `[100000, 1100000)`, stepping past a slot already taken - so a document that states a tag keeps it, and an update keeps the tag the stored definition already has.
+These mutations preserve stored canonical spelling for case-only input changes. Referenced metadata edits cascade through components, groups, and messages; datatype changes and occurrence-local metadata overrides are refused atomically. A component or List/LargeList group stating no tag takes the one derived from its name - XXH32 of the name into `[100000, 1100000)`, stepping past a slot already taken - so a document that states a tag keeps it, and an update keeps the tag the stored definition already has. A crate Map group instead declares its own reserved tag and matching counter.
 
 === "Rust"
 
@@ -810,6 +926,7 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 | `fix:codes` | Merge by wire value, incoming code winning a shared value |
 | `fix:replacements` | Incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
 | `fix:directions` | Incoming wins whole: a rule table is one statement, and two tables have no order between them |
+| `fix:identifiers` | Incoming wins whole, then resolves against the final component's members into their canonical order; an omitted key preserves the stored declaration |
 | Other protocol keys | Incoming wins; preserve keys only the stored field declares |
 | Generic description, display, comment, aliases | The generic metadata merge accompanies the protocol merge |
 
@@ -881,7 +998,7 @@ Registration updates tag 35's inline vocabulary and, if no message owns that cod
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the crate's own fields and nothing else. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the twenty crate scalars, `altids` group and `pluginconfig` message. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 
@@ -965,12 +1082,13 @@ Every door fills tag 385 from that reading where the wire states none - `parse_l
 ## Edges
 
 - A scalar without `fix:tag`, a nested tagged field, or a nullable message root is refused.
-- A group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent.
-- A named definition carries the tag derived from its name; its category and folded name identify it, and a stated tag outside `[100000, 1100000)` is refused.
+- A List/LargeList group needs a valid `int32` counter and non-null Struct occurrence; the list's own nullability is independent. A crate Map group instead requires matching reserved `fix:tag`/`fix:counter` values that no scalar canonical or alternate tag occupies; its entries Struct and key remain non-null.
+- A component or List/LargeList group carries the tag derived from its name; its category and folded name identify it, and a stated tag outside `[100000, 1100000)` is refused. The crate Map's own reserved tag is not a derived definition tag.
 - A derived tag names a definition this crate derived rather than a tag anyone published; a definition keeps the tag it already has through an update, and one arriving on a tag another definition holds derives afresh.
 - Missing, cyclic, contradictory, or over-depth references fail at intake with location; the nesting limit is 64.
 - Removing a referenced definition fails atomically; delete dependents before their sources.
 - A field-reference occurrence may vary name and nullability, but may not introduce independent metadata overrides.
+- Identifier declarations resolve only direct scalar members; an ambiguous spelling, nested selection, duplicate target or malformed list is a located atomic refusal, including raw stored metadata at intake.
 - A string lookup is a name or a dotted path, colon included; an id is an integer spelled only through `FixKey::Id` in Rust and `field_by_id` / `get_by_id` in the bindings, and a bare integer anywhere else is a tag.
 - `fix:branches` is never an argument: no lookup, definition or message-type accessor takes a dialect, and the only filter on membership is the one a caller writes over `branches()`.
 - Generic scalar iteration and size exclude named definitions. Use the explicit category iterators to walk the catalog.
@@ -1028,7 +1146,7 @@ The catalog merge excludes the setup clone from its timer and includes source va
 
 The shallow raw FIXML message-code scan measured 963 ns in Rust; Python's Ullink message-code inference measured 639 ns and Node's measured 1,230,618 ops/s. These rows use different wire fixtures and describe their own boundary costs. What the text reader's three classification columns cost over a whole capture is measured where the capture is read, in [`fix/pipeline`](arrow.md#performance).
 
-Borrowed Rust lookups, singleton views, and compiled group-plan lookups have counting-allocator coverage. Stable hashing allocates one native digester state, and snapshots/projections allocate by contract; the [store measurements](store.md#performance) cover the full graph separately.
+Borrowed Rust lookups, singleton views, compiled group-plan lookups and identifier selection have counting-allocator coverage. `identifiers()` and `identifier_values()` allocate nothing across the pinned corpus sizes; Python and Node allocate their returned lists and wrappers. Identifier boundary benchmarks are present but were not run for this change. Stable hashing allocates one native digester state, and snapshots/projections allocate by contract; the [store measurements](store.md#performance) cover the full graph separately.
 
 Regenerate from the repository root with release bindings installed:
 

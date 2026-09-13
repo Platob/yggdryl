@@ -178,6 +178,7 @@
   "nullable": false,
   "metadata": {
     "display": "TrdInstrmtLegExec",
+    "fix:identifiers": "legexecid,legexecrefid,legtradeid,legtradereportid",
     "fix:tag": "120241"
   }
 }

@@ -26,12 +26,18 @@ mod global_env;
 mod global_home;
 #[path = "fix/global_install.rs"]
 mod global_install;
+#[path = "fix/identifier_dictionary.rs"]
+mod identifier_dictionary;
+#[path = "fix/identifiers.rs"]
+mod identifiers;
 #[path = "fix/latest.rs"]
 mod latest;
 #[path = "fix/lifecycle.rs"]
 mod lifecycle;
 #[path = "fix/lift.rs"]
 mod lift;
+#[path = "fix/map_groups.rs"]
+mod map_groups;
 #[path = "fix/merge.rs"]
 mod merge;
 #[path = "fix/message.rs"]
@@ -250,7 +256,9 @@ fn run_isolated(test_name: &str, marker: &str) -> bool {
 fn crated() -> usize {
     yggdryl::fix_crate_fields()
         .expect("the crate's own fields")
-        .len()
+        .iter()
+        .filter(|field| !field.dtype().is_nested())
+        .count()
 }
 
 /// Where the column carrying `tag` sits in a batch: by the tag its field

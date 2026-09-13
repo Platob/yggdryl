@@ -1158,6 +1158,7 @@
   "nullable": false,
   "metadata": {
     "display": "MDFull",
+    "fix:identifiers": "orderid,secondaryorderid,quoteentryid,tradeid",
     "fix:tag": "1059469"
   }
 }

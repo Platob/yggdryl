@@ -317,12 +317,17 @@ Handler calls stay synchronous and on the JavaScript isolate that supplied the h
 
 The benchmark times the wrapper against direct PyArrow, local, or native local operations. Conformance tests, not timing, are the evidence for streaming correctness.
 
+The native local parity harness runs custom medians only in an optimized,
+explicit benchmark invocation. All-target tests perform one untimed read,
+write and copy per path over the same 64 MiB fixture, retaining the size and
+content checks without warm-up, samples or throughput thresholds.
+
 | gate | value |
 | --- | ---: |
 | benchmark payload | at least 64 MiB |
 | chunk sizes | identical on both legs |
 | warm-up | before every median |
-| benchmark failure | more than 25% slower |
+| native parity failure | wrapper throughput below 75% of direct throughput |
 | retained streams | one per transfer |
 | retained payload | bounded |
 | same-filesystem copy or move | zero stream operations |

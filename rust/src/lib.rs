@@ -72,7 +72,7 @@ pub use expression::Expression;
 pub use expression::{FieldPath, FieldSegment};
 pub use fix::MsgType;
 pub use fix::{
-    CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS,
+    ALTIDS_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, DEFAULT_NULL_VALUES, DEFAULT_PARTITION_SECONDS,
     DEFAULT_PAYLOAD_COLUMN, FixAnomalies, FixAnomaly, FixCode, FixCodeValue, FixCodec, FixCodes,
     FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixId,
     FixKey, FixLifecycle, FixLift, FixLineage, FixLineageEntry, FixMessages, FixMsg, FixParty,

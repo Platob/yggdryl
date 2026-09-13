@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, TextLine, types
-from yggdryl.fix import FixCodec, FixMessages, FixRegistry, MsgType, Plugin, Plugins, fix_crate_fields, fix_plugin_fields
+from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, MsgType, Plugin, Plugins, fix_crate_fields, fix_plugin_fields
 
 
 def _field(name: str, tag: int, dtype: str = "utf8") -> Field:
@@ -87,7 +87,9 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
         assert registry.remove_definition(category, name) is None
     # Only the crate's own fields are left: they seed every registry and
     # are never a definition a caller can remove.
-    assert len(registry) == len(fix_crate_fields())
+    assert len(registry) == len(list(registry.definitions("fields"))) == 20
+    assert len(fix_crate_fields()) == 21
+    assert registry.group_by_counter(65020).name == "altids"
 
 
 def test_inline_codes_are_per_field_and_snapshot_preserves_all_categories() -> None:
@@ -319,6 +321,95 @@ def test_message_singleton_ordering_delegates_to_native_fields() -> None:
     assert sorted([right, left]) == [left, right]
     with pytest.raises(TypeError):
         left < "ZZ"
+
+
+def test_identifier_declarations_merge_whole_and_reload_in_final_member_order() -> None:
+    client, order = _field("clordid", 11), _field("orderid", 37)
+    registry = FixRegistry.from_fields([client, order])
+    for member in (client, order):
+        member.fix.field_ref = member.name
+    stored = _message("order", "D", [client, order])
+    stored.fix.identifiers = ["clordid"]
+    registry.create_definition("components", stored)
+    incoming = _message("order", "D", [order, client])
+    incoming.fix.identifiers = ["orderid"]
+    assert registry.add_definition("components", incoming) is False
+    assert registry.definition("components", "order").fix.identifiers == ["orderid"]
+    incoming.fix.identifiers = ["37", "11"]
+    assert incoming.fix.identifiers == ["orderid", "clordid"]
+    assert registry.add_definition("components", incoming) is False
+    assert registry.definition("components", "order").fix.identifiers == ["clordid", "orderid"]
+    restored = FixRegistry.from_json(registry.into_json())
+    assert restored == registry
+    assert restored.definition("components", "order").fix.identifiers == ["clordid", "orderid"]
+    malformed = copy.copy(incoming)
+    malformed.metadata["fix:identifiers"] = "clordid,,orderid"
+    before = registry.into_json()
+    with pytest.raises(ValueError, match="fix:identifiers"):
+        registry.add_definition("components", malformed)
+    assert registry.into_json() == before
+
+
+def test_compiled_identifier_selection_returns_readonly_declarations_and_native_scalars() -> None:
+    client, order = _field("clordid", 11), _field("orderid", 37)
+    numeric = _field("numericid", 9001, "int64")
+    declaration = _message("order", "D", [client, order, numeric])
+    declaration.fix.identifiers = ["9001", "37", "11"]
+    registry = FixRegistry.from_fields([client, order, numeric])
+    registry.create_definition("components", declaration)
+    row = Field("row", DataType.from_fields([_field("venueorder", 37), client, numeric]), nullable=False)
+    numeric_value = 9_007_199_254_740_993
+    message = FixMsg(row, ["O-1", "C-1", numeric_value], registry)
+    singleton = registry.msgtype("D")
+    selected = singleton.identifier_values(message)
+    assert [(field.name, value.as_py()) for field, value in selected] == [
+        ("clordid", "C-1"), ("orderid", "O-1"), ("numericid", numeric_value)
+    ]
+    assert selected[0][0] == declaration.dtype[0]
+    assert selected[0][1] == message.by_name("clordid")
+    assert selected[2][1] == message.by_name("numericid")
+    assert selected[2][1].dtype == DataType("int64")
+    assert type(selected[2][1].as_py()) is int
+    with pytest.raises(TypeError, match="read-only"):
+        selected[0][0].set_name("changed")
+    with pytest.raises(TypeError, match="read-only"):
+        selected[0][0].fix.identifiers = []
+    absent = FixMsg(row, [None, "C-1", None], registry)
+    assert [(field.name, value.as_py()) for field, value in singleton.identifier_values(absent)] == [
+        ("clordid", "C-1")
+    ]
+    with pytest.raises(TypeError):
+        singleton.identifier_values("not a message")
+
+
+def test_compiled_identifiers_do_not_assign_one_ambiguous_tag_to_another_member() -> None:
+    left, right = _field("leftid", 9001), _field("rightid", 9001)
+    declaration = _message("paired", "PAIR", [left, right])
+    declaration.fix.identifiers = ["rightid", "leftid"]
+    registry = FixRegistry()
+    registry.create_definition("components", declaration)
+    singleton = registry.msgtype("PAIR")
+    exact = Field("row", DataType.from_fields([right, left]), nullable=False)
+    message = FixMsg(exact, ["R-1", "L-1"], registry)
+    assert [(field.name, value.as_py()) for field, value in singleton.identifier_values(message)] == [
+        ("leftid", "L-1"), ("rightid", "R-1")
+    ]
+    renamed = Field("row", DataType.from_fields([_field("venueleft", 9001), _field("venueright", 9001)]), nullable=False)
+    assert singleton.identifier_values(FixMsg(renamed, ["L-1", "R-1"], registry)) == []
+
+
+def test_builtin_altids_group_reference_round_trips_without_a_persisted_definition(tmp_path: Any) -> None:
+    registry = FixRegistry()
+    mapping = registry.group_by_counter(65020)
+    mapping.fix.group = "altids"
+    registry.create_definition("components", _message("identified", "ID", [mapping]))
+    snapshot = json.loads(registry.into_json())
+    assert snapshot["groups"] == []
+    assert FixRegistry.from_json(registry.into_json()) == registry
+    location = tmp_path / "altids-reference"
+    registry.write_into(location)
+    assert not (location / "groups" / "altids.json").exists()
+    assert FixRegistry.from_handle(location) == registry
 
 
 def test_catalog_merge_refreshes_every_reference_with_the_inline_code_union() -> None:

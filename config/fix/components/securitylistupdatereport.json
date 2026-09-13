@@ -249,6 +249,7 @@
   "metadata": {
     "description": "MsgType = BK",
     "display": "SecurityListUpdateReport",
+    "fix:identifiers": "securitylistid",
     "fix:msgtype": "BK",
     "fix:tag": "664955"
   }

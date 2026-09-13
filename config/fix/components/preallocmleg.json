@@ -138,6 +138,7 @@
   "nullable": false,
   "metadata": {
     "display": "PreAllocMleg",
+    "fix:identifiers": "individualallocid",
     "fix:tag": "669211"
   }
 }

@@ -79,6 +79,7 @@
   "metadata": {
     "description": "MsgType = m (lowercase M)",
     "display": "ListStrikePrice",
+    "fix:identifiers": "listid",
     "fix:msgtype": "m",
     "fix:tag": "869150"
   }

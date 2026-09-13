@@ -669,8 +669,10 @@ medians.
 One batch is the same work either way - the plan is compiled once in both - and everything after
 it is the saving: 1.5x at ten batches and 1.7x at a thousand, which is what a streamed read pulls.
 
-The benchmark asserts the two paths answer identical rows before timing either, and refuses a
-build where reusing the plan is slower than rebuilding it.
+Both paths assert identical rows before timing. The custom median gate runs
+only in an optimized, explicit benchmark invocation; it refuses a reused
+plan taking more than 1.25 times the rebuilt plan's duration. All-target
+tests keep the row assertions without warm-up, samples or timing thresholds.
 
 ```bash
 cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --bench types -- cast_plan

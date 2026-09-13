@@ -68,7 +68,7 @@ use smol_str::SmolStr;
 
 use crate::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
 use crate::mime_type::line;
-use crate::{DataType, Error, Field, Result, Scalar, Version};
+use crate::{Error, Field, Result, Scalar, Version};
 
 use super::build::{
     BEGINSTRING_COLUMN, Builder, CLOCK_COLUMN, Fill, FixPair, RowExtras, root_name, version_of,
@@ -1582,7 +1582,9 @@ impl FixCodec {
     /// specification's own tables read as implications: FIX 4.4's Appendix D
     /// for an order's life, 4.2's Appendix O for what a foreign exchange
     /// trade settles on, and a rule answers only where every input is stated
-    /// and typed. Then, on the stream doors, the plugin configuration this
+    /// and typed. The component's identifier declaration fills the sorted
+    /// `altids` Map at the message's own level, without flattening groups.
+    /// Then, on the stream doors, the plugin configuration this
     /// stream has already passed (decision 19).
     ///
     /// Only the row is filled. The entries are what arrived and are carried
@@ -1593,8 +1595,9 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the schema grammar's refusal where the restated children do
-    /// not make a root. The filling itself cannot fail: a derived value the
-    /// column refuses is silence rather than a refusal.
+    /// not make a root. Ordinary derived values a column refuses are silence;
+    /// a declared identifier that cannot spell UTF-8 propagates the value
+    /// contract's refusal at that identifier's field path.
     pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg> {
         super::enrich::enrich(&self.registry, message)
     }
@@ -1867,11 +1870,7 @@ impl FixCodec {
         let Some(field) = self.group_definition(group, message) else {
             return &[];
         };
-        let item = match field.dtype() {
-            DataType::List(item) | DataType::LargeList(item) => item,
-            _ => return &[],
-        };
-        item.fields()
+        super::schema::item_fields(field).unwrap_or_default()
     }
 
     /// The repeating group a bridge key addresses, as the dictionary declares

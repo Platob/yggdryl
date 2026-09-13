@@ -669,6 +669,7 @@
   "metadata": {
     "description": "MsgType = AY",
     "display": "CollateralAssignment",
+    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
     "fix:msgtype": "AY",
     "fix:tag": "720980"
   }

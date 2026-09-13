@@ -1369,6 +1369,7 @@
   "metadata": {
     "description": "MsgType = AC",
     "display": "MultilegOrderCancelReplace",
+    "fix:identifiers": "orderid,origclordid,clordid,secondaryclordid,allocid,quoteid",
     "fix:msgtype": "AC",
     "fix:tag": "968044"
   }

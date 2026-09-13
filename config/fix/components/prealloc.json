@@ -148,6 +148,7 @@
   "nullable": false,
   "metadata": {
     "display": "PreAlloc",
+    "fix:identifiers": "individualallocid",
     "fix:tag": "462272"
   }
 }

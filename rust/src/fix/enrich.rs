@@ -47,8 +47,8 @@
 //! all silence. The cost of silence is a null column; the cost of a guess is
 //! a wrong number nobody can tell from a sent one.
 
-use crate::Scalar;
 use crate::types::{Code, Isin, State, StringEnum};
+use crate::{DataType, Scalar};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -1051,9 +1051,9 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
 /// dictionary's own field types the value on the way in, so a derived column
 /// is indistinguishable from a stated one and carries the same display,
 /// description and `fix:tag` a reader resolves it by - and a value it
-/// refuses, an identifier the check digit does not close, is silence: a
-/// refused write leaves the row exactly as it was, and there is nothing
-/// else here that can fail.
+/// refuses, such as an identifier whose check digit does not close, is
+/// silence. Identifier Map construction propagates the shared text
+/// conversion's typed refusal if a declared member cannot spell text.
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
     // What the row's projection dropped comes back off the arrival record
     // first, because restatement reads what the document stated and a row
@@ -1095,6 +1095,28 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
         // each answer lands before the next rule runs rather than once at
         // the end.
         let _ = held.set(rule.tag, value);
+    }
+    if held
+        .get_by_tag(super::ALTIDS_TAG_NAME.0)
+        .is_none_or(Scalar::is_null)
+    {
+        if let Some(component) = registry.get_msgtype(&msgtype) {
+            let mut entries = component
+                .identifier_values(&held)
+                .map(|(field, value)| {
+                    Ok((
+                        Scalar::from(field.name()),
+                        DataType::utf8()
+                            .scalar(value.clone())
+                            .map_err(|error| crate::types::rooted_at_field(error, field.name()))?,
+                    ))
+                })
+                .collect::<crate::Result<Vec<_>>>()?;
+            // `schema::fitted` trusts a matching Map datatype ID. The
+            // producer must therefore establish sortedness before storage.
+            entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+            held.set(super::ALTIDS_TAG_NAME.0, Scalar::from_mapping(entries)?)?;
+        }
     }
     Ok(held)
 }

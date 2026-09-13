@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "display": "AllocRegulatoryTradeID",
+    "fix:identifiers": "allocregulatorytradeid",
     "fix:tag": "849313"
   }
 }

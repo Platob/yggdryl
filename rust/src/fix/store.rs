@@ -185,9 +185,19 @@ impl Resolver<'_> {
                         .keys()
                         .find(|key| key.0 == category && crate::types::folds_equal(&key.1, name))
                 })
-                .cloned()
-                .ok_or_else(|| Error::absent(category.as_str(), name))?;
-            self.definition(&key, depth)?
+                .cloned();
+            match key {
+                Some(key) => self.definition(&key, depth)?,
+                None => {
+                    let builtin = self
+                        .fields
+                        .get_definition(category, name)
+                        .filter(|held| is_crate_field(held) || is_crate_message(held))
+                        .ok_or_else(|| Error::absent(category.as_str(), name))?
+                        .clone();
+                    self.children(builtin, depth)?
+                }
+            }
         };
         resolved.set_name(field.name());
         resolved.set_nullable(field.is_nullable());
@@ -226,11 +236,24 @@ impl Resolver<'_> {
                     DataType::large_list(item)
                 })
             }
+            DataType::Map(map) => {
+                let mut entries = map.entries().clone();
+                if reference(&entries).is_some() {
+                    // A persisted Map must retain its entries Struct. Only
+                    // this storage envelope becomes the ordinary placeholder;
+                    // supplied metadata still meets the reference checks.
+                    entries.set_dtype(DataType::Null)?;
+                }
+                let (entries, child_height) = self.occurrence(&entries, depth + 1)?;
+                height = child_height + 1;
+                Some(DataType::map(entries, map.keys_sorted())?)
+            }
             _ => None,
         };
         if let Some(dtype) = dtype {
             field.set_dtype(dtype)?;
         }
+        field.as_fix_mut().normalize_identifiers()?;
         Ok((field, height))
     }
 }
@@ -269,6 +292,16 @@ pub(super) fn compact(mut field: Field, root: bool) -> Result<Field> {
         DataType::LargeList(item) => {
             Some(DataType::large_list(compact(item.as_ref().clone(), false)?))
         }
+        DataType::Map(map) => {
+            // Keep the entries Struct for Map validation, but its component
+            // reference inherits metadata from the same owner as any other.
+            let mut entries = compact(map.entries().clone(), true)?;
+            if reference(&entries).is_some() {
+                let placeholder = compact(map.entries().clone(), false)?;
+                entries.set_metadata(placeholder.as_metadata().iter())?;
+            }
+            Some(DataType::map(entries, map.keys_sorted())?)
+        }
         _ => None,
     };
     if let Some(dtype) = dtype {
@@ -300,6 +333,14 @@ fn is_crate_message(field: &Field) -> bool {
 }
 
 impl FixRegistry {
+    fn is_crate_definition(&self, category: FixCategory, field: &Field) -> bool {
+        is_crate_field(field)
+            || is_crate_message(field)
+            || self
+                .get_definition(category, field.name())
+                .is_some_and(|held| is_crate_field(held) || is_crate_message(held))
+    }
+
     /// Reads a complete registry snapshot from JSON.
     ///
     /// `fields`, `components`, and `groups` are arrays of native Field
@@ -350,7 +391,7 @@ impl FixRegistry {
                 // for the reason its own fields are not.
                 self.catalog
                     .iter(category)
-                    .filter(|field| !is_crate_message(field))
+                    .filter(|field| !is_crate_field(field) && !is_crate_message(field))
                     .cloned()
                     .map(|field| compact(field, true).map(Field::into_value))
                     .collect::<Result<Vec<_>>>()?
@@ -388,20 +429,17 @@ impl FixRegistry {
                 })?;
             for (index, value) in fields.iter().enumerate() {
                 let field = Field::from_value(value.clone())?;
+                if registry.is_crate_definition(category, &field) {
+                    continue;
+                }
                 if category == FixCategory::Fields {
                     // A snapshot written before the crate held these states
                     // them; it is read past rather than allowed to replace the
                     // definition every registry already carries.
-                    if is_crate_field(&field) {
-                        continue;
-                    }
                     registry.create_definition(category, field)?;
                 } else {
                     // Likewise a snapshot that states the crate's own
                     // message: read past, never over the held copy.
-                    if is_crate_message(&field) {
-                        continue;
-                    }
                     let key = definition_key(category, &field);
                     if raw.insert(key, field).is_some() {
                         return Err(Error::conflict(
@@ -584,6 +622,9 @@ impl FixRegistry {
             }
         } else {
             let field = Field::from_json_bytes(&entry.read_all_bytes()?)?;
+            if self.is_crate_definition(category, &field) {
+                return Ok(());
+            }
             if entry.url().and_then(Url::stem) != Some(field.name()) {
                 return Err(Error::InvalidRecord {
                     path: field.name().into(),
@@ -631,7 +672,7 @@ impl FixRegistry {
         for entry in self.catalog.all() {
             // And the crate's own message, for the reason its own fields
             // are skipped above.
-            if is_crate_message(entry.field.as_field()) {
+            if is_crate_field(entry.field.as_field()) || is_crate_message(entry.field.as_field()) {
                 continue;
             }
             let path = format!("{}/{}.json", entry.category, entry.field.name());

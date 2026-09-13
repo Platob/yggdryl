@@ -68,6 +68,7 @@
   "nullable": false,
   "metadata": {
     "display": "RelatedOrder",
+    "fix:identifiers": "relatedorderid",
     "fix:tag": "832135"
   }
 }

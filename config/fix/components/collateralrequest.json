@@ -549,6 +549,7 @@
   "metadata": {
     "description": "MsgType = AX",
     "display": "CollateralRequest",
+    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
     "fix:msgtype": "AX",
     "fix:tag": "844452"
   }

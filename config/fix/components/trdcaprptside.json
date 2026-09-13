@@ -1248,6 +1248,7 @@
   "nullable": false,
   "metadata": {
     "display": "TrdCapRptSide",
+    "fix:identifiers": "sideexecid,sidetradereportid,sidetradeid,sideorigtradeid,allocid,secondaryallocid",
     "fix:tag": "905222"
   }
 }

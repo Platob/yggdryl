@@ -78,6 +78,7 @@
   "nullable": false,
   "metadata": {
     "display": "OrderEvent",
+    "fix:identifiers": "ordereventexecid",
     "fix:tag": "698149"
   }
 }

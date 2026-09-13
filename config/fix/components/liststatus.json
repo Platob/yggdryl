@@ -179,6 +179,7 @@
   "metadata": {
     "description": "MsgType = N",
     "display": "ListStatus",
+    "fix:identifiers": "listid",
     "fix:msgtype": "N",
     "fix:tag": "881014"
   }

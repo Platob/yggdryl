@@ -729,6 +729,7 @@
   "metadata": {
     "description": "MsgType = AZ",
     "display": "CollateralResponse",
+    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
     "fix:msgtype": "AZ",
     "fix:tag": "480403"
   }

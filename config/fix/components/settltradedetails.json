@@ -249,6 +249,7 @@
   "metadata": {
     "description": "May be used to identify the trade via the known Confirmation(35=AK) message.",
     "display": "SettlTradeDetails",
+    "fix:identifiers": "allocid,individualallocid,secondaryallocid",
     "fix:tag": "1036155"
   }
 }

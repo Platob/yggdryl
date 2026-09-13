@@ -369,6 +369,7 @@
   "metadata": {
     "description": "MsgType = DG",
     "display": "PartyRiskLimitCheckRequestAck",
+    "fix:identifiers": "reforderid",
     "fix:msgtype": "DG",
     "fix:tag": "424918"
   }

@@ -419,6 +419,7 @@
   "metadata": {
     "description": "MsgType = BG",
     "display": "CollateralInquiryAck",
+    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
     "fix:msgtype": "BG",
     "fix:tag": "656331"
   }

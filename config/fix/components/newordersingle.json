@@ -1609,6 +1609,7 @@
   "metadata": {
     "description": "MsgType = D",
     "display": "NewOrderSingle",
+    "fix:identifiers": "clordid,secondaryclordid,allocid,quoteid,reforderid,refclordid",
     "fix:msgtype": "D",
     "fix:tag": "244936"
   }

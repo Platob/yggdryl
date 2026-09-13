@@ -759,6 +759,7 @@
   "metadata": {
     "description": "MsgType = BA",
     "display": "CollateralReport",
+    "fix:identifiers": "clordid,orderid,secondaryorderid,secondaryclordid",
     "fix:msgtype": "BA",
     "fix:tag": "482029"
   }

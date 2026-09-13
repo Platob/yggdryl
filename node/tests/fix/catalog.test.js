@@ -93,7 +93,10 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   }
   // Only the crate's own fields are left: they seed every registry and
   // are never a definition a caller can remove.
-  assert.equal(registry.size, fix.crateFields().length)
+  assert.equal(registry.size, 20)
+  assert.equal([...registry.definitions('fields')].length, 20)
+  assert.equal(fix.crateFields().length, 21)
+  assert.equal(registry.groupByCounter(65020).name, 'altids')
 })
 
 test('addDefinition folds a definition into the one its name reaches', () => {
@@ -255,6 +258,121 @@ test('numeric counters remain int32 beside message-scoped occurrence lists', () 
   assert.equal(value.byPath('Parties[1].PartyID').asJs(), 'TWO')
   assert.deepEqual(value.anomalies(), [])
   assert.match(value.intoBytes(124).toString(), /453=2\|448=ONE\|448=TWO/)
+})
+
+test('identifier declarations replace whole on merge and reload in final member order', () => {
+  const client = tagged('clordid', 11)
+  const order = tagged('orderid', 37)
+  const registry = fix.FixRegistry.fromFields([client, order])
+  client.fix.fieldRef = 'clordid'
+  order.fix.fieldRef = 'orderid'
+  const initial = message('order', 'D', [client, order])
+  initial.fix.identifiers = ['clordid']
+  registry.createDefinition('components', initial)
+  const incoming = message('order', 'D', [order, client])
+  incoming.fix.identifiers = ['orderid']
+  assert.equal(registry.addDefinition('components', incoming), false)
+  assert.deepEqual(registry.definition('components', 'order').fix.identifiers, ['orderid'])
+  incoming.fix.identifiers = ['37', '11']
+  assert.deepEqual(incoming.fix.identifiers, ['orderid', 'clordid'])
+  registry.addDefinition('components', incoming)
+  assert.deepEqual(registry.definition('components', 'order').fix.identifiers, ['clordid', 'orderid'])
+  const restored = fix.FixRegistry.fromJson(registry.intoJson())
+  assert.ok(restored.equals(registry))
+  assert.deepEqual(restored.definition('components', 'order').fix.identifiers, ['clordid', 'orderid'])
+  const malformed = incoming.clone()
+  malformed.set('fix:identifiers', 'clordid,,orderid')
+  const before = registry.intoJson()
+  assert.throws(() => registry.addDefinition('components', malformed), /fix:identifiers/)
+  assert.equal(registry.intoJson(), before)
+})
+
+test('compiled identifier selection returns independent declarations and native BigInt scalars', () => {
+  const client = tagged('clordid', 11)
+  const order = tagged('orderid', 37)
+  const numeric = tagged('numericid', 9001, 'int64')
+  const declaration = message('order', 'D', [client, order, numeric])
+  declaration.fix.identifiers = ['9001', '37', '11']
+  const registry = fix.FixRegistry.fromFields([client, order, numeric])
+  registry.createDefinition('components', declaration)
+  const registered = registry.definition('components', 'order')
+  const row = fields.struct('row', [tagged('venueorder', 37), client, numeric], { nullable: false })
+  const numericValue = 9007199254740993n
+  const value = new fix.FixMsg(row, ['O-1', 'C-1', numericValue], registry)
+  const singleton = registry.msgtype('D')
+  const selected = singleton.identifierValues(value)
+  assert.deepEqual(selected.map(([field, scalar]) => [field.name, scalar.asJs()]), [
+    ['clordid', 'C-1'], ['orderid', 'O-1'], ['numericid', numericValue],
+  ])
+  assert.ok(selected[0][0].equals(declaration.fieldAt(0)))
+  assert.ok(selected[0][1] instanceof Scalar)
+  assert.ok(selected[0][1].equals(value.byName('clordid')))
+  assert.ok(selected[2][1].equals(value.byName('numericid')))
+  assert.equal(typeof selected[2][1].asJs(), 'bigint')
+  selected[0][0].setName('changed')
+  selected[0][0].fix.aliases = ['ChangedAlias']
+  assert.equal(singleton.identifierValues(value)[0][0].name, 'clordid')
+  assert.deepEqual(singleton.identifierValues(value)[0][0].fix.aliases, [])
+  assert.ok(registry.definition('components', 'order').equals(registered))
+  const absent = new fix.FixMsg(row, [null, 'C-1', null], registry)
+  assert.deepEqual(singleton.identifierValues(absent).map(([field, scalar]) => [field.name, scalar.asJs()]), [['clordid', 'C-1']])
+  assert.throws(() => singleton.identifierValues('not a message'))
+})
+
+test('binary identifiers stay native until enrichment reports the located invalid UTF-8 byte', () => {
+  const code = tagged('msgtype', 35)
+  const identifier = tagged('customid', 9001, 'binary')
+  const declaration = message('custom', 'Z9', [code, identifier])
+  declaration.fix.identifiers = ['customid']
+  const registry = fix.FixRegistry.fromFields([code, identifier])
+  registry.createDefinition('components', declaration)
+  const raw = Buffer.from([0x41, 0xff])
+  const value = new fix.FixMsg(declaration, ['Z9', raw], registry)
+  const before = value.clone()
+  const selected = registry.msgtype('Z9').identifierValues(value)
+  assert.equal(selected.length, 1)
+  assert.equal(selected[0][0].name, 'customid')
+  assert.ok(selected[0][1] instanceof Scalar)
+  assert.ok(selected[0][1].equals(value.byTag(9001)))
+  assert.ok(selected[0][1].asJs() instanceof Uint8Array)
+  assert.deepEqual(Buffer.from(selected[0][1].asJs()), raw)
+  const codec = new fix.FixCodec(registry)
+  assert.throws(() => codec.enrichMessage(value), {
+    name: 'Error',
+    message: /\$\.customid.*invalid utf-8 data at byte 1: expected a byte this charset assigns, got 0xff/,
+  })
+  assert.ok(value.equals(before))
+})
+
+test('compiled identifiers never assign one ambiguous tag to another direct member', () => {
+  const left = tagged('leftid', 9001)
+  const right = tagged('rightid', 9001)
+  const declaration = message('paired', 'PAIR', [left, right])
+  declaration.fix.identifiers = ['rightid', 'leftid']
+  const registry = new fix.FixRegistry()
+  registry.createDefinition('components', declaration)
+  const singleton = registry.msgtype('PAIR')
+  const exact = fields.struct('row', [right, left], { nullable: false })
+  const value = new fix.FixMsg(exact, ['R-1', 'L-1'], registry)
+  assert.deepEqual(singleton.identifierValues(value).map(([field, scalar]) => [field.name, scalar.asJs()]), [
+    ['leftid', 'L-1'], ['rightid', 'R-1'],
+  ])
+  const renamed = fields.struct('row', [tagged('venueleft', 9001), tagged('venueright', 9001)], { nullable: false })
+  assert.deepEqual(singleton.identifierValues(new fix.FixMsg(renamed, ['L-1', 'R-1'], registry)), [])
+})
+
+test('a builtin altids group reference reloads without a persisted builtin definition', (t) => {
+  const registry = new fix.FixRegistry()
+  const mapping = registry.groupByCounter(65020)
+  mapping.fix.group = 'altids'
+  registry.createDefinition('components', message('identified', 'ID', [mapping]))
+  assert.deepEqual(registry.toJSON().groups, [])
+  assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-node-altids-'))
+  t.after(() => fs.rmSync(folder, { recursive: true, force: true }))
+  registry.writeInto(folder)
+  assert.equal(fs.existsSync(path.join(folder, 'groups', 'altids.json')), false)
+  assert.ok(fix.FixRegistry.fromHandle(folder).equals(registry))
 })
 
 function wildcard(size = 2) {

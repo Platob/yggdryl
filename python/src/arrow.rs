@@ -14,7 +14,7 @@
 use std::sync::Mutex;
 
 use arrow_array::RecordBatch;
-use arrow_pyarrow::{FromPyArrow, IntoPyArrow};
+use arrow_pyarrow::FromPyArrow;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyList};
@@ -433,10 +433,7 @@ impl PyArrowValue {
 
     /// Hand this value to `PyArrow` as one `RecordBatch`.
     fn into_arrow_batch<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        self.take()?
-            .into_batch()
-            .map_err(value_error)?
-            .into_pyarrow(py)
+        crate::iomedia::batch_to_pyarrow(py, self.take()?.into_batch().map_err(value_error)?)
     }
 
     /// Hand this value to `PyArrow` as one `Table`, over its own stream.

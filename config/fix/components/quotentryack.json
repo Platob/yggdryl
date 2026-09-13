@@ -338,6 +338,7 @@
   "nullable": false,
   "metadata": {
     "display": "QuotEntryAck",
+    "fix:identifiers": "quoteentryid",
     "fix:tag": "174647"
   }
 }

@@ -259,6 +259,7 @@
   "metadata": {
     "description": "MsgType = AQ",
     "display": "TradeCaptureReportRequestAck",
+    "fix:identifiers": "tradeid,secondarytradeid,firmtradeid,secondaryfirmtradeid",
     "fix:msgtype": "AQ",
     "fix:tag": "977882"
   }

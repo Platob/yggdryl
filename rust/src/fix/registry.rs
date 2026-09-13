@@ -89,6 +89,12 @@ pub(super) fn descend<'field>(
         };
         return descend(item, rest);
     }
+    if let crate::DataType::Map(map) = field.dtype() {
+        let FieldSegment::Key(_) = head else {
+            return None;
+        };
+        return descend(map.entries().fields().get(1)?, rest);
+    }
     let child = folded_child(field, segment_name(head)?)?;
     descend(child, rest)
 }
@@ -308,7 +314,9 @@ impl FixRegistry {
     /// built from fields or left empty holds them alike. Inserting them into
     /// nothing cannot collide, and a build failure of the crate's own fields
     /// is a defect [`fix_crate_fields`](super::fix_crate_fields) reports;
-    /// here it leaves the registry without them rather than unable to exist.
+    /// here construction and registration failures are logged with their
+    /// definition and typed error. Scalar and group definitions follow the
+    /// same category rules as caller-owned definitions.
     #[must_use]
     pub fn new() -> Self {
         let mut registry = Self {
@@ -324,8 +332,17 @@ impl FixRegistry {
             newest: None,
             resettle_newest: false,
         };
-        for field in super::fix_crate_fields().unwrap_or_default() {
-            let _ = registry.insert(field.clone());
+        match super::fix_crate_fields() {
+            Ok(fields) => {
+                for field in fields {
+                    let category = super::catalog::definition_category(field)
+                        .unwrap_or(crate::FixCategory::Fields);
+                    if let Err(error) = registry.insert_definition(category, field.clone()) {
+                        log::warn!("registering FIX crate definition {}: {error}", field.name());
+                    }
+                }
+            }
+            Err(error) => log::warn!("registering FIX crate definitions: {error}"),
         }
         // The crate's own message type, beside the crate's own fields: a
         // codec meeting a plugin configuration cannot write a shared
@@ -333,8 +350,11 @@ impl FixRegistry {
         // document arrives (decision 19). Its members are held by value, so
         // this states the shape of a `UCFG` message without registering the
         // plugin attributes as fields of this dictionary.
-        if let Ok(message) = super::plugin::fix_plugin_message() {
-            let _ = registry.create_definition(crate::FixCategory::Components, message.clone());
+        match super::plugin::fix_plugin_message().and_then(|message| {
+            registry.create_definition(crate::FixCategory::Components, message.clone())
+        }) {
+            Ok(_) => {}
+            Err(error) => log::warn!("registering FIX plugin configuration: {error}"),
         }
         registry
     }
@@ -395,6 +415,13 @@ impl FixRegistry {
             .ok_or_else(|| absent(FixKey::Name(name)))
     }
 
+    /// One message column: a canonical Map name precedes a scalar alias.
+    pub(super) fn get_message_field_by_name(&self, name: &str) -> Option<&Field> {
+        self.get_definition(crate::FixCategory::Groups, name)
+            .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
+            .or_else(|| self.get_field_by_name(name))
+    }
+
     /// One key read as a name, and as the path it spells where it spells one.
     ///
     /// A name costs no parse, which is what nearly every key is. A key
@@ -425,7 +452,12 @@ impl FixRegistry {
         let (head, rest) = path.segments().split_first()?;
         let head = segment_name(head)?;
         if rest.is_empty() {
-            if let Some(field) = self.get_field_by_name(head) {
+            if let Some(field) = self
+                .get_message_field_by_name(head)
+                // A canonical Map suppresses scalar aliases, but still
+                // shares the named-root ambiguity check with components.
+                .filter(|field| !matches!(field.dtype(), crate::DataType::Map(_)))
+            {
                 return Some(field);
             }
         }
@@ -1354,6 +1386,20 @@ impl FixRegistry {
             ));
         }
         for alternate in alternate {
+            if let Some(group) = self
+                .get_group_by_counter(*alternate)
+                .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
+            {
+                return Err(Error::conflict(
+                    "a scalar alternate tag free of Map group counters",
+                    "Map group",
+                    format_args!(
+                        "{}: alternate tag {alternate} belongs to {}",
+                        field.name(),
+                        group.name()
+                    ),
+                ));
+            }
             if let Some(holder) = self
                 .alternate_tags
                 .get(alternate)

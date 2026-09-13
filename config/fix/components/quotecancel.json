@@ -209,6 +209,7 @@
   "metadata": {
     "description": "MsgType = Z",
     "display": "QuoteCancel",
+    "fix:identifiers": "quotereqid,quoteid,secondaryquoteid",
     "fix:msgtype": "Z",
     "fix:tag": "416241"
   }

@@ -84,7 +84,7 @@ pub use typed::{
 pub use url::*;
 pub use uuid::*;
 pub(crate) use uuid::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
-pub(crate) use value::dtype_scalar;
+pub(crate) use value::{dtype_scalar, rooted_at_field};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
 
