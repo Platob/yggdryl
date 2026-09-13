@@ -222,7 +222,7 @@ fn row_message(
 ) -> FixMsg {
     let mut fields = Vec::new();
     let mut values = Vec::new();
-    for (tag, value) in cells {
+    for (tag, value) in std::iter::once((35, Scalar::from("D"))).chain(cells) {
         let name = registry.get_field_by_tag(tag).unwrap().name();
         let mut field = value.dtype().unwrap().nullable_field(name);
         field.as_fix_mut().set_tag(tag).unwrap();
@@ -238,7 +238,7 @@ fn micros(instant: i64) -> Scalar {
 }
 
 #[test]
-fn uuid_payloads_keep_the_original_inputs_and_unmasked_instrument_digest() {
+fn uuid_payloads_keep_the_original_inputs_and_effective_instrument_scope() {
     let registry = registry();
     let codec = FixCodec::new(Arc::clone(&registry));
     let original = codec.sole_line(LIFE[0], false).unwrap();
@@ -256,7 +256,12 @@ fn uuid_payloads_keep_the_original_inputs_and_unmasked_instrument_digest() {
         message.by_tag(INSTUUID_TAG_NAME.0).unwrap(),
         &Scalar::Uuid(instuuid)
     );
-    let chain_input = [raw_instrument.to_be_bytes().as_slice(), b"\x1fA1"].concat();
+    let chain_input = [
+        [0x01].as_slice(),
+        instuuid.into_bytes().as_slice(),
+        b"\x1fA1",
+    ]
+    .concat();
     let chain_payload = yggdryl::xxhash::xxh3(&chain_input);
     let impact = 1_767_348_930_000_000;
     assert_eq!(
@@ -338,8 +343,8 @@ fn invalid_uuid_instants_neither_open_join_nor_close_a_chain() {
         let joining = row_message(
             Arc::clone(&registry),
             [
-                (41, Scalar::from("LIVE")),
-                (11, Scalar::from("NEW")),
+                (11, Scalar::from("LIVE")),
+                (526, Scalar::from("NEW")),
                 (39, Scalar::from("2")),
                 (60, micros(invalid)),
             ],
@@ -390,7 +395,7 @@ fn invalid_new_puuid_is_located_without_rechecking_stated_uuids() {
         ],
     );
     assert_eq!(life.fill(stated.clone()).unwrap(), stated);
-    assert_eq!(life.alive(), 0);
+    assert_eq!(life.alive(), 1);
 }
 
 #[test]
@@ -401,13 +406,14 @@ fn a_refused_message_column_does_not_publish_the_planned_chain() {
     let mut field = DataType::Int32.nullable_field(UUID_TAG_NAME.1);
     field.as_fix_mut().set_tag(UUID_TAG_NAME.0).unwrap();
     let key = registry.get_field_by_tag(11).unwrap().clone();
-    let row = DataType::from_fields([field, key])
+    let msgtype = registry.get_field_by_tag(35).unwrap().clone();
+    let row = DataType::from_fields([field, key, msgtype])
         .unwrap()
         .required_field("D");
     let message = FixMsg::with_registry(
         Arc::new(message_registry),
         row,
-        Scalar::from_sequence([Scalar::Null, Scalar::from("NEW")]),
+        Scalar::from_sequence([Scalar::Null, Scalar::from("NEW"), Scalar::from("D")]),
     )
     .unwrap();
     let mut life = FixLifecycle::new(registry);
@@ -416,4 +422,64 @@ fn a_refused_message_column_does_not_publish_the_planned_chain() {
         Err(Error::InvalidRecord { .. })
     ));
     assert_eq!(life.alive(), 0);
+}
+
+#[test]
+fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
+    let codec = super::dataset::codec();
+    let lines = super::dataset::text_lines();
+    assert_eq!(lines.len(), 129);
+    let mut direct_life = FixLifecycle::new(Arc::clone(codec.registry()));
+    let mut enriched_life = FixLifecycle::new(Arc::clone(codec.registry()));
+    let mut direct_trace = Vec::new();
+    let mut enriched_trace = Vec::new();
+    let mut messages = 0;
+    for (index, line) in lines.iter().enumerate() {
+        for message in codec.parse_text_line(line).expect("a capture line reads") {
+            let message = message.expect("a capture message reads");
+            let enriched = codec
+                .enrich_message(message.clone())
+                .expect("the capture message enriches");
+            for (life, message, trace) in [
+                (&mut direct_life, message, &mut direct_trace),
+                (&mut enriched_life, enriched, &mut enriched_trace),
+            ] {
+                let entries = message.entries().to_vec();
+                let digest = message.digest();
+                let wire = message.into_bytes(b'|');
+                let stamped = life.fill(message).expect("the capture message stamps");
+                if [101, 102].contains(&(index + 1)) {
+                    assert!(stamped.get_by_tag(35).is_none());
+                    assert!(stamped.get_by_tag(PUUID_TAG_NAME.0).is_none());
+                }
+                assert_eq!(stamped.entries(), entries);
+                assert_eq!(stamped.digest(), digest);
+                assert_eq!(stamped.into_bytes(b'|'), wire);
+                trace.push((stamped, life.alive()));
+            }
+            messages += 1;
+        }
+    }
+    assert_eq!(messages, 83);
+    assert_eq!(direct_life.alive(), 4);
+    // Line 73's derived terminal state closes ABBN.S. The untyped FIXML
+    // at line 101 no longer reopens it through a hard-tag fallback.
+    assert_eq!(enriched_life.alive(), 3);
+    // Each door replays its own projection: enrichment may end a chain at a
+    // different message and the untyped FIXML supplies no identifiers.
+    for (trace, expected) in [(direct_trace, 4), (enriched_trace, 3)] {
+        assert_eq!(trace.len(), 83);
+        let mut replay = FixLifecycle::new(Arc::clone(codec.registry()));
+        for (message, alive) in trace {
+            let stamped = replay
+                .fill(message.clone())
+                .expect("the stamped capture message replays");
+            assert_eq!(stamped, message);
+            assert_eq!(stamped.entries(), message.entries());
+            assert_eq!(stamped.digest(), message.digest());
+            assert_eq!(stamped.into_bytes(b'|'), message.into_bytes(b'|'));
+            assert_eq!(replay.alive(), alive);
+        }
+        assert_eq!(replay.alive(), expected);
+    }
 }

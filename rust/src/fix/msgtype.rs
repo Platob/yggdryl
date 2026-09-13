@@ -178,6 +178,28 @@ impl MsgType {
         })
     }
 
+    /// Canonical identifier text in ascending member-name order.
+    ///
+    /// Enrichment stores this Map; lifecycle uses the same answer when the
+    /// message states none. Text conversion retains the member's error path.
+    pub(super) fn identifier_mapping(&self, message: &FixMsg) -> Result<Scalar> {
+        let mut entries = self
+            .identifier_values(message)
+            .map(|(field, value)| {
+                Ok((
+                    Scalar::from(field.name()),
+                    DataType::utf8()
+                        .scalar(value.clone())
+                        .map_err(|error| crate::types::rooted_at_field(error, field.name()))?,
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        // `schema::fitted` trusts a matching Map datatype ID. The
+        // producer must therefore establish sortedness before storage.
+        entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+        Scalar::from_mapping(entries)
+    }
+
     /// The direct scalar child `key` names under the crate's name fold, and
     /// the tag it carries.
     ///

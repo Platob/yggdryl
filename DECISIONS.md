@@ -1821,3 +1821,97 @@ Per the user's revised sequence, the remaining story lands in Rust before
 Python, Node, and the final lightweight documentation pass. The later
 message-identity decision will remove `msghash` entirely at the user's latest
 direction; this representation piece does not pre-empt that later change.
+
+## 23. A lifecycle chain is keyed by its UUID; identifiers belong to an instrument
+
+**Rule.** `FixLifecycle` keeps `HashMap<Uuid, Chain>` and an identifier index
+`HashMap<(Option<Uuid>, SmolStr), Uuid>`. A chain owns every scoped key attached
+to it, and no copy of the UUID already naming it in the map. Held facts are
+bounded by live chains and their distinct identifiers; reusable map capacity
+follows the peak live set, not the number of completed events. Closing or
+clearing removes both owners' corresponding entries without promising a
+capacity shrink. There are no vector holes, free list, or unscoped index.
+
+The effective instrument is a non-null stated `instuuid`, else the UUID the
+existing instrument recipe derives, else absent. Absence is its own scope.
+Stated `altids`, including an empty map, is authoritative. Only absent/null
+`altids` uses the registered message's compiled identifier selection. Unknown
+message types supply no fallback identifiers; no hard-tag list is retained.
+`MsgType::identifier_mapping` owns conversion to canonical UTF-8 and sorted
+member names, reusing `identifier_values`; enrichment and lifecycle call it.
+Non-null map/UUID values of the wrong shape fail rather than becoming absence.
+A stated map is a native Mapping with unique ascending UTF-8 string keys and
+UTF-8 string or null values. Incorrect entries/order fail at their located
+`altids` entry; no sorting, retyping or fallback hides them. A stated map is
+borrowed; no schema or value is re-inferred. Stated UUIDs require the native
+Uuid value, not new version/variant validation; the packed values accepted by
+decision 22 remain accepted.
+
+Map member-name order determines identifier priority, equally for stated and
+derived maps. Values are case-sensitive UTF-8; null/empty values contribute
+nothing, but nonempty text is neither trimmed nor case-folded. Equal values
+under different member names are one key. Nested identifiers remain nested.
+Identifier keys clone the value's compact shared string handle instead of
+copying long text. Index admission removes duplicate occurrences in linear
+expected time; a new chain sheds excess input-vector capacity so repeated
+values cannot retain storage proportional to their occurrence count.
+
+**Joining.** In order: a stated `puuid` naming a live chain joins directly;
+else the first scoped identifier naming a live chain wins and corrects even
+a foreign stated `puuid`; else a stated `puuid` opens under itself; else a
+message with identifiers generates a version-7 chain UUID. A message with
+neither identifiers nor a stated `puuid` opens no chain. Explicit direct joins
+can attach identifiers in another instrument scope to the same chain.
+
+When identifiers reach two live chains, the first wins; the chains do not
+merge, and a key already owned by another live chain is not stolen. Only
+unowned keys attach to the selected chain. A terminal message closes only
+the selected chain, removing all its scoped keys. A first terminal message
+receives its stamps but retains no new chain or index entries.
+
+**Generated identity.** Decision 22's raw instrument digest is replaced here
+by the authoritative effective scope in the chain payload. The exact xxh3
+input is a presence byte (`0x00` when absent, `0x01` when present), the
+present UUID's sixteen big-endian bytes, `0x1f`, then the first identifier's
+UTF-8 bytes. The existing `Xxh3` streams this input; the unchanged impact
+clock and `Uuid::from_v7` pack it. Two explicitly different scopes with the
+same identifier/clock must not collapse because their raw instrument fields
+are absent or disagree with the stated scope. Timestamp selection, hash
+algorithm and UUID packing otherwise remain decision 22's. A generated UUID
+colliding with an unrelated live chain is a located `$.puuid` refusal, not an
+implicit direct join. These deterministic hashes are not collision-free.
+The `puuid` field description names the lifecycle-owned recipe rather than
+duplicating its byte layout; its old raw-instrument description is removed.
+The two registry stable-hash pins move with that field metadata, not the
+arrival-equivalence snapshot.
+
+**Atomicity and replay.** Resolve all keys, UUIDs, collision checks and
+message writes before publishing any chain/index mutation. The existing
+atomic `set_many` preparation admits a crate-private field check immediately
+after resolving each target, before its one scalar canonicalization. Lifecycle
+uses it to require a native UUID target even in a custom message registry;
+coercion into text or bytes cannot publish a chain that replay cannot read.
+This one checked write is the last fallible step. Stated `uuid` and `instuuid` stay
+untouched; only `puuid` may be corrected by a known chain. Stated `puuid`s
+rebuild state on replay instead of bypassing the lifecycle, so a fresh second
+pass returns equal messages and the same live count. Arrivals, wire and
+arrival digests remain untouched.
+
+**Pins.** Foreign and direct stated joins; two instruments reusing one ID;
+equal/different stated scopes independent of raw instrument fields; absent
+scope; first-wins conflicts without alias theft; terminal cleanup and
+reopening; clear and replay; empty/stated maps and compiled fallback parity;
+integer-to-text identifiers, located invalid text/shape and atomic refusal;
+duplicates, null/empty/case/whitespace, unknown types and no nested promotion.
+The 129-line capture yields 83 messages and retains its four final live chains
+through the direct door. Enrichment derives terminal state at lines 35 and 73
+where the raw messages omit it. Its new final count is three, not the old
+four: the old hard-tag fallback reopened the closed ABBN.S chain from the
+untyped FIXML at line 101. That message states no MsgType and therefore has
+no declared identifier selection. Line 102 likewise supplies no selection;
+its HOLN chain opens from the typed order at line 107. Neither an order-only
+fallback nor a fabricated document type preserves the old enriched count.
+Pin these exact capture facts and each door's full replay independently;
+the direct and enriched messages do not state the same terminal information.
+No equivalence snapshot regeneration is expected for this lifecycle-only
+change.

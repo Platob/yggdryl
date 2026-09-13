@@ -440,10 +440,25 @@ impl FixMsg {
         I: IntoIterator<Item = (K, Scalar)>,
         K: Into<FixKey<'key>>,
     {
+        self.set_many_with(values, |_| Ok(()))
+    }
+
+    /// Check each resolved target before its one value canonicalization.
+    /// Protocol stamps can require a native layout that coercion would erase.
+    pub(super) fn set_many_with<'key, I, K>(
+        &mut self,
+        values: I,
+        check: impl Fn(&Field) -> Result<()>,
+    ) -> Result<()>
+    where
+        I: IntoIterator<Item = (K, Scalar)>,
+        K: Into<FixKey<'key>>,
+    {
         let mut writes: Vec<Write> = Vec::new();
         for (key, value) in values {
             let key = key.into();
             let (at, mut field) = self.target(&key)?;
+            check(&field)?;
             let value = if value.is_null() {
                 field.set_nullable(true);
                 Scalar::Null

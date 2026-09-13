@@ -470,9 +470,8 @@ fn build() -> Result<Vec<Field>> {
             PUUID_TAG_NAME,
             "PUuid",
             DataType::Uuid,
-            "The order chain's version-7 UUID ordered by its creation clock, \
-             with 62 bits from xxh3 of the unmodified instrument digest, a \
-             0x1f separator and its first identifier.",
+            "The event chain's UUID. FixLifecycle generates version 7 from \
+             its creation clock, effective instrument scope and first identifier.",
         )?,
         // The target side of the session pair, which the block's next free tag
         // takes rather than displacing a tag already published.

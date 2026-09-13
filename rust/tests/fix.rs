@@ -34,6 +34,10 @@ mod identifiers;
 mod latest;
 #[path = "fix/lifecycle.rs"]
 mod lifecycle;
+#[path = "fix/lifecycle_chains.rs"]
+mod lifecycle_chains;
+#[path = "fix/lifecycle_targets.rs"]
+mod lifecycle_targets;
 #[path = "fix/lift.rs"]
 mod lift;
 #[path = "fix/map_groups.rs"]

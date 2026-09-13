@@ -245,18 +245,20 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    group.bench_function("lifecycle", |bencher| {
-        bencher.iter_batched(
-            || messages.clone(),
-            |held| {
-                codec
-                    .lifecycle(held)
-                    .map(|message| message.expect("stamped").entries().len())
-                    .sum::<usize>()
-            },
-            BatchSize::LargeInput,
-        );
-    });
+    for (name, rows) in [("lifecycle", &messages), ("lifecycle_altids", &enriched)] {
+        group.bench_function(name, |bencher| {
+            bencher.iter_batched(
+                || rows.clone(),
+                |held| {
+                    codec
+                        .lifecycle(held)
+                        .map(|message| message.expect("stamped").entries().len())
+                        .sum::<usize>()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
     group.bench_function("digest", |bencher| {
         bencher.iter_batched(
             || messages.clone(),

@@ -511,10 +511,11 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// every registry already carries the crate's own fields. Decision 21 adds
 /// the builtin altids group and generated component identifier declarations.
 /// Decision 22 renames the three lifecycle identities and types them as UUIDs.
+/// Decision 23 describes the chain's scoped lifecycle recipe in its field.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 12_244_755_678_056_982_392);
+    assert_eq!(registry.stable_hash(), 13_255_096_914_125_047_117);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

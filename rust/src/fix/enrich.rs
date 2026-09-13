@@ -47,8 +47,8 @@
 //! all silence. The cost of silence is a null column; the cost of a guess is
 //! a wrong number nobody can tell from a sent one.
 
+use crate::Scalar;
 use crate::types::{Code, Isin, State, StringEnum};
-use crate::{DataType, Scalar};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
@@ -1101,21 +1101,10 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
         .is_none_or(Scalar::is_null)
     {
         if let Some(component) = registry.get_msgtype(&msgtype) {
-            let mut entries = component
-                .identifier_values(&held)
-                .map(|(field, value)| {
-                    Ok((
-                        Scalar::from(field.name()),
-                        DataType::utf8()
-                            .scalar(value.clone())
-                            .map_err(|error| crate::types::rooted_at_field(error, field.name()))?,
-                    ))
-                })
-                .collect::<crate::Result<Vec<_>>>()?;
-            // `schema::fitted` trusts a matching Map datatype ID. The
-            // producer must therefore establish sortedness before storage.
-            entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-            held.set(super::ALTIDS_TAG_NAME.0, Scalar::from_mapping(entries)?)?;
+            held.set(
+                super::ALTIDS_TAG_NAME.0,
+                component.identifier_mapping(&held)?,
+            )?;
         }
     }
     Ok(held)

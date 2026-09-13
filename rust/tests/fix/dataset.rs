@@ -165,7 +165,7 @@ fn codec_batching(bytes: Option<u64>) -> FixCodec {
 ///
 /// It is also told what the run's captures are called, because a line answers
 /// them by position and only this boundary knows what each position means.
-fn codec() -> FixCodec {
+pub(super) fn codec() -> FixCodec {
     codec_batching(None).with_capture_names(header_captures())
 }
 
@@ -243,7 +243,7 @@ fn text_rows() -> (Vec<String>, Vec<Vec<Scalar>>) {
 ///
 /// The one decode entry point, which is the door the codec takes: a line in
 /// is a row out, so these line up with the batch's rows by position.
-fn text_lines() -> Vec<TextLine> {
+pub(super) fn text_lines() -> Vec<TextLine> {
     let RecordOptions::Text(options) = reading() else {
         panic!("a text read")
     };

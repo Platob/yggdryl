@@ -1,6 +1,7 @@
 mod common;
 
 pub mod cblock;
+pub mod lifecycle;
 pub mod lift;
 pub mod mutate;
 pub mod pipeline;
