@@ -119,12 +119,20 @@ const ENTRY_COMPONENT: &str = "fixentry";
 /// not columns of the message, they are the message.
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
-    let mut tags = Vec::with_capacity(HEADER_TAGS.len() + BODY_TAGS.len() + 16);
+    let crated = super::fix_crate_fields().unwrap_or_default();
+    let mut tags = Vec::with_capacity(
+        HEADER_TAGS.len()
+            + BODY_TAGS.len()
+            + GROUP_TAGS.len()
+            + TRAILER_TAGS.len()
+            + crated.len()
+            + 1,
+    );
     tags.extend_from_slice(&HEADER_TAGS);
     tags.extend_from_slice(&BODY_TAGS);
     tags.extend_from_slice(&GROUP_TAGS);
     tags.extend_from_slice(&TRAILER_TAGS);
-    for field in super::fix_crate_fields().unwrap_or_default() {
+    for field in crated {
         if let Ok(Some(tag)) = field.as_fix().tag() {
             tags.push(tag);
         }
@@ -164,8 +172,9 @@ const REQUIRED_TAGS: [i32; 4] = [
 /// Returns the schema grammar's refusal when the columns do not make a
 /// struct, or when this crate's own fields do not build.
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
-    let mut fields: Vec<Field> = Vec::with_capacity(fix_schema_tags().len() + 2);
-    for tag in fix_schema_tags() {
+    let tags = fix_schema_tags();
+    let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 2);
+    for tag in tags {
         if let Some(held) = registry.get_field_by_tag(tag) {
             let mut held = held.clone();
             // The scalar's canonical name is folded; its display preserves
@@ -893,7 +902,7 @@ impl super::FixMsg {
     }
 
     /// The clock the row is dated by, never null: the stamp, else the epoch.
-    fn stamped_clock(&self) -> crate::Scalar {
+    pub(super) fn stamped_clock(&self) -> crate::Scalar {
         let held = self.market_timestamp();
         if held.is_null() { epoch() } else { held }
     }

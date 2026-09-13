@@ -720,11 +720,11 @@ impl FixCodec
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
 
 ### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
-pub struct FixLifecycle  (live chains keyed by native Uuid; identifier text scoped by optional instuuid; held facts bounded by the live set and reusable capacity by its peak; Debug)
+pub struct FixLifecycle  (live chains keyed by native Uuid; identifier text scoped by optional instuuid; each chain retains only its last successful message's nanosecond UTC clock and UUID beside its owned keys; held facts bounded by the live set and reusable capacity by its peak; Debug)
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub fn alive(&self) -> usize
-  pub fn clear(&mut self)  (forgets chains and scoped keys without promising a capacity shrink)
-  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (live stated puuid joins directly, else the first scoped identifier wins without stealing another chain's keys; puuid may be corrected, uuid and instuuid remain stated; sorted altids including empty is authoritative, otherwise the compiled selector supplies canonical text; terminal closes only the selected chain; located shape/range/collision refusals are atomic; replay rebuilds equal state and arrivals remain unchanged)
+  pub fn clear(&mut self)  (forgets chains, previous pairs and scoped keys without promising a capacity shrink)
+  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (live stated puuid joins directly, else the first scoped identifier wins without stealing another chain's keys; puuid may be corrected, uuid and instuuid remain stated; sorted altids including empty is authoritative, otherwise the compiled selector supplies canonical text; prevtimestamp and prevuuid independently preserve non-null native statements, otherwise take the selected chain's last pair or null; terminal receives its previous pair then closes only the selected chain; located shape/range/collision refusals are atomic and cannot advance history; replay into fresh or cleared state rebuilds equal state and arrivals remain unchanged)
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
@@ -755,6 +755,8 @@ pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
+pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
+pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable native UUID of the preceding message in the selected event chain)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;

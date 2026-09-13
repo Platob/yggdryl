@@ -28,6 +28,54 @@ fn column_of(schema: &Field, tag: i32) -> usize {
 }
 
 #[test]
+fn the_fixed_schema_appends_previous_fields_without_moving_existing_tags() {
+    use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
+
+    let tags = yggdryl::fix_schema_tags();
+    assert_eq!(tags.len(), 103);
+    let (message, crated) = tags.split_at(tags.len() - 24);
+    assert_eq!(
+        message,
+        [
+            HEADER_TAGS.as_slice(),
+            BODY_TAGS.as_slice(),
+            GROUP_TAGS.as_slice(),
+            TRAILER_TAGS.as_slice(),
+        ]
+        .concat()
+    );
+    assert_eq!(crated, (65_000..=65_022).chain([385]).collect::<Vec<_>>());
+
+    let (registry, _) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
+    assert_eq!(
+        &names[names.len() - 5..],
+        [
+            "prevtimestamp",
+            "prevuuid",
+            "msgdirection",
+            "nofixentries",
+            "nounmappedfixentries"
+        ]
+    );
+    for tag in [
+        yggdryl::PREVTIMESTAMP_TAG_NAME.0,
+        yggdryl::PREVUUID_TAG_NAME.0,
+    ] {
+        assert_eq!(
+            schema
+                .fields()
+                .iter()
+                .filter(|field| field.as_fix().tag().unwrap() == Some(tag))
+                .count(),
+            1
+        );
+        assert!(schema.fields()[column_of(&schema, tag)].is_nullable());
+    }
+}
+
+#[test]
 fn the_columns_are_named_by_fold_and_filled_by_tag() {
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
@@ -58,6 +106,11 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         "TransactTime"
     );
     assert_eq!(typed(44), DataType::Float64, "Price(44)");
+    assert_eq!(
+        typed(yggdryl::PREVTIMESTAMP_TAG_NAME.0),
+        typed(yggdryl::TIMESTAMP_TAG_NAME.0)
+    );
+    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
@@ -82,6 +135,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::INSTUUID_TAG_NAME.0, "InstUuid"),
         (yggdryl::UUID_TAG_NAME.0, "Uuid"),
         (yggdryl::PUUID_TAG_NAME.0, "PUuid"),
+        (yggdryl::PREVTIMESTAMP_TAG_NAME.0, "PrevTimestamp"),
+        (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -107,7 +162,9 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
-    use yggdryl::{FixMsg, INSTUUID_TAG_NAME, IOMedia, PUUID_TAG_NAME, UUID_TAG_NAME};
+    use yggdryl::{
+        FixMsg, INSTUUID_TAG_NAME, IOMedia, PREVUUID_TAG_NAME, PUUID_TAG_NAME, UUID_TAG_NAME,
+    };
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -118,6 +175,7 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
         (INSTUUID_TAG_NAME, "00112233-4455-8677-8899-aabbccddeeff"),
         (UUID_TAG_NAME, "01941f29-7e00-7000-8000-000000000001"),
         (PUUID_TAG_NAME, "01941f29-7e00-7000-8000-000000000002"),
+        (PREVUUID_TAG_NAME, "01941f29-7dff-7fff-bfff-ffffffffffff"),
     ];
     message
         .set_many(
@@ -126,11 +184,24 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
                 .map(|((tag, _), text)| (*tag, Scalar::from(*text))),
         )
         .unwrap();
+    let previous_clock = Scalar::from_datetime(
+        1_700_000_000_000_000_123,
+        yggdryl::TimeUnit::Nanosecond,
+        yggdryl::Timezone::UTC,
+    )
+    .unwrap();
+    message
+        .set(yggdryl::PREVTIMESTAMP_TAG_NAME.0, previous_clock.clone())
+        .unwrap();
     assert_eq!(message.digest(), digest);
     assert_eq!(message.into_bytes(b'|'), wire);
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
+    assert_eq!(
+        at(&row, &schema, yggdryl::PREVTIMESTAMP_TAG_NAME.0),
+        &previous_clock
+    );
     for ((tag, name), text) in identities {
         let field = &schema.fields()[column_of(&schema, tag)];
         assert_eq!(field.name(), name);
@@ -147,6 +218,13 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
 
     let outgoing = codec.arrow_reader(schema.clone(), [Ok(message)]).unwrap();
     let arrow_schema = outgoing.schema();
+    assert_eq!(
+        arrow_schema
+            .field_with_name(yggdryl::PREVTIMESTAMP_TAG_NAME.1)
+            .unwrap()
+            .data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
+    );
     for ((_, name), _) in identities {
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(

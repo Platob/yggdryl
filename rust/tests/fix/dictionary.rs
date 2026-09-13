@@ -414,8 +414,8 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight of the seed's, and the crate's own `timestamp`.
-    assert_eq!(utc, 69, "instants stated in UTC");
+    // Sixty-eight of the seed's, and the crate's `timestamp`/`prevtimestamp`.
+    assert_eq!(utc, 70, "instants stated in UTC");
 }
 
 #[test]
@@ -512,10 +512,11 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// the builtin altids group and generated component identifier declarations.
 /// Decision 22 renames the three lifecycle identities and types them as UUIDs.
 /// Decision 23 describes the chain's scoped lifecycle recipe in its field.
+/// Decision 24 adds the previous clock and UUID declarations.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 13_255_096_914_125_047_117);
+    assert_eq!(registry.stable_hash(), 6_456_976_043_740_267_577);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

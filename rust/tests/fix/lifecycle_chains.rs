@@ -17,7 +17,10 @@ fn field(name: &str, tag: i32, dtype: DataType) -> Field {
     field
 }
 
-fn row(registry: &Arc<FixRegistry>, cells: impl IntoIterator<Item = (i32, Scalar)>) -> FixMsg {
+pub(super) fn row(
+    registry: &Arc<FixRegistry>,
+    cells: impl IntoIterator<Item = (i32, Scalar)>,
+) -> FixMsg {
     let mut fields = Vec::new();
     let mut values = Vec::new();
     for (tag, value) in cells {

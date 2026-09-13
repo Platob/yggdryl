@@ -8,13 +8,15 @@
 //! how two systems come to disagree about how many orders there were.
 //!
 //! This module reads a stream once, in order, and stamps every message with
-//! three identities the stream implies:
+//! three identities and the previous message the stream implies:
 //!
 //! | column | holds |
 //! | --- | --- |
 //! | `instuuid` | a version-8 UUID over the xxh128 digest of market, classification, ISIN - else symbol - and currency |
 //! | `uuid` | a version-7 UUID ordered by the impact clock, with an xxh3 payload derived from what the message said |
 //! | `puuid` | the chain's UUID; generated values are version 7 over its first clock, instrument scope and identifier |
+//! | `prevtimestamp` | the preceding message's row clock in nanoseconds and UTC, null on the first message |
+//! | `prevuuid` | the preceding message's UUID, null on the first message |
 //!
 //! # The chain is the identifiers, joined
 //!
@@ -46,7 +48,7 @@
 //!
 //! # Nothing here is an entry
 //!
-//! The three columns are stamped on the row alone. The entries are what
+//! The five columns are stamped on the row alone. The entries are what
 //! arrived, and a message re-emitted after this pass is the received line
 //! byte for byte.
 
@@ -59,13 +61,15 @@ use crate::path::{Path, Segment};
 use crate::txhash::unix_from_scalar;
 use crate::types::{Code, State, Uuid};
 use crate::xxhash::{Xxh3, Xxh128, xxh3};
-use crate::{DataType, Error, Result, Scalar, TimeUnit};
+use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
+use super::schema::CLOCK_DATATYPE;
 use super::{
-    ALTIDS_TAG_NAME, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PUUID_TAG_NAME,
-    STATE_TAG_NAME, UUID_TAG_NAME,
+    ALTIDS_TAG_NAME, FixKey, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
+    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, STATE_TAG_NAME, TIMESTAMP_TAG_NAME,
+    UUID_TAG_NAME,
 };
 
 /// The clocks closest to the market impact, most exact first.
@@ -86,7 +90,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, ALTIDS_TAG_NAME, UUID_TAG_NAME, PUUID_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, ALTIDS_TAG_NAME, UUID_TAG_NAME, PUUID_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -121,6 +125,10 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// // One chain, with two UUIDs ordered by the impact clock.
 /// assert_eq!(order.by_tag(PUUID_TAG_NAME.0)?, ack.by_tag(PUUID_TAG_NAME.0)?);
 /// assert!(order.by_tag(UUID_TAG_NAME.0)? < ack.by_tag(UUID_TAG_NAME.0)?);
+/// assert!(order.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
+/// assert!(order.by_tag(PREVTIMESTAMP_TAG_NAME.0)?.is_null());
+/// assert_eq!(ack.by_tag(PREVUUID_TAG_NAME.0)?, order.by_tag(UUID_TAG_NAME.0)?);
+/// assert_eq!(ack.by_tag(PREVTIMESTAMP_TAG_NAME.0)?, &order.market_timestamp());
 /// assert_eq!(life.alive(), 1);
 ///
 /// // The fill closes the chain, and the venue's identifier is forgotten.
@@ -143,7 +151,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 pub struct FixLifecycle {
     /// The owner of compiled message identifier selection.
     registry: Arc<FixRegistry>,
-    /// Whether the registry holds the three columns, decided once: a stamp
+    /// Whether the registry holds the five columns, decided once: a stamp
     /// lands through the message's own writer, which resolves the field
     /// again, and this only says whether there is one to resolve.
     stamps: bool,
@@ -158,18 +166,27 @@ pub struct FixLifecycle {
 struct Chain {
     /// Every attached scope is forgotten together when this chain closes.
     keys: Vec<(Option<Uuid>, SmolStr)>,
+    /// Only the last successful message, under the shared clock datatype.
+    timestamp: Scalar,
+    uuid: Uuid,
 }
 
 impl FixLifecycle {
     /// A stream with no event alive yet.
     ///
-    /// The three columns are the registry's own crate fields, so a registry
+    /// The five columns are the registry's own crate fields, so a registry
     /// without them - which none built by this crate is - stamps nothing.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
-        let stamps = [INSTUUID_TAG_NAME.0, UUID_TAG_NAME.0, PUUID_TAG_NAME.0]
-            .into_iter()
-            .all(|tag| registry.get_field_by_tag(tag).is_some());
+        let stamps = [
+            INSTUUID_TAG_NAME.0,
+            UUID_TAG_NAME.0,
+            PUUID_TAG_NAME.0,
+            PREVTIMESTAMP_TAG_NAME.0,
+            PREVUUID_TAG_NAME.0,
+        ]
+        .into_iter()
+        .all(|tag| registry.get_field_by_tag(tag).is_some());
         Self {
             registry,
             stamps,
@@ -191,22 +208,26 @@ impl FixLifecycle {
         self.keys.clear();
     }
 
-    /// Stamps one message with its three identities and moves the chain it
-    /// belongs to along.
+    /// Stamps one message with its identities and previous pair, then advances
+    /// or closes the chain it belongs to.
     ///
     /// A live stated `puuid` joins directly. Otherwise the first identifier
     /// reaching a live chain under the effective instrument wins, correcting
     /// even a foreign stated `puuid`. Occupied identifiers are never stolen
     /// from another chain. Stated `uuid` and `instuuid` remain untouched.
-    /// Replay rebuilds the same live state from the carried identities.
+    /// Each absent/null previous stamp comes from the selected chain's last
+    /// message; each stated non-null stamp is preserved. A fresh or cleared
+    /// replay rebuilds the same state from the carried identities. Feeding an
+    /// earlier message into advanced state is a new arrival, not a rewind.
     /// Entries are untouched; all stamps land through one [`FixMsg::set_many`].
     ///
     /// # Errors
     ///
     /// Returns a located refusal for an impact instant outside the version-7
-    /// range, malformed stated UUID/identifier values, a generated UUID
-    /// collision, or a value the message's field refuses. No chain or
-    /// identifier changes on failure.
+    /// range, malformed stated UUID/identifier/previous values, an
+    /// unrepresentable live-history clock, a generated UUID collision, or a
+    /// value the message's field refuses. No chain, history or identifier
+    /// changes on failure.
     pub fn fill(&mut self, mut message: FixMsg) -> Result<FixMsg> {
         if !self.stamps {
             return Ok(message);
@@ -236,13 +257,10 @@ impl FixLifecycle {
                 other => other,
             })
         };
-        let uuid = if stated_id.is_some() {
-            None
+        let uuid = if let Some(held) = stated_id {
+            held
         } else {
-            Some(time_uuid(
-                xxh3(&message.digest().to_be_bytes()),
-                UUID_TAG_NAME.1,
-            )?)
+            time_uuid(xxh3(&message.digest().to_be_bytes()), UUID_TAG_NAME.1)?
         };
         let persistent = if let Some(held) = existing.or(stated_persistent) {
             Some(held)
@@ -260,46 +278,46 @@ impl FixLifecycle {
                 reason: "expected a new chain UUID, got a generated UUID owned by an unrelated live chain".into(),
             });
         }
-        message.set_many_with(
+        let terminal = is_terminal(&message);
+        let timestamp = (persistent.is_some() && !terminal)
+            .then(|| {
+                CLOCK_DATATYPE
+                    .scalar(message.stamped_clock())
+                    .map_err(|error| crate::types::rooted_at_field(error, TIMESTAMP_TAG_NAME.1))
+            })
+            .transpose()?;
+        message.stamp_lifecycle(
             [
-                instrument
-                    .filter(|_| stated_instrument.is_none())
-                    .map(|held| (INSTUUID_TAG_NAME.0, Scalar::Uuid(held))),
-                uuid.map(|held| (UUID_TAG_NAME.0, Scalar::Uuid(held))),
-                persistent
-                    .filter(|held| Some(*held) != stated_persistent)
-                    .map(|held| (PUUID_TAG_NAME.0, Scalar::Uuid(held))),
-            ]
-            .into_iter()
-            .flatten(),
-            |field| {
-                if matches!(field.dtype(), DataType::Uuid) {
-                    Ok(())
-                } else {
-                    Err(Error::InvalidRecord {
-                        path: Path::root().field(field.name()).render().into(),
-                        reason: crate::text::expected_got(
-                            DataType::Uuid,
-                            crate::text::elide_display(field.dtype()),
-                        ),
-                    })
-                }
-            },
+                (
+                    INSTUUID_TAG_NAME.0,
+                    instrument.filter(|_| stated_instrument.is_none()),
+                ),
+                (UUID_TAG_NAME.0, stated_id.is_none().then_some(uuid)),
+                (
+                    PUUID_TAG_NAME.0,
+                    persistent.filter(|held| Some(*held) != stated_persistent),
+                ),
+            ],
+            existing.and_then(|held| self.chains.get(&held)),
         )?;
         // The message's value contract is the last fallible step. The
         // already-resolved join publishes only after all stamps landed.
-        if let Some(persistent) = persistent {
-            if is_terminal(&message) {
-                self.close(persistent);
-            } else {
-                self.join(persistent, keys);
-            }
+        match (persistent, timestamp) {
+            (Some(persistent), Some(timestamp)) => self.join(persistent, keys, timestamp, uuid),
+            (Some(persistent), None) => self.close(persistent),
+            (None, _) => {}
         }
         Ok(message)
     }
 
     /// Attach only unowned keys, retaining the incoming buffer for a new chain.
-    fn join(&mut self, persistent: Uuid, mut keys: Vec<(Option<Uuid>, SmolStr)>) {
+    fn join(
+        &mut self,
+        persistent: Uuid,
+        mut keys: Vec<(Option<Uuid>, SmolStr)>,
+        timestamp: Scalar,
+        uuid: Uuid,
+    ) {
         keys.retain(|key| match self.keys.entry(key.clone()) {
             Entry::Vacant(entry) => {
                 entry.insert(persistent);
@@ -312,9 +330,18 @@ impl FixLifecycle {
                 // Duplicate occurrences cannot leave a large backing buffer
                 // on a chain holding only a few distinct identifiers.
                 keys.shrink_to_fit();
-                entry.insert(Chain { keys });
+                entry.insert(Chain {
+                    keys,
+                    timestamp,
+                    uuid,
+                });
             }
-            Entry::Occupied(mut entry) => entry.get_mut().keys.extend(keys),
+            Entry::Occupied(mut entry) => {
+                let chain = entry.get_mut();
+                chain.keys.extend(keys);
+                chain.timestamp = timestamp;
+                chain.uuid = uuid;
+            }
         }
     }
 
@@ -404,6 +431,56 @@ impl FixLifecycle {
     }
 }
 
+impl FixMsg {
+    /// Preserve stated previous values and publish all native stamps together.
+    fn stamp_lifecycle(
+        &mut self,
+        identities: [(i32, Option<Uuid>); 3],
+        previous: Option<&Chain>,
+    ) -> Result<()> {
+        let previous_id_stated = stated_uuid(self, PREVUUID_TAG_NAME)?.is_some();
+        let previous_clock_stated = stated_previous_clock(self)?.is_some();
+        let previous = [
+            (!previous_clock_stated).then(|| {
+                (
+                    PREVTIMESTAMP_TAG_NAME.0,
+                    previous.map_or(Scalar::Null, |chain| chain.timestamp.clone()),
+                )
+            }),
+            (!previous_id_stated).then(|| {
+                (
+                    PREVUUID_TAG_NAME.0,
+                    previous.map_or(Scalar::Null, |chain| Scalar::Uuid(chain.uuid)),
+                )
+            }),
+        ];
+        self.set_many_with(
+            identities
+                .into_iter()
+                .filter_map(|(tag, value)| value.map(|value| (tag, Scalar::Uuid(value))))
+                .chain(previous.into_iter().flatten()),
+            |key, field| {
+                let expected = if matches!(key, FixKey::Tag(tag) if *tag == PREVTIMESTAMP_TAG_NAME.0) {
+                    &CLOCK_DATATYPE
+                } else {
+                    &DataType::Uuid
+                };
+                if field.dtype() == expected {
+                    Ok(())
+                } else {
+                    Err(Error::InvalidRecord {
+                        path: Path::root().field(field.name()).render().into(),
+                        reason: crate::text::expected_got(
+                            expected,
+                            crate::text::elide_display(field.dtype()),
+                        ),
+                    })
+                }
+            },
+        )
+    }
+}
+
 /// Native UUIDs are already packed; this adds no version/variant policy.
 fn stated_uuid(message: &FixMsg, (tag, name): (i32, &str)) -> Result<Option<Uuid>> {
     match message.get_by_tag(tag).filter(|held| !held.is_null()) {
@@ -413,6 +490,26 @@ fn stated_uuid(message: &FixMsg, (tag, name): (i32, &str)) -> Result<Option<Uuid
             path: Path::root().field(name).render().into(),
             reason: crate::text::expected_got(
                 "a native UUID or null",
+                crate::text::elide_display(&format_args!("{held:?}")),
+            ),
+        }),
+    }
+}
+
+/// A previous clock is a statement in the declared layout, not a coercion.
+fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
+    let held = message
+        .get_by_tag(PREVTIMESTAMP_TAG_NAME.0)
+        .filter(|held| !held.is_null());
+    match held {
+        None => Ok(None),
+        Some(held) if matches!(held.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC) => {
+            Ok(Some(held))
+        }
+        Some(held) => Err(Error::InvalidRecord {
+            path: Path::root().field(PREVTIMESTAMP_TAG_NAME.1).render().into(),
+            reason: crate::text::expected_got(
+                &CLOCK_DATATYPE,
                 crate::text::elide_display(&format_args!("{held:?}")),
             ),
         }),
@@ -543,7 +640,12 @@ mod tests {
         for count in [1, 64, 1024] {
             let mut life = FixLifecycle::new(Arc::new(FixRegistry::new()));
             let persistent = Uuid::new(1);
-            life.join(persistent, vec![(None, SmolStr::new("same")); count]);
+            life.join(
+                persistent,
+                vec![(None, SmolStr::new("same")); count],
+                super::super::schema::epoch(),
+                Uuid::new(2),
+            );
             let chain = &life.chains[&persistent];
             assert_eq!(chain.keys.len(), 1);
             assert_eq!(chain.keys.capacity(), 1);

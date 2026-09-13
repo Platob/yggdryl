@@ -944,8 +944,9 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // Decision 19 moved it again, and for the same reason: every registry
     // now also carries the `pluginconfig` component, which is more text.
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
-    // Decisions 21–23 add altids, UUID types and the scoped chain description.
-    assert_eq!(carrying.stable_hash(), 17_587_201_327_167_411_432);
+    // Decisions 21–23 add altids, UUID types and the scoped chain description;
+    // decision 24 adds the previous clock and UUID declarations.
+    assert_eq!(carrying.stable_hash(), 18_240_345_886_234_747_417);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

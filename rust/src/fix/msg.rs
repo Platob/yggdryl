@@ -440,7 +440,7 @@ impl FixMsg {
         I: IntoIterator<Item = (K, Scalar)>,
         K: Into<FixKey<'key>>,
     {
-        self.set_many_with(values, |_| Ok(()))
+        self.set_many_with(values, |_, _| Ok(()))
     }
 
     /// Check each resolved target before its one value canonicalization.
@@ -448,7 +448,7 @@ impl FixMsg {
     pub(super) fn set_many_with<'key, I, K>(
         &mut self,
         values: I,
-        check: impl Fn(&Field) -> Result<()>,
+        check: impl Fn(&FixKey<'key>, &Field) -> Result<()>,
     ) -> Result<()>
     where
         I: IntoIterator<Item = (K, Scalar)>,
@@ -458,7 +458,7 @@ impl FixMsg {
         for (key, value) in values {
             let key = key.into();
             let (at, mut field) = self.target(&key)?;
-            check(&field)?;
+            check(&key, &field)?;
             let value = if value.is_null() {
                 field.set_nullable(true);
                 Scalar::Null

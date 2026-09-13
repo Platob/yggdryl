@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::types::Uuid;
-use yggdryl::{ALTIDS_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME, PUUID_TAG_NAME, Scalar};
+use yggdryl::{
+    ALTIDS_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME,
+    PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME, UUID_TAG_NAME,
+};
 
 use super::seed;
 
@@ -59,8 +62,22 @@ pub fn benchmarks(criterion: &mut Criterion) {
         // separate scopes, while an empty map suppresses the scalar ID.
         let mut life = FixLifecycle::new(Arc::clone(&registry));
         let mut identities = HashSet::new();
-        for message in &rows {
+        let mut previous = None;
+        for (index, message) in rows.iter().enumerate() {
             let stamped = life.fill(message.clone()).expect("a scoped message");
+            if expected_chains != 0 && index % 2 == 1 {
+                let (timestamp, uuid) = previous.as_ref().expect("the scope's first message");
+                assert_eq!(stamped.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(), timestamp);
+                assert_eq!(stamped.by_tag(PREVUUID_TAG_NAME.0).unwrap(), uuid);
+            } else {
+                for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+                    assert_eq!(stamped.by_tag(tag).unwrap(), &Scalar::Null, "{name}");
+                }
+            }
+            previous = Some((
+                stamped.by_tag(TIMESTAMP_TAG_NAME.0).unwrap().clone(),
+                stamped.by_tag(UUID_TAG_NAME.0).unwrap().clone(),
+            ));
             if let Some(Scalar::Uuid(value)) = stamped.get_by_tag(PUUID_TAG_NAME.0) {
                 identities.insert(*value);
             }

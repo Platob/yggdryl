@@ -1915,3 +1915,69 @@ Pin these exact capture facts and each door's full replay independently;
 the direct and enriched messages do not state the same terminal information.
 No equivalence snapshot regeneration is expected for this lifecycle-only
 change.
+
+## 24. A chain carries only its previous message's clock and UUID
+
+**Rule.** Append `prevtimestamp` (65021, `PrevTimestamp`) and `prevuuid`
+(65022, `PrevUuid`) to the crate definitions. The former has the existing
+`timestamp` datatype, DateTime64 nanoseconds in UTC; the latter is Uuid.
+Both are nullable. There are twenty-three crate definitions: twenty-two
+scalar fields and the existing altids Map group. Existing tags, identities,
+group counters and DataType discriminants do not change.
+
+Each live Chain holds exactly its last successful message's timestamp and
+native UUID beside its owned identifier keys. No history or previous-row
+copy is retained. The previous clock is the existing row-clock owner's
+`stamped_clock` result: a stated capture timestamp, otherwise the message's
+existing market-clock reading, otherwise the epoch. It is not the lifecycle's
+microsecond impact clock and is never reconstructed from UUID bits. Restate
+it through the existing nanosecond UTC datatype once when a selected chain
+will remain live, refusing an unrepresentable clock before publishing any
+chain/index changes. Orphan and terminal messages retain no current history
+pair, so they do not acquire a needless history-clock conversion or refusal.
+This reuses the clock owner's existing wire-input behavior; it adds no second
+validation of text that owner already discarded. Non-null history clock
+conversion failures are located at `$.timestamp`.
+
+**Stamps.** Resolve the selected chain by decision 23 before preparing its
+previous pair. Fill each absent/null previous field independently from that
+pair; preserve each non-null stated value independently.
+Stated `prevuuid` must be a native Uuid; stated `prevtimestamp` must be a
+native DateTime64 in nanoseconds and UTC. Wrong shapes/parameters refuse at
+their field, rather than coercing a statement or bypassing validation.
+A first message or one belonging to no chain carries null previous fields
+where none were stated. A previously stated previous value is not evidence
+that the current message happened earlier or later; stream arrival order
+alone advances the chain. The stored last pair always comes from the current
+message itself, never from its previous fields.
+
+The existing checked atomic write path validates the resolved native target
+for every generated identity/previous stamp, with one target resolution and
+one scalar canonicalization. The check receives the resolved input key, so
+each stamp requires its own intended datatype, including a first-message
+null; neither a target's renamed column nor a whitelist of both layouts can
+select its meaning. Prepare any retained current clock, UUID and previous
+stamps before this write. Only its success can attach keys, advance the last
+pair, open a chain or close one. A refusal on any stamp cannot advance
+history or close the selected chain. A terminal message receives its previous
+pair before the chain and all its keys are forgotten; reopening or clear
+starts without history. A first terminal event retains no chain.
+Replay means a fresh or cleared lifecycle over the same stamped stream.
+An earlier message fed to an already advanced lifecycle is a new arrival,
+not a rewind of its state.
+
+**Pins.** Three-message ordering; first nulls; independent stated previous
+values; capture clock distinct from impact clock, nanosecond precision and
+epoch fallback; direct joins and foreign correction use the selected chain's
+history; separate scopes have separate histories; terminal/clear/reopen;
+malformed/coercible targets, first-null wrong layouts and unrepresentable
+live-history clocks are atomic; terminal/orphan messages keep the UUID
+clock range without needless history conversion; full replay including Arrow
+batches at multiple row boundaries. Exact field types, tags, displays, counts,
+schema suffix and new registry hashes are pinned. The snapshot is unchanged
+because its reader does not run lifecycle.
+
+The clock declaration is shared with the existing clock owner, and fixed
+schema construction resolves its tag list once with capacity derived from
+the real definition counts. This does not change schema order or selection.
+The later updatedat/grid/code-only identity rules remain separate work.

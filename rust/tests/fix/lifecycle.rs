@@ -8,7 +8,8 @@ use std::sync::Arc;
 use yggdryl::types::Uuid;
 use yggdryl::{
     DataType, Error, FixCodec, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME, TimeUnit, Timezone, UUID_TAG_NAME,
+    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME,
+    TimeUnit, Timezone, UUID_TAG_NAME,
 };
 
 fn registry() -> Arc<FixRegistry> {
@@ -80,6 +81,19 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     for pair in ids.windows(2) {
         assert!(pair[0] < pair[1], "ids sort by the impact clock");
     }
+    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+        assert_eq!(stamped[0].by_tag(tag).unwrap(), &Scalar::Null);
+    }
+    for pair in stamped.windows(2) {
+        assert_eq!(
+            pair[1].by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            pair[0].by_tag(TIMESTAMP_TAG_NAME.0).unwrap(),
+        );
+        assert_eq!(
+            pair[1].by_tag(PREVUUID_TAG_NAME.0).unwrap(),
+            pair[0].by_tag(UUID_TAG_NAME.0).unwrap(),
+        );
+    }
     // The first six bytes order by milliseconds; the exact time is still
     // read from its own column, never decoded from a UUID's first eight.
     let millis = 1_767_348_930_000_u64.to_be_bytes();
@@ -143,6 +157,9 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
         bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
+    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+        assert_eq!(held.by_tag(tag).unwrap(), &Scalar::Null);
+    }
     // The impact clock is the sending time where no transaction time is
     // stated, and the epoch where the message states no clock at all.
     let millis = 1_767_348_930_000_u64.to_be_bytes();
@@ -201,10 +218,12 @@ fn a_stamped_stream_read_again_keeps_what_it_carries() {
         )
         .map(|held| held.unwrap())
         .collect();
+    assert_eq!(once.len(), LIFE.len());
     let twice: Vec<FixMsg> = reader
         .lifecycle(once.clone())
         .map(|held| held.unwrap())
         .collect();
+    assert_eq!(twice.len(), LIFE.len());
     for (first, second) in once.iter().zip(&twice) {
         for tag in [INSTUUID_TAG_NAME.0, UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
             assert_eq!(bytes(first, tag), bytes(second, tag), "tag {tag}");
@@ -224,7 +243,11 @@ fn row_message(
     let mut values = Vec::new();
     for (tag, value) in std::iter::once((35, Scalar::from("D"))).chain(cells) {
         let name = registry.get_field_by_tag(tag).unwrap().name();
-        let mut field = value.dtype().unwrap().nullable_field(name);
+        let mut field = if value.is_null() {
+            registry.get_field_by_tag(tag).unwrap().clone()
+        } else {
+            value.dtype().unwrap().nullable_field(name)
+        };
         field.as_fix_mut().set_tag(tag).unwrap();
         fields.push(field);
         values.push(value);
@@ -394,7 +417,14 @@ fn invalid_new_puuid_is_located_without_rechecking_stated_uuids() {
             (INSTUUID_TAG_NAME.0, Scalar::Uuid(Uuid::from_v8(123))),
         ],
     );
-    assert_eq!(life.fill(stated.clone()).unwrap(), stated);
+    let mut expected = stated.clone();
+    expected
+        .set_many([
+            (PREVTIMESTAMP_TAG_NAME.0, Scalar::Null),
+            (PREVUUID_TAG_NAME.0, Scalar::Null),
+        ])
+        .unwrap();
+    assert_eq!(life.fill(stated).unwrap(), expected);
     assert_eq!(life.alive(), 1);
 }
 

@@ -1,11 +1,12 @@
-//! Lifecycle UUID stamps require the resolved target's native UUID layout.
+//! Lifecycle stamps require each resolved target's own native layout.
 
 use std::sync::Arc;
 
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PUUID_TAG_NAME, Scalar, UUID_TAG_NAME,
+    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME,
+    TimeUnit, Timezone, UUID_TAG_NAME,
 };
 
 const IDENTITIES: [(i32, &str); 3] = [UUID_TAG_NAME, PUUID_TAG_NAME, INSTUUID_TAG_NAME];
@@ -73,12 +74,15 @@ fn uuid(message: &FixMsg, tag: i32) -> Uuid {
     *value
 }
 
-fn located(error: Error, name: &str) {
+fn located(error: Error, name: &str, expected: &DataType) {
     let Error::InvalidRecord { path, reason } = error else {
-        panic!("expected a located UUID target refusal, got {error}");
+        panic!("expected a located native target refusal, got {error}");
     };
     assert_eq!(path, format!("$.{name}"));
-    assert!(reason.contains("uuid"), "{reason}");
+    assert!(
+        reason.starts_with(&format!("expected {expected}, got ")),
+        "{reason}"
+    );
 }
 
 #[test]
@@ -101,7 +105,7 @@ fn generated_uuid_stamps_refuse_coercible_registry_and_row_targets() {
                     Some((target.clone(), Scalar::Null)),
                     false,
                 );
-                located(life.fill(message).unwrap_err(), identity.1);
+                located(life.fill(message).unwrap_err(), identity.1, &DataType::Uuid);
                 assert_eq!(life.alive(), 0);
                 let accepted = life
                     .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false))
@@ -143,7 +147,7 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
                     Some(target),
                     terminal,
                 );
-                located(life.fill(message).unwrap_err(), identity.1);
+                located(life.fill(message).unwrap_err(), identity.1, &DataType::Uuid);
                 assert_eq!(life.alive(), 1, "a refusal cannot close the live chain");
                 let independent = life
                     .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false))
@@ -180,8 +184,233 @@ fn registered_uuid_targets_retype_null_row_columns_without_erasing_uuid_values()
                 &DataType::Uuid,
             );
             assert_eq!(life.alive(), 1);
+            life.clear();
+            assert_eq!(life.alive(), 0);
             assert_eq!(life.fill(message.clone()).unwrap(), message);
             assert_eq!(life.alive(), 1);
+        }
+    }
+}
+
+fn clock_type() -> DataType {
+    DataType::DateTime64 {
+        unit: TimeUnit::Nanosecond,
+        timezone: Timezone::UTC,
+    }
+}
+
+fn clock(instant: i64) -> Scalar {
+    Scalar::datetime64(instant, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
+}
+
+fn timed_event(
+    registry: Arc<FixRegistry>,
+    identifiers: &[(&str, &str)],
+    target: Option<(Field, Scalar)>,
+    terminal: bool,
+    instant: i64,
+    id: u128,
+) -> FixMsg {
+    let mut message = event(registry, identifiers, target, terminal);
+    message
+        .set_many([
+            (TIMESTAMP_TAG_NAME.0, clock(instant)),
+            (UUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(id))),
+        ])
+        .unwrap();
+    message
+}
+
+fn previous(message: &FixMsg, expected: Option<(i64, Uuid)>) {
+    let (timestamp, uuid) = expected.map_or((Scalar::Null, Scalar::Null), |(instant, uuid)| {
+        (clock(instant), Scalar::Uuid(uuid))
+    });
+    assert_eq!(
+        message.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+        &timestamp
+    );
+    assert_eq!(message.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &uuid);
+}
+
+fn invalid_previous_targets() -> impl Iterator<Item = ((i32, &'static str), DataType)> {
+    [
+        (
+            PREVTIMESTAMP_TAG_NAME,
+            vec![
+                DataType::Uuid,
+                DataType::utf8(),
+                DataType::binary(),
+                DataType::Int64,
+                DataType::DateTime64 {
+                    unit: TimeUnit::Microsecond,
+                    timezone: Timezone::UTC,
+                },
+                DataType::DateTime64 {
+                    unit: TimeUnit::Nanosecond,
+                    timezone: Timezone::NAIVE,
+                },
+            ],
+        ),
+        (
+            PREVUUID_TAG_NAME,
+            vec![
+                clock_type(),
+                DataType::utf8(),
+                DataType::binary(),
+                DataType::Int64,
+            ],
+        ),
+    ]
+    .into_iter()
+    .flat_map(|(identity, types)| types.into_iter().map(move |dtype| (identity, dtype)))
+}
+
+#[test]
+fn first_null_previous_stamps_refuse_wrong_layouts_before_opening_a_chain() {
+    let registry = Arc::new(FixRegistry::new());
+    for (identity, dtype) in invalid_previous_targets() {
+        let expected = if identity == PREVTIMESTAMP_TAG_NAME {
+            clock_type()
+        } else {
+            DataType::Uuid
+        };
+        for name in [identity.1, "custom_previous"] {
+            let target = field((identity.0, name), dtype.clone());
+            for registered in [false, true] {
+                let custom = custom_registry(&registry, &target, registered);
+                for has_chain in [false, true] {
+                    let mut life = FixLifecycle::new(Arc::clone(&registry));
+                    let ids = if has_chain { &[("id", "NEW")][..] } else { &[] };
+                    let message = timed_event(
+                        Arc::clone(&custom),
+                        ids,
+                        Some((target.clone(), Scalar::Null)),
+                        false,
+                        101,
+                        101,
+                    );
+                    located(life.fill(message).unwrap_err(), name, &expected);
+                    assert_eq!(life.alive(), 0);
+                    let accepted = life
+                        .fill(timed_event(
+                            Arc::clone(&registry),
+                            &[("id", "NEW")],
+                            None,
+                            false,
+                            202,
+                            202,
+                        ))
+                        .unwrap();
+                    previous(&accepted, None);
+                    assert_eq!(life.alive(), 1);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
+    let registry = Arc::new(FixRegistry::new());
+    for (identity, dtype) in invalid_previous_targets() {
+        let expected = if identity == PREVTIMESTAMP_TAG_NAME {
+            clock_type()
+        } else {
+            DataType::Uuid
+        };
+        for name in [identity.1, "custom_previous"] {
+            let target = field((identity.0, name), dtype.clone());
+            for registered in [false, true] {
+                let custom = custom_registry(&registry, &target, registered);
+                for terminal in [false, true] {
+                    let mut life = FixLifecycle::new(Arc::clone(&registry));
+                    let live = life
+                        .fill(timed_event(
+                            Arc::clone(&registry),
+                            &[("id", "LIVE")],
+                            None,
+                            false,
+                            101,
+                            101,
+                        ))
+                        .unwrap();
+                    let persistent = uuid(&live, PUUID_TAG_NAME.0);
+                    previous(&live, None);
+                    let rejected = timed_event(
+                        Arc::clone(&custom),
+                        &[("a", "LIVE"), ("b", "NEW")],
+                        Some((target.clone(), Scalar::Null)),
+                        terminal,
+                        202,
+                        202,
+                    );
+                    located(life.fill(rejected).unwrap_err(), name, &expected);
+                    assert_eq!(life.alive(), 1, "a refused terminal cannot close");
+                    let next = life
+                        .fill(timed_event(
+                            Arc::clone(&registry),
+                            &[("id", "LIVE")],
+                            None,
+                            false,
+                            303,
+                            303,
+                        ))
+                        .unwrap();
+                    assert_eq!(uuid(&next, PUUID_TAG_NAME.0), persistent);
+                    previous(&next, Some((101, Uuid::new(101))));
+                    let independent = life
+                        .fill(timed_event(
+                            Arc::clone(&registry),
+                            &[("id", "NEW")],
+                            None,
+                            false,
+                            404,
+                            404,
+                        ))
+                        .unwrap();
+                    assert_ne!(uuid(&independent, PUUID_TAG_NAME.0), persistent);
+                    previous(&independent, None);
+                    assert_eq!(life.alive(), 2, "a refusal cannot attach an identifier");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn previous_stamps_use_the_input_tag_role_not_the_resolved_columns_name() {
+    let registry = Arc::new(FixRegistry::new());
+    for (identity, dtype) in [
+        (PREVTIMESTAMP_TAG_NAME, clock_type()),
+        (PREVUUID_TAG_NAME, DataType::Uuid),
+    ] {
+        let target = field((identity.0, "custom_previous"), dtype.clone());
+        for registered in [false, true] {
+            let custom = custom_registry(&registry, &target, registered);
+            let mut life = FixLifecycle::new(Arc::clone(&registry));
+            for (instant, id, expected) in
+                [(101, 101, None), (202, 202, Some((101, Uuid::new(101))))]
+            {
+                let message = timed_event(
+                    Arc::clone(&custom),
+                    &[("id", "LIVE")],
+                    Some((target.clone(), Scalar::Null)),
+                    false,
+                    instant,
+                    id,
+                );
+                let message = life.fill(message).unwrap();
+                previous(&message, expected);
+                assert_eq!(
+                    message
+                        .as_field()
+                        .get_field("custom_previous")
+                        .unwrap()
+                        .dtype(),
+                    &dtype,
+                );
+                assert_eq!(life.alive(), 1);
+            }
         }
     }
 }

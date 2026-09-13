@@ -1,4 +1,4 @@
-//! The value digest, the dedup adapter, and the crate's own two fields.
+//! The value digest, the dedup adapter, and the crate definitions.
 
 use super::SoleMessage;
 
@@ -239,6 +239,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "puuid",
             "targetsessionid",
             "altids",
+            "prevtimestamp",
+            "prevuuid",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -266,6 +268,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("PUuid"),
             Some("TargetSessionId"),
             Some("AltIds"),
+            Some("PrevTimestamp"),
+            Some("PrevUuid"),
         ],
     );
 
@@ -285,8 +289,21 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(identity.dtype(), &DataType::Uuid);
         assert_eq!(identity.as_fix().aliases().count(), 0);
     }
+    assert_eq!(held[21].dtype(), held[3].dtype());
+    assert_eq!(
+        held[21].dtype(),
+        &DataType::DateTime64 {
+            unit: yggdryl::TimeUnit::Nanosecond,
+            timezone: yggdryl::Timezone::UTC,
+        }
+    );
+    assert_eq!(held[22].dtype(), &DataType::Uuid);
+    for previous in &held[21..23] {
+        assert!(previous.is_nullable());
+        assert_eq!(previous.as_fix().aliases().count(), 0);
+    }
 
-    // Every one is a field from 65000 up: one tag block, in the one namespace
+    // Every definition has a tag from 65000 up: one block, in the one namespace
     // every dictionary resolves through, so a bridge row spelling `SESSIONID`
     // or `ULFROMSESSIONNAME` reaches it by name; its identity is its tag and
     // its name, and a dictionary member it is not.
@@ -315,6 +332,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         ],
         [(65_016, "instuuid"), (65_017, "uuid"), (65_018, "puuid")]
     );
+    assert_eq!(
+        [yggdryl::PREVTIMESTAMP_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
+        [(65_021, "prevtimestamp"), (65_022, "prevuuid")]
+    );
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     let sessions = &held[11..13];
     assert_eq!(
@@ -335,8 +356,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 21);
-    assert_eq!(scalar_count, 20);
+    assert_eq!(held.len(), 23);
+    assert_eq!(scalar_count, 22);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count);

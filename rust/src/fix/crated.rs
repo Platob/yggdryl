@@ -38,11 +38,11 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty scalar fields and one Map group, each registered by its shape.
+//! Twenty-two scalar fields and one Map group, each registered by its shape.
 
 use std::sync::LazyLock;
 
-use crate::{DataType, DigestAlgorithm, Field, Result, TimeUnit, Timezone};
+use crate::{DataType, DigestAlgorithm, Field, Result};
 
 /// The first tag this crate claims.
 pub const CRATE_TAG_MIN: i32 = 65_000;
@@ -118,7 +118,7 @@ pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 /// The tag and name carrying the message's time-ordered version-7 UUID.
 pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 
-/// The tag and name carrying the order chain's version-7 UUID.
+/// The tag and name carrying the event chain's UUID.
 pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 
 /// The tag and name carrying the session a message went to, as the message
@@ -127,6 +127,12 @@ pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 
 /// The tag and name of the Map group carrying the message's identifiers.
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");
+
+/// The tag and name carrying the preceding message's clock in its event chain.
+pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");
+
+/// The tag and name carrying the preceding message's UUID in its event chain.
+pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
@@ -329,10 +335,7 @@ fn build() -> Result<Vec<Field>> {
         crated(
             TIMESTAMP_TAG_NAME,
             "Timestamp",
-            DataType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
-                timezone: Timezone::UTC,
-            },
+            super::schema::CLOCK_DATATYPE,
             "The timestamp a capture is ordered by: the row's own clock, else \
              the first clock the message answers in decreasing exactness.",
         )?,
@@ -482,6 +485,18 @@ fn build() -> Result<Vec<Field>> {
             "The session a message went to, as the message states it.",
         )?,
         altids,
+        crated(
+            PREVTIMESTAMP_TAG_NAME,
+            "PrevTimestamp",
+            super::schema::CLOCK_DATATYPE,
+            "The preceding message's timestamp in the selected event chain.",
+        )?,
+        crated(
+            PREVUUID_TAG_NAME,
+            "PrevUuid",
+            DataType::Uuid,
+            "The preceding message's UUID in the selected event chain.",
+        )?,
     ])
 }
 
@@ -502,8 +517,12 @@ fn partition_transform() -> String {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
+/// assert_eq!(held.len(), 23);
 /// assert_eq!(held[0].name(), "msghash");
 /// assert_eq!(held[0].display(), Some("MsgHash"));
+/// assert_eq!(held[21].dtype(), held[3].dtype());
+/// assert_eq!(held[22].dtype(), &yggdryl::DataType::Uuid);
+/// assert!(held[21].is_nullable() && held[22].is_nullable());
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
 /// let (tag, name) = yggdryl::MSGHASH_TAG_NAME;
