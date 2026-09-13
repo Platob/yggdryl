@@ -1132,10 +1132,7 @@ impl TextLines {
                     reason,
                 )
             })?;
-        Ok(parsed
-            .as_temporal()
-            .map(|held| i128::from(held.count()))
-            .or(self.mtime))
+        Ok(parsed.temporal_count().map(i128::from).or(self.mtime))
     }
 }
 

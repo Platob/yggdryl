@@ -739,20 +739,19 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
 /// crate's calendar in exactly one place; the cost is a small allocation per
 /// row, which the vectorized tier does not pay.
 fn calendar_part(value: &Scalar, function: Function) -> Scalar {
-    use crate::types::Temporal;
     use crate::types::temporal::iso;
 
     let text = match value {
-        Scalar::Temporal(Temporal::Date32(date)) => iso::format_date(date.count()),
-        Scalar::Temporal(Temporal::Date64(date)) => value
+        Scalar::Date32(date) => iso::format_date(date.count()),
+        Scalar::Date64(date) => value
             .temporal_count_at(TimeUnit::Day)
             .and_then(|days| i32::try_from(days).ok())
             .and_then(iso::format_date)
             .or_else(|| iso::format_datetime(date.count(), date.unit())),
-        Scalar::Temporal(Temporal::DateTime64(datetime)) if datetime.timezone().is_naive() => {
+        Scalar::DateTime64(datetime) if datetime.timezone().is_naive() => {
             iso::format_datetime(datetime.count(), datetime.unit())
         }
-        Scalar::Temporal(Temporal::DateTime64(datetime)) => {
+        Scalar::DateTime64(datetime) => {
             iso::format_timestamp(datetime.count(), datetime.unit(), &datetime.timezone())
         }
         _ => None,

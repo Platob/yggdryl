@@ -11,7 +11,6 @@ use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::media::IORecordOptions as _;
-use crate::types::Integer;
 use crate::{DataType, Result, Scalar};
 
 use super::line::TextLine;
@@ -487,8 +486,7 @@ fn apply(
         }
         TextSource::Rownum => {
             let number = value
-                .as_integer()
-                .and_then(Integer::as_i128)
+                .as_i128()
                 .and_then(|number| u64::try_from(number - i128::from(start_rownum)).ok())
                 .ok_or_else(|| {
                     refused(SmolStr::new_static(
@@ -498,8 +496,8 @@ fn apply(
             line.set_index(number);
         }
         TextSource::Timestamp => {
-            if let Some(held) = value.as_temporal() {
-                line.set_timestamp(Some(i128::from(held.count())));
+            if let Some(count) = value.temporal_count() {
+                line.set_timestamp(Some(i128::from(count)));
             }
         }
         TextSource::BodyType => {
@@ -520,8 +518,7 @@ fn apply(
         }
         TextSource::DroppedByteSize => {
             let size = value
-                .as_integer()
-                .and_then(Integer::as_i128)
+                .as_i128()
                 .and_then(|size| u64::try_from(size).ok())
                 .ok_or_else(|| {
                     refused(SmolStr::new_static(

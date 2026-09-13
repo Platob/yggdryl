@@ -83,14 +83,14 @@ fn a_fix_declared_row_types_the_text_a_message_carried() {
     assert_eq!(columns[6], Scalar::from(9_i64));
 
     // The instant reads at nanoseconds, so the fraction survives.
-    let at = columns[4].as_temporal().expect("a temporal reading");
-    assert_eq!(at.count(), 1_788_516_000_000_000_001);
-    assert_eq!(at.unit(), TimeUnit::Nanosecond);
-    let day = columns[5].as_temporal().expect("a temporal reading");
+    let at = &columns[4];
+    assert_eq!(at.temporal_count(), Some(1_788_516_000_000_000_001));
+    assert_eq!(at.temporal_unit(), Some(TimeUnit::Nanosecond));
+    let day = &columns[5];
     // The same day, now counted from the epoch in nanoseconds because a date
     // is an instant at midnight.
-    assert_eq!(day.count(), 20_700 * 86_400 * 1_000_000_000);
-    assert_eq!(day.unit(), TimeUnit::Nanosecond);
+    assert_eq!(day.temporal_count(), Some(20_700 * 86_400 * 1_000_000_000));
+    assert_eq!(day.temporal_unit(), Some(TimeUnit::Nanosecond));
 
     // A value that does not fit the resolved datatype is refused by that
     // datatype, never by the name that spelled it.

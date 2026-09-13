@@ -147,13 +147,15 @@ pub fn unix_from_scalar(value: &Scalar, unit: TimeUnit) -> Result<i64> {
             kind: "int64",
         });
     }
-    if let Some(temporal) = value.as_temporal() {
-        return match temporal.family() {
-            TemporalFamily::DateTime | TemporalFamily::Date => {
-                restate_unix(temporal.count(), temporal.unit(), unit)
-            }
+    if let (Some(family), Some(count), Some(source)) = (
+        value.temporal_family(),
+        value.temporal_count(),
+        value.temporal_unit(),
+    ) {
+        return match family {
+            TemporalFamily::DateTime | TemporalFamily::Date => restate_unix(count, source, unit),
             TemporalFamily::Time | TemporalFamily::Duration | TemporalFamily::Interval => {
-                Err(not_an_instant(temporal.family().as_str()))
+                Err(not_an_instant(family.as_str()))
             }
         };
     }

@@ -630,9 +630,12 @@ fn read_leaf(from: Wire, reader: &Node, cursor: &mut Cursor<'_>) -> Result<Scala
                 super::datum::duration_from_bytes(cursor.take(size)?, cursor.position)?;
             super::datum::node_scalar(
                 reader,
-                Scalar::Temporal(crate::types::Temporal::Interval(
-                    crate::types::Interval::new(months, days, nanoseconds, TimeUnit::MonthDayNano)?,
-                )),
+                Scalar::Interval(crate::types::Interval::new(
+                    months,
+                    days,
+                    nanoseconds,
+                    TimeUnit::MonthDayNano,
+                )?),
             )?
         }
         Node::UuidFixed(_) | Node::Fixed(_) => {
@@ -805,9 +808,12 @@ fn default_value_at(
             let (months, days, nanoseconds) = super::datum::duration_from_bytes(&bytes, 0)?;
             super::datum::node_scalar(
                 node,
-                Scalar::Temporal(crate::types::Temporal::Interval(
-                    crate::types::Interval::new(months, days, nanoseconds, TimeUnit::MonthDayNano)?,
-                )),
+                Scalar::Interval(crate::types::Interval::new(
+                    months,
+                    days,
+                    nanoseconds,
+                    TimeUnit::MonthDayNano,
+                )?),
             )?
         }
         Node::Decimal(decimal) => {

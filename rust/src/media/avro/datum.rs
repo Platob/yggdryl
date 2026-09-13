@@ -9,7 +9,7 @@ use smol_str::{SmolStr, format_smolstr};
 use std::collections::HashMap;
 
 use crate::TimeUnit;
-use crate::types::{Interval, Nested, Temporal};
+use crate::types::Interval;
 use crate::{Error, Limits, Result, Scalar, Timezone};
 
 use super::schema::{Node, RecordType};
@@ -279,12 +279,12 @@ impl DatumCodec<'_> {
                 Node::Duration(fixed) => {
                     let (months, days, nanoseconds) =
                         duration_from_bytes(cursor.take(fixed.size)?, cursor.position)?;
-                    Scalar::Temporal(Temporal::Interval(Interval::new(
+                    Scalar::Interval(Interval::new(
                         months,
                         days,
                         nanoseconds,
                         TimeUnit::MonthDayNano,
-                    )?))
+                    )?)
                 }
                 Node::UuidFixed(fixed) | Node::Fixed(fixed) => {
                     node_scalar(node, Scalar::from(cursor.take(fixed.size)?))?
@@ -556,7 +556,7 @@ impl DatumCodec<'_> {
                 }
                 Node::Date => {
                     let days = match value {
-                        Scalar::Temporal(Temporal::Date32(date)) => date.count(),
+                        Scalar::Date32(date) => date.count(),
                         other => int_value(other, "date")?,
                     };
                     put_long(target, i64::from(days));
@@ -656,7 +656,7 @@ impl DatumCodec<'_> {
                     }
                 }
                 Node::Duration(fixed) => {
-                    let Scalar::Temporal(Temporal::Interval(interval)) = value else {
+                    let Scalar::Interval(interval) = value else {
                         return Err(mismatch("duration", value));
                     };
                     if interval.unit() != TimeUnit::MonthDayNano {
@@ -741,7 +741,7 @@ impl DatumCodec<'_> {
                 Node::Map(values) => {
                     let depth = self.descend(depth)?;
                     match value {
-                        Scalar::Nested(Nested::Record(entries)) => {
+                        Scalar::Record(entries) => {
                             if !entries.as_map().is_empty() {
                                 put_long(target, entries.as_map().len() as i64);
                                 for (key, item) in entries.as_map() {
@@ -750,7 +750,7 @@ impl DatumCodec<'_> {
                                 }
                             }
                         }
-                        Scalar::Nested(Nested::Mapping(entries)) => {
+                        Scalar::Mapping(entries) => {
                             if !entries.as_slice().is_empty() {
                                 put_long(target, entries.as_slice().len() as i64);
                                 for (key, item) in entries.as_slice() {
@@ -838,9 +838,7 @@ impl DatumCodec<'_> {
             Node::Bytes => value.as_bytes().is_some(),
             Node::String | Node::Enum(_) => value.as_str().is_some(),
             Node::Uuid => uuid_value(value).is_ok(),
-            Node::Date => {
-                matches!(value, Scalar::Temporal(Temporal::Date32(_))) || value.as_i64().is_some()
-            }
+            Node::Date => matches!(value, Scalar::Date32(_)) || value.as_i64().is_some(),
             Node::TimeMillis | Node::TimeMicros => {
                 time_parts(value).is_some() || value.as_i64().is_some()
             }
@@ -855,7 +853,7 @@ impl DatumCodec<'_> {
             }
             Node::Duration(_) => matches!(
                 value,
-                Scalar::Temporal(Temporal::Interval(interval))
+                Scalar::Interval(interval)
                     if interval.unit() == TimeUnit::MonthDayNano
             ),
             Node::Fixed(fixed) => {
@@ -895,8 +893,8 @@ fn int_value(value: &Scalar, expected: &str) -> Result<i32> {
 /// Split a time-of-day value into its count and unit.
 fn time_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
     match value {
-        Scalar::Temporal(Temporal::Time32(time)) => Some((i64::from(time.count()), time.unit())),
-        Scalar::Temporal(Temporal::Time64(time)) => Some((time.count(), time.unit())),
+        Scalar::Time32(time) => Some((i64::from(time.count()), time.unit())),
+        Scalar::Time64(time) => Some((time.count(), time.unit())),
         _ => None,
     }
 }
@@ -904,7 +902,7 @@ fn time_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
 /// Split an instant value into its count and unit.
 fn instant_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
     match value {
-        Scalar::Temporal(Temporal::DateTime64(datetime)) if !datetime.timezone().is_naive() => {
+        Scalar::DateTime64(datetime) if !datetime.timezone().is_naive() => {
             Some((datetime.count(), datetime.unit()))
         }
         _ => None,
@@ -914,7 +912,7 @@ fn instant_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
 /// Split a naive wall-clock value into its count and unit.
 fn datetime_parts(value: &Scalar) -> Option<(i64, TimeUnit)> {
     match value {
-        Scalar::Temporal(Temporal::DateTime64(datetime)) if datetime.timezone().is_naive() => {
+        Scalar::DateTime64(datetime) if datetime.timezone().is_naive() => {
             Some((datetime.count(), datetime.unit()))
         }
         _ => None,
@@ -962,11 +960,13 @@ fn convert_count(count: i64, from: TimeUnit, to: TimeUnit) -> Option<i64> {
 /// Read a decimal's unscaled integer at the schema's scale.
 fn decimal_unscaled(value: &Scalar, scale: u32) -> Result<i128> {
     match value {
-        Scalar::Decimal(_) => value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
-            invalid(format_smolstr!(
-                "expected a decimal exactly representable at scale {scale}"
-            ))
-        }),
+        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => {
+            value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a decimal exactly representable at scale {scale}"
+                ))
+            })
+        }
         other => {
             if let Some(bytes) = other.as_bytes() {
                 return decimal_from_bytes(bytes).ok_or_else(|| {

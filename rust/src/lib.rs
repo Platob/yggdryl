@@ -124,10 +124,9 @@ pub use types::protocol::{
 };
 pub use types::{
     Bytes, Children, Code, CodeValue, DecimalValue, Differences, Enum, Field, FieldRecord,
-    FieldRef, FieldScalar, FieldType, Floating, FloatingValue, GeospatialValue, Integer,
-    IntegerValue, NestedValue, OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty,
-    Scalar, ScalarFamily, ScalarValue, Str, TemporalFamily, TemporalValue, TypedField,
-    TypedFieldRef,
+    FieldRef, FieldScalar, FieldType, FloatingValue, GeospatialValue, IntegerValue, NestedValue,
+    OwnedDifferences, PartitionFieldNames, PartitionFields, Pretty, Scalar, ScalarFamily,
+    ScalarValue, Str, TemporalFamily, TemporalValue, TypedField, TypedFieldRef,
 };
 pub use types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,

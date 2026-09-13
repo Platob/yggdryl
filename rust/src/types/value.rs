@@ -21,8 +21,8 @@ use crate::types::integer::{
 use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    Code, Decimal, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Str, StringParameters,
-    Temporal, ascii_bytes, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
+    Code, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Str, StringParameters,
+    ascii_bytes, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
     value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
@@ -528,13 +528,12 @@ fn temporal_matches(
     family: TemporalFamily,
     expected_zone: Option<&Timezone>,
 ) -> bool {
-    let Some(temporal) = value.as_temporal() else {
+    let Some(zone) = value.temporal_timezone() else {
         return false;
     };
-    if temporal.family() != family {
+    if value.temporal_family() != Some(family) {
         return false;
     }
-    let zone = temporal.timezone();
     match (family, expected_zone) {
         (TemporalFamily::DateTime, Some(expected)) => zone == *expected,
         (TemporalFamily::DateTime, None) => zone.is_naive(),
@@ -582,7 +581,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let coefficient = i32::try_from(coefficient).map_err(|_| {
                 canonical_error("decimal32 coefficient does not fit signed 32 bits")
             })?;
-            let canonical = Scalar::Decimal(Decimal::D32(Decimal32::new(coefficient, *scale)));
+            let canonical = Scalar::D32(Decimal32::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -596,7 +595,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let coefficient = i64::try_from(coefficient).map_err(|_| {
                 canonical_error("decimal64 coefficient does not fit signed 64 bits")
             })?;
-            let canonical = Scalar::Decimal(Decimal::D64(Decimal64::new(coefficient, *scale)));
+            let canonical = Scalar::D64(Decimal64::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -607,7 +606,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     path: SmolStr::new_static("$"),
                     reason: format_smolstr!("expected a d128 representable at scale {scale}"),
                 })?;
-            let canonical = Scalar::Decimal(Decimal::D128(Decimal128::new(coefficient, *scale)));
+            let canonical = Scalar::D128(Decimal128::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -897,58 +896,30 @@ pub(crate) fn canonical_error(reason: &'static str) -> Error {
 
 fn same_decimal_representation(left: &Scalar, right: &Scalar) -> bool {
     match (left, right) {
-        (Scalar::Decimal(Decimal::D32(left)), Scalar::Decimal(Decimal::D32(right))) => {
-            left == right
-        }
-        (Scalar::Decimal(Decimal::D64(left)), Scalar::Decimal(Decimal::D64(right))) => {
-            left == right
-        }
-        (Scalar::Decimal(Decimal::D128(left)), Scalar::Decimal(Decimal::D128(right))) => {
-            left == right
-        }
-        (Scalar::Decimal(Decimal::D256(left)), Scalar::Decimal(Decimal::D256(right))) => {
-            left == right
-        }
+        (Scalar::D32(left), Scalar::D32(right)) => left == right,
+        (Scalar::D64(left), Scalar::D64(right)) => left == right,
+        (Scalar::D128(left), Scalar::D128(right)) => left == right,
+        (Scalar::D256(left), Scalar::D256(right)) => left == right,
         _ => false,
     }
 }
 
 fn same_temporal_representation(left: &Scalar, right: &Scalar) -> bool {
     match (left, right) {
-        (Scalar::Temporal(Temporal::Date32(left)), Scalar::Temporal(Temporal::Date32(right))) => {
-            left == right
-        }
-        (Scalar::Temporal(Temporal::Date64(left)), Scalar::Temporal(Temporal::Date64(right))) => {
-            left == right
-        }
-        (Scalar::Temporal(Temporal::Time32(left)), Scalar::Temporal(Temporal::Time32(right))) => {
-            left == right
-        }
-        (Scalar::Temporal(Temporal::Time64(left)), Scalar::Temporal(Temporal::Time64(right))) => {
-            left == right
-        }
-        (
-            Scalar::Temporal(Temporal::DateTime64(left)),
-            Scalar::Temporal(Temporal::DateTime64(right)),
-        ) => left == right,
-        (
-            Scalar::Temporal(Temporal::Duration32(left)),
-            Scalar::Temporal(Temporal::Duration32(right)),
-        ) => left == right,
-        (
-            Scalar::Temporal(Temporal::Duration64(left)),
-            Scalar::Temporal(Temporal::Duration64(right)),
-        ) => left == right,
-        (
-            Scalar::Temporal(Temporal::Interval(left)),
-            Scalar::Temporal(Temporal::Interval(right)),
-        ) => left == right,
+        (Scalar::Date32(left), Scalar::Date32(right)) => left == right,
+        (Scalar::Date64(left), Scalar::Date64(right)) => left == right,
+        (Scalar::Time32(left), Scalar::Time32(right)) => left == right,
+        (Scalar::Time64(left), Scalar::Time64(right)) => left == right,
+        (Scalar::DateTime64(left), Scalar::DateTime64(right)) => left == right,
+        (Scalar::Duration32(left), Scalar::Duration32(right)) => left == right,
+        (Scalar::Duration64(left), Scalar::Duration64(right)) => left == right,
+        (Scalar::Interval(left), Scalar::Interval(right)) => left == right,
         _ => false,
     }
 }
 
 fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> {
-    if let Scalar::Temporal(Temporal::Interval(interval)) = value {
+    if let Scalar::Interval(interval) = value {
         if interval.unit() != unit {
             return Err(canonical_error(
                 "interval layout does not match the declared datatype",
@@ -1010,7 +981,7 @@ fn canonical_interval(unit: TimeUnit, value: &Scalar) -> Result<(Scalar, bool)> 
         }
         _ => return Err(canonical_error("invalid interval layout")),
     };
-    Ok((Scalar::Temporal(Temporal::Interval(interval)), true))
+    Ok((Scalar::Interval(interval), true))
 }
 
 fn canonical_sequence(
@@ -1079,7 +1050,7 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
     // reads back as - so a narrower spelling of the same number is a change,
     // and the canonical value no longer depends on whether the payload needed
     // one too.
-    let id_changed = !matches!(type_id.as_integer(), Some(crate::types::Integer::I64(_)));
+    let id_changed = !matches!(type_id, Scalar::I64(_));
     if id_changed || payload_changed {
         Ok((
             Scalar::from_sequence([Scalar::from(i64::from(type_id_number)), payload]),
@@ -1326,7 +1297,7 @@ fn validate_interval_value(
     value: &Scalar,
     unit: TimeUnit,
 ) -> std::result::Result<(), ValidationFailure> {
-    if let Scalar::Temporal(Temporal::Interval(interval)) = value {
+    if let Scalar::Interval(interval) = value {
         return require(
             interval.unit() == unit,
             match unit {

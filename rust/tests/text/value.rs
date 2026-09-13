@@ -1,6 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use yggdryl::types::{Geometry, Geospatial, Nested};
+use yggdryl::types::{Geometry, Geospatial};
 use yggdryl::{I256, IOMode, Scalar, TimeUnit, Timezone};
 
 /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.
@@ -292,27 +292,21 @@ fn empty_collections_share_process_wide_backing() {
 
     let left = Scalar::from_sequence([]);
     let right = Scalar::from_sequence([]);
-    let (Scalar::Nested(Nested::Sequence(left)), Scalar::Nested(Nested::Sequence(right))) =
-        (&left, &right)
-    else {
+    let (Scalar::Sequence(left), Scalar::Sequence(right)) = (&left, &right) else {
         unreachable!();
     };
     assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
 
     let left = Scalar::from_mapping([]).unwrap();
     let right = Scalar::from_mapping([]).unwrap();
-    let (Scalar::Nested(Nested::Mapping(left)), Scalar::Nested(Nested::Mapping(right))) =
-        (&left, &right)
-    else {
+    let (Scalar::Mapping(left), Scalar::Mapping(right)) = (&left, &right) else {
         unreachable!();
     };
     assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
 
     let left = Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap();
     let right = Scalar::from_record(std::iter::empty::<(&str, Scalar)>()).unwrap();
-    let (Scalar::Nested(Nested::Record(left)), Scalar::Nested(Nested::Record(right))) =
-        (&left, &right)
-    else {
+    let (Scalar::Record(left), Scalar::Record(right)) = (&left, &right) else {
         unreachable!();
     };
     assert!(std::ptr::eq(left.as_map(), right.as_map()));

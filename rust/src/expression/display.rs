@@ -26,8 +26,7 @@ use smol_str::SmolStr;
 
 use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
 use super::{Comparison, Expression, Function, Literal, Operator, Safety};
-use crate::types::Nested;
-use crate::{DataType, Floating, Integer, Scalar};
+use crate::{DataType, Scalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -387,13 +386,11 @@ fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
         } else {
             SmolStr::new_static("false")
         }),
-        (DataType::Int64, Scalar::Integer(Integer::I64(held))) => {
-            Some(SmolStr::new(held.to_string()))
-        }
+        (DataType::Int64, Scalar::I64(held)) => Some(SmolStr::new(held.to_string())),
         // A non-finite float has no bare spelling, because `nan` and `inf`
         // are column names as often as they are numbers. It falls through to
         // the typed form, where the text is unambiguous.
-        (DataType::Float64, Scalar::Floating(Floating::F64(held))) if held.as_f64().is_finite() => {
+        (DataType::Float64, Scalar::F64(held)) if held.as_f64().is_finite() => {
             Some(SmolStr::new(float_text(held.as_f64())))
         }
         _ => None,
@@ -404,9 +401,25 @@ fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
 pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
     match value {
         Scalar::Boolean(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::Integer(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::Floating(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::Decimal(_) => value.into_decimal_utf8().map(SmolStr::new),
+        // Every integer width spells itself through its own Display.
+        Scalar::I8(_)
+        | Scalar::I16(_)
+        | Scalar::I32(_)
+        | Scalar::I64(_)
+        | Scalar::U8(_)
+        | Scalar::U16(_)
+        | Scalar::U32(_)
+        | Scalar::U64(_)
+        | Scalar::I128(_)
+        | Scalar::U128(_) => value
+            .leaf_display()
+            .map(|held| SmolStr::new(held.to_string())),
+        Scalar::F16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::F32(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => {
+            value.into_decimal_utf8().map(SmolStr::new)
+        }
         Scalar::String(held) => Some(held.storage().clone()),
         Scalar::Code(held) => Some(held.storage().clone()),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
@@ -419,9 +432,16 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Geospatial(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
         // Every temporal spells itself the one classic way, which the Arrow
         // cast leaf renders a whole column with.
-        Scalar::Temporal(_) => value.into_temporal_text(),
+        Scalar::Date32(_)
+        | Scalar::Date64(_)
+        | Scalar::Time32(_)
+        | Scalar::Time64(_)
+        | Scalar::DateTime64(_)
+        | Scalar::Duration32(_)
+        | Scalar::Duration64(_)
+        | Scalar::Interval(_) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
-        Scalar::Nested(_) => None,
+        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
     }
 }
 
@@ -461,7 +481,7 @@ fn write_struct_constructor(
 
 fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
     match value {
-        Scalar::Nested(Nested::Sequence(items)) => {
+        Scalar::Sequence(items) => {
             formatter.write_char('[')?;
             for (index, item) in items.as_slice().iter().enumerate() {
                 if index != 0 {
@@ -471,7 +491,7 @@ fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) ->
             }
             formatter.write_char(']')
         }
-        Scalar::Nested(Nested::Mapping(entries)) => {
+        Scalar::Mapping(entries) => {
             formatter.write_char('{')?;
             for (index, (key, held)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {

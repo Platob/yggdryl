@@ -397,7 +397,7 @@ pub fn into_bytes_with_formatting(
     match format {
         Format::Json => json::into_bytes_with_formatting(value, formatting),
         Format::JsonLines => match value {
-            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+            Scalar::Sequence(values) => {
                 json::into_bytes_all_with_formatting(values.as_slice(), formatting)
             }
             value => json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting),
@@ -421,7 +421,7 @@ pub fn into_utf8_with_formatting(
     match format {
         Format::Json => json::into_utf8_with_formatting(value, formatting),
         Format::JsonLines => match value {
-            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+            Scalar::Sequence(values) => {
                 json::into_utf8_all_with_formatting(values.as_slice(), formatting)
             }
             value => json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting),
@@ -446,7 +446,7 @@ pub fn into_writer_with_formatting<W: Write>(
     match format {
         Format::Json => json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+            Scalar::Sequence(values) => {
                 json::into_writer_all_with_formatting(values.as_slice().iter(), writer, formatting)
             }
             value => json::into_writer_all_with_formatting(
@@ -652,28 +652,49 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+            Scalar::Sequence(values) => {
                 for value in values.as_slice() {
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Nested(crate::types::Nested::Mapping(entries)) => {
+            Scalar::Mapping(entries) => {
                 for (key, value) in entries.as_slice() {
                     visit(key, child_depth, maximum, format)?;
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Nested(crate::types::Nested::Record(entries)) => {
+            Scalar::Record(entries) => {
                 for value in entries.as_map().values() {
                     visit(value, child_depth, maximum, format)?;
                 }
             }
             Scalar::Null
             | Scalar::Boolean(_)
-            | Scalar::Integer(_)
-            | Scalar::Floating(_)
-            | Scalar::Decimal(_)
-            | Scalar::Temporal(_)
+            | Scalar::I8(_)
+            | Scalar::I16(_)
+            | Scalar::I32(_)
+            | Scalar::I64(_)
+            | Scalar::U8(_)
+            | Scalar::U16(_)
+            | Scalar::U32(_)
+            | Scalar::U64(_)
+            | Scalar::I128(_)
+            | Scalar::U128(_)
+            | Scalar::F16(_)
+            | Scalar::F32(_)
+            | Scalar::F64(_)
+            | Scalar::D32(_)
+            | Scalar::D64(_)
+            | Scalar::D128(_)
+            | Scalar::D256(_)
+            | Scalar::Date32(_)
+            | Scalar::Date64(_)
+            | Scalar::Time32(_)
+            | Scalar::Time64(_)
+            | Scalar::DateTime64(_)
+            | Scalar::Duration32(_)
+            | Scalar::Duration64(_)
+            | Scalar::Interval(_)
             | Scalar::String(_)
             | Scalar::Code(_)
             | Scalar::Uuid(_)

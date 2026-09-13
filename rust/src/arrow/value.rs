@@ -9,9 +9,9 @@ use crate::types::budget::{
 };
 use crate::types::string::is_text_storage;
 use crate::types::{
-    Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Code, Decimal,
+    Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Code,
     ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringParameters,
-    TIMEINFORCE_WIDTH, Temporal, ascii_bytes, ascii_padded, code_cell_text, uuid_bytes, uuid_parse,
+    TIMEINFORCE_WIDTH, ascii_bytes, ascii_padded, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -343,30 +343,30 @@ pub(crate) fn value_from_array(
         },
         DataType::Interval(TimeUnit::YearMonth) => {
             let months = downcast::<IntervalYearMonthArray>(array)?.value(index);
-            Scalar::Temporal(Temporal::Interval(crate::types::Interval::new(
+            Scalar::Interval(crate::types::Interval::new(
                 months,
                 0,
                 0,
                 TimeUnit::YearMonth,
-            )?))
+            )?)
         }
         DataType::Interval(TimeUnit::DayTime) => {
             let value = downcast::<IntervalDayTimeArray>(array)?.value(index);
-            Scalar::Temporal(Temporal::Interval(crate::types::Interval::new(
+            Scalar::Interval(crate::types::Interval::new(
                 0,
                 value.days,
                 i64::from(value.milliseconds) * 1_000_000,
                 TimeUnit::DayTime,
-            )?))
+            )?)
         }
         DataType::Interval(TimeUnit::MonthDayNano) => {
             let value = downcast::<IntervalMonthDayNanoArray>(array)?.value(index);
-            Scalar::Temporal(Temporal::Interval(crate::types::Interval::new(
+            Scalar::Interval(crate::types::Interval::new(
                 value.months,
                 value.days,
                 value.nanoseconds,
                 TimeUnit::MonthDayNano,
-            )?))
+            )?)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
         DataType::Bytes(parameters) => bytes_value(*parameters, array, index)?,
@@ -519,11 +519,11 @@ pub(crate) fn value_from_array(
         DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
-            Scalar::Decimal(Decimal::D32(crate::types::Decimal32::new(value, *scale)))
+            Scalar::D32(crate::types::Decimal32::new(value, *scale))
         }
         DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
-            Scalar::Decimal(Decimal::D64(crate::types::Decimal64::new(value, *scale)))
+            Scalar::D64(crate::types::Decimal64::new(value, *scale))
         }
         DataType::Decimal128 { scale, .. } => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
@@ -1658,7 +1658,7 @@ fn interval_year_month(value: &Scalar) -> Result<i32> {
 
 fn interval_value(value: &Scalar, unit: TimeUnit) -> Result<&crate::types::Interval> {
     match value {
-        Scalar::Temporal(Temporal::Interval(interval)) if interval.unit() == unit => Ok(interval),
+        Scalar::Interval(interval) if interval.unit() == unit => Ok(interval),
         _ => Err(invalid_value_kind(
             "an interval in the declared layout",
             value,

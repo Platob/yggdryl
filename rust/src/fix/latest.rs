@@ -356,22 +356,20 @@ fn wire_text(value: &Scalar) -> Option<SmolStr> {
         Scalar::Boolean(_) => value
             .as_bool()
             .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),
-        Scalar::Integer(held) => Some(format_smolstr!("{held}")),
-        Scalar::Floating(held) => Some(format_smolstr!("{held}")),
-        Scalar::Decimal(held) => Some(format_smolstr!("{held}")),
-        Scalar::Temporal(held) => Some(format_smolstr!("{held}")),
+        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
         Scalar::Version(held) => Some(format_smolstr!("{held}")),
-        _ => None,
+        // Every number and temporal writes its leaf's own canonical text.
+        other => other.leaf_display().map(|held| format_smolstr!("{held}")),
     }
 }
 
 /// One part of a `join`: an integer spelled with two digits, which is how a
 /// day completes a month-year; anything else its wire text.
 fn joined_part(value: &Scalar) -> Option<SmolStr> {
-    match value {
-        Scalar::Integer(_) => value.as_i128().map(|held| format_smolstr!("{held:02}")),
-        other => wire_text(other),
+    if value.is_integer() {
+        return value.as_i128().map(|held| format_smolstr!("{held:02}"));
     }
+    wire_text(value)
 }
 
 /// Whether a held value is the one a rule's `when` names.

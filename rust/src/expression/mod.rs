@@ -1307,16 +1307,24 @@ const fn variant_rank(expression: &Expression) -> u8 {
 /// a `uint8` and silently widening it would change the type a comparison runs
 /// in. A value that cannot be negated keeps its [`Expression::Negate`] node.
 fn negate_value(value: &crate::Scalar) -> Option<crate::Scalar> {
-    use crate::Integer;
-    use crate::types::Temporal;
+    use crate::Scalar;
 
     matches!(
         value,
-        crate::Scalar::Integer(
-            Integer::I8(_) | Integer::I16(_) | Integer::I32(_) | Integer::I64(_) | Integer::I128(_)
-        ) | crate::Scalar::Floating(_)
-            | crate::Scalar::Decimal(_)
-            | crate::Scalar::Temporal(Temporal::Duration32(_) | Temporal::Duration64(_))
+        Scalar::I8(_)
+            | Scalar::I16(_)
+            | Scalar::I32(_)
+            | Scalar::I64(_)
+            | Scalar::I128(_)
+            | Scalar::F16(_)
+            | Scalar::F32(_)
+            | Scalar::F64(_)
+            | Scalar::D32(_)
+            | Scalar::D64(_)
+            | Scalar::D128(_)
+            | Scalar::D256(_)
+            | Scalar::Duration32(_)
+            | Scalar::Duration64(_)
     )
     .then(|| value.checked_neg().ok())
     .flatten()

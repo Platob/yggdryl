@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::SoleMessage;
 use yggdryl::hashing::xxhash::xxh128;
 use yggdryl::types::Uuid;
-use yggdryl::types::nested::{Mapping, Nested};
+use yggdryl::types::nested::Mapping;
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, DataType, Error, Field, FixCategory, FixLifecycle, FixMsg,
     FixRegistry, INSTUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
@@ -753,10 +753,10 @@ fn a_stated_foreign_hash_cannot_manufacture_an_unrelated_chain_collision() {
 #[test]
 fn duplicate_mapping_keys_are_refused_before_a_message_can_reach_lifecycle() {
     let registry = Arc::new(FixRegistry::new());
-    let mapping = Scalar::Nested(Nested::Mapping(Mapping::new(vec![
+    let mapping = Scalar::Mapping(Mapping::new(vec![
         (Scalar::from("id"), Scalar::from("A")),
         (Scalar::from("id"), Scalar::from("B")),
-    ])));
+    ]));
     let column = field(
         ALTIDS_TAG_NAME.1,
         ALTIDS_TAG_NAME.0,

@@ -416,7 +416,7 @@ impl<'msg> FixAnomalies<'msg> {
         if typed.is_none()
             && !counter
                 .as_sequence()
-                .is_some_and(|stated| stated.iter().any(|held| held.as_integer().is_some()))
+                .is_some_and(|stated| stated.iter().any(|held| held.is_integer()))
         {
             return None;
         }

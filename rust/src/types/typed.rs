@@ -629,24 +629,9 @@ impl<'a> FieldScalar<'a> {
         self.value.as_f64()
     }
 
-    /// Return the sign and magnitude of an integer of any width.
-    pub const fn as_integer(&self) -> Option<super::Integer> {
-        self.value.as_integer()
-    }
-
-    /// Return a float of any width.
-    pub const fn as_float(&self) -> Option<super::Floating> {
-        self.value.as_float()
-    }
-
     /// Return the unscaled coefficient and scale of a decimal of any width.
     pub fn as_decimal(&self) -> Option<(crate::I256, i8)> {
         self.value.as_decimal()
-    }
-
-    /// Return a temporal of any family.
-    pub const fn as_temporal(&self) -> Option<&super::Temporal> {
-        self.value.as_temporal()
     }
 
     /// Return sequence children when the value is a sequence.
@@ -780,11 +765,16 @@ fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Resul
         Some(Ok(text)) => formatter.write_str(&text),
         Some(Err(_)) | None => match value {
             Scalar::Null => formatter.write_str("null"),
-            Scalar::Temporal(held) => fmt::Display::fmt(held, formatter),
             Scalar::Bytes(held) => fmt::Display::fmt(held, formatter),
             Scalar::Geospatial(held) => fmt::Display::fmt(held, formatter),
-            Scalar::Nested(held) => fmt::Display::fmt(held, formatter),
-            _ => unreachable!("every other family spells text, answered above"),
+            // A temporal without a classic spelling and a nested value write
+            // their own leaf's form.
+            other => match other.leaf_display() {
+                Some(held) if other.is_temporal() || other.is_container() => {
+                    fmt::Display::fmt(held, formatter)
+                }
+                _ => unreachable!("every other family spells text, answered above"),
+            },
         },
     }
 }
@@ -867,7 +857,7 @@ impl From<FieldScalar<'_>> for Scalar {
 /// reader can ask for the field's reading of the value without committing to
 /// it. Every numeric accessor casts on read - text `"42"` under an `Int64`
 /// field answers `Some(42)` - by running the datatype's own value contract
-/// and reading the family view of its answer, so a reading that fails
+/// and reading the asked shape from its answer, so a reading that fails
 /// answers `None` rather than an error. [`Self::as_str`], [`Self::as_bytes`]
 /// and [`Self::as_bool`] borrow instead: they hand back the held value only
 /// when it already has that shape, and never read it - text `"true"` under
@@ -992,24 +982,9 @@ impl<'a> UncheckedFieldScalar<'a> {
         self.read()?.as_f64()
     }
 
-    /// The field's reading of the value as an integer of any width.
-    pub fn as_integer(&self) -> Option<super::Integer> {
-        self.read()?.as_integer()
-    }
-
-    /// The field's reading of the value as a float of any width.
-    pub fn as_float(&self) -> Option<super::Floating> {
-        self.read()?.as_float()
-    }
-
     /// The field's reading of the value as a decimal of any width.
     pub fn as_decimal(&self) -> Option<(crate::I256, i8)> {
         self.read()?.as_decimal()
-    }
-
-    /// The field's reading of the value as a temporal of any family.
-    pub fn as_temporal(&self) -> Option<super::Temporal> {
-        self.read()?.as_temporal().copied()
     }
 
     /// Consume the pairing and return the held value, unread.

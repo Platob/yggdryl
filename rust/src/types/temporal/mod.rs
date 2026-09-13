@@ -16,7 +16,7 @@ pub use dtypes::TemporalType;
 pub(crate) use dtypes::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
 pub use fields::*;
 pub use scalars::{
-    Date32, Date64, DateTime64, Duration32, Duration64, Interval, Temporal, TemporalFamily,
-    TemporalValue, Time32, Time64,
+    Date32, Date64, DateTime64, Duration32, Duration64, Interval, TemporalFamily, TemporalValue,
+    Time32, Time64,
 };
 pub(crate) use scalars::{validate_date64, validate_time};

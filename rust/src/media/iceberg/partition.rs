@@ -764,7 +764,7 @@ impl PartitionTransform {
         // The official literal implementation unwraps Date32 calendar
         // conversion. Core calendar arithmetic is total over i32 day counts,
         // so keep caller-controlled extremes out of that panic path.
-        if let Scalar::Temporal(crate::types::Temporal::Date32(date)) = &value {
+        if let Scalar::Date32(date) = &value {
             let days = date.count();
             let (year, month, _) = crate::timezone::civil_from_days(i64::from(days));
             let month = i32::try_from(month).map_err(|_| {

@@ -832,7 +832,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             held[column(31)].as_f64().is_some(),
             "row {row} LastPx typed from the nested row"
         );
-        assert!(held[column(60)].is_null() || matches!(held[column(60)], Scalar::Temporal(_)));
+        assert!(held[column(60)].is_null() || held[column(60)].is_temporal());
         // XmlData itself is the bytes it is, whole. It opens with a bridge
         // key - marked with a `#` by the hop that marks them, bare by the one
         // that does not - and never with a tag or a document.

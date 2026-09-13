@@ -110,46 +110,6 @@ impl fmt::Display for Record {
     }
 }
 
-/// One schema-free nested value shape.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[non_exhaustive]
-pub enum Nested {
-    /// Ordered values, whose field decides list or struct semantics.
-    Sequence(Sequence),
-    /// Ordered arbitrary-key entries.
-    Mapping(Mapping),
-    /// Name-sorted record entries.
-    Record(Record),
-}
-
-impl Nested {
-    /// Return the number of immediate children.
-    pub fn len(&self) -> usize {
-        match self {
-            Self::Sequence(value) => value.as_slice().len(),
-            Self::Mapping(value) => value.as_slice().len(),
-            Self::Record(value) => value.as_map().len(),
-        }
-    }
-
-    /// Whether this nested value has no children.
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl fmt::Display for Nested {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Sequence(value) => value.fmt(formatter),
-            Self::Mapping(value) => value.fmt(formatter),
-            Self::Record(value) => value.fmt(formatter),
-        }
-    }
-}
-
-const _: () = assert!(std::mem::size_of::<Nested>() == 24);
-
 /// A borrowed iterator over sequence values or mapping keys.
 pub enum Children<'a> {
     /// Sequence values.
@@ -199,36 +159,54 @@ impl ExactSizeIterator for Children<'_> {
 
 impl std::iter::FusedIterator for Children<'_> {}
 
+// A nested shape is its own scalar family, exactly as `Boolean` is.
 macro_rules! nested_value {
     ($leaf:ident, $variant:ident, $id:ident) => {
         impl ScalarValue for $leaf {
-            type Family = Nested;
+            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Nested;
 
             fn dtype(&self) -> Result<DataType> {
-                Scalar::Nested(Nested::$variant(self.clone())).dtype()
+                Scalar::$variant(self.clone()).dtype()
             }
 
             fn into_family(self) -> Self::Family {
-                Nested::$variant(self)
+                self
             }
 
             fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Nested::$variant(value) => Some(value),
-                    _ => None,
-                }
+                Some(family)
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Nested(Nested::$variant(self))
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Nested;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                <Self as ScalarValue>::dtype(self)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::Nested(Nested::$variant(value)) => Some(value),
+                    Scalar::$variant(value) => Some(value),
                     _ => None,
                 }
             }
@@ -267,33 +245,6 @@ impl NestedValue for Record {
 
     fn children(&self) -> Children<'_> {
         Children::Record(self.as_map().values())
-    }
-}
-
-impl ScalarFamily for Nested {
-    const KIND: DataTypeKind = DataTypeKind::Nested;
-
-    fn id(&self) -> DataTypeId {
-        match self {
-            Self::Sequence(_) => DataTypeId::List,
-            Self::Mapping(_) => DataTypeId::Map,
-            Self::Record(_) => DataTypeId::Struct,
-        }
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        self.clone().into_scalar().dtype()
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Nested(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Nested(value) => Some(value),
-            _ => None,
-        }
     }
 }
 

@@ -278,7 +278,7 @@ pub(crate) fn substitute(value: Scalar, placeholders: &Placeholders) -> Result<S
 fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result<Scalar> {
     match value {
         Scalar::String(text) => scalar(text.as_str(), placeholders, path),
-        Scalar::Nested(crate::types::Nested::Sequence(values)) => {
+        Scalar::Sequence(values) => {
             let mut replaced = Vec::with_capacity(values.as_slice().len());
             for (index, held) in values.as_slice().iter().enumerate() {
                 let mark = path.len();
@@ -288,7 +288,7 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
             }
             Ok(Scalar::from_sequence(replaced))
         }
-        Scalar::Nested(crate::types::Nested::Mapping(entries)) => {
+        Scalar::Mapping(entries) => {
             let mut replaced = Vec::with_capacity(entries.as_slice().len());
             for (key, held) in entries.as_slice() {
                 let mark = path.len();
@@ -305,7 +305,7 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
             }
             Scalar::from_mapping(replaced)
         }
-        Scalar::Nested(crate::types::Nested::Record(entries)) => {
+        Scalar::Record(entries) => {
             let mut replaced = Vec::with_capacity(entries.as_map().len());
             for (name, held) in entries.as_map() {
                 let mark = path.len();
@@ -452,7 +452,7 @@ fn default_literal(filter: &str, path: &str, at: usize) -> Result<Scalar> {
             format_smolstr!("a JSON scalar literal in `default(...)`: {error}"),
         )
     })?;
-    if matches!(value, Scalar::Nested(_)) {
+    if value.is_container() {
         return Err(refusal(
             path,
             at,
@@ -487,40 +487,46 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
         Scalar::Boolean(held) => held.to_string(),
-        Scalar::Integer(held) => held.to_string(),
-        Scalar::Floating(held) => held.to_string(),
-        Scalar::Decimal(held) => held.to_string(),
-        Scalar::Temporal(crate::types::Temporal::Date32(value)) => {
-            iso::format_date(value.count())?.to_string()
-        }
-        Scalar::Temporal(crate::types::Temporal::Date64(value)) => {
+        Scalar::I8(_)
+        | Scalar::I16(_)
+        | Scalar::I32(_)
+        | Scalar::I64(_)
+        | Scalar::U8(_)
+        | Scalar::U16(_)
+        | Scalar::U32(_)
+        | Scalar::U64(_)
+        | Scalar::I128(_)
+        | Scalar::U128(_)
+        | Scalar::F16(_)
+        | Scalar::F32(_)
+        | Scalar::F64(_)
+        | Scalar::D32(_)
+        | Scalar::D64(_)
+        | Scalar::D128(_)
+        | Scalar::D256(_) => value.leaf_display()?.to_string(),
+        Scalar::Date32(value) => iso::format_date(value.count())?.to_string(),
+        Scalar::Date64(value) => {
             let days = value.count().checked_div(86_400_000)?;
             if days.checked_mul(86_400_000)? != value.count() {
                 return None;
             }
             iso::format_date(i32::try_from(days).ok()?)?.to_string()
         }
-        Scalar::Temporal(crate::types::Temporal::Time32(value)) => {
+        Scalar::Time32(value) => {
             time_text(i64::from(value.count()), value.unit(), &value.timezone())?
         }
-        Scalar::Temporal(crate::types::Temporal::Time64(value)) => {
-            time_text(value.count(), value.unit(), &value.timezone())?
-        }
-        Scalar::Temporal(crate::types::Temporal::DateTime64(value))
-            if value.timezone().is_naive() =>
-        {
+        Scalar::Time64(value) => time_text(value.count(), value.unit(), &value.timezone())?,
+        Scalar::DateTime64(value) if value.timezone().is_naive() => {
             iso::format_datetime(value.count(), value.unit())?.to_string()
         }
-        Scalar::Temporal(crate::types::Temporal::DateTime64(value)) => {
+        Scalar::DateTime64(value) => {
             iso::format_timestamp(value.count(), value.unit(), &value.timezone())?.to_string()
         }
-        Scalar::Temporal(crate::types::Temporal::Duration32(value)) => {
+        Scalar::Duration32(value) => {
             iso::format_duration(i64::from(value.count()), value.unit())?.to_string()
         }
-        Scalar::Temporal(crate::types::Temporal::Duration64(value)) => {
-            iso::format_duration(value.count(), value.unit())?.to_string()
-        }
-        Scalar::Temporal(crate::types::Temporal::Interval(value)) => value.to_string(),
+        Scalar::Duration64(value) => iso::format_duration(value.count(), value.unit())?.to_string(),
+        Scalar::Interval(value) => value.to_string(),
         // A geometry's canonical text is WKT, the spelling every geospatial
         // reader already reads. Malformed WKB still embeds losslessly - as the
         // hex of its bytes - rather than refusing, because the value holds

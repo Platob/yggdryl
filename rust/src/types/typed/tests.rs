@@ -4,7 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use crate::types::UncheckedFieldScalar;
-use crate::types::temporal::{Interval, Temporal};
+use crate::types::temporal::Interval;
 use crate::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
@@ -151,20 +151,14 @@ fn the_accessors_are_the_values_own() {
     assert_eq!(integer.as_i64(), Some(-7));
     assert_eq!(integer.as_i128(), Some(-7));
     assert_eq!(integer.as_u64(), None);
-    assert_eq!(integer.as_integer(), Scalar::from(-7_i32).as_integer());
     assert_eq!(integer.as_bool(), None);
     assert_eq!(integer.as_f64(), None);
 
     let float = FieldScalar::infer(Scalar::from(2.5_f32)).unwrap();
     assert_eq!(float.as_f64(), Some(2.5));
-    assert_eq!(float.as_float(), Scalar::from(2.5_f32).as_float());
 
     let flag = FieldScalar::infer(Scalar::from(true)).unwrap();
     assert_eq!(flag.as_bool(), Some(true));
-
-    let instant = Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap();
-    let typed = FieldScalar::infer(instant.clone()).unwrap();
-    assert_eq!(typed.as_temporal(), instant.as_temporal());
 
     let record = Scalar::from_record([("id", Scalar::from(1_i64))]).unwrap();
     let field = record.inferred_scalar_field().unwrap();
@@ -232,9 +226,7 @@ fn the_text_is_the_canonical_spelling_the_display_writes() {
         typed.to_string(),
         format!("{:?}", row.as_sequence().unwrap())
     );
-    let interval = Scalar::Temporal(Temporal::Interval(
-        Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
-    ));
+    let interval = Scalar::Interval(Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap());
     let typed = FieldScalar::infer(interval).unwrap();
     assert_eq!(typed.to_string(), "1mo:2d:3ns@month_day_nano");
     assert_eq!(typed.into_str(), "1mo:2d:3ns@month_day_nano");
@@ -289,7 +281,6 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     assert_eq!(unchecked.as_i64(), Some(42));
     assert_eq!(unchecked.as_u64(), Some(42));
     assert_eq!(unchecked.as_i128(), Some(42));
-    assert_eq!(unchecked.as_integer(), Scalar::from(42_i64).as_integer());
     assert_eq!(unchecked.as_f64(), None);
     assert_eq!(unchecked.as_bool(), None);
     let checked = unchecked.clone().checked().unwrap();
@@ -309,10 +300,6 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     );
     let ratio = Field::new("ratio", DataType::Float64, false);
     assert_eq!(UncheckedFieldScalar::new(&ratio, "2.5").as_f64(), Some(2.5));
-    assert_eq!(
-        UncheckedFieldScalar::from_str(&ratio, "2").as_float(),
-        Scalar::from(2.0_f64).as_float()
-    );
     // An integer is not a float value, so the reading is no reading at all.
     assert_eq!(UncheckedFieldScalar::new(&ratio, 2_i64).as_f64(), None);
     // A boolean is borrowed as held, like text and bytes: a spelling of one
@@ -325,11 +312,6 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     assert_eq!(
         UncheckedFieldScalar::new(&flag, false).as_bool(),
         Some(false)
-    );
-    let day = Field::new("day", DataType::Date32, false);
-    assert_eq!(
-        UncheckedFieldScalar::from_str(&day, "2024-01-01").as_temporal(),
-        Scalar::date32(19_723).as_temporal().copied()
     );
 
     // A null is held and read as the absence it is.

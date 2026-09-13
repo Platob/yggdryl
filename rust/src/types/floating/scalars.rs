@@ -41,15 +41,9 @@ pub(crate) fn canonical_float(value: &Scalar, width: FloatWidth) -> Result<(Scal
         FloatWidth::Float64 => Scalar::from(number),
     };
     let changed = match (value, &canonical) {
-        (Scalar::Floating(Floating::F16(left)), Scalar::Floating(Floating::F16(right))) => {
-            left != right
-        }
-        (Scalar::Floating(Floating::F32(left)), Scalar::Floating(Floating::F32(right))) => {
-            left != right
-        }
-        (Scalar::Floating(Floating::F64(left)), Scalar::Floating(Floating::F64(right))) => {
-            left != right
-        }
+        (Scalar::F16(left), Scalar::F16(right)) => left != right,
+        (Scalar::F32(left), Scalar::F32(right)) => left != right,
+        (Scalar::F64(left), Scalar::F64(right)) => left != right,
         _ => true,
     };
     Ok((canonical, changed))
@@ -93,7 +87,7 @@ impl Float64 {
     /// width answering the same number answers the same hash.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        Scalar::Floating(Floating::F64(*self)).stable_hash()
+        Scalar::F64(*self).stable_hash()
     }
 }
 
@@ -257,7 +251,7 @@ impl Float16 {
     /// width answering the same number answers the same hash.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        Scalar::Floating(Floating::F16(*self)).stable_hash()
+        Scalar::F16(*self).stable_hash()
     }
 }
 
@@ -421,7 +415,7 @@ impl Float32 {
     /// width answering the same number answers the same hash.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
-        Scalar::Floating(Floating::F32(*self)).stable_hash()
+        Scalar::F32(*self).stable_hash()
     }
 }
 
@@ -545,10 +539,12 @@ impl<'de> Deserialize<'de> for Float32 {
     }
 }
 
+// Each width is its own family, as `Boolean` is: the `Scalar` variant holds
+// the leaf directly, so there is no grouping enum to widen into.
 macro_rules! floating_value {
     ($leaf:ident, $variant:ident, $id:ident, $dtype:ident, $bits:literal) => {
         impl ScalarValue for $leaf {
-            type Family = Floating;
+            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Floating;
@@ -558,23 +554,40 @@ macro_rules! floating_value {
             }
 
             fn into_family(self) -> Self::Family {
-                Floating::$variant(self)
+                self
             }
 
             fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Floating::$variant(value) => Some(value),
-                    _ => None,
-                }
+                Some(family)
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Floating(Floating::$variant(self))
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Floating;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok(DataType::$dtype)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::Floating(Floating::$variant(value)) => Some(value),
+                    Scalar::$variant(value) => Some(value),
                     _ => None,
                 }
             }
@@ -594,167 +607,13 @@ floating_value!(Float16, F16, Float16, Float16, 16);
 floating_value!(Float32, F32, Float32, Float32, 32);
 floating_value!(Float64, F64, Float64, Float64, 64);
 
-/// A copyable view over any exact floating-point width.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[non_exhaustive]
-pub enum Floating {
-    /// IEEE binary16.
-    F16(Float16),
-    /// IEEE binary32.
-    F32(Float32),
-    /// IEEE binary64.
-    F64(Float64),
-}
-
-const _: () = assert!(std::mem::size_of::<Floating>() == 16);
-
-impl Floating {
-    /// Return the exact physical bit width.
-    pub const fn bit_width(self) -> u8 {
-        match self {
-            Self::F16(_) => 16,
-            Self::F32(_) => 32,
-            Self::F64(_) => 64,
-        }
-    }
-
-    /// Return the value widened exactly to binary64.
-    pub fn as_f64(self) -> f64 {
-        match self {
-            Self::F16(value) => value.as_f64(),
-            Self::F32(value) => value.as_f64(),
-            Self::F64(value) => value.as_f64(),
-        }
-    }
-
-    /// Return the value at binary32 when no binary64 narrowing is needed.
-    pub fn as_f32(self) -> Option<f32> {
-        match self {
-            Self::F16(value) => Some(value.as_f32()),
-            Self::F32(value) => Some(value.as_f32()),
-            Self::F64(_) => None,
-        }
-    }
-
-    /// Return the value only when its exact width is binary16.
-    pub const fn as_f16(self) -> Option<half::f16> {
-        match self {
-            Self::F16(value) => Some(value.as_f16()),
-            Self::F32(_) | Self::F64(_) => None,
-        }
-    }
-
-    /// Widen this family value to the scalar root.
-    pub const fn into_scalar(self) -> Scalar {
-        Scalar::Floating(self)
-    }
-
-    /// Return the deterministic hash shared by equal widths and values.
-    pub fn stable_hash(&self) -> u64 {
-        self.into_scalar().stable_hash()
-    }
-
-    fn common(self) -> Float64 {
-        Float64::from_f64(self.as_f64())
-    }
-}
-
-impl fmt::Display for Floating {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::F16(value) => value.fmt(formatter),
-            Self::F32(value) => value.fmt(formatter),
-            Self::F64(value) => value.fmt(formatter),
-        }
-    }
-}
-
-impl PartialEq for Floating {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for Floating {}
-
-impl PartialOrd for Floating {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Floating {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.common().cmp(&other.common())
-    }
-}
-
-impl Hash for Floating {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.common().hash(state);
-    }
-}
-
-impl ScalarFamily for Floating {
-    const KIND: DataTypeKind = DataTypeKind::Floating;
-
-    fn id(&self) -> DataTypeId {
-        match self {
-            Self::F16(_) => DataTypeId::Float16,
-            Self::F32(_) => DataTypeId::Float32,
-            Self::F64(_) => DataTypeId::Float64,
-        }
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        Ok(match self {
-            Self::F16(_) => DataType::Float16,
-            Self::F32(_) => DataType::Float32,
-            Self::F64(_) => DataType::Float64,
-        })
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Floating(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Floating(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl From<half::f16> for Floating {
-    fn from(value: half::f16) -> Self {
-        Self::F16(Float16::from_f16(value))
-    }
-}
-
-impl From<f32> for Floating {
-    fn from(value: f32) -> Self {
-        Self::F32(Float32::from_f32(value))
-    }
-}
-
-impl From<f64> for Floating {
-    fn from(value: f64) -> Self {
-        Self::F64(Float64::from_f64(value))
-    }
-}
-
 impl Scalar {
     /// Build the requested width, applying IEEE rounding when narrowing.
     pub fn from_float(value: f64, bit_width: u8) -> Result<Self> {
         match bit_width {
-            16 => Ok(Self::Floating(Floating::F16(Float16::from_f16(
-                half::f16::from_f64(value),
-            )))),
-            32 => Ok(Self::Floating(Floating::F32(Float32::from_f32(
-                value as f32,
-            )))),
-            64 => Ok(Self::Floating(Floating::F64(Float64::from_f64(value)))),
+            16 => Ok(Self::F16(Float16::from_f16(half::f16::from_f64(value)))),
+            32 => Ok(Self::F32(Float32::from_f32(value as f32))),
+            64 => Ok(Self::F64(Float64::from_f64(value))),
             _ => Err(Error::InvalidRecord {
                 path: "$".into(),
                 reason: format!("float bit width must be 16, 32, or 64, got {bit_width}").into(),
@@ -764,84 +623,87 @@ impl Scalar {
 }
 
 impl Scalar {
-    /// Return the exact floating-point width and value.
-    pub const fn as_float(&self) -> Option<Floating> {
-        match self {
-            Self::Floating(value) => Some(*value),
+    /// Return a floating-point value when this is a float of any width.
+    ///
+    /// The narrower widths widen exactly, so no float answers differently
+    /// here than it would at its own width. Every width holding the same
+    /// number therefore reads the same `Float64::from_f64` key, which is what
+    /// cross-width float equality, order and hashing compare.
+    pub fn as_f64(&self) -> Option<f64> {
+        match *self {
+            Self::F16(value) => Some(value.as_f64()),
+            Self::F32(value) => Some(value.as_f64()),
+            Self::F64(value) => Some(value.as_f64()),
             _ => None,
         }
     }
 
-    /// Return a floating-point value when this is a float of either width.
-    ///
-    /// The 32-bit width widens exactly, so no float answers differently here
-    /// than it would at its own width.
-    pub fn as_f64(&self) -> Option<f64> {
-        self.as_float().map(Floating::as_f64)
-    }
-
     /// Return the 32-bit float when this is one.
     ///
-    /// The wide float does not narrow here, because `as_f64` widening is
-    /// exact and narrowing is not; a caller who wants the rounding asks for
-    /// it with `as f32` where the loss is visible.
+    /// A 16-bit float widens exactly and answers too. The wide float does not
+    /// narrow here, because `as_f64` widening is exact and narrowing is not; a
+    /// caller who wants the rounding asks for it with `as f32` where the loss
+    /// is visible.
     pub fn as_f32(&self) -> Option<f32> {
-        self.as_float().and_then(Floating::as_f32)
+        match *self {
+            Self::F16(value) => Some(value.as_f32()),
+            Self::F32(value) => Some(value.as_f32()),
+            _ => None,
+        }
     }
 
     /// Return the 16-bit float when this is one.
     pub const fn as_f16(&self) -> Option<half::f16> {
-        match self.as_float() {
-            Some(value) => value.as_f16(),
-            None => None,
+        match *self {
+            Self::F16(value) => Some(value.as_f16()),
+            _ => None,
         }
     }
 }
 
 impl From<f32> for Scalar {
     fn from(value: f32) -> Self {
-        Self::Floating(Floating::F32(Float32::from_f32(value)))
+        Self::F32(Float32::from_f32(value))
     }
 }
 
 impl From<half::f16> for Scalar {
     fn from(value: half::f16) -> Self {
-        Self::Floating(Floating::F16(Float16::from_f16(value)))
+        Self::F16(Float16::from_f16(value))
     }
 }
 
 impl From<f64> for Scalar {
     fn from(value: f64) -> Self {
-        Self::Floating(Floating::F64(Float64::from_f64(value)))
-    }
-}
-
-impl From<Floating> for Scalar {
-    fn from(value: Floating) -> Self {
-        value.into_scalar()
+        Self::F64(Float64::from_f64(value))
     }
 }
 
 impl From<Float16> for Scalar {
     fn from(value: Float16) -> Self {
-        Self::Floating(Floating::F16(value))
+        Self::F16(value)
     }
 }
 
 impl From<Float32> for Scalar {
     fn from(value: Float32) -> Self {
-        Self::Floating(Floating::F32(value))
+        Self::F32(value)
     }
 }
 
 impl From<Float64> for Scalar {
     fn from(value: Float64) -> Self {
-        Self::Floating(Floating::F64(value))
+        Self::F64(value)
     }
 }
 
 pub(crate) fn float_value_width(value: &Scalar) -> Option<u8> {
-    value.as_float().map(|value| value.bit_width())
+    match value {
+        Scalar::F16(_) => Some(16),
+        Scalar::F32(_) => Some(32),
+        Scalar::F64(_) => Some(64),
+        _ => None,
+    }
 }
 
 pub(crate) fn float_width(dtype: &DataType) -> Option<u8> {
@@ -882,18 +744,18 @@ pub(crate) fn float_arithmetic(
             let left = left_number as f32;
             let right = right_number as f32;
             let held = float_operation(left, operation, right);
-            Scalar::Floating(Floating::F16(Float16::from_f16(half::f16::from_f32(held))))
+            Scalar::F16(Float16::from_f16(half::f16::from_f32(held)))
         }
-        32 => Scalar::Floating(Floating::F32(Float32::from_f32(float_operation(
+        32 => Scalar::F32(Float32::from_f32(float_operation(
             left_number as f32,
             operation,
             right_number as f32,
-        )))),
-        _ => Scalar::Floating(Floating::F64(Float64::from_f64(float_operation(
+        ))),
+        _ => Scalar::F64(Float64::from_f64(float_operation(
             left_number,
             operation,
             right_number,
-        )))),
+        ))),
     })
 }
 

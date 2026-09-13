@@ -1,7 +1,6 @@
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::Nested;
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
@@ -169,7 +168,7 @@ fn sequence(
 /// Descend a document object or ordered array under a struct's children.
 fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::Nested(Nested::Record(entries)) => {
+        Scalar::Record(entries) => {
             let prepared = entries
                 .as_map()
                 .iter()
@@ -182,7 +181,7 @@ fn structure(value: Scalar, fields: &crate::Fields, field: &Field) -> Result<Sca
                 .collect::<Result<Vec<_>>>()?;
             Scalar::from_record(prepared)
         }
-        Scalar::Nested(Nested::Sequence(values)) => {
+        Scalar::Sequence(values) => {
             if values.as_slice().len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
@@ -231,10 +230,10 @@ fn mapping(value: Scalar, map: &crate::MapType, field: &Field) -> Result<Scalar>
         ));
     };
     let entries = match value {
-        Scalar::Nested(Nested::Mapping(entries)) => entries.as_slice().to_vec(),
+        Scalar::Mapping(entries) => entries.as_slice().to_vec(),
         // A record is a map keyed by name, which the value contract reads too;
         // the entries are shaped here so the walk reaches their byte leaves.
-        Scalar::Nested(Nested::Record(entries)) => entries
+        Scalar::Record(entries) => entries
             .as_map()
             .iter()
             .map(|(name, value)| (Scalar::from(name.as_str()), value.clone()))

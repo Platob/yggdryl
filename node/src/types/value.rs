@@ -10,7 +10,6 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::types::temporal::Temporal;
 use yggdryl::{DataType, Field as CoreField, I256, Scalar, TemporalFamily, TimeUnit};
 
 use crate::napi_error;
@@ -273,8 +272,8 @@ fn temporal_value_to_js<'env>(
     unit: TimeUnit,
     bit_width: u8,
 ) -> Result<Unknown<'env>> {
-    let temporal = value.as_temporal();
-    if temporal.is_some_and(|value| value.family() != family) {
+    let temporal = value.temporal_family();
+    if temporal.is_some_and(|held| held != family) {
         return Err(napi_error("invalid native temporal family"));
     }
     let count = temporal
@@ -346,7 +345,7 @@ fn text_or_binary_to_js<'env>(
 }
 
 fn interval_to_js<'env>(env: &'env Env, value: &Scalar, unit: TimeUnit) -> Result<Unknown<'env>> {
-    let Some(Temporal::Interval(interval)) = value.as_temporal() else {
+    let Scalar::Interval(interval) = value else {
         return Err(napi_error("invalid native interval value"));
     };
     if interval.unit() != unit {

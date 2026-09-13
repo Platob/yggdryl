@@ -91,15 +91,18 @@ fn generic_float_selector_keeps_width_and_common_value_semantics() {
     let f32 = Scalar::from_float(1.5, 32).unwrap();
     let f64 = Scalar::from_float(1.5, 64).unwrap();
 
-    assert_eq!(f16.as_float().unwrap().bit_width(), 16);
-    assert_eq!(f32.as_float().unwrap().bit_width(), 32);
-    assert_eq!(f64.as_float().unwrap().bit_width(), 64);
-    assert_eq!(f16.as_float().unwrap().into_scalar(), f16);
+    // The variant is the width; `kind` and `id` state it.
+    assert!(matches!(f16, Scalar::F16(_)));
+    assert!(matches!(f32, Scalar::F32(_)));
+    assert!(matches!(f64, Scalar::F64(_)));
+    assert_eq!([f16.kind(), f32.kind(), f64.kind()], ["f16", "f32", "f64"]);
+    assert_eq!(f16.id(), DataTypeId::Float16);
+    assert_eq!(f16, f32);
     assert_eq!(f32, f64);
-    assert_eq!(
-        f32.as_float().unwrap().stable_hash(),
-        f64.as_float().unwrap().stable_hash()
-    );
+    assert_eq!(f32.stable_hash(), f64.stable_hash());
+    assert_eq!(f16.as_f16(), Some(half::f16::from_f32(1.5)));
+    assert_eq!(f32.as_f32(), Some(1.5));
+    assert_eq!(f64.as_f32(), None);
     for invalid in [0, 15, 17, 31, 33, 63, 65, u8::MAX] {
         assert!(Scalar::from_float(1.5, invalid).is_err());
     }
@@ -119,30 +122,234 @@ fn generic_float_selector_keeps_width_and_common_value_semantics() {
                 .is_sign_negative()
         );
     }
-    assert!(Scalar::from(1).as_float().is_none());
+    assert!(Scalar::from(1).as_f64().is_none());
 }
 
 #[test]
-fn integer_family_preserves_width_with_logical_comparison() {
-    let signed = Scalar::from(7).as_integer().unwrap();
-    let unsigned = Scalar::from(7).as_integer().unwrap();
-    let minimum = Scalar::from(i128::MIN).as_integer().unwrap();
-    let maximum = Scalar::from(u128::MAX).as_integer().unwrap();
-    let first_unsigned_only = Scalar::from(i128::MAX as u128 + 1).as_integer().unwrap();
+fn integer_widths_preserve_width_with_logical_comparison() {
+    let signed = Scalar::from(7_i32);
+    let unsigned = Scalar::from(7_u8);
+    let minimum = Scalar::from(i128::MIN);
+    let maximum = Scalar::from(u128::MAX);
+    let first_unsigned_only = Scalar::from(i128::MAX as u128 + 1);
 
+    assert!(matches!(signed, Scalar::I32(_)));
+    assert!(matches!(unsigned, Scalar::U8(_)));
     assert_eq!(signed, unsigned);
     assert_eq!(signed.as_i128(), Some(7));
     assert_eq!(signed.as_u128(), Some(7));
-    assert_eq!(signed.into_scalar(), Scalar::from(7));
-    assert_eq!(minimum.into_scalar(), Scalar::from(i128::MIN));
+    assert_eq!(unsigned.as_i128(), Some(7));
+    assert_eq!(minimum.as_i128(), Some(i128::MIN));
+    assert_eq!(minimum.as_u128(), None);
     assert_eq!(maximum.as_i128(), None);
-    assert_eq!(maximum.into_scalar(), Scalar::from(u128::MAX));
+    assert_eq!(maximum.as_u128(), Some(u128::MAX));
     assert_eq!(first_unsigned_only.as_i128(), None);
+    assert_eq!(first_unsigned_only.as_u128(), Some(i128::MAX as u128 + 1));
+    assert!(Scalar::from(1.5).as_i128().is_none());
+    assert!(!Scalar::from(1.5).is_integer());
+}
+
+#[test]
+fn the_integer_sign_and_magnitude_reader_answers_every_width() {
+    use crate::types::integer::scalars::{compare_integer_parts, integer_parts};
+    use std::cmp::Ordering;
+
+    let cases = [
+        (Scalar::from(-7_i8), Some((true, 7))),
+        (Scalar::from(-7_i16), Some((true, 7))),
+        (Scalar::from(-7_i32), Some((true, 7))),
+        (Scalar::from(-7_i64), Some((true, 7))),
+        (
+            Scalar::from(i128::MIN),
+            Some((true, i128::MIN.unsigned_abs())),
+        ),
+        (Scalar::from(7_u8), Some((false, 7))),
+        (Scalar::from(7_u16), Some((false, 7))),
+        (Scalar::from(7_u32), Some((false, 7))),
+        (Scalar::from(7_u64), Some((false, 7))),
+        (Scalar::from(u128::MAX), Some((false, u128::MAX))),
+        (Scalar::from(0_i32), Some((false, 0))),
+        (Scalar::from(7.0), None),
+        (Scalar::d128(7, 0), None),
+        (Scalar::Null, None),
+    ];
+    for (value, expected) in &cases {
+        assert_eq!(integer_parts(value), *expected, "{value:?}");
+    }
+
+    assert_eq!(compare_integer_parts((true, 1), (false, 0)), Ordering::Less);
+    assert_eq!(compare_integer_parts((true, 2), (true, 1)), Ordering::Less);
     assert_eq!(
-        first_unsigned_only.into_scalar(),
-        Scalar::from(i128::MAX as u128 + 1)
+        compare_integer_parts((false, 2), (false, 1)),
+        Ordering::Greater
     );
-    assert!(Scalar::from(1.5).as_integer().is_none());
+    assert_eq!(
+        compare_integer_parts((false, 7), (false, 7)),
+        Ordering::Equal
+    );
+}
+
+#[test]
+fn cross_width_numbers_agree_in_equality_order_and_hash() {
+    use std::hash::{Hash, Hasher};
+
+    fn hash_of(value: &Scalar) -> u64 {
+        let mut hasher = std::hash::DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    // One value spelled at every width of its kind is one value.
+    let groups = [
+        vec![
+            Scalar::from(7_i8),
+            Scalar::from(7_i16),
+            Scalar::from(7_i32),
+            Scalar::from(7_i64),
+            Scalar::from(7_i128),
+            Scalar::from(7_u8),
+            Scalar::from(7_u16),
+            Scalar::from(7_u32),
+            Scalar::from(7_u64),
+            Scalar::from(7_u128),
+        ],
+        vec![
+            Scalar::from(-3_i8),
+            Scalar::from(-3_i16),
+            Scalar::from(-3_i32),
+            Scalar::from(-3_i64),
+            Scalar::from(-3_i128),
+        ],
+        vec![
+            Scalar::from(half::f16::from_f32(1.5)),
+            Scalar::from(1.5_f32),
+            Scalar::from(1.5_f64),
+        ],
+        vec![
+            Scalar::D32(crate::types::Decimal32::new(1_250, 2)),
+            Scalar::D64(crate::types::Decimal64::new(12_500, 3)),
+            Scalar::d128(125, 1),
+            Scalar::d256(I256::from_i128(125), 1),
+        ],
+    ];
+    for group in &groups {
+        for value in &group[1..] {
+            assert_eq!(&group[0], value, "{value:?}");
+            assert_eq!(group[0].cmp(value), std::cmp::Ordering::Equal);
+            assert_eq!(hash_of(&group[0]), hash_of(value), "{value:?}");
+            assert_eq!(group[0].stable_hash(), value.stable_hash(), "{value:?}");
+        }
+    }
+
+    // Order reads the logical number, never the width.
+    assert!(Scalar::from(-1_i32) < Scalar::from(0_u8));
+    assert!(Scalar::from(i128::MIN) < Scalar::from(-1_i8));
+    assert!(Scalar::from(-2_i64) < Scalar::from(-1_i8));
+    assert!(Scalar::from(u128::MAX) > Scalar::from(i128::MAX));
+    assert!(Scalar::from(255_u8) < Scalar::from(256_i16));
+    assert!(Scalar::from(half::f16::from_f32(1.0)) < Scalar::from(1.5_f64));
+    assert!(Scalar::from(2.5_f32) > Scalar::from(1.5_f64));
+    assert!(
+        Scalar::D32(crate::types::Decimal32::new(1_249, 2)) < Scalar::d256(I256::from_i128(125), 1)
+    );
+    assert!(Scalar::d128(-1, 0) < Scalar::D64(crate::types::Decimal64::new(0, 4)));
+
+    // Different kinds stay apart even when their numbers agree.
+    assert_ne!(Scalar::from(1_i32), Scalar::from(1.0_f64));
+    assert_ne!(Scalar::from(1_i32), Scalar::d128(1, 0));
+    assert_ne!(Scalar::from(1.0_f64), Scalar::d128(1, 0));
+}
+
+#[test]
+fn the_value_rank_sweep_is_unchanged() {
+    use crate::types::string::Side;
+
+    let point =
+        crate::types::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap();
+    // One value of every variant, in declaration order, with the rank it has
+    // always had. The rank is wire-visible: it orders dictionary values.
+    let values = [
+        (Scalar::Null, 0),
+        (Scalar::from(true), 1),
+        (Scalar::from(1_i8), 2),
+        (Scalar::from(1_i16), 2),
+        (Scalar::from(1_i32), 2),
+        (Scalar::from(1_i64), 2),
+        (Scalar::from(1_u8), 2),
+        (Scalar::from(1_u16), 2),
+        (Scalar::from(1_u32), 2),
+        (Scalar::from(1_u64), 2),
+        (Scalar::from(1_i128), 2),
+        (Scalar::from(1_u128), 2),
+        (Scalar::from(half::f16::from_f32(1.0)), 3),
+        (Scalar::from(1.0_f32), 3),
+        (Scalar::from(1.0_f64), 3),
+        (Scalar::D32(crate::types::Decimal32::new(1, 0)), 4),
+        (Scalar::D64(crate::types::Decimal64::new(1, 0)), 4),
+        (Scalar::d128(1, 0), 4),
+        (Scalar::d256(I256::from_i128(1), 0), 4),
+        (Scalar::date32(1), 7),
+        (Scalar::date64(86_400_000), 7),
+        (
+            Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+            8,
+        ),
+        (
+            Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+            8,
+        ),
+        (
+            Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+            9,
+        ),
+        (Scalar::duration32(1, TimeUnit::Second).unwrap(), 10),
+        (Scalar::duration64(1, TimeUnit::Second).unwrap(), 10),
+        (
+            Scalar::Interval(crate::types::Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap()),
+            16,
+        ),
+        (Scalar::from("a"), 5),
+        (Scalar::from(Side::new("1").unwrap()), 18),
+        (
+            Scalar::Uuid(
+                crate::types::uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000")
+                    .unwrap(),
+            ),
+            17,
+        ),
+        (Scalar::from(crate::Version::new(1, 2, 3)), 19),
+        (
+            Scalar::from(crate::Url::from_str("https://example.com/a").unwrap()),
+            20,
+        ),
+        (Scalar::from(TimeUnit::Second), 15),
+        (Scalar::from(b"a".as_slice()), 6),
+        (Scalar::Geospatial(super::Geospatial::Geometry(point)), 14),
+        (Scalar::from_sequence([]), 11),
+        (Scalar::from_mapping([]).unwrap(), 12),
+        (
+            Scalar::from_record(Vec::<(&str, Scalar)>::new()).unwrap(),
+            13,
+        ),
+    ];
+    assert_eq!(values.len(), 38);
+    for (value, rank) in &values {
+        assert_eq!(super::value_rank(value), *rank, "{value:?}");
+    }
+
+    // Sorting any arrangement lays the kinds out in rank order.
+    let mut sorted = values
+        .iter()
+        .rev()
+        .map(|(value, _)| value.clone())
+        .collect::<Vec<_>>();
+    sorted.sort();
+    let mut expected = values.iter().map(|(_, rank)| *rank).collect::<Vec<_>>();
+    expected.sort_unstable();
+    assert_eq!(
+        sorted.iter().map(super::value_rank).collect::<Vec<_>>(),
+        expected
+    );
 }
 
 #[test]
@@ -243,9 +450,8 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
 
 #[test]
 fn the_structural_wire_validates_interval_layouts() {
-    let value = Scalar::Temporal(super::Temporal::Interval(
-        crate::types::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap(),
-    ));
+    let value =
+        Scalar::Interval(crate::types::Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap());
     let encoded = serde_json::to_string(&value).unwrap();
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, value);
@@ -389,13 +595,17 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     assert_eq!(<Float32 as ScalarValue>::KIND, DataTypeKind::Floating);
     assert_eq!(ScalarValue::dtype(&leaf).unwrap(), DataType::Float32);
     assert_eq!(<Float32 as ScalarValue>::from_scalar(&scalar), Some(&leaf));
-    let family = ScalarValue::into_family(leaf);
+    // A width leaf is its own family.
+    let family: Float32 = ScalarValue::into_family(leaf);
+    assert_eq!(family, leaf);
+    assert_eq!(<Float32 as ScalarValue>::from_family(&family), Some(&leaf));
     assert_eq!(ScalarFamily::id(&family), DataTypeId::Float32);
     assert_eq!(ScalarFamily::dtype(&family).unwrap(), DataType::Float32);
     assert_eq!(
-        <super::Floating as ScalarFamily>::from_scalar(&scalar),
+        <Float32 as ScalarFamily>::from_scalar(&scalar),
         Some(&family)
     );
+    assert_eq!(ScalarFamily::into_scalar(family), scalar);
     assert_eq!(FloatingValue::as_f64(&leaf), 1.25);
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }
@@ -564,23 +774,40 @@ fn concrete_leaves_preserve_their_physical_identity() {
 }
 
 #[test]
-fn tier_two_families_keep_exact_members_and_logical_identity() {
-    use crate::Floating;
+fn width_variants_keep_exact_members_and_logical_identity() {
     use crate::types::{bytes, decimal, geospatial, integer, nested, string, temporal};
 
-    let signed = integer::Integer::I32(integer::Int32::new(7));
-    let unsigned = integer::Integer::U8(integer::UInt8::new(7));
+    let signed = Scalar::I32(integer::Int32::new(7));
+    let unsigned = Scalar::U8(integer::UInt8::new(7));
     assert_eq!(signed, unsigned);
-    assert_eq!(signed.into_scalar(), Scalar::from(7_i32));
+    assert_eq!(signed, Scalar::from(7_i32));
+    assert_eq!(signed.kind(), "i32");
+    assert_eq!(unsigned.kind(), "u8");
 
-    let narrow = Floating::F32(Float32::from_f32(1.25));
-    let wide = Floating::F64(Float64::from_f64(1.25));
+    let narrow = Scalar::F32(Float32::from_f32(1.25));
+    let wide = Scalar::F64(Float64::from_f64(1.25));
     assert_eq!(narrow, wide);
 
-    let narrow = decimal::Decimal::D32(decimal::Decimal32::new(1_250, 2));
-    let wide = decimal::Decimal::D256(decimal::Decimal256::new(I256::from_i128(125), 1));
+    let narrow = Scalar::D32(decimal::Decimal32::new(1_250, 2));
+    let wide = Scalar::D256(decimal::Decimal256::new(I256::from_i128(125), 1));
     assert_eq!(narrow, wide);
-    assert_eq!(narrow.to_string(), "12.50");
+    assert_eq!(narrow.as_decimal(), Some((I256::from_i128(1_250), 2)));
+    assert_eq!(wide.as_decimal(), Some((I256::from_i128(125), 1)));
+
+    // The leaf's own spelling is reachable without a per-width table.
+    assert_eq!(narrow.leaf_display().unwrap().to_string(), "12.50");
+    assert_eq!(signed.leaf_display().unwrap().to_string(), "7");
+    let held = nested::Sequence::new(Arc::from([Scalar::from(1_i32)]));
+    assert_eq!(
+        Scalar::Sequence(held.clone())
+            .leaf_display()
+            .unwrap()
+            .to_string(),
+        held.to_string()
+    );
+    assert!(Scalar::from("12.50").leaf_display().is_none());
+    assert!(Scalar::from(true).leaf_display().is_none());
+    assert!(Scalar::Null.leaf_display().is_none());
 
     let utf8 = string::Str::new("same");
     let large = utf8
@@ -614,26 +841,108 @@ fn tier_two_families_keep_exact_members_and_logical_identity() {
     let geography = geospatial::Geospatial::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let nested = nested::Nested::Sequence(nested::Sequence::new(Arc::from([
+    let sequence = Scalar::Sequence(nested::Sequence::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
     ])));
-    assert_eq!(nested.len(), 2);
-    assert!(!nested.is_empty());
+    assert_eq!(sequence.len(), 2);
+    assert!(!sequence.is_empty());
+    assert!(sequence.is_container());
 
-    let temporal = temporal::Temporal::DateTime64(
+    let datetime = Scalar::DateTime64(
         temporal::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
     );
-    assert_eq!(temporal.family(), temporal::TemporalFamily::DateTime);
-    assert_eq!(temporal.bit_width(), 64);
-    assert_eq!(temporal.timezone(), Timezone::UTC);
+    assert_eq!(
+        datetime.temporal_family(),
+        Some(temporal::TemporalFamily::DateTime)
+    );
+    assert_eq!(datetime.kind(), "datetime64");
+    assert_eq!(datetime.temporal_timezone(), Some(Timezone::UTC));
     assert_eq!(temporal::TemporalFamily::Interval.as_str(), "interval");
 
-    let encoded = serde_json::to_string(&nested).unwrap();
-    assert_eq!(
-        serde_json::from_str::<nested::Nested>(&encoded).unwrap(),
-        nested
-    );
+    let encoded = serde_json::to_string(&sequence).unwrap();
+    assert_eq!(serde_json::from_str::<Scalar>(&encoded).unwrap(), sequence);
+}
+
+#[test]
+fn every_width_leaf_round_trips_under_its_unchanged_tag() {
+    let cases = [
+        (Scalar::from(-8_i8), "i8"),
+        (Scalar::from(-16_i16), "i16"),
+        (Scalar::from(-32_i32), "i32"),
+        (Scalar::from(-64_i64), "i64"),
+        (Scalar::from(8_u8), "u8"),
+        (Scalar::from(16_u16), "u16"),
+        (Scalar::from(32_u32), "u32"),
+        (Scalar::from(64_u64), "u64"),
+        (Scalar::from(i128::MIN), "i128"),
+        (Scalar::from(u128::MAX), "u128"),
+        (Scalar::from(half::f16::from_f32(1.5)), "f16"),
+        (Scalar::from(1.25_f32), "f32"),
+        (Scalar::from(0.1_f64), "f64"),
+        (
+            Scalar::D32(crate::types::decimal::Decimal32::new(1_250, 2)),
+            "d32",
+        ),
+        (
+            Scalar::D64(crate::types::decimal::Decimal64::new(-7, 1)),
+            "d64",
+        ),
+        (Scalar::d128(125, 1), "d128"),
+        (Scalar::d256(I256::from_i128(-125), 3), "d256"),
+        (Scalar::date32(19_000), "date32"),
+        (Scalar::date64(86_400_000), "date64"),
+        (
+            Scalar::time32(5, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            "time32",
+        ),
+        (
+            Scalar::time64(6, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+            "time64",
+        ),
+        (
+            Scalar::datetime64(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+            "datetime64",
+        ),
+        (
+            Scalar::duration32(8, TimeUnit::Second).unwrap(),
+            "duration32",
+        ),
+        (
+            Scalar::duration64(9, TimeUnit::Nanosecond).unwrap(),
+            "duration64",
+        ),
+        (
+            Scalar::Interval(crate::types::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
+            "interval",
+        ),
+        (Scalar::from_sequence([Scalar::from(1_i32)]), "sequence"),
+        (
+            Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))]).unwrap(),
+            "mapping",
+        ),
+        (
+            Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
+            "record",
+        ),
+    ];
+    assert_eq!(cases.len(), 28);
+    for (value, tag) in &cases {
+        assert_eq!(value.kind(), *tag);
+        // Text, not `serde_json::Value`: a 128-bit integer does not fit the
+        // latter's number.
+        let encoded = serde_json::to_string(value).unwrap();
+        assert!(
+            encoded.starts_with(&format!(r#"{{"type":"{tag}","value":"#)),
+            "{encoded}"
+        );
+        let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(&decoded, value, "{encoded}");
+        // Equality normalizes scale and unit, so the exact payload is pinned too.
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), encoded);
+        assert_eq!(format!("{decoded:?}"), format!("{value:?}"));
+        assert_eq!(decoded.kind(), *tag, "{encoded}");
+    }
 }
 
 /// An iterator that reports no children and yields two.
@@ -670,4 +979,44 @@ fn nested_children_come_from_the_iterator_and_not_from_its_bound() {
     // An empty run still answers with the one shared value.
     assert!(Scalar::from_sequence([]).is_empty());
     assert!(Scalar::from_mapping([]).unwrap().is_empty());
+}
+
+/// Deterministic hashes built over `Hash` keep the bytes the retired width
+/// enums fed, pinned at the values the two-level representation produced.
+#[test]
+fn hash_derived_stable_hashes_keep_their_pre_flattening_values() {
+    use crate::types::temporal::scalars::Interval;
+    let interval = Interval::new(1, 2, 3_000_000, crate::TimeUnit::MonthDayNano).unwrap();
+    for (name, value, expected) in [
+        (
+            "sequence",
+            Scalar::from_sequence([Scalar::from(1_i32), Scalar::from("a")]),
+            2_351_796_681_665_035_878_u64,
+        ),
+        (
+            "mapping",
+            Scalar::from_mapping([(Scalar::from("k"), Scalar::from(2_i64))]).unwrap(),
+            17_364_630_997_768_761_460,
+        ),
+        (
+            "record",
+            Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
+            12_407_753_854_889_480_402,
+        ),
+        (
+            "interval",
+            Scalar::Interval(interval),
+            196_150_670_316_405_394,
+        ),
+        ("i32", Scalar::from(7_i32), 13_767_510_565_555_144_141),
+        ("f32", Scalar::from(1.5_f32), 6_394_485_071_238_434_244),
+        ("d128", Scalar::d128(1250, 2), 9_433_506_932_114_274_648),
+    ] {
+        assert_eq!(crate::hashing::stable_hash_of(&value), expected, "{name}");
+    }
+    let plugin = crate::fix::Plugin::new(
+        Some("x"),
+        Scalar::from_record([("a", Scalar::from(1_i32))]).unwrap(),
+    );
+    assert_eq!(plugin.stable_hash(), 9_888_304_055_463_926_390);
 }

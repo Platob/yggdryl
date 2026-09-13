@@ -2828,7 +2828,7 @@ pub fn from_decimal(unscaled: I256, scale: i8) -> Self
   pub const fn d256(unscaled: I256, scale: i8) -> Self
   pub const fn as_d128(&self) -> Option<(i128, i8)>
   pub const fn as_d256(&self) -> Option<(I256, i8)>
-  pub const fn as_decimal(&self) -> Option<(I256, i8)>
+  pub fn as_decimal(&self) -> Option<(I256, i8)>
   pub const fn is_decimal(&self) -> bool
   pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128>
   pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256>
@@ -3417,32 +3417,16 @@ pub struct Float16(u16);
   pub const fn as_f64(self) -> f64
   pub const fn into_f64(self) -> f64
   pub fn stable_hash(&self) -> u64
-  pub enum Float
-  pub const fn bit_width(self) -> u8
-  pub fn as_f64(self) -> f64
-  pub fn as_f32(self) -> Option<f32>
-  pub const fn as_f16(self) -> Option<half::f16>
-  pub const fn into_scalar(self) -> Scalar
-  pub fn stable_hash(&self) -> u64
-  pub struct Integer
-  pub const fn is_negative(self) -> bool
-  pub const fn magnitude(self) -> u128
-  pub const fn as_i128(self) -> Option<i128>
-  pub const fn as_u128(self) -> Option<u128>
-  pub fn into_scalar(self) -> Scalar
-  pub fn stable_hash(&self) -> u64
-  pub enum Scalar
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, I8, I16, I32, I64, U8, U16, U32, U64, I128, U128, F16, F32, F64, D32, D64, D128, D256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Enum, Bytes, Geospatial, Sequence, Mapping, Record; 48 bytes; each width variant holds its leaf directly, no family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub fn from_float(value: f64, bit_width: u8) -> Result<Self>
   pub const fn kind(&self) -> &'static str
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
   pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self>
   pub fn from_record<K, I>(entries: I) -> Result<Self> where K: Into<SmolStr>, I: IntoIterator<Item = (K, Self)>
   pub const fn as_bool(&self) -> Option<bool>
-  pub const fn as_integer(&self) -> Option<Integer>
   pub const fn as_i128(&self) -> Option<i128>
   pub const fn as_u128(&self) -> Option<u128>
-  pub const fn as_float(&self) -> Option<Float>
-  pub const fn as_f64(&self) -> Option<f64>
+  pub fn as_f64(&self) -> Option<f64>
   pub fn as_f32(&self) -> Option<f32>
   pub const fn as_f16(&self) -> Option<half::f16>
   pub fn as_str(&self) -> Option<&str>  (String, Code and Enum values)
@@ -3498,14 +3482,6 @@ pub fn time(unit: TimeUnit) -> Result<Self>
 ### yggdryl::types::temporal  [rust\src\types\temporal\scalars.rs]
 pub enum TemporalFamily
   pub const fn as_str(self) -> &'static str
-  pub struct TemporalRef<'a>
-  pub const fn family(self) -> TemporalFamily
-  pub const fn count(self) -> i64
-  pub const fn unit(self) -> TimeUnit
-  pub const fn timezone(self) -> &'a Timezone
-  pub const fn bit_width(self) -> u8
-  pub fn stable_hash(&self) -> u64
-  pub fn into_scalar(self) -> Result<Scalar>
   pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
   pub fn from_time(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
   pub fn from_datetime(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
@@ -3529,12 +3505,10 @@ pub enum TemporalFamily
   pub const fn as_datetime64(&self) -> Option<(i64, TimeUnit, &Timezone)>
   pub const fn as_duration32(&self) -> Option<(i32, TimeUnit, &Timezone)>
   pub const fn as_duration64(&self) -> Option<(i64, TimeUnit, &Timezone)>
-  pub const fn as_temporal(&self) -> Option<TemporalRef<'_>>
-  pub const fn as_date(&self) -> Option<TemporalRef<'_>>
-  pub const fn as_time(&self) -> Option<TemporalRef<'_>>
-  pub const fn as_datetime(&self) -> Option<TemporalRef<'_>>
-  pub const fn as_duration(&self) -> Option<TemporalRef<'_>>
-  pub const fn temporal_timezone(&self) -> Option<&Timezone>
+  pub const fn temporal_family(&self) -> Option<TemporalFamily>
+  pub const fn temporal_unit(&self) -> Option<TimeUnit>  (an interval answers its layout unit)
+  pub const fn temporal_timezone(&self) -> Option<Timezone>  (an interval answers Timezone::NAIVE)
+  pub const fn temporal_count(&self) -> Option<i64>  (an interval answers its nanosecond component)
   pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
   pub const fn is_temporal(&self) -> bool
   pub fn temporal_dtype(&self) -> Option<DataType>
@@ -3712,7 +3686,7 @@ pub struct FieldScalar<'a>
   pub fn name(&self) -> &'a str
   pub const fn value(&self) -> &Scalar
   pub const fn is_null(&self) -> bool
-  pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool, as_i64, as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal, as_sequence, as_record, get, get_key_str: the Scalar accessors, delegated
+  pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool, as_i64, as_u64, as_i128, as_f64, as_decimal, as_sequence, as_record, get, get_key_str: the Scalar accessors, delegated
   pub fn stable_hash(&self) -> u64
   pub fn into_value(self) -> Scalar
   pub fn into_parts(self) -> (&'a Field, Scalar)
@@ -3731,7 +3705,7 @@ pub struct UncheckedFieldScalar<'a>
   pub const fn is_null(&self) -> bool
   pub fn checked(self) -> Result<FieldScalar<'a>>
   pub fn as_str(&self) -> Option<&str>  // and as_bytes, as_bool: the held value when it already has that shape, never read
-  pub fn as_i64(&self) -> Option<i64>  // and as_u64, as_i128, as_f64, as_integer, as_float, as_decimal, as_temporal: the field's reading of the held value
+  pub fn as_i64(&self) -> Option<i64>  // and as_u64, as_i128, as_f64, as_decimal: the field's reading of the held value
   pub fn into_value(self) -> Scalar
 
 ### yggdryl::types::typed::record  [rust\src\types\typed\record.rs]

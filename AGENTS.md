@@ -197,7 +197,8 @@ Equivalences a change keeps lossless, in both directions:
 - a datatype's canonical default is `default_value`/`is_default_value` - the
   value a declaring protocol's `apply_arrow_batch` leaves alone.
 - widths: a family constructor picks the physical width once, and shared logic
-  reads across widths with `as_integer`, `as_float`, `as_decimal`, `as_temporal`.
+  reads across widths with `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
+  `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`.
 
 ### Stack: holder -> media -> arrow
 
@@ -251,7 +252,7 @@ never to a wrapper's own buffer.
 | accept | `from_str`/`from_*`, `Uri::from_path`, `impl Into<Holder>`, `MimeType`/`MediaType`, `Coded::infer`, `text::io::Plan::infer`, `RecordOptions::for_media_type`, binding coercion (§3, §4) | every documented spelling of one thing, each listed and tested |
 | resolve | `DataType::from_str`, `Field::from_str`, `DataType::LOGICAL_NAMES`, `Scalar::dtype`, `inferred_*_field`, `DataType::scalar`/`Field::scalar` | one exact answer or a typed error, computed once |
 | carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`, `FieldScalar<'_>`/`FieldRecord<'_>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
-| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `scalar_array`/`scalar_value`, cached Arrow projections, `as_integer`/`as_float`/`as_decimal`/`as_temporal`, `default_value` | schema-dependent work leaves the per-item path |
+| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `scalar_array`/`scalar_value`, cached Arrow projections, `as_i128`/`as_u128`/`as_f64`/`as_decimal`/`temporal_*`, `default_value` | schema-dependent work leaves the per-item path |
 
 - Precedence, where the caller did not say: an explicit argument, then a declared
   `Field`, `MediaType`, or path suffix, then one bounded content read - never a
@@ -371,9 +372,10 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 
 - `types::Scalar` is the single cross-platform scalar: no parallel value tree, no
   retired alias.
-- Variants match native/Arrow widths: `F16`, `F32`, `F64`; `D128`, `D256`;
-  `Date32`, `Date64`; `Time32`, `Time64`; `Duration32`, `Duration64`; one
-  `DateTime64`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
+- Variants match native/Arrow widths: `I8`..`I64`, `U8`..`U64`, `I128`, `U128`;
+  `F16`, `F32`, `F64`; `D32`, `D64`, `D128`, `D256`; `Date32`, `Date64`;
+  `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
+  `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
 - `Scalar::Record` is a deterministic sorted name-to-`Scalar` map, resolved to an
   ordered sequence by Struct-field canonicalization; enum scalars keep generic
@@ -388,9 +390,11 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   allocate, allocating projections are `into_*`, no JSON bridge for Arrow or
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
-- Rust keeps exact-width variants and constructors; shared logic goes through
-  `as_integer`, `as_float`, `as_decimal`, `as_temporal`, and a family constructor
-  picks the physical width once.
+- Rust keeps exact-width variants and constructors, every width a direct
+  `Scalar` variant with no family enum between; shared logic goes through the
+  cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
+  `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
+  family constructor picks the physical width once.
 - A typed view compares, orders, and hashes over `(dtype, value)` - never the
   field's name, nullability, or metadata - so a value is one value whichever
   column holds it, and its `stable_hash` is the value's own. A borrowing view

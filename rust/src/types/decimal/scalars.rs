@@ -15,7 +15,6 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -110,115 +109,63 @@ decimal_leaf!(Decimal64, i64);
 decimal_leaf!(Decimal128, i128);
 decimal_leaf!(Decimal256, I256);
 
-/// One exact decimal coefficient width and scale.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[non_exhaustive]
-pub enum Decimal {
-    /// Signed 32-bit coefficient.
-    D32(Decimal32),
-    /// Signed 64-bit coefficient.
-    D64(Decimal64),
-    /// Signed 128-bit coefficient.
-    D128(Decimal128),
-    /// Signed 256-bit coefficient.
-    D256(Decimal256),
-}
-
-impl Decimal {
-    /// Return the coefficient widened losslessly to 256 bits.
-    pub fn coefficient(self) -> I256 {
-        match self {
-            Self::D32(value) => value.coefficient().into_i256(),
-            Self::D64(value) => value.coefficient().into_i256(),
-            Self::D128(value) => value.coefficient().into_i256(),
-            Self::D256(value) => value.coefficient(),
-        }
-    }
-
-    /// Return the base-10 scale.
-    pub const fn scale(self) -> i8 {
-        match self {
-            Self::D32(value) => value.scale(),
-            Self::D64(value) => value.scale(),
-            Self::D128(value) => value.scale(),
-            Self::D256(value) => value.scale(),
-        }
-    }
-}
-
-impl fmt::Display for Decimal {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&decimal_text(self.coefficient(), self.scale()))
-    }
-}
-
-impl PartialEq for Decimal {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for Decimal {}
-
-impl PartialOrd for Decimal {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Decimal {
-    fn cmp(&self, other: &Self) -> Ordering {
-        compare(
-            self.coefficient(),
-            self.scale(),
-            other.coefficient(),
-            other.scale(),
-        )
-    }
-}
-
-impl Hash for Decimal {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        normalize(self.coefficient(), self.scale()).hash(state);
-    }
-}
-
-const _: () = assert!(std::mem::size_of::<Decimal>() == 48);
-
+// A decimal width is its own scalar family, exactly as `Boolean` is. The
+// narrow widths also restate through their native coefficient; `Decimal256`
+// writes that by hand below.
 macro_rules! decimal_value {
-    ($leaf:ident, $variant:ident, $id:ident, $native:ty) => {
+    ($leaf:ident, $variant:ident, $id:ident) => {
         impl ScalarValue for $leaf {
-            type Family = Decimal;
+            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Decimal;
 
             fn dtype(&self) -> Result<DataType> {
-                Scalar::Decimal(Decimal::$variant(*self)).dtype()
+                Scalar::$variant(*self).dtype()
             }
 
             fn into_family(self) -> Self::Family {
-                Decimal::$variant(self)
+                self
             }
 
             fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Decimal::$variant(value) => Some(value),
-                    _ => None,
-                }
+                Some(family)
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Decimal(Decimal::$variant(self))
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Decimal;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                <Self as ScalarValue>::dtype(self)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::Decimal(Decimal::$variant(value)) => Some(value),
+                    Scalar::$variant(value) => Some(value),
                     _ => None,
                 }
             }
         }
+    };
+    ($leaf:ident, $variant:ident, $id:ident, $native:ty) => {
+        decimal_value!($leaf, $variant, $id);
 
         impl DecimalValue for $leaf {
             fn coefficient(&self) -> I256 {
@@ -247,39 +194,7 @@ macro_rules! decimal_value {
 decimal_value!(Decimal32, D32, Decimal32, i32);
 decimal_value!(Decimal64, D64, Decimal64, i64);
 decimal_value!(Decimal128, D128, Decimal128, i128);
-
-impl ScalarValue for Decimal256 {
-    type Family = Decimal;
-
-    const ID: DataTypeId = DataTypeId::Decimal256;
-    const KIND: DataTypeKind = DataTypeKind::Decimal;
-
-    fn dtype(&self) -> Result<DataType> {
-        Scalar::Decimal(Decimal::D256(*self)).dtype()
-    }
-
-    fn into_family(self) -> Self::Family {
-        Decimal::D256(self)
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        match family {
-            Decimal::D256(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Decimal(Decimal::D256(self))
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Decimal(Decimal::D256(value)) => Some(value),
-            _ => None,
-        }
-    }
-}
+decimal_value!(Decimal256, D256, Decimal256);
 
 impl DecimalValue for Decimal256 {
     fn coefficient(&self) -> I256 {
@@ -300,34 +215,6 @@ impl DecimalValue for Decimal256 {
     }
 }
 
-impl ScalarFamily for Decimal {
-    const KIND: DataTypeKind = DataTypeKind::Decimal;
-
-    fn id(&self) -> DataTypeId {
-        match self {
-            Self::D32(_) => DataTypeId::Decimal32,
-            Self::D64(_) => DataTypeId::Decimal64,
-            Self::D128(_) => DataTypeId::Decimal128,
-            Self::D256(_) => DataTypeId::Decimal256,
-        }
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        self.into_scalar().dtype()
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Decimal(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Decimal(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
 impl Scalar {
     /// Build the narrowest exact decimal width that holds `unscaled`.
     pub fn from_decimal(unscaled: I256, scale: i8) -> Self {
@@ -342,18 +229,18 @@ impl Scalar {
     /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
     /// `10.50`. A negative scale multiplies instead, exactly as Arrow allows.
     pub const fn d128(unscaled: i128, scale: i8) -> Self {
-        Self::Decimal(Decimal::D128(Decimal128::new(unscaled, scale)))
+        Self::D128(Decimal128::new(unscaled, scale))
     }
 
     /// Build an exact decimal with a 256-bit coefficient.
     pub const fn d256(unscaled: I256, scale: i8) -> Self {
-        Self::Decimal(Decimal::D256(Decimal256::new(unscaled, scale)))
+        Self::D256(Decimal256::new(unscaled, scale))
     }
 
     /// Return the coefficient and scale when this is a 128-bit decimal.
     pub const fn as_d128(&self) -> Option<(i128, i8)> {
         match self {
-            Self::Decimal(Decimal::D128(value)) => Some((value.coefficient(), value.scale())),
+            Self::D128(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
@@ -361,7 +248,7 @@ impl Scalar {
     /// Return the coefficient and scale when this is a 256-bit decimal.
     pub const fn as_d256(&self) -> Option<(I256, i8)> {
         match self {
-            Self::Decimal(Decimal::D256(value)) => Some((value.coefficient(), value.scale())),
+            Self::D256(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
@@ -369,14 +256,20 @@ impl Scalar {
     /// Return this decimal's coefficient widened to 256 bits and its scale.
     pub fn as_decimal(&self) -> Option<(I256, i8)> {
         match self {
-            Self::Decimal(value) => Some((value.coefficient(), value.scale())),
+            Self::D32(value) => Some((value.coefficient().into_i256(), value.scale())),
+            Self::D64(value) => Some((value.coefficient().into_i256(), value.scale())),
+            Self::D128(value) => Some((value.coefficient().into_i256(), value.scale())),
+            Self::D256(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
 
     /// Return whether this value is an exact decimal.
     pub const fn is_decimal(&self) -> bool {
-        matches!(self, Self::Decimal(_))
+        matches!(
+            self,
+            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_)
+        )
     }
 
     /// Return this decimal's unscaled integer at `scale`, when it is exact.
@@ -584,7 +477,7 @@ fn decimal_digits(value: u128) -> usize {
 mod tests;
 
 pub(crate) fn is_exact_number(value: &Scalar) -> bool {
-    value.as_integer().is_some() || value.as_decimal().is_some()
+    value.is_integer() || value.is_decimal()
 }
 
 pub(crate) fn decimal_value_parts(value: &Scalar) -> Option<(I256, i8)> {

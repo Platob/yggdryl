@@ -2,7 +2,6 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
@@ -136,32 +135,16 @@ pub(crate) fn canonical_unsigned(dtype: &DataType, value: &Scalar) -> Result<(Sc
 
 fn same_integer_representation(left: &Scalar, right: &Scalar) -> bool {
     match (left, right) {
-        (Scalar::Integer(Integer::I8(left)), Scalar::Integer(Integer::I8(right))) => left == right,
-        (Scalar::Integer(Integer::I16(left)), Scalar::Integer(Integer::I16(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::I32(left)), Scalar::Integer(Integer::I32(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::I64(left)), Scalar::Integer(Integer::I64(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::I128(left)), Scalar::Integer(Integer::I128(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::U8(left)), Scalar::Integer(Integer::U8(right))) => left == right,
-        (Scalar::Integer(Integer::U16(left)), Scalar::Integer(Integer::U16(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::U32(left)), Scalar::Integer(Integer::U32(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::U64(left)), Scalar::Integer(Integer::U64(right))) => {
-            left == right
-        }
-        (Scalar::Integer(Integer::U128(left)), Scalar::Integer(Integer::U128(right))) => {
-            left == right
-        }
+        (Scalar::I8(left), Scalar::I8(right)) => left == right,
+        (Scalar::I16(left), Scalar::I16(right)) => left == right,
+        (Scalar::I32(left), Scalar::I32(right)) => left == right,
+        (Scalar::I64(left), Scalar::I64(right)) => left == right,
+        (Scalar::I128(left), Scalar::I128(right)) => left == right,
+        (Scalar::U8(left), Scalar::U8(right)) => left == right,
+        (Scalar::U16(left), Scalar::U16(right)) => left == right,
+        (Scalar::U32(left), Scalar::U32(right)) => left == right,
+        (Scalar::U64(left), Scalar::U64(right)) => left == right,
+        (Scalar::U128(left), Scalar::U128(right)) => left == right,
         _ => false,
     }
 }
@@ -220,38 +203,12 @@ pub(crate) fn validate_integer_tuple(
     Ok(())
 }
 
-/// One exact signed or unsigned integer representation.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[non_exhaustive]
-pub enum Integer {
-    /// Signed 8-bit integer.
-    I8(Int8),
-    /// Signed 16-bit integer.
-    I16(Int16),
-    /// Signed 32-bit integer.
-    I32(Int32),
-    /// Signed 64-bit integer.
-    I64(Int64),
-    /// Unsigned 8-bit integer.
-    U8(UInt8),
-    /// Unsigned 16-bit integer.
-    U16(UInt16),
-    /// Unsigned 32-bit integer.
-    U32(UInt32),
-    /// Unsigned 64-bit integer.
-    U64(UInt64),
-    /// Signed 128-bit integer.
-    I128(Int128),
-    /// Unsigned 128-bit integer.
-    U128(UInt128),
-}
-
-const _: () = assert!(std::mem::size_of::<Integer>() == 32);
-
+// Each width is its own family, as `Boolean` is: the `Scalar` variant holds
+// the leaf directly, so there is no grouping enum to widen into.
 macro_rules! integer_scalar_value {
     ($leaf:ident, $variant:ident, $id:ident, $dtype:expr) => {
         impl ScalarValue for $leaf {
-            type Family = Integer;
+            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Integer;
@@ -261,23 +218,40 @@ macro_rules! integer_scalar_value {
             }
 
             fn into_family(self) -> Self::Family {
-                Integer::$variant(self)
+                self
             }
 
             fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Integer::$variant(value) => Some(value),
-                    _ => None,
-                }
+                Some(family)
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Integer(Integer::$variant(self))
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Integer;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                <Self as ScalarValue>::dtype(self)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::Integer(Integer::$variant(value)) => Some(value),
+                    Scalar::$variant(value) => Some(value),
                     _ => None,
                 }
             }
@@ -409,185 +383,77 @@ fn wide_integer_dtype(magnitude: u128) -> DataType {
     DataType::decimal(precision, 0).expect("a u128 always fits Arrow decimal256")
 }
 
-impl ScalarFamily for Integer {
-    const KIND: DataTypeKind = DataTypeKind::Integer;
-
-    fn id(&self) -> DataTypeId {
-        match self {
-            Self::I8(_) => DataTypeId::Int8,
-            Self::I16(_) => DataTypeId::Int16,
-            Self::I32(_) => DataTypeId::Int32,
-            Self::I64(_) => DataTypeId::Int64,
-            Self::I128(_) => DataTypeId::Int128,
-            Self::U8(_) => DataTypeId::UInt8,
-            Self::U16(_) => DataTypeId::UInt16,
-            Self::U32(_) => DataTypeId::UInt32,
-            Self::U64(_) => DataTypeId::UInt64,
-            Self::U128(_) => DataTypeId::UInt128,
-        }
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        match self {
-            Self::I8(value) => ScalarValue::dtype(value),
-            Self::I16(value) => ScalarValue::dtype(value),
-            Self::I32(value) => ScalarValue::dtype(value),
-            Self::I64(value) => ScalarValue::dtype(value),
-            Self::I128(value) => ScalarValue::dtype(value),
-            Self::U8(value) => ScalarValue::dtype(value),
-            Self::U16(value) => ScalarValue::dtype(value),
-            Self::U32(value) => ScalarValue::dtype(value),
-            Self::U64(value) => ScalarValue::dtype(value),
-            Self::U128(value) => ScalarValue::dtype(value),
-        }
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Integer(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Integer(value) => Some(value),
-            _ => None,
-        }
-    }
+/// Read the sign and magnitude of any exact integer width.
+///
+/// The pair is `(is_negative, magnitude)`, so every width holding the same
+/// number answers the same pair: it is what cross-width integer equality,
+/// order and hashing read. A value that is not an integer answers `None`.
+pub(crate) const fn integer_parts(value: &Scalar) -> Option<(bool, u128)> {
+    Some(match value {
+        Scalar::I8(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::I16(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::I32(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::I64(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::I128(value) => (value.get() < 0, value.get().unsigned_abs()),
+        Scalar::U8(value) => (false, value.get() as u128),
+        Scalar::U16(value) => (false, value.get() as u128),
+        Scalar::U32(value) => (false, value.get() as u128),
+        Scalar::U64(value) => (false, value.get() as u128),
+        Scalar::U128(value) => (false, value.get()),
+        _ => return None,
+    })
 }
 
-impl Integer {
-    const fn normalized(self) -> (bool, u128) {
-        match self {
-            Self::I8(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-            Self::I16(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-            Self::I32(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-            Self::I64(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-            Self::I128(value) => (value.get() < 0, value.get().unsigned_abs()),
-            Self::U8(value) => (false, value.get() as u128),
-            Self::U16(value) => (false, value.get() as u128),
-            Self::U32(value) => (false, value.get() as u128),
-            Self::U64(value) => (false, value.get() as u128),
-            Self::U128(value) => (false, value.get()),
-        }
-    }
-
-    /// Return whether this value is negative.
-    pub const fn is_negative(self) -> bool {
-        self.normalized().0
-    }
-
-    /// Return the unsigned magnitude.
-    pub const fn magnitude(self) -> u128 {
-        self.normalized().1
-    }
-
-    /// Return the signed value when it fits `i128`.
-    pub const fn as_i128(self) -> Option<i128> {
-        let (negative, magnitude) = self.normalized();
-        if negative {
-            if magnitude == (i128::MAX as u128) + 1 {
-                Some(i128::MIN)
-            } else {
-                Some(-(magnitude as i128))
-            }
-        } else if magnitude <= i128::MAX as u128 {
-            Some(magnitude as i128)
+/// Order two [`integer_parts`] readings as the numbers they spell.
+///
+/// A negative number sorts before a non-negative one; two negatives order by
+/// reversed magnitude, two non-negatives by magnitude.
+pub(crate) const fn compare_integer_parts(left: (bool, u128), right: (bool, u128)) -> Ordering {
+    const fn magnitudes(left: u128, right: u128) -> Ordering {
+        if left < right {
+            Ordering::Less
+        } else if left > right {
+            Ordering::Greater
         } else {
-            None
+            Ordering::Equal
         }
     }
 
-    /// Return the unsigned value when it is non-negative.
-    pub const fn as_u128(self) -> Option<u128> {
-        if self.is_negative() {
-            None
-        } else {
-            Some(self.magnitude())
-        }
-    }
-
-    /// Widen this exact representation to the scalar root.
-    pub const fn into_scalar(self) -> Scalar {
-        Scalar::Integer(self)
-    }
-
-    /// Return the deterministic logical integer hash.
-    pub fn stable_hash(&self) -> u64 {
-        self.into_scalar().stable_hash()
-    }
-}
-
-impl fmt::Display for Integer {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::I8(value) => value.fmt(formatter),
-            Self::I16(value) => value.fmt(formatter),
-            Self::I32(value) => value.fmt(formatter),
-            Self::I64(value) => value.fmt(formatter),
-            Self::U8(value) => value.fmt(formatter),
-            Self::U16(value) => value.fmt(formatter),
-            Self::U32(value) => value.fmt(formatter),
-            Self::U64(value) => value.fmt(formatter),
-            Self::I128(value) => value.fmt(formatter),
-            Self::U128(value) => value.fmt(formatter),
-        }
-    }
-}
-
-impl PartialEq for Integer {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for Integer {}
-
-impl Ord for Integer {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let (negative, magnitude) = self.normalized();
-        let (other_negative, other_magnitude) = other.normalized();
-        match (negative, other_negative) {
-            (true, true) => other_magnitude.cmp(&magnitude),
-            (true, false) => Ordering::Less,
-            (false, true) => Ordering::Greater,
-            (false, false) => magnitude.cmp(&other_magnitude),
-        }
-    }
-}
-
-impl PartialOrd for Integer {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Hash for Integer {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.normalized().hash(state);
+    match (left.0, right.0) {
+        (true, true) => magnitudes(right.1, left.1),
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => magnitudes(left.1, right.1),
     }
 }
 
 impl Scalar {
-    /// Return the logical sign and magnitude of any exact integer width.
-    pub const fn as_integer(&self) -> Option<Integer> {
-        match self {
-            Self::Integer(value) => Some(*value),
-            _ => None,
-        }
-    }
-
     /// Return a signed integer when it fits `i128`.
     pub const fn as_i128(&self) -> Option<i128> {
-        match self.as_integer() {
-            Some(value) => value.as_i128(),
+        match integer_parts(self) {
+            Some((true, magnitude)) => {
+                if magnitude == (i128::MAX as u128) + 1 {
+                    Some(i128::MIN)
+                } else {
+                    Some(-(magnitude as i128))
+                }
+            }
+            Some((false, magnitude)) => {
+                if magnitude <= i128::MAX as u128 {
+                    Some(magnitude as i128)
+                } else {
+                    None
+                }
+            }
             None => None,
         }
     }
 
     /// Return an unsigned integer when it fits `u128`.
     pub const fn as_u128(&self) -> Option<u128> {
-        match self.as_integer() {
-            Some(value) => value.as_u128(),
-            None => None,
+        match integer_parts(self) {
+            Some((false, magnitude)) => Some(magnitude),
+            _ => None,
         }
     }
 }
@@ -595,7 +461,19 @@ impl Scalar {
 impl Scalar {
     /// Return whether this is any integer, signed or unsigned, at any width.
     pub const fn is_integer(&self) -> bool {
-        matches!(self, Self::Integer(_))
+        matches!(
+            self,
+            Self::I8(_)
+                | Self::I16(_)
+                | Self::I32(_)
+                | Self::I64(_)
+                | Self::U8(_)
+                | Self::U16(_)
+                | Self::U32(_)
+                | Self::U64(_)
+                | Self::I128(_)
+                | Self::U128(_)
+        )
     }
 }
 
@@ -628,7 +506,7 @@ macro_rules! width_value_from {
     ($($type:ty => $variant:ident($leaf:ident)),+ $(,)?) => {$(
         impl From<$type> for Scalar {
             fn from(value: $type) -> Self {
-                Self::Integer(Integer::$variant($leaf::new(value)))
+                Self::$variant($leaf::new(value))
             }
         }
     )+};
@@ -641,19 +519,13 @@ width_value_from!(
 
 impl From<i128> for Scalar {
     fn from(value: i128) -> Self {
-        Self::Integer(Integer::I128(Int128::new(value)))
+        Self::I128(Int128::new(value))
     }
 }
 
 impl From<u128> for Scalar {
     fn from(value: u128) -> Self {
-        Self::Integer(Integer::U128(UInt128::new(value)))
-    }
-}
-
-impl From<Integer> for Scalar {
-    fn from(value: Integer) -> Self {
-        value.into_scalar()
+        Self::U128(UInt128::new(value))
     }
 }
 
@@ -666,16 +538,16 @@ pub(crate) struct IntegerValueKind<'a> {
 
 pub(crate) fn integer_value_kind(value: &Scalar) -> Option<IntegerValueKind<'_>> {
     let (signed, bits) = match value {
-        Scalar::Integer(Integer::I8(_)) => (true, 8),
-        Scalar::Integer(Integer::I16(_)) => (true, 16),
-        Scalar::Integer(Integer::I32(_)) => (true, 32),
-        Scalar::Integer(Integer::I64(_)) => (true, 64),
-        Scalar::Integer(Integer::I128(_)) => (true, 128),
-        Scalar::Integer(Integer::U8(_)) => (false, 8),
-        Scalar::Integer(Integer::U16(_)) => (false, 16),
-        Scalar::Integer(Integer::U32(_)) => (false, 32),
-        Scalar::Integer(Integer::U64(_)) => (false, 64),
-        Scalar::Integer(Integer::U128(_)) => (false, 128),
+        Scalar::I8(_) => (true, 8),
+        Scalar::I16(_) => (true, 16),
+        Scalar::I32(_) => (true, 32),
+        Scalar::I64(_) => (true, 64),
+        Scalar::I128(_) => (true, 128),
+        Scalar::U8(_) => (false, 8),
+        Scalar::U16(_) => (false, 16),
+        Scalar::U32(_) => (false, 32),
+        Scalar::U64(_) => (false, 64),
+        Scalar::U128(_) => (false, 128),
         _ => return None,
     };
     Some(IntegerValueKind {

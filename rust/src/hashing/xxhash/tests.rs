@@ -989,9 +989,8 @@ mod values {
 
     use super::super::{Xxh3, xxh3};
     use crate::types::{
-        Bytes, BytesLayout, BytesParameters, Code, Currency, Decimal, Decimal32, Decimal64,
-        Geography, Geospatial, Interval, Side, Str, StringLayout, StringParameters, Temporal,
-        TimeInForce,
+        Bytes, BytesLayout, BytesParameters, Code, Currency, Decimal32, Decimal64, Geography,
+        Geospatial, Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
     };
     use crate::{
         Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, I256, Scalar,
@@ -1079,8 +1078,8 @@ mod values {
             Scalar::from(Float64::from_f64(0.0)),
             Scalar::from(Float64::from_f64(f64::NAN)),
             Scalar::d128(100, 2),
-            Scalar::Decimal(Decimal::D32(Decimal32::new(100, 2))),
-            Scalar::Decimal(Decimal::D64(Decimal64::new(100, 2))),
+            Scalar::D32(Decimal32::new(100, 2)),
+            Scalar::D64(Decimal64::new(100, 2)),
             Scalar::d128(-1, 0),
             Scalar::d256(I256::from_i128(1), 0),
             Scalar::from(""),
@@ -1118,15 +1117,9 @@ mod values {
             Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
             Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
             Scalar::duration64_in(1_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
-            Scalar::Temporal(Temporal::Interval(
-                Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap(),
-            )),
-            Scalar::Temporal(Temporal::Interval(
-                Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap(),
-            )),
-            Scalar::Temporal(Temporal::Interval(
-                Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
-            )),
+            Scalar::Interval(Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap()),
+            Scalar::Interval(Interval::new(0, 1, 2_000_000, TimeUnit::DayTime).unwrap()),
+            Scalar::Interval(Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             Scalar::from_sequence([]),
             Scalar::from_sequence([Scalar::from("a"), Scalar::from("b")]),
             Scalar::from_sequence([Scalar::from("ab")]),
@@ -1153,12 +1146,9 @@ mod values {
                 Scalar::from(Float64::from_f64(1.5)),
             ),
             (Scalar::d128(100, 2), Scalar::d256(I256::from_i128(1), 0)),
+            (Scalar::D32(Decimal32::new(100, 2)), Scalar::d128(1, 0)),
             (
-                Scalar::Decimal(Decimal::D32(Decimal32::new(100, 2))),
-                Scalar::d128(1, 0),
-            ),
-            (
-                Scalar::Decimal(Decimal::D64(Decimal64::new(100, 2))),
+                Scalar::D64(Decimal64::new(100, 2)),
                 Scalar::d256(I256::from_i128(1), 0),
             ),
             (

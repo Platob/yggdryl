@@ -329,17 +329,15 @@ impl Hash for Schema {
 /// Normalize JSON objects independently of how a language boundary represented
 /// them (`Mapping` or `Record`) while preserving every key and nested value.
 fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
-    use crate::types::Nested;
-
     match value {
-        Scalar::Nested(Nested::Sequence(values)) => Ok(Scalar::from_sequence(
+        Scalar::Sequence(values) => Ok(Scalar::from_sequence(
             values
                 .as_slice()
                 .iter()
                 .map(normalized_schema_json)
                 .collect::<Result<Vec<_>>>()?,
         )),
-        Scalar::Nested(Nested::Record(entries)) => Scalar::from_record(
+        Scalar::Record(entries) => Scalar::from_record(
             entries
                 .as_map()
                 .iter()
@@ -348,7 +346,7 @@ fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
                 })
                 .collect::<Result<Vec<_>>>()?,
         ),
-        Scalar::Nested(Nested::Mapping(entries)) => Scalar::from_record(
+        Scalar::Mapping(entries) => Scalar::from_record(
             entries
                 .as_slice()
                 .iter()

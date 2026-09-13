@@ -1,5 +1,4 @@
 use super::*;
-use crate::types::Integer;
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -56,14 +55,14 @@ fn integer_canonicalization_preserves_every_declared_width() {
     ]);
     let canonical = schema.canonicalize_value(natural).unwrap();
     let values = canonical.as_sequence().unwrap();
-    assert!(matches!(values[0], Scalar::Integer(Integer::I8(_))));
-    assert!(matches!(values[1], Scalar::Integer(Integer::I16(_))));
-    assert!(matches!(values[2], Scalar::Integer(Integer::I32(_))));
-    assert!(matches!(values[3], Scalar::Integer(Integer::I64(_))));
-    assert!(matches!(values[4], Scalar::Integer(Integer::U8(_))));
-    assert!(matches!(values[5], Scalar::Integer(Integer::U16(_))));
-    assert!(matches!(values[6], Scalar::Integer(Integer::U32(_))));
-    assert!(matches!(values[7], Scalar::Integer(Integer::U64(_))));
+    assert!(matches!(values[0], Scalar::I8(_)));
+    assert!(matches!(values[1], Scalar::I16(_)));
+    assert!(matches!(values[2], Scalar::I32(_)));
+    assert!(matches!(values[3], Scalar::I64(_)));
+    assert!(matches!(values[4], Scalar::U8(_)));
+    assert!(matches!(values[5], Scalar::U16(_)));
+    assert!(matches!(values[6], Scalar::U32(_)));
+    assert!(matches!(values[7], Scalar::U64(_)));
 }
 
 #[test]
@@ -76,7 +75,7 @@ fn year_month_interval_canonicalizes_to_the_exact_interval_leaf() {
     let value = &canonical.as_sequence().unwrap()[0];
     assert!(matches!(
         value,
-        Scalar::Temporal(Temporal::Interval(interval))
+        Scalar::Interval(interval)
             if interval.months() == 18 && interval.unit() == TimeUnit::YearMonth
     ));
 }
@@ -131,7 +130,7 @@ fn temporal_casts_preserve_family_and_timezone() {
 /// The spellings a value takes on the way into a datatype, and the ones it
 /// prints on the way out - the same readings a column takes and prints.
 mod readings {
-    use crate::types::{Mapping, Nested};
+    use crate::types::Mapping;
     use crate::{DataType, Scalar};
 
     fn dtype(expression: &str) -> DataType {
@@ -298,10 +297,10 @@ mod readings {
     fn a_map_carries_its_invariants_however_its_entries_were_built() {
         // `Mapping::new` takes already-unique entries on trust, so the value
         // contract is what refuses a map that is not a function.
-        let duplicates = Scalar::Nested(Nested::Mapping(Mapping::new(vec![
+        let duplicates = Scalar::Mapping(Mapping::new(vec![
             (Scalar::from("a"), Scalar::from(1_i32)),
             (Scalar::from("a"), Scalar::from(2_i32)),
-        ])));
+        ]));
         let refused = dtype("map<utf8, int32>")
             .scalar(duplicates)
             .unwrap_err()
@@ -309,10 +308,10 @@ mod readings {
         assert!(refused.contains("collide"), "{refused}");
 
         // A declared ordering is checked whether or not anything was restated.
-        let unsorted = Scalar::Nested(Nested::Mapping(Mapping::new(vec![
+        let unsorted = Scalar::Mapping(Mapping::new(vec![
             (Scalar::from("b"), Scalar::from(1_i32)),
             (Scalar::from("a"), Scalar::from(2_i32)),
-        ])));
+        ]));
         let sorted = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
         let refused = sorted.scalar(unsorted.clone()).unwrap_err().to_string();
         assert!(refused.contains("not sorted"), "{refused}");

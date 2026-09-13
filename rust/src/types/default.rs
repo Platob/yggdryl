@@ -4,7 +4,7 @@ use std::collections::TryReserveError;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::{Integer, Temporal, push_field_name_path};
+use crate::types::push_field_name_path;
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use super::DataType;
@@ -584,8 +584,9 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
         DefaultPlan::Decimal => Ok(Scalar::from(0_i128)),
         DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::I256::ZERO, 0)),
-        DefaultPlan::Interval(unit) => crate::types::Interval::new(0, 0, 0, unit)
-            .map(|value| Scalar::Temporal(Temporal::Interval(value))),
+        DefaultPlan::Interval(unit) => {
+            crate::types::Interval::new(0, 0, 0, unit).map(Scalar::Interval)
+        }
         DefaultPlan::String => Ok(Scalar::from("")),
         DefaultPlan::Bytes(width) => {
             let mut bytes = Vec::new();
@@ -650,22 +651,21 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         // zone; it is the same datum the plan's bare zero spells, so both
         // spellings are the default.
         DefaultPlan::Signed => match value {
-            Scalar::Integer(Integer::I8(value)) => value.get() == 0,
-            Scalar::Integer(Integer::I16(value)) => value.get() == 0,
-            Scalar::Integer(Integer::I32(value)) => value.get() == 0,
-            Scalar::Integer(Integer::I64(value)) => value.get() == 0,
-            Scalar::Temporal(Temporal::Date32(value)) => value.count() == 0,
-            Scalar::Temporal(Temporal::Date64(value)) => value.count() == 0,
-            Scalar::Temporal(Temporal::Time32(value)) => value.count() == 0,
-            Scalar::Temporal(Temporal::Time64(value)) => value.count() == 0,
-            Scalar::Temporal(Temporal::DateTime64(value)) => value.count() == 0,
-            Scalar::Temporal(Temporal::Duration32(value)) => value.count() == 0,
-            Scalar::Temporal(Temporal::Duration64(value)) => value.count() == 0,
+            Scalar::I8(value) => value.get() == 0,
+            Scalar::I16(value) => value.get() == 0,
+            Scalar::I32(value) => value.get() == 0,
+            Scalar::I64(value) => value.get() == 0,
+            Scalar::Date32(value) => value.count() == 0,
+            Scalar::Date64(value) => value.count() == 0,
+            Scalar::Time32(value) => value.count() == 0,
+            Scalar::Time64(value) => value.count() == 0,
+            Scalar::DateTime64(value) => value.count() == 0,
+            Scalar::Duration32(value) => value.count() == 0,
+            Scalar::Duration64(value) => value.count() == 0,
             _ => false,
         },
-        DefaultPlan::Unsigned => {
-            matches!(value.as_integer(), Some(integer) if !integer.is_negative() && integer.magnitude() == 0)
-        }
+        // Zero at any integer width, signed or not.
+        DefaultPlan::Unsigned => value.as_u128() == Some(0),
         DefaultPlan::Float => value
             .as_f64()
             .is_some_and(|value| value.to_bits() == 0_f64.to_bits()),
@@ -719,7 +719,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
 }
 
 fn interval_is_zero(value: &Scalar, unit: TimeUnit) -> bool {
-    if let Scalar::Temporal(Temporal::Interval(value)) = value {
+    if let Scalar::Interval(value) = value {
         return value.unit() == unit
             && value.months() == 0
             && value.days() == 0

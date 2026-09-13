@@ -704,7 +704,7 @@ impl From<SmolStr> for Scalar {
 /// The canonical text a value spells, shared rather than rebuilt.
 ///
 /// A string column stores one string per row, and this is the spelling every
-/// tier prints: the canonical [`std::fmt::Display`] each family owns for the
+/// tier prints: the canonical [`std::fmt::Display`] each width owns for the
 /// numbers and the boolean, [`Scalar::into_temporal_text`] for a temporal -
 /// which is what a temporal *column* renders too, zone rules included - the
 /// WKT a geometry column renders, and the payload's own characters for bytes.
@@ -719,16 +719,21 @@ pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
         Scalar::String(text) => Ok(text.clone()),
         Scalar::Code(code) => Ok(Str::from(code.storage())),
         Scalar::Enum(member) => Ok(Str::new_static(member.as_str())),
-        Scalar::Integer(number) => Ok(Str::from(format_smolstr!("{number}"))),
-        Scalar::Floating(number) => Ok(Str::from(format_smolstr!("{number}"))),
-        Scalar::Decimal(number) => Ok(Str::from(format_smolstr!("{number}"))),
+        // A number of any width spells its own leaf's canonical `Display`.
+        number if number.is_number() => {
+            Ok(Str::from(format_smolstr!("{}", number.leaf_display()?)))
+        }
         Scalar::Boolean(flag) => Ok(Str::from(format_smolstr!("{flag}"))),
         Scalar::Uuid(uuid) => Ok(Str::from(format_smolstr!("{uuid}"))),
         Scalar::Version(version) => Ok(Str::from(format_smolstr!("{version}"))),
         Scalar::Url(url) => Ok(Str::from(format_smolstr!("{url}"))),
         // An interval has no classic spelling, so a temporal answers for the
         // seven that do and leaves the rest to the ordinary refusal.
-        Scalar::Temporal(_) => return value.into_temporal_text().map(|text| Ok(Str::from(text))),
+        temporal if temporal.is_temporal() => {
+            return temporal
+                .into_temporal_text()
+                .map(|text| Ok(Str::from(text)));
+        }
         Scalar::Bytes(bytes) => {
             std::str::from_utf8(bytes.as_bytes())
                 .map(Str::new)

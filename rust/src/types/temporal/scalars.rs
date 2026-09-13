@@ -5,8 +5,11 @@
 //!
 //! let day = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 //! let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
-//! assert_eq!(day.as_date().map(|value| value.bit_width()), Some(32));
-//! assert_eq!(at.as_datetime().map(|value| value.family()), Some(TemporalFamily::DateTime));
+//! assert_eq!(day.as_date32().map(|(count, ..)| count), Some(20_000));
+//! assert_eq!(day.temporal_family(), Some(TemporalFamily::Date));
+//! assert_eq!(at.temporal_family(), Some(TemporalFamily::DateTime));
+//! assert_eq!(at.temporal_unit(), Some(TimeUnit::Microsecond));
+//! assert_eq!(at.temporal_timezone(), Some(Timezone::UTC));
 //! # Ok::<(), yggdryl::Error>(())
 //! ```
 
@@ -233,146 +236,60 @@ impl fmt::Display for Interval {
     }
 }
 
-/// One exact temporal or interval representation.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-#[non_exhaustive]
-pub enum Temporal {
-    /// Day-count date.
-    Date32(Date32),
-    /// Millisecond-count date.
-    Date64(Date64),
-    /// 32-bit time of day.
-    Time32(Time32),
-    /// 64-bit time of day.
-    Time64(Time64),
-    /// 64-bit datetime.
-    DateTime64(DateTime64),
-    /// 32-bit duration.
-    Duration32(Duration32),
-    /// 64-bit duration.
-    Duration64(Duration64),
-    /// Calendar interval.
-    Interval(Interval),
-}
-
-const _: () = assert!(std::mem::size_of::<Temporal>() == 24);
-
-impl Temporal {
-    /// Return the logical family within the temporal group.
-    pub const fn family(self) -> TemporalFamily {
-        match self {
-            Self::Date32(_) | Self::Date64(_) => TemporalFamily::Date,
-            Self::Time32(_) | Self::Time64(_) => TemporalFamily::Time,
-            Self::DateTime64(_) => TemporalFamily::DateTime,
-            Self::Duration32(_) | Self::Duration64(_) => TemporalFamily::Duration,
-            Self::Interval(_) => TemporalFamily::Interval,
-        }
-    }
-
-    /// Return the physical unit or interval layout.
-    pub const fn unit(self) -> TimeUnit {
-        match self {
-            Self::Date32(value) => value.unit(),
-            Self::Date64(value) => value.unit(),
-            Self::Time32(value) => value.unit(),
-            Self::Time64(value) => value.unit(),
-            Self::DateTime64(value) => value.unit(),
-            Self::Duration32(value) => value.unit(),
-            Self::Duration64(value) => value.unit(),
-            Self::Interval(value) => value.unit(),
-        }
-    }
-
-    /// Return the temporal timezone, with intervals explicitly zone-free.
-    pub const fn timezone(self) -> Timezone {
-        match self {
-            Self::Date32(value) => value.timezone(),
-            Self::Date64(value) => value.timezone(),
-            Self::Time32(value) => value.timezone(),
-            Self::Time64(value) => value.timezone(),
-            Self::DateTime64(value) => value.timezone(),
-            Self::Duration32(value) => value.timezone(),
-            Self::Duration64(value) => value.timezone(),
-            Self::Interval(_) => Timezone::NAIVE,
-        }
-    }
-
-    /// Return the physical count width, or 128 bits for an interval payload.
-    pub const fn bit_width(self) -> u8 {
-        match self {
-            Self::Date32(_) | Self::Time32(_) | Self::Duration32(_) => 32,
-            Self::Date64(_) | Self::Time64(_) | Self::DateTime64(_) | Self::Duration64(_) => 64,
-            Self::Interval(_) => 128,
-        }
-    }
-
-    /// Return the stored count widened to 64 bits.
-    ///
-    /// For an interval this is its nanosecond component; callers that need all
-    /// three interval components match [`Temporal::Interval`] directly.
-    pub const fn count(self) -> i64 {
-        match self {
-            Self::Date32(value) => value.count() as i64,
-            Self::Date64(value) => value.count(),
-            Self::Time32(value) => value.count() as i64,
-            Self::Time64(value) => value.count(),
-            Self::DateTime64(value) => value.count(),
-            Self::Duration32(value) => value.count() as i64,
-            Self::Duration64(value) => value.count(),
-            Self::Interval(value) => value.nanoseconds(),
-        }
-    }
-}
-
-impl fmt::Display for Temporal {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Date32(value) => value.fmt(formatter),
-            Self::Date64(value) => value.fmt(formatter),
-            Self::Time32(value) => value.fmt(formatter),
-            Self::Time64(value) => value.fmt(formatter),
-            Self::DateTime64(value) => value.fmt(formatter),
-            Self::Duration32(value) => value.fmt(formatter),
-            Self::Duration64(value) => value.fmt(formatter),
-            Self::Interval(value) => value.fmt(formatter),
-        }
-    }
-}
-
 macro_rules! temporal_value {
-    ($leaf:ident, $variant:ident, $id:ident, $family:ident, $bits:literal, $count:ty) => {
+    ($leaf:ident, $id:ident) => {
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Temporal;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                <Self as ScalarValue>::dtype(self)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$id(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::$id(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
         impl ScalarValue for $leaf {
-            type Family = Temporal;
+            type Family = Self;
 
             const ID: DataTypeId = DataTypeId::$id;
             const KIND: DataTypeKind = DataTypeKind::Temporal;
 
             fn dtype(&self) -> Result<DataType> {
-                Scalar::Temporal(Temporal::$variant(*self)).dtype()
+                Scalar::$id(*self).dtype()
             }
 
             fn into_family(self) -> Self::Family {
-                Temporal::$variant(self)
+                self
             }
 
             fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Temporal::$variant(value) => Some(value),
-                    _ => None,
-                }
+                Some(family)
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Temporal(Temporal::$variant(self))
+                Scalar::$id(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
-                match value {
-                    Scalar::Temporal(Temporal::$variant(value)) => Some(value),
-                    _ => None,
-                }
+                <Self as ScalarFamily>::from_scalar(value)
             }
         }
+    };
+    ($leaf:ident, $family:ident, $bits:literal, $count:ty) => {
+        temporal_value!($leaf, $leaf);
 
         impl TemporalValue for $leaf {
             const FAMILY: TemporalFamily = TemporalFamily::$family;
@@ -391,7 +308,7 @@ macro_rules! temporal_value {
             }
 
             fn with_unit(self, unit: TimeUnit) -> Result<Self> {
-                let value = Scalar::Temporal(Temporal::$variant(self));
+                let value = Scalar::$leaf(self);
                 let count = value.temporal_count_at(unit).ok_or_else(|| {
                     invalid_temporal_leaf("temporal unit conversion is not exact")
                 })?;
@@ -408,46 +325,15 @@ macro_rules! temporal_value {
     };
 }
 
-temporal_value!(Date32, Date32, Date32, Date, 32, i32);
-temporal_value!(Date64, Date64, Date64, Date, 64, i64);
-temporal_value!(Time32, Time32, Time32, Time, 32, i32);
-temporal_value!(Time64, Time64, Time64, Time, 64, i64);
-temporal_value!(DateTime64, DateTime64, DateTime64, DateTime, 64, i64);
-temporal_value!(Duration32, Duration32, Duration32, Duration, 32, i32);
-temporal_value!(Duration64, Duration64, Duration64, Duration, 64, i64);
-
-impl ScalarValue for Interval {
-    type Family = Temporal;
-
-    const ID: DataTypeId = DataTypeId::Interval;
-    const KIND: DataTypeKind = DataTypeKind::Temporal;
-
-    fn dtype(&self) -> Result<DataType> {
-        Scalar::Temporal(Temporal::Interval(*self)).dtype()
-    }
-
-    fn into_family(self) -> Self::Family {
-        Temporal::Interval(self)
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        match family {
-            Temporal::Interval(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Temporal(Temporal::Interval(self))
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Temporal(Temporal::Interval(value)) => Some(value),
-            _ => None,
-        }
-    }
-}
+// The leaf, its `Scalar` variant and its `DataTypeId` share one name.
+temporal_value!(Date32, Date, 32, i32);
+temporal_value!(Date64, Date, 64, i64);
+temporal_value!(Time32, Time, 32, i32);
+temporal_value!(Time64, Time, 64, i64);
+temporal_value!(DateTime64, DateTime, 64, i64);
+temporal_value!(Duration32, Duration, 32, i32);
+temporal_value!(Duration64, Duration, 64, i64);
+temporal_value!(Interval, Interval);
 
 impl TemporalValue for Interval {
     const FAMILY: TemporalFamily = TemporalFamily::Interval;
@@ -476,38 +362,6 @@ impl TemporalValue for Interval {
             Err(invalid_temporal_leaf(
                 "Interval requires the NAIVE timezone",
             ))
-        }
-    }
-}
-
-impl ScalarFamily for Temporal {
-    const KIND: DataTypeKind = DataTypeKind::Temporal;
-
-    fn id(&self) -> DataTypeId {
-        match self {
-            Self::Date32(_) => DataTypeId::Date32,
-            Self::Date64(_) => DataTypeId::Date64,
-            Self::Time32(_) => DataTypeId::Time32,
-            Self::Time64(_) => DataTypeId::Time64,
-            Self::DateTime64(_) => DataTypeId::DateTime64,
-            Self::Duration32(_) => DataTypeId::Duration32,
-            Self::Duration64(_) => DataTypeId::Duration64,
-            Self::Interval(_) => DataTypeId::Interval,
-        }
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        (*self).into_scalar().dtype()
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Temporal(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Temporal(value) => Some(value),
-            _ => None,
         }
     }
 }
@@ -578,27 +432,27 @@ impl Scalar {
 
     /// Build a Date32 day count.
     pub const fn date32(days: i32) -> Self {
-        Self::Temporal(Temporal::Date32(Date32 {
+        Self::Date32(Date32 {
             count: days,
             unit: TimeUnit::Day,
             timezone: Timezone::NAIVE,
-        }))
+        })
     }
 
     /// Build a Date32 after validating its unit and zone.
     pub fn date32_in(days: i32, unit: TimeUnit, zone: Timezone) -> Result<Self> {
         require(unit == TimeUnit::Day, "date32 unit must be day")?;
         require(zone.is_naive(), "date32 timezone must be NAIVE")?;
-        Date32::new(days, unit, zone).map(|value| Self::Temporal(Temporal::Date32(value)))
+        Date32::new(days, unit, zone).map(Self::Date32)
     }
 
     /// Build a Date64 millisecond count.
     pub const fn date64(milliseconds: i64) -> Self {
-        Self::Temporal(Temporal::Date64(Date64 {
+        Self::Date64(Date64 {
             count: milliseconds,
             unit: TimeUnit::Millisecond,
             timezone: Timezone::NAIVE,
-        }))
+        })
     }
 
     /// Build a Date64 after validating its unit and zone.
@@ -608,7 +462,7 @@ impl Scalar {
             "date64 unit must be millisecond",
         )?;
         require(zone.is_naive(), "date64 timezone must be NAIVE")?;
-        Date64::new(count, unit, zone).map(|value| Self::Temporal(Temporal::Date64(value)))
+        Date64::new(count, unit, zone).map(Self::Date64)
     }
 
     /// Build a 32-bit time of day.
@@ -621,7 +475,7 @@ impl Scalar {
             zone.is_naive(),
             "time32 timezone must be NAIVE because its datatype has no timezone",
         )?;
-        Time32::new(count, unit, zone).map(|value| Self::Temporal(Temporal::Time32(value)))
+        Time32::new(count, unit, zone).map(Self::Time32)
     }
 
     /// Build a 64-bit time of day.
@@ -634,7 +488,7 @@ impl Scalar {
             zone.is_naive(),
             "time64 timezone must be NAIVE because its datatype has no timezone",
         )?;
-        Time64::new(count, unit, zone).map(|value| Self::Temporal(Temporal::Time64(value)))
+        Time64::new(count, unit, zone).map(Self::Time64)
     }
 
     /// Build an instant or wall-clock datetime at 64-bit width.
@@ -643,7 +497,7 @@ impl Scalar {
             unit.is_arrow_time(),
             "datetime64 requires an Arrow time unit",
         )?;
-        DateTime64::new(count, unit, zone).map(|value| Self::Temporal(Temporal::DateTime64(value)))
+        DateTime64::new(count, unit, zone).map(Self::DateTime64)
     }
 
     /// Parse a timezone and build a 64-bit datetime.
@@ -663,7 +517,7 @@ impl Scalar {
             "duration32 requires a fixed temporal unit",
         )?;
         require(zone.is_naive(), "duration32 timezone must be NAIVE")?;
-        Duration32::new(count, unit, zone).map(|value| Self::Temporal(Temporal::Duration32(value)))
+        Duration32::new(count, unit, zone).map(Self::Duration32)
     }
 
     /// Build a 64-bit duration.
@@ -678,15 +532,13 @@ impl Scalar {
             "duration64 requires a fixed temporal unit",
         )?;
         require(zone.is_naive(), "duration64 timezone must be NAIVE")?;
-        Duration64::new(count, unit, zone).map(|value| Self::Temporal(Temporal::Duration64(value)))
+        Duration64::new(count, unit, zone).map(Self::Duration64)
     }
 
     /// Return Date32's count, unit, and zone.
     pub const fn as_date32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::Date32(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::Date32(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
@@ -694,9 +546,7 @@ impl Scalar {
     /// Return Date64's count, unit, and zone.
     pub const fn as_date64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::Date64(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::Date64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
@@ -704,9 +554,7 @@ impl Scalar {
     /// Return Time32's count, unit, and zone.
     pub const fn as_time32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::Time32(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::Time32(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
@@ -714,9 +562,7 @@ impl Scalar {
     /// Return Time64's count, unit, and zone.
     pub const fn as_time64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::Time64(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::Time64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
@@ -724,9 +570,7 @@ impl Scalar {
     /// Return DateTime64's count, unit, and zone.
     pub const fn as_datetime64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::DateTime64(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::DateTime64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
@@ -734,9 +578,7 @@ impl Scalar {
     /// Return Duration32's count, unit, and zone.
     pub const fn as_duration32(&self) -> Option<(i32, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::Duration32(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::Duration32(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
@@ -744,58 +586,72 @@ impl Scalar {
     /// Return Duration64's count, unit, and zone.
     pub const fn as_duration64(&self) -> Option<(i64, TimeUnit, &Timezone)> {
         match self {
-            Self::Temporal(Temporal::Duration64(value)) => {
-                Some((value.count(), value.unit(), &value.timezone))
-            }
+            Self::Duration64(value) => Some((value.count(), value.unit(), &value.timezone)),
             _ => None,
         }
     }
 
-    /// Borrow the shared family view of any temporal value.
-    pub const fn as_temporal(&self) -> Option<&Temporal> {
+    /// Return the logical family of any temporal, or `None` for a
+    /// non-temporal.
+    pub const fn temporal_family(&self) -> Option<TemporalFamily> {
         match self {
-            Self::Temporal(value) => Some(value),
+            Self::Date32(_) | Self::Date64(_) => Some(TemporalFamily::Date),
+            Self::Time32(_) | Self::Time64(_) => Some(TemporalFamily::Time),
+            Self::DateTime64(_) => Some(TemporalFamily::DateTime),
+            Self::Duration32(_) | Self::Duration64(_) => Some(TemporalFamily::Duration),
+            Self::Interval(_) => Some(TemporalFamily::Interval),
             _ => None,
         }
     }
 
-    /// Borrow this value as either exact date width.
-    pub const fn as_date(&self) -> Option<&Temporal> {
-        match self.as_temporal() {
-            Some(value) if matches!(value.family(), TemporalFamily::Date) => Some(value),
+    /// Return the physical unit of any temporal, or an interval's layout;
+    /// `None` for a non-temporal.
+    pub const fn temporal_unit(&self) -> Option<TimeUnit> {
+        match self {
+            Self::Date32(value) => Some(value.unit()),
+            Self::Date64(value) => Some(value.unit()),
+            Self::Time32(value) => Some(value.unit()),
+            Self::Time64(value) => Some(value.unit()),
+            Self::DateTime64(value) => Some(value.unit()),
+            Self::Duration32(value) => Some(value.unit()),
+            Self::Duration64(value) => Some(value.unit()),
+            Self::Interval(value) => Some(value.unit()),
             _ => None,
         }
     }
 
-    /// Borrow this value as either exact time-of-day width.
-    pub const fn as_time(&self) -> Option<&Temporal> {
-        match self.as_temporal() {
-            Some(value) if matches!(value.family(), TemporalFamily::Time) => Some(value),
-            _ => None,
-        }
-    }
-
-    /// Borrow this value as a datetime without exposing its physical suffix.
-    pub const fn as_datetime(&self) -> Option<&Temporal> {
-        match self.as_temporal() {
-            Some(value) if matches!(value.family(), TemporalFamily::DateTime) => Some(value),
-            _ => None,
-        }
-    }
-
-    /// Borrow this value as either exact duration width.
-    pub const fn as_duration(&self) -> Option<&Temporal> {
-        match self.as_temporal() {
-            Some(value) if matches!(value.family(), TemporalFamily::Duration) => Some(value),
-            _ => None,
-        }
-    }
-
-    /// Return the non-optional timezone carried by any temporal.
+    /// Return the non-optional timezone carried by any temporal, with an
+    /// interval explicitly zone-free; `None` for a non-temporal.
     pub const fn temporal_timezone(&self) -> Option<Timezone> {
-        match self.as_temporal() {
-            Some(value) => Some((*value).timezone()),
-            None => None,
+        match self {
+            Self::Date32(value) => Some(value.timezone()),
+            Self::Date64(value) => Some(value.timezone()),
+            Self::Time32(value) => Some(value.timezone()),
+            Self::Time64(value) => Some(value.timezone()),
+            Self::DateTime64(value) => Some(value.timezone()),
+            Self::Duration32(value) => Some(value.timezone()),
+            Self::Duration64(value) => Some(value.timezone()),
+            Self::Interval(_) => Some(Timezone::NAIVE),
+            _ => None,
+        }
+    }
+
+    /// Return the stored count of any temporal widened to 64 bits, or `None`
+    /// for a non-temporal.
+    ///
+    /// For an interval this is its nanosecond component; callers that need all
+    /// three interval components match [`Scalar::Interval`] directly.
+    pub const fn temporal_count(&self) -> Option<i64> {
+        match self {
+            Self::Date32(value) => Some(value.count() as i64),
+            Self::Date64(value) => Some(value.count()),
+            Self::Time32(value) => Some(value.count() as i64),
+            Self::Time64(value) => Some(value.count()),
+            Self::DateTime64(value) => Some(value.count()),
+            Self::Duration32(value) => Some(value.count() as i64),
+            Self::Duration64(value) => Some(value.count()),
+            Self::Interval(value) => Some(value.nanoseconds()),
+            _ => None,
         }
     }
 
@@ -862,41 +718,30 @@ impl Scalar {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn into_temporal_text(&self) -> Option<smol_str::SmolStr> {
         match self {
-            Self::Temporal(Temporal::Date32(value)) => iso::format_date(value.count()),
-            Self::Temporal(Temporal::Date64(value)) => {
-                i32::try_from(value.count().div_euclid(86_400_000))
-                    .ok()
-                    .and_then(iso::format_date)
-            }
-            Self::Temporal(Temporal::Time32(value)) => {
-                iso::format_time(i64::from(value.count()), value.unit())
-            }
-            Self::Temporal(Temporal::Time64(value)) => {
-                iso::format_time(value.count(), value.unit())
-            }
-            Self::Temporal(Temporal::DateTime64(value)) if value.timezone().is_naive() => {
+            Self::Date32(value) => iso::format_date(value.count()),
+            Self::Date64(value) => i32::try_from(value.count().div_euclid(86_400_000))
+                .ok()
+                .and_then(iso::format_date),
+            Self::Time32(value) => iso::format_time(i64::from(value.count()), value.unit()),
+            Self::Time64(value) => iso::format_time(value.count(), value.unit()),
+            Self::DateTime64(value) if value.timezone().is_naive() => {
                 iso::format_datetime(value.count(), value.unit())
             }
-            Self::Temporal(Temporal::DateTime64(value)) => {
+            Self::DateTime64(value) => {
                 iso::format_timestamp(value.count(), value.unit(), &value.timezone())
             }
-            Self::Temporal(Temporal::Duration32(value)) => {
-                iso::format_duration(i64::from(value.count()), value.unit())
-            }
-            Self::Temporal(Temporal::Duration64(value)) => {
-                iso::format_duration(value.count(), value.unit())
-            }
+            Self::Duration32(value) => iso::format_duration(i64::from(value.count()), value.unit()),
+            Self::Duration64(value) => iso::format_duration(value.count(), value.unit()),
             _ => None,
         }
     }
 
     /// Return this temporal's count restated in `unit`, when exact.
     pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64> {
-        let temporal = self.as_temporal()?;
-        if matches!(temporal, Temporal::Interval(_)) {
+        if matches!(self, Self::Interval(_)) {
             return None;
         }
-        let (count, current) = ((*temporal).count(), (*temporal).unit());
+        let (count, current) = (self.temporal_count()?, self.temporal_unit()?);
         if current == unit {
             return Some(count);
         }
@@ -909,7 +754,7 @@ impl Scalar {
 
     /// Return whether this is a temporal value.
     pub const fn is_temporal(&self) -> bool {
-        self.as_temporal().is_some()
+        self.temporal_family().is_some()
     }
 
     /// Return the datatype this temporal materializes into.
@@ -1081,59 +926,139 @@ mod tests {
             Scalar::from_duration(i64::from(i32::MAX) + 1, TimeUnit::Second, Timezone::NAIVE)
                 .unwrap(),
         ];
-        assert!(matches!(values[0], Scalar::Temporal(Temporal::Date32(_))));
-        assert!(matches!(values[1], Scalar::Temporal(Temporal::Date64(_))));
-        assert!(matches!(values[2], Scalar::Temporal(Temporal::Time32(_))));
-        assert!(matches!(values[3], Scalar::Temporal(Temporal::Time64(_))));
-        assert!(matches!(
-            values[4],
-            Scalar::Temporal(Temporal::DateTime64(_))
-        ));
-        assert!(matches!(
-            values[5],
-            Scalar::Temporal(Temporal::Duration32(_))
-        ));
-        assert!(matches!(
-            values[6],
-            Scalar::Temporal(Temporal::Duration64(_))
-        ));
+        assert!(matches!(values[0], Scalar::Date32(_)));
+        assert!(matches!(values[1], Scalar::Date64(_)));
+        assert!(matches!(values[2], Scalar::Time32(_)));
+        assert!(matches!(values[3], Scalar::Time64(_)));
+        assert!(matches!(values[4], Scalar::DateTime64(_)));
+        assert!(matches!(values[5], Scalar::Duration32(_)));
+        assert!(matches!(values[6], Scalar::Duration64(_)));
 
         for count in [i64::from(i32::MIN), i64::from(i32::MAX)] {
             assert!(matches!(
                 Scalar::from_duration(count, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
-                Scalar::Temporal(Temporal::Duration32(_))
+                Scalar::Duration32(_)
             ));
         }
         for count in [i64::from(i32::MIN) - 1, i64::from(i32::MAX) + 1] {
             assert!(matches!(
                 Scalar::from_duration(count, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
-                Scalar::Temporal(Temporal::Duration64(_))
+                Scalar::Duration64(_)
             ));
         }
     }
 
     #[test]
-    fn temporal_family_views_are_exact_and_reversible() {
-        let values = [
-            Scalar::date32(1),
-            Scalar::date64(86_400_000),
-            Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
-            Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
-            Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
-            Scalar::duration32(1, TimeUnit::Millisecond).unwrap(),
-            Scalar::duration64(1, TimeUnit::Microsecond).unwrap(),
+    fn temporal_readers_answer_every_temporal_variant() {
+        let interval = Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap();
+        let cases = [
+            (
+                Scalar::date32(1),
+                TemporalFamily::Date,
+                TimeUnit::Day,
+                Timezone::NAIVE,
+                1_i64,
+            ),
+            (
+                Scalar::date64(86_400_000),
+                TemporalFamily::Date,
+                TimeUnit::Millisecond,
+                Timezone::NAIVE,
+                86_400_000,
+            ),
+            (
+                Scalar::time32(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+                TemporalFamily::Time,
+                TimeUnit::Second,
+                Timezone::NAIVE,
+                1,
+            ),
+            (
+                Scalar::time64(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap(),
+                TemporalFamily::Time,
+                TimeUnit::Microsecond,
+                Timezone::NAIVE,
+                1,
+            ),
+            (
+                Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+                TemporalFamily::DateTime,
+                TimeUnit::Nanosecond,
+                Timezone::UTC,
+                1,
+            ),
+            (
+                Scalar::duration32(-1, TimeUnit::Millisecond).unwrap(),
+                TemporalFamily::Duration,
+                TimeUnit::Millisecond,
+                Timezone::NAIVE,
+                -1,
+            ),
+            (
+                Scalar::duration64(1, TimeUnit::Microsecond).unwrap(),
+                TemporalFamily::Duration,
+                TimeUnit::Microsecond,
+                Timezone::NAIVE,
+                1,
+            ),
+            (
+                Scalar::Interval(interval),
+                TemporalFamily::Interval,
+                TimeUnit::MonthDayNano,
+                Timezone::NAIVE,
+                3,
+            ),
         ];
-        for value in &values {
-            let temporal = value.as_temporal().unwrap();
-            assert_eq!(&Scalar::Temporal(*temporal), value);
-            assert_eq!(temporal.timezone(), value.temporal_timezone().unwrap());
+        for (value, family, unit, zone, count) in &cases {
+            assert!(value.is_temporal(), "{value:?}");
+            assert_eq!(value.temporal_family(), Some(*family), "{value:?}");
+            assert_eq!(value.temporal_unit(), Some(*unit), "{value:?}");
+            assert_eq!(value.temporal_timezone(), Some(*zone), "{value:?}");
+            assert_eq!(value.temporal_count(), Some(*count), "{value:?}");
         }
-        assert_eq!(values[0].as_date().unwrap().bit_width(), 32);
-        assert_eq!(values[1].as_date().unwrap().bit_width(), 64);
-        assert!(values[2].as_time().is_some());
-        assert!(values[4].as_datetime().is_some());
-        assert!(values[5].as_duration().is_some());
-        assert!(Scalar::from(1).as_temporal().is_none());
+        // An interval restates no count across units; all three of its
+        // components are read by matching `Scalar::Interval` directly.
+        assert_eq!(cases[7].0.temporal_count_at(TimeUnit::Nanosecond), None);
+        assert!(matches!(cases[7].0, Scalar::Interval(held) if held == interval));
+        assert_eq!(cases[0].0.as_date32().map(|(count, ..)| count), Some(1));
+        assert_eq!(
+            cases[1].0.as_date64().map(|(count, ..)| count),
+            Some(86_400_000)
+        );
+
+        let number = Scalar::from(1);
+        assert!(!number.is_temporal());
+        assert_eq!(number.temporal_family(), None);
+        assert_eq!(number.temporal_unit(), None);
+        assert_eq!(number.temporal_timezone(), None);
+        assert_eq!(number.temporal_count(), None);
+        assert_eq!(number.temporal_count_at(TimeUnit::Second), None);
+    }
+
+    #[test]
+    fn a_temporal_leaf_is_its_own_family() {
+        let value = Scalar::datetime64(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+        let leaf = <DateTime64 as ScalarValue>::from_scalar(&value)
+            .copied()
+            .unwrap();
+        assert_eq!(<DateTime64 as ScalarValue>::from_family(&leaf), Some(&leaf));
+        assert_eq!(
+            <DateTime64 as ScalarFamily>::id(&leaf),
+            DataTypeId::DateTime64
+        );
+        assert_eq!(<DateTime64 as ScalarFamily>::into_scalar(leaf), value);
+        assert!(<Date32 as ScalarFamily>::from_scalar(&value).is_none());
+
+        let interval = Interval::new(1, 0, 0, TimeUnit::YearMonth).unwrap();
+        let held = <Interval as ScalarValue>::into_scalar(interval);
+        assert_eq!(
+            <Interval as ScalarFamily>::from_scalar(&held),
+            Some(&interval)
+        );
+        assert_eq!(
+            <Interval as ScalarFamily>::id(&interval),
+            DataTypeId::Interval
+        );
     }
 
     #[test]
@@ -1157,24 +1082,24 @@ pub(crate) struct TemporalParts {
 }
 
 pub(crate) fn temporal_value_parts(value: &Scalar) -> Option<TemporalParts> {
-    let temporal = value.as_temporal()?;
-    let unit = temporal.unit();
-    let zone = temporal.timezone();
-    let dtype = match (temporal.family(), temporal.bit_width()) {
-        (TemporalFamily::Date, 32) => DataType::Date32,
-        (TemporalFamily::Date, 64) => DataType::Date64,
-        (TemporalFamily::Time, 32) => DataType::Time32(unit),
-        (TemporalFamily::Time, 64) => DataType::Time64(unit),
-        (TemporalFamily::DateTime, 64) => DataType::DateTime64 {
+    let family = value.temporal_family()?;
+    let unit = value.temporal_unit()?;
+    let zone = value.temporal_timezone()?;
+    let dtype = match value {
+        Scalar::Date32(_) => DataType::Date32,
+        Scalar::Date64(_) => DataType::Date64,
+        Scalar::Time32(_) => DataType::Time32(unit),
+        Scalar::Time64(_) => DataType::Time64(unit),
+        Scalar::DateTime64(_) => DataType::DateTime64 {
             unit,
             timezone: zone,
         },
-        (TemporalFamily::Duration, 32) => DataType::Duration32(unit),
-        (TemporalFamily::Duration, 64) => DataType::Duration64(unit),
+        Scalar::Duration32(_) => DataType::Duration32(unit),
+        Scalar::Duration64(_) => DataType::Duration64(unit),
         _ => return None,
     };
     Some(TemporalParts {
-        family: temporal.family(),
+        family,
         unit,
         zone,
         dtype,
@@ -1370,10 +1295,10 @@ pub(crate) fn duration_integer_arithmetic(
 ) -> Result<Scalar> {
     let (duration, integer, duration_first) = if temporal_value_parts(left)
         .is_some_and(|parts| parts.family == TemporalFamily::Duration)
-        && right.as_integer().is_some()
+        && right.is_integer()
     {
         (left, right, true)
-    } else if left.as_integer().is_some()
+    } else if left.is_integer()
         && temporal_value_parts(right).is_some_and(|parts| parts.family == TemporalFamily::Duration)
     {
         (right, left, false)

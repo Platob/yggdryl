@@ -4,19 +4,18 @@ use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 
 use smol_str::SmolStr;
 
-use super::decimal::Decimal;
 use super::decimal::scalars::{
     decimal_arithmetic, decimal_target, decimal_value_parts, inferred_decimal_division_scale,
     is_exact_number, result_decimal_scale,
 };
-use super::floating::scalars::{Floating, float_arithmetic, float_value_width, float_width};
+use super::floating::scalars::{float_arithmetic, float_value_width, float_width};
 use super::integer::scalars::{
-    Integer, common_integer, integer_arithmetic, integer_kind, integer_value_kind,
+    common_integer, integer_arithmetic, integer_kind, integer_value_kind,
 };
 use super::scalar::Scalar;
 use super::temporal::scalars::{
-    Temporal, TemporalFamily, duration_integer_arithmetic, temporal_arithmetic,
-    temporal_result_type, temporal_target, temporal_value_parts,
+    TemporalFamily, duration_integer_arithmetic, temporal_arithmetic, temporal_result_type,
+    temporal_target, temporal_value_parts,
 };
 use crate::{DataType, Error, Result};
 
@@ -88,75 +87,69 @@ impl Scalar {
             kind,
         };
         Ok(match self {
-            Self::Integer(Integer::I8(value)) => {
-                Self::from(value.get().checked_neg().ok_or_else(|| overflow("i8"))?)
-            }
-            Self::Integer(Integer::I16(value)) => {
+            Self::I8(value) => Self::from(value.get().checked_neg().ok_or_else(|| overflow("i8"))?),
+            Self::I16(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i16"))?)
             }
-            Self::Integer(Integer::I32(value)) => {
+            Self::I32(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i32"))?)
             }
-            Self::Integer(Integer::I64(value)) => {
+            Self::I64(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i64"))?)
             }
-            Self::Integer(Integer::I128(value)) => {
+            Self::I128(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i128"))?)
             }
-            Self::Integer(Integer::U8(value)) => Self::from(-i16::from(value.get())),
-            Self::Integer(Integer::U16(value)) => Self::from(-i32::from(value.get())),
-            Self::Integer(Integer::U32(value)) => Self::from(-i64::from(value.get())),
-            Self::Integer(Integer::U64(value)) => Self::from(-i128::from(value.get())),
-            Self::Integer(Integer::U128(_)) => {
+            Self::U8(value) => Self::from(-i16::from(value.get())),
+            Self::U16(value) => Self::from(-i32::from(value.get())),
+            Self::U32(value) => Self::from(-i64::from(value.get())),
+            Self::U64(value) => Self::from(-i128::from(value.get())),
+            Self::U128(_) => {
                 return Err(invalid_unary(
                     "negation",
                     self,
                     "u128 has no lossless signed promotion",
                 ));
             }
-            Self::Floating(Floating::F16(value)) => Self::Floating(Floating::F16(-*value)),
-            Self::Floating(Floating::F32(value)) => Self::Floating(Floating::F32(-*value)),
-            Self::Floating(Floating::F64(value)) => Self::Floating(Floating::F64(-*value)),
-            Self::Decimal(Decimal::D32(value)) => {
-                Self::Decimal(Decimal::D32(super::decimal::Decimal32::new(
-                    value
-                        .coefficient()
-                        .checked_neg()
-                        .ok_or_else(|| overflow("d32"))?,
-                    value.scale(),
-                )))
-            }
-            Self::Decimal(Decimal::D64(value)) => {
-                Self::Decimal(Decimal::D64(super::decimal::Decimal64::new(
-                    value
-                        .coefficient()
-                        .checked_neg()
-                        .ok_or_else(|| overflow("d64"))?,
-                    value.scale(),
-                )))
-            }
-            Self::Decimal(Decimal::D128(value)) => Self::d128(
+            Self::F16(value) => Self::F16(-*value),
+            Self::F32(value) => Self::F32(-*value),
+            Self::F64(value) => Self::F64(-*value),
+            Self::D32(value) => Self::D32(super::decimal::Decimal32::new(
+                value
+                    .coefficient()
+                    .checked_neg()
+                    .ok_or_else(|| overflow("d32"))?,
+                value.scale(),
+            )),
+            Self::D64(value) => Self::D64(super::decimal::Decimal64::new(
+                value
+                    .coefficient()
+                    .checked_neg()
+                    .ok_or_else(|| overflow("d64"))?,
+                value.scale(),
+            )),
+            Self::D128(value) => Self::d128(
                 value
                     .coefficient()
                     .checked_neg()
                     .ok_or_else(|| overflow("d128"))?,
                 value.scale(),
             ),
-            Self::Decimal(Decimal::D256(value)) => Self::d256(
+            Self::D256(value) => Self::d256(
                 value
                     .coefficient()
                     .checked_neg()
                     .ok_or_else(|| overflow("d256"))?,
                 value.scale(),
             ),
-            Self::Temporal(Temporal::Duration32(value)) => Self::duration32(
+            Self::Duration32(value) => Self::duration32(
                 value
                     .count()
                     .checked_neg()
                     .ok_or_else(|| overflow("duration32"))?,
                 value.unit(),
             )?,
-            Self::Temporal(Temporal::Duration64(value)) => Self::duration64(
+            Self::Duration64(value) => Self::duration64(
                 value
                     .count()
                     .checked_neg()
@@ -183,57 +176,47 @@ impl Scalar {
             kind,
         };
         Ok(match self {
-            Self::Integer(Integer::I8(value)) => {
-                Self::from(value.get().checked_abs().ok_or_else(|| overflow("i8"))?)
-            }
-            Self::Integer(Integer::I16(value)) => {
+            Self::I8(value) => Self::from(value.get().checked_abs().ok_or_else(|| overflow("i8"))?),
+            Self::I16(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i16"))?)
             }
-            Self::Integer(Integer::I32(value)) => {
+            Self::I32(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i32"))?)
             }
-            Self::Integer(Integer::I64(value)) => {
+            Self::I64(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i64"))?)
             }
-            Self::Integer(Integer::I128(value)) => {
+            Self::I128(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i128"))?)
             }
-            Self::Integer(
-                Integer::U8(_)
-                | Integer::U16(_)
-                | Integer::U32(_)
-                | Integer::U64(_)
-                | Integer::U128(_),
-            ) => self.clone(),
-            Self::Floating(Floating::F16(value)) => Self::Floating(Floating::F16(value.abs())),
-            Self::Floating(Floating::F32(value)) => Self::Floating(Floating::F32(value.abs())),
-            Self::Floating(Floating::F64(value)) => Self::Floating(Floating::F64(value.abs())),
-            Self::Decimal(Decimal::D32(value)) => {
-                Self::Decimal(Decimal::D32(super::decimal::Decimal32::new(
-                    value
-                        .coefficient()
-                        .checked_abs()
-                        .ok_or_else(|| overflow("d32"))?,
-                    value.scale(),
-                )))
+            Self::U8(_) | Self::U16(_) | Self::U32(_) | Self::U64(_) | Self::U128(_) => {
+                self.clone()
             }
-            Self::Decimal(Decimal::D64(value)) => {
-                Self::Decimal(Decimal::D64(super::decimal::Decimal64::new(
-                    value
-                        .coefficient()
-                        .checked_abs()
-                        .ok_or_else(|| overflow("d64"))?,
-                    value.scale(),
-                )))
-            }
-            Self::Decimal(Decimal::D128(value)) => Self::d128(
+            Self::F16(value) => Self::F16(value.abs()),
+            Self::F32(value) => Self::F32(value.abs()),
+            Self::F64(value) => Self::F64(value.abs()),
+            Self::D32(value) => Self::D32(super::decimal::Decimal32::new(
+                value
+                    .coefficient()
+                    .checked_abs()
+                    .ok_or_else(|| overflow("d32"))?,
+                value.scale(),
+            )),
+            Self::D64(value) => Self::D64(super::decimal::Decimal64::new(
+                value
+                    .coefficient()
+                    .checked_abs()
+                    .ok_or_else(|| overflow("d64"))?,
+                value.scale(),
+            )),
+            Self::D128(value) => Self::d128(
                 value
                     .coefficient()
                     .checked_abs()
                     .ok_or_else(|| overflow("d128"))?,
                 value.scale(),
             ),
-            Self::Decimal(Decimal::D256(value)) => Self::d256(
+            Self::D256(value) => Self::d256(
                 if value.coefficient().is_negative() {
                     value
                         .coefficient()
@@ -244,14 +227,14 @@ impl Scalar {
                 },
                 value.scale(),
             ),
-            Self::Temporal(Temporal::Duration32(value)) => Self::duration32(
+            Self::Duration32(value) => Self::duration32(
                 value
                     .count()
                     .checked_abs()
                     .ok_or_else(|| overflow("duration32"))?,
                 value.unit(),
             )?,
-            Self::Temporal(Temporal::Duration64(value)) => Self::duration64(
+            Self::Duration64(value) => Self::duration64(
                 value
                     .count()
                     .checked_abs()
@@ -315,8 +298,8 @@ fn checked_arithmetic_target(
             if matches!(temporal_target(dtype), Some((TemporalFamily::Duration, _)))
                 && ((temporal_value_parts(left)
                     .is_some_and(|parts| parts.family == TemporalFamily::Duration)
-                    && right.as_integer().is_some())
-                    || (left.as_integer().is_some()
+                    && right.is_integer())
+                    || (left.is_integer()
                         && temporal_value_parts(right)
                             .is_some_and(|parts| parts.family == TemporalFamily::Duration)))
             {
@@ -393,15 +376,8 @@ fn inferred_target(
         }
         let left_scale = left_decimal.map_or(0, |parts| parts.1);
         let right_scale = right_decimal.map_or(0, |parts| parts.1);
-        let wide = matches!(
-            left,
-            Scalar::Decimal(Decimal::D256(_))
-                | Scalar::Integer(Integer::I128(_) | Integer::U128(_))
-        ) || matches!(
-            right,
-            Scalar::Decimal(Decimal::D256(_))
-                | Scalar::Integer(Integer::I128(_) | Integer::U128(_))
-        );
+        let wide = matches!(left, Scalar::D256(_) | Scalar::I128(_) | Scalar::U128(_))
+            || matches!(right, Scalar::D256(_) | Scalar::I128(_) | Scalar::U128(_));
         let scale = match operation {
             Arithmetic::Div => {
                 inferred_decimal_division_scale(left, left_scale, right, right_scale, wide)?
@@ -425,8 +401,8 @@ fn inferred_target(
     let left_float = float_value_width(left);
     let right_float = float_value_width(right);
     if left_float.is_some() || right_float.is_some() {
-        if !(left_float.is_some() || left.as_integer().is_some())
-            || !(right_float.is_some() || right.as_integer().is_some())
+        if !(left_float.is_some() || left.is_integer())
+            || !(right_float.is_some() || right.is_integer())
         {
             return Err(invalid_binary(
                 operation,
@@ -435,7 +411,7 @@ fn inferred_target(
                 "floats combine only with floats or integers",
             ));
         }
-        let width = if left.as_integer().is_some() || right.as_integer().is_some() {
+        let width = if left.is_integer() || right.is_integer() {
             64
         } else {
             left_float.unwrap_or(16).max(right_float.unwrap_or(16))

@@ -10,7 +10,6 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
 use super::{column_digests, row_digests};
 use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::types::Temporal;
 use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -504,9 +503,9 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::Temporal(Temporal::Interval(
+                Scalar::Interval(
                     crate::types::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
-                )),
+                ),
                 Scalar::Null,
             ]),
         ),
@@ -517,9 +516,9 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::Temporal(Temporal::Interval(
+                Scalar::Interval(
                     crate::types::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
-                )),
+                ),
                 Scalar::Null,
             ]),
         ),
@@ -530,9 +529,9 @@ fn columns() -> Vec<(Field, Scalar)> {
                 true,
             ),
             Scalar::from_sequence([
-                Scalar::Temporal(Temporal::Interval(
+                Scalar::Interval(
                     crate::types::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
-                )),
+                ),
                 Scalar::Null,
             ]),
         ),

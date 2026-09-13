@@ -45,28 +45,32 @@ use crate::{DataType, DataTypeId, DataTypeKind, Error, I256, Result, TimeUnit, T
 
 use super::boolean::Boolean;
 use super::bytes::Bytes;
-use super::decimal::Decimal;
 use super::decimal::scalars as decimal;
+use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
 use super::enumeration::Enum;
-use super::floating::scalars::{Float16, Float32, Float64, Floating};
+use super::floating::scalars::{Float16, Float32, Float64};
 use super::geospatial::Geospatial;
-use super::integer::scalars::Integer;
-use super::nested::{Children, Mapping, Nested, Record, Sequence};
+use super::integer::scalars::{compare_integer_parts, integer_parts};
+use super::integer::{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128};
+use super::nested::{Children, Mapping, Record, Sequence};
 use super::string::{Code, Str};
-use super::temporal::scalars::{Temporal, temporal_key};
+use super::temporal::scalars::temporal_key;
+use super::temporal::{
+    Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64,
+};
 use super::uuid::Uuid;
 use super::version::Version;
 
 /// One concrete scalar representation.
 ///
-/// Implementors are the final leaves below a [`Scalar`] family. Narrowing an
-/// existing scalar only projects a reference; validation remains owned by
-/// [`DataType::scalar`](crate::DataType::scalar) and
+/// Implementors are the final representation a [`Scalar`] variant holds.
+/// Narrowing an existing scalar only projects a reference; validation remains
+/// owned by [`DataType::scalar`](crate::DataType::scalar) and
 /// [`Field::scalar`](crate::Field::scalar).
 pub trait ScalarValue:
     Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
 {
-    /// The family enum containing this representation.
+    /// The family this representation belongs to; a width leaf is its own.
     type Family: ScalarFamily;
 
     /// The exact representation identifier.
@@ -79,7 +83,7 @@ pub trait ScalarValue:
     /// Values whose physical parameters cannot be represented by a valid
     /// [`DataType`] return a typed error instead of guessing or panicking.
     fn dtype(&self) -> Result<DataType>;
-    /// Widen this leaf to its family enum.
+    /// Widen this leaf to its family.
     fn into_family(self) -> Self::Family;
     /// Narrow a family value to this leaf.
     fn from_family(family: &Self::Family) -> Option<&Self>;
@@ -90,6 +94,10 @@ pub trait ScalarValue:
 }
 
 /// One dynamic family of scalar representations.
+///
+/// [`Code`] and [`Geospatial`] group several leaves; every other leaf,
+/// including each integer, float, decimal, temporal and nested width, is its
+/// own family.
 pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash {
     /// The datatype family shared by every member.
     const KIND: DataTypeKind;
@@ -112,14 +120,56 @@ pub enum Scalar {
     Null,
     /// A boolean.
     Boolean(Boolean),
-    /// A signed or unsigned exact integer.
-    Integer(Integer),
-    /// An IEEE floating-point value.
-    Floating(Floating),
-    /// An exact coefficient-and-scale decimal.
-    Decimal(Decimal),
-    /// A temporal or interval value.
-    Temporal(Temporal),
+    /// A signed 8-bit integer.
+    I8(Int8),
+    /// A signed 16-bit integer.
+    I16(Int16),
+    /// A signed 32-bit integer.
+    I32(Int32),
+    /// A signed 64-bit integer.
+    I64(Int64),
+    /// An unsigned 8-bit integer.
+    U8(UInt8),
+    /// An unsigned 16-bit integer.
+    U16(UInt16),
+    /// An unsigned 32-bit integer.
+    U32(UInt32),
+    /// An unsigned 64-bit integer.
+    U64(UInt64),
+    /// A signed 128-bit integer.
+    I128(Int128),
+    /// An unsigned 128-bit integer.
+    U128(UInt128),
+    /// An IEEE binary16 float.
+    F16(Float16),
+    /// An IEEE binary32 float.
+    F32(Float32),
+    /// An IEEE binary64 float.
+    F64(Float64),
+    /// A 32-bit coefficient-and-scale decimal.
+    D32(Decimal32),
+    /// A 64-bit coefficient-and-scale decimal.
+    D64(Decimal64),
+    /// A 128-bit coefficient-and-scale decimal.
+    D128(Decimal128),
+    /// A 256-bit coefficient-and-scale decimal.
+    D256(Decimal256),
+    /// A 32-bit day-count date.
+    Date32(Date32),
+    /// A 64-bit millisecond-count date.
+    Date64(Date64),
+    /// A 32-bit second- or millisecond-count time of day.
+    Time32(Time32),
+    /// A 64-bit microsecond- or nanosecond-count time of day.
+    Time64(Time64),
+    /// A 64-bit epoch or wall-clock datetime.
+    DateTime64(DateTime64),
+    /// A 32-bit elapsed duration.
+    Duration32(Duration32),
+    /// A 64-bit elapsed duration.
+    Duration64(Duration64),
+    /// A calendar interval in one of its three layouts.
+    Interval(Interval),
     /// A string: its characters, and the layout and charset it is stored
     /// under.
     String(Str),
@@ -140,8 +190,12 @@ pub enum Scalar {
     Bytes(Bytes),
     /// Geometry or geography as validated Well-Known Binary.
     Geospatial(Geospatial),
-    /// A schema-free ordered, mapped, or named nested value.
-    Nested(Nested),
+    /// A schema-free ordered sequence of values.
+    Sequence(Sequence),
+    /// A schema-free insertion-ordered mapping of arbitrary keys.
+    Mapping(Mapping),
+    /// A schema-free record of values sorted by field name.
+    Record(Record),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -204,45 +258,39 @@ impl Serialize for Scalar {
                 document.end()
             }
             Self::Boolean(value) => tagged(serializer, "bool", &value.get()),
-            Self::Integer(value) => match value {
-                Integer::I8(value) => tagged(serializer, "i8", &value.get()),
-                Integer::I16(value) => tagged(serializer, "i16", &value.get()),
-                Integer::I32(value) => tagged(serializer, "i32", &value.get()),
-                Integer::I64(value) => tagged(serializer, "i64", &value.get()),
-                Integer::U8(value) => tagged(serializer, "u8", &value.get()),
-                Integer::U16(value) => tagged(serializer, "u16", &value.get()),
-                Integer::U32(value) => tagged(serializer, "u32", &value.get()),
-                Integer::U64(value) => tagged(serializer, "u64", &value.get()),
-                Integer::I128(value) => tagged(serializer, "i128", &value.get()),
-                Integer::U128(value) => tagged(serializer, "u128", &value.get()),
-            },
-            Self::Floating(value) => match value {
-                Floating::F16(value) => tagged(serializer, "f16", value),
-                Floating::F32(value) => tagged(serializer, "f32", value),
-                Floating::F64(value) => tagged(serializer, "f64", value),
-            },
-            Self::Decimal(value) => match value {
-                Decimal::D32(value) => tagged(
-                    serializer,
-                    "d32",
-                    &Pair(&value.coefficient(), &value.scale()),
-                ),
-                Decimal::D64(value) => tagged(
-                    serializer,
-                    "d64",
-                    &Pair(&value.coefficient(), &value.scale()),
-                ),
-                Decimal::D128(value) => tagged(
-                    serializer,
-                    "d128",
-                    &Pair(&value.coefficient(), &value.scale()),
-                ),
-                Decimal::D256(value) => tagged(
-                    serializer,
-                    "d256",
-                    &Pair(&value.coefficient(), &value.scale()),
-                ),
-            },
+            Self::I8(value) => tagged(serializer, "i8", &value.get()),
+            Self::I16(value) => tagged(serializer, "i16", &value.get()),
+            Self::I32(value) => tagged(serializer, "i32", &value.get()),
+            Self::I64(value) => tagged(serializer, "i64", &value.get()),
+            Self::U8(value) => tagged(serializer, "u8", &value.get()),
+            Self::U16(value) => tagged(serializer, "u16", &value.get()),
+            Self::U32(value) => tagged(serializer, "u32", &value.get()),
+            Self::U64(value) => tagged(serializer, "u64", &value.get()),
+            Self::I128(value) => tagged(serializer, "i128", &value.get()),
+            Self::U128(value) => tagged(serializer, "u128", &value.get()),
+            Self::F16(value) => tagged(serializer, "f16", value),
+            Self::F32(value) => tagged(serializer, "f32", value),
+            Self::F64(value) => tagged(serializer, "f64", value),
+            Self::D32(value) => tagged(
+                serializer,
+                "d32",
+                &Pair(&value.coefficient(), &value.scale()),
+            ),
+            Self::D64(value) => tagged(
+                serializer,
+                "d64",
+                &Pair(&value.coefficient(), &value.scale()),
+            ),
+            Self::D128(value) => tagged(
+                serializer,
+                "d128",
+                &Pair(&value.coefficient(), &value.scale()),
+            ),
+            Self::D256(value) => tagged(
+                serializer,
+                "d256",
+                &Pair(&value.coefficient(), &value.scale()),
+            ),
             // One tag for every string. The ordinary value - UTF-8, the
             // `string` layout - writes its characters and nothing else, which
             // is what it always wrote; a layout, a charset or a fixed width
@@ -265,26 +313,22 @@ impl Serialize for Scalar {
             },
             // A temporal is its classic ISO spelling wherever it has one; a
             // reading with no classic spelling keeps its structural parts.
-            Self::Temporal(Temporal::Date32(value)) => {
-                match super::temporal::iso::format_date(value.count()) {
-                    Some(spelled)
-                        if value.unit() == TimeUnit::Day && value.timezone().is_naive() =>
-                    {
-                        tagged(serializer, "date32", &spelled)
-                    }
-                    _ => tagged(
-                        serializer,
-                        "date32",
-                        &Triple(&value.count(), &value.unit(), &value.timezone()),
-                    ),
+            Self::Date32(value) => match super::temporal::iso::format_date(value.count()) {
+                Some(spelled) if value.unit() == TimeUnit::Day && value.timezone().is_naive() => {
+                    tagged(serializer, "date32", &spelled)
                 }
-            }
-            Self::Temporal(Temporal::Date64(value)) => tagged(
+                _ => tagged(
+                    serializer,
+                    "date32",
+                    &Triple(&value.count(), &value.unit(), &value.timezone()),
+                ),
+            },
+            Self::Date64(value) => tagged(
                 serializer,
                 "date64",
                 &Triple(&value.count(), &value.unit(), &value.timezone()),
             ),
-            Self::Temporal(Temporal::Time32(value)) => {
+            Self::Time32(value) => {
                 match super::temporal::iso::format_time(i64::from(value.count()), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "time32", &spelled)
@@ -296,7 +340,7 @@ impl Serialize for Scalar {
                     ),
                 }
             }
-            Self::Temporal(Temporal::Time64(value)) => {
+            Self::Time64(value) => {
                 match super::temporal::iso::format_time(value.count(), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "time64", &spelled)
@@ -308,7 +352,7 @@ impl Serialize for Scalar {
                     ),
                 }
             }
-            Self::Temporal(Temporal::DateTime64(value)) => {
+            Self::DateTime64(value) => {
                 let spelled = if value.timezone().is_naive() {
                     super::temporal::iso::format_datetime(value.count(), value.unit())
                 } else {
@@ -327,7 +371,7 @@ impl Serialize for Scalar {
                     ),
                 }
             }
-            Self::Temporal(Temporal::Duration32(value)) => {
+            Self::Duration32(value) => {
                 match super::temporal::iso::format_duration(i64::from(value.count()), value.unit())
                 {
                     Some(spelled) if value.timezone().is_naive() => {
@@ -340,7 +384,7 @@ impl Serialize for Scalar {
                     ),
                 }
             }
-            Self::Temporal(Temporal::Duration64(value)) => {
+            Self::Duration64(value) => {
                 match super::temporal::iso::format_duration(value.count(), value.unit()) {
                     Some(spelled) if value.timezone().is_naive() => {
                         tagged(serializer, "duration64", &spelled)
@@ -352,16 +396,10 @@ impl Serialize for Scalar {
                     ),
                 }
             }
-            Self::Temporal(Temporal::Interval(value)) => tagged(serializer, "interval", value),
-            Self::Nested(Nested::Sequence(values)) => {
-                tagged(serializer, "sequence", &values.as_slice())
-            }
-            Self::Nested(Nested::Mapping(entries)) => {
-                tagged(serializer, "mapping", &entries.as_slice())
-            }
-            Self::Nested(Nested::Record(entries)) => {
-                tagged(serializer, "record", &entries.as_map())
-            }
+            Self::Interval(value) => tagged(serializer, "interval", value),
+            Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
+            Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
+            Self::Record(entries) => tagged(serializer, "record", &entries.as_map()),
         }
     }
 }
@@ -490,15 +528,15 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::U64(value) => Ok(Self::from(value)),
             StructuralValue::I128(value) => Ok(Self::from(value)),
             StructuralValue::U128(value) => Ok(Self::from(value)),
-            StructuralValue::F16(value) => Ok(Self::Floating(Floating::F16(value))),
-            StructuralValue::F32(value) => Ok(Self::Floating(Floating::F32(value))),
-            StructuralValue::F64(value) => Ok(Self::Floating(Floating::F64(value))),
-            StructuralValue::D32(unscaled, scale) => Ok(Self::Decimal(Decimal::D32(
-                super::decimal::Decimal32::new(unscaled, scale),
-            ))),
-            StructuralValue::D64(unscaled, scale) => Ok(Self::Decimal(Decimal::D64(
-                super::decimal::Decimal64::new(unscaled, scale),
-            ))),
+            StructuralValue::F16(value) => Ok(Self::F16(value)),
+            StructuralValue::F32(value) => Ok(Self::F32(value)),
+            StructuralValue::F64(value) => Ok(Self::F64(value)),
+            StructuralValue::D32(unscaled, scale) => {
+                Ok(Self::D32(super::decimal::Decimal32::new(unscaled, scale)))
+            }
+            StructuralValue::D64(unscaled, scale) => {
+                Ok(Self::D64(super::decimal::Decimal64::new(unscaled, scale)))
+            }
             StructuralValue::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralValue::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::String(value)),
@@ -629,7 +667,7 @@ impl<'de> Deserialize<'de> for Scalar {
                     .and_then(|(count, unit)| Self::duration64(count, unit))
                     .map_err(D::Error::custom)
             }
-            StructuralValue::Interval(value) => Ok(Self::Temporal(Temporal::Interval(value))),
+            StructuralValue::Interval(value) => Ok(Self::Interval(value)),
             StructuralValue::Sequence(values) => Ok(Self::from_sequence(values)),
             StructuralValue::Mapping(entries) => {
                 Self::from_mapping(entries).map_err(D::Error::custom)
@@ -657,17 +695,17 @@ impl PartialOrd for Scalar {
 
 impl Ord for Scalar {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (self.as_integer(), other.as_integer()) {
-            (Some(left), Some(right)) => return compare_integer(left, right),
+        match (integer_parts(self), integer_parts(other)) {
+            (Some(left), Some(right)) => return compare_integer_parts(left, right),
             (Some(_), None) | (None, Some(_)) => {
                 return value_rank(self).cmp(&value_rank(other));
             }
             (None, None) => {}
         }
-        // Floats are one family across widths, exactly as the integers are:
-        // an `f32` widens to `f64` without loss, so `F32(1.5)` and `F64(1.5)`
-        // are one value, not two kinds that happen to print alike.
-        if let (Some(left), Some(right)) = (self.as_float(), other.as_float()) {
+        // Floats are one value space across widths, exactly as the integers
+        // are: an `f32` widens to `f64` without loss, so `F32(1.5)` and
+        // `F64(1.5)` are one value, not two kinds that happen to print alike.
+        if let (Some(left), Some(right)) = (float_value(self), float_value(other)) {
             return left.cmp(&right);
         }
         if let (Some(left), Some(right)) = (decimal_value(self), decimal_value(other)) {
@@ -696,10 +734,32 @@ impl Ord for Scalar {
         match self {
             Self::Null => Ordering::Equal,
             Self::Boolean(left) => same_kind!(Self::Boolean(right) => left.cmp(right)),
-            Self::Integer(_) => unreachable!("every integer width returned above"),
-            Self::Floating(_) => unreachable!("all float widths returned above"),
-            Self::Decimal(_) => unreachable!("all decimal widths returned above"),
-            Self::Temporal(left) => same_kind!(Self::Temporal(right) => left.cmp(right)),
+            Self::I8(_)
+            | Self::I16(_)
+            | Self::I32(_)
+            | Self::I64(_)
+            | Self::U8(_)
+            | Self::U16(_)
+            | Self::U32(_)
+            | Self::U64(_)
+            | Self::I128(_)
+            | Self::U128(_) => unreachable!("every integer width returned above"),
+            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+                unreachable!("all float widths returned above")
+            }
+            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_) => {
+                unreachable!("all decimal widths returned above")
+            }
+            // Two temporals of one family returned above, and two families
+            // never share a rank.
+            Self::Date32(_)
+            | Self::Date64(_)
+            | Self::Time32(_)
+            | Self::Time64(_)
+            | Self::DateTime64(_)
+            | Self::Duration32(_)
+            | Self::Duration64(_) => unreachable!("every temporal width returned above"),
+            Self::Interval(left) => same_kind!(Self::Interval(right) => left.cmp(right)),
             Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
             Self::Code(left) => same_kind!(Self::Code(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
@@ -708,7 +768,9 @@ impl Ord for Scalar {
             Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
             Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
-            Self::Nested(left) => same_kind!(Self::Nested(right) => left.cmp(right)),
+            Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
+            Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
+            Self::Record(left) => same_kind!(Self::Record(right) => left.cmp(right)),
         }
     }
 }
@@ -716,13 +778,13 @@ impl Ord for Scalar {
 impl Hash for Scalar {
     fn hash<H: Hasher>(&self, state: &mut H) {
         value_rank(self).hash(state);
-        if let Some(integer) = self.as_integer() {
-            integer.hash(state);
+        if let Some(parts) = integer_parts(self) {
+            parts.hash(state);
             return;
         }
         // All float widths hash their common 64-bit reading, which is what
-        // keeps `Hash` agreeing with `Ord` across the family.
-        if let Some(float) = self.as_float() {
+        // keeps `Hash` agreeing with `Ord` across the widths.
+        if let Some(float) = float_value(self) {
             float.hash(state);
             return;
         }
@@ -738,10 +800,36 @@ impl Hash for Scalar {
         match self {
             Self::Null => {}
             Self::Boolean(value) => value.hash(state),
-            Self::Integer(_) => unreachable!("integer values returned above"),
-            Self::Floating(_) => unreachable!("float values returned above"),
-            Self::Decimal(_) => unreachable!("decimal values returned above"),
-            Self::Temporal(value) => value.hash(state),
+            Self::I8(_)
+            | Self::I16(_)
+            | Self::I32(_)
+            | Self::I64(_)
+            | Self::U8(_)
+            | Self::U16(_)
+            | Self::U32(_)
+            | Self::U64(_)
+            | Self::I128(_)
+            | Self::U128(_) => unreachable!("integer values returned above"),
+            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+                unreachable!("float values returned above")
+            }
+            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_) => {
+                unreachable!("decimal values returned above")
+            }
+            Self::Date32(_)
+            | Self::Date64(_)
+            | Self::Time32(_)
+            | Self::Time64(_)
+            | Self::DateTime64(_)
+            | Self::Duration32(_)
+            | Self::Duration64(_) => unreachable!("temporal values returned above"),
+            // Interval, Sequence, Mapping and Record feed the discriminant their
+            // retired width enum wrote before them, so deterministic hashes built
+            // over `Hash` (a message's, a plugin's) keep their exact bytes.
+            Self::Interval(value) => {
+                7_isize.hash(state);
+                value.hash(state);
+            }
             Self::String(value) => value.hash(state),
             Self::Code(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
@@ -750,9 +838,25 @@ impl Hash for Scalar {
             Self::Enum(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
             Self::Geospatial(value) => value.hash(state),
-            Self::Nested(value) => value.hash(state),
+            Self::Sequence(value) => {
+                0_isize.hash(state);
+                value.hash(state);
+            }
+            Self::Mapping(value) => {
+                1_isize.hash(state);
+                value.hash(state);
+            }
+            Self::Record(value) => {
+                2_isize.hash(state);
+                value.hash(state);
+            }
         }
     }
+}
+
+/// The common 64-bit reading every float width orders and hashes by.
+fn float_value(value: &Scalar) -> Option<Float64> {
+    value.as_f64().map(Float64::from_f64)
 }
 
 fn decimal_value(value: &Scalar) -> Option<(I256, i8)> {
@@ -760,27 +864,18 @@ fn decimal_value(value: &Scalar) -> Option<(I256, i8)> {
 }
 
 /// The family, normalized count, and zone of one temporal.
+///
+/// An interval answers `None`: its three components have no one count to
+/// normalize, so it orders and hashes as itself.
 fn temporal_value(value: &Scalar) -> Option<(super::TemporalFamily, (u8, i128), Timezone)> {
-    let temporal = value.as_temporal()?;
-    let count = match temporal {
-        Temporal::Date32(value) => i64::from(value.count()),
-        Temporal::Date64(value) => value.count(),
-        Temporal::Time32(value) => i64::from(value.count()),
-        Temporal::Time64(value) => value.count(),
-        Temporal::DateTime64(value) => value.count(),
-        Temporal::Duration32(value) => i64::from(value.count()),
-        Temporal::Duration64(value) => value.count(),
-        Temporal::Interval(_) => return None,
-    };
+    if matches!(value, Scalar::Interval(_)) {
+        return None;
+    }
     Some((
-        (*temporal).family(),
-        temporal_key(count, (*temporal).unit()),
-        temporal.timezone(),
+        value.temporal_family()?,
+        temporal_key(value.temporal_count()?, value.temporal_unit()?),
+        value.temporal_timezone()?,
     ))
-}
-
-fn compare_integer(left: Integer, right: Integer) -> Ordering {
-    left.cmp(&right)
 }
 
 /// The total-ordering key that separates one kind of value from another.
@@ -795,21 +890,30 @@ const fn value_rank(value: &Scalar) -> u8 {
     match value {
         Scalar::Null => 0,
         Scalar::Boolean(_) => 1,
-        Scalar::Integer(_) => 2,
-        Scalar::Floating(_) => 3,
-        Scalar::Decimal(_) => 4,
+        Scalar::I8(_)
+        | Scalar::I16(_)
+        | Scalar::I32(_)
+        | Scalar::I64(_)
+        | Scalar::U8(_)
+        | Scalar::U16(_)
+        | Scalar::U32(_)
+        | Scalar::U64(_)
+        | Scalar::I128(_)
+        | Scalar::U128(_) => 2,
+        Scalar::F16(_) | Scalar::F32(_) | Scalar::F64(_) => 3,
+        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => 4,
         Scalar::String(_) => 5,
         Scalar::Bytes(_) => 6,
-        Scalar::Temporal(Temporal::Date32(_) | Temporal::Date64(_)) => 7,
-        Scalar::Temporal(Temporal::Time32(_) | Temporal::Time64(_)) => 8,
-        Scalar::Temporal(Temporal::DateTime64(_)) => 9,
-        Scalar::Temporal(Temporal::Duration32(_) | Temporal::Duration64(_)) => 10,
-        Scalar::Nested(Nested::Sequence(_)) => 11,
-        Scalar::Nested(Nested::Mapping(_)) => 12,
-        Scalar::Nested(Nested::Record(_)) => 13,
+        Scalar::Date32(_) | Scalar::Date64(_) => 7,
+        Scalar::Time32(_) | Scalar::Time64(_) => 8,
+        Scalar::DateTime64(_) => 9,
+        Scalar::Duration32(_) | Scalar::Duration64(_) => 10,
+        Scalar::Sequence(_) => 11,
+        Scalar::Mapping(_) => 12,
+        Scalar::Record(_) => 13,
         Scalar::Geospatial(_) => 14,
         Scalar::Enum(_) => 15,
-        Scalar::Temporal(Temporal::Interval(_)) => 16,
+        Scalar::Interval(_) => 16,
         Scalar::Uuid(_) => 17,
         Scalar::Code(_) => 18,
         Scalar::Version(_) => 19,
@@ -828,31 +932,31 @@ impl Scalar {
         match self {
             Self::Null => DataTypeId::Null,
             Self::Boolean(_) => DataTypeId::Boolean,
-            Self::Integer(Integer::I8(_)) => DataTypeId::Int8,
-            Self::Integer(Integer::I16(_)) => DataTypeId::Int16,
-            Self::Integer(Integer::I32(_)) => DataTypeId::Int32,
-            Self::Integer(Integer::I64(_)) => DataTypeId::Int64,
-            Self::Integer(Integer::I128(_)) => DataTypeId::Int128,
-            Self::Integer(Integer::U8(_)) => DataTypeId::UInt8,
-            Self::Integer(Integer::U16(_)) => DataTypeId::UInt16,
-            Self::Integer(Integer::U32(_)) => DataTypeId::UInt32,
-            Self::Integer(Integer::U64(_)) => DataTypeId::UInt64,
-            Self::Integer(Integer::U128(_)) => DataTypeId::UInt128,
-            Self::Floating(Floating::F16(_)) => DataTypeId::Float16,
-            Self::Floating(Floating::F32(_)) => DataTypeId::Float32,
-            Self::Floating(Floating::F64(_)) => DataTypeId::Float64,
-            Self::Decimal(Decimal::D32(_)) => DataTypeId::Decimal32,
-            Self::Decimal(Decimal::D64(_)) => DataTypeId::Decimal64,
-            Self::Decimal(Decimal::D128(_)) => DataTypeId::Decimal128,
-            Self::Decimal(Decimal::D256(_)) => DataTypeId::Decimal256,
-            Self::Temporal(Temporal::Date32(_)) => DataTypeId::Date32,
-            Self::Temporal(Temporal::Date64(_)) => DataTypeId::Date64,
-            Self::Temporal(Temporal::Time32(_)) => DataTypeId::Time32,
-            Self::Temporal(Temporal::Time64(_)) => DataTypeId::Time64,
-            Self::Temporal(Temporal::DateTime64(_)) => DataTypeId::DateTime64,
-            Self::Temporal(Temporal::Duration32(_)) => DataTypeId::Duration32,
-            Self::Temporal(Temporal::Duration64(_)) => DataTypeId::Duration64,
-            Self::Temporal(Temporal::Interval(_)) => DataTypeId::Interval,
+            Self::I8(_) => DataTypeId::Int8,
+            Self::I16(_) => DataTypeId::Int16,
+            Self::I32(_) => DataTypeId::Int32,
+            Self::I64(_) => DataTypeId::Int64,
+            Self::I128(_) => DataTypeId::Int128,
+            Self::U8(_) => DataTypeId::UInt8,
+            Self::U16(_) => DataTypeId::UInt16,
+            Self::U32(_) => DataTypeId::UInt32,
+            Self::U64(_) => DataTypeId::UInt64,
+            Self::U128(_) => DataTypeId::UInt128,
+            Self::F16(_) => DataTypeId::Float16,
+            Self::F32(_) => DataTypeId::Float32,
+            Self::F64(_) => DataTypeId::Float64,
+            Self::D32(_) => DataTypeId::Decimal32,
+            Self::D64(_) => DataTypeId::Decimal64,
+            Self::D128(_) => DataTypeId::Decimal128,
+            Self::D256(_) => DataTypeId::Decimal256,
+            Self::Date32(_) => DataTypeId::Date32,
+            Self::Date64(_) => DataTypeId::Date64,
+            Self::Time32(_) => DataTypeId::Time32,
+            Self::Time64(_) => DataTypeId::Time64,
+            Self::DateTime64(_) => DataTypeId::DateTime64,
+            Self::Duration32(_) => DataTypeId::Duration32,
+            Self::Duration64(_) => DataTypeId::Duration64,
+            Self::Interval(_) => DataTypeId::Interval,
             // A string names the layout it is stored in.
             Self::String(text) => text.layout().id(),
             Self::Code(code) => code.identifier(),
@@ -863,9 +967,9 @@ impl Scalar {
             Self::Bytes(bytes) => bytes.layout().id(),
             Self::Geospatial(Geospatial::Geometry(_)) => DataTypeId::Geometry,
             Self::Geospatial(Geospatial::Geography(_)) => DataTypeId::Geography,
-            Self::Nested(Nested::Sequence(_)) => DataTypeId::List,
-            Self::Nested(Nested::Mapping(_)) => DataTypeId::Map,
-            Self::Nested(Nested::Record(_)) => DataTypeId::Struct,
+            Self::Sequence(_) => DataTypeId::List,
+            Self::Mapping(_) => DataTypeId::Map,
+            Self::Record(_) => DataTypeId::Struct,
         }
     }
 
@@ -883,23 +987,23 @@ impl Scalar {
         match self {
             Self::Null => "null",
             Self::Boolean(_) => "boolean",
-            Self::Integer(Integer::I8(_)) => "i8",
-            Self::Integer(Integer::I16(_)) => "i16",
-            Self::Integer(Integer::I32(_)) => "i32",
-            Self::Integer(Integer::I64(_)) => "i64",
-            Self::Integer(Integer::U8(_)) => "u8",
-            Self::Integer(Integer::U16(_)) => "u16",
-            Self::Integer(Integer::U32(_)) => "u32",
-            Self::Integer(Integer::U64(_)) => "u64",
-            Self::Integer(Integer::I128(_)) => "i128",
-            Self::Integer(Integer::U128(_)) => "u128",
-            Self::Floating(Floating::F16(_)) => "f16",
-            Self::Floating(Floating::F32(_)) => "f32",
-            Self::Floating(Floating::F64(_)) => "f64",
-            Self::Decimal(Decimal::D32(_)) => "d32",
-            Self::Decimal(Decimal::D64(_)) => "d64",
-            Self::Decimal(Decimal::D128(_)) => "d128",
-            Self::Decimal(Decimal::D256(_)) => "d256",
+            Self::I8(_) => "i8",
+            Self::I16(_) => "i16",
+            Self::I32(_) => "i32",
+            Self::I64(_) => "i64",
+            Self::U8(_) => "u8",
+            Self::U16(_) => "u16",
+            Self::U32(_) => "u32",
+            Self::U64(_) => "u64",
+            Self::I128(_) => "i128",
+            Self::U128(_) => "u128",
+            Self::F16(_) => "f16",
+            Self::F32(_) => "f32",
+            Self::F64(_) => "f64",
+            Self::D32(_) => "d32",
+            Self::D64(_) => "d64",
+            Self::D128(_) => "d128",
+            Self::D256(_) => "d256",
             Self::String(text) => text.layout().as_str(),
             Self::Code(code) => code.identifier().as_str(),
             Self::Uuid(_) => "uuid",
@@ -912,34 +1016,34 @@ impl Scalar {
             },
             Self::Geospatial(Geospatial::Geometry(_)) => "geospatial",
             Self::Geospatial(Geospatial::Geography(_)) => "geography",
-            Self::Temporal(Temporal::Date32(_)) => "date32",
-            Self::Temporal(Temporal::Date64(_)) => "date64",
-            Self::Temporal(Temporal::Time32(_)) => "time32",
-            Self::Temporal(Temporal::Time64(_)) => "time64",
-            Self::Temporal(Temporal::DateTime64(_)) => "datetime64",
-            Self::Temporal(Temporal::Duration32(_)) => "duration32",
-            Self::Temporal(Temporal::Duration64(_)) => "duration64",
-            Self::Temporal(Temporal::Interval(_)) => "interval",
-            Self::Nested(Nested::Sequence(_)) => "sequence",
-            Self::Nested(Nested::Mapping(_)) => "mapping",
-            Self::Nested(Nested::Record(_)) => "record",
+            Self::Date32(_) => "date32",
+            Self::Date64(_) => "date64",
+            Self::Time32(_) => "time32",
+            Self::Time64(_) => "time64",
+            Self::DateTime64(_) => "datetime64",
+            Self::Duration32(_) => "duration32",
+            Self::Duration64(_) => "duration64",
+            Self::Interval(_) => "interval",
+            Self::Sequence(_) => "sequence",
+            Self::Mapping(_) => "mapping",
+            Self::Record(_) => "record",
         }
     }
 
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::Nested(Nested::Sequence(Sequence::new(Arc::clone(
+        Self::Sequence(Sequence::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
-        ))))
+        )))
     }
 
     /// The one shared empty mapping.
     fn empty_mapping() -> Self {
         static EMPTY: OnceLock<Arc<[(Scalar, Scalar)]>> = OnceLock::new();
-        Self::Nested(Nested::Mapping(Mapping::new(Arc::clone(
+        Self::Mapping(Mapping::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
-        ))))
+        )))
     }
 
     /// Construct an ordered sequence.
@@ -949,7 +1053,7 @@ impl Scalar {
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::Nested(Nested::Sequence(Sequence::new(values)))
+            Self::Sequence(Sequence::new(values))
         })
     }
 
@@ -977,7 +1081,7 @@ impl Scalar {
                 }
             }
         }
-        Ok(Self::Nested(Nested::Mapping(Mapping::new(entries))))
+        Ok(Self::Mapping(Mapping::new(entries)))
     }
 
     /// Construct a deterministic record sorted by field name.
@@ -1002,11 +1106,11 @@ impl Scalar {
         }
         if record.is_empty() {
             static EMPTY: OnceLock<Arc<BTreeMap<SmolStr, Scalar>>> = OnceLock::new();
-            return Ok(Self::Nested(Nested::Record(Record::new(Arc::clone(
+            return Ok(Self::Record(Record::new(Arc::clone(
                 EMPTY.get_or_init(|| Arc::new(BTreeMap::new())),
-            )))));
+            ))));
         }
-        Ok(Self::Nested(Nested::Record(Record::new(Arc::new(record)))))
+        Ok(Self::Record(Record::new(Arc::new(record))))
     }
 
     /// Return a boolean when this is a boolean.
@@ -1065,7 +1169,7 @@ impl Scalar {
     /// Return sequence children without allocating.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::Nested(Nested::Sequence(values)) => Some(values.as_slice()),
+            Self::Sequence(values) => Some(values.as_slice()),
             _ => None,
         }
     }
@@ -1073,7 +1177,7 @@ impl Scalar {
     /// Return mapping entries without allocating.
     pub fn as_mapping(&self) -> Option<&[(Self, Self)]> {
         match self {
-            Self::Nested(Nested::Mapping(entries)) => Some(entries.as_slice()),
+            Self::Mapping(entries) => Some(entries.as_slice()),
             _ => None,
         }
     }
@@ -1081,7 +1185,7 @@ impl Scalar {
     /// Return record fields in deterministic name order.
     pub fn as_record(&self) -> Option<&BTreeMap<SmolStr, Self>> {
         match self {
-            Self::Nested(Nested::Record(entries)) => Some(entries.as_map()),
+            Self::Record(entries) => Some(entries.as_map()),
             _ => None,
         }
     }
@@ -1089,14 +1193,16 @@ impl Scalar {
     /// Return the number of direct children or mapping entries.
     pub fn len(&self) -> usize {
         match self {
-            Self::Nested(value) => value.len(),
+            Self::Sequence(values) => values.as_slice().len(),
+            Self::Mapping(entries) => entries.as_slice().len(),
+            Self::Record(entries) => entries.as_map().len(),
             _ => 0,
         }
     }
 
     /// Return whether this is an empty sequence or mapping.
     pub fn is_empty(&self) -> bool {
-        matches!(self, Self::Nested(value) if value.is_empty())
+        self.is_container() && self.len() == 0
     }
 
     /// Look up a sequence index.
@@ -1113,7 +1219,7 @@ impl Scalar {
 
     /// Look up a string mapping key without constructing a temporary value.
     pub fn get_key_str(&self, key: &str) -> Option<&Self> {
-        if let Self::Nested(Nested::Record(entries)) = self {
+        if let Self::Record(entries) = self {
             return entries.as_map().get(key);
         }
         self.as_mapping()?
@@ -1127,9 +1233,9 @@ impl Scalar {
     /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
-            Self::Nested(Nested::Sequence(values)) => Children::Sequence(values.as_slice().iter()),
-            Self::Nested(Nested::Mapping(entries)) => Children::Mapping(entries.as_slice().iter()),
-            Self::Nested(Nested::Record(entries)) => Children::Record(entries.as_map().values()),
+            Self::Sequence(values) => Children::Sequence(values.as_slice().iter()),
+            Self::Mapping(entries) => Children::Mapping(entries.as_slice().iter()),
+            Self::Record(entries) => Children::Record(entries.as_map().values()),
             _ => Children::Sequence([].iter()),
         }
     }
@@ -1159,12 +1265,72 @@ impl Scalar {
 
     /// Return whether this value holds other values.
     pub const fn is_container(&self) -> bool {
-        matches!(self, Self::Nested(_))
+        matches!(self, Self::Sequence(_) | Self::Mapping(_) | Self::Record(_))
     }
 
     /// Return whether this is a number of any width.
     pub const fn is_number(&self) -> bool {
-        self.is_integer() || matches!(self, Self::Floating(_) | Self::Decimal(_))
+        self.is_integer()
+            || matches!(
+                self,
+                Self::F16(_)
+                    | Self::F32(_)
+                    | Self::F64(_)
+                    | Self::D32(_)
+                    | Self::D64(_)
+                    | Self::D128(_)
+                    | Self::D256(_)
+            )
+    }
+
+    /// Borrow the width leaf's own [`fmt::Display`], for a variant that holds
+    /// one.
+    ///
+    /// Every integer, float, decimal, temporal and nested variant answers the
+    /// leaf it holds, whose text is that leaf's plain spelling; every other
+    /// variant answers `None`, because its spelling is the caller's to choose.
+    pub(crate) fn leaf_display(&self) -> Option<&dyn fmt::Display> {
+        let leaf: &dyn fmt::Display = match self {
+            Self::I8(value) => value,
+            Self::I16(value) => value,
+            Self::I32(value) => value,
+            Self::I64(value) => value,
+            Self::U8(value) => value,
+            Self::U16(value) => value,
+            Self::U32(value) => value,
+            Self::U64(value) => value,
+            Self::I128(value) => value,
+            Self::U128(value) => value,
+            Self::F16(value) => value,
+            Self::F32(value) => value,
+            Self::F64(value) => value,
+            Self::D32(value) => value,
+            Self::D64(value) => value,
+            Self::D128(value) => value,
+            Self::D256(value) => value,
+            Self::Date32(value) => value,
+            Self::Date64(value) => value,
+            Self::Time32(value) => value,
+            Self::Time64(value) => value,
+            Self::DateTime64(value) => value,
+            Self::Duration32(value) => value,
+            Self::Duration64(value) => value,
+            Self::Interval(value) => value,
+            Self::Sequence(value) => value,
+            Self::Mapping(value) => value,
+            Self::Record(value) => value,
+            Self::Null
+            | Self::Boolean(_)
+            | Self::String(_)
+            | Self::Code(_)
+            | Self::Uuid(_)
+            | Self::Version(_)
+            | Self::Url(_)
+            | Self::Enum(_)
+            | Self::Bytes(_)
+            | Self::Geospatial(_) => return None,
+        };
+        Some(leaf)
     }
 
     /// Look one value up by a dotted path of mapping keys and sequence indexes.
@@ -1194,10 +1360,8 @@ impl Scalar {
         let mut current = self;
         for segment in path.split('.').filter(|segment| !segment.is_empty()) {
             current = match current {
-                Self::Nested(Nested::Mapping(_) | Nested::Record(_)) => {
-                    current.get_key_str(segment)?
-                }
-                Self::Nested(Nested::Sequence(_)) => current.get(segment.parse::<usize>().ok()?)?,
+                Self::Mapping(_) | Self::Record(_) => current.get_key_str(segment)?,
+                Self::Sequence(_) => current.get(segment.parse::<usize>().ok()?)?,
                 _ => return None,
             };
         }
@@ -1225,7 +1389,7 @@ impl Scalar {
     /// Non-string keys are skipped, because a caller asking for names wants the
     /// ones it can use.
     pub fn keys(&self) -> Vec<&str> {
-        if let Self::Nested(Nested::Record(entries)) = self {
+        if let Self::Record(entries) = self {
             return entries.as_map().keys().map(SmolStr::as_str).collect();
         }
         self.mapping_iter()
@@ -1307,7 +1471,7 @@ impl Scalar {
         })?;
         let mut rebuilt = entries.clone();
         rebuilt.insert(name.into(), value.into());
-        Ok(Self::Nested(Nested::Record(Record::new(Arc::new(rebuilt)))))
+        Ok(Self::Record(Record::new(Arc::new(rebuilt))))
     }
 
     /// Return this record without `name`, preserving deterministic order.
@@ -1324,7 +1488,7 @@ impl Scalar {
         }
         let mut rebuilt = entries.clone();
         rebuilt.remove(name);
-        Ok(Self::Nested(Nested::Record(Record::new(Arc::new(rebuilt)))))
+        Ok(Self::Record(Record::new(Arc::new(rebuilt))))
     }
 }
 

@@ -44,9 +44,9 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);
     let enum_member = Enum::IOMode(IOMode::Append);
-    let family_integer = Scalar::from(42);
-    let family_decimal = Scalar::d256(integer256, 2);
-    let family_float = Scalar::from_float(1.25, 32).unwrap();
+    let integer_scalar = Scalar::from(42);
+    let decimal_scalar = Scalar::d256(integer256, 2);
+    let float_scalar = Scalar::from_float(1.25, 32).unwrap();
 
     let mut group = criterion.benchmark_group("value");
     group.bench_function("stable_hash_record", |bencher| {
@@ -90,28 +90,26 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
             black_box((date, time, datetime, duration, decimal))
         });
     });
-    group.bench_function("as_float", |bencher| {
-        bencher.iter(|| black_box(&family_float).as_float());
+    group.bench_function("as_f64", |bencher| {
+        bencher.iter(|| black_box(&float_scalar).as_f64());
     });
-    group.bench_function("as_integer", |bencher| {
-        bencher.iter(|| black_box(&family_integer).as_integer());
+    group.bench_function("as_i128", |bencher| {
+        bencher.iter(|| black_box(&integer_scalar).as_i128());
     });
     group.bench_function("as_decimal", |bencher| {
-        bencher.iter(|| black_box(&family_decimal).as_decimal());
+        bencher.iter(|| black_box(&decimal_scalar).as_decimal());
     });
-    group.bench_function("as_temporal", |bencher| {
-        bencher.iter(|| black_box(&instant).as_temporal());
+    group.bench_function("temporal_family", |bencher| {
+        bencher.iter(|| black_box(&instant).temporal_family());
     });
-    group.bench_function("temporal_family_views", |bencher| {
+    group.bench_function("temporal_readers", |bencher| {
         bencher.iter(|| {
             let value = black_box(&instant);
-            let temporal = value.as_datetime().unwrap();
             black_box((
-                temporal.family(),
-                temporal.count(),
-                temporal.unit(),
-                temporal.timezone(),
-                temporal.bit_width(),
+                value.temporal_family(),
+                value.temporal_count(),
+                value.temporal_unit(),
+                value.temporal_timezone(),
             ))
         });
     });

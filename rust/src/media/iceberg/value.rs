@@ -263,10 +263,7 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
 /// A date counts days, a time counts its unit since midnight, and a timestamp
 /// counts its unit since the epoch, so all three are one integer to an encoder.
 fn count(value: &Scalar) -> Option<i64> {
-    value
-        .as_temporal()
-        .map(|temporal| temporal.count())
-        .or_else(|| value.as_i64())
+    value.temporal_count().or_else(|| value.as_i64())
 }
 
 /// Compare two single values the way their datatype orders them.

@@ -53,13 +53,11 @@ pub use dtype::DataType;
 pub(crate) use dtype::{invalid, validate_non_negative};
 pub use enumeration::Enum;
 pub use field::*;
-pub use floating::scalars::Floating;
 pub use floating::*;
 #[cfg(feature = "parquet")]
 pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::*;
 pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
-pub use integer::scalars::Integer;
 pub use integer::*;
 pub(crate) use merge::Recode;
 pub use merge::Widening;

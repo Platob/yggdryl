@@ -727,9 +727,9 @@ mod logical {
 
     #[test]
     fn durations_round_trip_as_exact_intervals() {
-        let value = Scalar::Temporal(crate::types::Temporal::Interval(
+        let value = Scalar::Interval(
             crate::types::Interval::new(1, 2, 3_000_000, crate::TimeUnit::MonthDayNano).unwrap(),
-        ));
+        );
         assert_eq!(
             round_trip(
                 r#"{"type":"fixed","name":"span","size":12,"logicalType":"duration"}"#,

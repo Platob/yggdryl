@@ -2426,3 +2426,85 @@ existing zero-tag framing. Only those entry lines and their enclosing digest
 lines may move in equivalence; semantic rows, wire and message counts must
 remain unchanged. Review exact moved keys before the sole WRITE=1 regeneration
 in this decision's commit, and name those keys in its message.
+
+## 29. A scalar is one enum, and every width is a variant of it
+
+NEXT_STEPS section 5, which the user extended from four families to all five:
+`Integer`, `Floating`, `Decimal`, `Temporal` and `Nested` were an extra enum
+between `Scalar` and the width that holds the value, and every match paid for
+the level. Decision 28 is the last word on the FIX pipeline; nothing here
+changes a FIX reading.
+
+- Their 28 variants become direct `Scalar` variants under the names the
+  families already used, which are also what `Scalar::kind()`, the serde tags
+  and AGENTS "Generic scalar" spell: `I8`, `I16`, `I32`, `I64`, `U8`, `U16`,
+  `U32`, `U64`, `I128`, `U128`; `F16`, `F32`, `F64`; `D32`, `D64`, `D128`,
+  `D256`; `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`,
+  `Duration64`, `Interval`; `Sequence`, `Mapping`, `Record`. `Scalar` has 38
+  variants. The five family enums are deleted outright - no alias, no
+  re-export, no `Integer`-shaped grouping left behind - and
+  `Scalar::Integer(Integer::I32(Int32(2)))` reads `Scalar::I32(Int32(2))`.
+- The short names are kept rather than DataType's long `Int32`/`Float64`/
+  `Decimal128`: one scalar vocabulary already exists and is wire-visible, so a
+  second spelling would be a rename, not a flattening. Nested keeps
+  `Sequence`/`Mapping`/`Record`, because a field narrows a sequence to a list,
+  fixed-size list, struct or union and no one DataType names it. `I128`/`U128`
+  mirror `DataTypeId`, which has them where Arrow's DataType has none.
+- `Code` and `Geospatial` are not intermediate width families of this kind and
+  stay as they are; `DataTypeKind`, `TemporalFamily` and `Scalar::family()`
+  classify values rather than hold them and stay too.
+- `std::mem::size_of::<Scalar>()` stays pinned by a const assertion at its
+  measured post-change size, with the size named in the commit; the family
+  enums' own size assertions go with them and leaf assertions stay.
+- Nothing serialized moves: serde tags and shapes, `value_rank` numbers,
+  stable hashes, Arrow projection and Python pickle state already speak leaf
+  names. Cross-width value semantics stay exactly as they are - `I32(7)` equals
+  `U8(7)`, `F32(1.5)` equals `F64(1.5)`, `D32(1250, 2)` equals `D256(125, 1)`,
+  in equality, order and hash - computed by crate-private readers in each
+  width's own module instead of by a family type. `Hash` keeps its exact
+  bytes: `Interval`, `Sequence`, `Mapping` and `Record` still feed the
+  discriminant their retired enum wrote, so hashes derived over `Hash` (a
+  message's, a plugin's) keep their pinned values. Debug loses the family
+  level; no test pins that text, and its one host-visible reader is Python's
+  `Bounds` repr.
+- Each family method is settled once:
+  - `Integer::as_i128`/`as_u128` already live on `Scalar`; `is_negative` and
+    `magnitude` become one crate-private sign-and-magnitude reader for
+    ordering, hashing and defaults; `into_scalar` is `From`, `stable_hash` is
+    `Scalar::stable_hash`. `Scalar::as_integer` goes; `is_integer`,
+    `as_i128`, `as_u128`, `as_i64`, `as_u64` answer across widths.
+  - `Floating::as_f64`/`as_f32`/`as_f16` already live on `Scalar`;
+    `bit_width` goes, because the variant, `kind()` and `id()` state the
+    width; `Scalar::as_float` goes.
+  - `Decimal::coefficient`/`scale` go; `Scalar::as_decimal` already answers
+    the unscaled coefficient and scale at any width.
+  - `Temporal::family`, `unit`, `timezone` and `count` become `Scalar`
+    readers answering `None` for a non-temporal: `temporal_family`,
+    `temporal_unit`, the existing `temporal_timezone`, and `temporal_count`
+    (an interval answers its nanosecond component, as before). `bit_width`
+    goes for the reason floats lose it. `as_temporal`, `as_date`, `as_time`,
+    `as_datetime` and `as_duration` returned the family and go; `is_temporal`
+    and `temporal_family` classify, the per-width `as_date32`..`as_duration64`
+    tuples stay, and an interval is matched as `Scalar::Interval` directly.
+  - `Nested::len`/`is_empty` go; `Scalar::len`/`is_empty` already answer.
+  - `FieldScalar` and `UncheckedFieldScalar` drop `as_integer`, `as_float` and
+    `as_temporal` with them.
+  - `From<Integer>`/`From<Floating> for Scalar` go; the leaf `From` impls stay.
+- A width leaf is its own family, as `Boolean` and `Uuid` already are:
+  `ScalarValue::Family = Self` and the leaf implements `ScalarFamily`. The
+  per-kind operation traits (`IntegerValue`, `TemporalValue`, ...) stay.
+- A family `Display` that callers borrowed becomes the leaf's own `Display`,
+  reached through one crate-private reader on `Scalar`, never through a
+  per-site width table.
+- Both bindings adapt their matches and readers in this commit so the
+  workspace compiles; no host-visible spelling changes, so `.api-bindings.txt`
+  does not move. `.api-inventory.txt` retires every family entry (including
+  its already-stale `Float`, `struct Integer` and `TemporalRef` lines) and
+  adds the temporal readers; AGENTS.md names the new cross-width readers.
+  `docs/types/scalar.md` follows in the documentation stage.
+
+Pins: the size assertion; cross-width equality, order and hash for integers,
+floats and decimals; every leaf's serde round trip under its unchanged tag;
+the temporal readers on every temporal variant including an interval; the
+unchanged `value_rank` sweep. No equivalence movement is expected, since no
+FIX reading renders a family spelling; if it moves, it is a defect.

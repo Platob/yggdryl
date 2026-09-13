@@ -16,7 +16,7 @@
 //! Physical identity is part of an exact scalar: `large_utf8`, `binary_view`,
 //! `Date64`, and every other leaf name themselves rather than collapsing to a
 //! related layout. Only a newly inferred nested collection needs a layout
-//! choice: a [`crate::types::Nested::Sequence`] names the ordinary `List`
+//! choice: a [`Scalar::Sequence`] names the ordinary `List`
 //! layout because the values carry no offset width, and an enum names `utf8`
 //! because its generic identity is not an Arrow datatype.
 //!
@@ -43,7 +43,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::{Decimal, Geospatial, Integer, Nested, Temporal};
+use crate::types::Geospatial;
 use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
@@ -119,10 +119,7 @@ impl Scalar {
                 "cannot infer a Struct Field from empty rows; pass a Struct Field",
             )));
         }
-        if rows
-            .iter()
-            .any(|row| !matches!(row, Self::Nested(Nested::Record(_))))
-        {
+        if rows.iter().any(|row| !matches!(row, Self::Record(_))) {
             return Err(unnameable(SmolStr::new_static(
                 "positional Sequence rows cannot infer field names; pass a Struct Field",
             )));
@@ -152,41 +149,37 @@ impl Scalar {
         match self {
             Self::Null => Ok(DataType::Null),
             Self::Boolean(_) => Ok(DataType::Boolean),
-            Self::Integer(Integer::I8(_)) => Ok(DataType::Int8),
-            Self::Integer(Integer::I16(_)) => Ok(DataType::Int16),
-            Self::Integer(Integer::I32(_)) => Ok(DataType::Int32),
-            Self::Integer(Integer::I64(_)) => Ok(DataType::Int64),
-            Self::Integer(Integer::U8(_)) => Ok(DataType::UInt8),
-            Self::Integer(Integer::U16(_)) => Ok(DataType::UInt16),
-            Self::Integer(Integer::U32(_)) => Ok(DataType::UInt32),
-            Self::Integer(Integer::U64(_)) => Ok(DataType::UInt64),
+            Self::I8(_) => Ok(DataType::Int8),
+            Self::I16(_) => Ok(DataType::Int16),
+            Self::I32(_) => Ok(DataType::Int32),
+            Self::I64(_) => Ok(DataType::Int64),
+            Self::U8(_) => Ok(DataType::UInt8),
+            Self::U16(_) => Ok(DataType::UInt16),
+            Self::U32(_) => Ok(DataType::UInt32),
+            Self::U64(_) => Ok(DataType::UInt64),
             // Arrow has no 128-bit integer, and an exact decimal with scale
             // zero is an integer, so that is what a wide integer becomes.
-            Self::Integer(Integer::I128(value)) => {
-                integer_decimal(digits(value.get().unsigned_abs()))
-            }
-            Self::Integer(Integer::U128(value)) => integer_decimal(digits(value.get())),
-            Self::Floating(value) => Ok(match value {
-                crate::types::Floating::F16(_) => DataType::Float16,
-                crate::types::Floating::F32(_) => DataType::Float32,
-                crate::types::Floating::F64(_) => DataType::Float64,
-            }),
-            Self::Decimal(Decimal::D32(value)) => decimal_dtype(
+            Self::I128(value) => integer_decimal(digits(value.get().unsigned_abs())),
+            Self::U128(value) => integer_decimal(digits(value.get())),
+            Self::F16(_) => Ok(DataType::Float16),
+            Self::F32(_) => Ok(DataType::Float32),
+            Self::F64(_) => Ok(DataType::Float64),
+            Self::D32(value) => decimal_dtype(
                 I256::from_i128(i128::from(value.coefficient())),
                 value.scale(),
                 DecimalWidth::D32,
             ),
-            Self::Decimal(Decimal::D64(value)) => decimal_dtype(
+            Self::D64(value) => decimal_dtype(
                 I256::from_i128(i128::from(value.coefficient())),
                 value.scale(),
                 DecimalWidth::D64,
             ),
-            Self::Decimal(Decimal::D128(value)) => decimal_dtype(
+            Self::D128(value) => decimal_dtype(
                 I256::from_i128(value.coefficient()),
                 value.scale(),
                 DecimalWidth::D128,
             ),
-            Self::Decimal(Decimal::D256(value)) => {
+            Self::D256(value) => {
                 decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::D256)
             }
             // A string value already declares its layout, its charset and
@@ -202,28 +195,28 @@ impl Scalar {
             Self::Bytes(bytes) => bytes.dtype(),
             Self::Geospatial(Geospatial::Geometry(_)) => DataType::geometry(None),
             Self::Geospatial(Geospatial::Geography(_)) => DataType::geography(None, None),
-            Self::Temporal(Temporal::Date32(_)) => Ok(DataType::Date32),
-            Self::Temporal(Temporal::Date64(_)) => Ok(DataType::Date64),
-            Self::Temporal(Temporal::Time32(value)) => DataType::time32(value.unit()),
-            Self::Temporal(Temporal::Time64(value)) => DataType::time64(value.unit()),
-            Self::Temporal(Temporal::DateTime64(value)) => {
+            Self::Date32(_) => Ok(DataType::Date32),
+            Self::Date64(_) => Ok(DataType::Date64),
+            Self::Time32(value) => DataType::time32(value.unit()),
+            Self::Time64(value) => DataType::time64(value.unit()),
+            Self::DateTime64(value) => {
                 resolution(value.unit(), "datetime64")?;
                 Ok(DataType::DateTime64 {
                     unit: value.unit(),
                     timezone: value.timezone(),
                 })
             }
-            Self::Temporal(Temporal::Duration32(value)) => Ok(DataType::Duration32(value.unit())),
-            Self::Temporal(Temporal::Duration64(value)) => Ok(DataType::Duration64(value.unit())),
-            Self::Temporal(Temporal::Interval(value)) => Ok(DataType::Interval(value.unit())),
-            Self::Nested(Nested::Sequence(values)) => {
+            Self::Duration32(value) => Ok(DataType::Duration32(value.unit())),
+            Self::Duration64(value) => Ok(DataType::Duration64(value.unit())),
+            Self::Interval(value) => Ok(DataType::Interval(value.unit())),
+            Self::Sequence(values) => {
                 let (dtype, nullable) = agreed(values.as_slice().iter(), "sequence item", depth)?;
                 Ok(DataType::list(Field::new("item", dtype, nullable)))
             }
             // A mapping's keys are values, not names, so its datatype is a map
             // and not a struct; a struct in this project is described by a
             // sequence, one value per declared field.
-            Self::Nested(Nested::Mapping(entries)) => {
+            Self::Mapping(entries) => {
                 let keys = entries.as_slice().iter().map(|(key, _)| key);
                 let (key, _) = agreed(keys, "mapping key", depth)?;
                 // Arrow fixes the entry nullability itself - a key is required
@@ -232,7 +225,7 @@ impl Scalar {
                 let (value, _) = agreed(values, "mapping value", depth)?;
                 DataType::map_of(key, value, false)
             }
-            Self::Nested(Nested::Record(entries)) => DataType::from_fields(
+            Self::Record(entries) => DataType::from_fields(
                 entries
                     .as_map()
                     .iter()

@@ -495,15 +495,11 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // A sending time is an instant, not the text it arrived as.
     let sent = tag_column(&read, 52);
     assert!(
-        matches!(sent[HEARTBEAT_ROW], Scalar::Temporal(_)),
+        sent[HEARTBEAT_ROW].is_temporal(),
         "{:?}",
         sent[HEARTBEAT_ROW]
     );
-    assert!(
-        matches!(sent[RELAY_ROW], Scalar::Temporal(_)),
-        "{:?}",
-        sent[RELAY_ROW]
-    );
+    assert!(sent[RELAY_ROW].is_temporal(), "{:?}", sent[RELAY_ROW]);
     assert_eq!(
         sent[RESPONSE_ROW].temporal_count_at(TimeUnit::Nanosecond),
         Some(1_704_190_530_000_000_000),
@@ -544,8 +540,8 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     }
     assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
     let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);
-    assert!(matches!(stamp[FILL_ROW], Scalar::Temporal(_)));
-    assert!(matches!(stamp[ROUTED_ROW], Scalar::Temporal(_)));
+    assert!(stamp[FILL_ROW].is_temporal());
+    assert!(stamp[ROUTED_ROW].is_temporal());
 }
 
 #[test]
