@@ -1759,3 +1759,65 @@ Test mode retains transfer-size/content and cast-result assertions without
 warm-up, median samples or throughput thresholds. The benchmark thresholds
 and full benchmark fixtures remain unchanged. Mode combinations are pinned;
 this is a validation-harness correction, not a storage-performance change.
+
+## 22. Lifecycle identities are UUID values, packed by the UUID owner
+
+**Rule.** The lifecycle columns are `instuuid` (65016, `InstUuid`), `uuid`
+(65017, `Uuid`) and `puuid` (65018, `PUuid`), all `DataType::Uuid`.
+Their constants are `INSTUUID_TAG_NAME`, `UUID_TAG_NAME`, `PUUID_TAG_NAME`.
+The replaced names and constants are removed, not retained as aliases.
+The tags, twenty scalar definitions, and twenty-one total crate definitions
+do not move. An older dataset's explicitly binary fields remain binary;
+their old names do not acquire a conversion or a new registry meaning.
+
+`Uuid::from_v7(unix_micros, payload)` and `Uuid::from_v8(payload)` own the
+packing in `types/uuid/scalars.rs`. They read no clock, select no hash, and
+allocate nothing on success. The existing packed value, parser, serde and
+Arrow extension remain their owners. The layout follows
+[RFC 9562 sections 5.7 and 5.8](https://www.rfc-editor.org/rfc/rfc9562.html#section-5.7),
+using [section 6.2's fractional-clock method](https://www.rfc-editor.org/rfc/rfc9562.html#section-6.2).
+For a nonnegative microsecond instant `m`, version 7 contains `m / 1000` in
+its first 48 bits, `floor((m % 1000) * 4096 / 1000)` in its 12 fraction bits,
+version 7, variant `10`, and the payload's low 62 bits. The accepted inclusive
+range is `0..=281474976710655999` microseconds. Outside it the constructor
+returns `InvalidRecord`, naming the expected range and actual instant at `$`;
+the lifecycle locates that refusal at the column it was about to stamp.
+There is no wrap, clamping, wall-clock substitution, or timestamp decoder.
+Version 8 replaces only the four version bits and two variant bits of the
+supplied 128-bit payload; the other 122 bits are unchanged.
+
+**Inputs.** This piece changes representation, not the original lifecycle
+recipes. The impact clock remains tag 60, then 52, then the message's market
+timestamp, then the epoch, expressed in microseconds. `uuid` uses that clock
+and xxh3 of the arrival digest's big-endian bytes. A new `puuid` uses that
+clock and xxh3 of the unmodified instrument digest, one `0x1f` byte, and the
+first chain identifier's bytes. `instuuid` is version 8 over the existing
+xxh128 instrument digest. Its version/variant masking must not change the
+raw instrument bytes fed into `puuid`. Streaming the same hash input removes
+temporary concatenation buffers without changing that input or algorithm.
+These deterministic hashes are not cryptographic or a claim that collisions
+cannot occur. The exact instant remains the timestamp's fact; the UUID is
+ordered by that clock, not a replacement timestamp accessor.
+
+**Atomicity.** Resolve the chain to join and all fallible stamps before
+publishing any chain or identifier-index mutation. Apply the message's own
+atomic `set_many` once; only its success attaches keys, opens a chain, or
+closes a terminal one. A failed new-chain stamp leaves no chain; a failed
+join introduces no alias and cannot close an existing chain. Stated UUIDs
+remain untouched and the original second-pass behavior remains until
+decision 23 changes chain indexing. No arrival entry or emitted wire changes.
+
+**Pins.** Exact version-7 fractional vectors, minimum and maximum instants,
+negative/overflow refusals, and ordering through every microsecond and a
+millisecond rollover even under opposing payloads; version-8 bit masking and
+the RFC illustrative vector; native UUID value and canonical text/storage
+round trips; zero-allocation construction. Every lifecycle identity uses the
+new names and asserts version/variant bits, keeps byte ordering and replay,
+and tests clock precedence and atomic failure. The row and record-writer
+doors retain the UUID Arrow extension. Registry hashes change deliberately
+with the renamed typed definitions; the equivalence snapshot stays unchanged.
+
+Per the user's revised sequence, the remaining story lands in Rust before
+Python, Node, and the final lightweight documentation pass. The later
+message-identity decision will remove `msghash` entirely at the user's latest
+direction; this representation piece does not pre-empt that later change.

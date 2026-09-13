@@ -8,6 +8,7 @@ pub(crate) mod nested;
 pub(crate) mod parser;
 pub(crate) mod string;
 pub(crate) mod temporal;
+pub(crate) mod uuid;
 pub(crate) mod value;
 pub(crate) mod version;
 

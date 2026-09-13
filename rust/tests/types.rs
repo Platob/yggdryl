@@ -12,5 +12,7 @@ mod enums;
 mod field;
 #[path = "types/strict_cast.rs"]
 mod strict_cast;
+#[path = "types/uuid.rs"]
+mod uuid;
 #[path = "types/value_bounds.rs"]
 mod value_bounds;

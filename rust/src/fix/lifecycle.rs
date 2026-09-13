@@ -12,9 +12,9 @@
 //!
 //! | column | holds |
 //! | --- | --- |
-//! | `instid` | the instrument, the same across venues that spell it alike: the xxh128 digest of its market, classification, ISIN - else symbol - and currency |
-//! | `id` | the message: the instant closest to the market impact, then the xxh3 digest of what it said, so ids sort by time and never repeat |
-//! | `persistentid` | the order chain: the instant it was created, then the xxh3 digest of its instrument and first identifier, the same on every later message that shares one of its identifiers |
+//! | `instuuid` | a version-8 UUID over the xxh128 digest of market, classification, ISIN - else symbol - and currency |
+//! | `uuid` | a version-7 UUID ordered by the impact clock, with an xxh3 payload derived from what the message said |
+//! | `puuid` | the chain's version-7 UUID, dated by its first message and derived from its instrument and first identifier |
 //!
 //! # The chain is the identifiers, joined
 //!
@@ -38,9 +38,9 @@
 //!
 //! `TransactTime(60)` is when the venue says it happened; `SendingTime(52)`
 //! when the message left; the row's own `timestamp` when the capture saw
-//! it. The first stated is the instant an `id` and a `persistentid` carry,
-//! in microseconds, so a consumer ordering by id orders by the market's own
-//! clock where one was stated.
+//! it. The first stated orders `uuid` and `puuid` at microsecond precision.
+//! The exact instant remains the clock's fact, not a UUID accessor. These
+//! deterministic hashes are not cryptographic or guaranteed collision-free.
 //!
 //! # Nothing here is an entry
 //!
@@ -53,15 +53,17 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use crate::txhash::{TxHash, unix_from_scalar};
-use crate::types::{Code, State};
-use crate::{DigestAlgorithm, Result, Scalar, TimeUnit};
+use crate::path::Path;
+use crate::txhash::unix_from_scalar;
+use crate::types::{Code, State, Uuid};
+use crate::xxhash::{Xxh3, Xxh128, xxh3};
+use crate::{Error, Result, Scalar, TimeUnit};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
 use super::{
-    ID_TAG_NAME, INSTID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PERSISTENTID_TAG_NAME,
-    STATE_TAG_NAME,
+    INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PUUID_TAG_NAME, STATE_TAG_NAME,
+    UUID_TAG_NAME,
 };
 
 /// The tags an order is known by, in the order a message is joined on them.
@@ -88,7 +90,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, ID_TAG_NAME, PERSISTENTID_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, UUID_TAG_NAME, PUUID_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -112,10 +114,9 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///         .next()
 ///         .expect("one message")?,
 /// )?;
-/// // One chain: the acknowledgement carries the order's persistent id.
-/// assert_eq!(order.by_tag(PERSISTENTID_TAG_NAME.0)?, ack.by_tag(PERSISTENTID_TAG_NAME.0)?);
-/// // Two messages: two ids, and the later one sorts after.
-/// assert!(order.by_tag(ID_TAG_NAME.0)?.as_bytes() < ack.by_tag(ID_TAG_NAME.0)?.as_bytes());
+/// // One chain, with two UUIDs ordered by the impact clock.
+/// assert_eq!(order.by_tag(PUUID_TAG_NAME.0)?, ack.by_tag(PUUID_TAG_NAME.0)?);
+/// assert!(order.by_tag(UUID_TAG_NAME.0)? < ack.by_tag(UUID_TAG_NAME.0)?);
 /// assert_eq!(life.alive(), 1);
 ///
 /// // The fill closes the chain, and the venue's identifier is forgotten.
@@ -150,7 +151,7 @@ pub struct FixLifecycle {
 #[derive(Debug)]
 struct Chain {
     /// The identity every message of the chain carries.
-    persistent: Scalar,
+    persistent: Uuid,
     /// The identifiers that reach it, forgotten together when it closes.
     keys: Vec<SmolStr>,
 }
@@ -162,7 +163,7 @@ impl FixLifecycle {
     /// without them - which none built by this crate is - stamps nothing.
     #[must_use]
     pub fn new(registry: Arc<FixRegistry>) -> Self {
-        let stamps = [INSTID_TAG_NAME.0, ID_TAG_NAME.0, PERSISTENTID_TAG_NAME.0]
+        let stamps = [INSTUUID_TAG_NAME.0, UUID_TAG_NAME.0, PUUID_TAG_NAME.0]
             .into_iter()
             .all(|tag| registry.get_field_by_tag(tag).is_some());
         Self {
@@ -191,51 +192,77 @@ impl FixLifecycle {
     /// belongs to along.
     ///
     /// A stated value is never overwritten: a message already carrying an
-    /// `id` keeps it, and one carrying a `persistentid` joins nothing new,
+    /// `uuid` keeps it, and one carrying a `puuid` joins nothing new,
     /// which is what makes a second pass over a stamped stream a no-op. The
     /// entries are untouched: the stamps land through [`FixMsg::set_many`],
     /// each typed by the dictionary's own column.
     ///
     /// # Errors
     ///
-    /// Returns the value contract's refusal when a stamped value does not
-    /// fit the column the dictionary declares for it, which the digests
-    /// built here cannot provoke.
+    /// Returns a located refusal for an impact instant outside the version-7
+    /// range or a value the message's field refuses. No chain or identifier
+    /// changes on failure.
     pub fn fill(&mut self, mut message: FixMsg) -> Result<FixMsg> {
         if !self.stamps {
             return Ok(message);
         }
         let stated = |tag: i32| message.get_by_tag(tag).is_some_and(|held| !held.is_null());
         let impact = impact_unix(&message);
-        let instrument = instrument_digest(&message);
         let keys = chain_keys(&message);
-        // The chain is joined before anything is stamped: joining moves the
-        // state, stamping only reads it.
-        let chain = if stated(PERSISTENTID_TAG_NAME.0) {
+        let has_instrument = stated(INSTUUID_TAG_NAME.0);
+        let has_uuid = stated(UUID_TAG_NAME.0);
+        let has_persistent = stated(PUUID_TAG_NAME.0);
+        let existing = if has_persistent {
             None
         } else {
-            self.join(&keys, impact, instrument.as_ref())
+            keys.iter().find_map(|key| self.keys.get(key).copied())
         };
-        let persistent =
-            chain.and_then(|at| self.chains[at].as_ref().map(|held| held.persistent.clone()));
-        let mut stamps: Vec<(i32, Scalar)> = Vec::with_capacity(3);
-        if !stated(INSTID_TAG_NAME.0) {
-            if let Some(held) = &instrument {
-                stamps.push((INSTID_TAG_NAME.0, Scalar::from(held.to_vec())));
-            }
-        }
-        if !stated(ID_TAG_NAME.0) {
-            let digest = DigestAlgorithm::Xxh3.digest(&message.digest().to_be_bytes());
-            stamps.push((
-                ID_TAG_NAME.0,
-                Scalar::from(TxHash::new(impact, digest).into_bytes().to_vec()),
-            ));
-        }
-        if let Some(held) = persistent {
-            stamps.push((PERSISTENTID_TAG_NAME.0, held));
-        }
-        // One rebuild for the three, which is what a per-message stamp costs.
-        message.set_many(stamps)?;
+        let needs_instrument =
+            !has_instrument || (!has_persistent && existing.is_none() && !keys.is_empty());
+        let instrument = if needs_instrument {
+            instrument_digest(&message)
+        } else {
+            None
+        };
+        let time_uuid = |payload, name| {
+            Uuid::from_v7(impact, payload).map_err(|error| match error {
+                Error::InvalidRecord { reason, .. } => Error::InvalidRecord {
+                    path: Path::root().field(name).render().into(),
+                    reason,
+                },
+                other => other,
+            })
+        };
+        let uuid = if has_uuid {
+            None
+        } else {
+            Some(time_uuid(
+                xxh3(&message.digest().to_be_bytes()),
+                UUID_TAG_NAME.1,
+            )?)
+        };
+        let persistent = if has_persistent {
+            None
+        } else if let Some(at) = existing {
+            self.chains[at].as_ref().map(|held| held.persistent)
+        } else {
+            keys.first()
+                .map(|first| time_uuid(persistent_digest(instrument, first), PUUID_TAG_NAME.1))
+                .transpose()?
+        };
+        let instuuid = instrument.filter(|_| !has_instrument).map(Uuid::from_v8);
+        message.set_many(
+            [
+                instuuid.map(|held| (INSTUUID_TAG_NAME.0, Scalar::Uuid(held))),
+                uuid.map(|held| (UUID_TAG_NAME.0, Scalar::Uuid(held))),
+                persistent.map(|held| (PUUID_TAG_NAME.0, Scalar::Uuid(held))),
+            ]
+            .into_iter()
+            .flatten(),
+        )?;
+        // The message's value contract is the last fallible step. The
+        // already-resolved join publishes only after all stamps landed.
+        let chain = persistent.map(|held| self.join(existing, &keys, held));
         if is_terminal(&message) {
             // A stamped stream read again closes the chain its identifiers
             // reach, exactly as the first pass did.
@@ -251,17 +278,10 @@ impl FixLifecycle {
     ///
     /// Every identifier the message carries then reaches the chain, so an
     /// identifier introduced by a replace joins the order it replaces.
-    fn join(
-        &mut self,
-        keys: &[SmolStr],
-        impact: i64,
-        instrument: Option<&[u8; 16]>,
-    ) -> Option<usize> {
-        let first = keys.first()?;
-        let at = match keys.iter().find_map(|key| self.keys.get(key).copied()) {
+    fn join(&mut self, existing: Option<usize>, keys: &[SmolStr], persistent: Uuid) -> usize {
+        let at = match existing {
             Some(at) => at,
             None => {
-                let persistent = persistent_digest(impact, instrument, first);
                 let chain = Chain {
                     persistent,
                     keys: Vec::with_capacity(keys.len()),
@@ -286,7 +306,7 @@ impl FixLifecycle {
                 }
             }
         }
-        Some(at)
+        at
     }
 
     /// Forgets one chain and every identifier that reached it.
@@ -341,7 +361,7 @@ fn impact_unix(message: &FixMsg) -> i64 {
 /// The instrument's identity: the xxh128 digest of its market, its
 /// classification, its ISIN - else its symbol - and its currency, or nothing
 /// where the message names none of them.
-fn instrument_digest(message: &FixMsg) -> Option<[u8; 16]> {
+fn instrument_digest(message: &FixMsg) -> Option<u128> {
     let first = |tags: &[i32]| -> Option<String> {
         tags.iter().find_map(|tag| {
             message
@@ -368,30 +388,25 @@ fn instrument_digest(message: &FixMsg) -> Option<[u8; 16]> {
     {
         return None;
     }
-    let mut bytes: Vec<u8> = Vec::with_capacity(32);
+    let mut digest = Xxh128::new();
     for part in [market, classification, instrument, currency] {
         if let Some(held) = part {
-            bytes.extend_from_slice(held.as_bytes());
+            digest.write_bytes(held.as_bytes());
         }
-        bytes.push(PART_SEPARATOR);
+        digest.write_bytes(&[PART_SEPARATOR]);
     }
-    let digest = DigestAlgorithm::Xxh128.digest(&bytes).into_bytes();
-    let mut held = [0_u8; 16];
-    held.copy_from_slice(&digest[..16]);
-    Some(held)
+    Some(digest.as_u128())
 }
 
-/// The chain's identity: the instant it was created, then the xxh3 digest
-/// of its instrument and the identifier that opened it.
-fn persistent_digest(impact: i64, instrument: Option<&[u8; 16]>, first: &str) -> Scalar {
-    let mut bytes: Vec<u8> = Vec::with_capacity(16 + 1 + first.len());
+/// The chain's payload: the raw instrument digest, separator and first key.
+fn persistent_digest(instrument: Option<u128>, first: &str) -> u64 {
+    let mut digest = Xxh3::new();
     if let Some(held) = instrument {
-        bytes.extend_from_slice(held);
+        digest.write_bytes(&held.to_be_bytes());
     }
-    bytes.push(PART_SEPARATOR);
-    bytes.extend_from_slice(first.as_bytes());
-    let digest = DigestAlgorithm::Xxh3.digest(&bytes);
-    Scalar::from(TxHash::new(impact, digest).into_bytes().to_vec())
+    digest.write_bytes(&[PART_SEPARATOR]);
+    digest.write_bytes(first.as_bytes());
+    digest.as_u64()
 }
 
 /// Whether the state the message reports ends the order's life.

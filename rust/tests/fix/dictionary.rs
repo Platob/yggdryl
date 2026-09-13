@@ -503,17 +503,18 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 
 /// The committed dictionary's hash, pinned as a literal (decision 13).
 ///
-/// The registry hash walks `[Components, Groups]` with the messages among
-/// the components in name order, so a change to that walk - or to any
-/// shipped document - moves this number on purpose, in the commit that
+/// The registry hash walks scalar fields, then `[Components, Groups]` with
+/// the messages among the components in name order, so a change to that walk
+/// or to any shipped document moves this number on purpose, in the commit that
 /// says why. Decision 19 moved it: every registry now carries the crate's
 /// own `pluginconfig` beside the shipped dictionary's own components, as
 /// every registry already carries the crate's own fields. Decision 21 adds
 /// the builtin altids group and generated component identifier declarations.
+/// Decision 22 renames the three lifecycle identities and types them as UUIDs.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 6_587_658_543_028_168_332);
+    assert_eq!(registry.stable_hash(), 12_244_755_678_056_982_392);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

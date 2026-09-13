@@ -29,7 +29,8 @@ use std::sync::Arc;
 use yggdryl::holder::Buffer;
 use yggdryl::media::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::types::{
-    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringParameters, UncheckedFieldScalar,
+    Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringLayout, StringParameters,
+    UncheckedFieldScalar, Uuid,
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
@@ -170,6 +171,29 @@ fn version_parse_compare_and_render_allocate_nothing() {
         write!(&mut rendered, "{right}").expect("the stack buffer is wide enough");
         black_box(&rendered.bytes[..rendered.len]);
     });
+}
+
+#[test]
+fn uuid_version_7_and_8_construction_allocate_nothing() {
+    let instants = [0, 1, 999, 281_474_976_710_655_999];
+    for count in [1, 32, 1_024] {
+        free(&format!("constructing {count} UUIDv7 values"), || {
+            for index in 0..count {
+                black_box(
+                    Uuid::from_v7(
+                        black_box(instants[index % instants.len()]),
+                        black_box(u64::MAX - index as u64),
+                    )
+                    .expect("an in-range microsecond instant"),
+                );
+            }
+        });
+        free(&format!("constructing {count} UUIDv8 values"), || {
+            for index in 0..count {
+                black_box(Uuid::from_v8(black_box(u128::MAX - index as u128)));
+            }
+        });
+    }
 }
 
 /// A field carrying HTTP headers plus `extra` unrelated metadata keys.

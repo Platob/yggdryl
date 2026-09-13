@@ -944,8 +944,8 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // Decision 19 moved it again, and for the same reason: every registry
     // now also carries the `pluginconfig` component, which is more text.
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
-    // Decision 21 adds the registry-owned altids group.
-    assert_eq!(carrying.stable_hash(), 1_843_389_073_732_761_117);
+    // Decisions 21–22 add altids and give the three identities UUID types.
+    assert_eq!(carrying.stable_hash(), 12_269_718_422_093_377_602);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

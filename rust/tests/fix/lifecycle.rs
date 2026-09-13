@@ -3,31 +3,31 @@
 
 use super::SoleMessage;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use yggdryl::holder::local::Folder;
+use yggdryl::types::Uuid;
 use yggdryl::{
-    FixCodec, FixLifecycle, FixMsg, FixRegistry, ID_TAG_NAME, INSTID_TAG_NAME,
-    PERSISTENTID_TAG_NAME, Scalar,
+    DataType, Error, FixCodec, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
+    PUUID_TAG_NAME, Scalar, TIMESTAMP_TAG_NAME, TimeUnit, Timezone, UUID_TAG_NAME,
 };
 
 fn registry() -> Arc<FixRegistry> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = Folder::new(root).expect("the seed folder is a local path");
-    Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"))
+    super::committed_registry()
 }
 
 /// The bytes one identity column holds.
-fn bytes(message: &FixMsg, tag: i32) -> Option<Vec<u8>> {
-    message
-        .get_by_tag(tag)
-        .filter(|held| !held.is_null())
-        .and_then(Scalar::as_bytes)
-        .map(<[u8]>::to_vec)
+fn bytes(message: &FixMsg, tag: i32) -> Option<[u8; 16]> {
+    let held = message.get_by_tag(tag).filter(|held| !held.is_null())?;
+    let Scalar::Uuid(uuid) = held else {
+        panic!("tag {tag} must hold a native UUID, got {held:?}");
+    };
+    let bytes = uuid.into_bytes();
+    assert_eq!(
+        bytes[6] >> 4,
+        if tag == INSTUUID_TAG_NAME.0 { 8 } else { 7 }
+    );
+    assert_eq!(bytes[8] >> 6, 2);
+    Some(bytes)
 }
 
 /// The messages of one order's life, as a venue and its client tell it.
@@ -61,13 +61,13 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     // One instrument, one chain, six messages.
     let instruments: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, INSTID_TAG_NAME.0).expect("an instrument"))
+        .map(|held| bytes(held, INSTUUID_TAG_NAME.0).expect("an instrument"))
         .collect();
     assert!(instruments.iter().all(|held| *held == instruments[0]));
     assert_eq!(instruments[0].len(), 16);
     let chains: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, PERSISTENTID_TAG_NAME.0).expect("a chain"))
+        .map(|held| bytes(held, PUUID_TAG_NAME.0).expect("a chain"))
         .collect();
     assert!(
         chains.iter().all(|held| *held == chains[0]),
@@ -75,16 +75,24 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     );
     let ids: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, ID_TAG_NAME.0).expect("an id"))
+        .map(|held| bytes(held, UUID_TAG_NAME.0).expect("an id"))
         .collect();
     for pair in ids.windows(2) {
         assert!(pair[0] < pair[1], "ids sort by the impact clock");
     }
-    // The chain is dated by the order's own transaction time, in
-    // microseconds, and every id after it opens with a later instant.
-    let created = i64::from_be_bytes(chains[0][..8].try_into().unwrap());
-    assert_eq!(created, 1_767_348_930_000_000);
+    // The first six bytes order by milliseconds; the exact time is still
+    // read from its own column, never decoded from a UUID's first eight.
+    let millis = 1_767_348_930_000_u64.to_be_bytes();
+    assert_eq!(&chains[0][..6], &millis[2..]);
     assert_eq!(&ids[0][..8], &chains[0][..8]);
+    assert_eq!(
+        yggdryl::txhash::unix_from_scalar(
+            stamped[0].by_tag(60).unwrap(),
+            yggdryl::TimeUnit::Microsecond,
+        )
+        .unwrap(),
+        1_767_348_930_000_000,
+    );
 
     // Nothing here is an entry: the wire re-emits byte for byte.
     for (line, message) in LIFE.iter().zip(&stamped) {
@@ -100,7 +108,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     let again = life
         .fill(reader.sole_line(tomorrow.as_bytes(), false).unwrap())
         .unwrap();
-    assert_ne!(bytes(&again, PERSISTENTID_TAG_NAME.0).unwrap(), chains[0]);
+    assert_ne!(bytes(&again, PUUID_TAG_NAME.0).unwrap(), chains[0]);
     assert_eq!(life.alive(), 1);
     life.clear();
     assert_eq!(life.alive(), 0);
@@ -109,11 +117,8 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     let replayed = life
         .fill(reader.sole_line(LIFE[0], false).unwrap())
         .unwrap();
-    assert_eq!(
-        bytes(&replayed, PERSISTENTID_TAG_NAME.0).unwrap(),
-        chains[0]
-    );
-    assert_eq!(bytes(&replayed, ID_TAG_NAME.0), Some(ids[0].clone()));
+    assert_eq!(bytes(&replayed, PUUID_TAG_NAME.0).unwrap(), chains[0]);
+    assert_eq!(bytes(&replayed, UUID_TAG_NAME.0), Some(ids[0]));
 }
 
 #[test]
@@ -127,31 +132,30 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
     let held = stamped.next().unwrap().unwrap();
     assert!(stamped.next().is_none());
     assert!(
-        bytes(&held, ID_TAG_NAME.0).is_some(),
+        bytes(&held, UUID_TAG_NAME.0).is_some(),
         "every message has an id"
     );
     assert!(
-        bytes(&held, PERSISTENTID_TAG_NAME.0).is_none(),
+        bytes(&held, PUUID_TAG_NAME.0).is_none(),
         "no identifier, no chain"
     );
     assert!(
-        bytes(&held, INSTID_TAG_NAME.0).is_none(),
+        bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
     // The impact clock is the sending time where no transaction time is
     // stated, and the epoch where the message states no clock at all.
-    let sent = i64::from_be_bytes(
-        bytes(&held, ID_TAG_NAME.0).unwrap()[..8]
-            .try_into()
-            .unwrap(),
-    );
-    assert_eq!(sent, 1_767_348_930_000_000);
+    let millis = 1_767_348_930_000_u64.to_be_bytes();
+    assert_eq!(&bytes(&held, UUID_TAG_NAME.0).unwrap()[..6], &millis[2..]);
     let undated = reader
         .lifecycle([reader.sole_line(b"8=FIX.4.4|35=0|10=0|", false).unwrap()])
         .next()
         .unwrap()
         .unwrap();
-    assert_eq!(&bytes(&undated, ID_TAG_NAME.0).unwrap()[..8], &[0; 8]);
+    assert_eq!(
+        &bytes(&undated, UUID_TAG_NAME.0).unwrap()[..8],
+        &[0, 0, 0, 0, 0, 0, 0x70, 0],
+    );
 }
 
 #[test]
@@ -162,7 +166,7 @@ fn the_instrument_identity_is_the_same_across_spellings_and_venues() {
     let mut identity = |line: &[u8]| {
         bytes(
             &life.fill(reader.sole_line(line, false).unwrap()).unwrap(),
-            INSTID_TAG_NAME.0,
+            INSTUUID_TAG_NAME.0,
         )
     };
     // An ISIN outranks a symbol, so the same security under two symbols is
@@ -202,9 +206,214 @@ fn a_stamped_stream_read_again_keeps_what_it_carries() {
         .map(|held| held.unwrap())
         .collect();
     for (first, second) in once.iter().zip(&twice) {
-        for tag in [INSTID_TAG_NAME.0, ID_TAG_NAME.0, PERSISTENTID_TAG_NAME.0] {
+        for tag in [INSTUUID_TAG_NAME.0, UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
             assert_eq!(bytes(first, tag), bytes(second, tag), "tag {tag}");
         }
         assert_eq!(first.entries().len(), second.entries().len());
+        assert_eq!(first, second);
     }
+}
+
+/// Keep each clock's declared resolution, including instants outside the
+/// nanosecond timestamp range a FIX wire field normally has.
+fn row_message(
+    registry: Arc<FixRegistry>,
+    cells: impl IntoIterator<Item = (i32, Scalar)>,
+) -> FixMsg {
+    let mut fields = Vec::new();
+    let mut values = Vec::new();
+    for (tag, value) in cells {
+        let name = registry.get_field_by_tag(tag).unwrap().name();
+        let mut field = value.dtype().unwrap().nullable_field(name);
+        field.as_fix_mut().set_tag(tag).unwrap();
+        fields.push(field);
+        values.push(value);
+    }
+    let field = DataType::from_fields(fields).unwrap().required_field("D");
+    FixMsg::with_registry(registry, field, Scalar::from_sequence(values)).unwrap()
+}
+
+fn micros(instant: i64) -> Scalar {
+    Scalar::datetime64(instant, TimeUnit::Microsecond, Timezone::UTC).unwrap()
+}
+
+#[test]
+fn uuid_payloads_keep_the_original_inputs_and_unmasked_instrument_digest() {
+    let registry = registry();
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let original = codec.sole_line(LIFE[0], false).unwrap();
+    let arrival_digest = original.digest();
+    let entries = original.entries().to_vec();
+    let message = FixLifecycle::new(registry).fill(original).unwrap();
+    let raw_instrument = yggdryl::xxhash::xxh128(b"XNAS\x1f\x1fAAPL\x1fUSD\x1f");
+    let instuuid = Uuid::from_v8(raw_instrument);
+    assert_ne!(
+        raw_instrument,
+        instuuid.get(),
+        "this fixture exercises the replaced bits"
+    );
+    assert_eq!(
+        message.by_tag(INSTUUID_TAG_NAME.0).unwrap(),
+        &Scalar::Uuid(instuuid)
+    );
+    let chain_input = [raw_instrument.to_be_bytes().as_slice(), b"\x1fA1"].concat();
+    let chain_payload = yggdryl::xxhash::xxh3(&chain_input);
+    let impact = 1_767_348_930_000_000;
+    assert_eq!(
+        bytes(&message, PUUID_TAG_NAME.0),
+        Some(Uuid::from_v7(impact, chain_payload).unwrap().into_bytes()),
+    );
+    assert_eq!(
+        bytes(&message, UUID_TAG_NAME.0),
+        Some(
+            Uuid::from_v7(impact, yggdryl::xxhash::xxh3(&arrival_digest.to_be_bytes()))
+                .unwrap()
+                .into_bytes()
+        ),
+    );
+    assert_eq!(message.entries(), entries);
+    assert_eq!(message.digest(), arrival_digest);
+    assert_eq!(message.into_bytes(b'|'), LIFE[0]);
+}
+
+#[test]
+fn uuid_clock_precedence_is_transaction_then_sending_then_market_then_epoch() {
+    let registry = registry();
+    for (clocks, expected) in [
+        (
+            vec![(60, 1_001), (52, 2_002), (TIMESTAMP_TAG_NAME.0, 3_003)],
+            1_001,
+        ),
+        (vec![(52, 2_002), (TIMESTAMP_TAG_NAME.0, 3_003)], 2_002),
+        (vec![(TIMESTAMP_TAG_NAME.0, 3_003)], 3_003),
+        (Vec::new(), 0),
+    ] {
+        let row = row_message(
+            Arc::clone(&registry),
+            clocks.into_iter().map(|(tag, time)| (tag, micros(time))),
+        );
+        let expected =
+            Uuid::from_v7(expected, yggdryl::xxhash::xxh3(&row.digest().to_be_bytes())).unwrap();
+        let message = FixLifecycle::new(Arc::clone(&registry)).fill(row).unwrap();
+        assert_eq!(
+            bytes(&message, UUID_TAG_NAME.0),
+            Some(expected.into_bytes())
+        );
+    }
+}
+
+#[test]
+fn lifecycle_uuid_order_keeps_each_microsecond_across_a_millisecond_boundary() {
+    let registry = registry();
+    let mut life = FixLifecycle::new(Arc::clone(&registry));
+    let mut previous = None;
+    for time in 0..=1_001 {
+        let row = row_message(Arc::clone(&registry), [(60, micros(time))]);
+        let message = life.fill(row).unwrap();
+        let current = bytes(&message, UUID_TAG_NAME.0).unwrap();
+        if let Some(previous) = previous {
+            assert!(previous < current, "microsecond {time}");
+        }
+        previous = Some(current);
+    }
+    assert_eq!(life.alive(), 0);
+}
+
+#[test]
+fn invalid_uuid_instants_neither_open_join_nor_close_a_chain() {
+    let registry = registry();
+    for invalid in [i64::MIN, -1, 281_474_976_710_656_000, i64::MAX] {
+        let mut life = FixLifecycle::new(Arc::clone(&registry));
+        let make = |key: &str, time| {
+            row_message(
+                Arc::clone(&registry),
+                [(11, Scalar::from(key)), (60, micros(time))],
+            )
+        };
+        let error = life.fill(make("NEW", invalid)).unwrap_err();
+        assert!(matches!(error, Error::InvalidRecord { ref path, .. } if path == "$.uuid"));
+        assert!(error.to_string().contains(&invalid.to_string()));
+        assert_eq!(life.alive(), 0);
+        let first = life.fill(make("LIVE", 0)).unwrap();
+        let joining = row_message(
+            Arc::clone(&registry),
+            [
+                (41, Scalar::from("LIVE")),
+                (11, Scalar::from("NEW")),
+                (39, Scalar::from("2")),
+                (60, micros(invalid)),
+            ],
+        );
+        assert!(life.fill(joining).is_err());
+        assert_eq!(
+            life.alive(),
+            1,
+            "a refused terminal message cannot close the live chain"
+        );
+        let second = life.fill(make("NEW", 1)).unwrap();
+        assert_eq!(
+            life.alive(),
+            2,
+            "a refused join cannot attach its new alias"
+        );
+        assert_ne!(
+            bytes(&first, PUUID_TAG_NAME.0),
+            bytes(&second, PUUID_TAG_NAME.0)
+        );
+    }
+}
+
+#[test]
+fn invalid_new_puuid_is_located_without_rechecking_stated_uuids() {
+    let registry = registry();
+    let uuid = Uuid::from_v7(0, 7).unwrap();
+    let mut life = FixLifecycle::new(Arc::clone(&registry));
+    let message = row_message(
+        Arc::clone(&registry),
+        [
+            (11, Scalar::from("NEW")),
+            (60, micros(-1)),
+            (UUID_TAG_NAME.0, Scalar::Uuid(uuid)),
+        ],
+    );
+    assert!(
+        matches!(life.fill(message), Err(Error::InvalidRecord { path, .. }) if path == "$.puuid")
+    );
+    assert_eq!(life.alive(), 0);
+    let stated = row_message(
+        registry,
+        [
+            (60, micros(-1)),
+            (UUID_TAG_NAME.0, Scalar::Uuid(uuid)),
+            (PUUID_TAG_NAME.0, Scalar::Uuid(uuid)),
+            (INSTUUID_TAG_NAME.0, Scalar::Uuid(Uuid::from_v8(123))),
+        ],
+    );
+    assert_eq!(life.fill(stated.clone()).unwrap(), stated);
+    assert_eq!(life.alive(), 0);
+}
+
+#[test]
+fn a_refused_message_column_does_not_publish_the_planned_chain() {
+    let registry = registry();
+    let mut message_registry = registry.as_ref().clone();
+    assert!(message_registry.remove(UUID_TAG_NAME.0).is_some());
+    let mut field = DataType::Int32.nullable_field(UUID_TAG_NAME.1);
+    field.as_fix_mut().set_tag(UUID_TAG_NAME.0).unwrap();
+    let key = registry.get_field_by_tag(11).unwrap().clone();
+    let row = DataType::from_fields([field, key])
+        .unwrap()
+        .required_field("D");
+    let message = FixMsg::with_registry(
+        Arc::new(message_registry),
+        row,
+        Scalar::from_sequence([Scalar::Null, Scalar::from("NEW")]),
+    )
+    .unwrap();
+    let mut life = FixLifecycle::new(registry);
+    assert!(matches!(
+        life.fill(message),
+        Err(Error::InvalidRecord { .. })
+    ));
+    assert_eq!(life.alive(), 0);
 }

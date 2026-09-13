@@ -79,6 +79,9 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::ISINCODE_TAG_NAME.0, "ISINCode"),
         (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
+        (yggdryl::INSTUUID_TAG_NAME.0, "InstUuid"),
+        (yggdryl::UUID_TAG_NAME.0, "Uuid"),
+        (yggdryl::PUUID_TAG_NAME.0, "PUuid"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -97,6 +100,119 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         required,
         ["beginstring", "msghash", "timestamp", "unixpartition"]
     );
+}
+
+#[test]
+fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::media::ipc::{Ipc, IpcOptions};
+    use yggdryl::{FixMsg, INSTUUID_TAG_NAME, IOMedia, PUUID_TAG_NAME, UUID_TAG_NAME};
+
+    let (registry, codec) = reader();
+    let codec = codec.with_separator(b'|');
+    let wire = b"8=FIX.4.4|35=D|11=UUID-ORDER-1|55=AAPL|10=0|";
+    let mut message = codec.sole_line(wire, false).unwrap();
+    let digest = message.digest();
+    let identities = [
+        (INSTUUID_TAG_NAME, "00112233-4455-8677-8899-aabbccddeeff"),
+        (UUID_TAG_NAME, "01941f29-7e00-7000-8000-000000000001"),
+        (PUUID_TAG_NAME, "01941f29-7e00-7000-8000-000000000002"),
+    ];
+    message
+        .set_many(
+            identities
+                .iter()
+                .map(|((tag, _), text)| (*tag, Scalar::from(*text))),
+        )
+        .unwrap();
+    assert_eq!(message.digest(), digest);
+    assert_eq!(message.into_bytes(b'|'), wire);
+
+    let schema = fix_schema(&registry, "fix").unwrap();
+    let row = message.into_row(&schema).unwrap();
+    for ((tag, name), text) in identities {
+        let field = &schema.fields()[column_of(&schema, tag)];
+        assert_eq!(field.name(), name);
+        assert_eq!(field.dtype(), &DataType::Uuid);
+        let Scalar::Uuid(value) = at(&row, &schema, tag) else {
+            panic!("{name} must remain a native UUID")
+        };
+        assert_eq!(value.to_string(), text);
+    }
+    let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(restored.into_row(&schema).unwrap(), row);
+    assert_eq!(restored.digest(), digest);
+    assert_eq!(restored.into_bytes(b'|'), wire);
+
+    let outgoing = codec.arrow_reader(schema.clone(), [Ok(message)]).unwrap();
+    let arrow_schema = outgoing.schema();
+    for ((_, name), _) in identities {
+        let field = arrow_schema.field_with_name(name).unwrap();
+        assert_eq!(
+            field.data_type(),
+            &arrow_schema::DataType::FixedSizeBinary(16)
+        );
+        assert_eq!(
+            field
+                .metadata()
+                .get("ARROW:extension:name")
+                .map(String::as_str),
+            Some("arrow.uuid")
+        );
+    }
+
+    let options: RecordOptions = IpcOptions::default().into();
+    let mut stored = Ipc::new(Buffer::new());
+    stored.overwrite_arrow_reader(outgoing, &options).unwrap();
+    let incoming = stored.read_arrow_reader(&options).unwrap();
+    assert_eq!(incoming.schema(), arrow_schema);
+    let mut messages = codec.messages(incoming);
+    let restored = messages.next().unwrap().unwrap();
+    assert!(messages.next().is_none());
+    assert_eq!(restored.into_row(&schema).unwrap(), row);
+
+    let mut encoded = Vec::new();
+    assert_eq!(
+        codec
+            .write_arrow_reader(stored.read_arrow_reader(&options).unwrap(), &mut encoded)
+            .unwrap(),
+        1
+    );
+    assert_eq!(encoded, [wire.as_slice(), b"\n"].concat());
+}
+
+#[test]
+fn explicitly_binary_dataset_columns_do_not_acquire_uuid_identity() {
+    use yggdryl::FixMsg;
+
+    let registry = Arc::new(FixRegistry::new());
+    let columns = [(65_016, "instid"), (65_017, "id"), (65_018, "persistentid")];
+    let fields = columns.map(|(tag, name)| {
+        let mut field = DataType::fixed_size_binary(16)
+            .unwrap()
+            .required_field(name);
+        field.as_fix_mut().set_tag(tag).unwrap();
+        field
+    });
+    let schema = DataType::from_fields(fields)
+        .unwrap()
+        .required_field("stored");
+    let row = Scalar::from_sequence((0..3_u8).map(|byte| Scalar::from(vec![byte; 16])));
+    let message = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
+    assert_eq!(message.as_field(), &schema);
+    assert_eq!(message.into_row(&schema).unwrap(), row);
+    let arrow_schema = schema.into_arrow_schema().unwrap();
+    for (tag, old_name) in columns {
+        assert!(registry.get_field_by_name(old_name).is_none());
+        assert!(matches!(message.by_tag(tag).unwrap(), Scalar::Bytes(_)));
+        let arrow = arrow_schema.field_with_name(old_name).unwrap();
+        assert_eq!(
+            arrow.data_type(),
+            &arrow_schema::DataType::FixedSizeBinary(16)
+        );
+        assert!(!arrow.metadata().contains_key("ARROW:extension:name"));
+    }
 }
 
 #[test]

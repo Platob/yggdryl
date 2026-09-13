@@ -234,9 +234,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "isincode",
             "miccode",
             "state",
-            "instid",
-            "id",
-            "persistentid",
+            "instuuid",
+            "uuid",
+            "puuid",
             "targetsessionid",
             "altids",
         ],
@@ -261,9 +261,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("ISINCode"),
             Some("MICCode"),
             Some("State"),
-            Some("InstId"),
-            Some("Id"),
-            Some("PersistentId"),
+            Some("InstUuid"),
+            Some("Uuid"),
+            Some("PUuid"),
             Some("TargetSessionId"),
             Some("AltIds"),
         ],
@@ -276,16 +276,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         &DataType::fixed_size_binary(16).expect("a width")
     );
     // The columns a message answers from what it said are typed as the thing
-    // they hold, not as the text a venue spelled it in; the three identities
-    // a stream stamps are sixteen bytes each, as the digest is.
+    // they hold, not as the text a venue spelled it in; the three lifecycle
+    // identities carry UUID identity rather than untyped digest bytes.
     assert_eq!(held[13].dtype(), &DataType::Isin);
     assert_eq!(held[14].dtype(), &DataType::Mic);
     assert_eq!(held[15].dtype(), &DataType::State);
     for identity in &held[16..19] {
-        assert_eq!(
-            identity.dtype(),
-            &DataType::fixed_size_binary(16).expect("a width")
-        );
+        assert_eq!(identity.dtype(), &DataType::Uuid);
+        assert_eq!(identity.as_fix().aliases().count(), 0);
     }
 
     // Every one is a field from 65000 up: one tag block, in the one namespace
@@ -309,7 +307,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::MSGHASH_TAG_NAME.0, 65_000);
     assert_eq!(yggdryl::STATE_TAG_NAME.0, 65_015);
-    assert_eq!(yggdryl::PERSISTENTID_TAG_NAME.0, 65_018);
+    assert_eq!(
+        [
+            yggdryl::INSTUUID_TAG_NAME,
+            yggdryl::UUID_TAG_NAME,
+            yggdryl::PUUID_TAG_NAME,
+        ],
+        [(65_016, "instuuid"), (65_017, "uuid"), (65_018, "puuid")]
+    );
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     let sessions = &held[11..13];
     assert_eq!(
@@ -335,6 +340,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count);
+    for retired in ["instid", "id", "persistentid"] {
+        assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
+    }
     for field in held {
         let category = if field.dtype().is_nested() {
             yggdryl::FixCategory::Groups

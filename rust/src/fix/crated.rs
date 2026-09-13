@@ -112,14 +112,14 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 /// The tag and name carrying the state the order is in.
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 
-/// The tag and name carrying the instrument's own identity.
-pub const INSTID_TAG_NAME: (i32, &str) = (65_016, "instid");
+/// The tag and name carrying the instrument's version-8 UUID.
+pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
-/// The tag and name carrying the message's own time-coupled identity.
-pub const ID_TAG_NAME: (i32, &str) = (65_017, "id");
+/// The tag and name carrying the message's time-ordered version-7 UUID.
+pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 
-/// The tag and name carrying the order chain's identity.
-pub const PERSISTENTID_TAG_NAME: (i32, &str) = (65_018, "persistentid");
+/// The tag and name carrying the order chain's version-7 UUID.
+pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 
 /// The tag and name carrying the session a message went to, as the message
 /// states it.
@@ -450,31 +450,29 @@ fn build() -> Result<Vec<Field>> {
             "The state the order is in: OrdStatus, else ExecType, read as one \
              lifecycle vocabulary.",
         )?,
-        // The three identities a stream implies, stamped by the lifecycle
-        // pass: fixed binary, big-endian, for the reason `msghash` is. The
-        // two time-coupled ones open with the impact instant so they sort by
-        // the market's own clock.
+        // UUID owns the RFC layout and Arrow extension. The clock orders
+        // version 7; its exact instant remains the timestamp's fact.
         crated(
-            INSTID_TAG_NAME,
-            "InstId",
-            DataType::fixed_size_binary(DIGEST_WIDTH)?,
-            "The instrument's own identity: the xxh128 digest of its market, \
+            INSTUUID_TAG_NAME,
+            "InstUuid",
+            DataType::Uuid,
+            "The instrument's version-8 UUID over the xxh128 digest of its market, \
              its classification, its ISIN - else its symbol - and its currency.",
         )?,
         crated(
-            ID_TAG_NAME,
-            "Id",
-            DataType::fixed_size_binary(DIGEST_WIDTH)?,
-            "The message's own identity: the instant closest to the market \
-             impact in microseconds, then the xxh3 digest of what it said.",
+            UUID_TAG_NAME,
+            "Uuid",
+            DataType::Uuid,
+            "The message's version-7 UUID ordered by the market-impact clock, \
+             with 62 bits from xxh3 of the arrival digest's big-endian bytes.",
         )?,
         crated(
-            PERSISTENTID_TAG_NAME,
-            "PersistentId",
-            DataType::fixed_size_binary(DIGEST_WIDTH)?,
-            "The order chain's identity: the instant it was created, then the \
-             xxh3 digest of its instrument and first identifier, carried by \
-             every later message sharing one of its identifiers.",
+            PUUID_TAG_NAME,
+            "PUuid",
+            DataType::Uuid,
+            "The order chain's version-7 UUID ordered by its creation clock, \
+             with 62 bits from xxh3 of the unmodified instrument digest, a \
+             0x1f separator and its first identifier.",
         )?,
         // The target side of the session pair, which the block's next free tag
         // takes rather than displacing a tag already published.

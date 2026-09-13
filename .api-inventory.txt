@@ -743,9 +743,9 @@ pub const TARGETSESSIONNAME_TAG_NAME: (i32, &str) = (65_012, "targetsessionname"
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
-pub const INSTID_TAG_NAME: (i32, &str) = (65_016, "instid");
-pub const ID_TAG_NAME: (i32, &str) = (65_017, "id");
-pub const PERSISTENTID_TAG_NAME: (i32, &str) = (65_018, "persistentid");
+pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
+pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
+pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
@@ -2986,6 +2986,15 @@ pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
 pub const fn uuid() -> Self
   pub fn uuid_packed(&self, value: &[u8]) -> Result<u128>
   pub fn uuid_value(&self, packed: u128) -> Result<SmolStr>
+
+### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
+pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarFamily and ScalarValue)
+  pub const fn new(value: u128) -> Self
+  pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
+  pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
+  pub fn from_bytes(value: &[u8]) -> Result<Self>
+  pub const fn get(self) -> u128
+  pub const fn into_bytes(self) -> [u8; 16]
 
 ### yggdryl::types::version  [rust\src\types\version\mod.rs]
 pub struct Version
