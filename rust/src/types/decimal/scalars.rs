@@ -4,12 +4,12 @@
 //! value, while equality, ordering, and hashing compare the represented number.
 //!
 //! ```
-//! use yggdryl::{I256, Scalar};
+//! use yggdryl::{i256, Scalar};
 //!
-//! let price = Scalar::from_decimal(I256::from_i128(1_050), 2);
+//! let price = Scalar::from_decimal(i256::from_i128(1_050), 2);
 //!
-//! assert_eq!(price.as_decimal(), Some((I256::from_i128(1_050), 2)));
-//! assert_eq!(price, Scalar::from_decimal(I256::from_i128(105), 1));
+//! assert_eq!(price.as_decimal(), Some((i256::from_i128(1_050), 2)));
+//! assert_eq!(price, Scalar::from_decimal(i256::from_i128(105), 1));
 //! assert_eq!(price.decimal_unscaled_at(4), Some(105_000));
 //! ```
 
@@ -23,13 +23,13 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, I256, Result, Scalar, ScalarFamily, ScalarValue,
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue, i256,
 };
 
 /// Operations shared by every exact-decimal representation.
 pub trait DecimalValue: crate::ScalarValue {
     /// Return the coefficient widened to 256 bits.
-    fn coefficient(&self) -> I256;
+    fn coefficient(&self) -> i256;
     /// Return the decimal scale.
     fn scale(&self) -> i8;
     /// Return this value represented at `scale` without losing precision.
@@ -37,14 +37,14 @@ pub trait DecimalValue: crate::ScalarValue {
 }
 
 trait IntoI256 {
-    fn into_i256(self) -> I256;
+    fn into_i256(self) -> i256;
 }
 
 macro_rules! into_i256 {
     ($($native:ty),+ $(,)?) => {$(
         impl IntoI256 for $native {
-            fn into_i256(self) -> I256 {
-                I256::from_i128(self as i128)
+            fn into_i256(self) -> i256 {
+                i256::from_i128(self as i128)
             }
         }
     )+};
@@ -52,8 +52,8 @@ macro_rules! into_i256 {
 
 into_i256!(i32, i64, i128);
 
-impl IntoI256 for I256 {
-    fn into_i256(self) -> I256 {
+impl IntoI256 for i256 {
+    fn into_i256(self) -> i256 {
         self
     }
 }
@@ -107,21 +107,21 @@ macro_rules! decimal_leaf {
 decimal_leaf!(Decimal32, i32);
 decimal_leaf!(Decimal64, i64);
 decimal_leaf!(Decimal128, i128);
-decimal_leaf!(Decimal256, I256);
+decimal_leaf!(Decimal256, i256);
 
 // A decimal width is its own scalar family, exactly as `Boolean` is. The
 // narrow widths also restate through their native coefficient; `Decimal256`
 // writes that by hand below.
 macro_rules! decimal_value {
-    ($leaf:ident, $variant:ident, $id:ident) => {
+    ($leaf:ident) => {
         impl ScalarValue for $leaf {
             type Family = Self;
 
-            const ID: DataTypeId = DataTypeId::$id;
+            const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Decimal;
 
             fn dtype(&self) -> Result<DataType> {
-                Scalar::$variant(*self).dtype()
+                Scalar::$leaf(*self).dtype()
             }
 
             fn into_family(self) -> Self::Family {
@@ -133,7 +133,7 @@ macro_rules! decimal_value {
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::$variant(self)
+                Scalar::$leaf(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
@@ -145,7 +145,7 @@ macro_rules! decimal_value {
             const KIND: DataTypeKind = DataTypeKind::Decimal;
 
             fn id(&self) -> DataTypeId {
-                DataTypeId::$id
+                DataTypeId::$leaf
             }
 
             fn dtype(&self) -> Result<DataType> {
@@ -153,22 +153,22 @@ macro_rules! decimal_value {
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::$variant(self)
+                Scalar::$leaf(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::$variant(value) => Some(value),
+                    Scalar::$leaf(value) => Some(value),
                     _ => None,
                 }
             }
         }
     };
-    ($leaf:ident, $variant:ident, $id:ident, $native:ty) => {
-        decimal_value!($leaf, $variant, $id);
+    ($leaf:ident, $native:ty) => {
+        decimal_value!($leaf);
 
         impl DecimalValue for $leaf {
-            fn coefficient(&self) -> I256 {
+            fn coefficient(&self) -> i256 {
                 self.coefficient().into_i256()
             }
 
@@ -179,11 +179,11 @@ macro_rules! decimal_value {
             fn rescale(self, scale: i8) -> Result<Self> {
                 let coefficient =
                     rescale_decimal(self.coefficient().into_i256(), self.scale(), scale)
-                        .and_then(I256::as_i128)
+                        .and_then(i256::as_i128)
                         .and_then(|value| <$native>::try_from(value).ok())
                         .ok_or(Error::InexactArithmetic {
                             operation: "rescale",
-                            kind: stringify!($id),
+                            kind: stringify!($leaf),
                         })?;
                 Ok(Self::new(coefficient, scale))
             }
@@ -191,13 +191,13 @@ macro_rules! decimal_value {
     };
 }
 
-decimal_value!(Decimal32, D32, Decimal32, i32);
-decimal_value!(Decimal64, D64, Decimal64, i64);
-decimal_value!(Decimal128, D128, Decimal128, i128);
-decimal_value!(Decimal256, D256, Decimal256);
+decimal_value!(Decimal32, i32);
+decimal_value!(Decimal64, i64);
+decimal_value!(Decimal128, i128);
+decimal_value!(Decimal256);
 
 impl DecimalValue for Decimal256 {
-    fn coefficient(&self) -> I256 {
+    fn coefficient(&self) -> i256 {
         self.coefficient()
     }
 
@@ -217,7 +217,7 @@ impl DecimalValue for Decimal256 {
 
 impl Scalar {
     /// Build the narrowest exact decimal width that holds `unscaled`.
-    pub fn from_decimal(unscaled: I256, scale: i8) -> Self {
+    pub fn from_decimal(unscaled: i256, scale: i8) -> Self {
         unscaled.as_i128().map_or_else(
             || Self::d256(unscaled, scale),
             |value| Self::d128(value, scale),
@@ -229,37 +229,37 @@ impl Scalar {
     /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
     /// `10.50`. A negative scale multiplies instead, exactly as Arrow allows.
     pub const fn d128(unscaled: i128, scale: i8) -> Self {
-        Self::D128(Decimal128::new(unscaled, scale))
+        Self::Decimal128(Decimal128::new(unscaled, scale))
     }
 
     /// Build an exact decimal with a 256-bit coefficient.
-    pub const fn d256(unscaled: I256, scale: i8) -> Self {
-        Self::D256(Decimal256::new(unscaled, scale))
+    pub const fn d256(unscaled: i256, scale: i8) -> Self {
+        Self::Decimal256(Decimal256::new(unscaled, scale))
     }
 
     /// Return the coefficient and scale when this is a 128-bit decimal.
     pub const fn as_d128(&self) -> Option<(i128, i8)> {
         match self {
-            Self::D128(value) => Some((value.coefficient(), value.scale())),
+            Self::Decimal128(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
 
     /// Return the coefficient and scale when this is a 256-bit decimal.
-    pub const fn as_d256(&self) -> Option<(I256, i8)> {
+    pub const fn as_d256(&self) -> Option<(i256, i8)> {
         match self {
-            Self::D256(value) => Some((value.coefficient(), value.scale())),
+            Self::Decimal256(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
 
     /// Return this decimal's coefficient widened to 256 bits and its scale.
-    pub fn as_decimal(&self) -> Option<(I256, i8)> {
+    pub fn as_decimal(&self) -> Option<(i256, i8)> {
         match self {
-            Self::D32(value) => Some((value.coefficient().into_i256(), value.scale())),
-            Self::D64(value) => Some((value.coefficient().into_i256(), value.scale())),
-            Self::D128(value) => Some((value.coefficient().into_i256(), value.scale())),
-            Self::D256(value) => Some((value.coefficient(), value.scale())),
+            Self::Decimal32(value) => Some((value.coefficient().into_i256(), value.scale())),
+            Self::Decimal64(value) => Some((value.coefficient().into_i256(), value.scale())),
+            Self::Decimal128(value) => Some((value.coefficient().into_i256(), value.scale())),
+            Self::Decimal256(value) => Some((value.coefficient(), value.scale())),
             _ => None,
         }
     }
@@ -268,7 +268,7 @@ impl Scalar {
     pub const fn is_decimal(&self) -> bool {
         matches!(
             self,
-            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_)
+            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_)
         )
     }
 
@@ -293,7 +293,7 @@ impl Scalar {
     }
 
     /// Return this decimal's 256-bit coefficient at `scale`, when exact.
-    pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256> {
+    pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<i256> {
         let (unscaled, current) = self.as_decimal()?;
         let shift = i32::from(scale) - i32::from(current);
         match shift.cmp(&0) {
@@ -311,7 +311,7 @@ impl Scalar {
 }
 
 /// Render a coefficient and scale in ordinary decimal notation.
-pub(crate) fn decimal_text(coefficient: I256, scale: i8) -> String {
+pub(crate) fn decimal_text(coefficient: i256, scale: i8) -> String {
     let encoded = coefficient.to_string();
     if scale == 0 {
         return encoded;
@@ -338,9 +338,9 @@ pub(crate) fn decimal_text(coefficient: I256, scale: i8) -> String {
 ///
 /// Equal numbers share exactly one normal form, which is what lets `Hash` agree
 /// with the numeric `Ord` below without either of them widening the coefficient.
-pub(crate) fn normalize(unscaled: I256, scale: i8) -> (I256, i8) {
+pub(crate) fn normalize(unscaled: i256, scale: i8) -> (i256, i8) {
     if unscaled.is_zero() {
-        return (I256::ZERO, 0);
+        return (i256::ZERO, 0);
     }
     let mut unscaled = unscaled;
     let mut scale = scale;
@@ -356,9 +356,9 @@ pub(crate) fn normalize(unscaled: I256, scale: i8) -> (I256, i8) {
 
 /// Compare two decimals by the number each one names.
 pub(crate) fn compare(
-    left_unscaled: I256,
+    left_unscaled: i256,
     left_scale: i8,
-    right_unscaled: I256,
+    right_unscaled: i256,
     right_scale: i8,
 ) -> Ordering {
     let (left_unscaled, left_scale) = normalize(left_unscaled, left_scale);
@@ -367,8 +367,8 @@ pub(crate) fn compare(
         return left_unscaled.cmp(&right_unscaled);
     }
     let sign = left_unscaled
-        .cmp(&I256::ZERO)
-        .cmp(&right_unscaled.cmp(&I256::ZERO));
+        .cmp(&i256::ZERO)
+        .cmp(&right_unscaled.cmp(&i256::ZERO));
     if sign != Ordering::Equal {
         return sign;
     }
@@ -411,7 +411,7 @@ pub(crate) fn compare(
 }
 
 /// Multiply a magnitude by ten `digits` times, or report that it overflowed.
-fn scale_up(unscaled: I256, digits: i32) -> Option<I256> {
+fn scale_up(unscaled: i256, digits: i32) -> Option<i256> {
     (0..digits).try_fold(unscaled, |held, _| held.checked_mul_ten())
 }
 
@@ -449,7 +449,7 @@ pub(crate) fn validate_decimal256_value(
     let Some(coefficient) = (if value.is_decimal() {
         value.decimal256_unscaled_at(scale)
     } else {
-        value.as_i128().map(I256::from_i128)
+        value.as_i128().map(i256::from_i128)
     }) else {
         return Err(expected("d256", value));
     };
@@ -480,16 +480,16 @@ pub(crate) fn is_exact_number(value: &Scalar) -> bool {
     value.is_integer() || value.is_decimal()
 }
 
-pub(crate) fn decimal_value_parts(value: &Scalar) -> Option<(I256, i8)> {
+pub(crate) fn decimal_value_parts(value: &Scalar) -> Option<(i256, i8)> {
     value.as_decimal()
 }
 
-pub(crate) fn exact_value_parts(value: &Scalar) -> Option<(I256, i8)> {
+pub(crate) fn exact_value_parts(value: &Scalar) -> Option<(i256, i8)> {
     decimal_value_parts(value).or_else(|| {
         value
             .as_i128()
-            .map(|value| (I256::from_i128(value), 0))
-            .or_else(|| value.as_u128().map(|value| (I256::from_u128(value), 0)))
+            .map(|value| (i256::from_i128(value), 0))
+            .or_else(|| value.as_u128().map(|value| (i256::from_u128(value), 0)))
     })
 }
 
@@ -562,7 +562,7 @@ pub(crate) fn inferred_decimal_division_scale(
         denominator = reduced;
         fives += 1;
     }
-    if denominator != I256::from_i128(1) && denominator != I256::from_i128(-1) {
+    if denominator != i256::from_i128(1) && denominator != i256::from_i128(-1) {
         return Err(inexact_decimal_division(wide));
     }
 
@@ -580,7 +580,7 @@ pub(crate) fn inferred_decimal_division_scale(
     i8::try_from(scale).map_err(|_| decimal_overflow(Arithmetic::Div, wide))
 }
 
-fn factor_power(mut value: I256, factor: i128) -> (I256, i16) {
+fn factor_power(mut value: i256, factor: i128) -> (i256, i16) {
     let mut count = 0;
     while let Some(reduced) = divide_exactly(value, factor) {
         value = reduced;
@@ -657,13 +657,13 @@ pub(crate) fn decimal_arithmetic(
 /// full-width operand by a power of ten. Reducing first means `MAX / MAX`
 /// reaches one instead of reporting overflow from an unnecessary intermediate.
 fn exact_scaled_division(
-    left: I256,
+    left: i256,
     left_scale: i8,
-    right: I256,
+    right: i256,
     right_scale: i8,
     target_scale: i8,
     wide: bool,
-) -> Result<I256> {
+) -> Result<i256> {
     let operation = Arithmetic::Div;
     let exponent = i16::from(target_scale) + i16::from(right_scale) - i16::from(left_scale);
     let divisor = signed_gcd(left, right).ok_or_else(|| decimal_overflow(operation, wide))?;
@@ -696,12 +696,12 @@ fn exact_scaled_division(
             .ok_or_else(|| inexact_decimal_division(wide))?;
         for _ in twos..places {
             numerator = numerator
-                .checked_mul(I256::from_i128(2))
+                .checked_mul(i256::from_i128(2))
                 .ok_or_else(|| decimal_overflow(operation, wide))?;
         }
         for _ in fives..places {
             numerator = numerator
-                .checked_mul(I256::from_i128(5))
+                .checked_mul(i256::from_i128(5))
                 .ok_or_else(|| decimal_overflow(operation, wide))?;
         }
         return Ok(numerator);
@@ -717,9 +717,9 @@ fn exact_scaled_division(
     Ok(numerator)
 }
 
-/// Euclid's algorithm can stay signed, which also handles the I256 minimum:
+/// Euclid's algorithm can stay signed, which also handles the i256 minimum:
 /// only the final common factor is normalized, and the minimum is left signed.
-fn signed_gcd(mut left: I256, mut right: I256) -> Option<I256> {
+fn signed_gcd(mut left: i256, mut right: i256) -> Option<i256> {
     while !right.is_zero() {
         let remainder = left.checked_rem(right)?;
         left = right;
@@ -732,18 +732,18 @@ fn signed_gcd(mut left: I256, mut right: I256) -> Option<I256> {
     }
 }
 
-fn divide_exactly(value: I256, divisor: i128) -> Option<I256> {
-    let divisor = I256::from_i128(divisor);
+fn divide_exactly(value: i256, divisor: i128) -> Option<i256> {
+    let divisor = i256::from_i128(divisor);
     value
         .checked_rem(divisor)
         .filter(|remainder| remainder.is_zero())
         .and_then(|_| value.checked_div(divisor))
 }
 
-fn apply_denominator_sign(numerator: I256, denominator: I256) -> Option<I256> {
-    if denominator == I256::from_i128(1) {
+fn apply_denominator_sign(numerator: i256, denominator: i256) -> Option<i256> {
+    if denominator == i256::from_i128(1) {
         Some(numerator)
-    } else if denominator == I256::from_i128(-1) {
+    } else if denominator == i256::from_i128(-1) {
         numerator.checked_neg()
     } else {
         None
@@ -757,7 +757,7 @@ const fn inexact_decimal_division(wide: bool) -> Error {
     }
 }
 
-fn rescale_decimal(value: I256, from: i8, to: i8) -> Option<I256> {
+fn rescale_decimal(value: i256, from: i8, to: i8) -> Option<i256> {
     match to.cmp(&from) {
         std::cmp::Ordering::Greater => {
             scale_decimal_up(value, u16::try_from(i16::from(to) - i16::from(from)).ok()?)
@@ -768,7 +768,7 @@ fn rescale_decimal(value: I256, from: i8, to: i8) -> Option<I256> {
     }
 }
 
-fn scale_decimal_up(value: I256, places: u16) -> Option<I256> {
+fn scale_decimal_up(value: i256, places: u16) -> Option<i256> {
     (0..places).try_fold(value, |held, _| held.checked_mul_ten())
 }
 
@@ -788,7 +788,7 @@ const fn decimal_overflow(operation: Arithmetic, wide: bool) -> Error {
 pub(crate) fn decimal_from_text(
     text: &str,
     target_scale: i8,
-) -> std::result::Result<I256, &'static str> {
+) -> std::result::Result<i256, &'static str> {
     let text = text.trim();
     let exponent_at = text.find(['e', 'E']);
     let (mantissa, exponent) = exponent_at.map_or((text, 0_i32), |position| {
@@ -818,8 +818,8 @@ pub(crate) fn decimal_from_text(
     }
     let digits = format!("{sign}{whole}{fraction}");
     let mut coefficient =
-        I256::from_str(&digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
-    if coefficient == I256::ZERO {
+        i256::from_str(&digits).map_err(|_| "decimal coefficient exceeds 256 bits")?;
+    if coefficient == i256::ZERO {
         return Ok(coefficient);
     }
     let source_scale = i32::try_from(fraction.len())

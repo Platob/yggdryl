@@ -630,7 +630,7 @@ impl<'a> FieldScalar<'a> {
     }
 
     /// Return the unscaled coefficient and scale of a decimal of any width.
-    pub fn as_decimal(&self) -> Option<(crate::I256, i8)> {
+    pub fn as_decimal(&self) -> Option<(crate::i256, i8)> {
         self.value.as_decimal()
     }
 
@@ -766,7 +766,8 @@ fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Resul
         Some(Err(_)) | None => match value {
             Scalar::Null => formatter.write_str("null"),
             Scalar::Bytes(held) => fmt::Display::fmt(held, formatter),
-            Scalar::Geospatial(held) => fmt::Display::fmt(held, formatter),
+            Scalar::Geometry(held) => fmt::Display::fmt(held, formatter),
+            Scalar::Geography(held) => fmt::Display::fmt(held, formatter),
             // A temporal without a classic spelling and a nested value write
             // their own leaf's form.
             other => match other.leaf_display() {
@@ -983,7 +984,7 @@ impl<'a> UncheckedFieldScalar<'a> {
     }
 
     /// The field's reading of the value as a decimal of any width.
-    pub fn as_decimal(&self) -> Option<(crate::I256, i8)> {
+    pub fn as_decimal(&self) -> Option<(crate::i256, i8)> {
         self.read()?.as_decimal()
     }
 

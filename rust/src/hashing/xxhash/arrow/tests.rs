@@ -673,24 +673,24 @@ fn columns() -> Vec<(Field, Scalar)> {
             Field::new("geometry", DataType::from_str("geometry").unwrap(), true),
             Scalar::from_sequence([
                 // A minimal little-endian WKB point.
-                Scalar::Geospatial(crate::types::Geospatial::Geometry(
+                Scalar::Geometry(
                     crate::types::Geometry::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
-                )),
+                ),
                 Scalar::Null,
             ]),
         ),
         (
             Field::new("geography", DataType::from_str("geography").unwrap(), true),
             Scalar::from_sequence([
-                Scalar::Geospatial(crate::types::Geospatial::Geography(
+                Scalar::Geography(
                     crate::types::Geography::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
-                )),
+                ),
                 Scalar::Null,
             ]),
         ),

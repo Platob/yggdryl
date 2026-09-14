@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, I256, Scalar, TemporalFamily, TimeUnit};
+use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
 
 use crate::napi_error;
 use crate::types::version::JsVersion;
@@ -461,7 +461,7 @@ fn union_to_js<'env>(
 fn decimal256_to_js<'env>(env: &'env Env, value: &Scalar, scale: i8) -> Result<Unknown<'env>> {
     let encoded = value
         .decimal256_unscaled_at(scale)
-        .or_else(|| value.as_i128().map(I256::from_i128))
+        .or_else(|| value.as_i128().map(i256::from_i128))
         .map(|unscaled| unscaled.to_string())
         .ok_or_else(|| napi_error("invalid native decimal256 record value"))?;
     let global = env.get_global()?;

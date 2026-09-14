@@ -19,7 +19,7 @@ use super::Xxh3;
 use crate::types::decimal::scalars as decimal;
 use crate::types::integer::scalars::integer_parts;
 use crate::types::temporal::scalars::temporal_key;
-use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, I256, Scalar};
+use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Scalar, i256};
 
 /// The tag byte a value nested past the shared recursion limit feeds instead
 /// of descending further.
@@ -73,28 +73,31 @@ impl Scalar {
             Self::Code(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
-            Self::Geospatial(value) => {
+            Self::Geometry(value) => {
+                return Some(ValueBytes::borrowed(value.as_bytes()));
+            }
+            Self::Geography(value) => {
                 return Some(ValueBytes::borrowed(value.as_bytes()));
             }
             Self::Uuid(value) => ValueBytes::inline(&value.into_bytes()),
             Self::Boolean(value) => ValueBytes::inline(&[u8::from(value.get())]),
-            Self::I8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::I16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::I32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::I64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::I128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::U8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::U16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::U32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::U64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::U128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
-            Self::F16(value) => ValueBytes::inline(&value.as_f16().to_bits().to_le_bytes()),
-            Self::F32(value) => ValueBytes::inline(&value.as_f32().to_bits().to_le_bytes()),
-            Self::F64(value) => ValueBytes::inline(&value.as_f64().to_bits().to_le_bytes()),
-            Self::D32(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
-            Self::D64(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
-            Self::D128(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
-            Self::D256(value) => ValueBytes::inline(&value.coefficient().into_le_bytes()),
+            Self::Int8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Int128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt8(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt16(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt32(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt64(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::UInt128(value) => ValueBytes::inline(&value.get().to_le_bytes()),
+            Self::Float16(value) => ValueBytes::inline(&value.as_f16().to_bits().to_le_bytes()),
+            Self::Float32(value) => ValueBytes::inline(&value.as_f32().to_bits().to_le_bytes()),
+            Self::Float64(value) => ValueBytes::inline(&value.as_f64().to_bits().to_le_bytes()),
+            Self::Decimal32(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+            Self::Decimal64(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+            Self::Decimal128(value) => ValueBytes::inline(&value.coefficient().to_le_bytes()),
+            Self::Decimal256(value) => ValueBytes::inline(&value.coefficient().into_le_bytes()),
             Self::Date32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
             Self::Time32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
             Self::Duration32(value) => ValueBytes::inline(&value.count().to_le_bytes()),
@@ -173,7 +176,7 @@ impl Scalar {
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
     /// | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
     /// | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
-    /// | `Geospatial` | `geometry` | length `u64` little-endian, then the WKB |
+    /// | `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
     /// | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
     /// | `Time32`/`Time64` | `time64` | as above |
     /// | `DateTime64` | `datetime64` | as above |
@@ -303,7 +306,8 @@ impl Scalar {
                 sink.write(&[value.ordinal()]);
             }
             Self::Bytes(value) => write_binary(sink, value.as_bytes()),
-            Self::Geospatial(value) => write_geospatial(sink, value.as_bytes()),
+            Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
+            Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
             Self::Sequence(values) => {
                 write_sequence_header(sink, values.as_slice().len());
                 for value in values.as_slice() {
@@ -330,20 +334,20 @@ impl Scalar {
             }
             // Every remaining variant answered one of the cross-width readers
             // above.
-            Self::I8(_)
-            | Self::I16(_)
-            | Self::I32(_)
-            | Self::I64(_)
-            | Self::U8(_)
-            | Self::U16(_)
-            | Self::U32(_)
-            | Self::U64(_)
-            | Self::I128(_)
-            | Self::U128(_) => unreachable!("every integer width fed above"),
-            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+            Self::Int8(_)
+            | Self::Int16(_)
+            | Self::Int32(_)
+            | Self::Int64(_)
+            | Self::UInt8(_)
+            | Self::UInt16(_)
+            | Self::UInt32(_)
+            | Self::UInt64(_)
+            | Self::Int128(_)
+            | Self::UInt128(_) => unreachable!("every integer width fed above"),
+            Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
                 unreachable!("every float width fed above")
             }
-            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_) => {
+            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
                 unreachable!("all decimal widths fed above")
             }
             Self::Date32(_)
@@ -484,7 +488,7 @@ pub(super) fn write_float(sink: &mut impl Hasher, value: f64) {
 }
 
 /// Write an exact decimal as the number it names.
-pub(super) fn write_decimal(sink: &mut impl Hasher, unscaled: I256, scale: i8) {
+pub(super) fn write_decimal(sink: &mut impl Hasher, unscaled: i256, scale: i8) {
     let (unscaled, scale) = decimal::normalize(unscaled, scale);
     write_tag(sink, DataTypeId::Decimal256);
     sink.write(&unscaled.into_le_bytes());
@@ -625,4 +629,4 @@ impl std::hash::Hash for ValueBytes<'_> {
 }
 
 /// The widest inline payload, so a decimal coefficient still borrows nothing.
-const _: () = assert!(size_of::<I256>() == 32);
+const _: () = assert!(size_of::<i256>() == 32);

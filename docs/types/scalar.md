@@ -94,12 +94,12 @@ The readers answer across widths and `None` for another kind; an interval's `tem
 Rust only.
 
 ```rust
-use yggdryl::{I256, Scalar, TemporalFamily, TimeUnit, Timezone};
+use yggdryl::{i256, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 let date = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
 let duration = Scalar::from_duration(i64::from(i32::MAX) + 1, TimeUnit::Second, Timezone::NAIVE)?;
-let decimal = Scalar::from_decimal(I256::from_i128(1_250), 2);
+let decimal = Scalar::from_decimal(i256::from_i128(1_250), 2);
 
 // The variant is the width, and `kind()` names it.
 assert!(matches!(date, Scalar::Date32(_)));
@@ -113,8 +113,8 @@ assert_eq!(duration.temporal_count(), Some(i64::from(i32::MAX) + 1));
 assert_eq!(decimal.temporal_family(), None);
 
 // Numbers read across widths, and one number at two widths is one value.
-assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
-assert_eq!(decimal, Scalar::d256(I256::from_i128(125), 1));
+assert_eq!(decimal.as_decimal(), Some((i256::from_i128(1_250), 2)));
+assert_eq!(decimal, Scalar::d256(i256::from_i128(125), 1));
 assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```

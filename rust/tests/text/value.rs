@@ -1,7 +1,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use yggdryl::types::{Geometry, Geospatial};
-use yggdryl::{I256, IOMode, Scalar, TimeUnit, Timezone};
+use yggdryl::types::Geometry;
+use yggdryl::{IOMode, Scalar, TimeUnit, Timezone, i256};
 
 /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.
 ///
@@ -25,7 +25,7 @@ fn one_of_every_kind() -> Vec<Scalar> {
         Scalar::from(1.25_f32),
         Scalar::from(1.5),
         Scalar::d128(-1_050, 2),
-        Scalar::d256(I256::from_i128(1_050), 2),
+        Scalar::d256(i256::from_i128(1_050), 2),
         Scalar::from("AAPL"),
         Scalar::from(b"\x00\xff".as_slice()),
         Scalar::date32(19_723),
@@ -38,12 +38,12 @@ fn one_of_every_kind() -> Vec<Scalar> {
         Scalar::from_sequence([Scalar::Null]),
         Scalar::from_mapping([(Scalar::from("k"), Scalar::Null)]).unwrap(),
         Scalar::from_record([("k", Scalar::Null)]).unwrap(),
-        Scalar::Geospatial(Geospatial::Geometry(
+        Scalar::Geometry(
             Geometry::new([
                 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             ])
             .unwrap(),
-        )),
+        ),
         Scalar::from(IOMode::Append),
     ]
 }

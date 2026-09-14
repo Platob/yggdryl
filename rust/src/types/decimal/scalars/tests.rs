@@ -4,7 +4,7 @@ use crate::Scalar;
 
 mod representation {
     use super::Scalar;
-    use crate::I256;
+    use crate::i256;
 
     #[test]
     fn a_decimal_keeps_the_coefficient_and_the_scale_it_was_given() {
@@ -43,7 +43,7 @@ mod representation {
             Some("1200")
         );
         assert_eq!(
-            Scalar::d256(crate::I256::from_i128(1_050), 2)
+            Scalar::d256(crate::i256::from_i128(1_050), 2)
                 .into_decimal_utf8()
                 .as_deref(),
             Some("10.50")
@@ -52,12 +52,12 @@ mod representation {
 
     #[test]
     fn generic_decimal_selects_width_and_has_one_family_view() {
-        let narrow = Scalar::from_decimal(I256::from_i128(i128::MAX), 2);
+        let narrow = Scalar::from_decimal(i256::from_i128(i128::MAX), 2);
         let wide = Scalar::from_decimal(
             "170141183460469231731687303715884105728".parse().unwrap(),
             3,
         );
-        let narrow_minimum = Scalar::from_decimal(I256::from_i128(i128::MIN), -2);
+        let narrow_minimum = Scalar::from_decimal(i256::from_i128(i128::MIN), -2);
         let wide_negative = Scalar::from_decimal(
             "-170141183460469231731687303715884105729".parse().unwrap(),
             -3,
@@ -67,7 +67,7 @@ mod representation {
         assert!(wide.as_d256().is_some());
         assert!(narrow_minimum.as_d128().is_some());
         assert!(wide_negative.as_d256().is_some());
-        assert_eq!(narrow.as_decimal(), Some((I256::from_i128(i128::MAX), 2)));
+        assert_eq!(narrow.as_decimal(), Some((i256::from_i128(i128::MAX), 2)));
         assert_eq!(wide.as_decimal().map(|parts| parts.1), Some(3));
         assert_eq!(wide_negative.as_decimal().map(|parts| parts.1), Some(-3));
         assert!(Scalar::from(1).as_decimal().is_none());

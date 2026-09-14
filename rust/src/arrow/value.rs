@@ -13,7 +13,7 @@ use crate::types::{
     ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringParameters,
     TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
-use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
+use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
@@ -33,7 +33,8 @@ use arrow_array::{
     UInt64Array, UnionArray, make_array, new_empty_array,
 };
 use arrow_buffer::{
-    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer, i256,
+    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer,
+    i256 as ArrowI256,
 };
 use arrow_schema::DataType as ArrowDataType;
 use half::f16;
@@ -519,18 +520,18 @@ pub(crate) fn value_from_array(
         DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
-            Scalar::D32(crate::types::Decimal32::new(value, *scale))
+            Scalar::Decimal32(crate::types::Decimal32::new(value, *scale))
         }
         DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
-            Scalar::D64(crate::types::Decimal64::new(value, *scale))
+            Scalar::Decimal64(crate::types::Decimal64::new(value, *scale))
         }
         DataType::Decimal128 { scale, .. } => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
         }
         DataType::Decimal256 { scale, .. } => {
             let value = downcast::<Decimal256Array>(array)?.value(index);
-            Scalar::d256(I256::from_le_bytes(value.to_le_bytes()), *scale)
+            Scalar::d256(i256::from_le_bytes(value.to_le_bytes()), *scale)
         }
         DataType::Map(map) => {
             let entries = downcast::<MapArray>(array)?.value(index);
@@ -551,16 +552,12 @@ pub(crate) fn value_from_array(
         }
         DataType::RunEndEncoded(encoded) => run_value(encoded, array, index)?,
         // A geospatial column reads back in its canonical value spelling.
-        DataType::Geometry(_) => Scalar::Geospatial(crate::types::Geospatial::Geometry(
-            crate::types::Geometry::new(Arc::<[u8]>::from(
-                downcast::<BinaryArray>(array)?.value(index),
-            ))?,
-        )),
-        DataType::Geography(_) => Scalar::Geospatial(crate::types::Geospatial::Geography(
-            crate::types::Geography::new(Arc::<[u8]>::from(
-                downcast::<BinaryArray>(array)?.value(index),
-            ))?,
-        )),
+        DataType::Geometry(_) => Scalar::Geometry(crate::types::Geometry::new(Arc::<[u8]>::from(
+            downcast::<BinaryArray>(array)?.value(index),
+        ))?),
+        DataType::Geography(_) => Scalar::Geography(crate::types::Geography::new(
+            Arc::<[u8]>::from(downcast::<BinaryArray>(array)?.value(index)),
+        )?),
         DataType::Variant => {
             return Err(unsupported(
                 dtype,
@@ -1588,7 +1585,8 @@ fn string_value(parameters: StringParameters, array: &dyn Array, index: usize) -
 fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Geospatial(bytes) => Ok(Some(bytes.as_bytes())),
+        Scalar::Geometry(value) => Ok(Some(value.as_bytes())),
+        Scalar::Geography(value) => Ok(Some(value.as_bytes())),
         Scalar::Bytes(bytes) => Ok(Some(bytes.as_bytes())),
         _ => Err(invalid_value_kind("well-known binary", value)),
     }
@@ -1657,10 +1655,10 @@ fn interval_value(value: &Scalar, unit: TimeUnit) -> Result<&crate::types::Inter
     }
 }
 
-fn decimal256(value: &Scalar, scale: i8) -> Result<i256> {
+fn decimal256(value: &Scalar, scale: i8) -> Result<ArrowI256> {
     value
         .decimal256_unscaled_at(scale)
-        .map(|coefficient| i256::from_le_bytes(coefficient.into_le_bytes()))
+        .map(|coefficient| ArrowI256::from_le_bytes(coefficient.into_le_bytes()))
         .ok_or_else(|| {
             invalid_value(
                 &format!("a decimal256 representable at scale {scale}"),

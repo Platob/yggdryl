@@ -109,9 +109,7 @@ fn an_embedded_geometry_renders_as_wkt_and_binary_as_lossless_hex() {
     let placeholders = Placeholders::new()
         .with_variable(
             "SHAPE",
-            Scalar::Geospatial(yggdryl::types::Geospatial::Geometry(
-                yggdryl::types::Geometry::new(wkb).unwrap(),
-            )),
+            Scalar::Geometry(yggdryl::types::Geometry::new(wkb).unwrap()),
         )
         .with_variable("BROKEN", Scalar::from([0xff_u8, 0x00].as_slice()));
 

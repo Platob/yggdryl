@@ -25,7 +25,7 @@ use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, DataTypeId, DecimalValue, Enum, Field as CoreField,
-    Fields as CoreFields, I256, MapType as CoreMapType, TemporalValue, TimeUnit, Timezone,
+    Fields as CoreFields, MapType as CoreMapType, TemporalValue, TimeUnit, Timezone, i256,
 };
 
 use crate::types::timezone::{TimezoneInput, timezone_from_input};
@@ -250,14 +250,14 @@ impl JsScalar {
         let unscaled = exact_i256(&unscaled, "unscaled")?;
         let scale = crate::exact_i8(scale, "scale")?;
         let inner = match DataTypeId::from_str(&id).map_err(napi_error)? {
-            DataTypeId::Decimal32 => Scalar::D32(Decimal32::new(
+            DataTypeId::Decimal32 => Scalar::Decimal32(Decimal32::new(
                 unscaled
                     .as_i128()
                     .and_then(|value| i32::try_from(value).ok())
                     .ok_or_else(|| napi_error("decimal32 coefficient must fit signed 32 bits"))?,
                 scale,
             )),
-            DataTypeId::Decimal64 => Scalar::D64(Decimal64::new(
+            DataTypeId::Decimal64 => Scalar::Decimal64(Decimal64::new(
                 unscaled
                     .as_i128()
                     .and_then(|value| i64::try_from(value).ok())
@@ -1125,7 +1125,7 @@ pub fn json_dumps_native(
         .map_err(napi_error)
 }
 
-fn exact_i256(value: &BigInt, name: &str) -> Result<I256> {
+fn exact_i256(value: &BigInt, name: &str) -> Result<i256> {
     if value.words.len() > 4 && value.words[4..].iter().any(|word| *word != 0) {
         return Err(napi_error(format!(
             "{name} must fit in a signed 256-bit integer"
@@ -1160,10 +1160,10 @@ fn exact_i256(value: &BigInt, name: &str) -> Result<I256> {
             "{name} must fit in a signed 256-bit integer"
         )));
     }
-    Ok(I256::from_le_bytes(bytes))
+    Ok(i256::from_le_bytes(bytes))
 }
 
-fn bigint_from_i256(value: I256) -> BigInt {
+fn bigint_from_i256(value: i256) -> BigInt {
     let sign_bit = value.is_negative();
     let mut bytes = value.into_le_bytes();
     if sign_bit {
@@ -2346,19 +2346,19 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
     match value {
         Scalar::Null => Ok(JsonValue::Null),
         Scalar::Boolean(value) => Ok(JsonValue::Bool(value.get())),
-        Scalar::I8(value) => integer_transport(i128::from(value.get())),
-        Scalar::I16(value) => integer_transport(i128::from(value.get())),
-        Scalar::I32(value) => integer_transport(i128::from(value.get())),
-        Scalar::I64(value) => integer_transport(i128::from(value.get())),
-        Scalar::U8(value) => unsigned_transport(u128::from(value.get())),
-        Scalar::U16(value) => unsigned_transport(u128::from(value.get())),
-        Scalar::U32(value) => unsigned_transport(u128::from(value.get())),
-        Scalar::U64(value) => unsigned_transport(u128::from(value.get())),
-        Scalar::I128(value) => integer_transport(value.get()),
-        Scalar::U128(value) => unsigned_transport(value.get()),
-        Scalar::F16(value) => float_transport(value.as_f64()),
-        Scalar::F32(value) => float_transport(value.as_f64()),
-        Scalar::F64(value) => float_transport(value.as_f64()),
+        Scalar::Int8(value) => integer_transport(i128::from(value.get())),
+        Scalar::Int16(value) => integer_transport(i128::from(value.get())),
+        Scalar::Int32(value) => integer_transport(i128::from(value.get())),
+        Scalar::Int64(value) => integer_transport(i128::from(value.get())),
+        Scalar::UInt8(value) => unsigned_transport(u128::from(value.get())),
+        Scalar::UInt16(value) => unsigned_transport(u128::from(value.get())),
+        Scalar::UInt32(value) => unsigned_transport(u128::from(value.get())),
+        Scalar::UInt64(value) => unsigned_transport(u128::from(value.get())),
+        Scalar::Int128(value) => integer_transport(value.get()),
+        Scalar::UInt128(value) => unsigned_transport(value.get()),
+        Scalar::Float16(value) => float_transport(value.as_f64()),
+        Scalar::Float32(value) => float_transport(value.as_f64()),
+        Scalar::Float64(value) => float_transport(value.as_f64()),
         Scalar::String(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Code(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
@@ -2379,7 +2379,11 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
-        Scalar::Geospatial(value) => Ok(marker(
+        Scalar::Geometry(value) => Ok(marker(
+            "bytes",
+            [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
+        )),
+        Scalar::Geography(value) => Ok(marker(
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
@@ -2392,10 +2396,10 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         // A count is carried as text because a nanosecond instant needs more
         // than the 53 bits a JSON number keeps exactly; the JavaScript side
         // reads it as a bigint.
-        Scalar::D32(leaf) => Ok(decimal_transport(value, leaf)),
-        Scalar::D64(leaf) => Ok(decimal_transport(value, leaf)),
-        Scalar::D128(leaf) => Ok(decimal_transport(value, leaf)),
-        Scalar::D256(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::Decimal32(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::Decimal64(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::Decimal128(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::Decimal256(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Interval(interval) => match interval.unit() {
             TimeUnit::YearMonth => integer_transport(i128::from(interval.months())),
             TimeUnit::DayTime => Ok(JsonValue::Array(vec![

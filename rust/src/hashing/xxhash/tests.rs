@@ -990,11 +990,11 @@ mod values {
     use super::super::{Xxh3, xxh3};
     use crate::types::{
         Bytes, BytesLayout, BytesParameters, Code, Currency, Decimal32, Decimal64, Geography,
-        Geospatial, Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
+        Interval, Side, Str, StringLayout, StringParameters, TimeInForce,
     };
     use crate::{
-        Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, I256, Scalar,
-        TimeUnit, Timezone,
+        Codec, DataTypeId, DigestAlgorithm, Enum, Float16, Float32, Float64, Scalar, TimeUnit,
+        Timezone, i256,
     };
 
     const POINT_WKB: [u8; 21] = [
@@ -1002,13 +1002,11 @@ mod values {
     ];
 
     fn geometry() -> Scalar {
-        Scalar::Geospatial(Geospatial::Geometry(
-            crate::types::Geometry::new(POINT_WKB).unwrap(),
-        ))
+        Scalar::Geometry(crate::types::Geometry::new(POINT_WKB).unwrap())
     }
 
     fn geography() -> Scalar {
-        Scalar::Geospatial(Geospatial::Geography(Geography::new(POINT_WKB).unwrap()))
+        Scalar::Geography(Geography::new(POINT_WKB).unwrap())
     }
 
     /// A sink that keeps the feed so two values can be compared byte for byte.
@@ -1078,10 +1076,10 @@ mod values {
             Scalar::from(Float64::from_f64(0.0)),
             Scalar::from(Float64::from_f64(f64::NAN)),
             Scalar::d128(100, 2),
-            Scalar::D32(Decimal32::new(100, 2)),
-            Scalar::D64(Decimal64::new(100, 2)),
+            Scalar::Decimal32(Decimal32::new(100, 2)),
+            Scalar::Decimal64(Decimal64::new(100, 2)),
             Scalar::d128(-1, 0),
-            Scalar::d256(I256::from_i128(1), 0),
+            Scalar::d256(i256::from_i128(1), 0),
             Scalar::from(""),
             Scalar::from("1"),
             Scalar::from("AAPL"),
@@ -1145,11 +1143,14 @@ mod values {
                 Scalar::from(Float16::from_f16(half::f16::from_f32(1.5))),
                 Scalar::from(Float64::from_f64(1.5)),
             ),
-            (Scalar::d128(100, 2), Scalar::d256(I256::from_i128(1), 0)),
-            (Scalar::D32(Decimal32::new(100, 2)), Scalar::d128(1, 0)),
+            (Scalar::d128(100, 2), Scalar::d256(i256::from_i128(1), 0)),
             (
-                Scalar::D64(Decimal64::new(100, 2)),
-                Scalar::d256(I256::from_i128(1), 0),
+                Scalar::Decimal32(Decimal32::new(100, 2)),
+                Scalar::d128(1, 0),
+            ),
+            (
+                Scalar::Decimal64(Decimal64::new(100, 2)),
+                Scalar::d256(i256::from_i128(1), 0),
             ),
             (
                 Scalar::String(stored(
@@ -1458,7 +1459,7 @@ mod values {
             &1.5_f64.to_bits().to_le_bytes()
         );
         assert_eq!(
-            Scalar::d256(I256::from_i128(1), 3)
+            Scalar::d256(i256::from_i128(1), 3)
                 .as_value_bytes()
                 .unwrap()
                 .len(),

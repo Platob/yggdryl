@@ -51,7 +51,7 @@ fn a_row_pairs_every_cell_with_its_child() {
     assert_eq!(record.as_str("absent"), None);
     assert_eq!(
         record.get(2).and_then(FieldScalar::as_decimal),
-        Some((crate::I256::from_i128(150), 2))
+        Some((crate::i256::from_i128(150), 2))
     );
     assert_eq!(record.get("price"), record.get_by_index(2));
     assert!(record.get(3).is_none());

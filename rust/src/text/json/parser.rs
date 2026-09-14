@@ -232,18 +232,18 @@ impl<'a> Parser<'a> {
         }
         if negative {
             if let Ok(value) = spelling.parse::<i64>() {
-                return Ok(RawValue::I64(value));
+                return Ok(RawValue::Int64(value));
             }
-            return spelling.parse::<i128>().map(RawValue::I128).map_err(|_| {
+            return spelling.parse::<i128>().map(RawValue::Int128).map_err(|_| {
                 codec_error(start, "JSON integer is outside the signed 128-bit range")
             });
         }
         if let Ok(value) = spelling.parse::<u64>() {
-            return Ok(RawValue::U64(value));
+            return Ok(RawValue::UInt64(value));
         }
         spelling
             .parse::<u128>()
-            .map(RawValue::U128)
+            .map(RawValue::UInt128)
             .map_err(|_| codec_error(start, "JSON integer is outside the unsigned 128-bit range"))
     }
 

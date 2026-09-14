@@ -12,7 +12,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
     use crate::types::{BytesLayout, BytesParameters};
-    use crate::{DataTypeId, I256};
+    use crate::{DataTypeId, i256};
 
     #[test]
     fn an_unsigned_integer_survives_its_whole_range() {
@@ -46,7 +46,7 @@ mod widths {
     #[test]
     fn a_256_bit_decimal_survives_without_narrowing() {
         let coefficient = "12345678901234567890123456789012345678901234567890"
-            .parse::<I256>()
+            .parse::<i256>()
             .unwrap();
         let value = Scalar::d256(coefficient, 7);
         assert_eq!(

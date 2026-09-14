@@ -5,7 +5,7 @@ use std::sync::Arc;
 use super::{Float16, Float32, Float64, Scalar};
 use crate::types::floating::FloatingValue;
 use crate::{
-    DataType, DataTypeId, DataTypeKind, I256, ScalarFamily, ScalarValue, TimeUnit, Timezone,
+    DataType, DataTypeId, DataTypeKind, ScalarFamily, ScalarValue, TimeUnit, Timezone, i256,
 };
 
 fn order() -> Scalar {
@@ -92,9 +92,9 @@ fn generic_float_selector_keeps_width_and_common_value_semantics() {
     let f64 = Scalar::from_float(1.5, 64).unwrap();
 
     // The variant is the width; `kind` and `id` state it.
-    assert!(matches!(f16, Scalar::F16(_)));
-    assert!(matches!(f32, Scalar::F32(_)));
-    assert!(matches!(f64, Scalar::F64(_)));
+    assert!(matches!(f16, Scalar::Float16(_)));
+    assert!(matches!(f32, Scalar::Float32(_)));
+    assert!(matches!(f64, Scalar::Float64(_)));
     assert_eq!([f16.kind(), f32.kind(), f64.kind()], ["f16", "f32", "f64"]);
     assert_eq!(f16.id(), DataTypeId::Float16);
     assert_eq!(f16, f32);
@@ -133,8 +133,8 @@ fn integer_widths_preserve_width_with_logical_comparison() {
     let maximum = Scalar::from(u128::MAX);
     let first_unsigned_only = Scalar::from(i128::MAX as u128 + 1);
 
-    assert!(matches!(signed, Scalar::I32(_)));
-    assert!(matches!(unsigned, Scalar::U8(_)));
+    assert!(matches!(signed, Scalar::Int32(_)));
+    assert!(matches!(unsigned, Scalar::UInt8(_)));
     assert_eq!(signed, unsigned);
     assert_eq!(signed.as_i128(), Some(7));
     assert_eq!(signed.as_u128(), Some(7));
@@ -226,10 +226,10 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
             Scalar::from(1.5_f64),
         ],
         vec![
-            Scalar::D32(crate::types::Decimal32::new(1_250, 2)),
-            Scalar::D64(crate::types::Decimal64::new(12_500, 3)),
+            Scalar::Decimal32(crate::types::Decimal32::new(1_250, 2)),
+            Scalar::Decimal64(crate::types::Decimal64::new(12_500, 3)),
             Scalar::d128(125, 1),
-            Scalar::d256(I256::from_i128(125), 1),
+            Scalar::d256(i256::from_i128(125), 1),
         ],
     ];
     for group in &groups {
@@ -250,9 +250,10 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
     assert!(Scalar::from(half::f16::from_f32(1.0)) < Scalar::from(1.5_f64));
     assert!(Scalar::from(2.5_f32) > Scalar::from(1.5_f64));
     assert!(
-        Scalar::D32(crate::types::Decimal32::new(1_249, 2)) < Scalar::d256(I256::from_i128(125), 1)
+        Scalar::Decimal32(crate::types::Decimal32::new(1_249, 2))
+            < Scalar::d256(i256::from_i128(125), 1)
     );
-    assert!(Scalar::d128(-1, 0) < Scalar::D64(crate::types::Decimal64::new(0, 4)));
+    assert!(Scalar::d128(-1, 0) < Scalar::Decimal64(crate::types::Decimal64::new(0, 4)));
 
     // Different kinds stay apart even when their numbers agree.
     assert_ne!(Scalar::from(1_i32), Scalar::from(1.0_f64));
@@ -284,10 +285,10 @@ fn the_value_rank_sweep_is_unchanged() {
         (Scalar::from(half::f16::from_f32(1.0)), 3),
         (Scalar::from(1.0_f32), 3),
         (Scalar::from(1.0_f64), 3),
-        (Scalar::D32(crate::types::Decimal32::new(1, 0)), 4),
-        (Scalar::D64(crate::types::Decimal64::new(1, 0)), 4),
+        (Scalar::Decimal32(crate::types::Decimal32::new(1, 0)), 4),
+        (Scalar::Decimal64(crate::types::Decimal64::new(1, 0)), 4),
         (Scalar::d128(1, 0), 4),
-        (Scalar::d256(I256::from_i128(1), 0), 4),
+        (Scalar::d256(i256::from_i128(1), 0), 4),
         (Scalar::date32(1), 7),
         (Scalar::date64(86_400_000), 7),
         (
@@ -324,7 +325,7 @@ fn the_value_rank_sweep_is_unchanged() {
         ),
         (Scalar::from(TimeUnit::Second), 15),
         (Scalar::from(b"a".as_slice()), 6),
-        (Scalar::Geospatial(super::Geospatial::Geometry(point)), 14),
+        (Scalar::Geometry(point), 14),
         (Scalar::from_sequence([]), 11),
         (Scalar::from_mapping([]).unwrap(), 12),
         (
@@ -358,7 +359,7 @@ fn shape_predicates_answer_without_matching() {
     assert!(Scalar::from(1_i64).is_integer());
     assert!(Scalar::from(1.5).is_number());
     assert!(Scalar::d128(15, 1).is_number());
-    assert!(Scalar::d256(I256::from_i128(15), 1).is_number());
+    assert!(Scalar::d256(i256::from_i128(15), 1).is_number());
     assert!(!Scalar::from(1.5).is_integer());
     assert!(order().is_container());
     assert!(!Scalar::from("AAPL").is_container());
@@ -408,10 +409,8 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
         bytes
     };
     let wkb = point_wkb(1.0, 2.0);
-    let point = Scalar::Geospatial(super::Geospatial::Geometry(
-        crate::types::Geometry::new(wkb.clone()).unwrap(),
-    ));
-    assert_eq!(point.kind(), "geospatial");
+    let point = Scalar::Geometry(crate::types::Geometry::new(wkb.clone()).unwrap());
+    assert_eq!(point.kind(), "geometry");
 
     // The same bytes under the bytes kind are a different value: the kind
     // is part of the identity, exactly as it is for string versus bytes.
@@ -420,14 +419,10 @@ fn a_geospatial_value_is_its_own_kind_over_its_bytes() {
     assert_ne!(hash_of(&point), hash_of(&bytes));
 
     // Within the kind, the bytes compare, and equal values hash equal.
-    let equal = Scalar::Geospatial(super::Geospatial::Geometry(
-        crate::types::Geometry::new(wkb).unwrap(),
-    ));
+    let equal = Scalar::Geometry(crate::types::Geometry::new(wkb).unwrap());
     assert_eq!(point, equal);
     assert_eq!(hash_of(&point), hash_of(&equal));
-    let later = Scalar::Geospatial(super::Geospatial::Geometry(
-        crate::types::Geometry::new(point_wkb(3.0, 4.0)).unwrap(),
-    ));
+    let later = Scalar::Geometry(crate::types::Geometry::new(point_wkb(3.0, 4.0)).unwrap());
     assert_eq!(
         point.cmp(&later),
         point.as_bytes().unwrap().cmp(later.as_bytes().unwrap())
@@ -439,11 +434,9 @@ fn the_structural_wire_round_trips_a_geospatial_value() {
     let mut wkb = vec![1_u8, 1, 0, 0, 0];
     wkb.extend_from_slice(&1.0_f64.to_le_bytes());
     wkb.extend_from_slice(&2.0_f64.to_le_bytes());
-    let point = Scalar::Geospatial(super::Geospatial::Geometry(
-        crate::types::Geometry::new(wkb).unwrap(),
-    ));
+    let point = Scalar::Geometry(crate::types::Geometry::new(wkb).unwrap());
     let encoded = serde_json::to_string(&point).unwrap();
-    assert!(encoded.contains("\"type\":\"geospatial\""), "{encoded}");
+    assert!(encoded.contains("\"type\":\"geometry\""), "{encoded}");
     let decoded: Scalar = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded, point);
 }
@@ -502,7 +495,7 @@ fn equal_cross_width_values_have_one_stable_hash() {
             Scalar::from(Float32::from_f32(1.0)),
             Scalar::from(Float64::from_f64(1.0)),
         ],
-        vec![Scalar::d128(100, 2), Scalar::d256(I256::from_i128(10), 1)],
+        vec![Scalar::d128(100, 2), Scalar::d256(i256::from_i128(10), 1)],
         vec![Scalar::date32(1), Scalar::date64(86_400_000)],
         vec![
             Scalar::duration32(1, TimeUnit::Second).unwrap(),
@@ -558,9 +551,9 @@ fn records_are_sorted_and_rebuilt_by_field_name() {
 fn native_and_json_accessors_have_explicit_borrowing_semantics() {
     let text = Scalar::from("AAPL");
     let bytes = Scalar::from(b"AAPL".as_slice());
-    let geometry = Scalar::Geospatial(super::Geospatial::Geometry(
+    let geometry = Scalar::Geometry(
         crate::types::Geometry::new(crate::types::default::POINT_EMPTY_WKB.as_slice()).unwrap(),
-    ));
+    );
     assert_eq!(text.as_str(), Some("AAPL"));
     assert_eq!(text.as_bytes(), None);
     assert_eq!(bytes.as_bytes(), Some(b"AAPL".as_slice()));
@@ -626,7 +619,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     );
 
     let decimal = decimal::Decimal32::new(1_251, 2);
-    assert_eq!(DecimalValue::coefficient(&decimal), I256::from_i128(1_251));
+    assert_eq!(DecimalValue::coefficient(&decimal), i256::from_i128(1_251));
     assert_eq!(
         DecimalValue::rescale(decimal, 3).unwrap().coefficient(),
         12_510
@@ -777,22 +770,22 @@ fn concrete_leaves_preserve_their_physical_identity() {
 fn width_variants_keep_exact_members_and_logical_identity() {
     use crate::types::{bytes, decimal, geospatial, integer, nested, string, temporal};
 
-    let signed = Scalar::I32(integer::Int32::new(7));
-    let unsigned = Scalar::U8(integer::UInt8::new(7));
+    let signed = Scalar::Int32(integer::Int32::new(7));
+    let unsigned = Scalar::UInt8(integer::UInt8::new(7));
     assert_eq!(signed, unsigned);
     assert_eq!(signed, Scalar::from(7_i32));
     assert_eq!(signed.kind(), "i32");
     assert_eq!(unsigned.kind(), "u8");
 
-    let narrow = Scalar::F32(Float32::from_f32(1.25));
-    let wide = Scalar::F64(Float64::from_f64(1.25));
+    let narrow = Scalar::Float32(Float32::from_f32(1.25));
+    let wide = Scalar::Float64(Float64::from_f64(1.25));
     assert_eq!(narrow, wide);
 
-    let narrow = Scalar::D32(decimal::Decimal32::new(1_250, 2));
-    let wide = Scalar::D256(decimal::Decimal256::new(I256::from_i128(125), 1));
+    let narrow = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
+    let wide = Scalar::Decimal256(decimal::Decimal256::new(i256::from_i128(125), 1));
     assert_eq!(narrow, wide);
-    assert_eq!(narrow.as_decimal(), Some((I256::from_i128(1_250), 2)));
-    assert_eq!(wide.as_decimal(), Some((I256::from_i128(125), 1)));
+    assert_eq!(narrow.as_decimal(), Some((i256::from_i128(1_250), 2)));
+    assert_eq!(wide.as_decimal(), Some((i256::from_i128(125), 1)));
 
     // The leaf's own spelling is reachable without a per-width table.
     assert_eq!(narrow.leaf_display().unwrap().to_string(), "12.50");
@@ -836,9 +829,8 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());
     point.extend_from_slice(&2.5_f64.to_le_bytes());
-    let geometry =
-        geospatial::Geospatial::Geometry(geospatial::Geometry::new(point.clone()).unwrap());
-    let geography = geospatial::Geospatial::Geography(geospatial::Geography::new(point).unwrap());
+    let geometry = Scalar::Geometry(geospatial::Geometry::new(point.clone()).unwrap());
+    let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
     let sequence = Scalar::Sequence(nested::Sequence::new(Arc::from([
@@ -881,15 +873,15 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
         (Scalar::from(1.25_f32), "f32"),
         (Scalar::from(0.1_f64), "f64"),
         (
-            Scalar::D32(crate::types::decimal::Decimal32::new(1_250, 2)),
+            Scalar::Decimal32(crate::types::decimal::Decimal32::new(1_250, 2)),
             "d32",
         ),
         (
-            Scalar::D64(crate::types::decimal::Decimal64::new(-7, 1)),
+            Scalar::Decimal64(crate::types::decimal::Decimal64::new(-7, 1)),
             "d64",
         ),
         (Scalar::d128(125, 1), "d128"),
-        (Scalar::d256(I256::from_i128(-125), 3), "d256"),
+        (Scalar::d256(i256::from_i128(-125), 3), "d256"),
         (Scalar::date32(19_000), "date32"),
         (Scalar::date64(86_400_000), "date64"),
         (

@@ -28,7 +28,6 @@ pub mod expression;
 pub mod fix;
 pub mod hashing;
 pub mod holder;
-mod i256;
 mod iobase;
 mod iocursor;
 mod iofile;
@@ -82,7 +81,6 @@ pub use fix::{
     fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
-pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
 pub use iobase::{
@@ -112,6 +110,7 @@ pub use types::cast::{
     ArrowCast, ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation,
 };
 pub use types::floating::scalars::{Float16, Float32, Float64};
+pub use types::i256::{i256, u256};
 pub use types::protocol::{
     ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, DigestField, DigestFieldMut,
     FieldPropertiesField, FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut,

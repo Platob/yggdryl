@@ -21,9 +21,8 @@ use crate::types::integer::{
 use crate::types::string::str_from_value;
 use crate::types::temporal::{validate_date64, validate_time};
 use crate::types::{
-    Code, Decimal32, Decimal64, Decimal128, Geospatial, Interval, Str, StringParameters,
-    ascii_bytes, code_cell_text, default_value_for_field, uuid_bytes, uuid_parse,
-    value_is_logically_null,
+    Code, Decimal32, Decimal64, Decimal128, Interval, Str, StringParameters, ascii_bytes,
+    code_cell_text, default_value_for_field, uuid_bytes, uuid_parse, value_is_logically_null,
 };
 use crate::{DataType, Error, Field, Fields, Result, Scalar, TemporalFamily, TimeUnit, Timezone};
 
@@ -551,13 +550,13 @@ fn temporal_matches(
 ///
 /// `None` when no exact restatement exists, which every caller reports naming
 /// the width it was writing into.
-fn decimal_coefficient_at(value: &Scalar, scale: i8) -> Option<crate::I256> {
+fn decimal_coefficient_at(value: &Scalar, scale: i8) -> Option<crate::i256> {
     if value.is_decimal() {
         return value.decimal256_unscaled_at(scale);
     }
     // Scale zero is the whole number's own scale, so the one restatement
     // implementation answers this too rather than being written out again.
-    Scalar::d256(crate::I256::from_i128(value.as_i128()?), 0).decimal256_unscaled_at(scale)
+    Scalar::d256(crate::i256::from_i128(value.as_i128()?), 0).decimal256_unscaled_at(scale)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -581,7 +580,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let coefficient = i32::try_from(coefficient).map_err(|_| {
                 canonical_error("decimal32 coefficient does not fit signed 32 bits")
             })?;
-            let canonical = Scalar::D32(Decimal32::new(coefficient, *scale));
+            let canonical = Scalar::Decimal32(Decimal32::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -595,7 +594,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let coefficient = i64::try_from(coefficient).map_err(|_| {
                 canonical_error("decimal64 coefficient does not fit signed 64 bits")
             })?;
-            let canonical = Scalar::D64(Decimal64::new(coefficient, *scale));
+            let canonical = Scalar::Decimal64(Decimal64::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -606,7 +605,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                     path: SmolStr::new_static("$"),
                     reason: format_smolstr!("expected a d128 representable at scale {scale}"),
                 })?;
-            let canonical = Scalar::D128(Decimal128::new(coefficient, *scale));
+            let canonical = Scalar::Decimal128(Decimal128::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -819,7 +818,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         D::RunEndEncoded(encoded) => canonicalize_field_value(encoded.values(), value),
         // A variant value is any value: the tree describes itself.
         D::Variant => Ok((value.clone(), false)),
-        // The canonical geospatial spelling is `Scalar::Geospatial`; plain
+        // The canonical geospatial spelling is `Scalar::Geometry` or
+        // `Scalar::Geography`; plain
         // bytes are accepted on the way in and rewritten here.
         D::Geometry(_) | D::Geography(_) => {
             // The payload is read once, when the value is built. A value
@@ -827,11 +827,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             // its payload nor a second read of its own framing.
             if matches!(
                 (dtype, value),
-                (D::Geometry(_), Scalar::Geospatial(Geospatial::Geometry(_)))
-                    | (
-                        D::Geography(_),
-                        Scalar::Geospatial(Geospatial::Geography(_))
-                    )
+                (D::Geometry(_), Scalar::Geometry(_)) | (D::Geography(_), Scalar::Geography(_))
             ) {
                 return Ok((value.clone(), false));
             }
@@ -839,12 +835,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 return canonicalization_failure(dtype);
             };
             let canonical = match dtype {
-                D::Geometry(_) => {
-                    Scalar::Geospatial(Geospatial::Geometry(crate::types::Geometry::new(bytes)?))
-                }
-                D::Geography(_) => {
-                    Scalar::Geospatial(Geospatial::Geography(crate::types::Geography::new(bytes)?))
-                }
+                D::Geometry(_) => Scalar::Geometry(crate::types::Geometry::new(bytes)?),
+                D::Geography(_) => Scalar::Geography(crate::types::Geography::new(bytes)?),
                 _ => unreachable!("geospatial datatype matched above"),
             };
             Ok((canonical, true))
@@ -896,10 +888,10 @@ pub(crate) fn canonical_error(reason: &'static str) -> Error {
 
 fn same_decimal_representation(left: &Scalar, right: &Scalar) -> bool {
     match (left, right) {
-        (Scalar::D32(left), Scalar::D32(right)) => left == right,
-        (Scalar::D64(left), Scalar::D64(right)) => left == right,
-        (Scalar::D128(left), Scalar::D128(right)) => left == right,
-        (Scalar::D256(left), Scalar::D256(right)) => left == right,
+        (Scalar::Decimal32(left), Scalar::Decimal32(right)) => left == right,
+        (Scalar::Decimal64(left), Scalar::Decimal64(right)) => left == right,
+        (Scalar::Decimal128(left), Scalar::Decimal128(right)) => left == right,
+        (Scalar::Decimal256(left), Scalar::Decimal256(right)) => left == right,
         _ => false,
     }
 }
@@ -1050,7 +1042,7 @@ fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scala
     // reads back as - so a narrower spelling of the same number is a change,
     // and the canonical value no longer depends on whether the payload needed
     // one too.
-    let id_changed = !matches!(type_id, Scalar::I64(_));
+    let id_changed = !matches!(type_id, Scalar::Int64(_));
     if id_changed || payload_changed {
         Ok((
             Scalar::from_sequence([Scalar::from(i64::from(type_id_number)), payload]),

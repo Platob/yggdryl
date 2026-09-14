@@ -4,8 +4,8 @@ use std::str::FromStr;
 use yggdryl::text::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
 use yggdryl::{
-    DataType, DataTypeId, Error, Field, I256, Scalar, TimeUnit, Timezone, from_json_scalar,
-    from_json_scalar_with_field, into_json_scalar,
+    DataType, DataTypeId, Error, Field, Scalar, TimeUnit, Timezone, from_json_scalar,
+    from_json_scalar_with_field, i256, into_json_scalar,
 };
 
 #[test]
@@ -104,7 +104,7 @@ fn a_field_restores_exact_natural_types_and_record_order() {
     let decoded = json::from_utf8_with_field(input, &typed_row_field()).unwrap();
     let row = decoded.as_sequence().unwrap();
 
-    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
@@ -320,7 +320,7 @@ fn from_json_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         json::from_bytes_with_field(input.as_bytes(), &field).unwrap()
     );
     let row = decoded.as_sequence().unwrap();
-    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()

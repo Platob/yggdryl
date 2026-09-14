@@ -583,7 +583,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Unsigned => Ok(Scalar::from(0_u64)),
         DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
         DefaultPlan::Decimal => Ok(Scalar::from(0_i128)),
-        DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::I256::ZERO, 0)),
+        DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::i256::ZERO, 0)),
         DefaultPlan::Interval(unit) => {
             crate::types::Interval::new(0, 0, 0, unit).map(Scalar::Interval)
         }
@@ -624,8 +624,9 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         // Little-endian `POINT EMPTY`: the conventional empty geometry, spelled
         // as a point whose coordinates are NaN, in the canonical geospatial
         // value spelling.
-        DefaultPlan::PointEmpty => crate::types::Geometry::new(POINT_EMPTY_WKB.as_slice())
-            .map(|value| Scalar::Geospatial(crate::types::Geospatial::Geometry(value))),
+        DefaultPlan::PointEmpty => {
+            crate::types::Geometry::new(POINT_EMPTY_WKB.as_slice()).map(Scalar::Geometry)
+        }
         DefaultPlan::Uuid => Ok(Scalar::Uuid(crate::types::Uuid::new(0))),
         DefaultPlan::Version => Ok(Scalar::Version(crate::Version::MIN)),
         DefaultPlan::Url => {
@@ -651,10 +652,10 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         // zone; it is the same datum the plan's bare zero spells, so both
         // spellings are the default.
         DefaultPlan::Signed => match value {
-            Scalar::I8(value) => value.get() == 0,
-            Scalar::I16(value) => value.get() == 0,
-            Scalar::I32(value) => value.get() == 0,
-            Scalar::I64(value) => value.get() == 0,
+            Scalar::Int8(value) => value.get() == 0,
+            Scalar::Int16(value) => value.get() == 0,
+            Scalar::Int32(value) => value.get() == 0,
+            Scalar::Int64(value) => value.get() == 0,
             Scalar::Date32(value) => value.count() == 0,
             Scalar::Date64(value) => value.count() == 0,
             Scalar::Time32(value) => value.count() == 0,
@@ -674,7 +675,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
             value.as_i128() == Some(0)
                 || value
                     .as_decimal()
-                    .is_some_and(|(coefficient, _)| coefficient == crate::I256::ZERO)
+                    .is_some_and(|(coefficient, _)| coefficient == crate::i256::ZERO)
         }
         DefaultPlan::Interval(unit) => interval_is_zero(value, *unit),
         DefaultPlan::String => value.as_str() == Some(""),

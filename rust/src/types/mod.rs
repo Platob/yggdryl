@@ -15,6 +15,7 @@ mod enumeration;
 mod field;
 pub mod floating;
 pub mod geospatial;
+pub(crate) mod i256;
 pub mod integer;
 mod merge;
 pub mod nested;

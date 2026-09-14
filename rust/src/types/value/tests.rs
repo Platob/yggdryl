@@ -55,14 +55,14 @@ fn integer_canonicalization_preserves_every_declared_width() {
     ]);
     let canonical = schema.canonicalize_value(natural).unwrap();
     let values = canonical.as_sequence().unwrap();
-    assert!(matches!(values[0], Scalar::I8(_)));
-    assert!(matches!(values[1], Scalar::I16(_)));
-    assert!(matches!(values[2], Scalar::I32(_)));
-    assert!(matches!(values[3], Scalar::I64(_)));
-    assert!(matches!(values[4], Scalar::U8(_)));
-    assert!(matches!(values[5], Scalar::U16(_)));
-    assert!(matches!(values[6], Scalar::U32(_)));
-    assert!(matches!(values[7], Scalar::U64(_)));
+    assert!(matches!(values[0], Scalar::Int8(_)));
+    assert!(matches!(values[1], Scalar::Int16(_)));
+    assert!(matches!(values[2], Scalar::Int32(_)));
+    assert!(matches!(values[3], Scalar::Int64(_)));
+    assert!(matches!(values[4], Scalar::UInt8(_)));
+    assert!(matches!(values[5], Scalar::UInt16(_)));
+    assert!(matches!(values[6], Scalar::UInt32(_)));
+    assert!(matches!(values[7], Scalar::UInt64(_)));
 }
 
 #[test]

@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use yggdryl::text::toml as ytoml;
 use yggdryl::{
-    DataType, DataTypeId, Error, Field, I256, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
-    from_toml_scalar_with_field, into_toml_scalar,
+    DataType, DataTypeId, Error, Field, Limits, Scalar, TimeUnit, Timezone, from_toml_scalar,
+    from_toml_scalar_with_field, i256, into_toml_scalar,
 };
 
 #[test]
@@ -116,7 +116,7 @@ fn a_field_restores_exact_types_from_natural_toml() {
     let decoded = ytoml::from_utf8_with_field(input, &typed_row_field()).unwrap();
     let row = decoded.as_sequence().unwrap();
 
-    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
@@ -133,7 +133,7 @@ fn exact_values_emit_natural_scalars_without_private_tags() {
     let value = Scalar::from_record([
         (
             "amount",
-            Scalar::d256(I256::from_str("1234500").unwrap(), 4),
+            Scalar::d256(i256::from_str("1234500").unwrap(), 4),
         ),
         (
             "at",
@@ -258,7 +258,7 @@ fn from_toml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         ytoml::from_bytes_with_field(input.as_bytes(), &field).unwrap()
     );
     let row = decoded.as_sequence().unwrap();
-    assert_eq!(row[0], Scalar::d256(I256::from_str("1234500").unwrap(), 4));
+    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()

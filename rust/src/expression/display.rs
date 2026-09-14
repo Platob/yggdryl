@@ -386,11 +386,11 @@ fn bare_literal(dtype: &DataType, value: &Scalar) -> Option<SmolStr> {
         } else {
             SmolStr::new_static("false")
         }),
-        (DataType::Int64, Scalar::I64(held)) => Some(SmolStr::new(held.to_string())),
+        (DataType::Int64, Scalar::Int64(held)) => Some(SmolStr::new(held.to_string())),
         // A non-finite float has no bare spelling, because `nan` and `inf`
         // are column names as often as they are numbers. It falls through to
         // the typed form, where the text is unambiguous.
-        (DataType::Float64, Scalar::F64(held)) if held.as_f64().is_finite() => {
+        (DataType::Float64, Scalar::Float64(held)) if held.as_f64().is_finite() => {
             Some(SmolStr::new(float_text(held.as_f64())))
         }
         _ => None,
@@ -402,24 +402,25 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
     match value {
         Scalar::Boolean(held) => Some(SmolStr::new(held.to_string())),
         // Every integer width spells itself through its own Display.
-        Scalar::I8(_)
-        | Scalar::I16(_)
-        | Scalar::I32(_)
-        | Scalar::I64(_)
-        | Scalar::U8(_)
-        | Scalar::U16(_)
-        | Scalar::U32(_)
-        | Scalar::U64(_)
-        | Scalar::I128(_)
-        | Scalar::U128(_) => value
+        Scalar::Int8(_)
+        | Scalar::Int16(_)
+        | Scalar::Int32(_)
+        | Scalar::Int64(_)
+        | Scalar::UInt8(_)
+        | Scalar::UInt16(_)
+        | Scalar::UInt32(_)
+        | Scalar::UInt64(_)
+        | Scalar::Int128(_)
+        | Scalar::UInt128(_) => value
             .leaf_display()
             .map(|held| SmolStr::new(held.to_string())),
-        Scalar::F16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::F32(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::F64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
-        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => {
-            value.into_decimal_utf8().map(SmolStr::new)
-        }
+        Scalar::Float16(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::Float32(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::Float64(held) => Some(SmolStr::new(float_text(held.as_f64()))),
+        Scalar::Decimal32(_)
+        | Scalar::Decimal64(_)
+        | Scalar::Decimal128(_)
+        | Scalar::Decimal256(_) => value.into_decimal_utf8().map(SmolStr::new),
         Scalar::String(held) => Some(held.storage().clone()),
         Scalar::Code(held) => Some(held.storage().clone()),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
@@ -432,7 +433,8 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
         Scalar::Bytes(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
-        Scalar::Geospatial(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
+        Scalar::Geometry(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
+        Scalar::Geography(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
         // Every temporal spells itself the one classic way, which the Arrow
         // cast leaf renders a whole column with.
         Scalar::Date32(_)

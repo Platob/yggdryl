@@ -487,23 +487,23 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Enum(value) => return Some(Cow::Borrowed(value.as_str())),
         Scalar::Boolean(held) => held.to_string(),
-        Scalar::I8(_)
-        | Scalar::I16(_)
-        | Scalar::I32(_)
-        | Scalar::I64(_)
-        | Scalar::U8(_)
-        | Scalar::U16(_)
-        | Scalar::U32(_)
-        | Scalar::U64(_)
-        | Scalar::I128(_)
-        | Scalar::U128(_)
-        | Scalar::F16(_)
-        | Scalar::F32(_)
-        | Scalar::F64(_)
-        | Scalar::D32(_)
-        | Scalar::D64(_)
-        | Scalar::D128(_)
-        | Scalar::D256(_) => value.leaf_display()?.to_string(),
+        Scalar::Int8(_)
+        | Scalar::Int16(_)
+        | Scalar::Int32(_)
+        | Scalar::Int64(_)
+        | Scalar::UInt8(_)
+        | Scalar::UInt16(_)
+        | Scalar::UInt32(_)
+        | Scalar::UInt64(_)
+        | Scalar::Int128(_)
+        | Scalar::UInt128(_)
+        | Scalar::Float16(_)
+        | Scalar::Float32(_)
+        | Scalar::Float64(_)
+        | Scalar::Decimal32(_)
+        | Scalar::Decimal64(_)
+        | Scalar::Decimal128(_)
+        | Scalar::Decimal256(_) => value.leaf_display()?.to_string(),
         Scalar::Date32(value) => iso::format_date(value.count())?.to_string(),
         Scalar::Date64(value) => {
             let days = value.count().checked_div(86_400_000)?;
@@ -532,7 +532,9 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         // hex of its bytes - rather than refusing, because the value holds
         // exactly those bytes and hiding them would make the document
         // unwritable over one broken buffer.
-        Scalar::Geospatial(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
+        Scalar::Geometry(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
+            .unwrap_or_else(|_| hex_text(value.as_bytes())),
+        Scalar::Geography(value) => crate::types::geospatial::wkb::into_wkt(value.as_bytes())
             .unwrap_or_else(|_| hex_text(value.as_bytes())),
         Scalar::Bytes(value) => hex_text(value.as_bytes()),
         // Null included: rendering "nothing" into the middle of a path is how a

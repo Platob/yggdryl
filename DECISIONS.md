@@ -2686,3 +2686,53 @@ baselines, beside the counting allocator and callgrind - because wall clock on
 a shared box moved an untouched scan by 4% in both directions across two runs,
 and the allocation and instruction counts did not move at all.
 
+## 33. A scalar variant is spelled as its datatype, and geospatial flattens too
+
+Decision 29 flattened the five width families into `Scalar` and kept their
+short names, on the reasoning that a second spelling would be a rename rather
+than a flattening. The rename is what is wanted: `Scalar::I8` sits beside
+`DataTypeId::Int8`, `DataType::Int8` and the parser's `int8`, and `i8` is a
+spelling the datatype grammar does not accept at all. Decision 29's
+flattening stands; only its naming clause and its geospatial exception move.
+
+- Every width variant takes its datatype's spelling: `Int8`..`Int64`,
+  `UInt8`..`UInt64`, `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`;
+  `Decimal32`, `Decimal64`, `Decimal128`, `Decimal256`. The leaf type, the
+  `DataTypeId` and the variant are now one identifier, so
+  `integer_scalar_value!`, `floating_value!`, `decimal_value!` and
+  `width_value_from!` lose the arguments that repeated it.
+- `Geospatial` goes the way the width families went. `Scalar::Geometry(Geometry)`
+  and `Scalar::Geography(Geography)` hold their leaves directly, each leaf is
+  its own `ScalarFamily`, and the enum is deleted outright. `Code` is the one
+  family enum left, because a code is an identity over a registry rather than a
+  width of one thing.
+- Cross-reading value semantics are unchanged, and that is what keeps the
+  flattening honest: geometry and geography share `value_rank` 14 and compare
+  by their WKB, exactly as `Geospatial` did, through a `geospatial_bytes`
+  reader beside `float_value` and `decimal_value`. One payload is one value
+  under both readings, in equality, order and hash.
+- The wire vocabulary does not follow the Rust spelling. `Scalar::kind()` and
+  the serde tags keep `i8`..`d256`, which decision 29 pinned as already
+  wire-visible and which `every_width_leaf_round_trips_under_its_unchanged_tag`
+  still holds. The one tag that does move is geometry's: `geospatial` was the
+  family's name on the wire for a value the datatype grammar, the `DataTypeId`
+  and the digest feed all call `geometry`, and with the family gone there is
+  nothing left to call it. `kind()` and the serde tag both read `geometry`;
+  `geography` was already itself.
+- `i256` moves from a root file into `types/`, where the decimals that need it
+  live, and is spelled like the native integer it extends. Its unsigned
+  magnitude becomes `u256` rather than a file of free `[u64; 4]` helpers: every
+  wide add, multiply and division was already unsigned arithmetic with the sign
+  handled around it, so the pair is the shape the code had. `u256` is a value
+  in its own right - parse, render, compare, checked arithmetic, serde, stable
+  hash - and `i256::unsigned_abs` answers it, which is how the signed minimum
+  gets a magnitude at all.
+
+**Written in:** `types/scalar.rs`, on `Scalar` and `ScalarFamily`;
+`types/geospatial/scalars.rs`, on `geospatial_value!`; `types/i256.rs`, on the
+module and both structs.
+**Fixtures:** `a_geospatial_value_is_its_own_kind_over_its_bytes` and
+`the_structural_wire_round_trips_a_geospatial_value` restate the moved tag;
+`every_width_leaf_round_trips_under_its_unchanged_tag` and the pinned stable
+hashes are unmoved; `types/i256/tests.rs` keeps every signed fixture and adds
+the unsigned boundaries, division identity, byte round trip and serde.

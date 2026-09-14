@@ -1392,9 +1392,6 @@ pub enum Holder
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
-### yggdryl::root::i256  [rust\src\i256.rs]
-pub struct I256([u64; 4]);
-  pub fn stable_hash(&self) -> u64
 
 ### yggdryl::root::iobase  [rust\src\iobase.rs]
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
@@ -2824,15 +2821,15 @@ pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
   pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
 
 ### yggdryl::types::decimal  [rust\src\types\decimal\scalars.rs]
-pub fn from_decimal(unscaled: I256, scale: i8) -> Self
+pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub const fn d128(unscaled: i128, scale: i8) -> Self
-  pub const fn d256(unscaled: I256, scale: i8) -> Self
+  pub const fn d256(unscaled: i256, scale: i8) -> Self
   pub const fn as_d128(&self) -> Option<(i128, i8)>
-  pub const fn as_d256(&self) -> Option<(I256, i8)>
-  pub fn as_decimal(&self) -> Option<(I256, i8)>
+  pub const fn as_d256(&self) -> Option<(i256, i8)>
+  pub fn as_decimal(&self) -> Option<(i256, i8)>
   pub const fn is_decimal(&self) -> bool
   pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128>
-  pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256>
+  pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<i256>
   pub fn into_decimal_utf8(&self) -> Option<String>
 
 ### yggdryl::types::default  [rust\src\types\default.rs]
@@ -3081,6 +3078,13 @@ pub type NullField = TypedField<scalar::Null>;
   pub struct PartitionFields<'field>(std::slice::Iter<'field, Field>);
   pub struct PartitionFieldNames<'field>(PartitionFields<'field>);
 
+### yggdryl::types::i256  [rust\src\types\i256.rs]
+pub struct u256([u64; 4]);  (unsigned magnitude; ZERO, MAX; from_u128, from_le_bytes, into_le_bytes, as_u128, is_zero, checked_add/sub/mul/div/rem, stable_hash; Display/FromStr base-10; serde = the base-10 text)
+  pub fn stable_hash(&self) -> u64
+pub struct i256([u64; 4]);  (signed two's complement; ZERO; from_i128, from_u128, from_le_bytes, into_le_bytes, as_i128, as_u128, is_negative, is_zero, unsigned_abs -> u256, checked_neg/abs/add/sub/mul/div/rem, stable_hash; Display/FromStr base-10; serde = the base-10 text)
+  pub fn stable_hash(&self) -> u64
+  pub const fn unsigned_abs(self) -> u256
+
 ### yggdryl::types::geospatial  [rust\src\types\geospatial\scalars.rs]
 pub trait GeospatialValue: ScalarValue
   pub fn as_bytes(&self) -> &[u8]
@@ -3090,9 +3094,6 @@ pub trait GeospatialValue: ScalarValue
   pub fn as_bytes(&self) -> &[u8]
   pub fn storage(&self) -> &Arc<[u8]>
   pub fn into_inner(self) -> Arc<[u8]>
-  pub enum Geospatial
-  pub fn as_bytes(&self) -> &[u8]
-  pub fn storage(&self) -> &Arc<[u8]>
 
 ### yggdryl::types::floating  [rust\src\types\floating\dtypes.rs]
 pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
@@ -3420,7 +3421,7 @@ pub struct Float16(u16);
   pub const fn as_f64(self) -> f64
   pub const fn into_f64(self) -> f64
   pub fn stable_hash(&self) -> u64
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, I8, I16, I32, I64, U8, U16, U32, U64, I128, U128, F16, F32, F64, D32, D64, D128, D256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Enum, Bytes, Geospatial, Sequence, Mapping, Record; 48 bytes; each width variant holds its leaf directly, no family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Enum, Bytes, Geometry, Geography, Sequence, Mapping, Record; 48 bytes; each width and geospatial variant holds its leaf directly, `Code` is the one family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub fn from_float(value: f64, bit_width: u8) -> Result<Self>
   pub const fn kind(&self) -> &'static str
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self

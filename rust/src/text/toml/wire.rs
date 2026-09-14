@@ -249,30 +249,30 @@ fn write_scalar<W: Write>(
     match value {
         Scalar::Null => return Err(codec_error("TOML cannot represent null")),
         Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,
-        Scalar::I8(_)
-        | Scalar::I16(_)
-        | Scalar::I32(_)
-        | Scalar::I64(_)
-        | Scalar::U8(_)
-        | Scalar::U16(_)
-        | Scalar::U32(_)
-        | Scalar::U64(_)
-        | Scalar::I128(_)
-        | Scalar::U128(_) => write!(
+        Scalar::Int8(_)
+        | Scalar::Int16(_)
+        | Scalar::Int32(_)
+        | Scalar::Int64(_)
+        | Scalar::UInt8(_)
+        | Scalar::UInt16(_)
+        | Scalar::UInt32(_)
+        | Scalar::UInt64(_)
+        | Scalar::Int128(_)
+        | Scalar::UInt128(_) => write!(
             writer,
             "{}",
             value
                 .as_i64()
                 .ok_or_else(|| codec_error("TOML integer exceeds i64"))?
         )?,
-        Scalar::F16(value) => write_float(writer, value.as_f64())?,
-        Scalar::F32(value) => write_float(writer, value.as_f64())?,
-        Scalar::F64(value) => write_float(writer, value.as_f64())?,
+        Scalar::Float16(value) => write_float(writer, value.as_f64())?,
+        Scalar::Float32(value) => write_float(writer, value.as_f64())?,
+        Scalar::Float64(value) => write_float(writer, value.as_f64())?,
         // A decimal leaf displays exactly its canonical decimal text.
-        Scalar::D32(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::D64(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::D128(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::D256(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal32(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
         Scalar::String(value) => write_quoted(writer, value.as_str())?,
         Scalar::Code(value) => write_quoted(writer, value.as_str())?,
         Scalar::Version(value) => write_quoted(writer, &value.to_string())?,
@@ -286,7 +286,11 @@ fn write_scalar<W: Write>(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
         )?,
-        Scalar::Geospatial(value) => write_quoted(
+        Scalar::Geometry(value) => write_quoted(
+            writer,
+            &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
+        )?,
+        Scalar::Geography(value) => write_quoted(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
         )?,

@@ -44,7 +44,7 @@ use super::selector::Selector;
 use super::{
     Comparison, Expression, FieldSegment, Function, Literal, Operator, RECURSION_LIMIT, Safety,
 };
-use crate::{DataType, Error, I256, Result, Scalar};
+use crate::{DataType, Error, Result, Scalar, i256};
 
 /// Which way one ordering key sorts.
 #[derive(
@@ -1446,7 +1446,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             )
         }
         D::Decimal256 { scale, .. } => Scalar::d256(
-            I256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
+            i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")
             })?),
             *scale,

@@ -1,9 +1,9 @@
 //! The datatype a value names, and what it refuses to name.
 
-use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Field, Scalar, TimeUnit, Timezone, i256};
 
 mod scalars {
-    use super::{DataType, I256, Scalar, TimeUnit, Timezone};
+    use super::{DataType, Scalar, TimeUnit, Timezone, i256};
 
     #[test]
     fn each_integer_width_keeps_the_column_that_holds_it() {
@@ -66,7 +66,7 @@ mod scalars {
         );
         // Thirty-nine digits are past Decimal128 and land on Decimal256.
         assert_eq!(
-            Scalar::d256(I256::from_i128(i128::MIN), 0).dtype().unwrap(),
+            Scalar::d256(i256::from_i128(i128::MIN), 0).dtype().unwrap(),
             DataType::decimal256(39, 0).unwrap()
         );
         assert_eq!(

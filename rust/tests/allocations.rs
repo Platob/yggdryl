@@ -1347,7 +1347,7 @@ fn borrowed_value_bytes_allocate_nothing() {
     }
     for value in [
         Scalar::from("a symbol long enough to outgrow any inline string buffer"),
-        Scalar::d256(yggdryl::I256::from_i128(i128::MIN), -3),
+        Scalar::d256(yggdryl::i256::from_i128(i128::MIN), -3),
     ] {
         free("reading a wide payload", || {
             black_box(value.as_value_bytes().expect("the payload is there").len());

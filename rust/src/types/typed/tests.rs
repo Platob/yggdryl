@@ -296,7 +296,7 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     let unchecked = UncheckedFieldScalar::new(&price, "1.5");
     assert_eq!(
         unchecked.as_decimal(),
-        Some((crate::I256::from_i128(150), 2))
+        Some((crate::i256::from_i128(150), 2))
     );
     let ratio = Field::new("ratio", DataType::Float64, false);
     assert_eq!(UncheckedFieldScalar::new(&ratio, "2.5").as_f64(), Some(2.5));

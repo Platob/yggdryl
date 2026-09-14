@@ -112,7 +112,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/temporal/` | the calendar and clock datatypes, their units and zones, and `iso.rs` - the ISO 8601 spellings every text codec and the scalar renderer write through |
-| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families |
+| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families; `i256.rs` holds the `i256`/`u256` pair the exact decimals compute in |
 | `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
@@ -372,11 +372,14 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 
 - `types::Scalar` is the single cross-platform scalar: no parallel value tree, no
   retired alias.
-- Variants match native/Arrow widths: `I8`..`I64`, `U8`..`U64`, `I128`, `U128`;
-  `F16`, `F32`, `F64`; `D32`, `D64`, `D128`, `D256`; `Date32`, `Date64`;
+- Variants are spelled as their datatype is: `Int8`..`Int64`, `UInt8`..`UInt64`,
+  `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
+  `Decimal64`, `Decimal128`, `Decimal256`; `Date32`, `Date64`;
   `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
-  `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
+  `Geometry`, `Geography`; `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
+  The wire vocabulary does not follow the spelling: `Scalar::kind()` and the
+  serde tags keep the short `i8`, `d128` names they always wrote.
 - `Scalar::Record` is a deterministic sorted name-to-`Scalar` map, resolved to an
   ordered sequence by Struct-field canonicalization; enum scalars keep generic
   enum identity in the smallest lossless integer representation.
@@ -391,7 +394,8 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
 - Rust keeps exact-width variants and constructors, every width a direct
-  `Scalar` variant with no family enum between; shared logic goes through the
+  `Scalar` variant with no family enum between, and each geospatial reading
+  likewise; `Code` is the one family enum left; shared logic goes through the
   cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
   `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
   family constructor picks the physical width once.

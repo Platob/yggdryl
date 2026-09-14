@@ -19,24 +19,24 @@ impl Serialize for JsonRef<'_> {
         match self.0 {
             Scalar::Null => serializer.serialize_none(),
             Scalar::Boolean(value) => serializer.serialize_bool(value.get()),
-            Scalar::I8(value) => serializer.serialize_i8(value.get()),
-            Scalar::I16(value) => serializer.serialize_i16(value.get()),
-            Scalar::I32(value) => serializer.serialize_i32(value.get()),
-            Scalar::I64(value) => serializer.serialize_i64(value.get()),
-            Scalar::U8(value) => serializer.serialize_u8(value.get()),
-            Scalar::U16(value) => serializer.serialize_u16(value.get()),
-            Scalar::U32(value) => serializer.serialize_u32(value.get()),
-            Scalar::U64(value) => serializer.serialize_u64(value.get()),
-            Scalar::I128(value) => serializer.serialize_i128(value.get()),
-            Scalar::U128(value) => serializer.serialize_u128(value.get()),
-            Scalar::F16(value) => serialize_float(serializer, value.as_f64()),
-            Scalar::F32(value) => serialize_float(serializer, value.as_f64()),
-            Scalar::F64(value) => serialize_float(serializer, value.as_f64()),
+            Scalar::Int8(value) => serializer.serialize_i8(value.get()),
+            Scalar::Int16(value) => serializer.serialize_i16(value.get()),
+            Scalar::Int32(value) => serializer.serialize_i32(value.get()),
+            Scalar::Int64(value) => serializer.serialize_i64(value.get()),
+            Scalar::UInt8(value) => serializer.serialize_u8(value.get()),
+            Scalar::UInt16(value) => serializer.serialize_u16(value.get()),
+            Scalar::UInt32(value) => serializer.serialize_u32(value.get()),
+            Scalar::UInt64(value) => serializer.serialize_u64(value.get()),
+            Scalar::Int128(value) => serializer.serialize_i128(value.get()),
+            Scalar::UInt128(value) => serializer.serialize_u128(value.get()),
+            Scalar::Float16(value) => serialize_float(serializer, value.as_f64()),
+            Scalar::Float32(value) => serialize_float(serializer, value.as_f64()),
+            Scalar::Float64(value) => serialize_float(serializer, value.as_f64()),
             // A decimal leaf displays exactly its canonical decimal text.
-            Scalar::D32(value) => serializer.collect_str(value),
-            Scalar::D64(value) => serializer.collect_str(value),
-            Scalar::D128(value) => serializer.collect_str(value),
-            Scalar::D256(value) => serializer.collect_str(value),
+            Scalar::Decimal32(value) => serializer.collect_str(value),
+            Scalar::Decimal64(value) => serializer.collect_str(value),
+            Scalar::Decimal128(value) => serializer.collect_str(value),
+            Scalar::Decimal256(value) => serializer.collect_str(value),
             Scalar::String(value) => serializer.serialize_str(value.as_str()),
             Scalar::Code(value) => serializer.serialize_str(value.as_str()),
             Scalar::Version(value) => serializer.collect_str(value),
@@ -48,7 +48,9 @@ impl Serialize for JsonRef<'_> {
             Scalar::Enum(value) => serializer.serialize_str(value.as_str()),
             Scalar::Bytes(value) => serializer
                 .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
-            Scalar::Geospatial(value) => serializer
+            Scalar::Geometry(value) => serializer
+                .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
+            Scalar::Geography(value) => serializer
                 .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
             Scalar::Date32(value) => {
                 if value.unit() == TimeUnit::Day {

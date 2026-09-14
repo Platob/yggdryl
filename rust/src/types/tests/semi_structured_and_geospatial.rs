@@ -177,7 +177,7 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
     // canonical value spelling.
     let geometry = DataType::geometry(None).unwrap().required_field("shape");
     let default = geometry.default_value().unwrap();
-    assert!(matches!(default, Scalar::Geospatial(_)), "{default:?}");
+    assert!(matches!(default, Scalar::Geometry(_)), "{default:?}");
     let bytes = default.as_wkb().expect("a WKB payload");
     assert_eq!(
         crate::types::geospatial::wkb::into_wkt(bytes).unwrap(),
