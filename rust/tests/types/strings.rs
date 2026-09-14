@@ -181,6 +181,14 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
     assert_eq!("isin".parse::<DataType>().unwrap(), DataType::Isin);
     assert_eq!(DataType::Isin.code_width(), Some(12));
     assert_ne!(DataType::Isin, DataType::fixed_ascii(12).unwrap());
+    // A CUSIP is nine and a SEDOL seven, each closed by its own check digit,
+    // and neither is the ASCII width that would hold the same text.
+    assert_eq!("cusip".parse::<DataType>().unwrap(), DataType::Cusip);
+    assert_eq!(DataType::Cusip.code_width(), Some(9));
+    assert_ne!(DataType::Cusip, DataType::fixed_ascii(9).unwrap());
+    assert_eq!("sedol".parse::<DataType>().unwrap(), DataType::Sedol);
+    assert_eq!(DataType::Sedol.code_width(), Some(7));
+    assert_ne!(DataType::Sedol, DataType::fixed_ascii(7).unwrap());
 
     // A code name is a grammar keyword like every other, so the parser
     // reads it case-insensitively and trimmed.
@@ -189,8 +197,8 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
         DataType::Currency
     );
     // The grammar reports a word that names nothing as unknown.
-    let error = "sedol".parse::<DataType>().unwrap_err().to_string();
-    assert!(error.contains("unknown datatype \"sedol\""), "{error}");
+    let error = "figi".parse::<DataType>().unwrap_err().to_string();
+    assert!(error.contains("unknown datatype \"figi\""), "{error}");
 }
 
 #[test]

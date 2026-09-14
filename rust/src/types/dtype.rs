@@ -174,6 +174,15 @@ pub enum DataType {
     /// A MIME type with its charset and content codings, stored as the
     /// canonical text that spells all three.
     MediaType,
+    // Appended after the text datatypes rather than beside `Isin` for the
+    // same reason: the derived discriminant is what a stored digest of a
+    // schema is over.
+    /// CUSIP: a North American securities identifier, nine ASCII bytes
+    /// closed by a check digit.
+    Cusip,
+    /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
+    /// bytes closed by a check digit.
+    Sedol,
 }
 
 impl DataType {
@@ -259,6 +268,8 @@ impl DataType {
             Self::Mic => DataTypeId::Mic,
             Self::Cfi => DataTypeId::Cfi,
             Self::Isin => DataTypeId::Isin,
+            Self::Cusip => DataTypeId::Cusip,
+            Self::Sedol => DataTypeId::Sedol,
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
@@ -606,6 +617,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Timezone => 59,
         DataType::MimeType => 60,
         DataType::MediaType => 61,
+        DataType::Cusip => 62,
+        DataType::Sedol => 63,
     }
 }
 

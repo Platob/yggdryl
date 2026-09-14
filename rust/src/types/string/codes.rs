@@ -28,7 +28,9 @@
 //!
 //! The widths are the ones the standards fix: two bytes for ISO 3166-1's
 //! country code, three for ISO 4217's currency, four for ISO 10383's market
-//! identifier, and six for ISO 10962's classification.
+//! identifier, six for ISO 10962's classification, and for the three
+//! securities identifiers twelve for ISO 6166's ISIN, nine for a CUSIP and
+//! seven for a SEDOL, each closed by its own check digit.
 
 use smol_str::{SmolStr, format_smolstr};
 
@@ -49,6 +51,12 @@ pub(crate) const CFI_EXTENSION_NAME: &str = "yggdryl.cfi";
 
 /// The Arrow extension name of the securities identification number.
 pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";
+
+/// The Arrow extension name of the CUSIP securities identifier.
+pub(crate) const CUSIP_EXTENSION_NAME: &str = "yggdryl.cusip";
+
+/// The Arrow extension name of the SEDOL securities identifier.
+pub(crate) const SEDOL_EXTENSION_NAME: &str = "yggdryl.sedol";
 
 /// The Arrow extension name of FIX's side of a trade.
 pub(crate) const SIDE_EXTENSION_NAME: &str = "yggdryl.side";
@@ -76,6 +84,18 @@ pub(crate) const CFI_WIDTH: usize = 6;
 /// Two letters of prefix, nine of national number and one check digit:
 /// twelve, which the standard fixes and the check digit closes.
 pub(crate) const ISIN_WIDTH: usize = 12;
+
+/// The most bytes a CUSIP securities identifier may be.
+///
+/// Six of issuer, two of issue and one check digit: nine, which the CUSIP
+/// Global Services standard fixes and the check digit closes.
+pub(crate) const CUSIP_WIDTH: usize = 9;
+
+/// The most bytes a SEDOL securities identifier may be.
+///
+/// Six alphanumerics and one check digit: seven, which the London Stock
+/// Exchange fixes and the check digit closes.
+pub(crate) const SEDOL_WIDTH: usize = 7;
 
 /// The most bytes FIX's side of a trade may be.
 ///
@@ -106,6 +126,8 @@ impl DataType {
         ("mic", DataType::Mic, MIC_WIDTH),
         ("cfi", DataType::Cfi, CFI_WIDTH),
         ("isin", DataType::Isin, ISIN_WIDTH),
+        ("cusip", DataType::Cusip, CUSIP_WIDTH),
+        ("sedol", DataType::Sedol, SEDOL_WIDTH),
         ("side", DataType::Side, SIDE_WIDTH),
         ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
@@ -181,6 +203,34 @@ impl DataType {
         Self::Isin
     }
 
+    /// Creates the nine-character CUSIP securities identifier.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// assert_eq!(DataType::cusip(), DataType::Cusip);
+    /// assert_eq!(DataType::cusip().to_string(), "cusip");
+    /// assert_eq!(DataType::cusip().code_width(), Some(9));
+    /// ```
+    #[must_use]
+    pub const fn cusip() -> Self {
+        Self::Cusip
+    }
+
+    /// Creates the seven-character SEDOL securities identifier.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// assert_eq!(DataType::sedol(), DataType::Sedol);
+    /// assert_eq!(DataType::sedol().to_string(), "sedol");
+    /// assert_eq!(DataType::sedol().code_width(), Some(7));
+    /// ```
+    #[must_use]
+    pub const fn sedol() -> Self {
+        Self::Sedol
+    }
+
     /// The canonical name of a registered code, `None` for every other type.
     ///
     /// This is the code's identity: it names the datatype, and the Arrow
@@ -203,6 +253,8 @@ impl DataType {
             Self::Mic => Some("mic"),
             Self::Cfi => Some("cfi"),
             Self::Isin => Some("isin"),
+            Self::Cusip => Some("cusip"),
+            Self::Sedol => Some("sedol"),
             Self::Side => Some("side"),
             Self::State => Some("state"),
             Self::TimeInForce => Some("timeinforce"),
@@ -254,6 +306,8 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Mic => Some(MIC_EXTENSION_NAME),
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
         DataType::Isin => Some(ISIN_EXTENSION_NAME),
+        DataType::Cusip => Some(CUSIP_EXTENSION_NAME),
+        DataType::Sedol => Some(SEDOL_EXTENSION_NAME),
         DataType::Side => Some(SIDE_EXTENSION_NAME),
         DataType::State => Some(STATE_EXTENSION_NAME),
         DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
@@ -273,6 +327,8 @@ pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
         MIC_EXTENSION_NAME => Some(DataType::Mic),
         CFI_EXTENSION_NAME => Some(DataType::Cfi),
         ISIN_EXTENSION_NAME => Some(DataType::Isin),
+        CUSIP_EXTENSION_NAME => Some(DataType::Cusip),
+        SEDOL_EXTENSION_NAME => Some(DataType::Sedol),
         SIDE_EXTENSION_NAME => Some(DataType::Side),
         STATE_EXTENSION_NAME => Some(DataType::State),
         TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
@@ -313,6 +369,8 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Mic => code_text::<MIC_WIDTH>(bytes),
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
         DataType::Isin => code_text::<ISIN_WIDTH>(bytes),
+        DataType::Cusip => code_text::<CUSIP_WIDTH>(bytes),
+        DataType::Sedol => code_text::<SEDOL_WIDTH>(bytes),
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
         DataType::State => code_text::<STATE_WIDTH>(bytes),
         DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),
@@ -562,6 +620,8 @@ mod tests {
             Some(DataType::Currency)
         );
         assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::Cfi));
+        assert_eq!(code_for_extension("yggdryl.cusip"), Some(DataType::Cusip));
+        assert_eq!(code_for_extension("yggdryl.sedol"), Some(DataType::Sedol));
         assert_eq!(code_for_extension("yggdryl.ascii"), None);
         assert_eq!(code_for_extension("arrow.uuid"), None);
     }

@@ -1,6 +1,6 @@
 # Codes
 
-The eight registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
+The ten registered codes, the packed integer a fixed US-ASCII string or a code reads as, and the `StringEnum` vocabulary a field declares.
 
 A code is an identity over a published registry, not a string with a charset: a currency is ISO 4217 the way a [URL](../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is - Arrow's `Utf8`, under the code's own extension name - held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](text.md).
 
@@ -13,6 +13,8 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `mic`, ISO 10383 | 4 | `utf8`, `yggdryl.mic` |
 | `cfi`, ISO 10962 | 6 | `utf8`, `yggdryl.cfi` |
 | `isin`, ISO 6166 | 12 | `utf8`, `yggdryl.isin` |
+| `cusip`, CUSIP Global Services | 9 | `utf8`, `yggdryl.cusip` |
+| `sedol`, London Stock Exchange | 7 | `utf8`, `yggdryl.sedol` |
 | `side`, FIX `Side(54)` | 4 | `utf8`, `yggdryl.side` |
 | `state`, a ranked lifecycle | 10 | `utf8`, `yggdryl.state` |
 | `timeinforce`, FIX `TimeInForce(59)` | 8 | `utf8`, `yggdryl.timeinforce` |
@@ -25,7 +27,7 @@ A code is an identity over a published registry, not a string with a charset: a 
 | `code_width` | the most bytes one value may be, the number its standard fixes; `fixed_byte_width` is `None`, because the width bounds a value rather than laying it out |
 | `ascii_packed` | the value's bytes padded to that width and read big-endian into one `i128` - the padding is the packing's, never a column's: a fixed US-ASCII string of at most sixteen bytes or a code; everything else refused |
 | `StringEnum` | a name plus one US-ASCII value per member under `field:enum`; accepted on a fixed US-ASCII string of at most sixteen bytes or a code |
-| Rust only | `DataType::CODES`, the `Code` enum and its leaves, `State::rank` and the lifecycle predicates |
+| Rust only | `DataType::CODES`, the `Code` enum and its leaves, `State::rank` and the lifecycle predicates, `Isin`/`Cusip`/`Sedol::{is_valid, is_canonical, closing_digit}` |
 
 ## Use
 
@@ -59,9 +61,12 @@ A code is an identity over a published registry, not a string with a charset: a 
             // Six bytes: `cfi` is what it is, not the eight some other
             // width would pad it to.
             ("cfi", DataType::Cfi, 6),
-            // Twelve bytes closed by a check digit, so a value is an
-            // identifier or is refused, never a typo stored as a security.
+            // Twelve, nine and seven bytes, each closed by a check digit, so
+            // a value is an identifier or is refused, never a typo stored as
+            // a security.
             ("isin", DataType::Isin, 12),
+            ("cusip", DataType::Cusip, 9),
+            ("sedol", DataType::Sedol, 7),
             // The FIX-facing codes, each at the width it needs: a state
             // carries two digits of rank before its name.
             ("side", DataType::Side, 4),
@@ -77,6 +82,14 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert_ne!(DataType::Side.scalar("1")?, DataType::TimeInForce.scalar("1")?);
     // A plain string of the same width is a string.
     assert_eq!(Scalar::from("USD").kind(), "string");
+
+    // A securities identifier is closed by its own check digit: one digit
+    // off is refused, and lower case folds to the identifier it spells.
+    assert_eq!(DataType::cusip().scalar("38259p508")?.as_str(), Some("38259P508"));
+    assert!(DataType::cusip().scalar("037833101").is_err());
+    assert_eq!(DataType::sedol().scalar("b0ybkj7")?.as_str(), Some("B0YBKJ7"));
+    assert!(DataType::sedol().scalar("B0YBKJ8").is_err());
+    assert_eq!(DataType::Isin.scalar("us0378331005")?.as_str(), Some("US0378331005"));
 
     // A code rides its own Arrow extension, so the identity survives the trip.
     let venue = Field::new("venue", DataType::Mic, false);
@@ -111,9 +124,10 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert currency.string_parameters is None
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).code_width) for name in
-            ("country", "currency", "mic", "cfi", "isin", "side", "state", "timeinforce")] == [
+            ("country", "currency", "mic", "cfi", "isin", "cusip", "sedol",
+             "side", "state", "timeinforce")] == [
         ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
-        ("side", 4), ("state", 10), ("timeinforce", 8),
+        ("cusip", 9), ("sedol", 7), ("side", 4), ("state", 10), ("timeinforce", 8),
     ]
 
     # A value is the text, and carries its identity.
@@ -121,11 +135,17 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert usd.as_str() == "USD"
     assert usd.kind == "currency"
     assert DataType("side").scalar("1") != DataType("timeinforce").scalar("1")
-    # An ISIN is closed by its own check digit, so one digit off is refused
-    # and lower case folds to the number it spells.
+    # A securities identifier is closed by its own check digit, so one digit
+    # off is refused and lower case folds to the identifier it spells.
     assert DataType("isin").scalar("us0378331005").as_py() == "US0378331005"
     with pytest.raises(ValueError, match="check digit"):
         DataType("isin").scalar("US0378331006")
+    assert DataType("cusip").scalar("38259p508").as_py() == "38259P508"
+    with pytest.raises(ValueError, match="check digit"):
+        DataType("cusip").scalar("037833101")
+    assert DataType("sedol").scalar("b0ybkj7").as_py() == "B0YBKJ7"
+    with pytest.raises(ValueError, match="check digit"):
+        DataType("sedol").scalar("B0YBKJ8")
 
     # A code rides its own Arrow extension, so the identity survives the trip.
     venue = types.mic("venue", nullable=False)
@@ -157,9 +177,22 @@ A code is an identity over a published registry, not a string with a charset: a 
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'currency', 'mic', 'cfi', 'isin', 'side', 'state', 'timeinforce']
+      ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 4, 10, 8],
+      [2, 3, 4, 6, 12, 9, 7, 4, 10, 8],
+    )
+
+    // A securities identifier is closed by its own check digit: a column of
+    // them holds the canonical spelling, so a cast lets in an identifier the
+    // check digit closes and answers null for a typo or a lower-case spelling.
+    const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
+    assert.deepEqual(
+      [...fields.cusip('sid').castArrowArray(utf8(['037833100', '037833101']))],
+      ['037833100', null],
+    )
+    assert.deepEqual(
+      [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'b0ybkj7']))],
+      ['B0YBKJ7', null],
     )
 
     // A code rides its own Arrow extension, so the identity survives the trip.
@@ -455,9 +488,11 @@ the wire value rather than a name for it, exactly as `side` is.
 - `Code` equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values.
 - `utf8` under `yggdryl.currency` -> `currency`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.currency` over any other storage imports as that storage.
 - `isin` -> two letters, nine alphanumerics and one digit that closes the eleven before it (ISO 6166's Luhn over the letters expanded to their alphabet positions); a check digit that does not close the number -> refused, `the check digit does not close the number`. Lower case -> the upper case it spells. `Isin::is_valid` and `Isin::closing_digit` answer the rule without building a value.
-- An Arrow cast into `isin` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise, because a column's bytes are what every reader digests; only a scalar read folds the case.
-- `isin` names no vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members and no Python code class declares it.
-- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar. `isin` and `state` are the two exceptions, because their value door gates the space rather than holding it - a check digit closes one and a published vocabulary spells the other - so neither has a neutral member, and `default_value` refuses naming the code rather than answering a value no registry issued.
+- `cusip` -> eight alphanumerics and one digit that closes them: a letter reads as ten plus its alphabet position, every second value is doubled, the digits of every value are summed, and the digit closes the sum to a multiple of ten (modulus-10 double-add-double); a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected nine characters`. Lower case -> the upper case it spells. `Cusip::issuer` and `Cusip::issue` read the six and two characters before the digit; `Cusip::is_valid` and `Cusip::closing_digit` answer the rule without building a value.
+- `sedol` -> six alphanumerics and one digit that closes them: the same letter values weighted `1, 3, 1, 7, 3, 9`, the digit closing the weighted sum to a multiple of ten; a check digit that does not close it -> refused, `the check digit does not close the identifier`; the wrong length -> `expected seven characters`. Lower case -> the upper case it spells. `Sedol::is_valid` and `Sedol::closing_digit` answer the rule without building a value.
+- An Arrow cast into `isin`, `cusip` or `sedol` is held to the canonical spelling - upper case, closed by its check digit - and refused otherwise (`canonical spelling`, naming the row and the column; null under `safe`), because a column's bytes are what every reader digests; only a scalar read folds the case. `try_cast(x as cusip)` in an [expression](../expression/terms.md) is that safe cast: an identifier the check digit closes answers, anything else is null.
+- `isin`, `cusip` and `sedol` name no vocabulary: `StringEnum::from_logical_name` answers an enum of no members for each, and no Python code class declares them.
+- Default value: a code defaults to the empty text its storage does, answered as the code's own scalar. `isin`, `cusip`, `sedol` and `state` are the exceptions, because their value door gates the space rather than holding it - a check digit closes the first three and a published vocabulary spells the last - so none has a neutral member, and `default_value` refuses naming the code rather than answering a value no registry issued.
 - A cast refusal under `safe` -> null, which a required column fills with the default; under strict -> the row and the column, for a code exactly as for a string ([Cast](cast.md)).
 - [Merged](field.md) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string.
 - [Merged](field.md) narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
@@ -485,7 +520,7 @@ the wire value rather than a name for it, exactly as `side` is.
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded field::ascii
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test types -- datatype::ascii datatype::coded datatype::securities field::ascii
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --lib -- types::string types::tests::string_enum types::tests::vocabulary
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^ascii/'
     ```

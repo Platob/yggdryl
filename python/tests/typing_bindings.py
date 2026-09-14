@@ -75,8 +75,10 @@ from yggdryl.types import (
     CfiField,
     CountryField,
     CurrencyField,
+    CusipField,
     IsinField,
     MicField,
+    SedolField,
     DenseUnionField,
     FixedSizeListField,
     GeographyField,
@@ -452,6 +454,10 @@ typed_cfi: CfiField = types.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
 typed_isin: IsinField = types.isin("instrument")
 typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
+typed_cusip: CusipField = types.cusip("cusip")
+typed_cusip_kind: Literal["cusip"] = typed_cusip.dtype.id
+typed_sedol: SedolField = types.sedol("sedol")
+typed_sedol_kind: Literal["sedol"] = typed_sedol.dtype.id
 typed_uuid: UuidField = types.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()

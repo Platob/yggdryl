@@ -218,6 +218,8 @@ function createFields(DataType, Field, native) {
     mic: simple('mic'),
     cfi: simple('cfi'),
     isin: simple('isin'),
+    cusip: simple('cusip'),
+    sedol: simple('sedol'),
     side: simple('side'),
     state: simple('state'),
     timeinforce: simple('timeinforce'),

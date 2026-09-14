@@ -1,4 +1,4 @@
-//! Every string's field marker: the one family and the eight codes.
+//! Every string's field marker: the one family and the ten codes.
 //!
 //! One file because a marker is one line per datatype and the family is one
 //! family; splitting them would be two lists to keep in step rather than one.
@@ -17,6 +17,8 @@ define_field_types!(CurrencyType, "currency", crate::DataType::Currency);
 define_field_types!(MicType, "mic", crate::DataType::Mic);
 define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 define_field_types!(IsinType, "isin", crate::DataType::Isin);
+define_field_types!(CusipType, "cusip", crate::DataType::Cusip);
+define_field_types!(SedolType, "sedol", crate::DataType::Sedol);
 define_field_types!(SideType, "side", crate::DataType::Side);
 define_field_types!(StateType, "state", crate::DataType::State);
 define_field_types!(TimeInForceType, "timeinforce", crate::DataType::TimeInForce);
@@ -31,6 +33,10 @@ pub type MicField = TypedField<MicType>;
 pub type CfiField = TypedField<CfiType>;
 /// An ISIN-typed field: ISO 6166's securities identification number.
 pub type IsinField = TypedField<IsinType>;
+/// A CUSIP-typed field: the nine-character North American securities identifier.
+pub type CusipField = TypedField<CusipType>;
+/// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
+pub type SedolField = TypedField<SedolType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
 /// A field declared as a thing's state.

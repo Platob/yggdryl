@@ -270,6 +270,14 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([Scalar::from("US0378331005"), Scalar::Null]),
         ),
         (
+            Field::new("cusip", DataType::Cusip, true),
+            Scalar::from_sequence([Scalar::from("037833100"), Scalar::Null]),
+        ),
+        (
+            Field::new("sedol", DataType::Sedol, true),
+            Scalar::from_sequence([Scalar::from("B0YBKJ7"), Scalar::Null]),
+        ),
+        (
             Field::new("side", DataType::Side, true),
             Scalar::from_sequence([Scalar::from("1"), Scalar::from("2"), Scalar::Null]),
         ),

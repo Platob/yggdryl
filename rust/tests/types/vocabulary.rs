@@ -69,6 +69,8 @@ fn the_two_names_of_one_list_prebuild_one_vocabulary() {
     );
     assert_eq!(StringEnum::prebuilt_values(" MIC "), StringEnum::MICS);
     assert!(StringEnum::prebuilt_values("isin").is_empty());
+    assert!(StringEnum::prebuilt_values("cusip").is_empty());
+    assert!(StringEnum::prebuilt_values("sedol").is_empty());
 }
 
 #[test]
@@ -83,7 +85,7 @@ fn a_registered_name_with_no_constant_prebuilds_no_members() {
 
 #[test]
 fn a_name_that_is_not_registered_is_refused_by_the_vocabulary() {
-    let refused = StringEnum::from_logical_name("sedol")
+    let refused = StringEnum::from_logical_name("figi")
         .unwrap_err()
         .to_string();
     assert!(refused.contains("currency"), "{refused}");

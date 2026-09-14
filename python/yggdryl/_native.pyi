@@ -532,7 +532,7 @@ class Scalar:
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "fixed_string", "string_view", "large_string",
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
-        "side", "state", "timeinforce", "uuid", "version",
+        "cusip", "sedol", "side", "state", "timeinforce", "uuid", "version",
         "url", "enum", "bytes", "fixed_size_binary", "large_binary",
         "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",

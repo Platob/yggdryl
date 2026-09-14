@@ -9,9 +9,9 @@ use crate::types::budget::{
 };
 use crate::types::string::is_text_storage;
 use crate::types::{
-    Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Code,
-    ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringParameters,
-    TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
+    Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
+    Code, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout,
+    StringParameters, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -167,6 +167,8 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Mic => code_array::<MIC_WIDTH>(dtype, values)?,
         DataType::Cfi => code_array::<CFI_WIDTH>(dtype, values)?,
         DataType::Isin => code_array::<ISIN_WIDTH>(dtype, values)?,
+        DataType::Cusip => code_array::<CUSIP_WIDTH>(dtype, values)?,
+        DataType::Sedol => code_array::<SEDOL_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -465,6 +467,20 @@ pub(crate) fn value_from_array(
         DataType::Isin => {
             let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Isin(crate::types::Isin::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?))
+        }
+        DataType::Cusip => {
+            let text = downcast::<StringArray>(array)?;
+            Scalar::Code(Code::Cusip(crate::types::Cusip::new(code_cell_text(
+                dtype,
+                text.value(index).as_bytes(),
+            )?)?))
+        }
+        DataType::Sedol => {
+            let text = downcast::<StringArray>(array)?;
+            Scalar::Code(Code::Sedol(crate::types::Sedol::new(code_cell_text(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?))

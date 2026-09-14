@@ -241,6 +241,8 @@ export type DataTypeId =
   | 'mic'
   | 'cfi'
   | 'isin'
+  | 'cusip'
+  | 'sedol'
   | 'side'
   | 'state'
   | 'timeinforce'
@@ -326,6 +328,8 @@ interface DataTypeKindById {
   mic: 'code'
   cfi: 'code'
   isin: 'code'
+  cusip: 'code'
+  sedol: 'code'
   side: 'code'
   state: 'code'
   timeinforce: 'code'
@@ -782,6 +786,10 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
+/** CUSIP, the nine-character securities identifier closed by its check digit. */
+export type CusipField = FieldOf<'cusip', string>
+/** SEDOL, the seven-character securities identifier closed by its check digit. */
+export type SedolField = FieldOf<'sedol', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1056,6 +1064,8 @@ export interface FieldsNamespace {
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
   isin(name: string, options?: FieldOptions): IsinField
+  cusip(name: string, options?: FieldOptions): CusipField
+  sedol(name: string, options?: FieldOptions): SedolField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
@@ -1581,6 +1591,14 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'isin', string, N, O>
+  cusip<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'cusip', string, N, O>
+  sedol<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'sedol', string, N, O>
   side<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
