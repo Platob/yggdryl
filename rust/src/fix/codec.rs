@@ -891,13 +891,17 @@ impl FixCodec {
         // The row's own cells, read by the position the codec resolved.
         let text = |at: usize| line.capture(at);
         let mut version = None;
-        let mut cells: Vec<(Field, i32, Scalar)> = Vec::new();
+        // The field is the codec's own and outlives this call, so a cell
+        // borrows it rather than cloning a name, a datatype, a metadata
+        // handle and an Arrow cache once per filled capture per line. Only
+        // the value is new, and only it is owned here.
+        let mut cells: Vec<(&Field, i32, Scalar)> = Vec::new();
         for (at, role) in self.captures.iter().enumerate() {
             match role {
                 CaptureRole::Version => version = text(at).and_then(version_of),
                 CaptureRole::Fill(field, tag) => {
                     let Some(held) = text(at) else { continue };
-                    cells.push((field.clone(), *tag, Scalar::from(held)));
+                    cells.push((field, *tag, Scalar::from(held)));
                 }
                 CaptureRole::Silent => {}
             }
@@ -1180,14 +1184,26 @@ impl FixCodec {
     /// One numeric frame, from the entries the line answered for it.
     fn frame_with(&self, entries: &[TextEntry], extras: RowExtras<'_>) -> Result<FixMsg> {
         let (arrived, nested) = frame_arrivals(entries);
-        let pairs: Vec<FixPair> = self
-            .judged_keys(&arrived)
-            .into_iter()
-            .zip(&arrived)
-            .filter_map(|(judged, held)| {
-                judged.map(|(key, _)| FixPair::own(key, held.value.as_ref().clone()))
-            })
-            .collect();
+        // A frame that marked no key judges none, and every key of it is
+        // then its own: asking for the judgement would build a vector of the
+        // row's whole width only to hand each key straight back, and the
+        // `filter_map` that read it would drop the width the collect could
+        // have reserved from. A wire frame marks nothing, so this is the
+        // shape every captured line takes.
+        let pairs: Vec<FixPair> = if arrived.iter().any(|held| held.marked) {
+            self.judged_keys(&arrived)
+                .into_iter()
+                .zip(&arrived)
+                .filter_map(|(judged, held)| {
+                    judged.map(|(key, _)| FixPair::own(key, held.value.as_ref().clone()))
+                })
+                .collect()
+        } else {
+            arrived
+                .iter()
+                .map(|held| FixPair::own(held.key.clone(), held.value.as_ref().clone()))
+                .collect()
+        };
         self.build(&pairs, &nested, extras)
     }
 
@@ -1988,9 +2004,9 @@ impl FixCodec {
                     self.registry.get_field_by_name(group)
                 }?;
                 let (tag, _) = self.registry.identity_of(counter)?;
-                match message.filter(|message| message.has_group_counter(tag)) {
-                    Some(message) => message.get_group_by_counter(tag),
-                    None => self.registry.get_group_by_counter(tag),
+                match message.filter(|message| message.has_group_tag(tag)) {
+                    Some(message) => message.get_group_by_tag(tag),
+                    None => self.registry.get_group_by_tag(tag),
                 }
             });
         found.filter(|field| field.dtype().is_nested())

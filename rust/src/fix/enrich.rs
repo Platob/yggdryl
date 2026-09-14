@@ -47,6 +47,8 @@
 //! all silence. The cost of silence is a null column; the cost of a guess is
 //! a wrong number nobody can tell from a sent one.
 
+use smol_str::SmolStr;
+
 use crate::Scalar;
 use crate::types::{Code, Isin, State, StringEnum};
 
@@ -974,7 +976,10 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
         let Some(text) = entry.value().as_str() else {
             continue;
         };
-        dropped.push((tag, Scalar::from(text.to_owned())));
+        // `Scalar::from(&str)` holds the text as the compact string it is:
+        // an owned `String` here would be built only for the value to copy
+        // out of it and drop it again.
+        dropped.push((tag, Scalar::from(text)));
     }
     for (tag, value) in dropped {
         // The dictionary's own field types the text on the way in. Unresolved
@@ -1006,11 +1011,15 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // below reads by tag, and a child stored under an alias with no tag is
     // invisible until it has been canonicalized (decision 20).
     let msg = super::latest::restate(msg)?;
-    let msgtype = msg
-        .get_by_tag(35)
-        .and_then(Scalar::as_str)
-        .unwrap_or_default()
-        .to_owned();
+    // Held compactly rather than as a `String`: a message type is one to
+    // three characters, which stays inside the value, so reading it costs
+    // the row nothing on the heap. It is copied out at all because the rules
+    // below write to the message it was read from.
+    let msgtype = SmolStr::new(
+        msg.get_by_tag(35)
+            .and_then(Scalar::as_str)
+            .unwrap_or_default(),
+    );
 
     let mut held = msg;
     for rule in RULES {
@@ -1021,7 +1030,7 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
         // idempotent: the second pass finds the first pass's answer stated.
         if held
             .get_by_tag(rule.tag)
-            .is_some_and(|value| value != &Scalar::Null)
+            .is_some_and(|value| !value.is_null())
         {
             continue;
         }

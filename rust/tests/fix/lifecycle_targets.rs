@@ -26,7 +26,7 @@ fn event(
     let mut columns = vec![
         field((55, "symbol"), DataType::utf8()),
         registry
-            .get_group_by_counter(ALTIDS_TAG_NAME.0)
+            .get_group_by_tag(ALTIDS_TAG_NAME.0)
             .unwrap()
             .clone(),
         registry.get_field_by_tag(52).unwrap().clone(),

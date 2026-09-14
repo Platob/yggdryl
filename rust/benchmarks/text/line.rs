@@ -6,8 +6,8 @@ use criterion::{Criterion, Throughput};
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{
-    TextBytes, TextEntries, TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch,
-    into_arrow_reader, read_text_lines,
+    LineSep, TextBytes, TextEntries, TextOptions, from_arrow_batch, from_arrow_reader,
+    into_arrow_batch, into_arrow_reader, read_text_lines,
 };
 use yggdryl::{IOMedia, MimeType, Url};
 
@@ -21,6 +21,19 @@ fn corpus() -> Vec<u8> {
     let mut bytes = Vec::with_capacity(ROWS * 40);
     for row in 0..ROWS {
         bytes.extend_from_slice(format!("[INFO] id={row} message {row}\n").as_bytes());
+    }
+    bytes
+}
+
+/// The same rows terminated the way a Windows tool writes them.
+///
+/// The flexible scan reads `\r\n` too; what this measures is the pinned
+/// reading of it, which is the only configuration that searches for a
+/// terminator wider than one byte.
+fn crlf_corpus() -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(ROWS * 41);
+    for row in 0..ROWS {
+        bytes.extend_from_slice(format!("[INFO] id={row} message {row}\r\n").as_bytes());
     }
     bytes
 }
@@ -191,8 +204,21 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
         .expect("the path parses");
     let unlifted = TextOptions::new();
 
+    // The three readings of a record terminator, over one corpus each: the
+    // flexible scan that takes `\n`, `\r\n` or `\r` as it finds them, a
+    // terminator pinned to one byte, and one pinned to two - the only
+    // reading that searches for a run rather than for a byte.
+    let crlf_bytes = crlf_corpus();
+    let crlf_source = handle(crlf_bytes.clone());
+    let mut pinned_lf = TextOptions::new();
+    pinned_lf.set_linesep(Some(LineSep::LF));
+    let mut pinned_crlf = TextOptions::new();
+    pinned_crlf.set_linesep(Some(LineSep::CRLF));
+
     assert_eq!(drain_lines(&source, &plain), ROWS);
     assert_eq!(drain_lines(&source, &captured), ROWS);
+    assert_eq!(drain_lines(&source, &pinned_lf), ROWS);
+    assert_eq!(drain_lines(&crlf_source, &pinned_crlf), ROWS);
 
     let mut group = criterion.benchmark_group("text_lines");
     group.throughput(Throughput::Bytes(bytes.len() as u64));
@@ -205,6 +231,17 @@ pub(crate) fn text_line_benchmarks(criterion: &mut Criterion) {
     group.bench_function("decode/classified", |bencher| {
         bencher.iter(|| drain_lines(black_box(&source), black_box(&classified)));
     });
+    group.bench_function("linesep/flexible", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&source), black_box(&plain)));
+    });
+    group.bench_function("linesep/pinned_lf", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&source), black_box(&pinned_lf)));
+    });
+    group.throughput(Throughput::Bytes(crlf_bytes.len() as u64));
+    group.bench_function("linesep/pinned_crlf", |bencher| {
+        bencher.iter(|| drain_lines(black_box(&crlf_source), black_box(&pinned_crlf)));
+    });
+    group.throughput(Throughput::Bytes(bytes.len() as u64));
 
     group.throughput(Throughput::Bytes(pairs.len() as u64));
     // What materializing the entry tree actually costs, against the same read

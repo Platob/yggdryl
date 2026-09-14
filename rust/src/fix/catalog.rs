@@ -86,18 +86,18 @@ struct MessageAlias {
 #[derive(Clone, Debug, Default)]
 pub(super) struct Catalog {
     entries: Vec<Definition>,
-    names: HashMap<(FixCategory, u64), usize>,
+    names: super::registry::FixMap<(FixCategory, u64), usize>,
     order: Vec<usize>,
     /// Each counter tag, and the one group it opens - `None` where two
     /// groups claim one counter, which names nothing.
-    counters: HashMap<i32, Option<usize>>,
+    counters: super::registry::FixMap<i32, Option<usize>>,
     /// Each wire code, and the message a bare code answers: the one named
     /// as tag 35's code set names the code, else the first in name order.
     message_codes: HashMap<SmolStr, usize>,
     /// The components carrying `fix:msgtype`, in name order: what
     /// `msgtypes` iterates and `msgtype_at` indexes.
     messages: Vec<usize>,
-    message_aliases: HashMap<u64, MessageAlias>,
+    message_aliases: super::registry::FixMap<u64, MessageAlias>,
     /// Each wire code, and the name tag 35's code set gives it.
     code_names: HashMap<SmolStr, SmolStr>,
 }
@@ -267,6 +267,34 @@ impl Catalog {
     }
 
     pub fn insert(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>> {
+        let prior = self.push(category, field)?;
+        // A replacement lands in the position the name already had, so the
+        // order is the one it was: only an append reorders.
+        if prior.is_none() {
+            self.sort_order();
+        }
+        if category == FixCategory::Groups {
+            self.index_counters();
+        }
+        if category == FixCategory::Components {
+            self.index_messages();
+        }
+        Ok(prior)
+    }
+
+    /// Adds one definition, leaving the order and the derived indexes for
+    /// [`Self::settle_indexes`].
+    ///
+    /// The door a catalog built whole comes through. Settling per entry is
+    /// O(C) work repeated C times - a full re-sort of the order and a full
+    /// rebuild of the counter and message indexes, every one of them thrown
+    /// away by the next entry - for a result only the last of them survives.
+    ///
+    /// A caller that reads the catalog between pushes must settle first:
+    /// [`Self::iter`] and [`Self::at`] `partition_point` over `order`, so
+    /// they need it monotone by category, and both derived indexes are
+    /// stale until settled.
+    pub(super) fn push(&mut self, category: FixCategory, field: Field) -> Result<Option<Field>> {
         if category == FixCategory::Groups {
             field
                 .as_fix()
@@ -291,12 +319,6 @@ impl Catalog {
             }
             let field = DefinitionField::from_field(category, field)?;
             let prior = std::mem::replace(&mut self.entries[position].field, field).into_field();
-            if category == FixCategory::Groups {
-                self.index_counters();
-            }
-            if category == FixCategory::Components {
-                self.index_messages();
-            }
             return Ok(Some(prior));
         }
         let position = self.entries.len();
@@ -304,18 +326,24 @@ impl Catalog {
         self.entries.push(Definition { category, field });
         self.names.insert(key, position);
         self.order.push(position);
+        Ok(None)
+    }
+
+    /// The iteration order: by category, then by name within it.
+    fn sort_order(&mut self) {
         self.order.sort_by(|left, right| {
             let left = &self.entries[*left];
             let right = &self.entries[*right];
             (left.category, left.field.name()).cmp(&(right.category, right.field.name()))
         });
-        if category == FixCategory::Groups {
-            self.index_counters();
-        }
-        if category == FixCategory::Components {
-            self.index_messages();
-        }
-        Ok(None)
+    }
+
+    /// Settles what a run of [`Self::push`] left: the iteration order and
+    /// both derived indexes, each once over the whole catalog.
+    pub(super) fn settle_indexes(&mut self) {
+        self.sort_order();
+        self.index_counters();
+        self.index_messages();
     }
 
     fn remove(&mut self, position: usize) -> Field {
@@ -1059,14 +1087,19 @@ impl FixRegistry {
         Ok(removed)
     }
 
-    /// The unique group one counter tag opens; two groups on one counter
-    /// name nothing.
-    pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field> {
+    /// The unique group the field `tag` names opens; two groups on one
+    /// counter name nothing.
+    ///
+    /// `tag` is the counter's, not the group's own: a group is a catalog
+    /// definition and the field counting it is a scalar, so this is the one
+    /// lookup that crosses the two. [`Self::get_field_by_tag`] answers the
+    /// counter itself off the same key.
+    pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         Some(self.catalog.entries[position].field.as_field())
     }
 
-    pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
+    pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
             DefinitionField::Group(field, plan) if !matches!(field.dtype(), DataType::Map(_)) => {
@@ -1076,9 +1109,10 @@ impl FixRegistry {
         }
     }
 
-    /// The unique group a counter tag opens, reporting absence or ambiguity.
-    pub fn group_by_counter(&self, tag: i32) -> Result<&Field> {
-        self.get_group_by_counter(tag)
+    /// The unique group the counter `tag` names opens, reporting absence or
+    /// ambiguity.
+    pub fn group_by_tag(&self, tag: i32) -> Result<&Field> {
+        self.get_group_by_tag(tag)
             .ok_or_else(|| Error::absent("one unambiguous FIX group", tag))
     }
 
@@ -1207,7 +1241,7 @@ impl FixRegistry {
             if let Some(group) = field
                 .as_fix()
                 .tag()?
-                .and_then(|tag| self.get_group_by_counter(tag))
+                .and_then(|tag| self.get_group_by_tag(tag))
                 .filter(|group| matches!(group.dtype(), DataType::Map(_)))
             {
                 return Err(Error::conflict(

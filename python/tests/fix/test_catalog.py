@@ -92,7 +92,7 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
     assert len(registry) == len(list(registry.definitions("fields"))) == 26
     assert len(fix_crate_fields()) == 25
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
-    assert registry.group_by_counter(65020).name == "altids"
+    assert registry.group_by_tag(65020).name == "altids"
 
 
 def test_inline_codes_are_per_field_and_snapshot_preserves_all_categories() -> None:
@@ -151,7 +151,7 @@ def test_category_iterators_and_singletons_pin_their_registry() -> None:
     assert singleton.value == "D"
     assert str(singleton) == "D"
     assert singleton.field.dtype == registry.definition("components", "NewOrderSingle").dtype
-    assert singleton.get_group_by_counter(453).name == "Parties"
+    assert singleton.get_group_by_tag(453).name == "Parties"
     with pytest.raises((AttributeError, TypeError, ValueError)):
         singleton.field.set_name("Changed")
     with pytest.raises(ValueError, match="shared"):
@@ -403,7 +403,7 @@ def test_compiled_identifiers_do_not_assign_one_ambiguous_tag_to_another_member(
 
 def test_builtin_altids_group_reference_round_trips_without_a_persisted_definition(tmp_path: Any) -> None:
     registry = FixRegistry()
-    mapping = registry.group_by_counter(65020)
+    mapping = registry.group_by_tag(65020)
     mapping.fix.group = "altids"
     registry.create_definition("components", _message("identified", "ID", [mapping]))
     snapshot = json.loads(registry.into_json())
@@ -433,7 +433,7 @@ def test_catalog_merge_refreshes_every_reference_with_the_inline_code_union() ->
         member = target.field_by_path(path)
         codes = json.loads(member.metadata["fix:codes"])["codes"]
         assert {item["value"]: item["name"] for item in codes} == {"B": "Broker", "C": "Client"}, path
-    assert target.msgtype("I").get_group_by_counter(453).name == "Parties"
+    assert target.msgtype("I").get_group_by_tag(453).name == "Parties"
     assert source.into_json() == before_source
     restored = FixRegistry.from_json(target.into_json())
     assert restored == target
@@ -510,7 +510,7 @@ def test_catalog_merge_extends_a_referenced_definition_and_refuses_a_changed_mem
     for path in ("Party.Extra", "Parties.Extra", "NewOrderSingle.Parties.Extra"):
         assert target.field_by_path(path).dtype == DataType("int32"), path
     assert target.field_by_path("NewOrderSingle.Parties.PartyID").fix.field_ref == "partyid"
-    assert target.msgtype("D").get_group_by_counter(453).name == "Parties"
+    assert target.msgtype("D").get_group_by_tag(453).name == "Parties"
     assert "Client" in target.field(448).metadata["fix:codes"]
     assert FixRegistry.from_json(target.into_json()) == target
     assert source.into_json() == before_source
@@ -555,7 +555,7 @@ def test_folded_named_merges_keep_canonical_names_and_references() -> None:
             assert target.definition(category, respell(name)).name == name
             assert target.definition(category, name).name == name
         assert target.field_by_path("NewOrderSingle.Parties.PartyID").fix.field_ref == "partyid"
-        assert target.msgtype("D").get_group_by_counter(453).name == "Parties"
+        assert target.msgtype("D").get_group_by_tag(453).name == "Parties"
         assert FixRegistry.from_json(target.into_json()) == target
 
         # The strict verb reads the same fold and still refuses the name.
@@ -598,7 +598,7 @@ def test_numeric_groups_resolve_through_the_one_namespace(scoped: bool) -> None:
     """Membership is provenance: a venue's counted group resolves with no pin at all."""
     registry = _numeric_group_registry(scoped)
     assert registry.dialects() == ["alpha"]
-    assert registry.group_by_counter(6000).name == "AlphaRows"
+    assert registry.group_by_tag(6000).name == "AlphaRows"
     assert registry.field_by_tag(6001).fix.has_branch("alpha")
     codec = FixCodec(registry)
     wire = b"35=X|6000=1|6001=42|6002=7|55=AAPL|10=0|"

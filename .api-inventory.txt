@@ -898,7 +898,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub const fn as_field(&self) -> &Field
   pub fn name(&self) -> &str
   pub fn as_str(&self) -> &str
-  pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
+  pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn identifier_values<'a>(&'a self, message: &'a FixMsg) -> impl Iterator<Item = (&'a Field, &'a Scalar)>  (borrowed direct members selected by a registration-time plan; no metadata parsing or allocation)
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
 
@@ -917,8 +917,8 @@ impl FixRegistry
   pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>
   pub fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool>  (true = arrived; an existing name merges one level deep: stored members kept in order, new ones appended, references re-resolved)
   pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>
-  pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
-  pub fn group_by_counter(&self, tag: i32) -> Result<&Field>
+  pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field>
+  pub fn group_by_tag(&self, tag: i32) -> Result<&Field>
 
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry

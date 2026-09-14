@@ -769,20 +769,20 @@ impl<'registry> Builder<'registry> {
     fn numeric_plan(&self, counter: i32) -> Option<&'registry GroupPlan> {
         match self
             .message
-            .filter(|message| message.has_group_counter(counter))
+            .filter(|message| message.has_group_tag(counter))
         {
-            Some(message) => message.get_group_plan_by_counter(counter),
-            None => self.registry.get_group_plan_by_counter(counter),
+            Some(message) => message.get_group_plan_by_tag(counter),
+            None => self.registry.get_group_plan_by_tag(counter),
         }
     }
 
     fn numeric_group(&self, counter: i32) -> Option<&'registry Field> {
         match self
             .message
-            .filter(|message| message.has_group_counter(counter))
+            .filter(|message| message.has_group_tag(counter))
         {
-            Some(message) => message.get_group_by_counter(counter),
-            None => self.registry.get_group_by_counter(counter),
+            Some(message) => message.get_group_by_tag(counter),
+            None => self.registry.get_group_by_tag(counter),
         }
     }
 
@@ -988,9 +988,12 @@ impl<'registry> Builder<'registry> {
     /// The group a counter tag heads.
     ///
     /// Counters are scalar fields and the groups they head are catalog
-    /// definitions, so this is the one lookup that crosses the two.
-    fn by_counter(&self, tag: i32) -> Option<&'registry Field> {
-        self.registry.get_group_by_counter(tag)
+    /// definitions, so this is the one lookup that crosses the two. Named
+    /// apart from [`Self::by_tag`] because they answer different things off
+    /// the same key: that one the scalar holding the tag, this one the group
+    /// the scalar counts.
+    fn group_by_tag(&self, tag: i32) -> Option<&'registry Field> {
+        self.registry.get_group_by_tag(tag)
     }
 
     /// A group's own field, by the name a key spells it.
@@ -1369,7 +1372,7 @@ impl<'registry> Builder<'registry> {
         self.push_grouped(top_name.as_str(), top_occurrence, &member, text, raw);
         // A member that is itself a counter opens its group inside the
         // occurrence, and what follows fills that group first.
-        if let Some(nested) = self.by_counter(tag) {
+        if let Some(nested) = self.group_by_tag(tag) {
             let members = declared_members(nested);
             self.open.push(OpenGroup {
                 name: SmolStr::new(nested.name()),

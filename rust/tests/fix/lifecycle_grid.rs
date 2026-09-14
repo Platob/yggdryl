@@ -34,7 +34,7 @@ fn event(
     .to_vec();
     fields.push(
         registry
-            .get_group_by_counter(ALTIDS_TAG_NAME.0)
+            .get_group_by_tag(ALTIDS_TAG_NAME.0)
             .unwrap()
             .clone(),
     );

@@ -36,7 +36,7 @@ fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     assert!(registry.insert(group.clone()).is_err());
     assert_eq!(registry, before);
     registry.add_field(group.clone()).unwrap();
-    assert_eq!(registry.get_group_by_counter(65_090), Some(&group));
+    assert_eq!(registry.get_group_by_tag(65_090), Some(&group));
     assert!(registry.get_field_by_tag(65_090).is_none());
     assert!(
         registry
@@ -102,8 +102,8 @@ fn map_counters_refuse_scalar_collisions_in_either_insertion_order() {
                 before.get_field_by_tag(65_090)
             );
             assert_eq!(
-                registry.get_group_by_counter(65_090),
-                before.get_group_by_counter(65_090)
+                registry.get_group_by_tag(65_090),
+                before.get_group_by_tag(65_090)
             );
         }
     }
@@ -148,7 +148,7 @@ fn merging_map_groups_preserves_layout_sortedness_and_key_nullability() {
             .add_definition(FixCategory::Groups, incoming)
             .unwrap()
     );
-    let stored = registry.get_group_by_counter(65_090).unwrap();
+    let stored = registry.get_group_by_tag(65_090).unwrap();
     let DataType::Map(map) = stored.dtype() else {
         panic!("merging preserves Map")
     };
@@ -183,7 +183,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
 #[test]
 fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
     let registry = Arc::new(FixRegistry::new());
-    let group = registry.get_group_by_counter(65_020).unwrap().clone();
+    let group = registry.get_group_by_tag(65_020).unwrap().clone();
     let schema = DataType::from_fields([group])
         .unwrap()
         .required_field("fix");
@@ -212,7 +212,7 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
 #[test]
 fn map_paths_distinguish_present_null_missing_and_absent_maps() {
     let registry = Arc::new(FixRegistry::new());
-    let schema = DataType::from_fields([registry.get_group_by_counter(65_020).unwrap().clone()])
+    let schema = DataType::from_fields([registry.get_group_by_tag(65_020).unwrap().clone()])
         .unwrap()
         .required_field("fix");
     let key = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
@@ -249,7 +249,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     label.as_fix_mut().set_tag(9001).unwrap();
     label.as_fix_mut().set_aliases(["AltIds"]).unwrap();
     registry.insert(label.clone()).unwrap();
-    let map = registry.get_group_by_counter(65_020).unwrap().clone();
+    let map = registry.get_group_by_tag(65_020).unwrap().clone();
     let schema = DataType::from_fields([label, map])
         .unwrap()
         .required_field("fix");
@@ -266,7 +266,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let path = yggdryl::FieldPath::from_str("altids['clordid']").unwrap();
     assert_eq!(registry.field_by_name("AltIds").unwrap().name(), "label");
     let declared = registry.field_by_path(&root).unwrap();
-    assert_eq!(declared, registry.get_group_by_counter(65_020).unwrap());
+    assert_eq!(declared, registry.get_group_by_tag(65_020).unwrap());
     let DataType::Map(map) = declared.dtype() else {
         panic!("the canonical Map owns the resolved path")
     };
@@ -313,7 +313,7 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
                 .unwrap(),
             Some(alias_tag)
         );
-        let mut map = registry.get_group_by_counter(65_020).unwrap().clone();
+        let mut map = registry.get_group_by_tag(65_020).unwrap().clone();
         map.remove_metadata("fix:tag");
         assert_eq!(map.as_fix().counter().unwrap(), Some(65_020));
         let schema = DataType::from_fields([map]).unwrap().required_field("fix");
@@ -408,8 +408,8 @@ fn canonical_scalar_and_map_names_conflict_atomically_in_either_order() {
             before.get_field_by_name("nativeids")
         );
         assert_eq!(
-            registry.get_group_by_counter(65_090),
-            before.get_group_by_counter(65_090)
+            registry.get_group_by_tag(65_090),
+            before.get_group_by_tag(65_090)
         );
     }
 }
