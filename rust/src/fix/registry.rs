@@ -105,11 +105,7 @@ pub(super) fn descend<'field>(
 /// a caller means, and every occurrence holds the same field, so a position
 /// names no child here and is spent by the list it stands on.
 fn segment_name(segment: &FieldSegment) -> Option<&str> {
-    match segment {
-        FieldSegment::Field(name) => Some(name.as_str()),
-        FieldSegment::Key(key) => key.value().as_str(),
-        FieldSegment::Index(_) | FieldSegment::Range { .. } => None,
-    }
+    segment.as_name()
 }
 
 /// One child by folded name, reaching through a group's occurrence.

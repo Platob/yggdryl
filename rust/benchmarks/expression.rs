@@ -323,6 +323,70 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// A predicate segment: one predicate over every element of every list, one
+/// filter, and rebuilt offsets - against the row tier doing the same walk.
+fn predicate_path_benchmarks(criterion: &mut Criterion) {
+    const LEGS: usize = 4;
+    let schema = Field::new(
+        "trades",
+        DataType::from_fields([Field::new(
+            "legs",
+            DataType::list(
+                DataType::from_fields([
+                    Field::new("ccy", DataType::utf8(), true),
+                    Field::new("size", DataType::Int64, true),
+                ])
+                .unwrap()
+                .nullable_field("item"),
+            ),
+            true,
+        )])
+        .unwrap(),
+        false,
+    );
+    let legs = |row: usize| -> Scalar {
+        Scalar::from_sequence((0..LEGS).map(|leg| {
+            Scalar::from_sequence([
+                Scalar::from(CURRENCIES[(row + leg) % CURRENCIES.len()]),
+                Scalar::from(i64::try_from(row % 1_000 + leg).unwrap_or_default()),
+            ])
+        }))
+    };
+    let rows: Vec<Scalar> = (0..ROWS)
+        .map(|row| Scalar::from_sequence([legs(row)]))
+        .collect();
+    let column = yggdryl::arrow::array_from_value(
+        &schema.fields()[0],
+        &Scalar::from_sequence((0..ROWS).map(legs)),
+    )
+    .unwrap();
+    let batch =
+        RecordBatch::try_new(schema.clone().into_arrow_schema().unwrap(), vec![column]).unwrap();
+    let bound = "legs[ccy = 'EUR' and size > 500][0].size"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let mut group = criterion.benchmark_group("expression_predicate_path");
+    group.throughput(criterion::Throughput::Elements((ROWS * LEGS) as u64));
+    group.bench_function("vectorized", |bencher| {
+        bencher.iter(|| {
+            black_box(&bound)
+                .evaluate(black_box(&batch))
+                .expect("the bound path must answer")
+        });
+    });
+    group.bench_function("rows", |bencher| {
+        bencher.iter(|| {
+            black_box(&rows)
+                .iter()
+                .filter(|row| bound.eval(row).is_ok_and(|held| !held.is_null()))
+                .count()
+        });
+    });
+    group.finish();
+}
+
 /// Pruning: the work a predicate does instead of reading anything at all.
 fn prune_benchmarks(criterion: &mut Criterion) {
     let schema = schema();
@@ -367,6 +431,7 @@ criterion_group!(
     bind_benchmarks,
     apply_benchmarks,
     scalar_benchmarks,
+    predicate_path_benchmarks,
     prune_benchmarks
 );
 criterion_main!(expression);

@@ -1180,11 +1180,7 @@ impl FixMsg {
     pub fn get_by_path(&self, path: &FieldPath) -> Option<&Scalar> {
         let mut segments = path.segments().iter();
         let first = segments.next()?;
-        let name = match first {
-            FieldSegment::Field(name) => name.as_str(),
-            FieldSegment::Key(key) => key.value().as_str()?,
-            FieldSegment::Index(_) | FieldSegment::Range { .. } => return None,
-        };
+        let name = first.as_name()?;
         let index = self.index_of_key(&FixKey::Name(name))?;
         let mut field = self.field.fields().get(index)?;
         let mut value = self.value.get(index)?;
@@ -1300,11 +1296,7 @@ impl FixMsg {
     /// it reaches nothing here - a position is answered by [`Self::descend`],
     /// which knows whether it is standing on a list.
     fn segment_index(&self, parent: &Field, segment: &FieldSegment) -> Option<usize> {
-        match segment {
-            FieldSegment::Field(name) => self.child_index(parent, name),
-            FieldSegment::Key(key) => self.child_index(parent, key.value().as_str()?),
-            FieldSegment::Index(_) | FieldSegment::Range { .. } => None,
-        }
+        self.child_index(parent, segment.as_name()?)
     }
 
     /// One step of a path: into a Struct child by name, or into one

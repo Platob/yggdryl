@@ -48,7 +48,7 @@ predicate   := additive [ comparison | "is" .. | "in" .. | "between" .. | "like"
 additive    := product (("+" | "-") product)*
 product     := unary (("*" | "/" | "%") unary)*
 unary       := "-" unary | accessor
-accessor    := atom ("." identifier | "[" key "]" | "[" [n] ":" [n] "]")*
+accessor    := atom ("." identifier | "[" key "]" | "[" [n] ":" [n] "]" | "[" expr "]")*
 atom        := literal | "(" expr ")" | column | "&holder." attribute | ":" parameter
              | "cast" "(" expr "as" datatype ")" | "try_cast" "(" .. ")"
              | "case" ("when" expr "then" expr)+ ["else" expr] "end"
@@ -58,6 +58,8 @@ atom        := literal | "(" expr ")" | column | "&holder." attribute | ":" para
 ```
 
 A lone `select ...` is a `Selector` and a lone `where ...` a `Filter`; either keyword is optional when the text is read as that clause alone. `Plan::from_str` reads one plan, `Expression::from_str` one plan or a `;` sequence.
+
+Inside `[...]` a whole number is a position, a text constant a key, a `:` form a run, and anything else - a bare boolean column included - a predicate over the elements of a list of structs, read against the element's own fields ([Terms](terms.md#predicate-segments)).
 
 ## Spellings
 
@@ -69,7 +71,7 @@ A lone `select ...` is a `Selector` and a lone `where ...` a `Filter`; either ke
 | membership | `x in (a, b)`, `x not in (a, b)` |
 | range | `x between low and high`, `x not between low and high` |
 | pattern | `x like 'a%'`, `x ilike 'A%'`, `x like 'a!%' escape '!'`, `x glob '**/*.parquet'` |
-| path | `a.b`, `a[0]`, `a[-1]`, `a['key']`, `a[1:3]`, `a[:-1]` |
+| path | `a.b`, `a[0]`, `a[-1]`, `a['key']`, `a[1:3]`, `a[:-1]`, `a[ccy = 'EUR']`, `a[active]`, `a[ccy = 'EUR'][0].price` |
 | identifier | `name`, `"odd name"`, `` `odd name` `` |
 | literal | `1`, `1.5`, `'text'`, `true`, `null`, `decimal128(9,2) '1.50'`, `date32 '2024-01-01'`, `utf8 null` |
 | constructor | `[1, 2]` a list, `{'k': 1}` a map, `struct(1 as a)` a struct |
@@ -103,6 +105,7 @@ Settled against Iceberg's bound/unbound split, Substrait's reference model, Arro
 | --- | --- |
 | `is distinct from` | two-valued, the operator that answers about a null |
 | indices | 0-based, and negative from the end; a slice is `[start:end)` with either bound optional |
+| predicate segment | JSONPath's `[?(...)]` without the `?`: `list[filter]` keeps the elements a boolean over the element's own fields answers exactly true for, a null element is dropped, a null list stays null, and the answer is a list of the same item type |
 | `substring` | 1-based, window `[start, start + length)` intersected with the characters that exist, a negative start counting back from the end |
 | text order | code point, no collation, so every statistics bound stays valid |
 | names | ASCII case-insensitive, and a genuine collision is an error |
@@ -145,6 +148,8 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
 - More than 100,000 nodes -> refused, because depth alone does not bound work.
 - `'2' > 1` -> the text reads as the number it names, `2 > 1`; text that reads as no number compares as text.
 - An index past the end, or a missing map key -> null.
+- A predicate segment after a computed value (`lower(name)[x = 1]`) -> refused at parse naming the bracket; a bare constant no predicate can be (`a[1.5]`) -> refused at parse.
+- A predicate segment on a column that is no list of structs, or a predicate that answers no boolean -> a bind error naming the datatype; a name inside it the element lacks -> the unknown-column error listing the element's fields, never the row's.
 - A struct child reached by a missing name -> a bind error.
 - One column named twice under case-insensitive resolution -> an ambiguity error.
 - A failed `cast` -> an error, where `try_cast` -> null.
@@ -160,6 +165,7 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_parse_failure_names_where_it_stopped expression::tests::nesting_past_the_limit_is_refused_not_crashed expression::tests::quoted_names_survive_every_encapsulator expression::tests::a_pattern_that_changes_per_row_is_refused_at_bind expression::tests::a_pattern_with_no_wildcard_becomes_an_equality expression::tests::substring_takes_the_window_the_standard_names expression::tests::a_column_named_twice_in_two_cases_is_ambiguous expression::tests::an_exact_quotient_keeps_room_to_be_a_quotient expression::tests::scalar_casts_return_the_exact_target_leaf expression::tests::scalar_arithmetic_propagates_checked_failures expression::tests::operands_meet_in_the_column_type_or_as_text expression::tests::a_struct_term_produces_and_reprints_a_row_sequence
     cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::plan::tests::every_verb_and_its_aliases_print_one_way expression::plan::tests::a_location_keeps_its_parts_whatever_quotes_them expression::plan::tests::a_sequence_is_plans_separated_by_semicolons
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- predicate_segment inside_brackets
     cargo bench -p yggdryl --bench expression -- expression_parse
     ```
 

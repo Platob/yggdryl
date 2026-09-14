@@ -21,7 +21,7 @@ use yggdryl::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Ur
 // ---------------------------------------------------------------------------
 
 /// Every spelling the grammar accepts, one of each shape.
-const CORPUS: [&str; 33] = [
+const CORPUS: [&str; 36] = [
     "ccy = 'EUR' and price > 100",
     "a or b and c",
     "(a or b) and c",
@@ -55,6 +55,9 @@ const CORPUS: [&str; 33] = [
     "lower(name)[0]",
     "-x + 3 * 2 - 1",
     ":since <= ts",
+    "legs[ccy = 'EUR'][0].price",
+    "legs[active]",
+    "size(legs[notes[v > 1][0].k = 'b'][size >= :floor]) > 1",
 ];
 
 #[test]
@@ -239,10 +242,47 @@ fn rows_schema() -> Field {
                 DataType::list(DataType::Int64.nullable_field("item")),
                 true,
             ),
+            // A list of structs holding a list of structs, so a predicate
+            // segment and one nested in another are compared on both tiers.
+            Field::new("legs", DataType::list(leg_field()), true),
         ])
         .unwrap(),
         false,
     )
+}
+
+/// One leg: a currency, a size, and notes that are themselves a list of
+/// structs.
+fn leg_field() -> Field {
+    DataType::from_fields([
+        DataType::utf8().nullable_field("ccy"),
+        DataType::Int64.nullable_field("size"),
+        DataType::list(
+            DataType::from_fields([
+                DataType::utf8().nullable_field("k"),
+                DataType::Int64.nullable_field("v"),
+            ])
+            .unwrap()
+            .nullable_field("item"),
+        )
+        .nullable_field("notes"),
+    ])
+    .unwrap()
+    .nullable_field("item")
+}
+
+fn leg(ccy: Option<&str>, size: Option<i64>, notes: Option<&[(&str, i64)]>) -> Scalar {
+    Scalar::from_sequence([
+        ccy.map_or(Scalar::Null, Scalar::from),
+        size.map_or(Scalar::Null, Scalar::from),
+        notes.map_or(Scalar::Null, |notes| {
+            Scalar::from_sequence(
+                notes
+                    .iter()
+                    .map(|(k, v)| Scalar::from_sequence([Scalar::from(*k), Scalar::from(*v)])),
+            )
+        }),
+    ])
 }
 
 /// Rows chosen so every operator meets a null, a `nan`, and a boundary.
@@ -264,6 +304,11 @@ fn rows() -> Vec<Scalar> {
             nested(Some("EUR")),
             Scalar::from("10:23:45"),
             list(&[1, 2, 3]),
+            Scalar::from_sequence([
+                leg(Some("EUR"), Some(1), Some(&[("a", 1), ("b", 2)])),
+                leg(Some("USD"), Some(2), Some(&[])),
+                leg(Some("EUR"), Some(3), None),
+            ]),
         ]),
         Scalar::from_sequence([
             Scalar::from(-3),
@@ -276,6 +321,8 @@ fn rows() -> Vec<Scalar> {
             nested(None),
             Scalar::from("25:30:00"),
             list(&[]),
+            // An empty list keeps nothing and is not null.
+            Scalar::from_sequence([]),
         ]),
         Scalar::from_sequence([
             Scalar::Null,
@@ -287,6 +334,8 @@ fn rows() -> Vec<Scalar> {
             Scalar::from(2024),
             Scalar::Null,
             Scalar::Null,
+            Scalar::Null,
+            // A null list stays null through every predicate.
             Scalar::Null,
         ]),
         Scalar::from_sequence([
@@ -300,6 +349,8 @@ fn rows() -> Vec<Scalar> {
             nested(Some("USD")),
             Scalar::from("99:59:59"),
             list(&[7]),
+            // A null element is dropped; a null size makes a size test unknown.
+            Scalar::from_sequence([Scalar::Null, leg(Some("EUR"), None, Some(&[("a", 5)]))]),
         ]),
         Scalar::from_sequence([
             Scalar::from(0),
@@ -312,12 +363,16 @@ fn rows() -> Vec<Scalar> {
             nested(Some("eur")),
             Scalar::from("00:00:00.500"),
             list(&[0, -1]),
+            Scalar::from_sequence([
+                leg(Some("eur"), Some(10), Some(&[("c", 3)])),
+                leg(Some("GBP"), Some(0), Some(&[("z", 0)])),
+            ]),
         ]),
     ]
 }
 
 /// The predicates the two tiers are compared on, all evaluable per row.
-const AGREEMENT: [&str; 29] = [
+const AGREEMENT: [&str; 33] = [
     "i = 1",
     "i <> 1",
     "i < 0",
@@ -350,6 +405,12 @@ const AGREEMENT: [&str; 29] = [
     "cast(clock as duration64(millisecond))",
     "cast(t as string)",
     "try_cast(clock as time32(second))",
+    // A predicate segment inside a comparison: the kept list is counted,
+    // an empty match is zero, and a null list is unknown.
+    "size(legs[ccy = 'EUR']) > 1",
+    "legs[size > 1][-1].ccy = 'EUR'",
+    "legs[notes[v > 1][0].k = 'b'][0].size = 1",
+    "size(legs[true]) = size(legs)",
 ];
 
 /// Evaluate one term on both tiers and assert they agree on every row.
@@ -439,9 +500,314 @@ fn projections_agree_between_the_tiers() {
         "xs[-2:]",
         "slice(xs, 1, null)",
         "get(nested, 'leg')",
+        // The predicate segment: an empty match, a null list, a null
+        // element, a predicate nested in a predicate, chained predicates, a
+        // bare boolean and a null predicate, and a function, arithmetic and
+        // a membership test over the element's fields.
+        "legs[ccy = 'EUR']",
+        "legs[ccy = 'EUR'][0].size",
+        "legs[size > 1][-1].ccy",
+        "legs[notes[v > 1][0].k = 'b']",
+        "legs[ccy = 'EUR'][size >= 3]",
+        "legs[ccy = 'EUR'][0].notes[v >= 2]",
+        "legs[notes[0].v = 1]",
+        "legs[true]",
+        "legs[null]",
+        "legs[size is null]",
+        "legs[lower(ccy) = 'eur']",
+        "legs[size + 1 > 2][1:]",
+        "legs[ccy in ('EUR', 'GBP') and notes is not null]",
+        "legs[size between 1 and 2]",
+        "legs[ccy = 'JPY'][0]",
+        "size(legs[ccy = 'EUR'])",
     ] {
         assert_tiers_agree(text, &schema, &rows);
     }
+}
+
+// ---------------------------------------------------------------------------
+// The predicate segment
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_predicate_segment_keeps_the_elements_the_grammar_says() {
+    let schema = rows_schema();
+    let rows = rows();
+    let eur = "legs[ccy = 'EUR']".parse::<Term>().unwrap();
+    assert_eq!(
+        eur.columns(),
+        vec!["legs".to_owned()],
+        "the row column, not the element's"
+    );
+    let bound = eur.bind(&schema).unwrap();
+    assert_eq!(bound.field().dtype(), schema.fields()[10].dtype());
+    assert!(bound.field().is_nullable());
+    assert_eq!(bound.column_names(), vec!["legs".to_owned()]);
+    assert_eq!(
+        bound.eval(&rows[0]).unwrap(),
+        Scalar::from_sequence([
+            leg(Some("EUR"), Some(1), Some(&[("a", 1), ("b", 2)])),
+            leg(Some("EUR"), Some(3), None),
+        ])
+    );
+    assert_eq!(bound.eval(&rows[1]).unwrap(), Scalar::from_sequence([]));
+    assert_eq!(
+        bound.eval(&rows[2]).unwrap(),
+        Scalar::Null,
+        "a null list stays null"
+    );
+    assert_eq!(
+        bound.eval(&rows[3]).unwrap(),
+        Scalar::from_sequence([leg(Some("EUR"), None, Some(&[("a", 5)]))]),
+        "a null element is dropped"
+    );
+    assert_eq!(
+        bound.eval(&rows[4]).unwrap(),
+        Scalar::from_sequence([]),
+        "text compares exactly"
+    );
+
+    let first = "legs[ccy = 'EUR'][0].size"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(first.field().dtype(), &DataType::Int64);
+    assert_eq!(first.eval(&rows[0]).unwrap(), Scalar::from(1_i64));
+    assert_eq!(first.eval(&rows[1]).unwrap(), Scalar::Null);
+    assert_eq!(first.eval(&rows[3]).unwrap(), Scalar::Null);
+
+    // A predicate over the element's own list of structs, chained.
+    let nested = "legs[notes[v > 1][0].k = 'b'][0].ccy"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(nested.eval(&rows[0]).unwrap(), Scalar::from("EUR"));
+    assert_eq!(nested.eval(&rows[3]).unwrap(), Scalar::Null);
+}
+
+#[test]
+fn a_parameter_inside_a_predicate_is_supplied_at_bind() {
+    let schema = rows_schema();
+    let rows = rows();
+    let term: Term = "legs[ccy = :ccy and size >= :floor][0].size"
+        .parse()
+        .unwrap();
+    assert_eq!(
+        term.parameters(),
+        vec!["ccy".to_owned(), "floor".to_owned()]
+    );
+    assert!(
+        term.bind(&schema).is_err(),
+        "a parameter has to be supplied"
+    );
+    let bound = term
+        .bind_with(
+            &schema,
+            &[("ccy", Scalar::from("EUR")), ("floor", Scalar::from(2_i64))],
+        )
+        .unwrap();
+    assert_eq!(
+        bound.term().to_string(),
+        "legs[ccy = 'EUR' and size >= 2][0].size"
+    );
+    assert_eq!(bound.eval(&rows[0]).unwrap(), Scalar::from(3_i64));
+    let batch = batch_of(&schema, &rows);
+    let column = bound.evaluate(&batch).unwrap();
+    assert_eq!(
+        yggdryl::arrow::scalar_value(
+            &bound.field().clone().with_nullable(true),
+            column.slice(0, 1).as_ref()
+        )
+        .unwrap(),
+        Scalar::from(3_i64)
+    );
+}
+
+#[test]
+fn a_predicate_segment_over_a_sliced_large_list_matches_the_row_tier() {
+    let schema = Field::new(
+        "rows",
+        DataType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
+            .unwrap(),
+        false,
+    );
+    let rows: Vec<Scalar> = rows()
+        .iter()
+        .map(|row| Scalar::from_sequence([row.as_sequence().unwrap()[10].clone()]))
+        .collect();
+    let batch = batch_of(&schema, &rows).slice(1, 3);
+    let bound = "legs[ccy = 'EUR'][size is null or size > 1]"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    let column = bound.evaluate(&batch).unwrap();
+    assert_eq!(column.len(), 3);
+    for (position, row) in rows[1..4].iter().enumerate() {
+        let held = yggdryl::arrow::scalar_value(
+            &bound.field().clone().with_nullable(true),
+            column.slice(position, 1).as_ref(),
+        )
+        .unwrap();
+        assert_eq!(bound.eval(row).unwrap(), held, "row {position}");
+    }
+}
+
+#[test]
+fn a_predicate_segment_is_refused_where_it_cannot_keep_elements() {
+    let schema = rows_schema();
+    for (text, expected) in [
+        ("i[x = 1]", "list of structs"),
+        ("xs[item > 1]", "list of structs"),
+        ("legs[size]", "boolean predicate"),
+        ("legs[nope = 1]", "ccy, size, notes"),
+        ("legs[i = 1]", "ccy, size, notes"),
+    ] {
+        let error = text.parse::<Term>().unwrap().bind(&schema).expect_err(text);
+        assert!(error.to_string().contains(expected), "{text}: {error}");
+        assert!(
+            text.parse::<Term>().unwrap().field(&schema).is_err(),
+            "{text} types the same way"
+        );
+    }
+    // A computed value has no column to keep elements of, and the parser
+    // says so at the bracket.
+    for text in [
+        "lower(s)[x = 1]",
+        "[1, 2][x = 1]",
+        "slice(legs, 0, 1)[ccy = 'EUR']",
+    ] {
+        let error = text.parse::<Term>().expect_err(text);
+        assert!(
+            error.to_string().contains("computed value"),
+            "{text}: {error}"
+        );
+    }
+    let refused = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+        .filter_elements("x = 1".parse().unwrap())
+        .expect_err("a computed value");
+    assert!(refused.to_string().contains("computed value"), "{refused}");
+    assert_eq!(
+        Term::column("legs")
+            .filter_elements("ccy = 'EUR'".parse().unwrap())
+            .unwrap()
+            .to_string(),
+        "legs[ccy = 'EUR']"
+    );
+}
+
+#[test]
+#[should_panic(expected = "computed value")]
+fn a_predicate_step_on_a_computed_value_has_no_term_to_build() {
+    let _ = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+        .path([yggdryl::FieldSegment::filter("x = 1".parse().unwrap())]);
+}
+
+#[test]
+fn a_predicate_segment_is_walked_like_any_other_node() {
+    let term: Term = "legs[ccy = 'EUR' or ccy = 'USD'][&holder.size > :floor]"
+        .parse()
+        .unwrap();
+    assert_eq!(term.columns(), vec!["legs".to_owned()]);
+    assert_eq!(term.parameters(), vec!["floor".to_owned()]);
+    assert_eq!(term.attributes(), vec![Attribute::Size]);
+    assert!(term.has_attributes());
+    // A path, two predicates, and what they hold: the budget counts inside.
+    assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().node_count(), 4);
+    assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().depth(), 3);
+    assert_eq!(
+        "legs[notes[v > 1][0].k = 'b']"
+            .parse::<Term>()
+            .unwrap()
+            .depth(),
+        5
+    );
+    assert_eq!(
+        term.simplify().to_string(),
+        "legs[ccy in ('EUR', 'USD')][&holder.size > :floor]",
+        "simplification reaches into a predicate"
+    );
+    // Nesting predicates past the limit is refused, never a crash.
+    let deep = format!("{}x{}", "a[".repeat(40), "]".repeat(40));
+    let error = deep.parse::<Term>().expect_err("past the limit");
+    assert!(error.to_string().contains("hard limit"), "{error}");
+    let document = term.clone().into_json().unwrap();
+    assert!(document.contains("\"where\""), "{document}");
+    assert_eq!(Term::from_json(&document).unwrap(), term);
+}
+
+#[test]
+fn a_predicate_segment_explains_as_a_branch_of_its_path() {
+    let term: Term = "legs[ccy = 'EUR'][0].size > 1".parse().unwrap();
+    assert_eq!(
+        term.explain(),
+        [
+            ">",
+            "├─ path legs[ccy = 'EUR'][0].size",
+            "│  └─ where",
+            "│     └─ =",
+            "│        ├─ column ccy",
+            "│        └─ literal 'EUR'",
+            "└─ literal 1",
+        ]
+        .join("\n")
+    );
+    let schema = rows_schema();
+    let bound = term.bind(&schema).unwrap();
+    // The predicate's column index is the element's, and its branch is typed
+    // and costed like every other node; the path costs the decode plus what
+    // the predicate costs over the elements.
+    assert_eq!(
+        bound.explain(),
+        [
+            "> : boolean null [cost 2049]".to_owned(),
+            "├─ path [ccy = 'EUR'][0].size : int64 null [cost 2049]".to_owned(),
+            format!(
+                "│  ├─ column legs #10 : {} null [cost 1024]",
+                schema.fields()[10].dtype()
+            ),
+            "│  └─ where".to_owned(),
+            "│     └─ = : boolean null [cost 1024]".to_owned(),
+            "│        ├─ column ccy #0 : utf8 null [cost 1024]".to_owned(),
+            "│        └─ literal 'EUR' : utf8 not null [cost 0]".to_owned(),
+            "└─ literal 1 : int64 not null [cost 0]".to_owned(),
+        ]
+        .join("\n")
+    );
+}
+
+#[test]
+fn a_predicate_segment_costs_a_decode_and_prunes_nothing() {
+    let schema = rows_schema();
+    let rows = rows();
+    // Cheapest first: a bare column comparison runs before the decode of a
+    // list, whichever order they were written in.
+    let bound = "size(legs[ccy = 'EUR']) > 1 and i = 1"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(
+        bound.term().to_string(),
+        "i = 1 and size(legs[ccy = 'EUR']) > 1"
+    );
+    // Every statistic is known and tight, and still nothing about a
+    // predicate segment is proven either way.
+    let bounds = bounds_of(&schema, &rows);
+    assert_eq!(bound.statistics_certainty(&bounds), None);
+    assert!(bound.statistics_prune(&bounds));
+    let only = "size(legs[ccy = 'EUR']) > 1"
+        .parse::<Term>()
+        .unwrap()
+        .bind(&schema)
+        .unwrap();
+    assert_eq!(only.statistics_certainty(&bounds), None);
+    assert!(only.reads_rows());
+    let split = only.partition_split();
+    assert!(split.is_empty());
+    assert!(split.remaining().to_string().contains("legs[ccy = 'EUR']"));
 }
 
 #[test]
