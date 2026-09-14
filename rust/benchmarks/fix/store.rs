@@ -11,7 +11,8 @@ use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects};
 fn sharded(shards: i32) -> (std::path::PathBuf, Folder) {
     let fields = (0..shards).flat_map(|shard| {
         (0..10).map(move |offset| {
-            let tag = shard * 100 + offset;
+            // Registry tags start at 1; zero is unresolved arrival provenance.
+            let tag = shard * 100 + offset + 1;
             let mut field = DataType::Int64.nullable_field(format!("Field{tag}"));
             field.as_fix_mut().set_tag(tag).unwrap();
             field
