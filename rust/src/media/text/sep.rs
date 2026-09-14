@@ -263,9 +263,16 @@ pub(crate) fn next_break(
 /// Built from the terminator once per read rather than once per line:
 /// `memmem::find` compiles a prefilter over its needle on every call, and
 /// the needle here is fixed configuration for the whole object.
-pub(crate) fn finder_for(linesep: Option<&LineSep>) -> Option<Finder<'static>> {
+///
+/// Behind a pointer rather than held by value: a `Finder` carries a
+/// vector-width prefilter and so asks to be aligned to 32 bytes, and a
+/// reader holding one inline asks for that too. A binding puts the reader
+/// inside an object its host allocated - CPython's allocator aligns to 16 -
+/// and a type that wants more than its storage gives is misaligned on every
+/// use. One pointer per read keeps the searcher's alignment its own.
+pub(crate) fn finder_for(linesep: Option<&LineSep>) -> Option<Box<Finder<'static>>> {
     let needle = linesep.map(LineSep::as_bytes)?;
-    (needle.len() > 1).then(|| Finder::new(needle).into_owned())
+    (needle.len() > 1).then(|| Box::new(Finder::new(needle).into_owned()))
 }
 
 /// The flexible scan: `\n`, `\r\n`, or a lone `\r`, whichever comes next.

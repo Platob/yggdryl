@@ -52,7 +52,11 @@ pub(crate) struct Lines<R> {
     line_open: bool,
     /// The searcher a pinned multi-byte terminator is scanned with, built
     /// from the configuration on the first pull and kept for the read.
-    finder: Option<Finder<'static>>,
+    ///
+    /// Behind a pointer for the alignment [`finder_for`] states: a reader
+    /// holding a `Finder` inline asks to be aligned to 32 bytes, which the
+    /// object allocator a binding hands it to does not give.
+    finder: Option<Box<Finder<'static>>>,
     /// Whether that searcher has been asked for yet.
     searched: bool,
 }
@@ -142,7 +146,7 @@ impl<R: Read> Lines<R> {
             if let Some(found) = next_break(
                 &self.page[self.cursor..self.filled],
                 linesep,
-                self.finder.as_ref(),
+                self.finder.as_deref(),
                 self.drained,
             ) {
                 let start = self.cursor;

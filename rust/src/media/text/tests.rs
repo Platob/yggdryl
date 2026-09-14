@@ -98,6 +98,24 @@ fn strings(batches: &[arrow_array::RecordBatch], name: &str) -> Vec<Option<Strin
 
 fn assert_text_buffer(_: &Text<Buffer>) {}
 
+/// The alignment a binding can actually give the read it holds.
+///
+/// A binding does not box what it hands back: PyO3 places this struct inside
+/// an object CPython allocated, and CPython's allocator aligns to 16 bytes.
+/// A field asking for more - a vector-width searcher is the one that did -
+/// makes every use of the read a misaligned dereference, which a release
+/// build quietly tolerates on x86 and a debug build aborts the process over.
+/// The rule is cheap to keep and invisible to break, so it is pinned here
+/// rather than discovered in a binding's test suite.
+#[test]
+fn a_read_fits_the_alignment_an_object_allocator_gives() {
+    assert!(
+        align_of::<super::TextLines>() <= 16,
+        "a text read asks to be aligned to {} bytes, and an object allocator gives 16",
+        align_of::<super::TextLines>()
+    );
+}
+
 #[test]
 fn repeated_text_conversion_reconfigures_one_wrapper() {
     let text = named("app.log", b"body\n")
