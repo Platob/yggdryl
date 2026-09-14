@@ -705,9 +705,9 @@ export type FixedUtf8Field = FieldOf<'fixed_string', string>
 export type AsciiField = FieldOf<'string', string>
 /** US-ASCII padded with trailing NUL to a fixed width; read back trimmed. */
 export type FixedAsciiField = FieldOf<'fixed_string', string>
-/** ISO 3166-1 alpha-2, the two-letter country code, in its own two bytes. */
+/** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
-/** ISO 4217, the three-letter currency code, in its own three bytes. */
+/** ISO 4217, the three-letter currency code, stored as its text. */
 export type CurrencyField = FieldOf<'currency', string>
 /** ISO 10383, the four-character market identifier code. */
 export type MicField = FieldOf<'mic', string>
@@ -715,11 +715,11 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
-/** FIX Side(54), the one-character order side, in four bytes. */
+/** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
-/** An order state ranked from the first to the terminal ones, in ten bytes. */
+/** An order state ranked from the first to the terminal ones, held to ten bytes. */
 export type StateField = FieldOf<'state', string>
-/** FIX TimeInForce(59), the spelled instruction, in eight bytes. */
+/** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
 export type TimeInForceField = FieldOf<'timeinforce', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<

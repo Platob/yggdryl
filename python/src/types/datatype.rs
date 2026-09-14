@@ -1306,8 +1306,8 @@ impl PyDataType {
 
     /// Whether this is a string, in any layout and charset.
     ///
-    /// The nine registered codes are not strings: a currency is three ASCII
-    /// bytes with an identity, and answers ``is_code`` instead.
+    /// The eight registered codes are not strings: a currency is an identity
+    /// over ISO 4217 that stores as text, and answers ``is_code`` instead.
     #[getter]
     fn is_string(&self) -> bool {
         self.inner.is_string()
@@ -1358,14 +1358,15 @@ impl PyDataType {
 
     /// The byte width of one value, ``None`` when the layout has no fixed one.
     ///
-    /// A fixed string's and fixed bytes' width is a parameter; a code's and a
-    /// number's is its identity. Both answer here.
+    /// A fixed string's and fixed bytes' width is a parameter and a number's
+    /// is its identity; both answer here. A code's width bounds its values
+    /// rather than laying them out, so a code answers ``code_width``.
     #[getter]
     fn fixed_byte_width(&self) -> Option<usize> {
         self.inner.fixed_byte_width()
     }
 
-    /// Whether this is one of the four registered code vocabularies.
+    /// Whether this is one of the eight registered code vocabularies.
     #[getter]
     fn is_code(&self) -> bool {
         self.inner.is_code()
@@ -1380,12 +1381,25 @@ impl PyDataType {
         self.inner.code_name()
     }
 
-    /// The integer an ASCII value packs into: its storage bytes, big-endian.
+    /// The most bytes a registered code's value may be, ``None`` for every
+    /// other datatype.
+    ///
+    /// The number its standard fixes - three for a currency, six for a CFI
+    /// classification - and a maximum rather than a layout: a code stores as
+    /// the text it is, so ``fixed_byte_width`` answers ``None`` and this
+    /// answers the bound its values are held to.
+    #[getter]
+    fn code_width(&self) -> Option<usize> {
+        self.inner.code_width()
+    }
+
+    /// The integer an ASCII value packs into: its bytes padded with trailing
+    /// NUL to the width, big-endian.
     ///
     /// Only a fixed US-ASCII string of at most sixteen bytes or a code packs;
     /// the packed integer is the same in every process, so it is what an enum
-    /// member and a stable hash are, and it is exactly the bytes the column
-    /// stores.
+    /// member and a stable hash are. The padding is the packing's: a code's
+    /// column stores the text alone.
     fn ascii_packed(&self, value: &Bound<'_, PyAny>) -> PyResult<i128> {
         self.inner
             .ascii_packed(&ascii_value_of(value)?)

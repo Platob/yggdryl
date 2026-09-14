@@ -238,16 +238,12 @@ mod readings {
             DataType::binary().scalar("hi").unwrap(),
             Scalar::from(b"hi".to_vec())
         );
-        // A code spells its padded slot, which is the payload the fixed
-        // column stores; text spells its characters' bytes and nothing more.
+        // A code spells its characters' bytes, which is the payload its text
+        // column stores; so does any other text, and nothing more.
         let code = DataType::Side.scalar("1").unwrap();
         assert_eq!(
-            DataType::fixed_size_binary(4)
-                .unwrap()
-                .scalar(code)
-                .unwrap()
-                .as_bytes(),
-            Some(b"1\0\0\0".as_slice())
+            DataType::binary().scalar(code).unwrap().as_bytes(),
+            Some(b"1".as_slice())
         );
         let text = dtype("fixed_ascii(4)").scalar("US").unwrap();
         assert_eq!(

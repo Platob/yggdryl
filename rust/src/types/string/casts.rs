@@ -18,7 +18,9 @@ use crate::types::cast::arrow_cast_exposed;
 use crate::types::cast::{downcast, internal_target_error, named_cell};
 use crate::types::nested::casts::is_exposed;
 use crate::types::string::arrow_storage;
-use crate::types::{Str, StringParameters, code_cell_text, code_text, trim_padding};
+use crate::types::{
+    Str, StringParameters, code_cell_text, code_text, trim_padding, uuid_parse, uuid_text,
+};
 use crate::{Charset, DataType, Field};
 
 /// What the planner learned about the column a string reads from.
@@ -31,8 +33,10 @@ pub(crate) enum StringSource {
     /// A `yggdryl.string` column: every cell is read under its own
     /// parameters before it is restated under the target's.
     String(StringParameters),
-    /// A registered code: validated ASCII, trimmed of its padding.
+    /// A registered code: validated ASCII, at most the code's own width.
     Code(DataType),
+    /// A UUID: sixteen stored bytes, read as the canonical spelling they are.
+    Uuid,
     /// Storage with no extension identity.
     Bare,
 }
@@ -42,6 +46,13 @@ pub(crate) enum StringSource {
 enum Cell<'a> {
     Text(&'a str),
     Bytes(&'a [u8]),
+    /// One cell of a fixed-width slot, whose trailing NUL is the slot's
+    /// padding rather than the value's bytes.
+    ///
+    /// Which sources it is padding *for* is the reading's own question: a
+    /// declared width and a code both trim it where they read, and a UUID
+    /// fills its sixteen bytes, so only bare storage trims here.
+    Slot(&'a [u8]),
 }
 
 /// Validates every exposed, non-null value entering a string datatype and
@@ -49,10 +60,8 @@ enum Cell<'a> {
 ///
 /// Every source is read through one of three temporaries - text, variable
 /// bytes, or the fixed binary it already is - so the per-cell reading is
-/// stated once per source kind rather than once per Arrow layout. A fixed
-/// binary cell is trimmed of its padding on the way in: the padding is the
-/// slot's, never the value's. A failing cell is null under `safe` and an
-/// error naming the row otherwise.
+/// stated once per source kind rather than once per Arrow layout. A failing
+/// cell is null under `safe` and an error naming the row otherwise.
 pub(crate) fn ingest_string_array(
     array: &ArrayRef,
     source: &StringSource,
@@ -69,16 +78,27 @@ pub(crate) fn ingest_string_array(
             (StringSource::String(parameters), Cell::Text(text)) => {
                 Str::from_storage(text, *parameters).try_with_parameters(target)
             }
-            (StringSource::String(parameters), Cell::Bytes(bytes)) => {
+            // A declared width trims its own padding where it reads.
+            (StringSource::String(parameters), Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
                 Str::from_bytes(bytes, *parameters)?.try_with_parameters(target)
             }
-            (StringSource::Code(code), Cell::Bytes(bytes)) => {
+            // So does a code, at the width its standard fixes.
+            (StringSource::Code(code), Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
                 Str::from_storage(code_cell_text(code, bytes)?, StringParameters::default())
                     .try_with_parameters(target)
+            }
+            // A UUID is sixteen bytes of identity, every one of which can be
+            // NUL, and its value is the canonical spelling they name.
+            (StringSource::Uuid, Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
+                Str::from(uuid_text(&uuid_parse(bytes)?)).try_with_parameters(target)
+            }
+            (StringSource::Uuid, Cell::Text(text)) => {
+                Str::from(uuid_text(&uuid_parse(text.as_bytes())?)).try_with_parameters(target)
             }
             (StringSource::Code(_) | StringSource::Bare, Cell::Text(text)) => {
                 Str::from_storage(text, StringParameters::default()).try_with_parameters(target)
             }
+            (StringSource::Bare, Cell::Slot(bytes)) => Str::from_bytes(trim_padding(bytes), target),
             (StringSource::Bare, Cell::Bytes(bytes)) => Str::from_bytes(bytes, target),
         }
     };
@@ -94,7 +114,7 @@ pub(crate) fn ingest_string_array(
             |index| {
                 cells
                     .is_valid(index)
-                    .then(|| read(Cell::Bytes(trim_padding(cells.value(index)))))
+                    .then(|| read(Cell::Slot(cells.value(index))))
             },
         );
     }
@@ -253,14 +273,14 @@ fn encoded(charset: Charset, value: &Str) -> crate::Result<Cow<'_, [u8]>> {
 }
 
 /// Validates every exposed, non-null value entering a registered code and
-/// pads it into that code's fixed storage.
+/// stores it as the text it is.
 ///
-/// A fixed binary of the code's own width is the same array once validated,
-/// another fixed width re-pads each trimmed value, and anything else first
-/// renders as Utf8 through Arrow's kernel. What the constant width buys is
-/// the inner loop: the length check, the slot arithmetic and the padding
-/// copy are all fixed-size, so a currency column ingests three bytes a row
-/// with no width to read.
+/// A Utf8 column of valid values is the target's own storage, so it is shared
+/// rather than rebuilt; a fixed binary is trimmed of the padding its slot
+/// wrote, and anything else first renders as Utf8 through Arrow's kernel.
+/// What the constant width buys is the inner loop: the length check is
+/// fixed-size, so a currency column ingests three bytes a row with no width
+/// to read.
 pub(crate) fn ingest_code_array<const WIDTH: usize>(
     array: &ArrayRef,
     safe: bool,
@@ -268,33 +288,15 @@ pub(crate) fn ingest_code_array<const WIDTH: usize>(
     exposure: Option<&BooleanBuffer>,
     budget: &mut MaterializationBudget,
 ) -> Result<ArrayRef> {
-    if let ArrowDataType::FixedSizeBinary(source_width) = array.data_type() {
+    if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
         let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-        if usize::try_from(*source_width).is_ok_and(|width| width == WIDTH) {
-            // The array is the target's own storage once every cell passes;
-            // a cell that fails is an error when strict, and under `safe` a
-            // null the rebuild below writes.
-            let mut every_cell_passes = true;
-            for index in 0..source.len() {
-                if is_exposed(exposure, index)
-                    && source.is_valid(index)
-                    && code_cell::<WIDTH>(field, index, source.value(index), safe)?.is_none()
-                {
-                    every_cell_passes = false;
-                    break;
-                }
-            }
-            if every_cell_passes {
-                return Ok(Arc::clone(array));
-            }
-        }
-        return padded_code_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
+        return code_text_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
             source.is_valid(index).then(|| source.value(index))
         });
     }
     if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
         let source = downcast::<BinaryArray>(bytes.as_ref())?;
-        return padded_code_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
+        return code_text_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
             source.is_valid(index).then(|| source.value(index))
         });
     }
@@ -311,19 +313,38 @@ pub(crate) fn ingest_code_array<const WIDTH: usize>(
         )?
     };
     let source = downcast::<StringArray>(text.as_ref())?;
-    padded_code_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
+    // The column is the target's own storage once every cell passes; a cell
+    // that fails is an error when strict, and under `safe` a null the
+    // rebuild below writes. Nothing is copied when the column already holds
+    // what the code promises, which is what a column written as this code
+    // always does.
+    let mut every_cell_passes = true;
+    for index in 0..source.len() {
+        if is_exposed(exposure, index)
+            && source.is_valid(index)
+            && code_cell::<WIDTH>(field, index, source.value(index).as_bytes(), safe)?.is_none()
+        {
+            every_cell_passes = false;
+            break;
+        }
+    }
+    if every_cell_passes {
+        return Ok(text);
+    }
+    code_text_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
         source
             .is_valid(index)
             .then(|| source.value(index).as_bytes())
     })
 }
 
-/// Builds the fixed storage of one registered code from one cell per row.
+/// Builds the Utf8 storage of one registered code from one cell per row.
 ///
 /// Unexposed rows are null, and so is a refused cell under `safe`, exactly
 /// as a refused string cell is: the two families answer one cast the same
-/// way.
-fn padded_code_array<'a, const WIDTH: usize>(
+/// way. A cell never outgrows `WIDTH`, so the payload is bounded before a
+/// byte of it is copied.
+fn code_text_array<'a, const WIDTH: usize>(
     field: &Field,
     rows: usize,
     safe: bool,
@@ -331,27 +352,20 @@ fn padded_code_array<'a, const WIDTH: usize>(
     budget: &mut MaterializationBudget,
     cell: impl Fn(usize) -> Option<&'a [u8]>,
 ) -> Result<ArrayRef> {
-    // The reservation bounds `rows * WIDTH`, so the product cannot overflow.
     budget.add_array(field.dtype(), rows)?;
-    let mut bytes = vec![0_u8; rows * WIDTH];
-    let mut validity = BooleanBufferBuilder::new(rows);
-    for (index, slot) in bytes.chunks_exact_mut(WIDTH).enumerate() {
+    let mut builder = StringBuilder::with_capacity(rows, rows.saturating_mul(WIDTH));
+    for index in 0..rows {
         let value = cell(index)
             .filter(|_| is_exposed(exposure, index))
             .map(|raw| code_cell::<WIDTH>(field, index, raw, safe))
             .transpose()?
             .flatten();
-        if let Some(text) = value {
-            slot[..text.len()].copy_from_slice(text.as_bytes());
+        match value {
+            Some(text) => builder.append_value(text),
+            None => builder.append_null(),
         }
-        validity.append(value.is_some());
     }
-    let nulls = arrow_buffer::NullBuffer::new(validity.finish());
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        WIDTH as i32,
-        arrow_buffer::Buffer::from(bytes),
-        (nulls.null_count() != 0).then_some(nulls),
-    )?))
+    Ok(Arc::new(builder.finish()))
 }
 
 /// Validates one code cell at the code's constant width.

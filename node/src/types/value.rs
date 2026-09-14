@@ -87,8 +87,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
         D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
-        // A code reads back as its trimmed text and a UUID as its hyphenated
-        // spelling, so both project as the string family does.
+        // A code reads back as the text it stores and a UUID as its
+        // hyphenated spelling, so both project as the string family does.
         D::String(_)
         | D::Country
         | D::Currency

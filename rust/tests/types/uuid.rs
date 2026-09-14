@@ -138,3 +138,130 @@ fn version_8_replaces_only_the_six_version_and_variant_bits() {
         assert_eq!(Uuid::from_v8(value.get()), value);
     }
 }
+
+/// Every string and byte datatype a UUID column reaches, and what it reads
+/// back as.
+///
+/// A UUID is sixteen bytes of identity and a 36-character spelling of them,
+/// and both readings have to survive every layout, charset and bound the two
+/// families offer - not only the plain `utf8` one arm used to answer.
+#[test]
+fn a_uuid_column_reads_into_every_string_and_byte_datatype() {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, RecordBatch, StringArray};
+    use yggdryl::{ArrowCast, ArrowCastOptions, Field};
+
+    const TEXT: &str = "01912d68-783e-7c9a-b1f2-0123456789ab";
+    let raw: [u8; 16] = [
+        0x01, 0x91, 0x2d, 0x68, 0x78, 0x3e, 0x7c, 0x9a, 0xb1, 0xf2, 0x01, 0x23, 0x45, 0x67, 0x89,
+        0xab,
+    ];
+
+    let strict = || ArrowCastOptions::new().with_safe(false);
+    let row = |field: Field| Field::new("row", DataType::from_fields([field]).unwrap(), false);
+    let id = Field::new("id", DataType::Uuid, false);
+    let stored = id
+        .cast_arrow_array(
+            Arc::new(StringArray::from(vec![TEXT])) as ArrayRef,
+            strict(),
+        )
+        .unwrap();
+    // The column carries `arrow.uuid`, which is what a reading reads it under.
+    let batch = RecordBatch::try_new(
+        row(id.clone()).into_arrow_schema().unwrap(),
+        vec![Arc::clone(&stored)],
+    )
+    .unwrap();
+    let into = |target: DataType| -> ArrayRef {
+        Arc::clone(
+            row(Field::new("id", target, false))
+                .cast_arrow_batch(batch.clone(), strict())
+                .unwrap()
+                .column(0),
+        )
+    };
+
+    // Text: the canonical spelling, under every layout, charset and bound the
+    // string family declares. A bound or a charset used to fall through to a
+    // reading of the raw bytes, which is not text at all.
+    for spelling in [
+        "utf8",
+        "large_utf8",
+        "utf8_view",
+        "ascii",
+        "utf8(36)",
+        "large_ascii",
+        "fixed_ascii(36)",
+        "string(windows-1252)",
+    ] {
+        let target = DataType::from_str(spelling).unwrap();
+        let read = into(target.clone());
+        let back = Field::new("id", DataType::Uuid, false)
+            .cast_arrow_array(read, strict())
+            .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
+        assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
+    }
+
+    // A bound the spelling outgrows is refused rather than truncated, and the
+    // refusal names the field and the row.
+    let refused = row(Field::new(
+        "id",
+        DataType::from_str("utf8(8)").unwrap(),
+        false,
+    ))
+    .cast_arrow_batch(batch.clone(), strict())
+    .unwrap_err()
+    .to_string();
+    assert!(refused.contains("row 0"), "{refused}");
+
+    // Bytes: the sixteen stored bytes, under every variable framing and the
+    // fixed width that is exactly them.
+    for spelling in [
+        "binary",
+        "large_binary",
+        "binary_view",
+        "fixed_size_binary(16)",
+        "binary(16)",
+    ] {
+        let read = into(DataType::from_str(spelling).unwrap());
+        let back = Field::new("id", DataType::Uuid, false)
+            .cast_arrow_array(read, strict())
+            .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
+        assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
+    }
+
+    // A byte width that is not sixteen holds a different payload, and each
+    // refusal names both sides rather than leaving Arrow's builder to
+    // complain about a slice length.
+    for (spelling, expected) in [
+        ("fixed_size_binary(8)", "a fixed binary of 16 bytes"),
+        ("binary(8)", "at most 8 bytes"),
+    ] {
+        let refused = row(Field::new(
+            "id",
+            DataType::from_str(spelling).unwrap(),
+            false,
+        ))
+        .cast_arrow_batch(batch.clone(), strict())
+        .unwrap_err()
+        .to_string();
+        assert!(refused.contains(expected), "{spelling}: {refused}");
+    }
+
+    // And the same two readings hold one value at a time.
+    let value = Scalar::Uuid(Uuid::from_bytes(&raw).unwrap());
+    assert_eq!(
+        DataType::utf8().scalar(value.clone()).unwrap().as_str(),
+        Some(TEXT)
+    );
+    assert_eq!(
+        DataType::binary().scalar(value.clone()).unwrap().as_bytes(),
+        Some(raw.as_slice())
+    );
+    assert_eq!(
+        DataType::Uuid.scalar(Scalar::from(raw.to_vec())).unwrap(),
+        value
+    );
+    assert_eq!(DataType::Uuid.scalar(Scalar::from(TEXT)).unwrap(), value);
+}

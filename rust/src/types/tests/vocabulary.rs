@@ -19,7 +19,7 @@ fn every_constant_is_sorted_unique_and_fits_its_width() {
         );
         let width = DataType::from_logical_name(name)
             .unwrap()
-            .fixed_byte_width()
+            .code_width()
             .unwrap();
         for value in values {
             assert!(

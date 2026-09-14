@@ -596,9 +596,8 @@ impl From<Arc<[u8]>> for Scalar {
 ///
 /// A byte column stores one payload per row and several kinds already hold
 /// one: a byte value is cloned, a geospatial value shares its handle, and a
-/// UUID is its sixteen canonical bytes. A code spells its padded slot,
-/// because that is the payload the fixed column stores - the value keeps
-/// only the trimmed text - and every other value that spells text spells
+/// UUID is its sixteen canonical bytes. Every other value that spells text -
+/// a registered code among them, which stores as the text it is - spells
 /// that text's bytes.
 pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     match value {
@@ -607,11 +606,6 @@ pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
             Some(Bytes::from_shared(Arc::clone(geospatial.storage())))
         }
         Scalar::Uuid(uuid) => Some(Bytes::new(uuid.into_bytes())),
-        Scalar::Code(code) => {
-            let mut padded = vec![0_u8; code.width()];
-            crate::types::ascii_padded(&mut padded, code.as_str());
-            Some(Bytes::from(padded))
-        }
         _ => value.as_str().map(|text| Bytes::new(text.as_bytes())),
     }
 }

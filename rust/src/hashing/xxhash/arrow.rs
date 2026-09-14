@@ -1194,8 +1194,8 @@ fn feed_cell(
         }
         // Everything below reads through the shared scalar boundary. The arms
         // are spelled out rather than caught by `_` so a datatype added to the
-        // model is a compile error here, not a silent fallback: code storage
-        // trims the padding its layout adds, an identifier and a
+        // model is a compile error here, not a silent fallback: a code holds
+        // its text to the width its standard fixes, an identifier and a
         // version restate their canonical text, an interval and a 32-bit
         // duration validate components the buffer alone does not fix, a
         // geospatial payload carries its own tag, and every list, struct, map,

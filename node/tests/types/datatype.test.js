@@ -328,14 +328,17 @@ test('every byte column is one datatype: a layout and a bound', () => {
 })
 
 test('a registered code is its own datatype over its standard width', () => {
-  // Not a name over a width: `currency` is three bytes with an identity, and
-  // `fixed_ascii(3)` is three bytes without one.
+  // Not a name over a width: `currency` is text with an identity held to
+  // three bytes, and `fixed_ascii(3)` is three bytes without one.
   const currency = new DataType('currency')
 
   assert.equal(currency.id, 'currency')
   assert.equal(currency.kind, 'code')
   assert.equal(currency.toString(), 'currency')
-  assert.equal(currency.fixedByteWidth, 3)
+  // The width bounds a value; a code stores as its text, so it names no
+  // fixed layout.
+  assert.equal(currency.codeWidth, 3)
+  assert.equal(currency.fixedByteWidth, null)
   assert.equal(currency.stringParameters, null)
   assert.ok(!currency.equals(DataType.fixedAscii(3)))
   assert.ok(DataType.from('currency').equals(currency))
@@ -349,19 +352,22 @@ test('a registered code is its own datatype over its standard width', () => {
     ['cfi', 6],
     // Twelve: two letters of prefix, nine of national number, one check digit.
     ['isin', 12],
-    // The FIX codes store the width their standard fixes, one letter or not.
+    // The FIX codes are held to the width their standard fixes.
     ['side', 4],
     ['state', 10],
     ['timeinforce', 8],
   ]) {
     const dtype = new DataType(name)
     assert.equal(dtype.id, name)
-    assert.equal(dtype.fixedByteWidth, width, name)
+    assert.equal(dtype.codeWidth, width, name)
+    assert.equal(dtype.fixedByteWidth, null, name)
     assert.equal(dtype.kind, 'code', name)
     assert.equal(dtype.asciiPacked('A'), BigInt('A'.charCodeAt(0)) << BigInt(8 * (width - 1)))
   }
 
-  // The packed integer is the value's own bytes, exactly as for a width.
+  // The packed integer pads the value to the code's own width, exactly as a
+  // fixed US-ASCII string of it does. The padding is the packing's; the
+  // column stores the text alone.
   assert.equal(currency.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
   assert.equal(currency.asciiValue(0x555344n), 'USD')
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)

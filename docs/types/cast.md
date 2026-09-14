@@ -625,7 +625,9 @@ no behavior of its own.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.
 - A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([Strings & bytes](text.md#casts)). Under `safe` a refused cell is null, under strict the row and column are named.
-- A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict.
+- A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict. A fixed slot is trimmed of the padding it wrote, except into `uuid` at sixteen bytes, where every byte carries identity.
+- A code or a UUID source entering a string -> read as the text the code holds and as the canonical spelling of the identifier, under the target's own layout, charset and bound: one `StringIngest`, not a second renderer per source.
+- A fixed-width byte target -> `BytesIngest` too: a cell that does not fill the width exactly is refused naming the field, the row and both lengths, rather than left to Arrow's builder to complain about a slice. A source whose own width is declared and disagrees is refused at plan time instead.
 - A dictionary or run-end target -> its values' own rule runs, then the encoding; a `dictionary<int32, ascii>` refuses what `ascii` refuses.
 - An encoded source into a plain target -> decoded first, so a dictionary of a recognized code still renders as text.
 - A bare null into a `union` or a `run_end_encoded` -> refused: both spell absence inside a child, so the value is the pair or the values entry that carries it.

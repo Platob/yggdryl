@@ -2541,3 +2541,89 @@ until the Rust story, Python and Node were complete.
   the surviving example rather than disappearing.
 - `scripts/check_docs_examples.py` counts per language are reported before
   and after in the commit, as counts, not timings; Gate 4 runs whole.
+
+## 31. A code is the text it is; an identifier is the bits it is
+
+**Rule.** A registered code stores as Arrow's `Utf8`, under its own
+`yggdryl.*` extension name, holding the ASCII text a value is. The eight -
+`country`, `currency`, `mic`, `cfi`, `isin`, `side`, `state`, `timeinforce` -
+no longer ride `FixedSizeBinary(n)`, so nothing pads a cell to the width and
+nothing trims a cell back. The width each standard fixes stays, as a maximum
+the value rule enforces rather than a layout a column enforces:
+`DataType::code_width` and `DataTypeId::code_width` own it, `fixed_byte_width`
+answers `None` for a code, and `code_for_extension` loses the width argument
+that used to make a name and a storage agree.
+
+What tells a code from the text beside it is the extension *name*, never the
+storage. `yggdryl.currency` over `Utf8` with an empty document is a currency;
+the same `Utf8` under `yggdryl.string` is the string its document describes;
+under no name at all it is plain text. `yggdryl.currency` over any other
+storage is a foreign field wearing our name and imports as that storage - the
+rule decision 14 already applied to a retired code, so a column written under
+the old fixed width imports as the `fixed_size_binary(n)` it is, and there is
+no reader that turns it back into a code.
+
+`ascii_packed` is unchanged in every integer it answers. It pads a value with
+trailing NUL to the width and reads it big-endian, and that padding belongs to
+the packing rather than to a column: a `field:enum` document written before
+this change names the same members after it, and a stable hash hashes the same
+bits. A fixed string pads into `fixed_byte_width`; a code pads into
+`code_width`.
+
+A UUID does not move, and the asymmetry is the decision. `arrow.uuid` is the
+canonical Arrow extension and its `FixedSizeBinary(16)` is not ours to
+redefine the way a `yggdryl.*` name is; the value is 128 bits in which every
+byte carries identity and no repertoire makes it text; sixteen bytes beat the
+thirty-six a spelling costs, and decision 23's chains key on it. What a code
+gains by moving - Parquet's `String` logical type, byte-array statistics,
+dictionary encoding, a reader outside this crate that already knows the
+column - a UUID would pay 20 bytes a row and one canonical extension for.
+
+Instead the two families meet in one cast tier. A recognized UUID source is a
+`StringSource` the single string ingest reads, so an identifier column casts
+into every string datatype - any layout, charset or bound - where only plain
+unbounded text worked before, and the second renderer that served that one
+case is deleted. A fixed slot of any width casts *into* `uuid` as the spelling
+it holds; sixteen bytes stay the identifier, because a trailing `0x00` there
+is identity rather than padding. A bounded byte target reads its cells whether
+the bound is a maximum or a fixed width, so a cell that misses the width is
+refused naming the field, the row and both lengths rather than by Arrow's own
+builder complaining about a slice.
+
+**Why.** A currency is not a byte slot; it is a value from a published
+registry that happens to be short ASCII. Storing it padded made the crate
+invent a layout - the same objection decision 14 raised against a packed
+datatype the crate invented - and every consumer outside Arrow already read it
+as text: Avro spelled it `string`, Iceberg spelled it `string`, a partition
+directory spelled it `USD`. Only Arrow disagreed, and Parquet inherited the
+disagreement: a code column carried no logical type at all, so a reader
+outside this crate saw an untyped `FIXED_LEN_BYTE_ARRAY`, and its footer
+bounds carried the slot's NUL for every value short of the width. `version`
+and `url` were already identities over text under their own extension names;
+a code is the same shape and now says so.
+
+**What moves.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `types/arrow.rs`, `arrow/field.rs` | the eight storage arms answer `Utf8`; recognition matches `Utf8` and the name alone | every other extension; the dictionary peel |
+| `types/string/codes.rs`, `datatype_id.rs` | `code_width` on both; `fixed_byte_width` drops its code arms; `code_for_extension(name)`; `ascii_padded` gone with the padding it wrote | every discriminant; every packed integer; `ALL.len() == 60` |
+| `types/string/casts.rs`, `types/cast.rs`, `uuid/casts.rs` | `ingest_code_array` builds text and shares a passing column; `StringSource::Uuid`; `ArrayCastKind::UuidText` and `render_uuid_text` gone; a fixed slot of any width enters `uuid` | the one UUID rule; `safe` and strict semantics |
+| `types/bytes/casts.rs` | a fixed width is filled and refused here, named and located | the maximum's own refusal; the plan-time refusal for two declared widths |
+| `types/merge.rs`, `budget/limits.rs`, `media/partition.rs`, `arrow/value.rs`, `bytes/scalars.rs` | a code is bounded variable text everywhere it was a fixed slot | every other pairing |
+| `uuid/dtypes.rs`, `uuid/scalars.rs` | `Uuid::TEXT_LEN` and `Uuid::render` into a caller's slot; the JSON, YAML, TOML, serde and expression writers drop one allocation each | the canonical spelling; the packed value |
+| Python, Node | `code_width`/`codeWidth` bound beside `code_name`; `fixed_byte_width` `None` for a code | every other accessor |
+| docs | `types/codes.md` restated whole; `types/uuid.md` gains the rendering and the readings; `cast.md`, `field.md`, `text.md`, `datatype.md`, `index.md`, `arrow/schema.md`, the playground manifest | every other page |
+
+**Written in:** `types/string/codes.rs`, on the module; `types/arrow/field.rs`,
+on `recognized_arrow_extension`; `types/uuid/dtypes.rs`, on `uuid_rendered`;
+`AGENTS.md`, under Strings and Bytes; `docs/types/codes.md`.
+**Fixtures:** every code storage pin in `rust/tests/types/datatype/coded.rs`
+restated as text, plus a code and a UUID read into every string and byte
+datatype and back; a code column through Parquet, asserting the `String`
+logical type and the byte-array bounds a padded column never earned; a text
+column every cell of which passes, shared rather than copied; the typed-field
+downcast, which would have caught the eight markers still naming
+`FixedSizeBinaryArray`; `fixed_size_binary(8)` refused naming both sides;
+`code_width` beside `fixed_byte_width` in the three languages; the UUID
+rendering benchmarked against the owned string it replaces.

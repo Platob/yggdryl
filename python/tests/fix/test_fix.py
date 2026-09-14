@@ -2989,10 +2989,9 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
     assert len(set(parsed.column("uuid").to_pylist())) == len(LIFE)
     previous = parsed.column("prevuuid").to_pylist()
     assert previous[0] is None and all(held is not None for held in previous[1:])
-    # A state column holds the ranked spelling, never the wire's code, in the
-    # fixed width the datatype declares.
-    states = [held.rstrip(b"\0") for held in parsed.column("ordstatus").to_pylist()[1:3]]
-    assert states == [b"20NEW", b"40PARTFILL"]
+    # A state column holds the ranked spelling, never the wire's code, as the
+    # text its datatype stores.
+    assert parsed.column("ordstatus").to_pylist()[1:3] == ["20NEW", "40PARTFILL"]
     # Not filled unless asked: every row names no chain, so every row hashes
     # the one empty name, and none carries a previous message.
     bare = codec.parse_text_arrow_reader(source).read_all()
@@ -3005,7 +3004,7 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
         schema, codec.lifecycle(codec.enrich_messages(codec.messages(codec.parse_text_arrow_reader(source))))
     ).read_all()
     assert both.column("puuid").to_pylist() == chains
-    assert both.column("state").to_pylist()[1].rstrip(b"\0") == b"20NEW"
+    assert both.column("state").to_pylist()[1] == "20NEW"
 
 
 def test_a_stream_of_lines_through_enrichment_and_the_lifecycle_carries_its_chain(
@@ -3357,11 +3356,11 @@ def test_a_batch_read_lands_at_the_newest_version_when_asked(seed: FixRegistry) 
         fix_schema(seed), codec.enrich_messages(codec.parse_lines([REPORT]))
     ).read_all()
     assert restated.column("version").to_pylist() == ["5.0.2"]
-    assert restated.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40TRDCXL"
+    assert restated.column("exectype").to_pylist()[0] == "40TRDCXL"
     assert restated.column("nopartyids").to_pylist() == [2]
     assert restated.column("parties").to_pylist()[0][0]["partyid"] == "BRKR"
     # Unenriched, the row speaks the version it was read at.
     read = codec.parse_text_arrow_reader(source).read_all()
     assert read.column("version").to_pylist() == ["4.2"]
-    assert read.column("exectype").to_pylist()[0].rstrip(b"\0") == b"40PARTFILL"
+    assert read.column("exectype").to_pylist()[0] == "40PARTFILL"
     assert read.column("nopartyids").to_pylist() == [None]

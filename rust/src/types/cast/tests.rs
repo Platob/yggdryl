@@ -844,13 +844,21 @@ mod strings {
         let lenient = Field::new("ccy", DataType::Currency, true)
             .cast_arrow_array(text, ArrowCastOptions::new())
             .unwrap();
-        let lenient = downcast::<FixedSizeBinaryArray>(lenient.as_ref()).unwrap();
-        assert_eq!(lenient.value(0), b"USD");
+        let lenient = downcast::<StringArray>(lenient.as_ref()).unwrap();
+        assert_eq!(lenient.value(0), "USD");
         assert!(lenient.is_null(1));
         assert!(lenient.is_null(2));
 
-        // A source already in the code's own storage is validated in place
-        // and rebuilt only where a cell has to become null.
+        // A text source every cell of which passes is the code's own
+        // storage, so it is shared rather than copied.
+        let passing: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR"]));
+        let shared = DataType::Currency
+            .cast_arrow_array(Arc::clone(&passing), strict())
+            .unwrap();
+        assert!(Arc::ptr_eq(&shared, &passing));
+
+        // A fixed binary source is trimmed of the padding its slot wrote and
+        // stored as the text it spells.
         let stored: ArrayRef = Arc::new(
             FixedSizeBinaryArray::try_from_sparse_iter_with_size(
                 [Some(b"USD".as_slice()), Some(b"EU\xff".as_slice())].into_iter(),
@@ -866,8 +874,8 @@ mod strings {
         let lenient = Field::new("ccy", DataType::Currency, true)
             .cast_arrow_array(stored, ArrowCastOptions::new())
             .unwrap();
-        let lenient = downcast::<FixedSizeBinaryArray>(lenient.as_ref()).unwrap();
-        assert_eq!(lenient.value(0), b"USD");
+        let lenient = downcast::<StringArray>(lenient.as_ref()).unwrap();
+        assert_eq!(lenient.value(0), "USD");
         assert!(lenient.is_null(1));
     }
 

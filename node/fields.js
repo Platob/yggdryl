@@ -204,8 +204,9 @@ function createFields(DataType, Field, native) {
     uuid: simple('uuid'),
     version: simple('version'),
     url: simple('url'),
-    // Each registered code is a datatype of its own, storing the width its
-    // standard fixes and carrying that identity across Arrow.
+    // Each registered code is a datatype of its own, storing as the text it
+    // is, held to the width its standard fixes, and carrying that identity
+    // across Arrow under its own extension name.
     country: simple('country'),
     currency: simple('currency'),
     mic: simple('mic'),

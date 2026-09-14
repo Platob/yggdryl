@@ -23,6 +23,9 @@ const VARIANT_MASK: u128 = 3 << 62;
 const RFC_VARIANT: u128 = 2 << 62;
 
 impl Uuid {
+    /// The length of the canonical spelling: 32 digits and four hyphens.
+    pub const TEXT_LEN: usize = types::UUID_TEXT_LEN;
+
     /// Construct from the exact packed identifier.
     pub const fn new(value: u128) -> Self {
         Self(value)
@@ -121,11 +124,32 @@ impl Uuid {
     pub const fn into_bytes(self) -> [u8; 16] {
         self.0.to_be_bytes()
     }
+
+    /// Write the canonical spelling into `slot` and borrow it back.
+    ///
+    /// Every rendering is exactly [`Self::TEXT_LEN`] bytes, so the caller
+    /// holds the slot on the stack and nothing is allocated. This is what a
+    /// writer that wants a `&str` asks for; [`ToString::to_string`] is the
+    /// same characters when an owned one is what the caller needs.
+    ///
+    /// ```
+    /// use yggdryl::types::Uuid;
+    ///
+    /// let value = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
+    /// let mut slot = [0_u8; Uuid::TEXT_LEN];
+    /// assert_eq!(value.render(&mut slot), "5c146b14-3c52-8afd-938a-375d0df1fbf6");
+    /// ```
+    pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str {
+        types::uuid_rendered(&self.0.to_be_bytes(), slot)
+    }
 }
 
 impl fmt::Display for Uuid {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&types::uuid_text(&self.0.to_be_bytes()))
+        // The rendering is a fixed 36 bytes, so it is written on the stack
+        // and never allocates.
+        let mut slot = [0_u8; Self::TEXT_LEN];
+        formatter.write_str(self.render(&mut slot))
     }
 }
 
