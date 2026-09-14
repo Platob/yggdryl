@@ -369,7 +369,7 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   // A narrowed and limited read never changes whole-media dimensions.
   const narrowed = handle
     .recordOptions()
-    .withSelectByNames(['id'])
+    .withSelect(['id'])
     .withMaxRowSize(1)
   const selected = handle.readArrowReader(narrowed).intoTable()
   assert.equal(selected.numRows, 1)
@@ -711,7 +711,7 @@ test('plain text uses flat record options and ordinary record reads', (t) => {
   const table = new IOBase(target).readArrowReader(options).intoTable()
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['url', 'rownum', 'mtime', 'body', 'level', 'id'],
+    ['sourceurl', 'rownum', 'mtime', 'body', 'level', 'id'],
   )
   assert.deepEqual([...table.getChild('rownum')], [10n, 11n, 12n])
   assert.deepEqual(
@@ -752,7 +752,7 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
   assert.deepEqual(
     batches[0].schema.fields.map((field) => [field.name, field.nullable]),
     [
-      ['url', true],
+      ['sourceurl', true],
       ['rownum', false],
       ['mtime', true],
       ['body', false],
@@ -768,7 +768,7 @@ test('framed text keeps physical row starts and reports a bounded prefix', () =>
     'yggdryl.url',
   )
   assert.deepEqual(
-    batches.flatMap((batch) => [...batch.getChild('url')]),
+    batches.flatMap((batch) => [...batch.getChild('sourceurl')]),
     Array(3).fill(source.url.toString()),
   )
   assert.deepEqual(
@@ -837,7 +837,7 @@ test('text-only settings are flat native TextOptions value state', () => {
 
   assert.throws(() => {
     options.rowheader = '(?<body>.+)'
-  }, /distinct from url, rownum, body, and dropped_byte_size/)
+  }, /distinct from sourceurl, rownum, body, and dropped_byte_size/)
   assert.throws(() => {
     options.startRownum = 1
   })

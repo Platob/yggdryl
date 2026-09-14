@@ -17,7 +17,7 @@ const SCHEMA = {
 
 test('AvroSchema accepts natural values, native Scalars, JSON text, and bytes', () => {
   const natural = new AvroSchema(SCHEMA)
-  const native = AvroSchema.from(Scalar.fromJs(SCHEMA))
+  const native = AvroSchema.from(Scalar.from(SCHEMA))
   const text = new avro.Schema('"long"')
   const bytes = AvroSchema.from(Buffer.from('"long"'))
 

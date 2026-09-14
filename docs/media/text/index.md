@@ -146,7 +146,7 @@ The source field is complete before any source bytes are read.
 
 | column | datatype | value |
 | --- | --- | --- |
-| `url` | `url` | nullable; the source location, and null for an unlocated buffer |
+| `sourceurl` | `url` | nullable; the source location, and null for an unlocated buffer |
 | `rownum` | `int64` | present only when `start_rownum` is set; first value is exactly that setting |
 | `mtime` | `datetime64(ns, UTC)` | nullable; present unless `parse_mtime` is off |
 | `mimetype` | `utf8` | present only with `parse_mimetype` |
@@ -181,13 +181,85 @@ framed record, whatever the codec would go on to make of it.
 
 Measured in [Classifying a capture](../../fix/registry.md#classifying-a-capture).
 
+## Shaping a read
+
+The `select` and `where` sections of the options shape a text read as they shape every record read: the row header's captures are columns a `select` reads, a cast or an alias reshapes them, and a `where` naming an alias runs after the projection. The properties beside `options` set the sections without building options first.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::text::TextOptions;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{IOMedia, Url};
+
+    let source = Buffer::from_bytes(b"[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n".to_vec())
+        .with_media_type(Url::from_str("file:///app.log")?.media_type());
+    let mut options = TextOptions::new().try_with_rowheader(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)")?;
+    options.start_rownum = Some(1);
+    let options = options
+        .with_select("cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold")?
+        .with_filter("n > 1 and line like '%d' and level is not null")?;
+
+    let batches = source
+        .read_arrow_reader(&options.into())?
+        .collect::<Result<Vec<_>, _>>()?;
+    let rows: usize = batches.iter().map(|batch| batch.num_rows()).sum();
+    assert_eq!(rows, 2);
+    assert_eq!(batches[0].schema().field(1).name(), "line");
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    path = pathlib.Path(tempfile.mkdtemp()) / "app.log"
+    path.write_bytes(b"[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n")
+    table = IOBase(path).read_arrow_reader(
+        rowheader=r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)",
+        start_rownum=1,
+        select="cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold",
+        filter="n > 1 and line like '%d' and level is not null",
+    ).read_all()
+    assert table.schema.names == ["n", "line", "level", "tenfold"]
+    assert table.column("line").to_pylist() == ["second", "third"]
+    assert table.column("tenfold").to_pylist() == [90, 110]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { IOBase } = require('yggdryl')
+
+    const handle = IOBase.fromBytes(
+      Buffer.from('[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n'),
+    )
+    handle.mediaType = 'text/plain'
+    const table = handle
+      .readArrowReader({
+        rowheader: '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)',
+        startRownum: 1n,
+        select: 'cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold',
+        filter: "n > 1 and line like '%d' and level is not null",
+      })
+      .intoTable()
+    assert.deepEqual(table.schema.fields.map((field) => field.name), ['n', 'line', 'level', 'tenfold'])
+    assert.deepEqual([...table.getChild('line')], ['second', 'third'])
+    assert.deepEqual([...table.getChild('tenfold')], [90n, 110n])
+    ```
+
 ## Lines
 
 `read_text_lines` is the one decode entry point. Every record method routes
 through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
-A line is a struct, not a map: `index`, `url`, `timestamp`, `bodytype`, `body`,
+A line is a struct, not a map: `index`, `sourceurl`, `timestamp`, `bodytype`, `body`,
 `dropped_byte_size`, `decoded_byte_size`, the row header's
 `captures` in the order the expression declares them, and the `entries` it
 carries. Each field already holds what its column holds, so building a batch
@@ -687,7 +759,8 @@ without retaining it.
 - strip match off the physical-line body edge -> nothing removed.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever the classification read before it.
-- an unlocated buffer -> `url` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
+- an unlocated buffer -> `sourceurl` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
+- Python `read_records()` over a file whose modification time is finer than a microsecond -> the `datetime` a record hands back is floored to the microsecond it can hold, never refused. The batch path carries the full nanosecond reading.
 - a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - a rename onto a name another column already emits -> refused when the option is set, naming both.

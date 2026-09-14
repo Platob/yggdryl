@@ -65,7 +65,7 @@ The three intents share one reader-shaped input. Append retains stored rows; key
             Arc::clone(&schema),
             [batch(vec![2, 4], vec![Some("XPAR"), None])?],
         ),
-        &options.clone().with_merge_by_names(["id"]),
+        &options.clone().with_merge_by(["id"])?,
     )?;
 
     let rows = handle
@@ -99,7 +99,7 @@ The three intents share one reader-shaped input. Append retains stored rows; key
     handle.append_arrow_batch(batch([3], ["XLON"]))
 
     merging = handle.record_options()
-    merging.merge_by_names = ["id"]
+    merging.merge_by = ["id"]
     handle.merge_arrow_batch(batch([2, 4], ["XPAR", None]), options=merging)
 
     assert handle.read_arrow_field().name == "row"
@@ -128,7 +128,7 @@ The three intents share one reader-shaped input. Append retains stored rows; key
     handle.appendArrowTable(rows([3], ['XLON']))
     handle.mergeArrowTable(
       rows([2, 4], ['XPAR', null]),
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     assert.equal(handle.readArrowField().name, 'row')
@@ -338,7 +338,7 @@ Arrow names the columns and not the record, so the root name is the one thing in
 
 ## Edges
 
-- `merge_by_names` on an overwrite or append -> the key never selects merge; intent stays with the method name.
+- `merge_by` on an overwrite or append -> the key never selects merge; intent stays with the method name.
 - `append_*` or keyed `merge_*` -> published through `ipc::overwrite_arrow_reader`, the one complete-stream encoder.
 - `field` naming every stored column, or one the stream lacks -> reads everything; a projection only drops columns.
 - projected read -> the returned reader reports the projected schema; Arrow's own `StreamReader` would report the whole stream's.

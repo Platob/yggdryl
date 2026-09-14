@@ -347,8 +347,8 @@ impl JsTextLine {
 
     /// The object this line was read from.
     #[napi(getter)]
-    pub fn url(&self) -> Option<String> {
-        self.inner.url().map(ToString::to_string)
+    pub fn sourceurl(&self) -> Option<String> {
+        self.inner.sourceurl().map(ToString::to_string)
     }
 
     /// When the record was written, in nanoseconds UTC.

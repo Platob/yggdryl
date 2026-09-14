@@ -19,18 +19,22 @@ from yggdryl.media import Avro, Ipc, Media, Parquet, Text
 
 from yggdryl import (
     Bound,
-    BoundStatement,
+    BoundSelector,
     DataType,
     Expression,
     Field,
+    Filter,
     IOBase,
     MediaType,
     MimeType,
     Parameters,
     ProtocolField,
     PythonMetadata,
+    Plan,
     RecordOptions,
-    Statement,
+    Records,
+    Selector,
+    Term,
     TextLine,
     TextOptions,
     Timezone,
@@ -174,7 +178,7 @@ fix_messages_hash: None = FixMessages.__hash__
 fix_msgtypes_hash: None = MsgTypeIterator.__hash__
 plugins_hash: None = Plugins.__hash__
 bound_hash: None = Bound.__hash__
-bound_statement_hash: None = BoundStatement.__hash__
+bound_selector_hash: None = BoundSelector.__hash__
 catalog_hash: None = iceberg.Catalog.__hash__
 namespace_hash: None = iceberg.Namespace.__hash__
 namespaces_hash: None = iceberg.Namespaces.__hash__
@@ -228,7 +232,7 @@ applied_root = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 )
 applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
-    source_batch, digest=True, partition=True, cast=True
+    source_batch, digest=True, transform=True, cast=True
 )
 applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
 applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(
@@ -260,7 +264,7 @@ coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
 coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
 coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)
 coupled_hashed: txhash.TxHash = coupled_hasher.digest(b"AAPL", 1_700_000_000)
-coupled_scalar_hashed: txhash.TxHash = coupled_hasher.digest_scalar(Scalar.from_py("AAPL"), 1)
+coupled_scalar_hashed: txhash.TxHash = coupled_hasher.digest_scalar(Scalar.from_("AAPL"), 1)
 coupled_unix_of: int = coupled_hasher.unix_of("2023-11-14T22:13:20Z")
 coupled_rows: pa.Array = txhash.row_txhashes(source_batch, pa.array([1], pa.int64()))
 coupled_split: tuple[pa.Array, pa.Array] = txhash.decompose(coupled_rows)
@@ -351,9 +355,9 @@ native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 native_enum = Scalar.from_enum("io_mode", "append")
 native_scalar_id: str = native_instant.id
 native_scalar_family: str = native_instant.family
-native_scalar_field: Field = Scalar.from_py(1).into_field()
-native_array_field: Field = Scalar.from_py([1]).into_array_field()
-native_struct_field: Field = Scalar.from_py([{"id": 1}]).into_struct_field()
+native_scalar_field: Field = Scalar.from_(1).into_field()
+native_array_field: Field = Scalar.from_([1]).into_array_field()
+native_struct_field: Field = Scalar.from_([{"id": 1}]).into_struct_field()
 temporal_count: int | None = native_instant.count
 temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone
@@ -705,7 +709,7 @@ class NotArrowReader:
     pass
 
 
-record_options: RecordOptions = record_handle.record_options()
+record_options: RecordOptions | TextOptions = record_handle.record_options()
 hashable_record_options = RecordOptions("trades.arrows")
 record_options_stable_hash: int = hashable_record_options.stable_hash()
 record_options_hash: int = hash(hashable_record_options)
@@ -735,14 +739,14 @@ record_handle.write_arrow_reader(record_batches, "overwrite", options=record_opt
 record_handle.write_arrow_reader(record_batches, "invalid")  # type: ignore[arg-type]
 record_handle.overwrite_arrow_reader(ForeignArrowReader())
 record_handle.overwrite_arrow_reader(NotArrowReader())  # type: ignore[arg-type]
-record_options.merge_by_names = ["id"]
+record_options.merge_by = ["id"]
 avro_record_options = RecordOptions("trades.avro")
 avro_block_codec: str | None = avro_record_options.block_codec
 avro_record_options.block_codec = "zstandard"
 avro_sync_marker: bytes | None = avro_record_options.sync_marker
 avro_record_options.sync_marker = memoryview(b"0123456789abcdef")
 avro_record_options.sync_marker = None
-record_match_key: list[str] = record_options.merge_by_names
+record_match_key: list[str] = record_options.merge_by.names
 record_handle.merge_arrow_reader(record_batches, options=record_options)
 
 text_record_options = TextOptions()
@@ -787,10 +791,10 @@ record_handle.overwrite_arrow_batch(arrow_batch)
 record_handle.append_arrow_batch(arrow_batch)
 record_handle.merge_arrow_batch(arrow_batch, options=record_options)
 record_handle.write_arrow_batch(arrow_batch, "overwrite")
-record_options.merge_by_names = []
+record_options.merge_by = []
 record_handle.overwrite_records([{"id": 1}], options=record_options)
 record_handle.append_records([{"id": 2}], options=record_options)
-record_options.merge_by_names = ["id"]
+record_options.merge_by = ["id"]
 record_handle.merge_records([{"id": 2}], options=record_options)
 record_handle.write_records([{"id": 3}], "merge", options=record_options)
 plain_records: Iterator[dict[str, Any]] = record_handle.read_records(
@@ -803,32 +807,32 @@ class TypedRecord:
 
 
 typed_records: Iterator[TypedRecord] = record_handle.read_records(TypedRecord)
-record_options.merge_by_names = []
+record_options.merge_by = []
 record_handle.append_arrow_reader(generic_batches)
 pandas_frames: Iterator[Any] = record_handle.read_pandas()
 pandas_frame: Any = record_handle.read_pandas_frame(options=record_options)
 record_handle.overwrite_pandas(pandas_frames)
 record_handle.append_pandas(pandas_frames)
-record_options.merge_by_names = ["id"]
+record_options.merge_by = ["id"]
 record_handle.merge_pandas(pandas_frames, options=record_options)
 record_handle.write_pandas(pandas_frames, "merge", options=record_options)
-record_options.merge_by_names = []
+record_options.merge_by = []
 record_handle.overwrite_pandas_frame(pandas_frame, options=record_options)
 record_handle.append_pandas_frame(pandas_frame)
-record_options.merge_by_names = ["id"]
+record_options.merge_by = ["id"]
 record_handle.merge_pandas_frame(pandas_frame, options=record_options)
 record_handle.write_pandas_frame(pandas_frame, "append")
 polars_frames: Iterator[Any] = record_handle.read_polars()
 polars_frame: Any = record_handle.read_polars_frame(options=record_options)
 record_handle.overwrite_polars(polars_frames)
 record_handle.append_polars(polars_frames)
-record_options.merge_by_names = ["id"]
+record_options.merge_by = ["id"]
 record_handle.merge_polars(polars_frames, options=record_options)
 record_handle.write_polars(polars_frames, "overwrite")
-record_options.merge_by_names = []
+record_options.merge_by = []
 record_handle.overwrite_polars_frame(polars_frame, options=record_options)
 record_handle.append_polars_frame(polars_frame)
-record_options.merge_by_names = ["id"]
+record_options.merge_by = ["id"]
 record_handle.merge_polars_frame(polars_frame, options=record_options)
 record_handle.write_polars_frame(polars_frame, "merge", options=record_options)
 parquet_options: RecordOptions = RecordOptions("trades.parquet")
@@ -899,8 +903,8 @@ assert iceberg_document
 assert iceberg_reread
 
 # Record configuration crosses through the one options object.
-selected_options: RecordOptions = record_handle.record_options()
-selected_options.select_by_names = ["id"]
+selected_options: RecordOptions | TextOptions = record_handle.record_options()
+selected_options.select = ["id"]
 selected_options.batch_row_size = 1024
 selected_reader: pa.RecordBatchReader = record_handle.read_arrow_reader(
     options=selected_options
@@ -1097,94 +1101,190 @@ expression_schema: Field = Field(
     ),
     False,
 )
-expression: Expression = Expression("ccy = 'EUR' and price > 100")
-expression_parsed: Expression = Expression.parse("ccy = 'EUR'")
-expression_restored: Expression = Expression.from_json(expression.into_json())
-expression_named: Expression = Expression.column("ccy")
-expression_constant: Expression = Expression.literal("EUR")
-expression_held: Expression = Expression.attribute("partition", "year")
-expression_stat: Expression = Expression.attribute("size")
-expression_late: Expression = Expression.parameter("floor")
-expression_true: Expression = Expression.always_true()
-expression_false: Expression = Expression.always_false()
-expression_columns: list[str] = expression.columns()
-expression_attributes: list[str] = expression_held.attributes()
-expression_parameters: list[str] = expression_late.parameters()
-expression_conjuncts: list[Expression] = expression.conjuncts()
-expression_depth: int = expression.depth()
-expression_document: str = expression.into_json()
-expression_both: Expression = expression_named & expression_constant
-expression_either: Expression = expression_named | "price > 1"
-expression_negated: Expression = ~expression_named
-expression_field: Field = expression_named.field(expression_schema)
-expression_bound: Bound = expression.bind(expression_schema)
-expression_bound_text: Expression = expression_bound.expression
-expression_bound_field: Field = expression_bound.field
-expression_is_predicate: bool = expression_bound.is_predicate
-expression_bound_columns: list[str] = expression_bound.columns
-expression_reads_rows: bool = expression_bound.reads_rows
-expression_matches: bool = expression_bound.matches(["EUR", None])
-expression_value: object = expression_bound.eval({"ccy": "EUR"})
-expression_split: tuple[Expression, Expression] = expression_bound.partition_split()
+term: Term = Term("ccy = 'EUR' and price > 100")
+term_parsed: Term = Term.parse("ccy = 'EUR'")
+term_restored: Term = Term.from_json(term.into_json())
+term_named: Term = Term.column("ccy")
+term_constant: Term = Term.literal("EUR")
+term_held: Term = Term.attribute("partition", "year")
+term_stat: Term = Term.attribute("size")
+term_late: Term = Term.parameter("floor")
+term_true: Term = Term.always_true()
+term_false: Term = Term.always_false()
+term_columns: list[str] = term.columns()
+term_attributes: list[str] = term_held.attributes()
+term_parameters: list[str] = term_late.parameters()
+term_conjuncts: list[Term] = term.conjuncts()
+term_depth: int = term.depth()
+term_document: str = term.into_json()
+term_simplified: Term = term.simplify()
+term_explained: str = term.explain()
+term_sliced: Term = term_named.slice(1, None)
+term_both: Term = term_named & term_constant
+term_either: Term = term_named | "price > 1"
+term_negated: Term = ~term_named
+term_field: Field = term_named.field(expression_schema)
+term_bound: Bound = term.bind(expression_schema)
+term_bound_text: Term = term_bound.term
+term_bound_field: Field = term_bound.field
+term_is_predicate: bool = term_bound.is_predicate
+term_bound_columns: list[str] = term_bound.columns
+term_reads_rows: bool = term_bound.reads_rows
+term_matches: bool = term_bound.matches(["EUR", None])
+term_value: object = term_bound.eval({"ccy": "EUR"})
+term_split: tuple[Filter, Filter] = term_bound.partition_split()
+term_bound_explained: str = term_bound.explain()
 
-statement: Statement = Statement("select ccy where ccy = 'EUR' limit 10")
-statement_restored: Statement = Statement.from_json(statement.into_json())
-statement_projections: list[str] = statement.projections
-statement_predicate: Expression | None = statement.predicate
-statement_ordering: list[
-    tuple[Expression, Literal["ascending", "descending"], Literal["first", "last"] | None]
-] = statement.ordering
-statement_limit: int | None = statement.limit
-statement_is_all: bool = statement.is_all
-bound_statement: BoundStatement = statement.bind(expression_schema)
-bound_statement_schema: Field = bound_statement.schema
-bound_statement_output: Field = bound_statement.output
-bound_statement_projections: list[Bound] = bound_statement.projections
-bound_statement_predicate: Bound | None = bound_statement.predicate
-bound_statement_ordering: list[
-    tuple[Bound, Literal["ascending", "descending"], Literal["first", "last"] | None]
-] = bound_statement.ordering
-bound_statement_limit: int | None = bound_statement.limit
-bound_statement_is_all: bool = bound_statement.is_all
-statement_batch = pa.record_batch({"ccy": ["EUR"], "price": [1]})
-projected_statement_batch: pa.RecordBatch = bound_statement.project_arrow(statement_batch)
-projected_statement_table: pa.Table = bound_statement.project_arrow(pa.Table.from_batches([statement_batch]))
-projected_statement_reader: pa.RecordBatchReader = bound_statement.project_arrow(
-    pa.RecordBatchReader.from_batches(statement_batch.schema, [statement_batch])
+filter: Filter = Filter("ccy = 'EUR'")
+filter_from_term: Filter = Filter(term_named.eq("'EUR'"))
+filter_restored: Filter = Filter.from_json(filter.into_json())
+filter_term: Term = filter.term
+filter_conjuncts: list[Filter] = filter.conjuncts()
+filter_both: Filter = filter & "price > 1"
+filter_negated: Filter = ~filter
+filter_bound: Bound = filter.bind(expression_schema)
+filter_field: Field = filter.apply_field(expression_schema)
+filter_explained: str = filter.explain()
+
+selector: Selector = Selector("ccy, price * 2 as doubled")
+selector_from_parts: Selector = Selector([term_named, (term_named, "alias")])
+selector_all: Selector = Selector.all()
+selector_except: Selector = Selector.all_except(["price"])
+selector_columns: Selector = Selector.from_columns(["ccy"])
+selector_from_field: Selector = Selector.from_field(expression_schema)
+selector_names: list[str] = selector.names
+selector_projections: list[str] = selector.projections
+selector_excluded: list[str] = selector_except.excluded
+selector_is_all: bool = selector_all.is_all
+selector_field: Field = selector.apply_field(expression_schema)
+selector_stored: Field = selector.into_field(expression_schema)
+bound_selector: BoundSelector = selector.bind(expression_schema)
+bound_selector_schema: Field = bound_selector.schema
+bound_selector_output: Field = bound_selector.output
+bound_selector_projections: list[Bound] = bound_selector.projections
+bound_selector_identity: bool = bound_selector.is_identity
+bound_selector_row: dict[str, object] = bound_selector.apply_row({"ccy": "EUR", "price": 1})
+selector_explained: str = selector.explain()
+
+plan: Plan = Plan("select ccy from t where ccy = 'EUR' order by ccy desc limit 10")
+plan_restored: Plan = Plan.from_json(plan.into_json())
+plan_from_field: Plan = Plan.from_field(expression_schema)
+plan_built: Plan = (
+    Plan()
+    .with_create("id int64 not null", "trades")
+    .with_write("upsert into", "'file:///lake/trades.parquet'", ["id"])
+    .with_select(selector)
+    .with_source("raw")
+    .with_filter(filter)
+    .with_ordering([(term_named, "desc", "last"), "price"])
+    .with_limit(10)
+    .with_offset(1)
 )
-sorted_statement_batch: pa.RecordBatch = bound_statement.sort_arrow_batch(statement_batch)
+plan_selector: Selector = plan.selector
+plan_filter: Filter = plan.filter
+plan_source: str | None = plan.source
+plan_source_plan: Plan | None = plan.source_plan
+plan_ordering: list[tuple[Term, Literal["asc", "desc"], Literal["first", "last"]]] = plan.ordering
+plan_limit: int | None = plan.limit
+plan_offset: int | None = plan.offset
+plan_verb: str | None = plan_built.verb
+plan_target: str | None = plan_built.write_target
+plan_schema: Selector | None = plan_built.schema
+plan_merge_by: Selector = plan_built.merge_by
+plan_field: Field | None = plan_built.field()
+plan_columns: list[str] = plan.columns()
+plan_read_columns: list[str] | None = plan.read_columns()
+plan_is_identity: bool = plan.is_identity
+plan_read: Plan = plan.read_sections()
+plan_expression: Expression = plan.into_expression()
+plan_explained: str = plan.explain()
+plan_batch = pa.record_batch({"ccy": ["EUR"], "price": [1]})
+plan_projected_batch: pa.RecordBatch = plan.read_sections().apply_arrow(plan_batch)
+plan_projected_table: pa.Table = plan.read_sections().apply_arrow(pa.Table.from_batches([plan_batch]))
+plan_projected_reader: pa.RecordBatchReader = plan.read_sections().apply_arrow(
+    pa.RecordBatchReader.from_batches(plan_batch.schema, [plan_batch])
+)
+plan_records: Records = plan.read_sections().apply_records([{"ccy": "EUR", "price": 1}])
+plan_rows: list[dict[str, object]] = plan_records.collect()
+
+expression: Expression = Expression("select ccy where ccy = 'EUR'")
+expression_parsed: Expression = Expression.parse("select ccy")
+expression_restored: Expression = Expression.from_json(expression.into_json())
+expression_select: Expression = Expression.select(selector)
+expression_where: Expression = Expression.filter(filter)
+expression_plan: Expression = Expression.plan(plan)
+expression_sequence: Expression = Expression.sequence([expression_select, expression_where])
+expression_kind: Literal["select", "where", "plan", "sequence"] = expression.kind
+expression_steps: list[Expression] = expression_sequence.steps
+expression_selector: Selector | None = expression_select.as_selector()
+expression_filter: Filter | None = expression_where.as_filter()
+expression_as_plan: Plan | None = expression.as_plan()
+expression_columns: list[str] = expression.columns()
+expression_field: Field = expression_select.apply_field(expression_schema)
+expression_batch: pa.RecordBatch = expression.apply_arrow_batch(plan_batch)
+expression_reader: pa.RecordBatchReader = expression.apply_arrow_reader(
+    pa.RecordBatchReader.from_batches(plan_batch.schema, [plan_batch])
+)
+expression_records: Records = expression.apply_records([{"ccy": "EUR", "price": 1}])
+expression_records_reader: pa.RecordBatchReader = expression_records.into_arrow_reader()
+expression_explained: str = expression.explain()
 
 expression_matched: list[IOBase] = list(
     IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
 )
 
-assert str(expression)
-assert expression_parsed and expression_restored
-assert expression_named and expression_constant and expression_held
-assert expression_stat and expression_late and expression_true and expression_false
-assert expression_columns == ["ccy", "price"]
-assert expression_attributes and not expression_parameters or expression_parameters
-assert expression_conjuncts and expression_depth >= 1
-assert expression_document and expression_both and expression_either
-assert expression_negated and expression_field and expression_bound_text
-assert expression_bound_field and expression_is_predicate
-assert expression_bound_columns and not expression_reads_rows is None
-assert expression_matches or not expression_matches
-assert expression_value is None or expression_value
-assert expression_split
-assert statement_restored and statement_projections
-assert statement_predicate is None or statement_predicate
-assert statement_ordering == [] or statement_ordering
-assert statement_limit is None or statement_limit
-assert statement_is_all or not statement_is_all
-assert bound_statement and bound_statement_schema and bound_statement_output
-assert bound_statement_projections == [] or bound_statement_projections
-assert bound_statement_predicate is None or bound_statement_predicate
-assert bound_statement_ordering == [] or bound_statement_ordering
-assert bound_statement_limit is None or bound_statement_limit
-assert bound_statement_is_all or not bound_statement_is_all
-assert projected_statement_batch and projected_statement_table
-assert projected_statement_reader and sorted_statement_batch
+assert str(term)
+assert term_parsed and term_restored
+assert term_named and term_constant and term_held
+assert term_stat and term_late and term_true and term_false
+assert term_columns == ["ccy", "price"]
+assert term_attributes and not term_parameters or term_parameters
+assert term_conjuncts and term_depth >= 1
+assert term_document and term_simplified and term_explained and term_sliced
+assert term_both and term_either and term_negated and term_field
+assert term_bound_text and term_bound_field and term_is_predicate
+assert term_bound_columns and not term_reads_rows is None
+assert term_matches or not term_matches
+assert term_value is None or term_value
+assert term_split and term_bound_explained
+assert filter and filter_from_term and filter_restored and filter_term
+assert filter_conjuncts and filter_both and filter_negated
+assert filter_bound and filter_field and filter_explained
+assert selector and selector_from_parts and selector_all and selector_except
+assert selector_columns and selector_from_field
+assert selector_names and selector_projections and selector_excluded
+assert selector_is_all and selector_field and selector_stored
+assert bound_selector and bound_selector_schema and bound_selector_output
+assert bound_selector_projections == [] or bound_selector_projections
+assert bound_selector_identity or not bound_selector_identity
+assert bound_selector_row and selector_explained
+assert plan and plan_restored and plan_from_field and plan_built
+assert plan_selector and plan_filter
+assert plan_source is None or plan_source
+assert plan_source_plan is None or plan_source_plan
+assert plan_ordering == [] or plan_ordering
+assert plan_limit is None or plan_limit
+assert plan_offset is None or plan_offset
+assert plan_verb is None or plan_verb
+assert plan_target is None or plan_target
+assert plan_schema is None or plan_schema
+assert plan_merge_by is not None
+assert plan_field is None or plan_field
+assert plan_columns and plan_read_columns is None or plan_read_columns
+assert plan_is_identity or not plan_is_identity
+assert plan_read and plan_expression and plan_explained
+assert plan_projected_batch and plan_projected_table and plan_projected_reader
+assert plan_records is not None and plan_rows == [] or plan_rows
+assert expression and expression_parsed and expression_restored
+assert expression_select and expression_where and expression_plan and expression_sequence
+assert expression_kind and expression_steps
+assert expression_selector is None or expression_selector
+assert expression_filter is None or expression_filter
+assert expression_as_plan is None or expression_as_plan
+assert expression_columns and expression_field
+assert expression_batch is not None and expression_reader is not None
+assert expression_records is not None and expression_records_reader is not None
+assert expression_explained
 assert expression_matched == [] or expression_matched
 
 fix_field: Field = Field("OrderQty", "decimal128(20, 8)")

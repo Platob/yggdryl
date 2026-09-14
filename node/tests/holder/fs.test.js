@@ -952,7 +952,7 @@ test('handler-backed framed text resets at every leaf', () => {
   assert.deepEqual(
     table.schema.fields.map((field) => [field.name, field.nullable]),
     [
-      ['url', true],
+      ['sourceurl', true],
       ['mtime', true],
       ['body', false],
       ['level', true],
@@ -966,7 +966,7 @@ test('handler-backed framed text resets at every leaf', () => {
     'yggdryl.url',
   )
   assert.deepEqual(
-    [...table.getChild('url')],
+    [...table.getChild('sourceurl')],
     [
       'memory://bound/bucket/logs/a.txt',
       'memory://bound/bucket/logs/b.txt',

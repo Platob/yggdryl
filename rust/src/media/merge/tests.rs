@@ -75,7 +75,14 @@ fn incoming_payload_batches_are_released_before_the_next_is_pulled() {
         previous: None,
     });
 
-    let merged = super::merged(stored, incoming, &schema(), &["id".to_owned()], true).unwrap();
+    let merged = super::merged(
+        stored,
+        incoming,
+        &schema(),
+        &crate::Selector::from_columns(["id"]),
+        true,
+    )
+    .unwrap();
     let rows: usize = merged.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
 }

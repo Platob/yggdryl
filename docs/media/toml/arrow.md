@@ -1,13 +1,13 @@
 # TOML rows
 
-A TOML document as Arrow rows. `read_arrow_value` and `write_arrow_value` are the one bridge between the document and a batch.
+A TOML document as Arrow rows. `read_arrow` and `write_arrow` are the one bridge between the document and a batch.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Reads | `read_arrow_value(field)`; TOML has no top-level sequence, so the rows are the array of tables stored under the root's name |
-| Writes | `write_arrow_value(value, mode)` writes one array of tables under the root's name, each row an inline table |
+| Reads | `read_arrow(options)`; TOML has no top-level sequence, so the rows are the array of tables stored under the root's name |
+| Writes | `write_arrow(value, mode)` writes one array of tables under the root's name, each row an inline table |
 | Held | the rows the one frame encloses, on both sides |
 | Mode | overwrite only: a document is one frame around its rows, so it is written whole |
 | Not a record encoding | [`RecordOptions`](../options.md) names no structured format, so `read_arrow_reader` and the three write intents refuse the name |
@@ -33,11 +33,11 @@ Rust and Python only.
     )?;
 
     // The document's own shape holds the rows; the root is the one they prove.
-    let value = handle.read_arrow_value(None)?;
+    let value = handle.read_arrow(None)?;
     assert_eq!((value.row_size(), value.column_size()), (Some(2), 2));
 
     // Written back, the rows are framed the way this format frames them.
-    handle.write_arrow_value(value, IOMode::Overwrite)?;
+    handle.write_arrow(value, IOMode::Overwrite, None)?;
     assert!(String::from_utf8(handle.read_all_bytes()?)?.starts_with("\"row\" = ["));
     ```
 
@@ -54,7 +54,7 @@ Rust and Python only.
     handle = IOBase(source)
 
     # The document's own shape holds the rows; the root is the one they prove.
-    value = handle.read_arrow_value()
+    value = handle.read_arrow()
     assert value.shape == "batch"
     assert value.as_py() == [
         {"id": 1, "symbol": "AAPL"},
@@ -62,7 +62,7 @@ Rust and Python only.
     ]
 
     # Written back, the rows are framed the way this format frames them.
-    handle.write_arrow_value(value.into_arrow_table())
+    handle.write_arrow(value.into_arrow_table())
     assert handle.read_bytes().startswith(b'"row" = [')
     ```
 
@@ -85,5 +85,5 @@ Rust and Python only.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_value.py
+    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_scalar.py
     ```

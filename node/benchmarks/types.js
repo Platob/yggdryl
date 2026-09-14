@@ -9,7 +9,8 @@ const {
   MediaType,
   MimeType,
   Scalar,
-  Statement,
+  Plan,
+  Term,
   StringEnum,
   Version,
   fields,
@@ -63,8 +64,9 @@ const partitioned = Field.from(
   'row: struct<year: int32 not null, price: float64 not null> not null',
 ).withPartitionFields(['year'])
 const rowField = fields.struct('BenchRow', [id, name], { nullable: false })
-const expression = new Expression('id + 1 > 2')
-const statement = new Statement('select id where id > 0')
+const term = new Term('id + 1 > 2')
+const expression = new Expression('select id where id > 0')
+const plan = new Plan('select id from t where id > 0 limit 10')
 const icebergSchema = icebergApi.assignFieldIds(rowField)
 const icebergSpec = icebergApi.PartitionSpec.identity(icebergSchema, ['id'], 1)
 const icebergSpecDocument = icebergSpec.intoJSON()
@@ -91,7 +93,7 @@ const contentType = 'text/csv; charset=utf-8'
 const contentEncoding = 'gzip, zstd'
 const release = new Version(5, 0, 300)
 const earlierRelease = new Version(5, 0, 10)
-const releaseScalar = Scalar.fromJs(release)
+const releaseScalar = Scalar.from(release)
 const releaseField = fields.version('release', { nullable: false })
 
 benchmark('version/native_parts', () => new Version(5, 0, 300))
@@ -100,8 +102,8 @@ benchmark('version/patch', () => release.patch)
 benchmark('version/compare', () => earlierRelease.compare(release))
 benchmark('version/stable_hash', () => release.stableHash())
 benchmark('version/clone', () => release.clone())
-benchmark('version/into_scalar', () => Scalar.fromJs(release))
-benchmark('version/field_into_scalar', () => Scalar.fromJs('5.0.300', { field: releaseField }))
+benchmark('version/into_scalar', () => Scalar.from(release))
+benchmark('version/field_into_scalar', () => Scalar.from('5.0.300', { field: releaseField }))
 benchmark('version/scalar_as_js', () => releaseScalar.asJs())
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
@@ -133,14 +135,18 @@ benchmark('schema/into_field_native', () => intoField(rowField))
 benchmark('schema/into_field_class_cached', () => intoField(BenchRow))
 benchmark('schema/into_field_renamed', () => intoField(BenchRow, 'row'))
 benchmark('schema/metadata_ignored_equals', () => struct.equals(struct, false))
+benchmark('term/equals', () => term.equals(term))
+benchmark('term/compare', () => term.compare(term))
+benchmark('term/stable_hash', () => term.stableHash())
+benchmark('term/clone', () => term.clone())
 benchmark('expression/equals', () => expression.equals(expression))
 benchmark('expression/compare', () => expression.compare(expression))
 benchmark('expression/stable_hash', () => expression.stableHash())
 benchmark('expression/clone', () => expression.clone())
-benchmark('statement/equals', () => statement.equals(statement))
-benchmark('statement/compare', () => statement.compare(statement))
-benchmark('statement/stable_hash', () => statement.stableHash())
-benchmark('statement/clone', () => statement.clone())
+benchmark('plan/equals', () => plan.equals(plan))
+benchmark('plan/compare', () => plan.compare(plan))
+benchmark('plan/stable_hash', () => plan.stableHash())
+benchmark('plan/clone', () => plan.clone())
 benchmark('iceberg/partition_spec_equals', () => icebergSpec.equals(icebergSpec))
 benchmark('iceberg/partition_spec_compare', () => icebergSpec.compare(icebergSpec))
 benchmark('iceberg/partition_spec_stable_hash', () => icebergSpec.stableHash())

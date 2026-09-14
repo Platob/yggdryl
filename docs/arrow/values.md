@@ -6,7 +6,7 @@ One Arrow-backed value across all four shapes Arrow spells a payload in.
 
 | Key | Value |
 | --- | --- |
-| Owns | `ArrowValue`, `ArrowShape`, `IOMedia::read_arrow_value`, `IOMedia::write_arrow_value` |
+| Owns | `ArrowScalar`, `ArrowShape`, `IOMedia::read_arrow`, `IOMedia::write_arrow` |
 | Shapes | `scalar` one pinned row · `array` one column · `batch` one held table · `stream` a one-shot reader |
 | Pairs | The exact `Field`: one element for a scalar or a column, the non-null Struct root for a table or a stream |
 | Funnel | `into_reader` — every shape becomes the [`BatchReader`](readers.md) a record read or write already takes |
@@ -14,7 +14,7 @@ One Arrow-backed value across all four shapes Arrow spells a payload in.
 | Stream length | `row_size()` is `None` until drained; counting a stream is deciding to read it |
 | Media | Record encodings stream; JSON, JSON Lines, YAML, and TOML documents read as one batch |
 | `FieldScalar` | No bridge: it borrows one `Field` and holds one value, where this owns a `Field` and a whole array, batch or stream ([Scalars](scalars.md)) |
-| Bindings | Rust; Python `yggdryl.ArrowValue`; JavaScript none |
+| Bindings | Rust; Python `yggdryl.ArrowScalar`; JavaScript none |
 
 ## Use
 
@@ -24,11 +24,11 @@ One Arrow-backed value across all four shapes Arrow spells a payload in.
     use std::sync::Arc;
 
     use arrow_array::{ArrayRef, Int64Array};
-    use yggdryl::{ArrowShape, ArrowValue, DataType, Field};
+    use yggdryl::{ArrowShape, ArrowScalar, DataType, Field};
 
     let field = Field::new("price", DataType::Int64, false);
     let column: ArrayRef = Arc::new(Int64Array::from(vec![125_i64, 126, 127]));
-    let value = ArrowValue::from_array(field, column)?;
+    let value = ArrowScalar::from_array(field, column)?;
 
     assert_eq!(value.shape(), ArrowShape::Array);
     assert_eq!(value.row_size(), Some(3));
@@ -45,9 +45,9 @@ One Arrow-backed value across all four shapes Arrow spells a payload in.
 
     ```python
     import pyarrow as pa
-    from yggdryl import ArrowValue
+    from yggdryl import ArrowScalar
 
-    value = ArrowValue.from_py(pa.array([125, 126, 127]), "price: int64 not null")
+    value = ArrowScalar.from_(pa.array([125, 126, 127]), "price: int64 not null")
 
     assert value.shape == "array"
     assert value.row_size == 3
@@ -61,7 +61,7 @@ A held container keeps the length it knows; a stream keeps its laziness.
 === "Rust"
 
     ```rust
-    use yggdryl::{ArrowShape, ArrowValue, DataType, Field, Scalar};
+    use yggdryl::{ArrowShape, ArrowScalar, DataType, Field, Scalar};
 
     let root = DataType::from_fields([
         DataType::utf8().required_field("symbol"),
@@ -73,7 +73,7 @@ A held container keeps the length it knows; a stream keeps its laziness.
         Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100_i64)]),
         Scalar::from_sequence([Scalar::from("MSFT"), Scalar::from(250_i64)]),
     ]);
-    let held = ArrowValue::from_rows(&root, &rows)?;
+    let held = ArrowScalar::from_rows(&root, &rows)?;
 
     assert_eq!(held.shape(), ArrowShape::Batch);
     assert_eq!(held.row_size(), Some(2));
@@ -81,7 +81,7 @@ A held container keeps the length it knows; a stream keeps its laziness.
 
     // A stream states its schema before its first batch, and nothing else.
     let schema = root.clone().into_arrow_schema()?;
-    let streamed = ArrowValue::from_reader(yggdryl::arrow::batch_reader(
+    let streamed = ArrowScalar::from_reader(yggdryl::arrow::batch_reader(
         schema,
         [held.into_batch()?],
     ))?;
@@ -94,16 +94,16 @@ A held container keeps the length it knows; a stream keeps its laziness.
 
     ```python
     import pyarrow as pa
-    from yggdryl import ArrowValue
+    from yggdryl import ArrowScalar
 
     table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
 
     # A batch is held, so it knows its length.
-    held = ArrowValue.from_py(table.to_batches()[0])
+    held = ArrowScalar.from_(table.to_batches()[0])
     assert (held.shape, held.row_size, held.column_size) == ("batch", 2, 2)
 
     # A table may hold many chunks, so it crosses as a stream over the C stream.
-    assert ArrowValue.from_py(table).row_size is None
+    assert ArrowScalar.from_(table).row_size is None
     ```
 
 ## One entry point from every columnar runtime
@@ -117,30 +117,30 @@ A held shape shares its buffers back, so it stays readable; a stream crosses onc
     ```python
     import numpy as np
     import pyarrow as pa
-    from yggdryl import ArrowValue
+    from yggdryl import ArrowScalar
 
     table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
 
-    assert ArrowValue.from_py(table.to_pandas()).shape == "stream"
-    assert ArrowValue.from_py(pa.chunked_array([[1, 2], [3]])).row_size == 3
-    assert ArrowValue.from_py(np.array([1.5, 2.5])).shape == "array"
-    assert ArrowValue.from_py(pa.scalar(7, pa.int64())).shape == "scalar"
+    assert ArrowScalar.from_(table.to_pandas()).shape == "stream"
+    assert ArrowScalar.from_(pa.chunked_array([[1, 2], [3]])).row_size == 3
+    assert ArrowScalar.from_(np.array([1.5, 2.5])).shape == "array"
+    assert ArrowScalar.from_(pa.scalar(7, pa.int64())).shape == "scalar"
 
     # A record dtype names its members, so it is rows.
     records = np.array([("AAPL", 100)], dtype=[("symbol", "U4"), ("size", "i8")])
-    assert ArrowValue.from_py(records).shape == "batch"
+    assert ArrowScalar.from_(records).shape == "batch"
 
     # The declared Field is applied by the core's one recursive cast.
-    prices = ArrowValue.from_py(pa.array([1, 2, 3]), "price: float64 not null")
+    prices = ArrowScalar.from_(pa.array([1, 2, 3]), "price: float64 not null")
     assert prices.into_arrow_array().type == pa.float64()
 
     # A held shape stays readable; a stream is one-shot.
-    held = ArrowValue.from_py(table.to_batches()[0])
+    held = ArrowScalar.from_(table.to_batches()[0])
     assert held.into_arrow_batch().num_rows == 2
     assert held.into_pandas().shape == (2, 2)
     assert not held.is_consumed
 
-    streamed = ArrowValue.from_py(table)
+    streamed = ArrowScalar.from_(table)
     assert streamed.into_arrow_table().num_rows == 2
     assert streamed.is_consumed
     try:
@@ -157,13 +157,13 @@ A batch and its reader retain the declared Map sortedness, nested field
 metadata and non-null keys. Python exports share the original Arrow buffers;
 creating the reader and inspecting its schema pull no batch. The schema is
 resolved once for the stream, not rebuilt for each batch. Rust and Python
-support `ArrowValue`; JavaScript uses its separate copied-IPC `BatchReader`.
+support `ArrowScalar`; JavaScript uses its separate copied-IPC `BatchReader`.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
-    use yggdryl::{ArrowValue, DataType, Scalar};
+    use yggdryl::{ArrowScalar, DataType, Scalar};
 
     let entries = DataType::from_fields([
         DataType::utf8().required_field("key"),
@@ -179,8 +179,8 @@ support `ArrowValue`; JavaScript uses its separate copied-IPC `BatchReader`.
     let rows = Scalar::from_sequence([Scalar::from_sequence([
         Scalar::from_sequence([mapping]),
     ])]);
-    let source = ArrowValue::from_rows(&root, &rows)?.into_batch()?;
-    let mut reader = ArrowValue::from_batch(source.clone())?.into_reader()?;
+    let source = ArrowScalar::from_rows(&root, &rows)?.into_batch()?;
+    let mut reader = ArrowScalar::from_batch(source.clone())?.into_reader()?;
     assert_eq!(reader.schema(), source.schema());
     let result = reader.next().expect("one batch")?;
     assert_eq!(result, source);
@@ -192,7 +192,7 @@ support `ArrowValue`; JavaScript uses its separate copied-IPC `BatchReader`.
 
     ```python
     import pyarrow as pa
-    from yggdryl import ArrowValue
+    from yggdryl import ArrowScalar
 
     mapping = pa.map_(pa.string(), pa.string(), keys_sorted=True)
     nested = pa.struct([pa.field("lookup", mapping)])
@@ -209,7 +209,7 @@ support `ArrowValue`; JavaScript uses its separate copied-IPC `BatchReader`.
         yield source
 
     incoming = pa.RecordBatchReader.from_batches(schema, batches())
-    reader = ArrowValue.from_py(incoming).into_arrow_reader()
+    reader = ArrowScalar.from_(incoming).into_arrow_reader()
     assert reader.schema.equals(schema, check_metadata=True)
     assert pulled == []
     result = reader.read_next_batch()
@@ -224,15 +224,22 @@ support `ArrowValue`; JavaScript uses its separate copied-IPC `BatchReader`.
 
 ## A handle reads and writes it whatever it holds
 
-`read_arrow_value` is the Arrow-shaped sibling of `read_scalar`: a record
+`read_arrow` is the Arrow-shaped sibling of `read_scalar`: a record
 encoding answers its batch stream, a structured text document the batch its
-rows parse into.
+rows parse into. `write_arrow` is the generic write: a stream reaches
+`write_arrow_reader` without being collected, a held table reaches
+`write_arrow_batch` without being wrapped, and a pinned row or a column is
+the one batch its rows form, so every mode and every record option applies.
+Both take the options a record read or write takes - in Python, and in the
+properties beside them - and a structured text document reads only the
+declared `field` off them.
 
 === "Rust"
 
     ```rust
     use yggdryl::holder::Buffer;
-    use yggdryl::{ArrowShape, ArrowValue, DataType, IOBase, IOMedia, IOMode, Scalar, Url};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{ArrowShape, ArrowScalar, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Url};
 
     let root = DataType::from_fields([
         DataType::utf8().required_field("symbol"),
@@ -246,13 +253,16 @@ rows parse into.
     ])]);
 
     let mut handle = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
-    handle.write_arrow_value(ArrowValue::from_rows(&root, &rows)?, IOMode::Overwrite)?;
+    handle.write_arrow(ArrowScalar::from_rows(&root, &rows)?, IOMode::Overwrite, None)?;
 
     // Rows carry the names their Field declares, one document per row.
     let text = String::from_utf8(handle.read_all_bytes()?)?;
     assert!(text.contains(r#""symbol":"AAPL""#), "{text}");
 
-    let read = handle.read_arrow_value(Some(&root))?;
+    // Read back under the same declaration: a structured document takes its
+    // field from any record encoding's options.
+    let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root.clone());
+    let read = handle.read_arrow(Some(&declared))?;
     assert_eq!(read.shape(), ArrowShape::Batch);
     assert_eq!(read.into_scalar()?, rows);
     ```
@@ -267,10 +277,10 @@ rows parse into.
     from yggdryl import IOBase
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "quotes.jsonl")
-    handle.write_arrow_value(pa.table({"symbol": ["AAPL"], "size": [100]}))
+    handle.write_arrow(pa.table({"symbol": ["AAPL"], "size": [100]}))
 
     assert b'"symbol":"AAPL"' in handle.read_bytes()
-    assert handle.read_arrow_value().row_size == 1
+    assert handle.read_arrow().row_size == 1
     ```
 
 ## Edges
@@ -281,10 +291,11 @@ rows parse into.
 - `into_arrow_scalar` on anything but one row -> `Error::IncompatibleSchema` naming the shape.
 - `into_batch` on a stream drains and concatenates it: memory is the whole result.
 - A Struct column holding a null row is not rows: a batch has no row validity -> `Error::IncompatibleSchema`.
-- A structured text document is one frame around its rows, so `write_arrow_value` takes only `IOMode::Overwrite`; append and merge go through `write_arrow_reader`.
+- A structured text document is one frame around its rows, so `write_arrow` takes only `IOMode::Overwrite`; append and merge go through `write_arrow_reader`.
 - A structured text read holds the parsed document, so it answers `batch`, never `stream`. JSON writes one array, TOML one array of tables under the root's name, and JSON Lines and YAML stream one batch of rows at a time.
 - A media type that names neither a record encoding this build implements nor a structured text format -> `Error::InvalidRecord` naming it.
 - Python: only a `stream` is one-shot; reading a consumed one -> `ValueError`. A NumPy array of more than one dimension -> `TypeError`.
+- `Scalar.from_` of a pyarrow container, a pandas or polars frame or series, a numpy array or an Arrow C exporter -> a `Scalar` holding the `ArrowScalar` as it is, buffers shared; `as_py()` hands the `ArrowScalar` back, and `into_native` (Rust) or a structured codec reads it as rows.
 - Python `into_numpy`: NumPy has no null mask and no nested layout, so the crossing copies - a null becomes `nan` and rows become an object array of mappings.
 - JavaScript: Rust and Python only. A stream has no honest copied-IPC representation.
 
@@ -295,7 +306,7 @@ rows parse into.
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib arrow::scalars
     cargo test --features "parquet iceberg" -p yggdryl --lib media::structured
-    cargo test --features "parquet iceberg" -p yggdryl --test arrow arrow_value::
+    cargo test --features "parquet iceberg" -p yggdryl --test arrow arrow_scalar::
     cargo bench --bench arrow --features "parquet iceberg"
     ```
 

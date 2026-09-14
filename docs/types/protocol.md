@@ -293,7 +293,7 @@ depend on.
 | [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `description` |
 | [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
-| [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `expression`, `apply_arrow_batch`, and the two setters |
+| [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `term`, `is_derived`, and the two setters; the declaration is applied through the [transform](../expression/selectors.md#a-selector-declares-a-schema) view, `as_transform().apply_arrow_batch` |
 | [`PythonField`, `PythonFieldMut`](../extensions/python.md#the-declaring-class) | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
 
 ## Digest holders and their sources
@@ -497,7 +497,9 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 - Changing or removing a holder role -> refused until `digest:algorithm` and `digest:sources` are gone.
 - `identity:` properties -> inert text; `field:partition` stays the marker `partition_fields` reads.
 - `partition:transform` -> parsed on read, never on write: a generic `update` stores any text, and the typed reader is what names the vocabulary it is not in.
-- `partition:transform` without a `partition:sources` -> refused by `expression`, naming the key it wants beside it.
+- `partition:transform` without a `partition:sources` -> refused by `term`, naming the key it wants beside it.
+- `transform:function` -> a grammar function by name or alias, or a [user function](../expression/functions.md) `namespace.name`, canonicalized on write; `transform:sources` the columns it reads, a JSON array of paths; `term` reads `function(sources...)`, and refuses a function with no sources beside it.
+- `transform:expression` -> any other term; `set_term` writes the function and sources for a call over plain columns and the expression otherwise, and removes the spelling it did not write.
 - `apply_arrow_batch` -> the one verb both declaring protocols answer; each walks the Structs it declares and leaves a written value alone.
 
 ## Commands

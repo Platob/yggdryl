@@ -11,8 +11,8 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `Scalar` | this page and [Scalar](../types/scalar.md) |
 | `Version` | [Numeric versions](../types/text.md#versions) and this page |
 | `fix`, including registry-owned `MsgType` | [FIX registry](../fix/registry.md) |
-| `ArrowValue`, `arrow.SHAPES` | this page and [Values](../arrow/values.md) |
-| `Expression`, `Bound`, `Statement`, `BoundStatement` | [Expression](../expression/index.md) |
+| `ArrowScalar`, `arrow.SHAPES` | this page and [Values](../arrow/values.md) |
+| `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `Records`, `Bounds` | [Expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [URI](../uri/index.md) |
 | `IOBase`, and the role classes in `yggdryl.holder`, `yggdryl.coding`, `yggdryl.media` | this page and [Holder](../holder/index.md) |
 | `RecordOptions` | [RecordOptions](../media/options.md), [Arrow IPC](../media/ipc/index.md), [Parquet](../media/parquet/index.md) |
@@ -73,7 +73,7 @@ assert str(version) == "5.0.300"
 assert Version(5, 0, 2) < Version(5, 0, 10)
 assert hash(Version(5)) == hash(Version.from_str("5.0.0"))
 assert copy.copy(version) == pickle.loads(pickle.dumps(version)) == version
-assert Scalar.from_py(version).as_py() == version
+assert Scalar.from_(version).as_py() == version
 assert field(Version).dtype == DataType("version")
 
 @scalar(frozen=True)
@@ -121,8 +121,8 @@ with pytest.raises(TypeError):
     types.string("both", fixed=4, max=8)
 
 # A value never carries a maximum; a code is its own kind.
-assert Scalar.from_py("AAPL").kind == "string"
-assert Scalar.from_py("AAPL").as_str() == "AAPL"
+assert Scalar.from_("AAPL").kind == "string"
+assert Scalar.from_("AAPL").as_str() == "AAPL"
 assert DataType("currency").scalar("USD").kind == "currency"
 assert DataType("currency").is_code and DataType("currency").kind == "code"
 
@@ -136,7 +136,7 @@ with pytest.raises(ValueError, match="fixed US-ASCII string of at most 16 bytes"
 
 ## Native `Scalar`
 
-`Scalar` is a Python view of the Rust tree, and `from_py` chooses the natural Python shape.
+`Scalar` is a Python view of the Rust tree, and `from_` chooses the natural Python shape.
 
 ```python
 from decimal import Decimal
@@ -157,7 +157,7 @@ assert Scalar.duration(1, "ms").kind == "duration32"
 values = Scalar.from_arrow_array(pa.array([1, 2], type=pa.int16()))
 assert values.into_arrow_array().type == pa.int16()
 
-tree = Scalar.from_py({"legs": [{"id": 1}]})
+tree = Scalar.from_({"legs": [{"id": 1}]})
 assert tree["legs"][0]["id"].as_py() == 1
 assert tree.set("venue", "XNAS")["venue"].as_str() == "XNAS"
 ```
@@ -223,24 +223,24 @@ Pass a `Field` when strings or numbers need an exact decimal, binary, or tempora
 
 ## Arrow values
 
-`ArrowValue` is the Arrow-shaped sibling of `Scalar`: one value across the four shapes Arrow spells a payload in, paired with the exact `Field` that types it. The contract is [Values](../arrow/values.md), and `yggdryl.arrow.SHAPES` names the shapes in widening order. JavaScript is not bound.
+`ArrowScalar` is the Arrow-shaped sibling of `Scalar`: one value across the four shapes Arrow spells a payload in, paired with the exact `Field` that types it. The contract is [Values](../arrow/values.md), and `yggdryl.arrow.SHAPES` names the shapes in widening order. JavaScript is not bound.
 
-`from_py(value, field=None, *, safe=True, nullability="default", representation="value")` is the one entry point, and the value's own type decides the shape. `field` is the declared shape: given one, the core's single recursive cast applies it, one compiled plan for a stream and one batch at a time, under the [cast policy](../types/cast.md) those three keywords carry.
+`from_(value, field=None, *, safe=True, nullability="default", representation="value")` is the one entry point, and the value's own type decides the shape. `field` is the declared shape: given one, the core's single recursive cast applies it, one compiled plan for a stream and one batch at a time, under the [cast policy](../types/cast.md) those three keywords carry.
 
-| Value handed to `from_py` | Shape |
+| Value handed to `from_` | Shape |
 | --- | --- |
 | `pyarrow.Scalar`, and any other value a `Scalar` can hold | `scalar` |
 | `pyarrow.Array`; `pyarrow.ChunkedArray`, whose chunks are combined; a pandas or polars `Series`; a one-dimensional `numpy.ndarray`; an `__arrow_c_array__` exporter | `array` |
 | `pyarrow.RecordBatch`; a `numpy` record array, one column per member | `batch` |
 | `pyarrow.Table`, which may hold many chunks; `pyarrow.RecordBatchReader`; a `Dataset` or `Scanner`; a pandas `DataFrame`; a polars `DataFrame` or `LazyFrame`; an `__arrow_c_stream__` exporter | `stream` |
-| another `ArrowValue` | its own shape, taken rather than copied |
+| another `ArrowScalar` | its own shape, taken rather than copied |
 
 ```python
 import numpy as np
 import pyarrow as pa
 import pytest
 
-from yggdryl import ArrowValue
+from yggdryl import ArrowScalar
 from yggdryl.arrow import SHAPES
 
 assert SHAPES == ("scalar", "array", "batch", "stream")
@@ -250,26 +250,26 @@ root = "row: struct<symbol: utf8 not null, size: int64 not null> not null"
 
 # A held batch knows its length; a table crosses over the C stream, and a
 # stream states its schema before its first batch and nothing else.
-held = ArrowValue.from_py(table.to_batches()[0])
+held = ArrowScalar.from_(table.to_batches()[0])
 assert (held.shape, held.row_size, held.column_size) == ("batch", 2, 2)
-streamed = ArrowValue.from_py(table)
+streamed = ArrowScalar.from_(table)
 assert (streamed.shape, streamed.row_size, streamed.is_streamed) == ("stream", None, True)
 
-assert ArrowValue.from_py(pa.scalar(7, pa.int64())).into_arrow_scalar().as_py() == 7
-assert ArrowValue.from_py(np.array([1.5, 2.5])).shape == "array"
-assert ArrowValue.from_py(pa.chunked_array([[1, 2], [3]])).into_numpy().tolist() == [1, 2, 3]
+assert ArrowScalar.from_(pa.scalar(7, pa.int64())).into_arrow_scalar().as_py() == 7
+assert ArrowScalar.from_(np.array([1.5, 2.5])).shape == "array"
+assert ArrowScalar.from_(pa.chunked_array([[1, 2], [3]])).into_numpy().tolist() == [1, 2, 3]
 
 # A record dtype names its members, so it is rows.
 records = np.array([("AAPL", 100)], dtype=[("symbol", "U4"), ("size", "i8")])
-assert ArrowValue.from_py(records).column_size == 2
+assert ArrowScalar.from_(records).column_size == 2
 
 # The declared field is applied by the core's cast, and the shape survives it.
-prices = ArrowValue.from_py(pa.array([1, 2, 3]), "price: float64 not null")
+prices = ArrowScalar.from_(pa.array([1, 2, 3]), "price: float64 not null")
 assert prices.shape == "array"
 assert prices.into_arrow_array().type == pa.float64()
 
 # The Field is what puts the names back on a canonical positional row.
-named = ArrowValue.from_py(table.to_batches()[0], root)
+named = ArrowScalar.from_(table.to_batches()[0], root)
 assert named.as_py() == [
     {"symbol": "AAPL", "size": 100},
     {"symbol": "MSFT", "size": 250},
@@ -299,7 +299,7 @@ with pytest.raises(ValueError, match="crosses once"):
 
 | Call | Answers |
 | --- | --- |
-| `cast(field, *, safe, nullability, representation)` | another `ArrowValue` of the same shape, under the same policy `from_py` takes |
+| `cast(field, *, safe, nullability, representation)` | another `ArrowScalar` of the same shape, under the same policy `from_` takes |
 | `into_arrow_scalar()` | `pyarrow.Scalar`; anything but one row is a `ValueError` |
 | `into_arrow_array()` | `pyarrow.Array` |
 | `into_arrow_batch()` | `pyarrow.RecordBatch` |
@@ -318,21 +318,21 @@ Exports use the core's recursive C-schema exporter and Arrow C Data arrays; a re
 
 Wrappers fall into three identity classes, and an immutable one compares, orders, hashes, copies, and pickles by its complete native identity. `stable_hash()` is the deterministic native `u64`, which `hash()` remaps to `Py_hash_t` without changing equal-value agreement.
 
-- immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Digest`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
+- immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Digest`, `Term`, `Filter`, `Selector`, `Plan`, `Expression`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
 - mutable until built-in `hash()` locks the instance: `Field`, `MediaType`, `Uri`, `Url`, `Urn`, `RecordOptions`, `IcebergOptions`.
-- unhashable: `IOBase`, cursors, listings, iterators, catalog, table and namespace views, schema updates, bound expressions and statements, Avro blocks, metadata views.
+- unhashable: `IOBase`, cursors, listings, iterators, catalog, table and namespace views, schema updates, bound terms and selectors, records, Avro blocks, metadata views.
 
 ```python
 import copy
 import pickle
 
-from yggdryl import Expression, IOBase, Uri, Scalar
+from yggdryl import IOBase, Term, Uri, Scalar
 
-value = Scalar.from_py({"id": 1})
+value = Scalar.from_({"id": 1})
 assert {value: "row"}[copy.copy(value)] == "row"
 assert pickle.loads(pickle.dumps(value)) == value
-assert Scalar.from_py(12).divide(3).as_py() == 4
-assert isinstance((Expression("price") + 2) * 3, Expression)
+assert Scalar.from_(12).divide(3).as_py() == 4
+assert isinstance((Term("price") + 2) * 3, Term)
 
 location = Uri("https://example.com/data.json")
 hash(location)
@@ -353,7 +353,7 @@ else:
     raise AssertionError("a live handle has no value hash")
 ```
 
-`Expression` keeps expression parsing for strings, while other Python operands become native literal `Scalar` nodes, including in reflected operators.
+`Term` keeps expression parsing for strings, while other Python operands become native literal `Scalar` nodes, including in reflected operators.
 
 ## What a Python value loses
 
@@ -455,7 +455,7 @@ assert not field.iceberg
 
 Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity`, `partition` and `python`, and `field.protocol(name)` takes one known only at runtime. `identity` holds arbitrary inert strings, while `digest["role"]` accepts only `"holder"`.
 
-`partition` and `python` are the views with a typed vocabulary of their own here: `sources` names the field paths a column derives from and `transform` names the [expression](../expression/grammar.md) function that produces it, both answered only by `field.partition`, while [`field.python`](#the-declaring-class) answers the declaring class. `apply_arrow_batch` is answered by `field.partition` and `field.digest` alike - it is the one verb both declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
+`partition` and `python` are the views with a typed vocabulary of their own here: `sources` names the field paths a column derives from, `transform` names the [expression](../expression/grammar.md) function that produces it and `term` is the term they compile to, all answered only by `field.partition`, while [`field.python`](#the-declaring-class) answers the declaring class; `field.transform` is the generic view of a column computed by any `transform:expression`. `apply_arrow_batch` is answered by `field.transform`, `field.partition` and `field.digest` alike - it is the one verb the declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
 
 ```python
 import pyarrow as pa
@@ -961,7 +961,7 @@ with pytest.raises(ValueError):
 
 ## Records use typed adapters
 
-The handle exposes one read vocabulary and explicit write intent, configured only through `options=`. The write name says what Python holds and what the operation means.
+The handle exposes one read vocabulary and explicit write intent, configured through `options=` and the option properties beside it: every record method takes `**properties`, each set on a copy of the options - the ones given, or the handle's own - by the property's own setter, so `read_arrow_reader(select="id", filter="venue = 'XNAS'")` reads with the handle's own options carrying those sections. An `Ellipsis` value is skipped, the project's spelling for an argument that was not given; `None` is a value, and clears. The write name says what Python holds and what the operation means.
 
 | Python value | Replace | Add rows | Keyed update/insert |
 | --- | --- | --- | --- |
@@ -973,17 +973,18 @@ The handle exposes one read vocabulary and explicit write intent, configured onl
 `record_options()` derives the encoding, `read_arrow_field()` returns the native root `Field`, and `read_arrow_reader()` streams `pyarrow.RecordBatch` values. One configurable entry point takes the mode instead.
 
 ```text
-write_arrow_reader(reader, mode, *, options=None)
-write_arrow_table(table, mode, *, options=None)
-write_arrow_batch(batch, mode, *, options=None)
-write_records(records, mode, *, options=None)
-write_pandas(frames, mode, *, options=None)
-write_pandas_frame(frame, mode, *, options=None)
-write_polars(frames, mode, *, options=None)
-write_polars_frame(frame, mode, *, options=None)
+write_arrow(value, mode="overwrite", *, options=None, **properties)
+write_arrow_reader(reader, mode, *, options=None, **properties)
+write_arrow_table(table, mode, *, options=None, **properties)
+write_arrow_batch(batch, mode, *, options=None, **properties)
+write_records(records, mode, *, options=None, **properties)
+write_pandas(frames, mode, *, options=None, **properties)
+write_pandas_frame(frame, mode, *, options=None, **properties)
+write_polars(frames, mode, *, options=None, **properties)
+write_polars_frame(frame, mode, *, options=None, **properties)
 ```
 
-`mode` is `"overwrite"`, `"append"`, or `"merge"`, required and never inferred from `merge_by_names`. Row iterables stay streaming, grouped into at most `options.batch_row_size` rows.
+`mode` is `"overwrite"`, `"append"`, or `"merge"`, required and never inferred from `merge_by`. Row iterables stay streaming, grouped into at most `options.batch_row_size` rows.
 
 ```python
 import pathlib
@@ -1007,7 +1008,7 @@ handle.overwrite_arrow_batch(first)
 handle.append_arrow_table(more)
 
 merge = handle.record_options()
-merge.merge_by_names = ["id"]
+merge.merge_by = ["id"]
 updated = pa.RecordBatchReader.from_batches(
     schema,
     [pa.record_batch({"id": [2, 4], "venue": ["XPAR", None]}, schema=schema)],
@@ -1024,7 +1025,7 @@ selected.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 assert handle.read_arrow_reader(options=selected).schema.names == ["id"]
 ```
 
-The selected method is authoritative, and `merge_by_names` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence for every representation above, including pandas and polars, and defaults to `None`: one publication after successful end of input.
+The selected method is authoritative, and `merge_by` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence for every representation above, including pandas and polars, and defaults to `None`: one publication after successful end of input.
 
 ```python
 import pathlib
@@ -1076,7 +1077,7 @@ handle.overwrite_records([], options=empty)
 
 ### Rows whatever the handle holds
 
-`read_arrow_value(field=None)` and `write_arrow_value(value, mode="overwrite", field=None)` are the Arrow-shaped siblings of `read_scalar` and `write_scalar`, and the one pair that needs no prior knowledge of what a handle holds: a record encoding answers its batch stream, and a JSON, JSON Lines, YAML, or TOML document the batch its rows parse into. The written value crosses through [`ArrowValue`](#arrow-values), so every source `from_py` accepts reaches the same publication path.
+`read_arrow(*, options=None, **properties)` and `write_arrow(value, mode="overwrite", *, options=None, **properties)` are the Arrow-shaped siblings of `read_scalar` and `write_scalar`, and the one pair that needs no prior knowledge of what a handle holds: a record encoding answers its batch stream, and a JSON, JSON Lines, YAML, or TOML document the batch its rows parse into. The written value crosses through [`ArrowScalar`](#arrow-values), so every source `from_` accepts reaches the same publication path, and `write_arrow` is the generic write: a stream reaches the reader primitive without being collected and a held table the batch primitive without being wrapped, under whatever `options` and properties a record write takes. A document reads only `field` off them.
 
 ```python
 import pathlib
@@ -1092,19 +1093,19 @@ quotes = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
 
 # A record encoding takes every mode and answers rows as they arrive.
 stream = IOBase(root / "quotes.arrows")
-stream.write_arrow_value(quotes.to_pandas())
-stream.write_arrow_value(quotes, "append")
-assert stream.read_arrow_value().shape == "stream"
-assert stream.read_arrow_value().into_arrow_table().num_rows == 4
+stream.write_arrow(quotes.to_pandas())
+stream.write_arrow(quotes, "append")
+assert stream.read_arrow().shape == "stream"
+assert stream.read_arrow().into_arrow_table().num_rows == 4
 
 # A text document is one frame around its rows: written whole, read as one
 # batch, and refused any other mode.
 document = IOBase(root / "quotes.jsonl")
-document.write_arrow_value(quotes)
+document.write_arrow(quotes)
 assert b'"symbol":"AAPL"' in document.read_bytes()
-assert document.read_arrow_value().row_size == 2
+assert document.read_arrow().row_size == 2
 with pytest.raises(ValueError, match="overwrite"):
-    document.write_arrow_value(quotes, "append")
+    document.write_arrow(quotes, "append")
 ```
 
 ### Record options
@@ -1187,7 +1188,7 @@ assert xxhash.xxh3("abc") == xxhash.xxh3(memoryview(b"abc"))
 digest = xxhash.digest(b"abc", "xxh3-64")
 assert str(digest) == "xxh3-64:78af5f94892f3950"
 assert xxhash.Digest(str(digest)) == digest
-assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_hash()
+assert int(Scalar.from_("AAPL").digest()) == Scalar.from_("AAPL").stable_hash()
 
 value = txhash.txh3(b"abc", dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc))
 assert value.unix == 1_700_000_000_000_000
@@ -1480,10 +1481,10 @@ Bulk configuration responses stream one flat message per configuration a respons
 - `relative_to` outside the root -> `ValueError`; `touch` on a directory -> `IsADirectoryError`.
 - `read_range(cls=...)` outside `bytes`, `str`, and `None` -> `TypeError`, the way `read_scalar(cls=...)` refuses one.
 - a `pyarrow.Table` handed to `overwrite_arrow_reader` -> refused; a scanner participates as `scanner.to_reader()`.
-- an `ArrowValue` of shape `stream` -> one-shot; every other shape shares its Arrow buffers back and stays readable, and reading a consumed stream is a `ValueError`.
-- `ArrowValue.from_py` of a `numpy` array of more than one dimension -> `TypeError`, because Arrow has no column of that shape.
-- `write_arrow_value` on a JSON, JSON Lines, YAML, or TOML handle -> `"overwrite"` only; append and merge go through the record adapters.
-- `ArrowValue` in JavaScript -> not bound, because a stream has no honest copied-IPC representation.
+- an `ArrowScalar` of shape `stream` -> one-shot; every other shape shares its Arrow buffers back and stays readable, and reading a consumed stream is a `ValueError`.
+- `ArrowScalar.from_py` of a `numpy` array of more than one dimension -> `TypeError`, because Arrow has no column of that shape.
+- `write_arrow` on a JSON, JSON Lines, YAML, or TOML handle -> `"overwrite"` only; append and merge go through the record adapters.
+- `ArrowScalar` in JavaScript -> not bound, because a stream has no honest copied-IPC representation.
 - empty records -> require `options.field`, and invalid intent is rejected before the input is iterated.
 - a commit cadence falling inside a batch grouping -> conversion ends the current batch at the exact cadence boundary.
 - `commit_row_size = 0` -> rejected before any Python input is inspected.

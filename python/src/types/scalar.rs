@@ -847,8 +847,12 @@ impl PyScalar {
     }
 
     /// Convert a Python-native value without a text intermediate.
+    ///
+    /// Spelled `from_` because `from` is a Python keyword; it is the one
+    /// reading every native input crosses through.
     #[staticmethod]
-    fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[pyo3(name = "from_")]
+    fn from_(value: &Bound<'_, PyAny>) -> PyResult<Self> {
         from_py(value).map(Self::from_inner)
     }
 
@@ -1643,6 +1647,12 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// equality.
 pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
+        // An Arrow payload is the `ArrowScalar` it is, buffers shared.
+        Scalar::Arrow(value) => Ok(Py::new(
+            py,
+            crate::arrow::PyArrowScalar::from_inner((**value).clone()),
+        )?
+        .into_any()),
         Scalar::Null => Ok(py.None()),
         Scalar::Boolean(value) => Ok(value
             .get()
@@ -1897,6 +1907,12 @@ impl Encoder {
         }
         if let Some(value) = native_wrapper_to_value(value) {
             return Ok(value);
+        }
+        // A columnar object - a pyarrow container, a pandas or polars frame
+        // or series, a numpy array, an Arrow C exporter - is the Arrow scalar
+        // it already is, buffers shared rather than rows walked.
+        if let Some(arrow) = crate::arrow::try_ingest(value)? {
+            return Ok(Scalar::Arrow(std::sync::Arc::new(arrow)));
         }
         // A path is recognized by its protocol rather than by its class,
         // because every path-like object answers `__fspath__` and none of them
@@ -2372,6 +2388,24 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
         return Some(Scalar::from(value.inner.to_string()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyUrn>>() {
+        return Some(Scalar::from(value.inner.to_string()));
+    }
+    // An expression's scalar is its canonical text: the text parses back to
+    // the same value, so a `Term` in a list of projections or a `Filter` given
+    // as a property crosses as what it spells.
+    if let Ok(value) = value.extract::<PyRef<'_, crate::expression::PyTerm>>() {
+        return Some(Scalar::from(value.inner.to_string()));
+    }
+    if let Ok(value) = value.extract::<PyRef<'_, crate::expression::PyFilter>>() {
+        return Some(Scalar::from(value.inner.to_string()));
+    }
+    if let Ok(value) = value.extract::<PyRef<'_, crate::expression::PySelector>>() {
+        return Some(Scalar::from(value.inner.to_string()));
+    }
+    if let Ok(value) = value.extract::<PyRef<'_, crate::expression::PyPlan>>() {
+        return Some(Scalar::from(value.inner.to_string()));
+    }
+    if let Ok(value) = value.extract::<PyRef<'_, crate::expression::PyExpression>>() {
         return Some(Scalar::from(value.inner.to_string()));
     }
     None

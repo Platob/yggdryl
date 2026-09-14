@@ -1,13 +1,13 @@
 # YAML rows
 
-A YAML document stream as Arrow rows. `read_arrow_value` and `write_arrow_value` are the one bridge between documents and a batch.
+A YAML document stream as Arrow rows. `read_arrow` and `write_arrow` are the one bridge between documents and a batch.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Reads | `read_arrow_value(field)` reads every document in the stream, then answers one batch |
-| Writes | `write_arrow_value(value, mode)` writes one document per row, `---` separated |
+| Reads | `read_arrow(options)` reads every document in the stream, then answers one batch |
+| Writes | `write_arrow(value, mode)` writes one document per row, `---` separated |
 | Held | nothing but the batch being encoded: the frame is per document, so rows stream out |
 | Mode | overwrite only: a document set is written whole |
 | Not a record encoding | [`RecordOptions`](../options.md) names no structured format, so `read_arrow_reader` and the three write intents refuse the name |
@@ -31,11 +31,11 @@ Rust and Python only.
     handle.write_all_bytes(b"id: 1\nsymbol: AAPL\n---\nid: 2\nsymbol: MSFT\n")?;
 
     // The document's own shape holds the rows; the root is the one they prove.
-    let value = handle.read_arrow_value(None)?;
+    let value = handle.read_arrow(None)?;
     assert_eq!((value.row_size(), value.column_size()), (Some(2), 2));
 
     // Written back, the rows are framed the way this format frames them.
-    handle.write_arrow_value(value, IOMode::Overwrite)?;
+    handle.write_arrow(value, IOMode::Overwrite, None)?;
     assert!(String::from_utf8(handle.read_all_bytes()?)?.contains("---"));
     ```
 
@@ -52,7 +52,7 @@ Rust and Python only.
     handle = IOBase(source)
 
     # The document's own shape holds the rows; the root is the one they prove.
-    value = handle.read_arrow_value()
+    value = handle.read_arrow()
     assert value.shape == "batch"
     assert value.as_py() == [
         {"id": 1, "symbol": "AAPL"},
@@ -60,7 +60,7 @@ Rust and Python only.
     ]
 
     # Written back, the rows are framed the way this format frames them.
-    handle.write_arrow_value(value.into_arrow_table())
+    handle.write_arrow(value.into_arrow_table())
     assert b"---" in handle.read_bytes()
     ```
 
@@ -83,5 +83,5 @@ Rust and Python only.
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_value.py
+    python/.venv/bin/python -m pytest python/tests/arrow/test_arrow_scalar.py
     ```

@@ -706,7 +706,7 @@ def test_field_apply_arrow_batch_runs_only_what_it_is_asked_for() -> None:
     root = _applied_root()
     batch = pa.record_batch({"event": pa.array([19_723], pa.date32())})
 
-    cast_only = root.apply_arrow_batch(batch, digest=False, partition=False)
+    cast_only = root.apply_arrow_batch(batch, digest=False, transform=False)
     assert cast_only.column("year").to_pylist() == [None]
     assert cast_only.column("row_digest").null_count == 1
 

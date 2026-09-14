@@ -6,7 +6,7 @@
 //! `tests/expression/grammar.rs`.
 
 use crate::expression::Safety;
-use crate::{DataType, DataTypeId, Expression, Scalar, Version};
+use crate::{DataType, DataTypeId, Scalar, Version};
 
 #[test]
 fn scalar_casts_return_the_exact_target_leaf() {
@@ -102,7 +102,7 @@ fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
         ("v like '5.0%'", Scalar::from(true)),
     ] {
         let answer = text
-            .parse::<Expression>()
+            .parse::<crate::expression::Term>()
             .unwrap()
             .bind(&schema)
             .unwrap()

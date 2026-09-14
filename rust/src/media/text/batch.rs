@@ -27,8 +27,8 @@ where
     I: IntoIterator,
     I::Item: Into<Result<TextLine>>,
 {
-    let plan = options.plan()?;
-    let field = plan.field(options.name.clone())?;
+    let plan = options.line_plan()?;
+    let field = plan.field(SmolStr::new(options.name()))?;
     let rows = lines
         .into_iter()
         .map(|line| line.into().and_then(|line| row_of(&plan, &line, options)))
@@ -64,8 +64,8 @@ where
     I::Item: Into<Result<TextLine>>,
     I::IntoIter: Send + 'static,
 {
-    let plan = Arc::new(options.plan()?);
-    let field = plan.field(options.name.clone())?;
+    let plan = Arc::new(options.line_plan()?);
+    let field = plan.field(SmolStr::new(options.name()))?;
     let shared = Arc::new(options.clone());
     let rows = lines.into_iter().map({
         let plan = Arc::clone(&plan);
@@ -126,7 +126,7 @@ fn value_of(
                     super::arrow::row_error(
                         line.index(),
                         None,
-                        line.url(),
+                        line.sourceurl(),
                         super::options::MTIME_COLUMN,
                         smol_str::format_smolstr!(
                             "expected a nanosecond count a 64-bit column can hold, got {count}"
@@ -168,7 +168,7 @@ fn capture_value(
         // The column's name is walked to only where the error is built: the
         // path that parses is every row of every read, and it needs no name.
         let name = options.capture_names().nth(index).unwrap_or_default();
-        super::arrow::row_error(line.index(), None, line.url(), name, reason)
+        super::arrow::row_error(line.index(), None, line.sourceurl(), name, reason)
     })
 }
 
@@ -180,7 +180,10 @@ fn capture_value(
 /// Meaning stays exact - a matched column is read at the plan's own datatype,
 /// and nothing here guesses what a value means, only what a column is called.
 const ALIASES: [(&str, &[&str]); 6] = [
-    ("url", &["source", "uri", "path", "file", "location"]),
+    (
+        "sourceurl",
+        &["url", "source", "uri", "path", "file", "location"],
+    ),
     (
         "rownum",
         &["row_number", "rownumber", "line_number", "lineno", "row"],
@@ -206,7 +209,7 @@ const ALIASES: [(&str, &[&str]); 6] = [
 /// The name a fixed column carries before any rename.
 const fn default_name_of(source: &TextSource) -> Option<&'static str> {
     Some(match source {
-        TextSource::Url => "url",
+        TextSource::Url => "sourceurl",
         TextSource::Rownum => "rownum",
         TextSource::Timestamp => "mtime",
         TextSource::BodyType => "mimetype",
@@ -268,7 +271,7 @@ impl Intake {
         schema: &arrow_schema::Schema,
         options: &TextOptions,
     ) -> Result<Self> {
-        let field = plan.field(options.name.clone())?;
+        let field = plan.field(SmolStr::new(options.name()))?;
         let mut positions = Vec::with_capacity(plan.columns().len());
         for (column, child) in plan.columns().iter().zip(field.fields()) {
             let at = locate(schema, column);
@@ -312,7 +315,7 @@ pub fn from_arrow_batch(
     batch: &arrow_array::RecordBatch,
     options: &TextOptions,
 ) -> Result<Vec<TextLine>> {
-    let plan = options.plan()?;
+    let plan = options.line_plan()?;
     let intake = Intake::resolve(&plan, batch.schema_ref(), options)?;
     let mut lines = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
@@ -334,7 +337,7 @@ pub fn from_arrow_reader(
     batches: BatchReader,
     options: &TextOptions,
 ) -> Result<impl std::iter::FusedIterator<Item = Result<TextLine>> + Send + 'static> {
-    let plan = options.plan()?;
+    let plan = options.line_plan()?;
     let schema = batches.schema();
     let intake = Intake::resolve(&plan, &schema, options)?;
     let mut batches = batches;
@@ -411,7 +414,7 @@ fn line_of(
                     super::arrow::row_error(
                         ordinal,
                         None,
-                        line.url(),
+                        line.sourceurl(),
                         &column.name,
                         smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
                     )
@@ -420,7 +423,7 @@ fn line_of(
             super::arrow::row_error(
                 ordinal,
                 None,
-                line.url(),
+                line.sourceurl(),
                 &column.name,
                 smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
             )
@@ -472,7 +475,8 @@ fn apply(
     }
     // Located by the stream ordinal `line_of` reports, never by a restored
     // row number an earlier column of this same row may already have set.
-    let refused = |reason| super::arrow::row_error(ordinal, None, line.url(), &column.name, reason);
+    let refused =
+        |reason| super::arrow::row_error(ordinal, None, line.sourceurl(), &column.name, reason);
     let text = |value| {
         read_bytes(value).map_err(|error| {
             refused(smol_str::format_smolstr!(
@@ -484,7 +488,7 @@ fn apply(
     match &column.source {
         TextSource::Url => {
             if let Scalar::Url(url) = value {
-                line.set_url(Some(Arc::clone(url)));
+                line.set_sourceurl(Some(Arc::clone(url)));
             }
         }
         TextSource::Rownum => {

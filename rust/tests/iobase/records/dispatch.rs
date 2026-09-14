@@ -28,7 +28,7 @@ fn generic_write_entry_points_compose_the_three_typed_shapes() {
                 },
             ],
             IOMode::Merge,
-            &options.clone().with_merge_by_names(["id"]),
+            &options.clone().with_merge_by(["id"]).unwrap(),
         )
         .unwrap();
 
@@ -213,7 +213,7 @@ fn generic_writes_select_the_same_shape_for_every_mode() {
 
     for mode in IOMode::WRITE {
         let options = if mode == IOMode::Merge {
-            plain.clone().with_merge_by_names(["id"])
+            plain.clone().with_merge_by(["id"]).unwrap()
         } else {
             plain.clone()
         };
@@ -259,7 +259,7 @@ fn generic_writes_validate_mode_before_touching_input() {
         .write_arrow_reader(
             source,
             IOMode::Overwrite,
-            &options.clone().with_merge_by_names(["id"]),
+            &options.clone().with_merge_by(["id"]).unwrap(),
         )
         .unwrap_err();
     assert!(error.to_string().contains("write mode overwrite"));
@@ -272,7 +272,7 @@ fn generic_writes_validate_mode_before_touching_input() {
         .write_arrow_batch(
             rows_batch(&[6]),
             IOMode::Overwrite,
-            &options.clone().with_merge_by_names(["id"]),
+            &options.clone().with_merge_by(["id"]).unwrap(),
         )
         .unwrap_err();
     assert!(error.to_string().contains("write mode overwrite"));
@@ -293,7 +293,11 @@ fn generic_writes_validate_mode_before_touching_input() {
     // Mode validation also wins over the missing-field error and happens
     // before even constructing a native row iterator.
     let into_iters = Arc::new(AtomicUsize::new(0));
-    let untyped = handle.record_options().unwrap().with_merge_by_names(["id"]);
+    let untyped = handle
+        .record_options()
+        .unwrap()
+        .with_merge_by(["id"])
+        .unwrap();
     let error = handle
         .write_records(
             CountedIntoRows(Arc::clone(&into_iters)),

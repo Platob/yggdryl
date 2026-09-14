@@ -10,13 +10,13 @@ One Arrow batch read and three explicit write intents on every handle.
 | Encoding | the handle's media type via `record_options()`, coding included |
 | Intents | `overwrite`, `append`, `merge`; `write_*` takes an `IOMode`; no default mode, no untyped Rust `write` |
 | Order | input, mode when present, options; Rust requires `&RecordOptions`, bindings default one |
-| Merge keys | `merge_by_names` gives identity only; merge requires it, overwrite and append refuse it |
-| Shaping | field, `select_by_names`, completion cast, partition filter, then `max_row_size` / `max_byte_size` |
+| Merge keys | `merge_by`, a `Selector` of key columns, gives identity only; merge requires it, overwrite and append refuse it |
+| Shaping | field, `filter`, `select`, completion cast, then `max_row_size` / `max_byte_size` - the split sections of one [plan](../../expression/plans.md) |
 | Commits | `commit_row_size` unset: once at end; `N`: every `N` rows plus remainder; `0`: rejected |
 | Lazy | reads stream batches; append chains stored then incoming; merge indexes only the stored side |
 | Feature flag | `arrow` (default): IPC, Avro, text; `parquet`: Parquet; a missing encoding is named in the error |
 | Settings | one [RecordOptions](../../media/options.md) object, the only settings argument; Python keyword-only `options=`, JavaScript trailing `options?` |
-| Shape-free | `read_arrow_value` / `write_arrow_value` answer an [ArrowValue](../../arrow/values.md) whatever the handle holds, structured text documents included |
+| Shape-free | `read_arrow` / `write_arrow` answer an [ArrowScalar](../../arrow/values.md) whatever the handle holds, structured text documents included |
 
 ## Use
 
@@ -230,7 +230,7 @@ handle.overwrite_records([Quote(1, "AAPL"), Quote(2, "MSFT")], &options)?;
 handle.append_records([Quote(3, "AMD")], &options)?;
 handle.merge_records(
     [Quote(2, "MSFT.O")],
-    &options.clone().with_merge_by_names(["id"]),
+    &options.clone().with_merge_by("id")?,
 )?;
 assert_eq!(
     handle
@@ -440,8 +440,8 @@ The options field selects and casts in one pass; columns it omits are never read
     // The resource is unchanged: it still holds all three.
     assert_eq!(handle.read_arrow_field(&plain)?.field_len(), 3);
 
-    // `select_by_names` narrows by name instead, in the order the names are given.
-    let selecting = plain.clone().with_select_by_names(["symbol"]);
+    // `select` narrows by name instead, in the order the names are given.
+    let selecting = plain.clone().with_select("symbol")?;
     let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
     assert_eq!(first.num_columns(), 1);
     assert_eq!(first.schema().field(0).name(), "symbol");
@@ -501,9 +501,9 @@ The options field selects and casts in one pass; columns it omits are never read
     widened = handle.read_arrow_reader(options=options)
     assert widened.schema.names == ["id", "nowhere"]
 
-    # `select_by_names` narrows by name instead, in the order the names are given.
+    # `select` narrows by name instead, in the order the names are given.
     selecting = handle.record_options()
-    selecting.select_by_names = ["symbol"]
+    selecting.select = ["symbol"]
     assert handle.read_arrow_reader(options=selecting).read_all().column_names == ["symbol"]
     ```
 
@@ -545,8 +545,8 @@ The options field selects and casts in one pass; columns it omits are never read
     const widened = handle.readArrowReader(options.withField(invented))
     assert.equal(widened.field.dtype.length, 2)
 
-    // `selectByNames` narrows by name instead, in the order the names are given.
-    const selected = handle.readArrowReader(options.withSelectByNames(['symbol'])).intoTable()
+    // `select` narrows by name instead, in the order the names are given.
+    const selected = handle.readArrowReader(options.withSelect(['symbol'])).intoTable()
     assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
@@ -730,7 +730,7 @@ Overwrite replaces the resource, append retains stored rows, merge updates match
     assert_eq!(total, 3);
 
     // Merge requires a match key: `2` updates and `9` appends.
-    let merging = options.clone().with_merge_by_names(["id"]);
+    let merging = options.clone().with_merge_by("id")?;
     handle.merge_arrow_reader(rows(vec![2, 9], vec!["MSFT.O", "AMD"]), &merging)?;
     let total: usize = handle
         .read_arrow_reader(&options)?
@@ -771,7 +771,7 @@ Overwrite replaces the resource, append retains stored rows, merge updates match
     # A match key merges: `2` is already stored and updates, `9` is new and appends.
     merging = handle.record_options()
     merging.field = schema
-    merging.merge_by_names = ["id"]
+    merging.merge_by = ["id"]
     handle.merge_arrow_batch(rows([2, 9], ["MSFT.O", "AMD"]), options=merging)
     assert handle.read_arrow_reader(options=options).read_all().num_rows == 4
     ```
@@ -808,7 +808,7 @@ Overwrite replaces the resource, append retains stored rows, merge updates match
     assert.equal(handle.readArrowReader(options).intoTable().numRows, 3)
 
     // A match key merges: `2` is already stored and updates, `9` is new and appends.
-    const merging = options.withMergeByNames(['id'])
+    const merging = options.withMergeBy(['id'])
     handle.mergeArrowReader(rows([2n, 9n], ['MSFT.O', 'AMD']), merging)
     assert.equal(handle.readArrowReader(options).intoTable().numRows, 4)
     ```
@@ -817,7 +817,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 
 ### Selecting columns
 
-`select_by_names` narrows both directions: a read yields the named columns in that order, a write keeps only those incoming columns. It lives on the one options object shared by every operation; the [Column pushdown](#column-pushdown) example reads one column by name in all three languages.
+`select` narrows both directions: a read yields the named columns in that order, a write keeps only those incoming columns. It is the `select` section of the options' [plan](../../expression/plans.md), and takes a `Selector`, its text, or the column names; the [Column pushdown](#column-pushdown) example reads one column by name in all three languages, and a computed projection (`price * 2 as doubled`) reads the same way.
 
 ## Text records
 
@@ -828,9 +828,11 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 - empty row source without `options.field` -> refused; a non-empty source may infer it from its row class.
 - `max_row_size = 0` -> shaped schema, no batches, no error.
 - row bound -> exact, sliced as a view; non-zero `max_byte_size` -> at least one row; both -> first to bind wins.
-- limit with `merge_by_names` -> refused naming both; a limited write truncates and never pulls the rest.
+- limit with `merge_by` -> refused naming both; a limited write truncates and never pulls the rest.
 - overwrite onto a stored field -> rows cast to it; clear the handle to change it.
-- `select_by_names` with a missing name -> error listing what is there; ASCII case-insensitive; empty selects all.
+- `select` naming a missing column -> error listing what is there; ASCII case-insensitive; `select *` selects all.
+- a `where` naming a column only the `select` publishes (an alias) -> runs after the projection, as DuckDB lets a `where` read an alias; every other `where` runs first, where it prunes.
+- properties beside `options` (`read_arrow_reader(select="id")`, `readArrowReader({ select: 'id' })`, `readArrowReader(options, { select: 'id' })`) -> set on a copy by their own setters; `...` and `undefined` are skipped, `None` and `null` clear; a property no options have -> the setter's own refusal.
 - no declared field -> stored shape, no cast; `read_arrow_field` answers the batches' non-null struct root.
 - a declared column the resource lacks -> the encoding reads everything and the cast fills it with nulls, reordering and converting the rest.
 - a wrong input shape for a shape-named adapter -> rejected before it crosses into the core.

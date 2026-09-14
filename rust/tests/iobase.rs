@@ -3,8 +3,6 @@
 #[path = "support/counting.rs"]
 mod counting;
 
-#[path = "iobase/applying.rs"]
-mod applying;
 #[path = "iobase/buffered_handle.rs"]
 mod buffered_handle;
 #[path = "iobase/conformance.rs"]

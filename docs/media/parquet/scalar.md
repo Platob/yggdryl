@@ -7,7 +7,7 @@ Native rows - a tuple, a mapping, a dataclass, a plain object - in and out of a 
 | Key | Value |
 | --- | --- |
 | Writes | `overwrite_records`, `append_records`, `merge_records`, `write_records`; a row is anything that converts into a [`Scalar`](../../types/scalar.md) |
-| Reads | Python `read_records`, JavaScript `readRecords`; Rust reads Arrow and crosses with `ArrowValue::into_scalar` |
+| Reads | Python `read_records`, JavaScript `readRecords`; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
 | Row shape | an ordered `Scalar::Sequence` under the root, or a name-sorted `Scalar::Record` resolved to that order |
 | Schema | `options.field` declares the root; a non-empty mapping or dataclass source infers it, a positional one cannot |
 | Batching | rows are grouped into batches bounded by `batch_row_size`, then into row groups bounded by `max_row_group_size` |
@@ -43,11 +43,11 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
 
     handle.overwrite_records([Trade(1, "AAPL"), Trade(2, "MSFT")], &options)?;
     handle.append_records([Trade(3, "GOOG")], &options)?;
-    handle.merge_records([Trade(2, "NVDA")], &options.clone().with_merge_by_names(["id"]))?;
+    handle.merge_records([Trade(2, "NVDA")], &options.clone().with_merge_by(["id"])?)?;
 
     // Rust reads Arrow, then crosses into the value model in one call: a file
     // answers a sequence of ordered row sequences.
-    let rows = handle.read_arrow_value(Some(&field))?.into_scalar()?;
+    let rows = handle.read_arrow(Some(&options.clone().with_field(field.clone())))?.into_scalar()?;
     let symbols = rows
         .as_sequence()
         .unwrap_or_default()
@@ -74,7 +74,7 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
     handle.append_records([{"id": 3, "symbol": "GOOG"}])
 
     merging = handle.record_options()
-    merging.merge_by_names = ["id"]
+    merging.merge_by = ["id"]
     handle.merge_records([{"id": 2, "symbol": "NVDA"}], options=merging)
 
     # Plain dictionaries back, one row at a time.
@@ -100,7 +100,7 @@ The three intents carry the same rows as the [batch surface](arrow.md), one row 
     handle.appendRecords([{ id: 3n, symbol: 'GOOG' }])
     handle.mergeRecords(
       [{ id: 2n, symbol: 'NVDA' }],
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     const rows = [...handle.readRecords()]

@@ -92,13 +92,13 @@ impl TextLine {
     /// and a URL is several small strings that would otherwise be rebuilt once
     /// per row.
     #[must_use]
-    pub fn url(&self) -> Option<&Url> {
+    pub fn sourceurl(&self) -> Option<&Url> {
         self.url.as_deref()
     }
 
     /// The object this line was read from, as the handle every line shares.
     ///
-    /// [`url`](Self::url) is what a reader comparing or rendering one wants.
+    /// [`sourceurl`](Self::sourceurl) is what a reader comparing or rendering one wants.
     /// A column that *holds* the URL wants this: a URL is several small
     /// strings, and a whole read answers one, so the column takes a
     /// reference count of the handle the read already built rather than
@@ -109,13 +109,13 @@ impl TextLine {
     }
 
     /// Set or clear the object this line was read from.
-    pub fn set_url(&mut self, url: Option<Arc<Url>>) {
+    pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>) {
         self.url = url;
     }
 
     /// Return this line addressed to one object.
     #[must_use]
-    pub fn with_url(mut self, url: Arc<Url>) -> Self {
+    pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self {
         self.url = Some(url);
         self
     }

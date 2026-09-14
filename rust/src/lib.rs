@@ -50,7 +50,7 @@ mod union_mode;
 mod uri;
 
 #[cfg(feature = "arrow")]
-pub use arrow::{ArrowShape, ArrowValue};
+pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
 pub use charset::Charset;
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
@@ -59,7 +59,7 @@ pub use datatype_kind::DataTypeKind;
 pub use digest::{Digest, DigestAlgorithm, DigestBytes, Digester};
 pub use edge_algorithm::EdgeAlgorithm;
 pub use error::{Error, Result};
-pub use expression::Expression;
+pub use expression::{Expression, Filter, Plan, Selector, Term};
 pub use expression::{FieldPath, FieldSegment};
 pub use fix::MsgType;
 pub use fix::{
@@ -117,7 +117,7 @@ pub use types::protocol::{
     PandasFieldMut, PartitionField, PartitionFieldMut, PolarsField, PolarsFieldMut, PostgresField,
     PostgresFieldMut, PostgresqlField, PostgresqlFieldMut, ProtocolField, ProtocolFieldMut,
     PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
-    SparkFieldMut, SqlField, SqlFieldMut, UrnField, UrnFieldMut,
+    SparkFieldMut, SqlField, SqlFieldMut, TransformField, TransformFieldMut, UrnField, UrnFieldMut,
 };
 pub use types::timezone::Timezone;
 pub use types::{

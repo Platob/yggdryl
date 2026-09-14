@@ -26,6 +26,7 @@ use crate::metadata::{
 use crate::{Metadata, Result, Scheme};
 
 mod http;
+mod partition;
 mod python;
 
 pub(crate) use python::{

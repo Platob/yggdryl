@@ -36,7 +36,7 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import ArrowValue, Field, IOBase
+from yggdryl import ArrowScalar, Field, IOBase
 
 ROW_COUNT = 4_096
 # `Limits::default().max_documents()` is 1,024, and JSON Lines yields one
@@ -85,9 +85,9 @@ DECLARED_SCHEMA = pa.schema(
 
 # A held shape shares its buffers back, so one value answers every export as
 # often as it is asked. A stream would be spent by the first measured call.
-HELD_BATCH = ArrowValue.from_py(BATCH)
-HELD_COLUMN = ArrowValue.from_py(COLUMN)
-HELD_SCALAR = ArrowValue.from_py(SCALAR)
+HELD_BATCH = ArrowScalar.from_(BATCH)
+HELD_COLUMN = ArrowScalar.from_(COLUMN)
+HELD_SCALAR = ArrowScalar.from_(SCALAR)
 
 MAP_TYPE = pa.map_(pa.string(), pa.string(), keys_sorted=True)
 MAP_SCHEMA = pa.schema(
@@ -103,7 +103,7 @@ MAP_BATCH = pa.RecordBatch.from_arrays(
     ],
     schema=MAP_SCHEMA,
 )
-HELD_MAP_BATCH = ArrowValue.from_py(MAP_BATCH)
+HELD_MAP_BATCH = ArrowScalar.from_(MAP_BATCH)
 
 STORE = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrow-bench-"))
 # The store is made at import, before any argument is read, so its removal is
@@ -191,11 +191,11 @@ def _read_jsonl_baseline() -> int:
 
 
 def _read_stream_value() -> int:
-    return STREAM.read_arrow_value().into_arrow_table().num_rows
+    return STREAM.read_arrow().into_arrow_table().num_rows
 
 
 def _read_lines_value() -> int:
-    return LINES.read_arrow_value(TEXT_ROOT).row_size
+    return LINES.read_arrow(TEXT_ROOT).row_size
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
@@ -211,22 +211,22 @@ def _cases(
     cases: list[tuple[str, Callable[[], object], int]] = [
         # A table may hold many chunks, so it crosses over the C stream that
         # `to_reader` is the PyArrow spelling of: neither side pulls a batch.
-        ("from Table (yggdryl)", lambda: ArrowValue.from_py(TABLE), small),
+        ("from Table (yggdryl)", lambda: ArrowScalar.from_(TABLE), small),
         ("from Table (pyarrow)", lambda: TABLE.to_reader(), small),
         # A held container has no PyArrow counterpart to subtract: nothing else
         # imports it across the C Data Interface, so the number beside it is
         # the whole crossing rather than a difference. Rows without a
         # `(pyarrow)` partner are read that way.
-        ("from RecordBatch", lambda: ArrowValue.from_py(BATCH), small),
-        ("from Array", lambda: ArrowValue.from_py(COLUMN), small),
-        ("from ChunkedArray (yggdryl)", lambda: ArrowValue.from_py(CHUNKED), bulk),
+        ("from RecordBatch", lambda: ArrowScalar.from_(BATCH), small),
+        ("from Array", lambda: ArrowScalar.from_(COLUMN), small),
+        ("from ChunkedArray (yggdryl)", lambda: ArrowScalar.from_(CHUNKED), bulk),
         # Combining is what the chunked arm does before it pairs, so this one
         # really is the same work minus the wrapper.
         ("from ChunkedArray (pyarrow)", lambda: CHUNKED.combine_chunks(), bulk),
-        ("from Scalar", lambda: ArrowValue.from_py(SCALAR), small),
+        ("from Scalar", lambda: ArrowScalar.from_(SCALAR), small),
         (
             "from RecordBatchReader (yggdryl)",
-            lambda: ArrowValue.from_py(_reader()),
+            lambda: ArrowScalar.from_(_reader()),
             small,
         ),
         ("from RecordBatchReader (pyarrow)", _reader, small),
@@ -235,7 +235,7 @@ def _cases(
         cases += [
             (
                 "from pandas DataFrame (yggdryl)",
-                lambda: ArrowValue.from_py(PANDAS_FRAME),
+                lambda: ArrowScalar.from_(PANDAS_FRAME),
                 bulk,
             ),
             (
@@ -248,7 +248,7 @@ def _cases(
         cases += [
             (
                 "from polars DataFrame (yggdryl)",
-                lambda: ArrowValue.from_py(POLARS_FRAME),
+                lambda: ArrowScalar.from_(POLARS_FRAME),
                 bulk,
             ),
             ("from polars DataFrame (polars)", POLARS_FRAME.to_arrow, bulk),
@@ -257,13 +257,13 @@ def _cases(
         cases += [
             (
                 "from numpy array (yggdryl)",
-                lambda: ArrowValue.from_py(NUMPY_COLUMN),
+                lambda: ArrowScalar.from_(NUMPY_COLUMN),
                 bulk,
             ),
             ("from numpy array (pyarrow)", lambda: pa.array(NUMPY_COLUMN), bulk),
             (
                 "from numpy records (yggdryl)",
-                lambda: ArrowValue.from_py(NUMPY_RECORDS),
+                lambda: ArrowScalar.from_(NUMPY_RECORDS),
                 bulk,
             ),
             ("from numpy records (pyarrow)", _numpy_records_baseline, bulk),
@@ -271,13 +271,13 @@ def _cases(
     cases += [
         (
             "from Array, declared (yggdryl)",
-            lambda: ArrowValue.from_py(COLUMN, DECLARED_COLUMN),
+            lambda: ArrowScalar.from_(COLUMN, DECLARED_COLUMN),
             bulk,
         ),
         ("from Array, declared (pyarrow)", lambda: COLUMN.cast(pa.float64()), bulk),
         (
             "from RecordBatch, declared (yggdryl)",
-            lambda: ArrowValue.from_py(BATCH, DECLARED_ROOT),
+            lambda: ArrowScalar.from_(BATCH, DECLARED_ROOT),
             bulk,
         ),
         (
@@ -341,26 +341,26 @@ def _cases(
         ("row_size", lambda: HELD_BATCH.row_size, small),
         ("field", lambda: HELD_BATCH.field, small),
         (
-            "write_arrow_value arrows (yggdryl)",
-            lambda: STREAM.write_arrow_value(TABLE),
+            "write_arrow arrows (yggdryl)",
+            lambda: STREAM.write_arrow(TABLE),
             io,
         ),
-        ("write_arrow_value arrows (pyarrow)", _write_ipc_baseline, io),
-        ("read_arrow_value arrows (yggdryl)", _read_stream_value, io),
-        ("read_arrow_value arrows (pyarrow)", _read_ipc_baseline, io),
+        ("write_arrow arrows (pyarrow)", _write_ipc_baseline, io),
+        ("read_arrow arrows (yggdryl)", _read_stream_value, io),
+        ("read_arrow arrows (pyarrow)", _read_ipc_baseline, io),
         (
-            f"write_arrow_value jsonl {TEXT_ROW_COUNT:,} (yggdryl)",
-            lambda: LINES.write_arrow_value(TEXT_TABLE),
+            f"write_arrow jsonl {TEXT_ROW_COUNT:,} (yggdryl)",
+            lambda: LINES.write_arrow(TEXT_TABLE),
             io,
         ),
         (
-            f"write_arrow_value jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
+            f"write_arrow jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
             _write_jsonl_baseline,
             io,
         ),
-        (f"read_arrow_value jsonl {TEXT_ROW_COUNT:,} (yggdryl)", _read_lines_value, io),
+        (f"read_arrow jsonl {TEXT_ROW_COUNT:,} (yggdryl)", _read_lines_value, io),
         (
-            f"read_arrow_value jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
+            f"read_arrow jsonl {TEXT_ROW_COUNT:,} (stdlib json)",
             _read_jsonl_baseline,
             io,
         ),
@@ -391,8 +391,8 @@ def main() -> None:
             HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),
         ):
             assert exported.equals(MAP_BATCH, check_metadata=True)
-        STREAM.write_arrow_value(TABLE)
-        LINES.write_arrow_value(TEXT_TABLE)
+        STREAM.write_arrow(TABLE)
+        LINES.write_arrow(TEXT_TABLE)
         _write_jsonl_baseline()
         _write_ipc_baseline()
         # A pair that reads two different documents measures the documents,

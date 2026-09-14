@@ -668,6 +668,9 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
                     visit(value, child_depth, maximum, format)?;
                 }
             }
+            // An Arrow payload nests by its field, which is bounded already.
+            #[cfg(feature = "arrow")]
+            Scalar::Arrow(_) => {}
             Scalar::Null
             | Scalar::Boolean(_)
             | Scalar::Int8(_)

@@ -254,7 +254,7 @@ Avro's `string` is UTF-8, so every [string](../../types/text.md) on text storage
 
 ## Edges
 
-- `merge_by_names` -> upsert: rows matching the key are updated, misses are inserted.
+- `merge_by` -> upsert: rows matching the key are updated, misses are inserted.
 - A union wider than `null` plus one branch, a recursive schema, or an unspellable datatype -> refused by name on the record surface.
 - A string in a charset other than UTF-8 or US-ASCII -> refused by name; `fixed_ascii(n)` writes `string` with its padding trimmed, `binary(n)` writes `bytes` with the maximum dropped.
 - The same input through the [`Scalar` functions](scalar.md) -> accepted; they carry no such limit.

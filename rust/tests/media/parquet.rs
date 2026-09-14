@@ -206,10 +206,10 @@ fn dimensions_describe_all_batches_and_ignore_read_options() {
         )
         .unwrap();
     media.options_mut().set_max_row_size(Some(1));
-    media.options_mut().set_select_by_names(vec!["id".into()]);
+    media.options_mut().set_select("id".parse().unwrap());
     media
         .options_mut()
-        .set_filter_partitions(vec![("id".into(), "999".into())]);
+        .set_filter("id = '999'".parse().unwrap());
 
     assert_eq!(media.row_size().unwrap(), 5);
     assert_eq!(media.column_size().unwrap(), 2);
@@ -303,7 +303,7 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
         let mut media = Parquet::new(Buffer::new()).with_field(field.clone());
         let mut options = RecordOptions::Ipc(yggdryl::media::ipc::IpcOptions::new());
         if operation == "merge" {
-            options.set_merge_by_names(vec!["id".into()]);
+            options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
         }
         let result = match operation {
             "overwrite" => yggdryl::IOMedia::overwrite_arrow_reader(
@@ -344,7 +344,7 @@ fn an_open_footer_tracks_selection_and_completion_on_overwrite() {
         .unwrap();
     media.open().unwrap();
 
-    let options = media.record_options().unwrap().with_select_by_names(["id"]);
+    let options = media.record_options().unwrap().with_select("id").unwrap();
     yggdryl::IOMedia::overwrite_arrow_reader(
         &mut media,
         reader(
@@ -410,7 +410,9 @@ fn an_open_footer_is_refreshed_by_every_successful_write_mode() {
     assert!(media.opened());
     assert_eq!(media.read_statistics().unwrap().num_rows, 3);
 
-    media.options_mut().set_merge_by_names(vec!["id".into()]);
+    media
+        .options_mut()
+        .set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
     let merge_options = media.record_options().unwrap();
     media
         .merge_arrow_reader(

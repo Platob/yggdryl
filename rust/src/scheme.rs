@@ -27,6 +27,7 @@ enum SchemeValue {
     Digest,
     Identity,
     Partition,
+    Transform,
     S3,
     S3a,
     S3n,
@@ -84,6 +85,8 @@ impl Scheme {
     pub const IDENTITY: Self = Self(SchemeValue::Identity);
     /// The generic field partition metadata namespace.
     pub const PARTITION: Self = Self(SchemeValue::Partition);
+    /// The `transform:` field namespace: how a column is computed.
+    pub const TRANSFORM: Self = Self(SchemeValue::Transform);
     /// The Amazon S3 object protocol scheme.
     pub const S3: Self = Self(SchemeValue::S3);
     /// The Hadoop `s3a` spelling of the same Amazon S3 protocol.
@@ -151,6 +154,7 @@ impl Scheme {
             SchemeValue::Digest => "digest",
             SchemeValue::Identity => "identity",
             SchemeValue::Partition => "partition",
+            SchemeValue::Transform => "transform",
             SchemeValue::S3 => "s3",
             SchemeValue::S3a => "s3a",
             SchemeValue::S3n => "s3n",
@@ -335,6 +339,7 @@ impl FromStr for Scheme {
             8 if value.eq_ignore_ascii_case("postgres") => Some(Self::POSTGRES),
             8 if value.eq_ignore_ascii_case("identity") => Some(Self::IDENTITY),
             9 if value.eq_ignore_ascii_case("partition") => Some(Self::PARTITION),
+            9 if value.eq_ignore_ascii_case("transform") => Some(Self::TRANSFORM),
             10 if value.eq_ignore_ascii_case("postgresql") => Some(Self::POSTGRESQL),
             _ => None,
         };

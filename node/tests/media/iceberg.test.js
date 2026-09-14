@@ -725,7 +725,7 @@ test('a schema is a document in both directions', () => {
   }
   assert.ok(
     iceberg
-      .schemaFromJson('trade', Scalar.fromJs(foreign))
+      .schemaFromJson('trade', Scalar.from(foreign))
       .equals(iceberg.schemaFromJson('trade', foreign)),
   )
   const imported = iceberg.schemaFromJson('trade', foreign)

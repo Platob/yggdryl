@@ -173,7 +173,7 @@ fn mismatched_options_are_rejected_before_any_write_pulls_input() {
         let mut media = Ipc::new(Buffer::new()).with_field(schema());
         let mut options = RecordOptions::Avro(yggdryl::media::avro::AvroOptions::new());
         if operation == "merge" {
-            options.set_merge_by_names(vec!["id".into()]);
+            options.set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
         }
         let result = match operation {
             "overwrite" => yggdryl::IOMedia::overwrite_arrow_reader(
@@ -341,7 +341,7 @@ fn an_open_cache_tracks_selection_and_completion_on_overwrite() {
     let mut media = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
     media.open().unwrap();
 
-    let options = media.record_options().unwrap().with_select_by_names(["id"]);
+    let options = media.record_options().unwrap().with_select("id").unwrap();
     yggdryl::IOMedia::overwrite_arrow_reader(&mut media, reader(), &options).unwrap();
 
     // Selection narrows the incoming stream first, then completion onto the
@@ -384,7 +384,9 @@ fn append_and_merge_keep_an_open_cache_coherent_until_close() {
         4
     );
 
-    media.options_mut().set_merge_by_names(vec!["id".into()]);
+    media
+        .options_mut()
+        .set_merge_by(yggdryl::expression::Selector::from_columns(["id"]));
     let merge_options = media.record_options().unwrap();
     media.merge_arrow_reader(reader(), &merge_options).unwrap();
     assert!(media.opened());
@@ -452,7 +454,7 @@ fn dimensions_count_message_metadata_and_ignore_transient_read_shaping() {
         .overwrite_arrow_reader(multi_batch_reader(), &options)
         .unwrap();
 
-    media.options_mut().set_select_by_names(vec!["id".into()]);
+    media.options_mut().set_select("id".parse().unwrap());
     media.options_mut().set_max_row_size(Some(1));
     media.options_mut().set_max_byte_size(Some(1));
 
@@ -856,7 +858,8 @@ mod limits {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_filter_partitions([("symbol", "AAPL")])
+            .with_filter("symbol = 'AAPL'")
+            .unwrap()
             .with_max_row_size(1);
 
         let batches: Vec<arrow_array::RecordBatch> = handle

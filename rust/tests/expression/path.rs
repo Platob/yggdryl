@@ -361,3 +361,90 @@ fn an_alias_serde_round_trips_through_the_canonical_text() {
         path
     );
 }
+
+#[test]
+fn a_run_is_bracketed_with_a_colon_and_either_end_is_optional() {
+    assert_eq!(
+        parse("legs[1:3]").segments(),
+        [
+            FieldSegment::field("legs"),
+            FieldSegment::range(Some(1), Some(3)),
+        ]
+    );
+    assert_eq!(
+        parse("legs[:]").segments()[1],
+        FieldSegment::range(None, None)
+    );
+    assert_eq!(
+        parse("legs[-2:]").segments()[1],
+        FieldSegment::range(Some(-2), None)
+    );
+    assert_eq!(render("legs[ 1 : 3 ]"), "legs[1:3]");
+    assert_eq!(render("legs[:3]"), "legs[:3]");
+    assert_eq!(render("legs[:]"), "legs[:]");
+    assert!(FieldPath::from_str("legs[1:3:5]").is_err());
+    assert!(FieldPath::from_str("legs[a:b]").is_err());
+    // A run reaches no one child, so it names nothing.
+    assert_eq!(parse("legs[1:3]").column_name(), None);
+}
+
+#[test]
+fn a_reserved_word_reached_after_a_dot_renders_quoted() {
+    let path = parse("order.as");
+    assert_eq!(path.to_string(), "order.\"as\"");
+    assert_eq!(
+        FieldPath::from_str(&path.to_string()).expect("reparses"),
+        path
+    );
+}
+
+#[test]
+fn a_step_types_one_level_and_reads_one_value() {
+    use yggdryl::{DataType, Field};
+
+    let root = DataType::from_fields([
+        DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
+        DataType::from_fields([DataType::utf8().nullable_field("ccy")])
+            .unwrap()
+            .required_field("trade"),
+    ])
+    .unwrap()
+    .required_field("row");
+    let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
+    assert!(matches!(legs.dtype(), DataType::List(_)));
+    let first = FieldSegment::index(0).apply_field(&legs).unwrap();
+    assert_eq!(first.dtype(), &DataType::Int64);
+    assert!(first.is_nullable(), "a position past the end reads as null");
+    let run = FieldSegment::range(Some(1), None)
+        .apply_field(&legs)
+        .unwrap();
+    assert_eq!(run.dtype(), legs.dtype());
+    let ccy = FieldSegment::field("ccy")
+        .apply_field(&FieldSegment::field("trade").apply_field(&root).unwrap())
+        .unwrap();
+    assert_eq!(ccy.dtype(), &DataType::utf8());
+    assert!(FieldSegment::index(0).apply_field(&root).is_err());
+    assert!(FieldSegment::field("nope").apply_field(&root).is_err());
+
+    let row = Scalar::from_sequence([
+        Scalar::from_sequence([Scalar::from(10_i64), Scalar::from(20_i64)]),
+        Scalar::from_sequence([Scalar::from("EUR")]),
+    ]);
+    let held = FieldSegment::field("legs").apply_scalar(&root, &row);
+    assert_eq!(
+        FieldSegment::index(-1).apply_scalar(&legs, &held),
+        Scalar::from(20_i64)
+    );
+    assert_eq!(
+        FieldSegment::index(5).apply_scalar(&legs, &held),
+        Scalar::Null
+    );
+    assert_eq!(
+        FieldSegment::range(Some(1), None).apply_scalar(&legs, &held),
+        Scalar::from_sequence([Scalar::from(20_i64)])
+    );
+    let path = parse("trade.ccy");
+    assert_eq!(path.apply_field(&root).unwrap().dtype(), &DataType::utf8());
+    assert_eq!(path.apply_scalar(&root, &row).unwrap(), Scalar::from("EUR"));
+    let _: &Field = &root;
+}

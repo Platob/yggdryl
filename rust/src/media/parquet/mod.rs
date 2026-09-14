@@ -120,12 +120,16 @@ pub struct ParquetOptions {
     pub max_row_group_size: usize,
     /// File-level key/value metadata written into the footer.
     pub key_value_metadata: Vec<(String, String)>,
-    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) unless set.
+    /// Root Field name; the declared field's when one is declared.
     pub name: smol_str::SmolStr,
-    /// Declared root datatype; read from the footer when absent.
-    pub dtype: Option<crate::DataType>,
-    /// Root metadata; empty unless declared.
-    pub metadata: crate::Metadata,
+    /// The declared root; `None` infers the shape.
+    pub field: Option<crate::Field>,
+    /// The rows a read or write keeps.
+    pub filter: crate::Filter,
+    /// The columns a read or write publishes.
+    pub select: crate::Selector,
+    /// The columns forming an explicit merge's match key.
+    pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
@@ -143,12 +147,6 @@ pub struct ParquetOptions {
     pub commit_row_size: Option<usize>,
     /// Unused: Parquet compresses pages internally through `compression`.
     pub level: crate::Level,
-    /// Column names forming a write's match key; empty means overwrite.
-    pub merge_by_names: Vec<String>,
-    /// Column names a read or write is narrowed to; empty selects everything.
-    pub select_by_names: Vec<String>,
-    /// Partition equalities a read is pruned and filtered by; empty keeps all.
-    pub filter_partitions: Vec<(String, String)>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -163,8 +161,10 @@ struct ParquetOptionsIdentity<'a> {
     max_row_group_size: usize,
     key_value_metadata: &'a [(String, String)],
     name: &'a smol_str::SmolStr,
-    dtype: &'a Option<crate::DataType>,
-    metadata: &'a crate::Metadata,
+    field: &'a Option<crate::Field>,
+    filter: &'a crate::Filter,
+    select: &'a crate::Selector,
+    merge_by: &'a crate::Selector,
     safe: bool,
     batch_byte_size: Option<u64>,
     batch_row_size: Option<usize>,
@@ -172,9 +172,6 @@ struct ParquetOptionsIdentity<'a> {
     max_byte_size: Option<u64>,
     commit_row_size: Option<usize>,
     level: crate::Level,
-    merge_by_names: &'a [String],
-    select_by_names: &'a [String],
-    filter_partitions: &'a [(String, String)],
 }
 
 impl ParquetOptions {
@@ -184,8 +181,10 @@ impl ParquetOptions {
             max_row_group_size: self.max_row_group_size,
             key_value_metadata: &self.key_value_metadata,
             name: &self.name,
-            dtype: &self.dtype,
-            metadata: &self.metadata,
+            field: &self.field,
+            filter: &self.filter,
+            select: &self.select,
+            merge_by: &self.merge_by,
             safe: self.safe,
             batch_byte_size: self.batch_byte_size,
             batch_row_size: self.batch_row_size,
@@ -193,9 +192,6 @@ impl ParquetOptions {
             max_byte_size: self.max_byte_size,
             commit_row_size: self.commit_row_size,
             level: self.level,
-            merge_by_names: &self.merge_by_names,
-            select_by_names: &self.select_by_names,
-            filter_partitions: &self.filter_partitions,
         }
     }
 
@@ -206,8 +202,10 @@ impl ParquetOptions {
             max_row_group_size: 1_048_576,
             key_value_metadata: Vec::new(),
             name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
-            dtype: None,
-            metadata: crate::Metadata::new(),
+            field: None,
+            filter: crate::Filter::always_true(),
+            select: crate::Selector::all(),
+            merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,
             batch_row_size: None,
@@ -215,9 +213,6 @@ impl ParquetOptions {
             max_byte_size: None,
             commit_row_size: None,
             level: crate::Level::DEFAULT,
-            merge_by_names: Vec::new(),
-            select_by_names: Vec::new(),
-            filter_partitions: Vec::new(),
         }
     }
 
@@ -416,13 +411,14 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &ParquetOptions,
 ) -> Result<BatchReader> {
+    let columns = options.apply_columns();
     if handle.is_empty() {
         // Per the laziness contract, a missing file holds no batches.
         let schema = match options.field() {
             Some(field) => arrow_schema_from_field(&field)?,
             None => Arc::new(Schema::empty()),
         };
-        let schema = match field.and_then(|field| projection_indices(field, &schema)) {
+        let schema = match projection_indices(field, columns.as_deref(), &schema) {
             Some(indices) => Arc::new(schema.project(&indices)?),
             None => schema,
         };
@@ -439,7 +435,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
         Some(size) => builder.with_batch_size(size),
         None => builder,
     };
-    let projection = field.and_then(|field| projection_indices(field, builder.schema()));
+    let projection = projection_indices(field, columns.as_deref(), builder.schema());
     let builder = match projection {
         // Root indices, not leaf indices: a nested column is one root, and its
         // whole subtree comes along with it.
@@ -656,7 +652,7 @@ fn bounded_builder<H: IOBase + ?Sized>(
     let Some(max_rows) = options.max_row_size() else {
         return Ok(None);
     };
-    if !options.filter_partitions().is_empty() {
+    if !options.filter().is_always_true() {
         return Ok(None);
     }
     reject_outer_coding(handle)?;

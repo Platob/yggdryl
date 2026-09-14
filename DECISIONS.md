@@ -2843,3 +2843,118 @@ nothing about what is reachable.
 **Written in:** AGENTS "Where a test lives"; each `src` suite's module doc.
 **Fixtures:** every test name in the tree before the move is in it after -
 3 288 before, 3 291 after, the three added being pins the split created.
+
+## 36. One term tree, two clauses, one plan, and a best-effort rule
+
+The expression layer is rebuilt around one vocabulary in every language:
+`Term` is the tree, `Filter` is a `where` clause over it, `Selector` is a
+`select` clause that is also the one owner of a schema declaration, `Plan` is
+the sections of one read or write, and `Expression` is whichever of those a
+piece of text is - a clause, a plan, or a `;`-separated sequence. `Statement`,
+`BoundStatement`, `Order`, `Direction`, `NullsOrder`, the `ApplyExpression`
+traits and the holder `Selector` enum (now `Attribute`) are gone.
+
+- A projection carries a term, an alias, an optional declared datatype with
+  `null`/`not null`, and `with (...)` metadata, so a `Selector` is a `create
+  table` column list. `Selector::from_field` is lossless and `into_field` writes
+  the selector back as each column's `transform:expression`; a `Field` is a plan
+  holder, `Plan::from_field` is its `create` section, and a partition
+  declaration is a transform of one source read through the feature-free
+  `types/protocol/partition.rs`.
+- Every application lives in `expression/`: `apply_field`, `apply_scalar`,
+  `apply_arrow_reader` as the primary streamed path with `apply_arrow_batch`
+  derived from it (one batch is a one-batch reader, and a batch returned
+  unchanged is the caller's own), `apply_arrow_array`, and `apply_records` over
+  native rows bound once against a declared schema or the first record's own.
+  `explain` draws every layer as a UTF-8 tree; a bound tree adds datatype,
+  nullability and cost.
+- A plan spells `create [target] (schema) [with (...)]`, a write verb with an
+  optional target and `by (keys)`, `select`, `from target | (plan)`, `where`,
+  `order by`, `limit` and `offset`. `insert into`, `insert overwrite`, `upsert
+  into ... by` and `delete from` are the four verbs; `append to`, `overwrite`,
+  `replace into` and `merge into ... on` read as them and print canonically.
+  A location is a quoted URL or a catalog path whose parts may be quoted with
+  `"`, backticks or `[...]`; a target carries `with (...)` properties, and
+  `Holder::from_url(url, properties)` is the one builder every target and every
+  `IOBase`/`IOMedia` from a URL goes through. `Plan::execute` reads the source
+  with the read sections pushed into the media, orders and slices what comes
+  back, and writes where the plan says; a plan with no source starts from the
+  empty stream, so `create` alone writes a schema and `delete` reads its target.
+- Record options are the split sections of that plan, stored apart for
+  isolation - `field`, `filter`, `selector`, `merge_by`, `name`, the row bounds
+  - with `plan()`/`set_plan` composing and splitting; `dtype`, `metadata`,
+  `select_by_names`, `merge_by_names`, `filter_partitions`, `partition_filter`
+  and `partition_predicate` are gone, and a media reads `partition_pairs`,
+  `apply_columns` and `apply_arrow_expressions` instead.
+- Simplification is exact under three-valued logic and reaches a fixed point:
+  `a = 1 or a = 2` is `a in (1, 2)`, a self alias is dropped, a same-type cast
+  is skipped; binding settles constant subtrees and orders `and` cheapest-first.
+- The best-effort rule, now an AGENTS.md invariant: a constant coerces into the
+  operand it meets (text parsed as the column's own type), operands with no
+  common type compare as text, a declared column casts safely unless it is `not
+  null`, a missing store reads as the empty stream, and an error names what
+  could not be done. DuckDB's SQL and Python expression API are the reference
+  for spellings and aliases; the crate's abstractions carry the behaviour.
+- Bindings: Python `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`,
+  `Plan`, `Expression`, `Records`, `Bounds`, with `field`/`filter`/`selector`/
+  `merge_by`/`plan`/`partition_pairs` on the options and `merge_by` on the
+  Iceberg table; JavaScript the same classes in camelCase, the loader widening
+  `bind` parameters, the three Arrow holders, and `applyRecords` rows, and
+  `Records` iterating as JavaScript does.
+
+Pins: the corpus round trip of every term, clause, plan and sequence spelling;
+the two tiers agreeing on every operator; every simplification answering what
+the original answered; a declared `not null` column refused by name; a field
+round-tripping through a selector; a plan creating, inserting, upserting,
+deleting and reading one store; the sliced reader crossing batch boundaries as
+views; a holder built from a URL with properties; the split option sections
+composing into one plan and back.
+
+## 37. Scalar is the boundary, options take properties, and the function set has one door
+
+Everything a binding hands the expression layer crosses as one `Scalar`:
+`Scalar.from_` in Python and `Scalar.from` in JavaScript read the host value,
+and `Term`, `Filter`, `Selector`, `Projection`, `Plan` and `Expression` read
+that scalar with `from_scalar` - text parses, a sequence is projections or
+conditions, a mapping is aliases, null is the identity, anything else the
+literal it is - so a list of names, a dict of aliases and the text of a clause
+mean the same thing in every language and no binding re-implements a parser.
+Record options expose the same door as `set_*_scalar` / `with_*_scalar`. A
+columnar host object - a pyarrow container, a pandas or polars frame, a numpy
+array, an Arrow C exporter - lands as `Scalar::Arrow(ArrowScalar)` with its
+buffers shared rather than its rows walked; `ArrowValue` is renamed
+`ArrowScalar`, `read_arrow` / `write_arrow` take record options, and
+`write_arrow` redirects each shape to the primitive that takes it as it stands.
+
+Every record read and write takes `options` and, beside it, the option
+properties by name - `**properties` in Python, a plain object in JavaScript -
+set on a copy by their own setters; `...` and `undefined` mean not given and
+are skipped, `None` and `null` clear. The `select` section is spelled `select`
+on the options, as its clause is, and `apply_datatype` is the schema question
+`apply_field` is derived from.
+
+The closed function set keeps its promise by taking one door rather than a
+registry inside the grammar: `namespace.name(...)` is a user-defined function,
+registered once per process with a `FunctionSignature` that is itself a struct
+`Field` - one child per parameter, a `function:default` making a parameter
+optional, the return as `function:returns` - typed and called by the scalar
+and vectorized tiers through that signature, and unknown to the statistics
+tier, so nothing is ever pruned by it. A call over plain columns is stored as
+a column's `transform:function` and `transform:sources`, the shape a partition
+spec already has; any other term stays `transform:expression`. Python
+registers a callable with `@user_defined_function` / `@user_defined_filter`,
+row-wise under one interpreter attachment per batch or `vectorized` over
+pyarrow arrays; JavaScript parses the spelling and refuses it by name at bind.
+
+A `where` that names a column only the `select` publishes runs after the
+projection, as DuckDB lets a `where` read an alias; every other `where` runs
+first, where it prunes. The text reader's location column is `sourceurl`.
+
+Pins: a selector, a filter and a plan read from text, a list, a dict, null and
+a literal answering the same value in every language; a columnar object
+crossing `Scalar.from_` as an Arrow scalar with its field; a property beside
+`options` landing on a copy and an Ellipsis skipped; the two tiers agreeing on
+a user function, its defaults filled and its null rule kept; a signature
+round-tripping through its field; a stored call reading back as its function
+and sources; an unregistered name refused where it is typed; a text read
+shaped by a select over the row header's captures and a where over an alias.

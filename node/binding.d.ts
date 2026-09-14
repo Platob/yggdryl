@@ -1,21 +1,25 @@
 export {
   BatchReader,
   Bound,
-  BoundStatement,
+  BoundSelector,
   ByteIterator,
   DataType,
   Digest,
   Expression,
   Field,
+  Filter,
   IOBase,
   IOCursor,
   Listing,
   MediaType,
   MimeType,
+  Plan,
   ProtocolField,
   RecordOptions,
-  Statement,
+  Records,
+  Selector,
   StringEnum,
+  Term,
   TextLine,
   TextOptions,
   Timezone,
@@ -45,7 +49,8 @@ export {
 
 import type {
   BatchReader,
-  BoundStatement,
+  Bound,
+  BoundSelector,
   ByteIterator,
   BytesParametersInput,
   DataType,
@@ -59,9 +64,12 @@ import type {
   MimeType,
   PartitionEntry,
   ProtocolField,
+  Plan,
   RecordOptions,
-  Statement,
+  Records,
+  Selector,
   StringParametersInput,
+  Term,
   TextLine,
   TextOptions,
   Timezone,
@@ -408,44 +416,97 @@ declare module './index' {
     toJSON(): PartitionSpecDocument
   }
 
-  interface Expression {
+  /** The three Arrow holders every applier keeps: what goes in comes out. */
+  interface ArrowAppliers {
+    /** Lazily apply to every batch one native reader yields. */
+    applyArrowReader(reader: BatchReader): BatchReader
+    /** Apply to one Apache Arrow JS RecordBatch. */
+    applyArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+    /** Apply to one Apache Arrow JS Table, batch by batch. */
+    applyArrowTable(table: ArrowTable): ArrowTable
+    /** Infer an Arrow holder and preserve its runtime type. */
+    applyArrow(reader: BatchReader): BatchReader
+    applyArrow(batch: ArrowRecordBatch): ArrowRecordBatch
+    applyArrow(table: ArrowTable): ArrowTable
+  }
+
+  /** Native rows in, native rows out: a `Scalar` sequence of records, or plain objects. */
+  interface RecordAppliers {
+    /** The native rows this publishes, bound once against `schema` or the first record. */
+    applyRecords(rows: Scalar | Iterable<unknown>, schema?: FieldLike | null): Records
+  }
+
+  interface Term {
     /** Return the structural document for JavaScript JSON serialization. */
     toJSON(): unknown
     /** Build a lazy addition, inferring ordinary JavaScript values as literals. */
-    add(other: unknown): Expression
+    add(other: unknown): Term
     /** Build a lazy subtraction, inferring ordinary JavaScript values as literals. */
-    subtract(other: unknown): Expression
+    subtract(other: unknown): Term
     /** Build a lazy multiplication, inferring ordinary JavaScript values as literals. */
-    multiply(other: unknown): Expression
+    multiply(other: unknown): Term
     /** Build a lazy division, inferring ordinary JavaScript values as literals. */
-    divide(other: unknown): Expression
+    divide(other: unknown): Term
     /** Build a lazy remainder, inferring ordinary JavaScript values as literals. */
-    remainder(other: unknown): Expression
-  }
-
-  interface Statement {
-    /** Return the structural document for JavaScript JSON serialization. */
-    toJSON(): unknown
-    /** Resolve every statement expression against one inferred native Field. */
+    remainder(other: unknown): Term
+    /** Resolve this term against one inferred native Field. */
     bind(
       schema: FieldLike,
       parameters?: Readonly<Record<string, unknown>> | Scalar | null,
-    ): BoundStatement
+    ): Bound
   }
 
-  interface BoundStatement {
-    /** Lazily filter, project, and limit one native reader. */
-    projectArrowReader(reader: BatchReader): BatchReader
-    /** Filter and project one Apache Arrow JS RecordBatch. */
-    projectArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
-    /** Filter, project, and limit one Apache Arrow JS Table. */
-    projectArrowTable(table: ArrowTable): ArrowTable
+  interface Bound {
+    /** Lazily keep the rows of every batch one native reader yields. */
+    filterArrowReader(reader: BatchReader): BatchReader
+    /** Keep the rows of one Apache Arrow JS RecordBatch. */
+    filterArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+    /** Keep the rows of one Apache Arrow JS Table, batch by batch. */
+    filterArrowTable(table: ArrowTable): ArrowTable
     /** Infer an Arrow holder and preserve its runtime type. */
-    projectArrow(reader: BatchReader): BatchReader
-    projectArrow(batch: ArrowRecordBatch): ArrowRecordBatch
-    projectArrow(table: ArrowTable): ArrowTable
-    /** Sort one materialized batch by this statement's native ordering. */
-    sortArrowBatch(batch: ArrowRecordBatch): ArrowRecordBatch
+    filterArrow(reader: BatchReader): BatchReader
+    filterArrow(batch: ArrowRecordBatch): ArrowRecordBatch
+    filterArrow(table: ArrowTable): ArrowTable
+  }
+
+  interface Filter extends ArrowAppliers, RecordAppliers {
+    /** Return the structural document for JavaScript JSON serialization. */
+    toJSON(): unknown
+    /** Resolve this filter against one inferred native Field, as a predicate. */
+    bind(
+      schema: FieldLike,
+      parameters?: Readonly<Record<string, unknown>> | Scalar | null,
+    ): Bound
+  }
+
+  interface Selector extends ArrowAppliers, RecordAppliers {
+    /** Return the structural document for JavaScript JSON serialization. */
+    toJSON(): unknown
+    /** Resolve every projection against one inferred native Field. */
+    bind(
+      schema: FieldLike,
+      parameters?: Readonly<Record<string, unknown>> | Scalar | null,
+    ): BoundSelector
+  }
+
+  interface BoundSelector extends ArrowAppliers {}
+
+  interface Plan extends ArrowAppliers, RecordAppliers {
+    /** Return the structural document for JavaScript JSON serialization. */
+    toJSON(): unknown
+  }
+
+  interface Expression extends ArrowAppliers, RecordAppliers {
+    /** Return the structural document for JavaScript JSON serialization. */
+    toJSON(): unknown
+  }
+
+  interface Records extends Iterator<Scalar>, Iterable<Scalar> {
+    /** The next row, or done once every row was yielded. */
+    next(): IteratorResult<Scalar>
+    /** Every remaining row, as an array. */
+    collect(): Scalar[]
+    [Symbol.iterator](): Records
   }
 
   interface StringEnum {
@@ -2542,7 +2603,7 @@ declare module './index' {
   }
   namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
-    function fromJs(value: unknown, options?: CodecOptions): Scalar
+    function from(value: unknown, options?: CodecOptions): Scalar
     /** Read one item from a one-item Apache Arrow Vector. */
     function fromArrowScalar(value: ArrowVector, field?: Field): Scalar
     /** Read an Apache Arrow Vector through native Arrow IPC. */
@@ -2584,8 +2645,6 @@ declare module './index' {
   type FieldInput = FieldLike
   /** A native `DataType`, or the type expression naming one. */
   type DataTypeInput = DataType | string
-  /** Declared root metadata: entries, a plain object, a Map, or a Field. */
-  type MetadataInput = FieldMetadataInput
   /** The `bigint` a snapshot reports, or a number no larger than 2^53. */
   type SnapshotIdInput = bigint | number
   /** Scan filters: the same `(column, value)` pairs `childrenWhere` takes. */
@@ -2655,73 +2714,85 @@ declare module './index' {
     readParquetGeospatialStatistics(column: string): ParquetGeospatialStatistics
 
     /** Read the canonical non-null struct root `Field` of this resource. */
-    readArrowField(options?: RecordOptionsInput | null): Field
+    readArrowField(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): Field
     /** Read this resource's rows, selecting and casting as the options say. */
-    readArrowReader(options?: RecordOptionsInput | null): BatchReader
+    readArrowReader(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): BatchReader
     /** Replace this resource's rows with one native reader. */
     overwriteArrowReader(
       reader: BatchReader,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append one native reader after this resource's rows. */
     appendArrowReader(
       reader: BatchReader,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
-    /** Merge one native reader by the non-empty `options.mergeByNames` keys. */
+    /** Merge one native reader by the non-empty `options.mergeBy` keys. */
     mergeArrowReader(
       reader: BatchReader,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Write one native reader using the required explicit mode. */
     writeArrowReader(
       reader: BatchReader,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
 
     /** Replace this resource's rows with one Apache Arrow JS table. */
     overwriteArrowTable(
       table: ArrowTable,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append one Apache Arrow JS table after this resource's rows. */
     appendArrowTable(
       table: ArrowTable,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
-    /** Merge one Apache Arrow JS table by the non-empty `options.mergeByNames` keys. */
+    /** Merge one Apache Arrow JS table by the non-empty `options.mergeBy` keys. */
     mergeArrowTable(
       table: ArrowTable,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Write one Apache Arrow JS table using the required explicit mode. */
     writeArrowTable(
       table: ArrowTable,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
 
     /** Replace this resource's rows with one Apache Arrow JS record batch. */
     overwriteArrowBatch(
       batch: ArrowRecordBatch,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append one Apache Arrow JS record batch after this resource's rows. */
     appendArrowBatch(
       batch: ArrowRecordBatch,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
-    /** Merge one Apache Arrow JS record batch by `options.mergeByNames`. */
+    /** Merge one Apache Arrow JS record batch by `options.mergeBy`. */
     mergeArrowBatch(
       batch: ArrowRecordBatch,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Write one Apache Arrow JS record batch using the explicit mode. */
     writeArrowBatch(
       batch: ArrowRecordBatch,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
 
     /**
@@ -2729,43 +2800,51 @@ declare module './index' {
      * the class you pass, whose constructor receives one plain row.
      */
     readRecords<T = Record<string, unknown>>(
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): IterableIterator<T>
     readRecords<T>(
       cls: new (row: Record<string, unknown>) => T,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): IterableIterator<T>
     /** Replace this resource's rows with plain objects or field-class instances. */
     overwriteRecords(
       rows: AsyncIterable<StructRecord>,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
     overwriteRecords(
       rows: RecordSource,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append plain objects or field-class instances after the stored rows. */
     appendRecords(
       rows: AsyncIterable<StructRecord>,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
-    appendRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
-    /** Merge records by the non-empty `options.mergeByNames` keys. */
+    appendRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): void
+    /** Merge records by the non-empty `options.mergeBy` keys. */
     mergeRecords(
       rows: AsyncIterable<StructRecord>,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
-    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): void
     /** Write records using the required explicit mode. */
     writeRecords(
       rows: AsyncIterable<StructRecord>,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
     writeRecords(
       rows: RecordSource,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
   }
 
@@ -2816,18 +2895,18 @@ declare module './index' {
       rows: IcebergSource,
       options?: IcebergOptions | null,
     ): void
-    /** Merge `rows` into the stored rows, matching on `mergeByNames`. */
+    /** Merge `rows` into the stored rows, matching on the `mergeBy` selector. */
     merge(
       rows: IcebergSource,
-      mergeByNames: readonly string[],
+      mergeBy: Selector | Term | string | readonly string[],
       safe?: boolean | null,
       options?: IcebergOptions | null,
     ): void
-    /** Merge `rows` into the rows `filters` selects, on `mergeByNames`. */
+    /** Merge `rows` into the rows `filters` selects, on the `mergeBy` selector. */
     mergeWhere(
       filters: PartitionFilters | null | undefined,
       rows: IcebergSource,
-      mergeByNames: readonly string[],
+      mergeBy: Selector | Term | string | readonly string[],
       safe?: boolean | null,
       options?: IcebergOptions | null,
     ): void
@@ -2933,6 +3012,13 @@ export type StructRecord =
 export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */
 export type RecordOptionsInput = RecordOptions | TextOptions | MediaTypeInput
+/**
+ * Option properties set on a copy of the options a record method runs
+ * under - the ones given beside it, or the handle's own - each by its own
+ * setter. A plain object in the options position is read as this bag, and an
+ * `undefined` value is skipped.
+ */
+export type RecordProperties = { readonly [property: string]: unknown }
 /** A partition spec, or the column names one would be built from. */
 export type PartitionInput = PartitionSpec | readonly string[]
 /** A native root `Field`, or the field expression naming one. */
@@ -3005,7 +3091,7 @@ export interface Iceberg {
 export declare const iceberg: Iceberg
 
 /**
- * A message value: the native scalar, or the row `Scalar.fromJs` reads.
+ * A message value: the native scalar, or the row `Scalar.from` reads.
  *
  * A plain object is the obvious JavaScript spelling of a named row, and the
  * declared root Struct field is what orders, types and validates it - in the
@@ -3016,7 +3102,7 @@ export type FixValueInput =
 
 /**
  * The public `FixMsg` constructor, which widens the value the native class
- * takes: `Scalar.fromJs` lives in the loader, so it runs here.
+ * takes: `Scalar.from` lives in the loader, so it runs here.
  */
 export interface FixMsgConstructor {
   /**

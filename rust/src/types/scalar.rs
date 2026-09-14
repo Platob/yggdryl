@@ -280,6 +280,18 @@ pub enum Scalar {
     Mapping(Mapping),
     /// A schema-free record of values sorted by field name.
     Record(Record),
+    /// An Arrow payload - one pinned row, a column, a table, or a stream -
+    /// carrying the exact field that types it, behind one shared pointer so
+    /// a clone shares the buffers rather than the rows.
+    ///
+    /// This is how a columnar value crosses a boundary as the scalar it is:
+    /// a frame, a table or a reader handed to a binding lands here and reaches
+    /// the record surface without becoming rows first. Reading it as a
+    /// native value - [`as_sequence`](Self::as_sequence) and every other
+    /// narrowing accessor - answers `None`; [`into_native`](Self::into_native)
+    /// is the one crossing into the native tree, and it drains a stream.
+    #[cfg(feature = "arrow")]
+    Arrow(Arc<crate::arrow::ArrowScalar>),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -488,6 +500,13 @@ impl Serialize for Scalar {
             Self::Sequence(values) => tagged(serializer, "sequence", &values.as_slice()),
             Self::Mapping(entries) => tagged(serializer, "mapping", &entries.as_slice()),
             Self::Record(entries) => tagged(serializer, "record", &entries.as_map()),
+            // A stream is drained to be written, which is what serializing a
+            // one-shot value means; a held shape is shared and stays readable.
+            #[cfg(feature = "arrow")]
+            Self::Arrow(value) => match (**value).clone().into_scalar() {
+                Ok(native) => native.serialize(serializer),
+                Err(error) => Err(serde::ser::Error::custom(error)),
+            },
         }
     }
 }
@@ -884,6 +903,8 @@ impl Ord for Scalar {
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
             Self::Record(left) => same_kind!(Self::Record(right) => left.cmp(right)),
+            #[cfg(feature = "arrow")]
+            Self::Arrow(left) => same_kind!(Self::Arrow(right) => left.cmp(right)),
         }
     }
 }
@@ -911,6 +932,8 @@ impl Hash for Scalar {
             return;
         }
         match self {
+            #[cfg(feature = "arrow")]
+            Self::Arrow(value) => value.hash(state),
             Self::Null => {}
             Self::Boolean(value) => value.hash(state),
             Self::Int8(_)
@@ -1050,6 +1073,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Timezone(_) => 21,
         Scalar::MimeType(_) => 22,
         Scalar::MediaType(_) => 23,
+        #[cfg(feature = "arrow")]
+        Scalar::Arrow(_) => 24,
     }
 }
 
@@ -1060,8 +1085,18 @@ impl Scalar {
     /// narrows a sequence to a list, fixed-size list, struct, or union. Static
     /// enum members report UTF-8 because their column representation remains a
     /// field-level choice.
-    pub const fn id(&self) -> DataTypeId {
+    pub fn id(&self) -> DataTypeId {
         match self {
+            // One pinned row is the value it holds; every wider shape is a
+            // sequence of them.
+            #[cfg(feature = "arrow")]
+            Self::Arrow(value) => {
+                if value.is_scalar() {
+                    value.dtype().id()
+                } else {
+                    DataTypeId::List
+                }
+            }
             Self::Null => DataTypeId::Null,
             Self::Boolean(_) => DataTypeId::Boolean,
             Self::Int8(_) => DataTypeId::Int8,
@@ -1109,7 +1144,7 @@ impl Scalar {
     }
 
     /// Return the datatype family the value itself proves.
-    pub const fn family(&self) -> DataTypeKind {
+    pub fn family(&self) -> DataTypeKind {
         self.id().kind()
     }
 
@@ -1120,6 +1155,8 @@ impl Scalar {
     /// documentation and the bindings use.
     pub const fn kind(&self) -> &'static str {
         match self {
+            #[cfg(feature = "arrow")]
+            Self::Arrow(_) => "arrow",
             Self::Null => "null",
             Self::Boolean(_) => "boolean",
             Self::Int8(_) => "i8",
@@ -1458,6 +1495,8 @@ impl Scalar {
             Self::Sequence(value) => value,
             Self::Mapping(value) => value,
             Self::Record(value) => value,
+            #[cfg(feature = "arrow")]
+            Self::Arrow(_) => return None,
             Self::Null
             | Self::Boolean(_)
             | Self::String(_)
@@ -1667,3 +1706,40 @@ fn duplicate_key_error(index: usize) -> Error {
 #[cfg(test)]
 #[path = "scalar/tests.rs"]
 mod tests;
+
+#[cfg(feature = "arrow")]
+impl Scalar {
+    /// The native value an Arrow payload holds: the row of a pinned scalar, a
+    /// sequence of items for a column, a sequence of rows for a table or a
+    /// stream. Every other value is itself.
+    ///
+    /// This is the one crossing from the shared buffers into the native tree,
+    /// so it is where a stream is drained; a held shape is shared and stays
+    /// readable behind the value it came from.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a value cannot be represented natively, when the
+    /// stream was already read, or whatever the stream raised.
+    pub fn into_native(&self) -> Result<Self> {
+        match self {
+            Self::Arrow(value) => Ok((**value).clone().into_scalar()?),
+            other => Ok(other.clone()),
+        }
+    }
+
+    /// Wrap one Arrow payload as the scalar it is.
+    #[must_use]
+    pub fn from_arrow(value: crate::arrow::ArrowScalar) -> Self {
+        Self::Arrow(Arc::new(value))
+    }
+
+    /// Borrow the Arrow payload, if this value is one.
+    #[must_use]
+    pub fn as_arrow(&self) -> Option<&crate::arrow::ArrowScalar> {
+        match self {
+            Self::Arrow(value) => Some(value),
+            _ => None,
+        }
+    }
+}

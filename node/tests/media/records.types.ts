@@ -3,13 +3,14 @@ import { Buffer } from 'node:buffer'
 
 import {
   BatchReader,
-  DataType,
+  Filter,
+  Plan,
+  Selector,
   Field,
   IOBase,
   MimeType,
   RecordOptions,
   type BatchSource,
-  type MetadataEntry,
   type RecordOptionsInput,
   type SchemaInput,
 } from '../..'
@@ -30,8 +31,11 @@ const optionsHash: bigint = options.stableHash()
 const mime: MimeType = options.mimeType
 const declared: Field | null = options.field
 const name: string = options.name
-const dtype: DataType | null = options.dtype
-const metadata: MetadataEntry[] = options.metadata
+const selector: Selector = options.select
+const filter: Filter = options.filter
+const mergeBy: Selector = options.mergeBy
+const plan: Plan = options.plan
+const partitionPairs: Array<[string, string]> = options.partitionPairs()
 const safe: boolean = options.safe
 const batchRowSize: number | null = options.batchRowSize
 const maxRowSize: number | null = options.maxRowSize
@@ -41,14 +45,19 @@ const level: number = options.level
 const blockCodec: string | null = options.blockCodec
 const syncMarker: Buffer | null = options.syncMarker
 options.name = 'trade'
-options.dtype = 'struct<id: int64>'
-options.dtype = new DataType('struct<id: int64>')
-options.dtype = null
-options.metadata = { source: 'book' }
-options.metadata = new Map([['source', 'book']])
-options.metadata = [{ key: 'source', value: 'book' }]
-options.metadata = [['source', 'book']]
-options.metadata = Field.from('row: int64')
+options.field = Field.from('row: struct<id: int64> not null')
+options.field = null
+options.select = 'id'
+options.select = ['id']
+options.select = new Selector('id')
+options.filter = 'id > 1'
+options.filter = new Filter('id > 1')
+options.mergeBy = ['id']
+options.plan = 'select id where id > 1'
+options.plan = new Plan('select id')
+const withSelect: RecordOptions = options.withSelect(['id'])
+const withFilter: RecordOptions = options.withFilter('id > 1')
+const withPlan: RecordOptions = options.withPlan('select id')
 options.safe = true
 options.batchRowSize = 1024
 options.batchRowSize = null
@@ -69,11 +78,10 @@ const avroCopy: RecordOptions = avroOptions
 const chained: RecordOptions = options
   .withField(Field.from('row: struct<id: int64> not null'))
   .withName('trade')
-  .withDtype('struct<id: int64>')
-  .withDtype(new DataType('struct<id: int64>'))
-  .withMetadata({ source: 'book' })
-  .withMetadata(new Map([['source', 'book']]))
-  .withMetadata(Field.from('row: int64'))
+  .withSelect(['id'])
+  .withFilter('id > 1')
+  .withMergeBy(['id'])
+  .withPlan('select id')
   .withSafe(false)
   .withBatchRowSize(512)
   .withMaxRowSize(10)
@@ -106,8 +114,8 @@ const reader: BatchReader = handle.readArrowReader()
 const projected: BatchReader = handle.readArrowReader(options)
 const byMediaType: BatchReader = handle.readArrowReader(named)
 
-const merging: RecordOptions = options.withMergeByNames(['id'])
-const matchKey: string[] = merging.mergeByNames
+const merging: RecordOptions = options.withMergeBy(['id'])
+const matchKey: string[] = merging.mergeBy.names
 handle.overwriteArrowReader(source)
 handle.appendArrowReader(BatchReader.from(arrowTable), options)
 handle.mergeArrowReader(BatchReader.from(arrowBatch), merging)

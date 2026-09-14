@@ -139,7 +139,7 @@ function stored() {
   return handle
 }
 function keyed(handle) {
-  return handle.recordOptions().withMergeByNames(['id'])
+  return handle.recordOptions().withMergeBy(['id'])
 }
 function committed(handle, intent) {
   let options = handle
@@ -147,7 +147,7 @@ function committed(handle, intent) {
     .withField(schema)
     .withBatchRowSize(writeBatchSize)
     .withCommitRowSize(commitRowSize)
-  if (intent === 'merge') options = options.withMergeByNames(['id'])
+  if (intent === 'merge') options = options.withMergeBy(['id'])
   return options
 }
 

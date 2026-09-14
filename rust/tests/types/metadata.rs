@@ -15,9 +15,9 @@ fn unique_arrow_projection_moves_string_allocations() {
     let value_pointer = stored_value.as_ptr();
 
     let arrow = metadata.into_arrow();
-    let (arrow_key, arrow_value) = arrow.iter().next().unwrap();
+    let (arrow_key, arrow_scalar) = arrow.iter().next().unwrap();
     assert_eq!(arrow_key.as_ptr(), key_pointer);
-    assert_eq!(arrow_value.as_ptr(), value_pointer);
+    assert_eq!(arrow_scalar.as_ptr(), value_pointer);
 }
 
 #[test]

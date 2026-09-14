@@ -8,7 +8,7 @@ Read and write Apache Parquet over any handle; the footer's contents and the sta
 | --- | --- |
 | Owns | `yggdryl::media::parquet`: `ParquetOptions` and the free seams `read_arrow_schema`, `read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics`, taking the handle and a `&ParquetOptions` explicitly (Rust only) |
 | Feature flag | `parquet`, non-default; without it the module is absent and [`RecordOptions::for_mime_type`](../options.md) reports `application/vnd.apache.parquet` as not implemented |
-| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../../holder/iobase/records.md); the media type selects Parquet, `merge_by_names` supplies row-identity keys only |
+| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../../holder/iobase/records.md); the media type selects Parquet, `merge_by` supplies row-identity keys only |
 | Reads | `read_arrow_reader` returns an [`arrow::BatchReader`](../../arrow/readers.md), `read_arrow_field` the canonical non-null struct root [`Field`](../../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
 | Pushdown | the read `field` is a `ProjectionMask` over root columns; excluded chunks are never located, decompressed, or decoded |
 | Options | `compression` (default Zstandard, default level), `max_row_group_size` (default 1,048,576), `key_value_metadata`, plus the shared [`IORecordOptions`](../options.md) fields; `level` does nothing |
@@ -254,7 +254,7 @@ Parquet's own settings and the shared ones are flat fields of one value.
 | `max_row_group_size` | row bound that decides how many row groups the file gets |
 | `key_value_metadata` | footer entries next to the ones the writer adds itself |
 | `level` | nothing; Parquet has no outer coding to apply it to |
-| shared | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `merge_by_names`, `select_by_names`, `filter_partitions` |
+| shared | `name`, `field`, `filter`, `selector`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size` |
 | `Parquet::with_options` | replaces the whole set |
 | `with_field`, `with_name` | reach through to the declared root; `name` roots a declared field and one recovered from the footer alike |
 

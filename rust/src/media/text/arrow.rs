@@ -99,7 +99,7 @@ fn text_lines(
     mtime: Option<i128>,
     options: &TextOptions,
 ) -> Result<TextLines> {
-    let plan = options.plan()?;
+    let plan = options.line_plan()?;
     let timestamp_capture = options
         .parse_mtime
         .then(|| (0..options.capture_names().len()).find(|index| options.consumes_capture(*index)))
@@ -1295,7 +1295,7 @@ impl TextLines {
         // Everything before it read the bytes as they were, and the counts it
         // took are counts of those bytes.
         let mut line = TextLine::from_bytes(index, row.body)?;
-        line.set_url(self.url.clone());
+        line.set_sourceurl(self.url.clone());
         line.set_dropped_byte_size(row.dropped_byte_size);
 
         if self.reads_classification {

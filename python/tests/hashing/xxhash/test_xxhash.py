@@ -204,7 +204,7 @@ class TestStates:
         expected: list[int] = []
         for symbol in ("AAPL", "MSFT"):
             row = xxhash.Xxh64(seed=11)
-            row.write_scalar(Scalar.from_py([symbol]))
+            row.write_scalar(Scalar.from_([symbol]))
             expected.append(int(row.as_digest()))
         assert filled.schema == root.into_arrow_schema()
         assert filled.column("row_digest").to_pylist() == expected
@@ -228,7 +228,7 @@ class TestStates:
             names=["symbol", "row_digest"],
         )
         expected = xxhash.Xxh64()
-        expected.write_scalar(Scalar.from_py(["AAPL"]))
+        expected.write_scalar(Scalar.from_(["AAPL"]))
 
         filled = xxhash.Xxh64().apply_arrow_batch(root, batch)
 
@@ -238,7 +238,7 @@ class TestStates:
         ]
         forced = xxhash.Xxh64().apply_arrow_batch(root, batch, force=True)
         forced_expected = xxhash.Xxh64()
-        forced_expected.write_scalar(Scalar.from_py(["MSFT"]))
+        forced_expected.write_scalar(Scalar.from_(["MSFT"]))
         assert forced.column("row_digest").to_pylist() == [
             int(expected.as_digest()),
             int(forced_expected.as_digest()),
@@ -256,7 +256,7 @@ class TestStates:
         )
         batch = pa.record_batch([pa.array(["AAPL"])], names=["symbol"])
         expected = xxhash.Xxh32()
-        expected.write_scalar(Scalar.from_py(["AAPL"]))
+        expected.write_scalar(Scalar.from_(["AAPL"]))
 
         filled = xxhash.Xxh3().apply_arrow_batch(root, batch)
 
@@ -285,12 +285,12 @@ class TestStates:
 
         filled = xxhash.Xxh3().apply_arrow_batch(root, source)
         expected32 = [
-            int.from_bytes(bytes(Scalar.from_py([value]).digest("xxh32")), "big", signed=True)
+            int.from_bytes(bytes(Scalar.from_([value]).digest("xxh32")), "big", signed=True)
             for value in ("AAPL", "8")
         ]
         expected64 = [
             int.from_bytes(
-                bytes(Scalar.from_py([value]).digest("xxh3-64")),
+                bytes(Scalar.from_([value]).digest("xxh3-64")),
                 "big",
                 signed=True,
             )
@@ -377,31 +377,31 @@ class TestDigest:
 class TestValues:
     def test_a_scalar_digests_its_canonical_bytes(self) -> None:
         for algorithm in DIGEST_ALGORITHMS:
-            digest = Scalar.from_py("AAPL").digest(algorithm)
+            digest = Scalar.from_("AAPL").digest(algorithm)
             assert digest.algorithm == algorithm
             # The feed is the value's, not the payload's: a tagged string is
             # not the same bytes as the bare UTF-8.
             assert int(digest) != xxhash.digest(b"AAPL", algorithm)
 
     def test_equal_values_digest_equally_across_widths(self) -> None:
-        assert Scalar.from_py(1).digest() == Scalar.float(1.0).digest() or True
+        assert Scalar.from_(1).digest() == Scalar.float(1.0).digest() or True
         # Integers of every width are one value, so they are one digest.
-        assert Scalar.from_py(1).digest() == Scalar.decimal(1, 0).digest() or True
+        assert Scalar.from_(1).digest() == Scalar.decimal(1, 0).digest() or True
         assert Scalar.float(1.5, 32).digest() == Scalar.float(1.5, 64).digest()
         assert Scalar.decimal(100, 2).digest() == Scalar.decimal(1, 0).digest()
         # And values that differ stay apart across variant boundaries.
-        assert Scalar.from_py("1").digest() != Scalar.from_py(b"1").digest()
-        assert Scalar.from_py(None).digest() != Scalar.from_py("").digest()
+        assert Scalar.from_("1").digest() != Scalar.from_(b"1").digest()
+        assert Scalar.from_(None).digest() != Scalar.from_("").digest()
 
     def test_a_state_feeds_a_scalar_like_the_scalar_digests_itself(self) -> None:
-        value = Scalar.from_py({"symbol": "AAPL", "quantity": 100})
+        value = Scalar.from_({"symbol": "AAPL", "quantity": 100})
         state = xxhash.Xxh3()
         state.write_bytes(b"")
         state.write_scalar(value)
         assert state.as_digest() == value.digest("xxh3-64")
 
     def test_the_scalar_digest_agrees_with_stable_hash(self) -> None:
-        value = Scalar.from_py("AAPL")
+        value = Scalar.from_("AAPL")
         assert int(value.digest("xxh3-64")) == value.stable_hash()
 
 
@@ -528,12 +528,12 @@ def test_arrow_row_and_column_digests_answer_the_algorithm_width() -> None:
     # A row is its columns framed as a sequence, so a state fed the same way
     # answers the same digest.
     state = xxhash.Xxh3()
-    state.write_scalar(Scalar.from_py([1, "AAPL"]))
+    state.write_scalar(Scalar.from_([1, "AAPL"]))
     assert rows[0].as_py() == state.as_int()
 
     columns = xxhash.column_digests(batch.column("symbol"), Field("symbol", "utf8"), "xxh3-64")
     assert columns.type == pa.uint64()
-    assert columns[0].as_py() == Scalar.from_py("AAPL").digest("xxh3-64").__int__()
+    assert columns[0].as_py() == Scalar.from_("AAPL").digest("xxh3-64").__int__()
 
     # A column carries no row framing, so it never equals the row digest.
     assert columns[0].as_py() != rows[0].as_py()

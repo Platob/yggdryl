@@ -86,7 +86,7 @@ impl TextPlan {
         push(
             &mut columns,
             TextSource::Url,
-            "url",
+            "sourceurl",
             DataType::Url,
             true,
             "The URL of the object this line was read from.",

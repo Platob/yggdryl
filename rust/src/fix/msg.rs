@@ -1183,7 +1183,7 @@ impl FixMsg {
         let name = match first {
             FieldSegment::Field(name) => name.as_str(),
             FieldSegment::Key(key) => key.value().as_str()?,
-            FieldSegment::Index(_) => return None,
+            FieldSegment::Index(_) | FieldSegment::Range { .. } => return None,
         };
         let index = self.index_of_key(&FixKey::Name(name))?;
         let mut field = self.field.fields().get(index)?;
@@ -1303,7 +1303,7 @@ impl FixMsg {
         match segment {
             FieldSegment::Field(name) => self.child_index(parent, name),
             FieldSegment::Key(key) => self.child_index(parent, key.value().as_str()?),
-            FieldSegment::Index(_) => None,
+            FieldSegment::Index(_) | FieldSegment::Range { .. } => None,
         }
     }
 

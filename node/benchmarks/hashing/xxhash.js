@@ -90,8 +90,8 @@ function main() {
   measure('digest payload (Digest wrapper)', size, 500, () => xxhash.digest(PAYLOAD, 'xxh3-64'))
 
   // The value feed: a leaf, a wide record, and the hash a table already reads.
-  const leaf = Scalar.fromJs('AAPL')
-  const record = Scalar.fromJs(
+  const leaf = Scalar.from('AAPL')
+  const record = Scalar.from(
     Object.fromEntries(Array.from({ length: 64 }, (_, index) => [`column_${index}`, BigInt(index)])),
   )
   measure('scalar leaf digest', 4, 200_000, () => leaf.digest())

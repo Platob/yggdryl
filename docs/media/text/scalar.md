@@ -6,9 +6,9 @@ One line per row, in and out: the record surface a `text/plain` handle answers w
 
 | Key | Value |
 | --- | --- |
-| Reads | Python `read_records`, JavaScript `readRecords` - one row per physical line, or per framed record; Rust reads Arrow and crosses with `ArrowValue::into_scalar` |
+| Reads | Python `read_records`, JavaScript `readRecords` - one row per physical line, or per framed record; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
 | Writes | `overwrite_records`, `append_records`; each row's non-null `utf8` `body` becomes one line plus the terminator |
-| Row | the [row schema](index.md#row-schema): `url`, `rownum`, `body`, `mtime`, plus every row-header capture and lifted entry |
+| Row | the [row schema](index.md#row-schema): `sourceurl`, `rownum`, `body`, `mtime`, plus every row-header capture and lifted entry |
 | Terminator | `linesep` when pinned, otherwise LF on write; a read accepts LF, CRLF, or CR |
 | Charset | the body crosses in the charset the handle's media type [declares](index.md#declaring-a-charset) |
 | Merge | refused: a line has no row identity |
@@ -44,7 +44,7 @@ A write consumes the `body` column and adds the terminator; a read hands the lin
 
     // Rust reads Arrow, then crosses into the value model: one ordered row
     // sequence per line, under the full row schema.
-    let rows = handle.read_arrow_value(None)?.into_scalar()?;
+    let rows = handle.read_arrow(None)?.into_scalar()?;
     assert_eq!(rows.len(), 3);
     ```
 

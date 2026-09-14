@@ -22,7 +22,7 @@ use std::collections::VecDeque;
 
 use smol_str::SmolStr;
 
-use crate::arrow::{ArrowValue, BatchReader};
+use crate::arrow::{ArrowScalar, BatchReader};
 use crate::text::{Formatting, Plan, Structured};
 use crate::{Error, Field, IOBase, Result, Scalar};
 
@@ -39,10 +39,10 @@ use crate::{Error, Field, IOBase, Result, Scalar};
 /// # Errors
 ///
 /// Returns a read, decompression, format, parse, inference, or cast failure.
-pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
+pub(crate) fn read_arrow<H: IOBase + ?Sized>(
     handle: &H,
     field: Option<&Field>,
-) -> Result<ArrowValue> {
+) -> Result<ArrowScalar> {
     let format = Structured::for_handle(handle)?;
     let name = field.map_or(crate::media::DEFAULT_ROOT_NAME, Field::name);
     let documents = crate::text::from_io_all(handle)?;
@@ -64,7 +64,7 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
         .iter()
         .map(|row| root.from_natural_value(row.clone()))
         .collect::<Result<Vec<_>>>()?;
-    Ok(ArrowValue::from_rows(
+    Ok(ArrowScalar::from_rows(
         &root,
         &Scalar::from_sequence(canonical),
     )?)
@@ -84,9 +84,9 @@ pub(crate) fn read_arrow_value<H: IOBase + ?Sized>(
 /// # Errors
 ///
 /// Returns a schema, value, encoding, compression, or write failure.
-pub(crate) fn write_arrow_value<H: IOBase + ?Sized>(
+pub(crate) fn write_arrow<H: IOBase + ?Sized>(
     handle: &mut H,
-    value: ArrowValue,
+    value: ArrowScalar,
     formatting: Formatting,
 ) -> Result<()> {
     let plan = Plan::infer(handle)?;

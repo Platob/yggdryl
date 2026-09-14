@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pyarrow as pa
 import pytest
 
-from yggdryl import ArrowValue, DataType, Field
+from yggdryl import ArrowScalar, DataType, Field
 
 
 def declared_batch(keys_sorted: bool) -> tuple[Field, pa.RecordBatch]:
@@ -83,7 +83,7 @@ def test_batch_exports_preserve_nested_map_flags_metadata_and_shared_buffers(
     keys_sorted: bool, streamed: bool
 ) -> None:
     root, source = declared_batch(keys_sorted)
-    held = ArrowValue.from_py(source)
+    held = ArrowScalar.from_(source)
     if streamed:
         reader = held.into_arrow_reader()
         assert reader.schema.equals(source.schema, check_metadata=True)
@@ -122,7 +122,7 @@ def test_batch_exports_keep_nonzero_row_counts_with_no_columns(streamed: bool) -
     source = pa.RecordBatch.from_struct_array(empty).replace_schema_metadata(
         {b"owner": b"empty"}
     )
-    held = ArrowValue.from_py(source)
+    held = ArrowScalar.from_(source)
     result = (
         held.into_arrow_reader().read_next_batch()
         if streamed
@@ -144,7 +144,7 @@ def test_reader_export_pulls_one_batch_at_a_time_and_fuses_after_a_source_error(
         raise ValueError("batch source refused")
 
     incoming = pa.RecordBatchReader.from_batches(source.schema, batches())
-    held = ArrowValue.from_py(incoming)
+    held = ArrowScalar.from_(incoming)
     reader = held.into_arrow_reader()
     assert pulled == []
     assert reader.schema.equals(source.schema, check_metadata=True)
@@ -173,7 +173,7 @@ def test_reader_export_can_be_consumed_by_a_python_worker_thread() -> None:
             yield source
 
     incoming = pa.RecordBatchReader.from_batches(source.schema, batches())
-    reader = ArrowValue.from_py(incoming).into_arrow_reader()
+    reader = ArrowScalar.from_(incoming).into_arrow_reader()
     assert pulled_on == []
     with ThreadPoolExecutor(max_workers=1) as pool:
         exported = pool.submit(lambda: list(reader)).result(timeout=10)
@@ -214,7 +214,7 @@ def test_batch_exports_rehydrate_registered_extension_identity_without_copying(
             metadata={b"owner": b"extension"},
         )
         source = pa.RecordBatch.from_arrays([array], schema=schema)
-        held = ArrowValue.from_py(source)
+        held = ArrowScalar.from_(source)
         if streamed:
             reader = held.into_arrow_reader()
             assert reader.schema.equals(schema, check_metadata=True)

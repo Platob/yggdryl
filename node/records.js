@@ -577,11 +577,75 @@ function installRecords({
     return RecordOptions.from(options)
   }
 
+  // A plain object is a set of option properties rather than an options
+  // value: `handle.readArrowReader({ rowheader })` reads with the handle's own
+  // options carrying that property, and `handle.readArrowReader(options, {
+  // rowheader })` with a copy of the given ones. Each property is set by its
+  // own setter, so it is validated exactly as an assignment is, and an
+  // `undefined` value is skipped: the project's spelling for an argument that
+  // was not given.
+  function isPropertyBag(value) {
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      Object.getPrototypeOf(value) === Object.prototype
+    )
+  }
+
+  function withProperties(settings, properties) {
+    if (!isPropertyBag(properties)) {
+      throw new TypeError(
+        'expected option properties as a plain object beside one options value, got ' +
+          (properties === null ? 'null' : typeof properties),
+      )
+    }
+    const entries = Object.entries(properties).filter(([, value]) => value !== undefined)
+    if (entries.length === 0) return settings
+    const copy = settings.clone()
+    for (const [name, value] of entries) copy[name] = value
+    return copy
+  }
+
+  // A plain-text handle answers `TextOptions`, the value its own settings
+  // live on, so a text setting is read off the answer directly and a property
+  // bag lands on the setter it names.
+  const nativeRecordOptions = IOBase.prototype.recordOptions
+  Object.defineProperty(IOBase.prototype, 'recordOptions', {
+    configurable: true,
+    value() {
+      const own = nativeRecordOptions.call(this)
+      return own.mimeType.toString() === 'text/plain' ? new TextOptions() : own
+    },
+  })
+
+  // The options a property bag lands on: the ones given, or the handle's own.
+  function propertyBase(handle, options) {
+    if (options instanceof RecordOptions || options instanceof TextOptions) return options
+    if (options !== undefined && options !== null) return RecordOptions.from(options)
+    return handle.recordOptions()
+  }
+
   // Every write crosses with one concrete options value. This resolves the
   // handle's encoding at the JavaScript boundary, where representation
   // inference can attach a Field without mutating caller-owned options.
-  function resolvedRecordOptions(handle, options) {
-    return recordOptions(options) ?? handle.recordOptions()
+  function resolvedRecordOptions(handle, options, properties) {
+    if (isPropertyBag(options)) {
+      properties = options
+      options = undefined
+    }
+    if (properties === undefined || properties === null) {
+      return recordOptions(options) ?? handle.recordOptions()
+    }
+    return recordOptions(withProperties(propertyBase(handle, options), properties))
+  }
+
+  // The read side keeps an absent options value absent, so the native reader
+  // resolves the handle's encoding itself; a property bag resolves here.
+  function readRecordOptions(handle, options, properties) {
+    if (isPropertyBag(options) || (properties !== undefined && properties !== null)) {
+      return resolvedRecordOptions(handle, options, properties)
+    }
+    return recordOptions(options)
   }
 
   function inferredRecordOptions(settings, reader) {
@@ -755,8 +819,8 @@ function installRecords({
       const name = `${intent}${suffix}`
       Object.defineProperty(IOBase.prototype, name, {
         configurable: true,
-        value(source, options) {
-          let settings = resolvedRecordOptions(this, options)
+        value(source, options, properties) {
+          let settings = resolvedRecordOptions(this, options, properties)
           preflightWriteIntent(settings, intent)
           if (writeLimitIsZero(settings)) {
             if (intent === 'append') return undefined
@@ -777,9 +841,9 @@ function installRecords({
   for (const [suffix, convert] of representations) {
     Object.defineProperty(IOBase.prototype, `write${suffix}`, {
       configurable: true,
-      value(source, mode, options) {
+      value(source, mode, options, properties) {
         const intent = writeMode(mode)
-        let settings = resolvedRecordOptions(this, options)
+        let settings = resolvedRecordOptions(this, options, properties)
         preflightWriteIntent(settings, intent)
         if (writeLimitIsZero(settings)) {
           if (intent === 'append') return undefined
@@ -801,16 +865,16 @@ function installRecords({
   const readBatches = IOBase.prototype.readArrowReader
   Object.defineProperty(IOBase.prototype, 'readArrowReader', {
     configurable: true,
-    value(options) {
-      return readBatches.call(this, recordOptions(options))
+    value(options, properties) {
+      return readBatches.call(this, readRecordOptions(this, options, properties))
     },
   })
 
   const readArrowField = IOBase.prototype.readArrowField
   Object.defineProperty(IOBase.prototype, 'readArrowField', {
     configurable: true,
-    value(options) {
-      return readArrowField.call(this, recordOptions(options))
+    value(options, properties) {
+      return readArrowField.call(this, readRecordOptions(this, options, properties))
     },
   })
 
@@ -863,17 +927,18 @@ function installRecords({
   // nothing is collected, and a resource that does not exist yields no rows.
   Object.defineProperty(IOBase.prototype, 'readRecords', {
     configurable: true,
-    value(cls, options) {
+    value(cls, options, properties) {
       if (typeof cls !== 'function') {
-        if (options !== undefined) {
+        if (properties !== undefined) {
           throw new TypeError(
-            'readRecords accepts one options value, or a record class followed by one options value',
+            'readRecords accepts one options value and its properties, or a record class first',
           )
         }
+        properties = options
         options = cls
         cls = undefined
       }
-      let settings = recordOptions(options)
+      let settings = readRecordOptions(this, options, properties)
       if (
         cls !== undefined &&
         'intoStructField' in cls &&
@@ -896,8 +961,8 @@ function installRecords({
   // Plain objects and field-class instances are inferred by a bounded first
   // chunk, then streamed through the chosen core primitive. Async records
   // return a Promise; synchronous records stay lazy.
-  function writeRecordSource(handle, rows, options, intent, publish) {
-    const settings = resolvedRecordOptions(handle, options)
+  function writeRecordSource(handle, rows, options, properties, intent, publish) {
+    const settings = resolvedRecordOptions(handle, options, properties)
     const defaultBatchRowSize = preflightWriteIntent(settings, intent)
     if (writeLimitIsZero(settings)) {
       if (intent === 'append') return undefined
@@ -934,11 +999,12 @@ function installRecords({
     const native = nativeWrites[intent]
     Object.defineProperty(IOBase.prototype, `${intent}Records`, {
       configurable: true,
-      value(rows, options) {
+      value(rows, options, properties) {
         return writeRecordSource(
           this,
           rows,
           options,
+          properties,
           intent,
           (reader, settings) => native.call(this, reader, settings),
         )
@@ -948,12 +1014,13 @@ function installRecords({
 
   Object.defineProperty(IOBase.prototype, 'writeRecords', {
     configurable: true,
-    value(rows, mode, options) {
+    value(rows, mode, options, properties) {
       const intent = writeMode(mode)
       return writeRecordSource(
         this,
         rows,
         options,
+        properties,
         intent,
         (reader, settings) =>
           nativeWrite.call(this, reader, intent, settings),
@@ -1034,8 +1101,8 @@ function installRecords({
   if (merge) {
     Object.defineProperty(Table.prototype, 'merge', {
       configurable: true,
-      value(batches, mergeByNames, safe, options) {
-        return merge.call(this, icebergBatchReader(this, batches), mergeByNames, safe, options)
+      value(batches, mergeBy, safe, options) {
+        return merge.call(this, icebergBatchReader(this, batches), mergeBy, safe, options)
       },
     })
   }
@@ -1044,12 +1111,12 @@ function installRecords({
   if (mergeWhere) {
     Object.defineProperty(Table.prototype, 'mergeWhere', {
       configurable: true,
-      value(filters, batches, mergeByNames, safe, options) {
+      value(filters, batches, mergeBy, safe, options) {
         return mergeWhere.call(
           this,
           filters,
           icebergBatchReader(this, batches),
-          mergeByNames,
+          mergeBy,
           safe,
           options,
         )

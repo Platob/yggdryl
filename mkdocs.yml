@@ -225,9 +225,14 @@ nav:
     - Readers: arrow/readers.md
   - Expression:
     - expression/index.md
+    - Grammar: expression/grammar.md
+    - Terms: expression/terms.md
+    - Selectors: expression/selectors.md
+    - Filters: expression/filters.md
+    - Functions: expression/functions.md
+    - Plans: expression/plans.md
     - Holder attributes: expression/holder.md
     - Evaluate: expression/evaluate.md
-    - Grammar: expression/grammar.md
   - Hashing: hashing.md
   - FIX:
     - fix/index.md

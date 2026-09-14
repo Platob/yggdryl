@@ -1667,22 +1667,24 @@ impl JsTable {
 
     /// Read the rows matching one predicate as a `BatchReader`.
     ///
-    /// `filter` is an `Expression` or the text of one, which parses. It is the
-    /// whole expression language rather than equality pairs: ranges, null
-    /// tests, `in` lists, nested paths, and `&holder.*` questions about the
-    /// files themselves. Planning prunes with the metadata chain, and only the
-    /// conjuncts it could not settle are tested against the rows.
+    /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+    /// parses. It is the whole expression language rather than equality
+    /// pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
+    /// questions about the files themselves. Planning prunes with the
+    /// metadata chain, and only the conjuncts it could not settle are tested
+    /// against the rows.
     #[napi]
     pub fn scan_matching(
         &self,
-        filter: napi::bindgen_prelude::Either<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsExpression>,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
             String,
         >,
         field: Option<&JsField>,
     ) -> Result<JsBatchReader> {
         let root_name = self.root_name()?;
-        let filter = crate::expression::expression_from_input(filter)?;
+        let filter = crate::expression::filter_from_input(filter)?;
         let reader = self
             .inner
             .scan_matching(filter, field.map(|field| &field.inner))
@@ -1694,12 +1696,13 @@ impl JsTable {
     #[napi]
     pub fn plan_matching(
         &self,
-        filter: napi::bindgen_prelude::Either<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsExpression>,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
             String,
         >,
     ) -> Result<ScanPlanCounts> {
-        let filter = crate::expression::expression_from_input(filter)?;
+        let filter = crate::expression::filter_from_input(filter)?;
         let plan = self.inner.plan_matching(filter).map_err(napi_error)?;
         Ok(ScanPlanCounts {
             tasks: i64::try_from(plan.tasks.len()).unwrap_or(i64::MAX),
@@ -1862,13 +1865,14 @@ impl JsTable {
         })
     }
 
-    /// Merge `batches` into the stored rows, matching on `mergeByNames`.
+    /// Merge `batches` into the stored rows, matching on `mergeBy`: a
+    /// `Selector`, the text of one, or the key column names.
     ///
     /// A row whose key is already stored updates it and a row whose key is not
     /// appends. Only the files whose recorded bounds could hold an incoming key
     /// are read and rewritten - the rest are carried into the new snapshot
     /// untouched - so an upsert costs the files it can actually change. A
-    /// non-empty `mergeByNames` is required because nothing else identifies a
+    /// non-empty `mergeBy` is required because nothing else identifies a
     /// row.
     ///
     /// `safe` decides what a cast that cannot convert a value does: the
@@ -1878,19 +1882,30 @@ impl JsTable {
     pub fn merge(
         &mut self,
         batches: &mut JsBatchReader,
-        merge_by_names: Vec<String>,
+        merge_by: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
         safe: Option<bool>,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
+        let keys = crate::expression::selector_from_input(merge_by)?;
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table
-                .commit_merge(batches, &merge_by_names, safe.unwrap_or(true))
+                .commit_merge(batches, &keys, safe.unwrap_or(true))
                 .map_err(napi_error)
         })
     }
 
-    /// Merge `batches` into the rows `filters` selects, on `mergeByNames`.
+    /// Merge `batches` into the rows `filters` selects, on `mergeBy`.
     ///
     /// [`merge`](Self::merge) narrowed to a part of the table first: the
     /// filters decide which files are candidates at all, and the match-key
@@ -1901,18 +1916,29 @@ impl JsTable {
         &mut self,
         filters: Option<ScanFilters>,
         batches: &mut JsBatchReader,
-        merge_by_names: Vec<String>,
+        merge_by: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
         safe: Option<bool>,
         options: Option<&JsIcebergOptions>,
     ) -> Result<()> {
         let pairs = filter_pairs(filters);
+        let keys = crate::expression::selector_from_input(merge_by)?;
         let batches = batches.take()?;
         with_call_options(&mut self.inner, call_options(options), |table| {
             table
                 .commit_merge_where(
                     &borrowed_pairs(&pairs),
                     batches,
-                    &merge_by_names,
+                    &keys,
                     safe.unwrap_or(true),
                 )
                 .map_err(napi_error)

@@ -1,3 +1,3 @@
-from ._native import ArrowValue as ArrowValue, arrow_shapes as arrow_shapes
+from ._native import ArrowScalar as ArrowScalar, arrow_shapes as arrow_shapes
 
 SHAPES: tuple[str, ...]

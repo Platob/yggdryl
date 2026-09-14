@@ -1,6 +1,6 @@
 //! Rows are schema-ordered sequences; structured-text objects are records.
 
-use yggdryl::{DataType, Expression, Scalar};
+use yggdryl::{DataType, Scalar, Term};
 
 fn trade(id: i64, venue: Option<&str>) -> Scalar {
     Scalar::from_sequence([Scalar::from(id), venue.map_or(Scalar::Null, Scalar::from)])
@@ -28,7 +28,7 @@ fn struct_expressions_evaluate_to_schema_ordered_sequences() {
         .unwrap()
         .required_field("row");
     let bound = "struct(1 as id, 'XNAS' as venue)"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap()
         .bind(&schema)
         .unwrap();
@@ -36,13 +36,9 @@ fn struct_expressions_evaluate_to_schema_ordered_sequences() {
     let expected = Scalar::from_sequence([Scalar::from(1), Scalar::from("XNAS")]);
     assert_eq!(bound.eval(&source).unwrap(), expected);
 
-    let printed = bound.expression().to_string();
+    let printed = bound.term().to_string();
     assert!(printed.contains("struct("), "{printed}");
-    let reparsed = printed
-        .parse::<Expression>()
-        .unwrap()
-        .bind(&schema)
-        .unwrap();
+    let reparsed = printed.parse::<Term>().unwrap().bind(&schema).unwrap();
     assert_eq!(reparsed.eval(&source).unwrap(), expected);
 }
 

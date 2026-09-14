@@ -241,8 +241,8 @@ test('a match key updates a stored row and appends a new one', () => {
   handle.mediaType = MimeType.ARROW_STREAM
   handle.overwriteArrowTable(trades())
 
-  const merging = handle.recordOptions().withMergeByNames(['id'])
-  assert.deepEqual(merging.mergeByNames, ['id'])
+  const merging = handle.recordOptions().withMergeBy(['id'])
+  assert.deepEqual(merging.mergeBy.names, ['id'])
   handle.mergeArrowTable(rows([2n, 9n], ['MSFT.O', 'NVDA'], ['XNYS', 'XNYS']), merging)
 
   const table = handle.readArrowReader().intoTable()
@@ -298,10 +298,10 @@ test('a limit with a match key is refused naming both settings', () => {
 
   // A truncated merge would update the matched keys it kept and silently drop
   // the rest, so the combination is refused rather than corrupting.
-  const limited = handle.recordOptions().withMergeByNames(['id']).withMaxRowSize(10)
+  const limited = handle.recordOptions().withMergeBy(['id']).withMaxRowSize(10)
   assert.throws(
     () => handle.mergeArrowTable(trades(), limited),
-    /max_row_size = 10.*merge_by_names/,
+    /max_row_size = 10.*merge_by `id`/,
   )
 })
 
@@ -398,7 +398,7 @@ test('text options value protocols include every flat text setting', () => {
   const options = new TextOptions()
     .withName('line')
     .withBatchRowSize(32)
-    .withSelectByNames(['body'])
+    .withSelect(['body'])
   options.rowheader = '(?<id>\\d+)'
   options.lstrip = ['^\\s+']
   options.rstrip = ['\\s+$']
@@ -443,7 +443,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       field.nullable,
     ]),
     [
-      ['url', 'Utf8', true],
+      ['sourceurl', 'Utf8', true],
       ['mtime', 'Timestamp<NANOSECOND, UTC>', true],
       ['body', 'Utf8', false],
     ],
@@ -456,7 +456,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   )
   // A located handle fills it with the canonical URL text of its location.
   assert.deepEqual(
-    [...table.getChild('url')],
+    [...table.getChild('sourceurl')],
     [handle.url.toString(), handle.url.toString()],
   )
 
@@ -479,7 +479,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(numbered)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    ['url', 'rownum', 'mtime', 'body', 'word'],
+    ['sourceurl', 'rownum', 'mtime', 'body', 'word'],
   )
 
   // Turning the flag off takes the column away rather than nulling it.
@@ -490,7 +490,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(undated)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    ['url', 'body'],
+    ['sourceurl', 'body'],
   )
 
   // A buffer records no modification time, so the column is there and null:
@@ -499,7 +499,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   const held = buffer.readArrowReader(options).intoTable()
   assert.deepEqual(
     held.schema.fields.map((field) => field.name),
-    ['url', 'mtime', 'body'],
+    ['sourceurl', 'mtime', 'body'],
   )
   assert.deepEqual([...held.getChild('mtime')], [null, null])
   assert.deepEqual(
@@ -521,7 +521,7 @@ test('a row header that dates a line fills mtime rather than adding a column', (
   // column's own datatype rather than at the one its syntax suggests.
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['url', 'mtime', 'body', 'id'],
+    ['sourceurl', 'mtime', 'body', 'id'],
   )
   assert.equal(table.schema.fields[1].type.unit, arrow.TimeUnit.NANOSECOND)
   assert.equal(table.schema.fields[1].type.timezone, 'UTC')
@@ -541,7 +541,7 @@ test('a row header that dates a line fills mtime rather than adding a column', (
   assert.deepEqual(
     counted.schema.fields.map((field) => [field.name, field.type.toString()]),
     [
-      ['url', 'Utf8'],
+      ['sourceurl', 'Utf8'],
       ['body', 'Utf8'],
       ['mtime', 'Int64'],
     ],
@@ -1047,65 +1047,60 @@ test('a batch size of zero is refused rather than stored as a read of nothing', 
   assert.equal(options.batchRowSize, null)
 })
 
-test('the declared root is three parts, and field is built from them', () => {
+test('the declared root is one section: the field the plan creates', () => {
   const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM)
   assert.equal(options.name, 'row')
-  assert.equal(options.dtype, null)
-  assert.deepEqual(options.metadata, [])
   assert.equal(options.field, null)
+  assert.ok(options.select.isAll)
+  assert.ok(options.filter.isAlwaysTrue)
+  assert.ok(options.mergeBy.isAll)
 
-  // A datatype expression or a native DataType declares the shape; the field
-  // is the non-null Struct root assembled from the three parts on every ask.
-  options.dtype = 'struct<id: int64>'
-  assert.ok(options.dtype.equals(new DataType('struct<id: int64>')))
-  options.name = 'trade'
-  options.metadata = { source: 'book' }
+  // A field declares the shape whole; the stored root is the required Struct
+  // it names, with its metadata.
+  const declared = new Field('trade', 'struct<id: int64>', true, { source: 'book' })
+  options.field = declared
   const built = options.field
   assert.equal(built.name, 'trade')
   assert.equal(built.nullable, false)
   assert.ok(built.dtype.equals(new DataType('struct<id: int64>')))
   assert.deepEqual(built.entries(), [{ key: 'source', value: 'book' }])
-  assert.ok(options.field.equals(built))
-
-  // A declared field decomposes into the same three parts.
-  const declared = RecordOptions.from('trades.parquet').withField(built)
-  assert.equal(declared.name, 'trade')
-  assert.ok(declared.dtype.equals(built.dtype))
-  assert.deepEqual(declared.metadata, [{ key: 'source', value: 'book' }])
-  assert.ok(declared.field.equals(built))
-
-  // Clearing the datatype clears the field and keeps the name and metadata.
-  options.dtype = null
-  assert.equal(options.dtype, null)
-  assert.equal(options.field, null)
   assert.equal(options.name, 'trade')
-  assert.deepEqual(options.metadata, [{ key: 'source', value: 'book' }])
 
-  const typed = options.withDtype(new DataType('struct<id: int64, symbol: utf8>'))
-  assert.equal(typed.field.name, 'trade')
+  // The field is the plan's `create` section, spelled as one.
+  assert.ok(options.plan.toString().startsWith('create trade ('))
+  assert.ok(options.plan.field().equals(options.field))
+
+  // The name is one part of the field, so renaming renames it. The default
+  // root name is not a location, so the section prints without one.
+  options.name = 'row'
+  assert.equal(options.field.name, 'row')
+  assert.equal(declared.name, 'trade')
+  assert.ok(options.plan.toString().startsWith('create ('))
+  assert.ok(options.plan.field().equals(options.field))
+
+  // Clearing the field leaves the name alone.
+  options.field = null
+  assert.equal(options.field, null)
+  assert.equal(options.name, 'row')
+  const typed = options.withField(Field.from('row: struct<id: int64, symbol: utf8> not null'))
   assert.equal(typed.field.dtype.length, 2)
   assert.equal(options.field, null)
-  assert.equal(typed.withName('row').field.name, 'row')
-  assert.throws(() => options.withDtype('struct<'), /invalid datatype expression/)
-  assert.throws(() => {
-    options.dtype = 'struct<'
-  }, /invalid datatype expression/)
-  assert.equal(options.dtype, null)
+  assert.equal(typed.withName('trade').field.name, 'trade')
 })
 
-test('a root declared through a field or a datatype is the same value', () => {
+test('a root declared through a field or a plan is the same value', () => {
   const field = Field.from('row: struct<id: int64, symbol: utf8> not null')
   const byField = RecordOptions.from('trades.parquet').withField(field)
-  const byDtype = RecordOptions.from('trades.parquet').withDtype(field.dtype)
-  assert.ok(byField.equals(byDtype))
-  assert.equal(byField.compare(byDtype), 0)
-  assert.equal(byField.stableHash(), byDtype.stableHash())
-  assert.ok(byField.field.equals(byDtype.field))
+  const byPlan = RecordOptions.from('trades.parquet').withPlan(field)
+  assert.ok(byField.equals(byPlan))
+  assert.equal(byField.compare(byPlan), 0)
+  assert.equal(byField.stableHash(), byPlan.stableHash())
+  assert.ok(byField.field.equals(byPlan.field))
 
-  // Each part takes a side in equality on its own.
-  assert.ok(!byField.equals(byDtype.withName('trade')))
-  assert.ok(!byField.equals(byDtype.withMetadata({ source: 'book' })))
-  assert.ok(byField.withMetadata({ source: 'book' }).equals(byDtype.withMetadata({ source: 'book' })))
+  // Each section takes a side in equality on its own.
+  assert.ok(!byField.equals(byPlan.withName('trade')))
+  assert.ok(!byField.equals(byPlan.withSelect(['id'])))
+  assert.ok(byField.withFilter('id > 1').equals(byPlan.withFilter('id > 1')))
 
   // Nullability is not one of the parts: the root is always required.
   const nullable = RecordOptions.from('trades.parquet').withField(
@@ -1115,40 +1110,36 @@ test('a root declared through a field or a datatype is the same value', () => {
   assert.equal(nullable.field.nullable, false)
 })
 
-test('root metadata takes entries, a plain object, a Map, or a Field', () => {
-  const options = RecordOptions.from('trades.parquet').withDtype('struct<id: int64>')
+test('the sections are one plan, and a plan splits back into them', () => {
+  const options = RecordOptions.from('trades.parquet')
+  options.filter = "venue = 'XNAS' and id > 5"
+  options.select = 'id, symbol'
+  options.mergeBy = ['id']
+  options.maxRowSize = 10
+  options.field = Field.from('row: struct<id: int64, symbol: utf8, venue: utf8> not null')
 
-  options.metadata = [{ key: 'source', value: 'book' }]
-  assert.deepEqual(options.metadata, [{ key: 'source', value: 'book' }])
-  options.metadata = { venue: 'XNAS', session: 'regular' }
-  assert.deepEqual(options.metadata, [
-    { key: 'session', value: 'regular' },
-    { key: 'venue', value: 'XNAS' },
-  ])
-  options.metadata = new Map([['currency', 'EUR']])
-  assert.deepEqual(options.metadata, [{ key: 'currency', value: 'EUR' }])
-  options.metadata = [['precision', 'micros']]
-  assert.deepEqual(options.metadata, [{ key: 'precision', value: 'micros' }])
-  options.metadata = new Field('price', 'decimal(18, 6)', false, { unit: 'cents' })
-  assert.deepEqual(options.metadata, [{ key: 'unit', value: 'cents' }])
-  assert.deepEqual(options.field.entries(), [{ key: 'unit', value: 'cents' }])
+  // The equalities the filter pins are what prune a listing before anything
+  // is opened, spelled as partition paths spell them.
+  assert.deepEqual(options.partitionPairs(), [['venue', 'XNAS']])
+  const plan = options.plan
+  assert.equal(plan.verb, 'upsert into')
+  assert.ok(plan.selector.equals('id, symbol'))
+  assert.equal(plan.limit, 10)
+  assert.ok(plan.filter.equals("venue = 'XNAS' and id > 5"))
 
-  // `withMetadata` is the same setter on a copy, and empty clears.
-  const copied = options.withMetadata(new Map([['source', 'book']]))
-  assert.deepEqual(copied.metadata, [{ key: 'source', value: 'book' }])
-  assert.deepEqual(options.metadata, [{ key: 'unit', value: 'cents' }])
-  assert.deepEqual(copied.withMetadata([]).metadata, [])
-  assert.deepEqual(copied.withMetadata({}).field.entries(), [])
+  const fresh = RecordOptions.from('trades.parquet')
+  fresh.plan = plan.toString()
+  assert.ok(fresh.equals(options))
+  assert.ok(fresh.field.equals(options.field))
+  assert.deepEqual(fresh.mergeBy.names, ['id'])
+  assert.equal(fresh.maxRowSize, 10)
 
-  // The core validates the entries; a refused value leaves the options as is.
+  // A refused section leaves the options as they were.
   assert.throws(() => {
-    options.metadata = [{ key: '', value: 'x' }]
-  }, /metadata keys must not be empty/)
-  assert.throws(() => {
-    options.metadata = 'source=book'
-  }, TypeError)
-  assert.throws(() => options.withMetadata({ source: 7 }), TypeError)
-  assert.deepEqual(options.metadata, [{ key: 'unit', value: 'cents' }])
+    options.filter = 'venue = '
+  }, /expression/)
+  assert.ok(options.filter.equals("venue = 'XNAS' and id > 5"))
+  assert.throws(() => options.withSelect('select'), /projection/)
 })
 
 test('a declared name roots the schema inferred from plain records', (t) => {
@@ -1182,10 +1173,10 @@ test('a declared name roots the schema inferred from plain records', (t) => {
   assert.equal(stream.readArrowField(stream.recordOptions().withName('trade')).name, 'trade')
 
   // Text has no stored schema: its extractor supplies the datatype, while the
-  // shared name still names the inferred root. Metadata alone declares none.
+  // shared name still names the inferred root.
   const text = new IOBase(path.join(root, 'events.log'))
   text.writeText('first\nsecond\n')
-  const textOptions = text.recordOptions().withName('events').withMetadata({ owner: 'risk' })
+  const textOptions = text.recordOptions().withName('events')
   const textField = text.readArrowField(textOptions)
   assert.equal(textField.name, 'events')
   assert.deepEqual(textField.entries(), [])

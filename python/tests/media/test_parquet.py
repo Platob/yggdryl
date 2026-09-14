@@ -274,9 +274,9 @@ class TestTheLimits:
         file.overwrite_arrow_table(_table())
         options = file.record_options()
         options.max_row_size = 10
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
 
-        with pytest.raises(ValueError, match="max_row_size = 10.*merge_by_names"):
+        with pytest.raises(ValueError, match="max_row_size = 10.*merge_by"):
             file.merge_arrow_table(_table(), options=options)
 
 
@@ -346,7 +346,7 @@ class TestWritesAndMerges:
             )
         )
         options = file.record_options()
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
 
         file.merge_arrow_batch(
             pa.record_batch(

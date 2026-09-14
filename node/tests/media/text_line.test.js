@@ -52,7 +52,7 @@ test('every line becomes one typed row', () => {
   assert.equal(Number(lines[0].index), 0)
   assert.equal(lines[0].body, '8=FIX|55=AAPL|35=D')
   assert.equal(lines[0].decodedByteSize, 0)
-  assert.notEqual(lines[0].url, null)
+  assert.notEqual(lines[0].sourceurl, null)
 })
 
 test('a read wanting no entry builds no tree', () => {
@@ -233,4 +233,36 @@ test('a lifted path names its column with its alias', () => {
   }
   assert.ok(names.includes('symbol'))
   assert.ok(!names.includes('55'))
+})
+
+test('a text read is shaped by select and where given as properties', () => {
+  const handle = IOBase.fromBytes(
+    Buffer.from('[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n'),
+  )
+  handle.mediaType = 'text/plain'
+  // A plain object in the options position is a bag of option properties,
+  // each set by its own setter on the handle's own text options.
+  const table = handle
+    .readArrowReader({
+      rowheader: '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)',
+      startRownum: 1n,
+      select: 'cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold',
+      filter: "n > 1 and line like '%d' and level is not null",
+    })
+    .intoTable()
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    ['n', 'line', 'level', 'tenfold'],
+  )
+  assert.deepEqual([...table.getChild('line')], ['second', 'third'])
+  assert.deepEqual([...table.getChild('tenfold')], [90n, 110n])
+  // Given options stay untouched: the properties land on a copy, and an
+  // undefined property is skipped.
+  const options = new TextOptions()
+  options.rowheader = '\\[(?<level>[A-Z]+)\\] id=(?<id>\\d+)'
+  const lines = handle
+    .readArrowReader(options, { select: 'body as line', filter: undefined })
+    .intoTable()
+  assert.deepEqual([...lines.getChild('line')], [' first', ' second', ' third', 'plain'])
+  assert.equal(options.select.isAll, true)
 })

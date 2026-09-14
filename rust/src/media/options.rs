@@ -1,15 +1,22 @@
 //! The settings a record read or write takes, shared across encodings.
 //!
-//! [`IORecordOptions`] is the shared surface for root declarations, casts,
-//! batch and flow limits, compression, and merge keys. Each encoding stores
+//! [`IORecordOptions`] is the shared surface for the plan a read or write
+//! runs, casts, batch and flow limits, and compression. Each encoding stores
 //! those settings as flat fields and adds its own; [`RecordOptions`] names the
 //! selected encoding's options.
 //!
-//! The declared root is three parts - `name`, `dtype`, `metadata` - and
-//! [`field`](IORecordOptions::field) builds the non-null Struct [`Field`] from
-//! them on every ask, so each part changes independently. Only the datatype is
-//! optional: without one the shape is inferred; the name and metadata default
-//! to [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) and no entries.
+//! Four properties say everything a read or write says about its rows, each
+//! held on its own so one changes without touching the others: the
+//! [`field`](IORecordOptions::field) it declares, the
+//! [`filter`](IORecordOptions::filter) that keeps rows, the
+//! [`select`](IORecordOptions::select) that publishes columns, and the
+//! [`merge_by`](IORecordOptions::merge_by) keys a merge matches on. Together
+//! they are the sections of one [`Plan`] - [`plan`](IORecordOptions::plan)
+//! composes it and [`with_plan`](IORecordOptions::with_plan) splits one back
+//! into them - so a caller declares what it means in either form and a media
+//! extracts what it needs: a folder prunes its leaves by the equalities the
+//! filter spells, an encoding decodes the columns the select clause names, a merge
+//! matches by the keys.
 //!
 //! An encoding is never guessed: [`RecordOptions::for_media_type`] derives it
 //! from the handle's media type, which is what [`crate::IOBase`]'s record
@@ -26,20 +33,20 @@
 //! // Arrow IPC is available in every Arrow build.
 //! let options = RecordOptions::for_media_type(&Url::from_str("file:///t.arrows")?.media_type())?
 //!     .with_field(schema.clone())
+//!     .with_filter("id > 10")?
 //!     .with_batch_row_size(1024)
 //!     .with_commit_row_size(10_000);
 //!
 //! assert_eq!(options.field(), Some(schema.clone()));
 //! assert_eq!(options.name(), "row");
-//! assert_eq!(options.dtype(), Some(schema.dtype()));
-//! assert!(options.metadata().is_empty());
+//! assert_eq!(options.plan().to_string(), "create (id int64 not null) where id > 10");
 //! assert_eq!(options.batch_row_size(), Some(1024));
 //! assert_eq!(options.commit_row_size(), Some(10_000));
 //!
-//! // Each part mutates on its own: the same datatype under another root name.
-//! let renamed = options.with_name("trade").require_field()?;
-//! assert_eq!(renamed.name(), "trade");
-//! assert_eq!(renamed.dtype(), schema.dtype());
+//! // The same plan, spelled as text.
+//! let spelled = options.clone().with_plan("create trade (id int64 not null) where id > 10")?;
+//! assert_eq!(spelled.name(), "trade");
+//! assert_eq!(spelled.require_field()?.dtype(), schema.dtype());
 //! # Ok(())
 //! # }
 //! ```
@@ -55,10 +62,12 @@ pub(crate) use limits::WriteLimitState;
 
 use smol_str::SmolStr;
 
-use crate::Level;
+use crate::expression::{IntoFilter, IntoPlan, IntoSelector, Plan, Term};
 use crate::media::ipc::IpcOptions;
-use crate::types::cast::{ArrowCast, ArrowCastOptions};
-use crate::{DataType, Error, Field, IOMode, MediaType, Metadata, MimeType, Result};
+use crate::types::cast::ArrowCastOptions;
+use crate::{
+    DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
+};
 
 /// Default rows materialized in one native-record conversion batch.
 ///
@@ -72,79 +81,50 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
 /// struct to thread through - and the builders here are what every caller uses,
 /// so the encodings cannot drift apart in what a shared setting means.
 pub trait IORecordOptions: Sized {
+    /// Borrow the declared canonical field, if one is declared.
+    ///
+    /// The non-null Struct root a read projects onto and a write casts onto;
+    /// `None` infers the shape from the encoding or the incoming rows. The
+    /// field carries the root's name, datatype and metadata in one value.
+    fn declared(&self) -> Option<&Field>;
+
+    /// Declare, or clear, the canonical field.
+    ///
+    /// A field's own nullability and dictionary options are not part of a
+    /// declaration: a row root is a non-null Struct, which is what is stored.
+    fn set_declared(&mut self, field: Option<Field>);
+
+    /// The declared canonical field, if one is declared.
+    fn field(&self) -> Option<Field> {
+        self.declared().cloned()
+    }
+
+    /// Declare the canonical field.
+    fn set_field(&mut self, field: Field) {
+        self.set_declared(Some(field));
+    }
+
     /// Borrow the root Field name.
     ///
-    /// The name is one of the three parts [`field`](Self::field) is built
-    /// from, and it names an inferred root as well, so a stream read without
-    /// a schema and one read under a declared datatype answer the same root
-    /// name. It defaults to
+    /// The declared field's name, and the name an inferred root takes as
+    /// well - an Avro container names its record after it - so a stream read
+    /// without a schema and one read under a declared one answer the same
+    /// root name. Declaring a field sets it; it defaults to
     /// [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME).
     fn name(&self) -> &str;
 
-    /// Set the root Field name.
+    /// Set the root Field name, renaming the declared field when there is
+    /// one so the two never disagree.
     fn set_name(&mut self, name: SmolStr);
-
-    /// Borrow the declared root datatype, if any.
-    ///
-    /// A declared datatype is what makes a field declared at all: reads
-    /// project onto it and writes cast onto it, while `None` infers the shape
-    /// from the encoding or the incoming rows.
-    fn dtype(&self) -> Option<&DataType>;
-
-    /// Declare or clear the root datatype.
-    fn set_dtype(&mut self, dtype: Option<DataType>);
-
-    /// Borrow the root metadata; empty unless declared.
-    ///
-    /// Metadata reaches a read or write only through the field a declared
-    /// datatype builds: on its own it declares nothing.
-    fn metadata(&self) -> &Metadata;
-
-    /// Set the root metadata; an empty snapshot clears it.
-    fn set_metadata(&mut self, metadata: Metadata);
-
-    /// Build the declared canonical field from its parts, if a datatype is
-    /// declared.
-    ///
-    /// The field is built on every ask - the non-null Struct root that
-    /// [`name`](Self::name), [`dtype`](Self::dtype), and
-    /// [`metadata`](Self::metadata) spell - so it is never stale against a
-    /// part changed after it. The parts are shared handles, so the build
-    /// clones no datatype tree and no metadata map; a caller casting many
-    /// batches builds it once and keeps it.
-    fn field(&self) -> Option<Field> {
-        let dtype = self.dtype()?.clone();
-        Some(Field::new_with_metadata(
-            self.name(),
-            dtype,
-            false,
-            self.metadata().clone(),
-        ))
-    }
-
-    /// Declare the canonical field, part by part.
-    ///
-    /// The field's name, datatype, and metadata become the three parts. Its
-    /// nullability and dictionary options are not part of a declaration and
-    /// are dropped: a row root is a non-null Struct, which is what the build
-    /// answers.
-    fn set_field(&mut self, field: Field) {
-        self.set_name(SmolStr::new(field.name()));
-        self.set_dtype(Some(field.dtype().clone()));
-        self.set_metadata(field.as_metadata().clone());
-    }
 
     /// Remove and return the declared canonical field, if any.
     ///
-    /// The datatype and metadata are cleared either way; the name stays,
-    /// because it still names the root a delegated write infers. Write
-    /// combinators use this after casting an incoming stream: the delegated
-    /// overwrite then receives rows already in the declared shape and cannot
-    /// cast them a second time.
+    /// Write combinators use this after casting an incoming stream: the
+    /// delegated overwrite then receives rows already in the declared shape
+    /// and cannot cast them a second time.
     fn take_field(&mut self) -> Option<Field> {
         let field = self.field();
-        self.set_dtype(None);
-        self.set_metadata(Metadata::new());
+        self.set_declared(None);
         field
     }
 
@@ -253,70 +233,153 @@ pub trait IORecordOptions: Sized {
     /// Set the compression level.
     fn set_level(&mut self, level: Level);
 
-    /// Borrow the column names whose values form an explicit merge's match key.
+    /// Borrow the selector whose columns form an explicit merge's match key.
     ///
-    /// A non-empty list is required by
+    /// A non-empty selector is required by
     /// [`merge_arrow_reader`](crate::IOMedia::merge_arrow_reader): a row
     /// whose key is already stored updates it, and a row whose key is not
-    /// appends. The option never selects an operation; overwrite and append
-    /// reject it, and merge rejects an empty list.
-    fn merge_by_names(&self) -> &[String];
+    /// appends. Each projection is one key column - a stored column by name,
+    /// or a term computed from the row, so `trade.id` and `lower(symbol)`
+    /// are keys as much as `id` is. The option never selects an operation;
+    /// overwrite and append reject it, and merge rejects an empty selector.
+    fn merge_by(&self) -> &Selector;
 
-    /// Set the column names whose values form an explicit merge's match key.
-    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>);
+    /// Set the selector whose columns form an explicit merge's match key.
+    fn set_merge_by(&mut self, merge_by: Selector);
 
-    /// Borrow the column names a read or write is narrowed to.
+    /// Borrow the rows a read or write keeps: the `where` clause.
     ///
-    /// An empty list selects everything. A non-empty one names the columns, in
-    /// the order they are wanted: a read yields exactly those columns of the
-    /// stored rows, and a write keeps exactly those columns of the incoming
-    /// rows. Names match ASCII case-insensitively, the way every cast selects,
-    /// and a name the rows do not have is an error rather than a null column,
-    /// because a selection is a claim about what is there.
-    fn select_by_names(&self) -> &[String];
+    /// Always true keeps every row. The clause binds once against the rows'
+    /// own schema and runs before the selector, so it reads stored names.
+    fn filter(&self) -> &Filter;
 
-    /// Set the column names a read or write is narrowed to.
-    fn set_select_by_names(&mut self, select_by_names: Vec<String>);
+    /// Set the rows a read or write keeps.
+    fn set_filter(&mut self, filter: Filter);
 
-    /// Borrow the partition equalities a read is pruned and filtered by.
+    /// Borrow the columns a read or write publishes: the `select` clause;
+    /// `*` publishes every column unchanged.
+    fn select(&self) -> &Selector;
+
+    /// Set the columns a read or write publishes.
+    fn set_select(&mut self, select: Selector);
+
+    /// The plan these properties are the sections of.
     ///
-    /// An empty list keeps every row. A non-empty one names
-    /// `(column, value)` pairs, values spelled as
-    /// [`partition_text`](crate::media::partition::partition_text) spells them:
-    /// a folder read skips every leaf whose path names a different value -
-    /// nothing under it is listed or decoded - and rows whose data carries
-    /// the column are filtered to the named values, so path-partitioned and
-    /// data-partitioned layouts answer the same question the same way.
-    fn filter_partitions(&self) -> &[(String, String)];
-
-    /// Set the partition equalities a read is pruned and filtered by.
-    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>);
-
-    /// The predicate these options' partition equalities spell about a *path*.
-    ///
-    /// One expression, built from the pairs, asked of the holder rather than
-    /// of the rows: `&holder.partition['year'] = '2024'`. This is what prunes
-    /// a listing before anything is opened, and it is the same predicate type
-    /// the rows are filtered with - the pairs are sugar over one
-    /// representation, not a second filter.
-    fn partition_filter(&self) -> crate::Expression {
-        crate::Expression::all_holder_partitions_equal(
-            self.filter_partitions()
-                .iter()
-                .map(|(column, value)| (column, value)),
-        )
+    /// The declared field is its `create` section, the filter its `where`,
+    /// the selector its `select`, the merge key its `upsert by (...)`, and
+    /// the row bound its `limit`. This is what an options value spells as
+    /// one expression, and what [`with_plan`](Self::with_plan) reads back.
+    fn plan(&self) -> Plan {
+        let mut plan = match self.field() {
+            Some(field) => Plan::from_field(&field),
+            None => Plan::new(),
+        };
+        plan.set_filter(self.filter().clone());
+        plan.set_selector(self.select().clone());
+        plan.set_merge_by(self.merge_by().clone());
+        plan.limit(self.max_row_size())
     }
 
-    /// The predicate these options' partition equalities spell about *rows*.
+    /// Set every property from the sections of one plan.
     ///
-    /// The same pairs, read through the schema's own datatypes, which is what
-    /// makes `("price", "20")` an integer comparison on an `int32` column. A
-    /// pair naming a column the schema does not declare is left out: the path
-    /// answered for it already.
-    fn partition_predicate(&self, schema: &crate::Field) -> crate::Expression {
-        crate::Expression::all_partitions_equal(
-            schema,
-            self.filter_partitions()
+    /// A plan's `create` section declares the field, its `where` clause is
+    /// the filter, its `select` clause the selector, its upsert keys the
+    /// merge key; a section the plan does not spell clears the property. A
+    /// `limit` is the row bound. The plan's targets and source are not read:
+    /// the handle these options are given to is both.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the `create` section declares a column that
+    /// cannot be typed without rows, or the merge key names a column twice.
+    fn set_plan(&mut self, plan: Plan) -> Result<()> {
+        self.set_declared(plan.field()?);
+        self.set_filter(plan.filter_section().clone());
+        self.set_select(plan.selector().clone());
+        self.set_merge_by(plan.merge_by().clone());
+        if let Some(limit) = plan.row_limit() {
+            self.set_max_row_size(Some(limit));
+        }
+        self.require_merge_by()
+    }
+
+    /// The partition equalities the `where` section spells.
+    ///
+    /// Every conjunct comparing one column to one constant for equality,
+    /// the constant spelled as
+    /// [`partition_text`](crate::media::partition::partition_text) spells it,
+    /// and `column is null` as the null partition. A folder read skips every
+    /// leaf whose path names a different value - nothing under it is listed
+    /// or decoded - and an Iceberg scan prunes by the same pairs, so
+    /// path-partitioned and data-partitioned layouts answer the same clause
+    /// the same way. The rest of the clause runs over the rows.
+    fn partition_pairs(&self) -> Vec<(String, String)> {
+        partition_pairs(self.filter())
+    }
+
+    /// The stored columns the plan reads, when it narrows them.
+    ///
+    /// The `select` clause and the clauses beside it name the columns a read
+    /// has to decode; `None` - no selector, or one that keeps every column -
+    /// is the read that already happens. This is projection pushdown without
+    /// a declared field.
+    fn apply_columns(&self) -> Option<Vec<String>> {
+        if self.select().is_all() {
+            return None;
+        }
+        let mut columns = self.filter().columns();
+        for column in self.select().columns() {
+            if !columns
+                .iter()
+                .any(|held| held.eq_ignore_ascii_case(&column))
+            {
+                columns.push(column);
+            }
+        }
+        Some(columns)
+    }
+
+    /// Run the filter, then the selector, over a reader.
+    ///
+    /// Each clause binds once against the schema the clause before it
+    /// produced, so a stream pays for its plan once; a clause that keeps or
+    /// publishes everything costs nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a clause does not bind against the schema it
+    /// meets.
+    fn apply_arrow_expressions(
+        &self,
+        reader: crate::arrow::BatchReader,
+    ) -> Result<crate::arrow::BatchReader> {
+        use arrow_array::RecordBatchReader as _;
+        let schema = reader.schema();
+        let late = crate::expression::filter_after_select(
+            self.filter(),
+            self.select(),
+            schema.fields().iter().map(|field| field.name().as_str()),
+        );
+        if late {
+            return self
+                .filter()
+                .apply_arrow_reader(self.select().apply_arrow_reader(reader)?);
+        }
+        self.select()
+            .apply_arrow_reader(self.filter().apply_arrow_reader(reader)?)
+    }
+
+    /// The predicate the `where` section's partition equalities spell about
+    /// a *path*.
+    ///
+    /// One filter, built from the pairs, asked of the holder rather than of
+    /// the rows: `&holder.partition['year'] = '2024'`. This is what prunes a
+    /// listing before anything is opened, and it is the same predicate type
+    /// the rows are filtered with - the pairs are sugar over one
+    /// representation, not a second filter.
+    fn partition_filter(&self) -> Filter {
+        Filter::all_holder_partitions_equal(
+            self.partition_pairs()
                 .iter()
                 .map(|(column, value)| (column, value)),
         )
@@ -350,18 +413,143 @@ pub trait IORecordOptions: Sized {
         self
     }
 
-    /// Return these options with a declared root datatype.
+    /// Return these options with a declared root datatype, under the root
+    /// name they carry.
     #[must_use]
     fn with_dtype(mut self, dtype: DataType) -> Self {
-        self.set_dtype(Some(dtype));
+        let name = SmolStr::new(self.name());
+        self.set_field(dtype.required_field(name));
         self
     }
 
-    /// Return these options with root metadata.
-    #[must_use]
-    fn with_metadata(mut self, metadata: Metadata) -> Self {
-        self.set_metadata(metadata);
-        self
+    /// Return these options with every property set from one plan.
+    ///
+    /// The plan is text - `"create (id int64) where id > 0"`, `"select id"`,
+    /// `"upsert by (id)"` - a [`Field`] to declare, a selector, a filter, or
+    /// a [`Plan`] built by hand; [`set_plan`](Self::set_plan) says how its
+    /// sections land.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the plan is text that does not parse, or
+    /// the error [`set_plan`](Self::set_plan) raises.
+    fn with_plan(mut self, plan: impl IntoPlan) -> Result<Self> {
+        self.set_plan(plan.into_plan()?)?;
+        Ok(self)
+    }
+
+    /// Return these options keeping the rows a filter answers true for.
+    ///
+    /// The filter is a [`Filter`], a term, or the text of one with or
+    /// without `where` in front.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the filter is text that does not parse.
+    fn with_filter(mut self, filter: impl IntoFilter) -> Result<Self> {
+        self.set_filter(filter.into_filter()?);
+        Ok(self)
+    }
+
+    /// Set the `where` section from the scalar that spells it, as
+    /// [`Filter::from_scalar`] reads one.
+    ///
+    /// This is the one setter every binding's `filter` property crosses
+    /// through: a value is read as a scalar there and typed here.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Filter::from_scalar`] does.
+    fn set_filter_scalar(&mut self, filter: &Scalar) -> Result<()> {
+        self.set_filter(Filter::from_scalar(filter)?);
+        Ok(())
+    }
+
+    /// Return these options with the `where` section a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Filter::from_scalar`] does.
+    fn with_filter_scalar(mut self, filter: &Scalar) -> Result<Self> {
+        self.set_filter_scalar(filter)?;
+        Ok(self)
+    }
+
+    /// Set the `select` section from the scalar that spells it, as
+    /// [`Selector::from_scalar`] reads one: text, a sequence of projections,
+    /// or a mapping of aliases to terms.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Selector::from_scalar`] does.
+    fn set_select_scalar(&mut self, select: &Scalar) -> Result<()> {
+        self.set_select(Selector::from_scalar(select)?);
+        Ok(())
+    }
+
+    /// Return these options with the `select` section a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Selector::from_scalar`] does.
+    fn with_select_scalar(mut self, select: &Scalar) -> Result<Self> {
+        self.set_select_scalar(select)?;
+        Ok(self)
+    }
+
+    /// Set the merge key from the scalar that spells it, as
+    /// [`Selector::from_scalar`] reads one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Selector::from_scalar`] does, or the error
+    /// [`require_merge_by`](Self::require_merge_by) does.
+    fn set_merge_by_scalar(&mut self, merge_by: &Scalar) -> Result<()> {
+        self.set_merge_by(Selector::from_scalar(merge_by)?);
+        self.require_merge_by()
+    }
+
+    /// Return these options with the merge key a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`set_merge_by_scalar`](Self::set_merge_by_scalar) does.
+    fn with_merge_by_scalar(mut self, merge_by: &Scalar) -> Result<Self> {
+        self.set_merge_by_scalar(merge_by)?;
+        Ok(self)
+    }
+
+    /// Set every section from the plan a scalar spells, as
+    /// [`Plan::from_scalar`] reads one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Plan::from_scalar`] or [`set_plan`](Self::set_plan) does.
+    fn set_plan_scalar(&mut self, plan: &Scalar) -> Result<()> {
+        self.set_plan(Plan::from_scalar(plan)?)
+    }
+
+    /// Return these options with every section the plan a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`set_plan_scalar`](Self::set_plan_scalar) does.
+    fn with_plan_scalar(mut self, plan: &Scalar) -> Result<Self> {
+        self.set_plan_scalar(plan)?;
+        Ok(self)
+    }
+
+    /// Return these options publishing the columns a selector names.
+    ///
+    /// The selector is a [`Selector`], a list of column names, or the text
+    /// of one with or without `select` in front.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the selector is text that does not parse.
+    fn with_select(mut self, select: impl IntoSelector) -> Result<Self> {
+        self.set_select(select.into_selector()?);
+        Ok(self)
     }
 
     /// Return these options with a different cast strictness.
@@ -419,82 +607,89 @@ pub trait IORecordOptions: Sized {
     }
 
     /// Return these options with a match key for an explicit merge.
-    #[must_use]
-    fn with_merge_by_names<I, S>(mut self, merge_by_names: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.set_merge_by_names(merge_by_names.into_iter().map(Into::into).collect());
-        self
+    ///
+    /// Text parses through the selector grammar and a list of names is a list
+    /// of columns, so `with_merge_by("id, ts")` and `with_merge_by(["id",
+    /// "ts"])` are one key.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error when the key is text that is not a selector.
+    fn with_merge_by(mut self, merge_by: impl IntoSelector) -> Result<Self> {
+        self.set_merge_by(merge_by.into_selector()?);
+        self.require_merge_by().map(|()| self)
     }
 
-    /// Return these options narrowed to the named columns, for reads and writes.
-    #[must_use]
-    fn with_select_by_names<I, S>(mut self, select_by_names: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.set_select_by_names(select_by_names.into_iter().map(Into::into).collect());
-        self
-    }
-
-    /// Return these options pruned and filtered to the named partitions.
-    #[must_use]
-    fn with_filter_partitions<I, C, V>(mut self, filter_partitions: I) -> Self
-    where
-        I: IntoIterator<Item = (C, V)>,
-        C: Into<String>,
-        V: Into<String>,
-    {
-        self.set_filter_partitions(
-            filter_partitions
-                .into_iter()
-                .map(|(column, value)| (column.into(), value.into()))
-                .collect(),
-        );
-        self
+    /// Refuse a match key that names a column twice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the repeated column.
+    fn require_merge_by(&self) -> Result<()> {
+        let names = self.merge_by().names();
+        for (index, name) in names.iter().enumerate() {
+            if names[..index]
+                .iter()
+                .any(|held| held.eq_ignore_ascii_case(name))
+            {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$.merge_by"),
+                    reason: smol_str::format_smolstr!(
+                        "expected each match key column once, got {name:?} twice"
+                    ),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Shape one batch the way these options say, completed by what is stored.
     ///
     /// This is the one definition of option-driven shaping, in three layers
     /// applied in order: the declared [`field`](Self::field) says what the
-    /// rows are meant to be, [`select_by_names`](Self::select_by_names)
-    /// narrows and orders the columns, and `existing` - a holder's stored
-    /// shape - is what the batch is finally completed onto, always safely, so
-    /// a value that will not convert into a stored column becomes null rather
-    /// than quietly redefining that column for every reader of the resource.
-    /// Each absent layer costs nothing.
+    /// rows are meant to be, the plan's `where` and `select` clauses keep and
+    /// publish what they say, and `existing` - a holder's stored shape - is
+    /// what the batch is finally completed onto, always safely, so a value
+    /// that will not convert into a stored column becomes null rather than
+    /// quietly redefining that column for every reader of the resource. Each
+    /// absent layer costs nothing.
     ///
     /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
-    /// casting: a declaration is a cast *and* the `partition:` and `digest:`
-    /// columns it derives, so a column a schema declares arrives written
-    /// rather than arriving as the default nothing filled. The selection in
-    /// between only narrows, because deriving there would restore the columns
-    /// it was asked to drop. A root that declares no derivation applies as the
-    /// cast alone.
+    /// casting: a declaration is a cast *and* the `transform:`, `partition:`
+    /// and `digest:` columns it derives, so a column a schema declares arrives
+    /// written rather than arriving as the default nothing filled. A root that
+    /// declares no derivation applies as the cast alone.
     ///
     /// # Errors
     ///
     /// Returns an error when a cast cannot be planned, a declaration cannot be
-    /// satisfied, or a selected name is not a column of the rows.
+    /// satisfied, or an expression does not bind against the rows.
     fn apply_arrow_batch(
         &self,
         batch: arrow_array::RecordBatch,
         existing: Option<&Field>,
     ) -> Result<arrow_array::RecordBatch> {
         let options = ArrowCastOptions::new().with_safe(self.safe());
-        let batch = match self.field() {
+        let mut batch = match self.field() {
             Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, options)?,
             None => batch,
         };
-        let root = crate::arrow::field_from_arrow_schema(self.name(), batch.schema().as_ref())?;
-        let batch = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())? {
-            Some(target) => target.cast_arrow_batch(batch, options)?,
-            None => batch,
-        };
+        let late = crate::expression::filter_after_select(
+            self.filter(),
+            self.select(),
+            batch
+                .schema()
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str()),
+        );
+        if late {
+            batch = self.select().apply_arrow_batch(&batch)?;
+            batch = self.filter().apply_arrow_batch(&batch)?;
+        } else {
+            batch = self.filter().apply_arrow_batch(&batch)?;
+            batch = self.select().apply_arrow_batch(&batch)?;
+        }
         match existing {
             // A holder already holding a value is left alone, so this fills
             // only what the destination declares and the incoming rows do not
@@ -514,7 +709,7 @@ pub trait IORecordOptions: Sized {
     /// # Errors
     ///
     /// Returns an error when a cast cannot be planned, a declaration cannot be
-    /// satisfied, or a selected name is not a column of the reader.
+    /// satisfied, or an expression does not bind against the reader.
     fn apply_arrow_reader(
         &self,
         reader: crate::arrow::BatchReader,
@@ -525,12 +720,7 @@ pub trait IORecordOptions: Sized {
             Some(declared) => declared.apply_arrow_reader(reader, true, true, true, options)?,
             None => reader,
         };
-        let root = crate::arrow::field_from_arrow_schema(self.name(), reader.schema().as_ref())?;
-        let reader = match crate::arrow::selected_root(&root, self.select_by_names(), self.name())?
-        {
-            Some(target) => crate::arrow::cast_reader(reader, &target, options)?,
-            None => reader,
-        };
+        let reader = self.apply_arrow_expressions(reader)?;
         match existing {
             Some(stored) => {
                 Ok(stored.apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())?)
@@ -544,8 +734,8 @@ pub trait IORecordOptions: Sized {
     ///
     /// This is one more transform of the same option-driven shaping seam as
     /// [`apply_arrow_reader`](Self::apply_arrow_reader), applied *last*: the
-    /// order is declared schema, then selection, then completion cast, then
-    /// partition filter, then the limit, so the limit counts result rows and
+    /// order is declared schema, then the applied expressions, then completion
+    /// cast, then partition filter, then the limit, so the limit counts result rows and
     /// never rows an earlier layer dropped or reshaped. No media implements a
     /// limit - the record methods wrap the shaped reader here, exactly once
     /// per call. A media may read a row bound as a fetch plan (Parquet
@@ -559,7 +749,7 @@ pub trait IORecordOptions: Sized {
     /// # Errors
     ///
     /// Returns an error naming both settings when a limit is combined with a
-    /// non-empty [`merge_by_names`](Self::merge_by_names): a truncated merge
+    /// non-empty [`merge_by`](Self::merge_by): a truncated merge
     /// would update the matched keys it kept and silently drop the rest,
     /// which corrupts the resource rather than shortening the write.
     fn limit_arrow_reader(
@@ -593,7 +783,7 @@ pub trait IORecordOptions: Sized {
         if max_rows.is_none() && max_bytes.is_none() {
             return Ok(());
         }
-        if !self.merge_by_names().is_empty() {
+        if !self.merge_by().is_empty() {
             let mut limits = String::new();
             if let Some(rows) = max_rows {
                 limits.push_str(&format!("max_row_size = {rows}"));
@@ -607,10 +797,10 @@ pub trait IORecordOptions: Sized {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
                 reason: crate::text::expected_got(
-                    "max_row_size and max_byte_size without merge_by_names - a truncated merge \
+                    "max_row_size and max_byte_size without merge_by - a truncated merge \
                      updates the matched keys it kept and silently drops the rest, corrupting \
                      rather than shortening",
-                    format!("{limits} with merge_by_names {:?}", self.merge_by_names()),
+                    format!("{limits} with merge_by `{}`", self.merge_by()),
                 ),
             });
         }
@@ -623,6 +813,38 @@ pub trait IORecordOptions: Sized {
     }
 }
 
+/// The `(column, value)` equalities one filter spells, in conjunct order.
+///
+/// A conjunct comparing a column to a constant for equality is one pair, the
+/// constant spelled as a partition directory spells it; `column is null` is
+/// the null partition. Anything else is left to the rows.
+pub(crate) fn partition_pairs(filter: &Filter) -> Vec<(String, String)> {
+    let mut pairs = Vec::new();
+    for conjunct in filter.simplify().conjuncts() {
+        match conjunct.term() {
+            Term::Compare(left, crate::expression::Comparison::Eq, right) => {
+                let (column, literal) = match (left.as_column(), right.as_literal()) {
+                    (Some(column), Some(literal)) => (column, literal),
+                    _ => match (right.as_column(), left.as_literal()) {
+                        (Some(column), Some(literal)) => (column, literal),
+                        _ => continue,
+                    },
+                };
+                if let Ok(text) = crate::media::partition::partition_text(literal.value()) {
+                    pairs.push((column.to_owned(), text.to_string()));
+                }
+            }
+            Term::IsNull(inner) => {
+                if let Some(column) = inner.as_column() {
+                    pairs.push((column.to_owned(), crate::media::NULL_PARTITION.to_owned()));
+                }
+            }
+            _ => {}
+        }
+    }
+    pairs
+}
+
 /// Implement [`IORecordOptions`] over one struct's own fields.
 ///
 /// Every encoding stores the same shared settings under the same names, so the
@@ -630,28 +852,50 @@ pub trait IORecordOptions: Sized {
 #[macro_export]
 macro_rules! record_options_fields {
     () => {
+        fn declared(&self) -> Option<&$crate::Field> {
+            self.field.as_ref()
+        }
+
+        fn set_declared(&mut self, field: Option<$crate::Field>) {
+            if let Some(field) = &field {
+                self.name = smol_str::SmolStr::new(field.name());
+            }
+            self.field = field.map(|field| field.with_nullable(false));
+        }
+
         fn name(&self) -> &str {
             self.name.as_str()
         }
 
         fn set_name(&mut self, name: smol_str::SmolStr) {
+            if let Some(field) = self.field.take() {
+                self.field = Some(field.with_name(name.clone()));
+            }
             self.name = name;
         }
 
-        fn dtype(&self) -> Option<&$crate::DataType> {
-            self.dtype.as_ref()
+        fn merge_by(&self) -> &$crate::Selector {
+            &self.merge_by
         }
 
-        fn set_dtype(&mut self, dtype: Option<$crate::DataType>) {
-            self.dtype = dtype;
+        fn set_merge_by(&mut self, merge_by: $crate::Selector) {
+            self.merge_by = merge_by;
         }
 
-        fn metadata(&self) -> &$crate::Metadata {
-            &self.metadata
+        fn filter(&self) -> &$crate::Filter {
+            &self.filter
         }
 
-        fn set_metadata(&mut self, metadata: $crate::Metadata) {
-            self.metadata = metadata;
+        fn set_filter(&mut self, filter: $crate::Filter) {
+            self.filter = filter;
+        }
+
+        fn select(&self) -> &$crate::Selector {
+            &self.select
+        }
+
+        fn set_select(&mut self, select: $crate::Selector) {
+            self.select = select;
         }
 
         fn safe(&self) -> bool {
@@ -708,30 +952,6 @@ macro_rules! record_options_fields {
 
         fn set_level(&mut self, level: $crate::Level) {
             self.level = level;
-        }
-
-        fn merge_by_names(&self) -> &[String] {
-            &self.merge_by_names
-        }
-
-        fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
-            self.merge_by_names = merge_by_names;
-        }
-
-        fn select_by_names(&self) -> &[String] {
-            &self.select_by_names
-        }
-
-        fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
-            self.select_by_names = select_by_names;
-        }
-
-        fn filter_partitions(&self) -> &[(String, String)] {
-            &self.filter_partitions
-        }
-
-        fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
-            self.filter_partitions = filter_partitions;
         }
     };
 }
@@ -1002,19 +1222,17 @@ impl RecordOptions {
     #[doc(hidden)]
     pub fn require_write_mode(&self, mode: IOMode) -> Result<()> {
         let keyed = mode == IOMode::Merge;
-        let keys = self.merge_by_names();
+        let keys = self.merge_by();
         if keyed != keys.is_empty() {
             return Ok(());
         }
         let reason = if keyed {
-            format!("write mode {mode} requires at least one merge_by_names column")
+            format!("write mode {mode} requires at least one merge_by column")
         } else {
-            format!(
-                "write mode {mode} does not accept merge_by_names; use merge mode for keyed writes"
-            )
+            format!("write mode {mode} does not accept merge_by; use merge mode for keyed writes")
         };
         Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$.merge_by_names"),
+            path: SmolStr::new_static("$.merge_by"),
             reason: SmolStr::new(reason),
         })
     }

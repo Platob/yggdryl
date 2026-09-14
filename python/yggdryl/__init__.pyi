@@ -2,7 +2,7 @@ from ._native import (
     DEFAULT_FETCH_BYTE_SIZE as DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE as DEFAULT_STREAM_BATCH_SIZE,
     IPC_DICTIONARY_IDS_KEY as IPC_DICTIONARY_IDS_KEY,
-    ArrowValue as ArrowValue,
+    ArrowScalar as ArrowScalar,
     __version__ as __version__,
     combined as combined,
     refresh_logging as refresh_logging,
@@ -10,9 +10,13 @@ from ._native import (
 from .expression import (
     Bound as Bound,
     Bounds as Bounds,
-    BoundStatement as BoundStatement,
+    BoundSelector as BoundSelector,
     Expression as Expression,
-    Statement as Statement,
+    Filter as Filter,
+    Plan as Plan,
+    Records as Records,
+    Selector as Selector,
+    Term as Term,
 )
 from .holder import IOBase as IOBase
 from .media import (

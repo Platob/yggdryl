@@ -6,9 +6,11 @@
 //! so "update" means producing the merged contents and rewriting, which is
 //! what [`merged`] returns.
 //!
-//! The match key is encoded through Arrow's own row format, so two rows compare
-//! equal exactly when every key column holds the same value, including nulls and
-//! nested values, without rendering anything as text.
+//! The match key is a [`Selector`]: each projection is one key column, a stored
+//! column by name or a term computed from the row, evaluated through the one
+//! expression tier. The key is then encoded through Arrow's own row format, so
+//! two rows compare equal exactly when every key column holds the same value,
+//! including nulls and nested values, without rendering anything as text.
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -24,8 +26,9 @@ use arrow_row::{RowConverter, SortField};
 use arrow_schema::{ArrowError, SchemaRef};
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, from_reader_error};
+use crate::expression::BoundSelector;
 use crate::types::cast::{ArrowCast, ArrowCastOptions};
-use crate::{Error, Field, Result};
+use crate::{Error, Field, Result, Selector};
 
 /// One key's positions in the held result, as `(batch, row)` pairs.
 type Positions = Vec<(usize, usize)>;
@@ -51,7 +54,7 @@ struct MergeState {
     appended: HashMap<Box<[u8]>, SpooledPosition>,
 }
 
-/// Merge `incoming` into `stored`, matching rows on the `merge_by_names` columns.
+/// Merge `incoming` into `stored`, matching rows on the `merge_by` columns.
 ///
 /// Both sides are read as `field`: `stored` is expected to already be that
 /// shape and every incoming batch is cast to it, so the two agree column for
@@ -66,21 +69,23 @@ struct MergeState {
 ///
 /// # Errors
 ///
-/// Returns an error when `merge_by_names` names a column `field` does not declare,
+/// Returns an error when `merge_by` is empty or does not bind against `field`,
 /// when a key column's datatype has no row encoding, or on the first read or
 /// cast failure from either side.
 pub(crate) fn merged(
     stored: BatchReader,
     incoming: BatchReader,
     field: &Field,
-    merge_by_names: &[String],
+    merge_by: &Selector,
     safe: bool,
 ) -> Result<BatchReader> {
     let schema = arrow_schema_from_field(field)?;
-    let keys = key_indices(&schema, merge_by_names)?;
+    let keys = key_selector(field, merge_by)?;
     let converter = RowConverter::new(
-        keys.iter()
-            .map(|index| SortField::new(schema.field(*index).data_type().clone()))
+        arrow_schema_from_field(keys.output())?
+            .fields()
+            .iter()
+            .map(|key| SortField::new(key.data_type().clone()))
             .collect(),
     )
     .map_err(Error::Arrow)?;
@@ -142,74 +147,38 @@ pub(crate) fn merged(
     }))
 }
 
-/// Resolve the stored positions of the match-key columns.
-fn key_indices(schema: &arrow_schema::Schema, merge_by_names: &[String]) -> Result<Vec<usize>> {
-    if merge_by_names.is_empty() {
+/// Resolve the match key against the merged rows' root.
+///
+/// Names fold ASCII case, the way every name resolution in the crate folds,
+/// because the cast that shaped these rows matched their columns with the
+/// same fold. A key the root does not declare is refused naming what it does.
+fn key_selector(field: &Field, merge_by: &Selector) -> Result<BoundSelector> {
+    if merge_by.is_empty() {
         return Err(Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$"),
+            path: smol_str::SmolStr::new_static("$.merge_by"),
             reason: smol_str::SmolStr::new_static(
                 "expected at least one column to merge on, got an empty match key",
             ),
         });
     }
-    merge_by_names
-        .iter()
-        .map(|name| {
-            // Folded, because every other name resolution in the crate folds:
-            // a key is validated against the partition columns with the same
-            // fold, and the cast that shaped these rows matched their columns
-            // with it, so an exact lookup here refuses a key the layers around
-            // it already accepted.
-            let mut found = schema
-                .fields()
-                .iter()
-                .enumerate()
-                .filter(|(_, field)| field.name().eq_ignore_ascii_case(name));
-            match (found.next(), found.next()) {
-                (Some((index, _)), None) => Ok(index),
-                (Some(_), Some(_)) => Err(Error::InvalidRecord {
-                    path: smol_str::format_smolstr!("$.{name}"),
-                    reason: smol_str::format_smolstr!(
-                        "merge_by_names column {name:?} matches more than one stored column"
-                    ),
-                }),
-                (None, _) => {
-                    let stored = schema
-                        .fields()
-                        .iter()
-                        .map(|field| field.name().as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    Err(Error::InvalidRecord {
-                        path: smol_str::format_smolstr!("$.{name}"),
-                        reason: crate::text::expected_got(
-                            format_args!("merge_by_names column {name:?} among the stored columns"),
-                            crate::text::elide_display(&stored),
-                        ),
-                    })
-                }
-            }
-        })
-        .collect()
+    merge_by.bind(field)
 }
 
-/// Borrow the match-key columns of one batch.
-fn key_columns(batch: &RecordBatch, keys: &[usize]) -> Vec<ArrayRef> {
-    keys.iter()
-        .map(|index| Arc::clone(batch.column(*index)))
-        .collect()
+/// The match-key columns of one batch, each computed once.
+fn key_columns(batch: &RecordBatch, keys: &BoundSelector) -> Result<Vec<ArrayRef>> {
+    Ok(keys.apply_arrow_batch(batch)?.columns().to_vec())
 }
 
 /// Record where every key of `batch` lives in the held result.
 fn index_batch(
     converter: &RowConverter,
     batch: &RecordBatch,
-    keys: &[usize],
+    keys: &BoundSelector,
     position: usize,
     index: &mut HashMap<Box<[u8]>, Positions>,
 ) -> Result<()> {
     let rows = converter
-        .convert_columns(&key_columns(batch, keys))
+        .convert_columns(&key_columns(batch, keys)?)
         .map_err(Error::Arrow)?;
     for row in 0..batch.num_rows() {
         index
@@ -226,10 +195,10 @@ impl MergeState {
         &mut self,
         converter: &RowConverter,
         batch: &RecordBatch,
-        keys: &[usize],
+        keys: &BoundSelector,
     ) -> Result<()> {
         let rows = converter
-            .convert_columns(&key_columns(batch, keys))
+            .convert_columns(&key_columns(batch, keys)?)
             .map_err(Error::Arrow)?;
 
         let mut updates: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();

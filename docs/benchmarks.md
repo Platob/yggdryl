@@ -98,7 +98,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Target | Isolates |
 | --- | --- |
 | `types` | parsing, construction, validation, mutation, cached access, and Arrow schemas |
-| `arrow` | `ArrowValue` construction per shape, the reader funnel to the first batch and to the last, collapsing a stream, casting against the bare call it wraps, and structured text beside the native `Scalar` pair |
+| `arrow` | `ArrowScalar` construction per shape, the reader funnel to the first batch and to the last, collapsing a stream, casting against the bare call it wraps, and structured text beside the native `Scalar` pair |
 | `holder` | byte streams, listings, buffering, and foreign-filesystem boundaries |
 | `charset` | the borrow an all-ASCII payload answers with, the transcode a mixed one pays for, and the three streaming doors |
 | `coding` | content codings beside their standard-library baselines on the same wire |

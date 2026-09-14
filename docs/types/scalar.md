@@ -14,6 +14,7 @@
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
 | Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
+| `Scalar::Arrow` | an [`ArrowScalar`](../arrow/values.md) behind one shared pointer: a columnar value crossing a boundary as the scalar it is, buffers shared; `into_native` reads it as rows, `as_arrow` borrows it, and the narrowing readers answer `None` |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
 | Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
@@ -167,7 +168,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
     ```python
     from yggdryl import Scalar
 
-    assert (Scalar.from_py(40) + 2).as_py() == 42
+    assert (Scalar.from_(40) + 2).as_py() == 42
     assert Scalar.decimal(1, 0).divide(Scalar.decimal(2, 0)) == Scalar.decimal(5, 1)
     ```
 
@@ -177,7 +178,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
     const assert = require('node:assert/strict')
     const { Scalar } = require('yggdryl')
 
-    assert.equal(Scalar.fromJs(40).add(2).asJs(), 42)
+    assert.equal(Scalar.from(40).add(2).asJs(), 42)
     assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
     ```
 
@@ -253,9 +254,9 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     class Row:
         id: int
 
-    assert Scalar.from_py(42).into_field().name == "value"
-    assert Scalar.from_py([1, None]).into_array_field().name == "item"
-    assert Scalar.from_py([Row(1)]).into_struct_field().name == "row"
+    assert Scalar.from_(42).into_field().name == "value"
+    assert Scalar.from_([1, None]).into_array_field().name == "item"
+    assert Scalar.from_([Row(1)]).into_struct_field().name == "row"
     ```
 
 === "JavaScript"
@@ -264,9 +265,9 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     const assert = require('node:assert/strict')
     const { Scalar } = require('yggdryl')
 
-    assert.equal(Scalar.fromJs(42).intoField().name, 'value')
-    assert.equal(Scalar.fromJs([1, null]).intoArrayField().name, 'item')
-    assert.equal(Scalar.fromJs([{ id: 1 }]).intoStructField().name, 'row')
+    assert.equal(Scalar.from(42).intoField().name, 'value')
+    assert.equal(Scalar.from([1, null]).intoArrayField().name, 'item')
+    assert.equal(Scalar.from([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
 See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured documents](../media/structured.md).

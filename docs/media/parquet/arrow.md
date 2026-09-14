@@ -254,8 +254,8 @@ A non-null struct root naming a subset of the stored columns reads only those ch
 - read `field` naming every stored column, or one the file lacks -> reads everything; a projection only drops columns.
 - projected read -> the reader reports the projected schema, and the skipped chunks are never touched.
 - a pulled batch not matching the reader's field -> error naming the batch index.
-- keyed `merge_arrow_reader` -> upsert: rows matching `merge_by_names` are updated, misses are inserted.
-- `merge_by_names` on an overwrite or append -> refused; intent stays with the method name.
+- keyed `merge_arrow_reader` -> upsert: rows matching `merge_by` are updated, misses are inserted.
+- `merge_by` on an overwrite or append -> refused; intent stays with the method name.
 
 ## Commands
 

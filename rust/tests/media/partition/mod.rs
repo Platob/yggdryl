@@ -198,7 +198,7 @@ fn events() -> RecordBatch {
 #[test]
 fn a_declared_derived_column_the_batch_lacks_is_computed_from_its_source() {
     let filled = derived_schema()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&events())
         .unwrap();
 
@@ -216,7 +216,7 @@ fn a_declared_derived_column_the_batch_lacks_is_computed_from_its_source() {
 #[test]
 fn a_derived_column_is_not_marked_as_one_a_path_spells_out() {
     let filled = derived_schema()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&events())
         .unwrap();
 
@@ -242,7 +242,7 @@ fn a_derived_column_carrying_values_is_left_alone() {
     .unwrap();
 
     let filled = derived_schema()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&batch)
         .unwrap();
 
@@ -268,7 +268,7 @@ fn a_column_holding_nothing_but_nulls_is_filled_from_the_batchs_own_schema() {
 
     let filled = Field::from_arrow_schema("row", placeholder.schema().as_ref())
         .unwrap()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&placeholder)
         .unwrap();
 
@@ -290,7 +290,7 @@ fn an_absent_transform_copies_the_source_value_unchanged() {
         .unwrap()
         .required_field("row");
 
-    let filled = root.as_partition().apply_arrow_batch(&events()).unwrap();
+    let filled = root.as_transform().apply_arrow_batch(&events()).unwrap();
 
     assert_eq!(filled.column(1).as_ref(), filled.column(0).as_ref());
 }
@@ -324,7 +324,7 @@ fn a_source_path_reaches_a_struct_child() {
     )])
     .unwrap();
 
-    let filled = root.as_partition().apply_arrow_batch(&batch).unwrap();
+    let filled = root.as_transform().apply_arrow_batch(&batch).unwrap();
 
     let year = filled
         .column_by_name("year")
@@ -338,7 +338,7 @@ fn a_source_path_reaches_a_struct_child() {
 #[test]
 fn the_batch_is_returned_unchanged_when_nothing_declares_a_derivation() {
     let filled = schema()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&prices())
         .unwrap();
 
@@ -359,7 +359,7 @@ fn a_widened_batch_keeps_the_schema_metadata_it_arrived_with() {
     let batch = RecordBatch::try_new(schema, batch.columns().to_vec()).unwrap();
 
     let filled = derived_schema()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&batch)
         .unwrap();
 
@@ -376,7 +376,7 @@ fn a_transform_without_sources_beside_it_is_refused() {
         .set_transform(yggdryl::expression::Function::Year)
         .unwrap();
 
-    let error = year.as_partition().expression().unwrap_err().to_string();
+    let error = year.as_partition().term().unwrap_err().to_string();
     assert!(error.contains("partition:sources"), "{error}");
 }
 
@@ -416,7 +416,7 @@ fn a_transform_reading_more_than_one_source_is_refused_for_now() {
         year.as_partition().sources().unwrap(),
         Some(vec!["event".to_owned(), "venue".to_owned()])
     );
-    let error = year.as_partition().expression().unwrap_err().to_string();
+    let error = year.as_partition().term().unwrap_err().to_string();
     assert!(error.contains("exactly one source"), "{error}");
 
     // The one shape every `sources` property refuses, whatever declares it.
@@ -431,7 +431,7 @@ fn a_transform_reading_more_than_one_source_is_refused_for_now() {
 #[test]
 fn a_source_column_the_batch_does_not_carry_is_refused() {
     let error = derived_schema()
-        .as_partition()
+        .as_transform()
         .apply_arrow_batch(&prices())
         .unwrap_err()
         .to_string();
@@ -473,7 +473,7 @@ fn a_nested_declaration_is_filled_before_the_level_above_reads_it() {
     )])
     .unwrap();
 
-    let filled = root.as_partition().apply_arrow_batch(&batch).unwrap();
+    let filled = root.as_transform().apply_arrow_batch(&batch).unwrap();
 
     let trade = filled
         .column_by_name("trade")
@@ -535,7 +535,7 @@ fn a_nested_struct_keeps_its_own_null_mask_through_a_fill() {
     .unwrap();
     let batch = RecordBatch::try_from_iter([("trade", Arc::new(held) as ArrayRef)]).unwrap();
 
-    let filled = root.as_partition().apply_arrow_batch(&batch).unwrap();
+    let filled = root.as_transform().apply_arrow_batch(&batch).unwrap();
 
     let trade = filled
         .column_by_name("trade")
@@ -573,7 +573,7 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
         &[0, 0]
     );
 
-    let filled = root.as_partition().apply_arrow_batch(&placeholder).unwrap();
+    let filled = root.as_transform().apply_arrow_batch(&placeholder).unwrap();
 
     assert_eq!(
         filled

@@ -16,7 +16,7 @@ const batch: RecordBatch = table.batches[0]
 const reader: BatchReader = BatchReader.from(table)
 const options: RecordOptions = handle.recordOptions()
 options.field = Field.from('row: struct<id: int32> not null')
-const merging: RecordOptions = options.withMergeByNames(['id'])
+const merging: RecordOptions = options.withMergeBy(['id'])
 const overIOMode: IOMode = 'overwrite'
 
 const read: BatchReader = handle.readArrowReader()

@@ -238,7 +238,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     assert_eq!(
         &names[..9],
         [
-            "url",
+            "sourceurl",
             "rownum",
             "mtime",
             "mimetype",

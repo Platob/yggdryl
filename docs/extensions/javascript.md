@@ -11,7 +11,7 @@ values cross the JavaScript boundary.
 | `Field`, `fields` | [field](../types/field.md) |
 | `StringEnum`, `StringParameters`, `BytesParameters` | [strings & bytes](../types/text.md), [codes](../types/codes.md), and this page |
 | `Version` | [numeric versions](../types/text.md#versions) and this page |
-| `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression/index.md) |
+| `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `Records` | [expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri/index.md) |
 | `IOBase` | [holder](../holder/index.md) |
 | `BatchReader`, `RecordOptions` | [records](../holder/iobase/records.md), [options](../media/options.md) |
@@ -75,10 +75,10 @@ assert.deepEqual([version.major, version.minor, version.patch], [5, 0, 300])
 assert.equal(new Version(5, 0, 2).compare(new Version(5, 0, 10)), -1)
 assert.equal(new Version(5).stableHash(), Version.fromStr('5.0.0').stableHash())
 assert.ok(version.clone().equals(version))
-assert.ok(Scalar.fromJs(version).asJs().equals(version))
+assert.ok(Scalar.from(version).asJs().equals(version))
 
 const field = fields.version('release', { nullable: false })
-const scalar = Scalar.fromJs('5.0.300', { field })
+const scalar = Scalar.from('5.0.300', { field })
 assert.ok(scalar.asJs() instanceof Version)
 assert.equal(scalar.intoArrowScalar(field), '5.0.300')
 assert.ok(json.loads('"5.0.300"', { field }).equals(version))
@@ -202,7 +202,7 @@ assert.equal(json.loads(json.dumps(at)), '2023-11-14T22:13:20.123456Z')
 assert.equal(Scalar.datetime(0n, 'ms').zone, 'NAIVE')
 assert.equal(Scalar.time(1n, 'us', Timezone.from('NAIVE')).zone, 'NAIVE')
 assert.ok(
-  Scalar.fromJs(new Date('2026-08-15T12:30:00.000Z'))
+  Scalar.from(new Date('2026-08-15T12:30:00.000Z'))
     .equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')),
 )
 ```
@@ -246,8 +246,8 @@ assert.equal(fields.bytes('blob', { max: 16 }).dtype.toString(), 'binary(16)')
 assert.throws(() => fields.string('both', { fixed: 4, max: 8 }), /one of bound, fixed and max/)
 
 // A value never carries a maximum; a code is its own kind.
-assert.equal(Scalar.fromJs('AAPL').kind, 'string')
-assert.equal(Scalar.fromJs('AAPL').asStr(), 'AAPL')
+assert.equal(Scalar.from('AAPL').kind, 'string')
+assert.equal(Scalar.from('AAPL').asStr(), 'AAPL')
 assert.equal(new DataType('currency').kind, 'code')
 
 // A vocabulary is metadata on a fixed US-ASCII string or a code.
@@ -270,44 +270,44 @@ so `Scalar` exposes checked `add`, `subtract`, `multiply`, `divide`,
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Expression, Scalar } = require('yggdryl')
+const { Scalar, Term } = require('yggdryl')
 
 const half = Scalar.decimal(1n).divide(Scalar.decimal(2n))
 assert.ok(half.equals(Scalar.decimal(5n, 1)))
 assert.equal(half.clone().compare(half), 0)
 assert.equal(typeof half.stableHash(), 'bigint')
 
-const size = Expression.column('size').add(1)
+const size = Term.column('size').add(1)
 assert.equal(size.toString(), 'size + 1')
 assert.ok(size.clone().equals(size))
 
 assert.throws(
-  () => Scalar.fromJs(1).divide(0),
+  () => Scalar.from(1).divide(0),
   (error) => error instanceof RangeError &&
     error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO',
 )
 ```
 
-`Expression` exposes the same names except `absolute`, as lazy tree builders. A
+`Term` exposes the same names except `absolute`, as lazy tree builders. A
 string operand is parsed as expression text, any other value as a literal.
 
 ## fromJs and asJs
 
-`Scalar.fromJs` and `Scalar.prototype.asJs` are the conversion pair every
+`Scalar.from` and `Scalar.prototype.asJs` are the conversion pair every
 `loads` and `dumps` crosses.
 
 ```javascript
 const { Scalar, json } = require('yggdryl')
 const assert = require('node:assert/strict')
 
-assert.equal(Scalar.fromJs(new Set([1, 2])).kind, 'sequence')
-assert.deepEqual(Scalar.fromJs(new Set([1, 2])).asJs(), [1, 2])
-assert.equal(Scalar.fromJs(new Map([['id', 1]])).kind, 'mapping')
+assert.equal(Scalar.from(new Set([1, 2])).kind, 'sequence')
+assert.deepEqual(Scalar.from(new Set([1, 2])).asJs(), [1, 2])
+assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'mapping')
 
 const value = { id: 1, tags: new Set(['a']) }
-assert.deepEqual(json.loads(json.dumps(value)), Scalar.fromJs(value).asJs())
+assert.deepEqual(json.loads(json.dumps(value)), Scalar.from(value).asJs())
 
-const tree = Scalar.fromJs({ legs: [{ id: 1 }] })
+const tree = Scalar.from({ legs: [{ id: 1 }] })
 assert.equal(tree.get('legs').at(0).get('id').asJs(), 1)
 assert.equal(tree.set('venue', 'XNAS').get('venue').asStr(), 'XNAS')
 ```
@@ -530,6 +530,10 @@ handle.overwriteArrowReader(BatchReader.from(table))
 
 const reader = handle.readArrowReader()
 assert.equal(reader.field.name, 'row')
+// A plain object in the options position is a bag of option properties, each
+// set by its own setter on a copy of the handle's own options; `undefined` is
+// skipped. `readArrowReader(options, { select: 'id' })` enriches given ones.
+assert.equal(handle.readArrowReader({ select: 'id' }).field.dtype.length, 1)
 assert.equal([...reader].reduce((rows, batch) => rows + batch.numRows, 0), 2)
 assert.equal(handle.isIo(), true)
 assert.equal(handle.rowSize, 2)
@@ -622,7 +626,7 @@ handle.mediaType = MimeType.ARROW_STREAM
 handle.overwriteArrowTable(first)
 handle.appendArrowReader(BatchReader.from(extra))
 
-const merging = handle.recordOptions().withMergeByNames(['id'])
+const merging = handle.recordOptions().withMergeBy(['id'])
 handle.mergeArrowTable(later, merging)
 assert.equal(handle.readArrowReader().intoTable().numRows, 4)
 
@@ -751,7 +755,7 @@ assert.equal(xxhash.xxh3('abc'), xxhash.xxh3(new Uint8Array(payload)))
 const digest = xxhash.digest(payload, 'xxh3-64')
 assert.equal(digest.toString(), 'xxh3-64:78af5f94892f3950')
 assert.ok(xxhash.Digest.from(digest.toString()).equals(digest))
-assert.equal(Scalar.fromJs('AAPL').digest().value(), Scalar.fromJs('AAPL').stableHash())
+assert.equal(Scalar.from('AAPL').digest().value(), Scalar.from('AAPL').stableHash())
 
 const value = txhash.txh3('abc', new Date('2023-11-14T22:13:20Z'))
 assert.equal(value.unix, 1_700_000_000_000_000n)
@@ -1060,14 +1064,15 @@ keeps the document's spelling; 20001 to 20004 are retired, not reused.
   overflow, division by zero, and inexact decimal division -> `RangeError`
   `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`, `ERR_YGGDRYL_DIVISION_BY_ZERO`,
   `ERR_YGGDRYL_INEXACT_ARITHMETIC`.
-- `Scalar`, `Expression`, `Statement`, `avro.Schema`, and the `iceberg` result
-  values -> complete identity; readers, iterators, and handles -> none.
+- `Scalar`, `Term`, `Filter`, `Selector`, `Plan`, `Expression`, `avro.Schema`,
+  and the `iceberg` result values -> complete identity; readers, iterators,
+  records, and handles -> none.
 - `compare` -> the core total order; equal values share one deterministic
   `stableHash()` `bigint`, and `===` stays reference identity.
 - `Scalar` equality, order, and hashing -> normalize equivalent decimal and
   temporal resolutions.
 - A `Scalar` binary operand -> a native `Scalar`, or one JavaScript value read
-  through `Scalar.fromJs`; the answer is a native `Scalar`.
+  through `Scalar.from`; the answer is a native `Scalar`.
 - Numeric arithmetic -> preserves widths and promotes only as the core defines;
   exact decimal division takes the smallest terminating scale.
 - Text and containers -> never concatenated or coerced; datetime and duration
@@ -1085,7 +1090,7 @@ keeps the document's spelling; 20001 to 20004 are retired, not reused.
   `Number.MAX_SAFE_INTEGER`.
 - A setting one encoding has -> `null` on the others; `isIo()` without either
   surface -> `false`.
-- `mergeByNames` -> rejected by overwrite and append, required non-empty by
+- `mergeBy` -> rejected by overwrite and append, required non-empty by
   merge, before anything is consumed.
 - A reader method -> only a native `BatchReader`; `BatchReader.from(value)`
   converts anything else.

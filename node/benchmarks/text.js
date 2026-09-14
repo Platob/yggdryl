@@ -163,8 +163,8 @@ async function main() {
     // The pivot is the conversion every load and dump crosses, measured on its
     // own against the same payload so a codec number can be read against it.
     const pivotBytes = json.dumps(value).length
-    measure('pivot/from_js', pivotBytes, 100, () => Scalar.fromJs(value))
-    const pivot = Scalar.fromJs(value)
+    measure('pivot/from_js', pivotBytes, 100, () => Scalar.from(value))
+    const pivot = Scalar.from(value)
     measure('pivot/as_js', pivotBytes, 100, () => pivot.asJs())
     measure('pivot/equals_native', pivotBytes, 1_000, () => pivot.equals(pivot))
     measure('pivot/compare_native', pivotBytes, 1_000, () => pivot.compare(pivot))
@@ -185,13 +185,13 @@ async function main() {
       Scalar.datetime(1700000000000n, 'ms', 'UTC'),
     )
     measure('pivot/duration_family', 8, 10_000, () => Scalar.duration(90, 's'))
-    const traversed = Scalar.fromJs({ trades: value.trades })
+    const traversed = Scalar.from({ trades: value.trades })
     measure('pivot/native_path', 1, 10_000, () => traversed.path('trades.500.price'))
     measure('pivot/native_get', 1, 10_000, () => traversed.get('trades').at(500))
     measure('pivot/persistent_set', 1, 2_000, () => traversed.set('version', 1))
-    const scalarValue = Scalar.fromJs(42)
-    const arrayValue = Scalar.fromJs([1, null])
-    const rowValue = Scalar.fromJs([{ id: 1, symbol: 'AAPL' }])
+    const scalarValue = Scalar.from(42)
+    const arrayValue = Scalar.from([1, null])
+    const rowValue = Scalar.from([{ id: 1, symbol: 'AAPL' }])
     measure('pivot/infer_scalar_field', 1, 1_000, () => scalarValue.intoField())
     measure('pivot/infer_array_field', 2, 1_000, () => arrayValue.intoArrayField())
     measure('pivot/infer_struct_field', 2, 1_000, () => rowValue.intoStructField())

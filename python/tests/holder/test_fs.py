@@ -390,7 +390,7 @@ class TestFramedText:
 
         reader = IOBase.from_fs(filesystem, location).read_arrow_reader(options=options)
         assert reader.schema.names == [
-            "url",
+            "sourceurl",
             "rownum",
             "mtime",
             "body",
@@ -413,7 +413,7 @@ class TestFramedText:
         assert table.column("rownum").to_pylist() == [1, 1, 2]
         assert table.column("kind").to_pylist() == ["A", None, "B"]
         assert table.column("dropped_byte_size").to_pylist() == [None, None, None]
-        urls = table.column("url").to_pylist()
+        urls = table.column("sourceurl").to_pylist()
         assert urls[0].endswith("a.log")
         assert urls[1].endswith("b.log") and urls[2].endswith("b.log")
         if handler is not None:
@@ -437,7 +437,7 @@ class TestFramedText:
             options=options
         )
 
-        assert reader.schema.names == ["url", "mtime", "body", "dropped_byte_size", "kind"]
+        assert reader.schema.names == ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
         assert reader.schema.field("dropped_byte_size").type == pa.uint64()
 
 

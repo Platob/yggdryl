@@ -2412,7 +2412,7 @@ const ASCII_COMPATIBLE: [Charset; 8] = [
 
 #[test]
 fn an_ascii_payload_is_read_in_any_charset_without_allocating() {
-    // The claim `crate::charset` makes under its `# Borrowing` heading: a
+    // The claim `yggdryl::charset` makes under its `# Borrowing` heading: a
     // legacy export is mostly ASCII, and the ASCII part must cost a borrow.
     // Several sizes, because one buffer could be short enough to hide a copy.
     for rows in [1_usize, 16, 1_024] {

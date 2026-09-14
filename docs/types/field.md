@@ -743,7 +743,7 @@ protocol is done, so a required column its protocol did not write is still refus
     assert root.apply_arrow_batch(applied).equals(applied)
 
     # Each step is separately switchable; a cast alone materializes and writes nothing.
-    cast_only = root.apply_arrow_batch(batch, digest=False, partition=False)
+    cast_only = root.apply_arrow_batch(batch, digest=False, transform=False)
     assert cast_only.column("year").to_pylist() == [None]
 
     # A declared non-null column its protocol did not write is refused by path.
@@ -759,7 +759,7 @@ protocol is done, so a required column its protocol did not write is still refus
     # declaration; with it off, nothing is going to write it.
     assert strict_root.apply_arrow_batch(batch, nullability="strict").num_columns == 2
     try:
-        strict_root.apply_arrow_batch(batch, partition=False, nullability="strict")
+        strict_root.apply_arrow_batch(batch, transform=False, nullability="strict")
     except ValueError as error:
         assert "$.year" in str(error), error
     else:

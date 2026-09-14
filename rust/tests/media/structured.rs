@@ -1,7 +1,7 @@
 //! What a structured text document carries into Arrow rows, and back out.
 
 use yggdryl::holder::Buffer;
-use yggdryl::{ArrowShape, ArrowValue, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
+use yggdryl::{ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
 
 fn handle(name: &str) -> Buffer {
     Buffer::new().with_media_type(
@@ -9,6 +9,20 @@ fn handle(name: &str) -> Buffer {
             .expect("the URL parses")
             .media_type(),
     )
+}
+
+/// The one section a structured document reads off record options: the
+/// declared field. A document has no encoding options of its own, so the
+/// options are any record encoding's, carrying the field.
+fn options_declaring(field: &Field) -> yggdryl::media::RecordOptions {
+    use yggdryl::media::IORecordOptions;
+
+    let mut options = yggdryl::media::RecordOptions::for_media_type(&yggdryl::MediaType::new(
+        yggdryl::MimeType::ARROW_STREAM,
+    ))
+    .expect("the IPC encoding is built in");
+    options.set_field(field.clone());
+    options
 }
 
 fn quote_root() -> Field {
@@ -20,12 +34,12 @@ fn quote_root() -> Field {
     .required_field("row")
 }
 
-fn quotes() -> ArrowValue {
+fn quotes() -> ArrowScalar {
     let rows = Scalar::from_sequence([
         Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(100_i64)]),
         Scalar::from_sequence([Scalar::from("MSFT"), Scalar::from(250_i64)]),
     ]);
-    ArrowValue::from_rows(&quote_root(), &rows).expect("the rows materialize")
+    ArrowScalar::from_rows(&quote_root(), &rows).expect("the rows materialize")
 }
 
 #[test]
@@ -33,11 +47,11 @@ fn every_structured_format_round_trips_arrow_rows() {
     for name in ["quotes.json", "quotes.jsonl", "quotes.yaml", "quotes.toml"] {
         let mut target = handle(name);
         target
-            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .write_arrow(quotes(), IOMode::Overwrite, None)
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
 
         let read = target
-            .read_arrow_value(Some(&quote_root()))
+            .read_arrow(Some(&options_declaring(&quote_root())))
             .unwrap_or_else(|error| panic!("{name} reads: {error}"));
         assert_eq!(read.shape(), ArrowShape::Batch, "{name}");
         assert_eq!(read.row_size(), Some(2), "{name}");
@@ -53,7 +67,7 @@ fn every_structured_format_round_trips_arrow_rows() {
 fn rows_are_written_with_the_names_their_field_declares() {
     let mut target = handle("quotes.jsonl");
     target
-        .write_arrow_value(quotes(), IOMode::Overwrite)
+        .write_arrow(quotes(), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text = String::from_utf8(target.read_all_bytes().expect("the bytes read"))
@@ -88,7 +102,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
     .required_field("row");
 
     let value = source
-        .read_arrow_value(Some(&widened))
+        .read_arrow(Some(&options_declaring(&widened)))
         .expect("the declared root types the document");
     assert_eq!(value.field(), &widened);
     assert_eq!(
@@ -107,9 +121,7 @@ fn an_undeclared_read_names_the_root_the_document_proves() {
         .write_all_bytes(br#"[{"symbol": "AAPL", "size": 100}]"#)
         .expect("the bytes write");
 
-    let value = source
-        .read_arrow_value(None)
-        .expect("the document proves a root");
+    let value = source.read_arrow(None).expect("the document proves a root");
     assert_eq!(value.column_size(), 2);
     assert_eq!(value.row_size(), Some(1));
 }
@@ -122,7 +134,7 @@ fn one_document_that_is_not_a_sequence_is_one_row() {
         .expect("the bytes write");
 
     let value = source
-        .read_arrow_value(Some(&quote_root()))
+        .read_arrow(Some(&options_declaring(&quote_root())))
         .expect("one document is one row");
     assert_eq!(value.row_size(), Some(1));
 }
@@ -131,7 +143,7 @@ fn one_document_that_is_not_a_sequence_is_one_row() {
 fn a_toml_table_travels_under_the_roots_own_name() {
     let mut target = handle("quotes.toml");
     target
-        .write_arrow_value(quotes(), IOMode::Overwrite)
+        .write_arrow(quotes(), IOMode::Overwrite, None)
         .expect("the rows write");
 
     let text =
@@ -146,7 +158,7 @@ fn a_toml_table_travels_under_the_roots_own_name() {
 fn a_document_is_written_whole_so_only_an_overwrite_applies() {
     let mut target = handle("quotes.json");
     let refused = target
-        .write_arrow_value(quotes(), IOMode::Append)
+        .write_arrow(quotes(), IOMode::Append, None)
         .expect_err("a document has no append");
     assert!(refused.to_string().contains("overwrite"), "{refused}");
 }
@@ -155,7 +167,7 @@ fn a_document_is_written_whole_so_only_an_overwrite_applies() {
 fn a_compressed_document_reads_and_writes_through_its_coding() {
     let mut target = handle("quotes.jsonl.gz");
     target
-        .write_arrow_value(quotes(), IOMode::Overwrite)
+        .write_arrow(quotes(), IOMode::Overwrite, None)
         .expect("the rows write");
 
     // The bytes on the handle are gzip, not JSON Lines.
@@ -163,7 +175,7 @@ fn a_compressed_document_reads_and_writes_through_its_coding() {
     assert_eq!(&bytes[..2], &[0x1F, 0x8B]);
     assert_eq!(
         target
-            .read_arrow_value(Some(&quote_root()))
+            .read_arrow(Some(&options_declaring(&quote_root())))
             .expect("the coding is transparent")
             .row_size(),
         Some(2)

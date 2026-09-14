@@ -53,23 +53,23 @@ class MixedPoint:
 
 
 def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
-    assert Scalar.from_py(Quote("AAPL", 12.5)).kind == "record"
-    assert Scalar.from_py(Point(2, 1)).kind == "record"
-    assert Scalar.from_py(SlottedPoint(2, 1)).kind == "record"
-    assert Scalar.from_py(MixedPoint(2, 1)).kind == "record"
-    assert Scalar.from_py({"symbol": "AAPL"}).kind == "mapping"
-    assert Scalar.from_py(Quote("AAPL", 12.5)).as_py() == {
+    assert Scalar.from_(Quote("AAPL", 12.5)).kind == "record"
+    assert Scalar.from_(Point(2, 1)).kind == "record"
+    assert Scalar.from_(SlottedPoint(2, 1)).kind == "record"
+    assert Scalar.from_(MixedPoint(2, 1)).kind == "record"
+    assert Scalar.from_({"symbol": "AAPL"}).kind == "mapping"
+    assert Scalar.from_(Quote("AAPL", 12.5)).as_py() == {
         "price": 12.5,
         "symbol": "AAPL",
     }
-    assert Scalar.from_py(SlottedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
-    assert Scalar.from_py(MixedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
+    assert Scalar.from_(SlottedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
+    assert Scalar.from_(MixedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
 
 
 def test_native_field_and_datatype_wrappers_cross_structurally() -> None:
     field = Field("items", "list<int32>", nullable=False)
-    dtype = Scalar.from_py(field.dtype)
-    field_value = Scalar.from_py(field)
+    dtype = Scalar.from_(field.dtype)
+    field_value = Scalar.from_(field)
 
     assert dtype.kind == "mapping"
     assert dtype.as_py()["type"] == "list"  # type: ignore[index]
@@ -92,7 +92,7 @@ def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
     assert d256.unit is None
     assert d256.zone is None
     assert d256.as_py() == Decimal(f"{wide}E-4")
-    assert Scalar.from_py(Decimal(wide)).kind == "d256"
+    assert Scalar.from_(Decimal(wide)).kind == "d256"
 
     assert Scalar.date(1).kind == "date32"
     assert Scalar.date(86_400_000, "ms").kind == "date64"
@@ -118,13 +118,13 @@ def test_family_factories_select_width_and_keep_scale_unit_and_zone() -> None:
 
 def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
     values = [
-        (Scalar.from_py(None), "null", "null"),
-        (Scalar.from_py(True), "boolean", "boolean"),
-        (Scalar.from_py(1), "int64", "integer"),
+        (Scalar.from_(None), "null", "null"),
+        (Scalar.from_(True), "boolean", "boolean"),
+        (Scalar.from_(1), "int64", "integer"),
         (Scalar.float(1.5, 32), "float32", "floating"),
         (Scalar.decimal(150, 2), "decimal128", "decimal"),
         (Scalar.date(1), "date32", "temporal"),
-        (Scalar.from_py("AAPL"), "string", "text"),
+        (Scalar.from_("AAPL"), "string", "text"),
         (
             json.loads(
                 '"USD"', field=Field("value", "currency", False), cls=Scalar
@@ -146,8 +146,8 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
             "version",
             "text",
         ),
-        (Scalar.from_py(b"bytes"), "binary", "bytes"),
-        (Scalar.from_py({"id": 1}), "map", "nested"),
+        (Scalar.from_(b"bytes"), "binary", "bytes"),
+        (Scalar.from_({"id": 1}), "map", "nested"),
     ]
     for value, expected_id, expected_family in values:
         assert value.id == expected_id
@@ -205,20 +205,20 @@ def test_enumeration_preserves_identity_and_compact_ordinal() -> None:
 def test_value_is_hashable_and_has_typed_byte_accessors() -> None:
     assert Scalar.float(1.0, 32) == Scalar.float(1.0)
     assert hash(Scalar.float(1.0, 32)) == hash(Scalar.float(1.0))
-    assert Scalar.from_py("text").as_str() == "text"
-    assert Scalar.from_py("text").as_bytes() is None
-    assert Scalar.from_py(b"bytes").as_bytes() == b"bytes"
-    assert Scalar.from_py(b"bytes").as_str() is None
-    value = Scalar.from_py({"answer": 42})
+    assert Scalar.from_("text").as_str() == "text"
+    assert Scalar.from_("text").as_bytes() is None
+    assert Scalar.from_(b"bytes").as_bytes() == b"bytes"
+    assert Scalar.from_(b"bytes").as_str() is None
+    value = Scalar.from_({"answer": 42})
     assert value.as_json_bytes() == b'{"answer":42}'
     assert value.as_json_utf8() == '{"answer":42}'
 
 
 def test_unsigned_stable_hash_maps_to_python_hash_without_overflow() -> None:
     value = next(
-        Scalar.from_py(index)
+        Scalar.from_(index)
         for index in range(10_000)
-        if Scalar.from_py(index).stable_hash() > 2**63 - 1
+        if Scalar.from_(index).stable_hash() > 2**63 - 1
     )
     stable = value.stable_hash()
     if sys.hash_info.width == 64:
@@ -233,7 +233,7 @@ def test_unsigned_stable_hash_maps_to_python_hash_without_overflow() -> None:
 
 
 def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None:
-    value = Scalar.from_py(8)
+    value = Scalar.from_(8)
 
     assert value.add(2).as_py() == 10
     assert value.subtract(2).as_py() == 6
@@ -241,7 +241,7 @@ def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None
     assert value.divide(2).as_py() == 4
     assert value.remainder(3).as_py() == 2
     assert value.negate().as_py() == -8
-    assert Scalar.from_py(-8).absolute().as_py() == 8
+    assert Scalar.from_(-8).absolute().as_py() == 8
 
     assert (value + 2).as_py() == 10
     assert (2 + value).as_py() == 10
@@ -254,7 +254,7 @@ def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None
     assert (value % 3).as_py() == 2
     assert (10 % value).as_py() == 2
     assert (-value).as_py() == -8
-    assert abs(Scalar.from_py(-8)).as_py() == 8
+    assert abs(Scalar.from_(-8)).as_py() == 8
 
     assert (Scalar.float(1.5, 16) + Scalar.float(0.5, 32)).kind == "f32"
     assert (Scalar.decimal(105, 2) + Decimal("0.20")).as_py() == Decimal("1.25")
@@ -264,18 +264,18 @@ def test_checked_arithmetic_accepts_native_scalars_and_python_operands() -> None
 
 def test_checked_arithmetic_preserves_python_error_categories() -> None:
     with pytest.raises(TypeError, match="invalid addition"):
-        _ = Scalar.from_py("a") + "b"
+        _ = Scalar.from_("a") + "b"
     with pytest.raises(OverflowError, match="overflows"):
-        _ = Scalar.from_py(2**63 - 1) + 1
+        _ = Scalar.from_(2**63 - 1) + 1
     with pytest.raises(ZeroDivisionError, match="by zero"):
-        _ = Scalar.from_py(1) / 0
+        _ = Scalar.from_(1) / 0
     with pytest.raises(ArithmeticError, match="no exact"):
         _ = Scalar.decimal(1) / Scalar.decimal(3)
 
 
 def test_native_scalar_traversal_keeps_exact_children() -> None:
     instant = Scalar.datetime(1, "ns", "UTC")
-    tree = Scalar.from_py(
+    tree = Scalar.from_(
         {"instant": instant, "legs": [{"price": Scalar.float(12.5, 32)}, None]}
     )
 
@@ -303,7 +303,7 @@ def test_native_scalar_traversal_keeps_exact_children() -> None:
 
 
 def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
-    mapping = Scalar.from_py({"symbol": "AAPL", "venue": None})
+    mapping = Scalar.from_({"symbol": "AAPL", "venue": None})
     updated = mapping.set("venue", "XNAS").set("price", Scalar.float(12.5, 32))
     removed = updated.remove("symbol")
 
@@ -323,7 +323,7 @@ def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:
         "price",
     ]
 
-    record = Scalar.from_py(Quote("AAPL", 12.5))
+    record = Scalar.from_(Quote("AAPL", 12.5))
     moved = record.set("symbol", "MSFT").remove("price")
     assert record["symbol"].as_str() == "AAPL"
     assert moved["symbol"].as_str() == "MSFT"
@@ -518,7 +518,7 @@ def test_record_batch_and_table_round_trip_through_native_rows() -> None:
 
 
 def test_record_rows_infer_struct_field_names() -> None:
-    rows = Scalar.from_py([Quote("AAPL", 12.5), Quote("MSFT", 9.0)])
+    rows = Scalar.from_([Quote("AAPL", 12.5), Quote("MSFT", 9.0)])
     batch = rows.into_arrow_batch()
     assert batch.schema.names == ["price", "symbol"]
     assert batch.to_pylist() == [
@@ -526,24 +526,24 @@ def test_record_rows_infer_struct_field_names() -> None:
         {"price": 9.0, "symbol": "MSFT"},
     ]
 
-    nullable = Scalar.from_py([Venue(1, None), Venue(2, "XNAS")])
+    nullable = Scalar.from_([Venue(1, None), Venue(2, "XNAS")])
     nullable_batch = nullable.into_arrow_batch()
     assert nullable_batch.schema.field("name").nullable
     assert nullable_batch.column("name").to_pylist() == [None, "XNAS"]
 
 
 def test_value_field_accessors_redirect_to_core_inference() -> None:
-    scalar = Scalar.from_py(42).into_field()
+    scalar = Scalar.from_(42).into_field()
     assert scalar.name == "value"
     assert str(scalar.dtype) == "int64"
     assert not scalar.nullable
 
-    item = Scalar.from_py([1, None]).into_array_field()
+    item = Scalar.from_([1, None]).into_array_field()
     assert item.name == "item"
     assert str(item.dtype) == "int64"
     assert item.nullable
 
-    root = Scalar.from_py([Venue(1, None), Venue(2, "XNAS")]).into_struct_field()
+    root = Scalar.from_([Venue(1, None), Venue(2, "XNAS")]).into_struct_field()
     assert root.name == "row"
     assert not root.nullable
     children = list(root.dtype)
@@ -551,9 +551,9 @@ def test_value_field_accessors_redirect_to_core_inference() -> None:
     assert children[1].nullable
 
     with pytest.raises(ValueError, match="empty Sequence"):
-        Scalar.from_py([]).into_array_field()
+        Scalar.from_([]).into_array_field()
     with pytest.raises(ValueError, match="field names"):
-        Scalar.from_py([[1]]).into_struct_field()
+        Scalar.from_([[1]]).into_struct_field()
 
 
 def test_empty_rows_require_the_known_arrow_root_on_output() -> None:

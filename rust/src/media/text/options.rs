@@ -8,12 +8,12 @@ use smol_str::{SmolStr, format_smolstr};
 
 #[cfg(feature = "arrow")]
 use crate::media::IORecordOptions;
-use crate::{DataType, Error, Field, FieldPath, Level, Metadata, Result, Timezone};
+use crate::{DataType, Error, Field, FieldPath, Level, Result, Timezone};
 
 use super::{LeadingFragment, LineSep};
 
 /// Reserved columns emitted before decoded row-header captures.
-pub(crate) const BASE_COLUMNS: [&str; 4] = ["url", "rownum", "body", "dropped_byte_size"];
+pub(crate) const BASE_COLUMNS: [&str; 4] = ["sourceurl", "rownum", "body", "dropped_byte_size"];
 
 /// The column stating when a record was written, and the row-header capture
 /// that fills it.
@@ -94,12 +94,16 @@ impl PartialOrd for Expression {
 /// datatypes from regex syntax before the resource is read.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TextOptions {
-    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) unless set.
-    pub name: SmolStr,
-    /// Declared root datatype; inferred from text rows when absent.
-    pub dtype: Option<DataType>,
-    /// Root metadata; empty unless declared.
-    pub metadata: Metadata,
+    /// Root Field name; the declared field's when one is declared.
+    pub name: smol_str::SmolStr,
+    /// The declared root; `None` infers the shape.
+    pub field: Option<crate::Field>,
+    /// The rows a read or write keeps.
+    pub filter: crate::Filter,
+    /// The columns a read or write publishes.
+    pub select: crate::Selector,
+    /// The columns forming an explicit merge's match key.
+    pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per emitted batch.
@@ -117,12 +121,6 @@ pub struct TextOptions {
     pub commit_row_size: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
-    /// Column names forming a write's match key.
-    pub merge_by_names: Vec<String>,
-    /// Column names a read or write is narrowed to.
-    pub select_by_names: Vec<String>,
-    /// Partition equalities a read is pruned and filtered by.
-    pub filter_partitions: Vec<(String, String)>,
     /// First emitted row number; `None` omits the `rownum` column.
     pub start_rownum: Option<i64>,
     /// Whether to emit an `mtime` column stating when each record was written.
@@ -175,9 +173,11 @@ impl TextOptions {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            name: SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
-            dtype: None,
-            metadata: Metadata::new(),
+            name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
+            field: None,
+            filter: crate::Filter::always_true(),
+            select: crate::Selector::all(),
+            merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,
             batch_row_size: None,
@@ -185,9 +185,6 @@ impl TextOptions {
             max_byte_size: None,
             commit_row_size: None,
             level: Level::DEFAULT,
-            merge_by_names: Vec::new(),
-            select_by_names: Vec::new(),
-            filter_partitions: Vec::new(),
             start_rownum: None,
             parse_mtime: true,
             parse_mimetype: false,
@@ -306,7 +303,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from url, rownum, body, and dropped_byte_size, got {:?}",
+                        "expected named captures distinct from sourceurl, rownum, body, and dropped_byte_size, got {:?}",
                         capture.name()
                     ),
                 });
@@ -540,7 +537,7 @@ impl TextOptions {
     ///
     /// Returns the refusals the plan states for a rename naming no column, two
     /// columns emitting one name, or a lifted path with no name to take.
-    pub(crate) fn plan(&self) -> Result<super::plan::TextPlan> {
+    pub(crate) fn line_plan(&self) -> Result<super::plan::TextPlan> {
         super::plan::TextPlan::compile(self)
     }
 
@@ -604,7 +601,7 @@ impl TextOptions {
     /// Returns the schema grammar's refusal when the columns do not make a
     /// struct.
     pub fn source_field(&self) -> Result<Field> {
-        self.plan()?.field(self.name.clone())
+        self.line_plan()?.field(self.name.clone())
     }
 
     /// Whether the `mtime` column, rather than a column of its own, is where

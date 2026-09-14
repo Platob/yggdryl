@@ -395,6 +395,41 @@ fn _native(module: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+/// Register the expression classes and the user-function registry.
+fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_class::<expression::PyTerm>()?;
+    module.add_class::<expression::PyBound>()?;
+    module.add_class::<expression::PyFilter>()?;
+    module.add_class::<expression::PySelector>()?;
+    module.add_class::<expression::PyBoundSelector>()?;
+    module.add_class::<expression::PyPlan>()?;
+    module.add_class::<expression::PyExpression>()?;
+    module.add_class::<expression::PyRecords>()?;
+    module.add_class::<expression::PyBounds>()?;
+    module.add_function(wrap_pyfunction!(
+        expression::expression_needs_quoting,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        expression::expression_vocabularies,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        expression::register_user_function,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        expression::unregister_user_function,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(expression::user_functions, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        expression::user_function_signature,
+        module
+    )?)?;
+    Ok(())
+}
+
 /// Register the native value and iterator classes.
 fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
@@ -403,27 +438,15 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<types::parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
-    module.add_class::<crate::arrow::PyArrowValue>()?;
+    module.add_class::<crate::arrow::PyArrowScalar>()?;
     module.add_class::<types::scalar::PyScalarIterator>()?;
     module.add_class::<types::scalar::PyScalarEntryIterator>()?;
     module.add_class::<media::avro::PyAvroSchema>()?;
     module.add_class::<media::avro::PyAvroContainer>()?;
     module.add_class::<media::avro::PyAvroBlock>()?;
     module.add_class::<media::avro::PyAvroBlockIterator>()?;
-    module.add_class::<expression::PyExpression>()?;
     text_line::register(module)?;
-    module.add_class::<expression::PyBound>()?;
-    module.add_class::<expression::PyStatement>()?;
-    module.add_class::<expression::PyBoundStatement>()?;
-    module.add_class::<expression::PyBounds>()?;
-    module.add_function(pyo3::wrap_pyfunction!(
-        expression::expression_needs_quoting,
-        module
-    )?)?;
-    module.add_function(pyo3::wrap_pyfunction!(
-        expression::expression_vocabularies,
-        module
-    )?)?;
+    register_expression(module)?;
     module.add_class::<PyDataTypeIterator>()?;
     module.add_class::<PyFieldMetadataIterator>()?;
     module.add_class::<PyFieldPropertyIterator>()?;

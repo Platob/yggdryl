@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyString, PyTuple, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyDictMethods, PyString, PyTuple, PyType};
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
@@ -21,7 +21,7 @@ use yggdryl::media::{IORecordOptions as _, RecordOptions};
 use yggdryl::{Codec, IOMode, Level};
 use yggdryl::{IOBase as _, IOMedia as _};
 
-use crate::arrow::PyArrowValue;
+use crate::arrow::PyArrowScalar;
 use crate::iomedia::{
     Frames, PyRecordOptions, PyTextOptions, batch_reader_from_arrow_reader,
     batch_reader_from_arrow_table, batch_reader_from_records, batch_reader_to_pyarrow,
@@ -459,11 +459,79 @@ impl PyIOBase {
     ///
     /// Omitting them is the normal case: the encoding then comes from the
     /// handle's own media type, so it is never guessed.
-    fn resolve_options(&self, options: Option<&Bound<'_, PyAny>>) -> PyResult<RecordOptions> {
-        match options {
-            Some(options) => core_record_options_from_value(options),
-            None => self.inner()?.record_options().map_err(value_error),
+    ///
+    /// `properties` are the keyword arguments every record method takes
+    /// beside `options`: each one is set on a copy of the options - the ones
+    /// given, or the handle's own - by the property's own setter, so
+    /// `read_arrow_reader(rowheader="...")` reads with the text options the
+    /// handle already has. An `Ellipsis` value is skipped, the project's
+    /// spelling for an argument that was not given.
+    fn resolve_options(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<RecordOptions> {
+        self.resolve_options_with(options, properties, |this| {
+            this.inner()?.record_options().map_err(value_error)
+        })
+    }
+
+    /// The options a shape-free Arrow read or write runs under: `None` when
+    /// nothing was given, so a structured text document - which has no
+    /// record options of its own - is read or written whole; otherwise the
+    /// resolved options, carried for a document by any record encoding's,
+    /// because the declared field is all a document reads off them.
+    fn arrow_options(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Option<RecordOptions>> {
+        if options.is_none() && properties.is_none_or(PyDictMethods::is_empty) {
+            return Ok(None);
         }
+        self.resolve_options_with(options, properties, |this| {
+            this.inner()?.record_options().or_else(|_| {
+                RecordOptions::for_media_type(&yggdryl::MediaType::new(
+                    yggdryl::MimeType::ARROW_STREAM,
+                ))
+                .map_err(value_error)
+            })
+        })
+        .map(Some)
+    }
+
+    /// [`resolve_options`](Self::resolve_options) with the options an absent
+    /// argument falls back to.
+    fn resolve_options_with(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+        default: impl FnOnce(&Self) -> PyResult<RecordOptions>,
+    ) -> PyResult<RecordOptions> {
+        let Some(properties) = properties.filter(|properties| !properties.is_empty()) else {
+            return match options {
+                Some(options) => core_record_options_from_value(options),
+                None => default(self),
+            };
+        };
+        let py = properties.py();
+        let held = match options {
+            Some(options)
+                if options.is_instance_of::<PyRecordOptions>()
+                    || options.is_instance_of::<PyTextOptions>() =>
+            {
+                options.call_method0("__copy__")?
+            }
+            Some(options) => record_options_into_py(py, core_record_options_from_value(options)?)?,
+            None => record_options_into_py(py, default(self)?)?,
+        };
+        for (name, value) in properties.iter() {
+            if value.is(py.Ellipsis()) {
+                continue;
+            }
+            held.setattr(name.cast::<PyString>()?, value)?;
+        }
+        core_record_options_from_value(&held)
     }
 
     /// Resolve and validate one explicit mode before touching an input value.
@@ -471,8 +539,9 @@ impl PyIOBase {
         &mut self,
         mode: IOMode,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Option<RecordOptions>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         options.require_write_mode(mode).map_err(value_error)?;
         options.require_commit_row_size().map_err(value_error)?;
         options.require_write_limits().map_err(value_error)?;
@@ -550,6 +619,19 @@ impl PyIOBase {
             .write_arrow_reader(batches, mode, options)
             .map_err(crate::holder::fs::storage_error)
     }
+}
+
+/// The Python options value one core options value is: text options for
+/// plain text, record options for every other encoding.
+fn record_options_into_py(py: Python<'_>, options: RecordOptions) -> PyResult<Bound<'_, PyAny>> {
+    Ok(match options {
+        RecordOptions::Text(text) => Py::new(py, PyTextOptions::from_core((*text).clone()))?
+            .into_bound(py)
+            .into_any(),
+        options => Py::new(py, PyRecordOptions::from_core(options))?
+            .into_bound(py)
+            .into_any(),
+    })
 }
 
 fn filesystem_uri_options(
@@ -1176,14 +1258,15 @@ impl PyIOBase {
     /// than guessed at - this may keep a file the rows later discard and can
     /// never discard one they would have kept.
     ///
-    /// `filter` is an `Expression` or the text of one, which parses.
+    /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+    /// parses.
     #[pyo3(signature = (filter, include_private = false))]
     fn children_matching(
         &self,
         filter: &Bound<'_, PyAny>,
         include_private: bool,
     ) -> PyResult<PyIOBaseIterator> {
-        let filter = crate::expression::expression_from_value(filter)?;
+        let filter = crate::expression::filter_from_value(filter)?;
         Ok(PyIOBaseIterator {
             entries: self
                 .inner()?
@@ -1453,39 +1536,54 @@ impl PyIOBase {
         decoded_into_py(py, value, field.as_ref(), native_scalar)
     }
 
-    /// Read this resource's rows as one `ArrowValue`, whatever it holds.
+    /// Read this resource's rows as one `ArrowScalar`, whatever it holds.
     ///
     /// The Arrow-shaped sibling of `read_scalar`, and the one read that does
     /// not need the caller to know first what the resource is: a record
     /// encoding answers its batch stream and a structured text document
     /// answers the batch its rows parse into.
-    #[pyo3(signature = (field = None))]
-    fn read_arrow_value(&self, field: Option<&Bound<'_, PyAny>>) -> PyResult<PyArrowValue> {
-        let field = field.map(core_field_from_value).transpose()?;
+    ///
+    /// `options` and the properties beside it shape the read as they shape
+    /// every record read; a structured text document reads only the declared
+    /// `field` off them. Neither given, the handle is read whole.
+    #[pyo3(signature = (*, options = None, **properties))]
+    fn read_arrow(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyArrowScalar> {
+        let options = self.arrow_options(options, properties)?;
         self.inner()?
-            .read_arrow_value(field.as_ref())
-            .map(PyArrowValue::from_inner)
+            .read_arrow(options.as_ref())
+            .map(PyArrowScalar::from_inner)
             .map_err(crate::holder::fs::storage_error)
     }
 
     /// Write any Arrow-convertible object as this resource's rows.
     ///
-    /// The value crosses through `ArrowValue`, so a `pyarrow` container, a
+    /// The value crosses through `ArrowScalar`, so a `pyarrow` container, a
     /// pandas or polars frame, a `NumPy` array, and an Arrow C stream exporter
     /// all reach the same publication path. A structured text document is one
     /// frame around its rows, so only `overwrite` applies to one.
-    #[pyo3(signature = (value, mode = "overwrite", field = None))]
-    fn write_arrow_value(
+    ///
+    /// This is the generic write: whatever shape the value holds reaches the
+    /// primitive that takes it as it stands, so `options` and the properties
+    /// beside it - `field`, `select`, `filter`, `merge_by`, a row bound -
+    /// apply exactly as they do to every record write.
+    #[pyo3(signature = (value, mode = "overwrite", *, options = None, **properties))]
+    fn write_arrow(
         &mut self,
         value: &Bound<'_, PyAny>,
         mode: &str,
-        field: Option<&Bound<'_, PyAny>>,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
+        let options = self.arrow_options(options, properties)?;
         let value =
-            crate::arrow::arrow_value_from_py(value, field, yggdryl::ArrowCastOptions::new())?;
+            crate::arrow::arrow_scalar_from_py(value, None, yggdryl::ArrowCastOptions::new())?;
         let mode = yggdryl::IOMode::from_str(mode).map_err(crate::value_error)?;
         self.inner_mut()?
-            .write_arrow_value(value, mode)
+            .write_arrow(value, mode, options.as_ref())
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -2134,11 +2232,11 @@ impl PyIOBase {
     ///
     /// Every record method below defaults to exactly this, so the encoding is
     /// never guessed and never passed as a format argument.
-    fn record_options(&self) -> PyResult<PyRecordOptions> {
-        self.inner()?
-            .record_options()
-            .map(PyRecordOptions::from_core)
-            .map_err(value_error)
+    ///
+    /// A plain-text handle answers `TextOptions`, the value its own settings
+    /// live on, so a caller reads a text setting off the answer directly.
+    fn record_options<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        record_options_into_py(py, self.inner()?.record_options().map_err(value_error)?)
     }
 
     /// Read one Parquet leaf's footer statistics without decoding rows.
@@ -2194,9 +2292,13 @@ impl PyIOBase {
     }
 
     /// Read the canonical non-null struct root `Field` of this resource.
-    #[pyo3(signature = (*, options = None))]
-    fn read_arrow_field(&self, options: Option<&Bound<'_, PyAny>>) -> PyResult<PyField> {
-        let options = self.resolve_options(options)?;
+    #[pyo3(signature = (*, options = None, **properties))]
+    fn read_arrow_field(
+        &self,
+        options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<PyField> {
+        let options = self.resolve_options(options, properties)?;
         self.inner()?
             .read_arrow_field(&options)
             .map(PyField::from_inner)
@@ -2210,13 +2312,14 @@ impl PyIOBase {
     /// rather than read and discarded, and what comes back is the shape it
     /// declares. A handle addressing a folder reads across the partitions
     /// beneath it, so a caller never has to know which they addressed.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn read_arrow_reader<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         self.read_reader(py, &options)
     }
 
@@ -2226,12 +2329,13 @@ impl PyIOBase {
     /// through the same iterator, so a caller reading lines and a caller
     /// reading batches read one decode. Lines are pulled one at a time and
     /// never collected.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn read_text_lines(
         &self,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<crate::text_line::PyTextLines> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let RecordOptions::Text(text) = options else {
             return Err(PyValueError::new_err(
                 "read_text_lines expects plain-text record options",
@@ -2248,13 +2352,14 @@ impl PyIOBase {
     /// Arrow C stream reader. Tables, held record batches, and row records use
     /// their dedicated adapters. The explicit method name is authoritative;
     /// `merge_by_names` never changes overwrite into merge.
-    #[pyo3(signature = (reader, *, options = None))]
+    #[pyo3(signature = (reader, *, options = None, **properties))]
     fn overwrite_arrow_reader(
         &mut self,
         reader: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
@@ -2262,13 +2367,14 @@ impl PyIOBase {
     }
 
     /// Append the batches `reader` yields after this resource's stored rows.
-    #[pyo3(signature = (reader, *, options = None))]
+    #[pyo3(signature = (reader, *, options = None, **properties))]
     fn append_arrow_reader(
         &mut self,
         reader: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
@@ -2276,13 +2382,14 @@ impl PyIOBase {
     }
 
     /// Merge the batches `reader` yields by the non-empty match key.
-    #[pyo3(signature = (reader, *, options = None))]
+    #[pyo3(signature = (reader, *, options = None, **properties))]
     fn merge_arrow_reader(
         &mut self,
         reader: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
@@ -2292,15 +2399,16 @@ impl PyIOBase {
     /// Write the batches `reader` yields using an explicit mode.
     ///
     /// The canonical argument order is input, mode, then optional settings.
-    #[pyo3(signature = (reader, mode, *, options = None))]
+    #[pyo3(signature = (reader, mode, *, options = None, **properties))]
     fn write_arrow_reader(
         &mut self,
         reader: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_reader(reader)?;
@@ -2308,13 +2416,14 @@ impl PyIOBase {
     }
 
     /// Replace this resource from exactly one `pyarrow.Table`.
-    #[pyo3(signature = (table, *, options = None))]
+    #[pyo3(signature = (table, *, options = None, **properties))]
     fn overwrite_arrow_table(
         &mut self,
         table: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_table(table)?;
@@ -2322,13 +2431,14 @@ impl PyIOBase {
     }
 
     /// Append exactly one `pyarrow.Table` after this resource's rows.
-    #[pyo3(signature = (table, *, options = None))]
+    #[pyo3(signature = (table, *, options = None, **properties))]
     fn append_arrow_table(
         &mut self,
         table: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_table(table)?;
@@ -2336,13 +2446,14 @@ impl PyIOBase {
     }
 
     /// Merge exactly one `pyarrow.Table` by `merge_by_names`.
-    #[pyo3(signature = (table, *, options = None))]
+    #[pyo3(signature = (table, *, options = None, **properties))]
     fn merge_arrow_table(
         &mut self,
         table: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_table(table)?;
@@ -2350,15 +2461,16 @@ impl PyIOBase {
     }
 
     /// Write exactly one `pyarrow.Table` using an explicit mode.
-    #[pyo3(signature = (table, mode, *, options = None))]
+    #[pyo3(signature = (table, mode, *, options = None, **properties))]
     fn write_arrow_table(
         &mut self,
         table: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_arrow_table(table)?;
@@ -2366,13 +2478,14 @@ impl PyIOBase {
     }
 
     /// Replace this resource from one held `pyarrow.RecordBatch`.
-    #[pyo3(signature = (batch, *, options = None))]
+    #[pyo3(signature = (batch, *, options = None, **properties))]
     fn overwrite_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batch = record_batch_from_value(batch)?;
@@ -2382,13 +2495,14 @@ impl PyIOBase {
     }
 
     /// Append one held `pyarrow.RecordBatch` after this resource's rows.
-    #[pyo3(signature = (batch, *, options = None))]
+    #[pyo3(signature = (batch, *, options = None, **properties))]
     fn append_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batch = record_batch_from_value(batch)?;
@@ -2398,13 +2512,14 @@ impl PyIOBase {
     }
 
     /// Merge one held `pyarrow.RecordBatch` by `merge_by_names`.
-    #[pyo3(signature = (batch, *, options = None))]
+    #[pyo3(signature = (batch, *, options = None, **properties))]
     fn merge_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batch = record_batch_from_value(batch)?;
@@ -2414,15 +2529,16 @@ impl PyIOBase {
     }
 
     /// Write exactly one `pyarrow.RecordBatch` using an explicit mode.
-    #[pyo3(signature = (batch, mode, *, options = None))]
+    #[pyo3(signature = (batch, mode, *, options = None, **properties))]
     fn write_arrow_batch(
         &mut self,
         batch: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batch = record_batch_from_value(batch)?;
@@ -2436,14 +2552,15 @@ impl PyIOBase {
     /// A requested stdlib or `@scalar` dataclass is instantiated one row at a
     /// time. When that class is decorated and `options.field` is absent, its
     /// cached `into_field()` drives projection and casting on the read.
-    #[pyo3(signature = (cls = None, *, options = None))]
+    #[pyo3(signature = (cls = None, *, options = None, **properties))]
     fn read_records<'py>(
         &self,
         py: Python<'py>,
         cls: Option<&Bound<'py, PyAny>>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let mut options = self.resolve_options(options)?;
+        let mut options = self.resolve_options(options, properties)?;
         if let Some(cls) = cls {
             let is_dataclass = cls.is_instance_of::<PyType>()
                 && py
@@ -2492,13 +2609,14 @@ impl PyIOBase {
     /// A decorated dataclass instance infers its class's cached
     /// `into_field()` when no field was declared. Empty input has no
     /// class to inspect and therefore requires `options.field`.
-    #[pyo3(signature = (records, *, options = None))]
+    #[pyo3(signature = (records, *, options = None, **properties))]
     fn overwrite_records(
         &mut self,
         records: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(mut options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(mut options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_records(records, &mut options)?;
@@ -2506,13 +2624,14 @@ impl PyIOBase {
     }
 
     /// Append an iterable of Python row records after this resource's rows.
-    #[pyo3(signature = (records, *, options = None))]
+    #[pyo3(signature = (records, *, options = None, **properties))]
     fn append_records(
         &mut self,
         records: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(mut options) = self.write_options(IOMode::Append, options)? else {
+        let Some(mut options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_records(records, &mut options)?;
@@ -2520,13 +2639,14 @@ impl PyIOBase {
     }
 
     /// Merge an iterable of Python row records by `merge_by_names`.
-    #[pyo3(signature = (records, *, options = None))]
+    #[pyo3(signature = (records, *, options = None, **properties))]
     fn merge_records(
         &mut self,
         records: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(mut options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(mut options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_records(records, &mut options)?;
@@ -2534,15 +2654,16 @@ impl PyIOBase {
     }
 
     /// Write an iterable of Python row records using an explicit mode.
-    #[pyo3(signature = (records, mode, *, options = None))]
+    #[pyo3(signature = (records, mode, *, options = None, **properties))]
     fn write_records(
         &mut self,
         records: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(mut options) = self.write_options(mode, options)? else {
+        let Some(mut options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = batch_reader_from_records(records, &mut options)?;
@@ -2557,13 +2678,14 @@ impl PyIOBase {
     ///
     /// `pandas` is imported here and nowhere else in this package, so a caller
     /// who does not use it never pays for it.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn read_pandas<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let reader = self
             .inner()?
             .read_arrow_reader(&options)
@@ -2572,13 +2694,14 @@ impl PyIOBase {
     }
 
     /// Read every row of this resource as one `pandas` frame.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn read_pandas_frame<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let reader = self
             .inner()?
             .read_arrow_reader(&options)
@@ -2592,13 +2715,14 @@ impl PyIOBase {
     /// consumed one frame at a time. Anything that is not a `pandas` frame is
     /// refused by name; Arrow readers, tables, batches, and row records use
     /// their correspondingly named adapters.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **properties))]
     fn overwrite_pandas(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
@@ -2606,13 +2730,14 @@ impl PyIOBase {
     }
 
     /// Append a stream of `pandas` frames after this resource's rows.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **properties))]
     fn append_pandas(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
@@ -2620,13 +2745,14 @@ impl PyIOBase {
     }
 
     /// Merge a stream of `pandas` frames by `merge_by_names`.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **properties))]
     fn merge_pandas(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
@@ -2634,15 +2760,16 @@ impl PyIOBase {
     }
 
     /// Write a stream of pandas frames using an explicit mode.
-    #[pyo3(signature = (frames, mode, *, options = None))]
+    #[pyo3(signature = (frames, mode, *, options = None, **properties))]
     fn write_pandas(
         &mut self,
         frames: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Pandas, &options)?;
@@ -2650,13 +2777,14 @@ impl PyIOBase {
     }
 
     /// Replace this resource with exactly one `pandas` frame.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **properties))]
     fn overwrite_pandas_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Pandas)?;
@@ -2664,13 +2792,14 @@ impl PyIOBase {
     }
 
     /// Append exactly one `pandas` frame after this resource's rows.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **properties))]
     fn append_pandas_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Pandas)?;
@@ -2678,13 +2807,14 @@ impl PyIOBase {
     }
 
     /// Merge exactly one `pandas` frame by `merge_by_names`.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **properties))]
     fn merge_pandas_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Pandas)?;
@@ -2692,15 +2822,16 @@ impl PyIOBase {
     }
 
     /// Write exactly one pandas frame using an explicit mode.
-    #[pyo3(signature = (frame, mode, *, options = None))]
+    #[pyo3(signature = (frame, mode, *, options = None, **properties))]
     fn write_pandas_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Pandas)?;
@@ -2711,13 +2842,14 @@ impl PyIOBase {
     ///
     /// One frame per batch, exactly as `read_pandas` yields one pandas frame
     /// per batch. `polars` is imported here and nowhere else.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn read_polars<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let reader = self
             .inner()?
             .read_arrow_reader(&options)
@@ -2726,13 +2858,14 @@ impl PyIOBase {
     }
 
     /// Read every row of this resource as one `polars` frame.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn read_polars_frame<'py>(
         &self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let reader = self
             .inner()?
             .read_arrow_reader(&options)
@@ -2748,14 +2881,15 @@ impl PyIOBase {
     /// Anything polars cannot scan natively - an in-memory buffer, a
     /// compressed name - reads through the native reader and turns lazy, so
     /// the call answers for every holder.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn scan_polars<'py>(
         &mut self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let asked = options.is_some();
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let polars = py.import("polars")?;
         // The fast path hands the file to polars, which knows nothing about
         // what this call was asked for - so it is only the same answer when
@@ -2778,14 +2912,15 @@ impl PyIOBase {
     /// column projection and predicate pushdown belong to the scanner - and
     /// anything else streams through the native reader, so the call answers
     /// for every holder.
-    #[pyo3(signature = (*, options = None))]
+    #[pyo3(signature = (*, options = None, **properties))]
     fn scan_arrow<'py>(
         &mut self,
         py: Python<'py>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let asked = options.is_some();
-        let options = self.resolve_options(options)?;
+        let options = self.resolve_options(options, properties)?;
         let dataset = py.import("pyarrow.dataset")?;
         // Same rule as `scan_polars`: the dataset scanner is handed the file
         // and nothing else, so it can only stand in for this call when the
@@ -2808,13 +2943,14 @@ impl PyIOBase {
     ///
     /// A `polars.LazyFrame` is accepted and collected, because polars offers no
     /// way to hand its rows over a batch at a time.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **properties))]
     fn overwrite_polars(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
@@ -2822,13 +2958,14 @@ impl PyIOBase {
     }
 
     /// Append a stream of `polars` frames after this resource's rows.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **properties))]
     fn append_polars(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
@@ -2836,13 +2973,14 @@ impl PyIOBase {
     }
 
     /// Merge a stream of `polars` frames by `merge_by_names`.
-    #[pyo3(signature = (frames, *, options = None))]
+    #[pyo3(signature = (frames, *, options = None, **properties))]
     fn merge_polars(
         &mut self,
         frames: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
@@ -2850,15 +2988,16 @@ impl PyIOBase {
     }
 
     /// Write a stream of polars frames using an explicit mode.
-    #[pyo3(signature = (frames, mode, *, options = None))]
+    #[pyo3(signature = (frames, mode, *, options = None, **properties))]
     fn write_polars(
         &mut self,
         frames: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = frames_batch_reader(frames, Frames::Polars, &options)?;
@@ -2866,13 +3005,14 @@ impl PyIOBase {
     }
 
     /// Replace this resource with exactly one `polars` frame.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **properties))]
     fn overwrite_polars_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Overwrite, options)? else {
+        let Some(options) = self.write_options(IOMode::Overwrite, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Polars)?;
@@ -2880,13 +3020,14 @@ impl PyIOBase {
     }
 
     /// Append exactly one `polars` frame after this resource's rows.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **properties))]
     fn append_polars_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Append, options)? else {
+        let Some(options) = self.write_options(IOMode::Append, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Polars)?;
@@ -2894,13 +3035,14 @@ impl PyIOBase {
     }
 
     /// Merge exactly one `polars` frame by `merge_by_names`.
-    #[pyo3(signature = (frame, *, options = None))]
+    #[pyo3(signature = (frame, *, options = None, **properties))]
     fn merge_polars_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let Some(options) = self.write_options(IOMode::Merge, options)? else {
+        let Some(options) = self.write_options(IOMode::Merge, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Polars)?;
@@ -2908,15 +3050,16 @@ impl PyIOBase {
     }
 
     /// Write exactly one polars frame using an explicit mode.
-    #[pyo3(signature = (frame, mode, *, options = None))]
+    #[pyo3(signature = (frame, mode, *, options = None, **properties))]
     fn write_polars_frame(
         &mut self,
         frame: &Bound<'_, PyAny>,
         mode: &str,
         options: Option<&Bound<'_, PyAny>>,
+        properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
         let mode = IOMode::from_str(mode).map_err(value_error)?;
-        let Some(options) = self.write_options(mode, options)? else {
+        let Some(options) = self.write_options(mode, options, properties)? else {
             return Ok(());
         };
         let batches = frame_batch_reader(frame, Frames::Polars)?;

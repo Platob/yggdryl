@@ -66,7 +66,8 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
                     .record_options()
                     .expect("an implemented encoding")
                     .with_field(field.clone())
-                    .with_merge_by_names(["id"]);
+                    .with_merge_by(["id"])
+                    .unwrap();
                 (target, options)
             },
             |(mut target, options)| {
@@ -124,7 +125,8 @@ pub(crate) fn round_trip_benchmarks(criterion: &mut Criterion) {
                     .record_options()
                     .expect("an implemented encoding")
                     .with_field(field.clone())
-                    .with_merge_by_names(["id"]);
+                    .with_merge_by(["id"])
+                    .unwrap();
                 (target, options)
             },
             |(mut target, options)| {

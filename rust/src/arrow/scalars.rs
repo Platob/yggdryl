@@ -2,7 +2,7 @@
 //!
 //! Arrow spells one payload four ways - a pinned one-row array, a column of
 //! any length, a table of rows, and a one-shot stream of tables - and a caller
-//! holding one of them rarely knows which. [`ArrowValue`] regroups the four
+//! holding one of them rarely knows which. [`ArrowScalar`] regroups the four
 //! behind a single value carrying the exact [`Field`] that types it, so
 //! reading, writing, casting, and crossing into [`Scalar`] are asked once
 //! rather than once per shape.
@@ -15,15 +15,15 @@
 //! [`BatchReader`], which is what a record read or write already speaks.
 //!
 //! ```
-//! use std::sync::Arc;
+//! use std::sync::{Arc, Mutex};
 //!
 //! use arrow_array::{ArrayRef, Int64Array};
-//! use yggdryl::{ArrowShape, ArrowValue, DataType, Field};
+//! use yggdryl::{ArrowShape, ArrowScalar, DataType, Field};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let field = Field::new("price", DataType::Int64, false);
 //! let column: ArrayRef = Arc::new(Int64Array::from(vec![125, 126, 127]));
-//! let value = ArrowValue::from_array(field, column)?;
+//! let value = ArrowScalar::from_array(field, column)?;
 //!
 //! assert_eq!(value.shape(), ArrowShape::Array);
 //! assert_eq!(value.row_size(), Some(3));
@@ -37,7 +37,7 @@
 
 use std::fmt;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use arrow_array::{
     Array, ArrayRef, RecordBatch, RecordBatchOptions, RecordBatchReader, StructArray,
@@ -53,7 +53,7 @@ use super::{
 use crate::media::DEFAULT_ROOT_NAME;
 use crate::{ArrowCast, ArrowCastOptions, DataType, Field, Scalar};
 
-/// Which of Arrow's four payload shapes an [`ArrowValue`] holds.
+/// Which of Arrow's four payload shapes an [`ArrowScalar`] holds.
 ///
 /// The order is the widening order: a scalar is one row of an array, an array
 /// is one column of a batch, and a batch is one element of a stream.
@@ -130,8 +130,9 @@ impl FromStr for ArrowShape {
     }
 }
 
-/// The payload behind an [`ArrowValue`], kept private so the paired Field
+/// The payload behind an [`ArrowScalar`], kept private so the paired Field
 /// cannot be separated from the buffers it types.
+#[derive(Clone)]
 enum Payload {
     /// Exactly one row, pinned.
     Scalar(ArrayRef),
@@ -139,8 +140,10 @@ enum Payload {
     Array(ArrayRef),
     /// Rows held under a Struct root.
     Batch(RecordBatch),
-    /// Rows streamed under a Struct root.
-    Stream(BatchReader),
+    /// Rows streamed under a Struct root, behind the one shared slot every
+    /// clone reads: a stream crosses once, so the first consumer takes it and
+    /// every other holder finds it consumed.
+    Stream(Arc<Mutex<Option<BatchReader>>>),
 }
 
 /// One Arrow-backed value paired with the exact [`Field`] that types it.
@@ -155,28 +158,94 @@ enum Payload {
 /// operation rather than the cost of proving it again.
 ///
 /// ```
-/// use yggdryl::{ArrowShape, ArrowValue, DataType, Field, Scalar};
+/// use yggdryl::{ArrowShape, ArrowScalar, DataType, Field, Scalar};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let field = Field::new("symbol", DataType::utf8(), false);
-/// let value = ArrowValue::from_value(&field, &Scalar::from("AAPL"))?;
+/// let value = ArrowScalar::from_value(&field, &Scalar::from("AAPL"))?;
 ///
 /// assert_eq!(value.shape(), ArrowShape::Scalar);
 /// assert_eq!(value.into_scalar()?.as_str(), Some("AAPL"));
 /// # Ok(())
 /// # }
 /// ```
-pub struct ArrowValue {
+#[derive(Clone)]
+pub struct ArrowScalar {
     field: Field,
     payload: Payload,
 }
 
-impl fmt::Debug for ArrowValue {
+impl PartialEq for ArrowScalar {
+    /// Two held shapes are equal when their fields and their buffers hold the
+    /// same values; two streams are equal only when they are the one stream,
+    /// because a stream has no contents to compare until it is drained.
+    fn eq(&self, other: &Self) -> bool {
+        self.field == other.field
+            && match (&self.payload, &other.payload) {
+                (Payload::Scalar(left), Payload::Scalar(right))
+                | (Payload::Array(left), Payload::Array(right)) => left == right,
+                (Payload::Batch(left), Payload::Batch(right)) => left == right,
+                (Payload::Stream(left), Payload::Stream(right)) => Arc::ptr_eq(left, right),
+                _ => false,
+            }
+    }
+}
+
+impl Eq for ArrowScalar {}
+
+impl PartialOrd for ArrowScalar {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ArrowScalar {
+    /// Shape, then field, then length, then the values themselves read as
+    /// native scalars - the one order that agrees with [`PartialEq`] for
+    /// every held shape. Two distinct streams order by identity, as they
+    /// compare.
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        self.shape()
+            .cmp(&other.shape())
+            .then_with(|| self.field.cmp(&other.field))
+            .then_with(|| self.row_size().cmp(&other.row_size()))
+            .then_with(|| {
+                if self == other {
+                    return Ordering::Equal;
+                }
+                match (&self.payload, &other.payload) {
+                    (Payload::Stream(left), Payload::Stream(right)) => {
+                        Arc::as_ptr(left).cmp(&Arc::as_ptr(right))
+                    }
+                    _ => match (self.clone().into_scalar(), other.clone().into_scalar()) {
+                        (Ok(left), Ok(right)) => left.cmp(&right),
+                        (Ok(_), Err(_)) => Ordering::Less,
+                        (Err(_), Ok(_)) => Ordering::Greater,
+                        (Err(_), Err(_)) => Ordering::Equal,
+                    },
+                }
+            })
+    }
+}
+
+impl std::hash::Hash for ArrowScalar {
+    /// Shape, field and length: everything equal values share without
+    /// draining a stream, so the hash agrees with [`PartialEq`].
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.shape().hash(state);
+        self.field.hash(state);
+        self.row_size().hash(state);
+    }
+}
+
+impl fmt::Debug for ArrowScalar {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         // A stream has no observable contents until it is drained, so the
         // shape and its declared field are all a debug rendering may claim.
         formatter
-            .debug_struct("ArrowValue")
+            .debug_struct("ArrowScalar")
             .field("shape", &self.shape())
             .field("field", &self.field)
             .field("row_size", &self.row_size())
@@ -184,7 +253,7 @@ impl fmt::Debug for ArrowValue {
     }
 }
 
-impl ArrowValue {
+impl ArrowScalar {
     /// Pair one pinned Arrow row with the Field that types it.
     ///
     /// This is Arrow's own scalar: a length-one array whose single row is the
@@ -272,7 +341,7 @@ impl ArrowValue {
         let field = field_from_arrow_schema(DEFAULT_ROOT_NAME, reader.schema().as_ref())?;
         Ok(Self {
             field,
-            payload: Payload::Stream(reader),
+            payload: Payload::Stream(Arc::new(Mutex::new(Some(reader)))),
         })
     }
 
@@ -287,7 +356,7 @@ impl ArrowValue {
         require_schema(&expected, &reader.schema())?;
         Ok(Self {
             field: root,
-            payload: Payload::Stream(reader),
+            payload: Payload::Stream(Arc::new(Mutex::new(Some(reader)))),
         })
     }
 
@@ -338,7 +407,7 @@ impl ArrowValue {
     }
 }
 
-impl ArrowValue {
+impl ArrowScalar {
     /// The exact Field this value is typed by.
     ///
     /// For a scalar or an array it describes one element; for a batch or a
@@ -405,7 +474,7 @@ impl ArrowValue {
     pub fn column_size(&self) -> usize {
         match &self.payload {
             Payload::Batch(batch) => batch.num_columns(),
-            Payload::Stream(reader) => reader.schema().fields().len(),
+            Payload::Stream(slot) => stream_schema(slot).map_or(0, |schema| schema.fields().len()),
             Payload::Scalar(_) | Payload::Array(_) => {
                 if is_own_root(&self.field) {
                     self.field.fields().len()
@@ -460,13 +529,17 @@ impl ArrowValue {
     pub fn schema(&self) -> Result<SchemaRef> {
         match &self.payload {
             Payload::Batch(batch) => Ok(batch.schema()),
-            Payload::Stream(reader) => Ok(reader.schema()),
+            Payload::Stream(slot) => stream_schema(slot).ok_or_else(|| {
+                Error::IncompatibleSchema(
+                    "this Arrow stream crosses once and has already been read".to_owned(),
+                )
+            }),
             Payload::Scalar(_) | Payload::Array(_) => arrow_schema_from_field(&self.root()?),
         }
     }
 }
 
-impl ArrowValue {
+impl ArrowScalar {
     /// Narrow to one Arrow column.
     ///
     /// A tabular payload becomes the Struct column its rows already are, which
@@ -502,7 +575,8 @@ impl ArrowValue {
         match self.payload {
             Payload::Batch(batch) => Ok(batch),
             Payload::Scalar(array) | Payload::Array(array) => batch_from_array(&self.field, array),
-            Payload::Stream(reader) => {
+            Payload::Stream(slot) => {
+                let reader = take_stream(&slot)?;
                 let schema = reader.schema();
                 let mut batches = Vec::new();
                 for batch in reader {
@@ -526,7 +600,7 @@ impl ArrowValue {
     /// batch a non-tabular payload becomes.
     pub fn into_reader(self) -> Result<BatchReader> {
         match self.payload {
-            Payload::Stream(reader) => Ok(reader),
+            Payload::Stream(slot) => take_stream(&slot),
             Payload::Batch(batch) => Ok(batch_reader(batch.schema(), [batch])),
             Payload::Scalar(array) | Payload::Array(array) => {
                 let batch = batch_from_array(&self.field, array)?;
@@ -551,13 +625,14 @@ impl ArrowValue {
             Payload::Scalar(array) => scalar_value(&self.field, array.as_ref()),
             Payload::Array(array) => array_to_value(&self.field, array.as_ref()),
             Payload::Batch(batch) => batch_to_value(&batch),
-            Payload::Stream(reader) => {
+            Payload::Stream(slot) => {
+                let reader = take_stream(&slot)?;
                 let mut rows = Vec::new();
                 for batch in reader {
                     let batch = batch.map_err(super::from_reader_error)?;
                     let values = batch_to_value(&batch)?;
                     let Some(values) = values.as_sequence() else {
-                        return Err(Error::internal("arrow::ArrowValue::into_scalar"));
+                        return Err(Error::internal("arrow::ArrowScalar::into_scalar"));
                     };
                     rows.extend(values.iter().cloned());
                 }
@@ -610,12 +685,34 @@ impl ArrowValue {
                 field: field.clone(),
                 payload: Payload::Batch(field.cast_arrow_batch(batch, options)?),
             }),
-            Payload::Stream(reader) => Ok(Self {
+            Payload::Stream(slot) => Ok(Self {
                 field: field.clone(),
-                payload: Payload::Stream(super::cast_reader(reader, field, options)?),
+                payload: Payload::Stream(Arc::new(Mutex::new(Some(super::cast_reader(
+                    take_stream(&slot)?,
+                    field,
+                    options,
+                )?)))),
             }),
         }
     }
+}
+
+/// The schema a held stream reports, or `None` once it has crossed.
+fn stream_schema(slot: &Mutex<Option<BatchReader>>) -> Option<SchemaRef> {
+    slot.lock().ok()?.as_ref().map(BatchReader::schema)
+}
+
+/// Take the one stream out of its shared slot, or name the crossing that
+/// already took it.
+fn take_stream(slot: &Mutex<Option<BatchReader>>) -> Result<BatchReader> {
+    slot.lock()
+        .map_err(|_| Error::internal("arrow::ArrowScalar::take_stream"))?
+        .take()
+        .ok_or_else(|| {
+            Error::IncompatibleSchema(
+                "this Arrow stream crosses once and has already been read".to_owned(),
+            )
+        })
 }
 
 /// Report whether a Field is already the root its own rows live under.
@@ -678,7 +775,7 @@ fn batch_from_array(field: &Field, array: ArrayRef) -> Result<RecordBatch> {
         let structs = array
             .as_any()
             .downcast_ref::<StructArray>()
-            .ok_or_else(|| Error::internal("arrow::ArrowValue::batch_from_array"))?;
+            .ok_or_else(|| Error::internal("arrow::ArrowScalar::batch_from_array"))?;
         if structs.null_count() != 0 {
             return Err(Error::IncompatibleSchema(format!(
                 "a batch has no row validity, so a Struct column with {} null rows is not rows",

@@ -17,7 +17,7 @@ const narrow: TxHash = txhash.txh32(payload, instant)
 const wide: TxHash = txhash.txh64(payload, instant, { seed: 42n })
 const fast: TxHash = txhash.txh3('AAPL', new Date(), 42n)
 const widest: TxHash = txhash.txh128(new Uint8Array(payload), '2023-11-14T22:13:20Z')
-const chosen: TxHash = txhash.digest(payload, Scalar.fromJs(new Date()), 'xxh3-128')
+const chosen: TxHash = txhash.digest(payload, Scalar.from(new Date()), 'xxh3-128')
 void narrow
 void wide
 void fast
@@ -65,7 +65,7 @@ void new TxHash(narrow.toString())
 const hasher: TxHasher = new TxHasher('xxh64', 's', 7n)
 const carried: TxHasher = TxHasher.fromState(new Xxh3(1n), 'ms')
 const hashed: TxHash = hasher.digest(payload, instant)
-const scalarHashed: TxHash = hasher.digestScalar(Scalar.fromJs('AAPL'), new Date())
+const scalarHashed: TxHash = hasher.digestScalar(Scalar.from('AAPL'), new Date())
 const read: bigint = hasher.unixOf('2023-11-14T22:13:20Z')
 const hasherUnit: string = hasher.unit
 const hasherAlgorithm: string = hasher.algorithm

@@ -50,7 +50,7 @@ every current core setting; a clone is detached, so later mutation changes
 only that copy's equality, order, and hash.
 `Scalar.add`, `subtract`, `multiply`, `divide`, `remainder`, `negate`, and
 `absolute` are checked native numeric operations. A plain JavaScript operand crosses
-`Scalar.fromJs` exactly once before the operation; containers and text are not
+`Scalar.from` exactly once before the operation; containers and text are not
 silently concatenated or coerced. Invalid operands throw `TypeError` with
 `ERR_YGGDRYL_INVALID_ARITHMETIC`; overflow, zero division, and inexact decimal
 results throw `RangeError` with distinct `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`,

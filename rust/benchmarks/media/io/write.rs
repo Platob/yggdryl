@@ -100,7 +100,7 @@ fn ipc_target(source: &RecordBatch, seeded: bool, merge: bool) -> Ipc<yggdryl::h
     if merge {
         target
             .options_mut()
-            .set_merge_by_names(vec!["id".to_owned()]);
+            .set_merge_by(yggdryl::Selector::from_columns(["id"]));
     }
     target
 }
@@ -120,7 +120,7 @@ fn parquet_target(
     if merge {
         target
             .options_mut()
-            .set_merge_by_names(vec!["id".to_owned()]);
+            .set_merge_by(yggdryl::Selector::from_columns(["id"]));
     }
     target
 }
@@ -136,7 +136,7 @@ fn avro_target(source: &RecordBatch, seeded: bool, merge: bool) -> Avro<yggdryl:
     if merge {
         target
             .options_mut()
-            .set_merge_by_names(vec!["id".to_owned()]);
+            .set_merge_by(yggdryl::Selector::from_columns(["id"]));
     }
     target
 }
@@ -151,7 +151,8 @@ fn media_target(source: &RecordBatch, seeded: bool, merge: bool) -> Media {
             .expect("the generic media fixture must seed");
     }
     if merge {
-        ipc.options_mut().set_merge_by_names(vec!["id".to_owned()]);
+        ipc.options_mut()
+            .set_merge_by(yggdryl::Selector::from_columns(["id"]));
     }
     Media::from(ipc)
 }
@@ -184,7 +185,7 @@ fn text_target(source: &RecordBatch, seeded: bool) -> yggdryl::holder::Buffer {
 }
 
 /// Incoming rows whose declared field both widens a value and is then
-/// narrowed/reordered by `select_by_names`.
+/// narrowed/reordered by an applied `select`.
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn cast_source() -> RecordBatch {
     let schema = Arc::new(Schema::new(vec![
@@ -473,7 +474,8 @@ fn empty_no_op_benchmarks(criterion: &mut Criterion) {
     let merge_options = merge_target
         .record_options()
         .expect("an implemented encoding")
-        .with_merge_by_names(["id"]);
+        .with_merge_by(["id"])
+        .unwrap();
     no_op.bench_function("merge_arrow_reader", |bencher| {
         bencher.iter(|| {
             merge_target
@@ -505,7 +507,7 @@ fn native_record_benchmarks(criterion: &mut Criterion) {
         .expect("an implemented encoding")
         .with_field(wide())
         .with_batch_row_size(512);
-    let merging = options.clone().with_merge_by_names(["id"]);
+    let merging = options.clone().with_merge_by(["id"]).unwrap();
 
     let mut group = criterion.benchmark_group("io_write_records");
     group.sample_size(10);
@@ -585,7 +587,7 @@ fn mode_dispatch_benchmarks(criterion: &mut Criterion) {
         .expect("an implemented encoding")
         .with_field(wide())
         .with_batch_row_size(512);
-    let merging = plain.clone().with_merge_by_names(["id"]);
+    let merging = plain.clone().with_merge_by(["id"]).unwrap();
     let mut group = criterion.benchmark_group("io_write_mode_dispatch");
     group.sample_size(10);
     group.throughput(Throughput::Elements(STATEFUL_ROWS as u64));
@@ -675,7 +677,8 @@ fn shape_benchmarks(criterion: &mut Criterion) {
                         .record_options()
                         .expect("an implemented encoding")
                         .with_field(cast_field.clone())
-                        .with_select_by_names(["PRICE", "symbol"]);
+                        .with_select("PRICE, symbol")
+                        .unwrap();
                     (target, options)
                 },
                 |(mut target, options)| {
@@ -803,7 +806,7 @@ fn commit_benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    let merging = committed.clone().with_merge_by_names(["id"]);
+    let merging = committed.clone().with_merge_by(["id"]).unwrap();
     commits.bench_function("merge/n_8", |bencher| {
         bencher.iter_batched(
             || stored_with("commit-merge.arrows", &source),

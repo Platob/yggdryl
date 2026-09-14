@@ -6,9 +6,9 @@
 
 | Item | Rule |
 | --- | --- |
-| Owns | `&holder.*`, `children_matching`, `statistics_prune`, `partition_split` |
+| Owns | `Attribute`, `&holder.*`, `children_matching`, `statistics_prune`, `partition_split` |
 | Ordering | `bind` sorts conjuncts cheapest-first, stopping at the first `false` |
-| Over-stated cost | Harmless; a later selector still answers, so a backend-dependent price is classed by its worst case |
+| Over-stated cost | Harmless; a later attribute still answers, so a backend-dependent price is classed by its worst case |
 | Pruning | `false` only when no row can match |
 | Split | Sound because dropping conjuncts only widens what is kept |
 | Grammar | [Grammar](grammar.md) |
@@ -21,7 +21,7 @@
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::local::Folder;
-    use yggdryl::Expression;
+    use yggdryl::Filter;
 
     let lake = Folder::new(Folder::temporary()?.path()?.join("yggdryl-docs-lake"))?;
     std::fs::create_dir_all(lake.path()?.join("year=2024"))?;
@@ -29,7 +29,7 @@
     std::fs::create_dir_all(lake.path()?.join("year=2025"))?;
     std::fs::write(lake.path()?.join("year=2025").join("part-0.parquet"), b"")?;
 
-    let filter: Expression = "&holder.partition['year'] = '2024'".parse()?;
+    let filter: Filter = "&holder.partition['year'] = '2024'".parse()?;
     let matched: Vec<_> = lake
         .children_matching(&filter, false)?
         .collect::<yggdryl::Result<_>>()?;
@@ -102,8 +102,8 @@ Rust and Python; JavaScript has no `Bounds`.
 === "Rust"
 
     ```rust
-    use yggdryl::expression::Bounds;
-    use yggdryl::{Expression, Field, Scalar};
+    use yggdryl::expression::{Bounds, Term};
+    use yggdryl::{Field, Scalar};
 
     let schema: Field = "trades:struct<ccy:utf8,size:bigint>".parse()?;
     let bounds = Bounds::new(Some(1_000))
@@ -116,44 +116,45 @@ Rust and Python; JavaScript has no `Bounds`.
         );
 
     // Provably empty: no row can hold a size above the file's maximum.
-    assert!(!"size > 1000".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
+    assert!(!"size > 1000".parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds));
     // Not provable either way: the range overlaps, so the file is read.
-    assert!("size > 50".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
+    assert!("size > 50".parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds));
     // A null test the count settles outright.
-    assert!("size is null".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
+    assert!("size is null".parse::<Term>()?.bind(&schema)?.statistics_prune(&bounds));
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import Bounds, Expression, Field
+    from yggdryl import Bounds, Field, Term
 
     schema = Field("trades", "struct<ccy:utf8,size:bigint>", False)
     bounds = Bounds(rows=1_000).with_column("ccy", "EUR", "USD", 0).with_column("size", 1, 99, 4)
 
     # Provably empty: no row can hold a size above the file's maximum.
-    assert not Expression("size > 1000").bind(schema).statistics_prune(bounds)
+    assert not Term("size > 1000").bind(schema).statistics_prune(bounds)
     # Not provable either way: the range overlaps, so the file is read.
-    assert Expression("size > 50").bind(schema).statistics_prune(bounds)
+    assert Term("size > 50").bind(schema).statistics_prune(bounds)
     # A null test the count settles outright.
-    assert Expression("size is null").bind(schema).statistics_prune(bounds)
+    assert Term("size is null").bind(schema).statistics_prune(bounds)
     ```
 
 ## Partition split
 
-`partition_split` separates the conjuncts that read only partition columns and holder attributes from the residual over rows.
+`partition_split` separates the conjuncts that read only partition columns and holder attributes from the residual over rows, each half a `Filter`.
 
-Shown in Rust; Python's `Bound.partition_split()` answers the same two expressions as a tuple, and JavaScript has no split.
+Shown in Rust; Python's `Bound.partition_split()` answers the same two filters as a tuple, and JavaScript's `partitionSplit()` as `{ answerable, remaining }`.
 
 ```rust
-use yggdryl::{Expression, Field};
+use yggdryl::expression::Term;
+use yggdryl::Field;
 
 let mut schema: Field = "trades:struct<year:int32,price:decimal(9,2)>".parse()?;
 let mut children = schema.fields().to_vec();
 children[0].set_partition(true);
 schema.set_dtype(yggdryl::DataType::from_fields(children)?)?;
 
-let bound = "year = 2024 and price > 100".parse::<Expression>()?.bind(&schema)?;
+let bound = "year = 2024 and price > 100".parse::<Term>()?.bind(&schema)?;
 let residual = bound.partition_split();
 assert_eq!(residual.answerable().to_string(), "year = int32 '2024'");
 assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100.00'");
@@ -173,7 +174,7 @@ assert!(!residual.is_complete());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_free_attribute_answers_without_a_single_stat expression::tests::a_row_predicate_rules_no_holder_out expression::tests::every_selector_declares_a_cost_and_a_type expression::tests::pruning_never_loses_a_row expression::tests::pruning_actually_prunes_what_it_can_prove expression::tests::a_partition_path_is_the_tightest_statistic_there_is expression::tests::a_split_conjoins_back_to_what_it_split
+    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_free_attribute_answers_without_a_single_stat expression::tests::a_row_predicate_rules_no_holder_out expression::tests::every_attribute_declares_a_cost_and_a_type expression::tests::pruning_never_loses_a_row expression::tests::pruning_actually_prunes_what_it_can_prove expression::tests::a_partition_path_is_the_tightest_statistic_there_is expression::tests::a_split_conjoins_back_to_what_it_split
     cargo bench -p yggdryl --bench expression -- expression_prune
     ```
 

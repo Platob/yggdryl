@@ -77,6 +77,34 @@ work is planned once against the resolved type, and the per-item path moves
 bytes under it. The interior is fast because the edge was exact, never because
 it skipped a check.
 
+**Best effort, then a named refusal.** An expression, a cast, a read or a write
+does what the text asks whenever one reading does it, and refuses only what no
+reading can, naming the column, the value, or the section it could not honour.
+A constant coerces into the operand it meets, operands with no common type
+compare as text, a declared column casts safely unless it is `not null`, a
+missing store reads as the empty stream, a `select *` or a same-type cast costs
+nothing. Never a technical error a caller has to work around by hand when the
+intent is unambiguous; never a silent widening when it is not. DuckDB's SQL and
+Python expression API are the reference for what a spelling should mean when
+engines differ - its column, star-exclude, alias, cast, `isin`, `between`,
+`isnull`, `when`/`otherwise` and ordering vocabulary keep their names here - and
+the crate's own abstractions (`DataType`, `Field`, `Scalar`, `Selector`,
+`Filter`, `Plan`, `Holder`) carry the behaviour; nothing is a second engine.
+
+**Defaults in the signature, absence skipped.** Every optional argument
+carries its default in the signature. An argument that was not given is `...`
+in Python and `undefined` in JavaScript and is skipped; `None` and `null` are
+values, and clear. Every record read and write takes `options` and, beside it,
+the option properties by name - `**properties` in Python, a plain object in
+JavaScript - each set on a copy of the options by its own setter, so
+`read_arrow_reader(rowheader=...)` and `readArrowReader({ rowheader })` read
+with the handle's own options carrying that property. The inputs of the
+expression layer cross as one `Scalar` (`Scalar.from_`, `Scalar.from`; a
+columnar object lands as `Scalar::Arrow` with its buffers) and the core reads
+them with `from_scalar` - a binding never re-implements a parser, and the
+function set stays closed: `namespace.name(...)` is a registered user function,
+typed and called through its signature field, opaque to pushdown.
+
 **Compressed output.** Only what changes a decision, proves a result, names a
 blocker, or enables the next action; each fact once; outcome first (state,
 evidence, next action). No greeting, praise, throat-clearing, repeated context,
@@ -127,7 +155,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `text/` | JSON/YAML/TOML over `Scalar` |
 | `uri/` | URI, URL, URN |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
-| `expression/` | expression grammar, bound statements, `FieldPath`/`FieldSegment` |
+| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`transform:function`/`transform:sources`, else `transform:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
 | `hashing/` | byte/value and time-coupled digests; private structural/display stable-hash adapters; shared dispatch vocabulary remains in `digest.rs` |
 | `hashing/xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
 | `hashing/txhash/` | raw Unix-count/digest pairs, clock-unit conversion, configured hashing and Arrow coupling; not RFC UUIDs |
@@ -207,7 +235,7 @@ would put a test fixture in the crate's API.
 | checked value | `DataType::scalar(v)`, `Field::scalar(v)` | the only way a caller value becomes a stored one |
 | narrowed view | `TypedField<K>`, `TypedFieldRef<'_, K>` | a marker validating the variant; parameters stay in the wrapped `Field` |
 | field-borrowing value | `FieldScalar<'_>`, `FieldRecord<'_>` | a borrowed `Field` and the value its `scalar` contract answered; `UncheckedFieldScalar<'_>` is the pairing before that proof |
-| Arrow value | `arrow::ArrowValue` | one scalar, array, batch, or stream under one `Field` |
+| Arrow value | `arrow::ArrowScalar` | one scalar, array, batch, or stream under one `Field` |
 
 Equivalences a change keeps lossless, in both directions:
 
@@ -218,7 +246,7 @@ Equivalences a change keeps lossless, in both directions:
   dictionaries, extension identity.
 - rows <-> ordered `Scalar::Sequence`; named input <-> sorted `Scalar::Record`
   (`from_record`), canonicalized against the Struct `Field`;
-  `ArrowValue::from_rows` and `into_scalar` cross the same way.
+  `ArrowScalar::from_rows` and `into_scalar` cross the same way.
 - a datatype's canonical default is `default_value`/`is_default_value` - the
   value a declaring protocol's `apply_arrow_batch` leaves alone.
 - widths: a family constructor picks the physical width once, and shared logic
@@ -231,8 +259,8 @@ Equivalences a change keeps lossless, in both directions:
 | --- | --- | --- |
 | bytes | `IOBase`: `pread`/`pwrite`, `read_all_bytes`, `read_range_bytes`, `append_bytes`, `pstream_bytes`, `read_digest` | positional bytes, digests, bounded streams |
 | position | `IOCursor`, `Cursor<H>` | the only place a cursor is retained |
-| records | `IOMedia`: `read_arrow_field`, `read_arrow_reader`, `read_arrow_value`, `write_arrow_*`, `*_records`, `row_size`, `column_size`, `record_options` | schema, rows, batches, statistics |
-| values | `yggdryl::arrow`: `scalar_array`, `scalar_value`, `ArrowValue`, `cast_reader`, `combined` | the `Scalar`/Arrow boundary |
+| records | `IOMedia`: `read_arrow_field`, `read_arrow_reader`, `read_arrow`, `write_arrow_*`, `*_records`, `row_size`, `column_size`, `record_options` | schema, rows, batches, statistics |
+| values | `yggdryl::arrow`: `scalar_array`, `scalar_value`, `ArrowScalar`, `cast_reader`, `combined` | the `Scalar`/Arrow boundary |
 
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
@@ -248,15 +276,15 @@ never to a wrapper's own buffer.
 
 - Whole value: `read_scalar(field)` / `write_scalar(value)`. Schema alone:
   `read_arrow_field(options)`.
-- Rows out: `read_arrow_reader(options)` streams; `read_arrow_value(field)`
-  answers an `ArrowValue` carrying its own shape.
+- Rows out: `read_arrow_reader(options)` streams; `read_arrow(field)`
+  answers an `ArrowScalar` carrying its own shape.
 - Rows in, by shape, each with `overwrite`/`append`/`merge` plus a generic
   `write_*` taking an `IOMode`: `*_arrow_reader` (the streamed primitive),
-  `*_arrow_batch` (one batch), `*_records` (a row iterator), `write_arrow_value`.
+  `*_arrow_batch` (one batch), `*_records` (a row iterator), `write_arrow`.
 - Navigate a row `Scalar` with `get`, `get_key_str`, `path`, `iter`,
   `sequence_iter`, `record_iter`, and update with `with_field`/`without_field`;
   a row is an ordered sequence, never a map.
-- `ArrowValue` reports `shape`, `is_scalar`/`is_array`/`is_batch`/`is_stream`,
+- `ArrowScalar` reports `shape`, `is_scalar`/`is_array`/`is_batch`/`is_stream`,
   `row_size`, `column_size`; borrows with `as_array`/`as_batch`; consumes with
   `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
 - `FieldRecord<'_>` is the row view under one Struct `Field`, borrowing
@@ -605,18 +633,28 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   `write_arrow_reader(reader, options, mode)`. Table, record-batch, row-record
   entry points infer or wrap input into that pipeline; nothing streamable takes or
   returns `Vec` batches.
-- `options.field` is the only declared datatype/schema, rebuilt on every ask from
-  three stored parts - `name` (default `types::DEFAULT_ROOT_NAME`), `dtype`
-  (undeclared = inferred), `metadata` (empty unless declared) - so each mutates
-  alone and equal declarations have one stored form. Reads project in the
+- Record options are the split sections of one `Plan`, stored apart for
+  isolation: `name` (default `types::DEFAULT_ROOT_NAME`) and the declared
+  `field` (undeclared = inferred; the plan's `create` section), `filter` (its
+  `where`), `select` (its `select`), `merge_by` (its `upsert by`), and the row
+  bounds (its `limit`). `plan()` composes them and `set_plan` splits a plan, a
+  clause, a field or text back into them; no `dtype`, `metadata`, name lists or
+  partition pairs of their own. A media reads what it needs from the sections
+  through pre-implemented methods - `partition_pairs` for pruning,
+  `apply_columns` for projection pushdown, `apply_arrow_expressions` for the
+  filter-then-select seam - never from a second property. Reads project in the
   encoding and cast each batch; writes cast once, pop the field before delegating
   to overwrite, never materialize the stream.
 - `options.commit_row_size`: unset = one commit; `N` publishes every `N` rows plus the
   remainder, holding at most one bounded commit; the first overwrite commit
   overwrites, later ones append; failure leaves published prefixes visible.
 - Overwrite replaces rows under the stored field; append retains stored rows;
-  merge needs non-empty keys, updates matches, appends misses, and streams
-  incoming batches - no positional upsert. `row_size`/`column_size` are lazy
+  merge needs a non-empty `merge_by` selector, updates matches, appends misses,
+  and streams incoming batches - no positional upsert. A `Plan` names the same
+  four writes as `insert overwrite`, `insert into`, `upsert into ... by (...)`
+  and `delete from ... where`, with every common alias read and one canonical
+  spelling printed; `Plan::execute` reads a source through `Holder::from_url`
+  with the read sections pushed into the media. `row_size`/`column_size` are lazy
   cached metadata from cheap media answers, never a full read.
 - Encoding comes from `MediaType` through `RecordOptions`, with no format
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core

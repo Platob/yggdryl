@@ -1,7 +1,7 @@
 //! Where an expression's output type is decided - and the only such place.
 //!
-//! [`Expression::field`] answers, recursively, the [`Field`] an expression
-//! produces against a schema. Every other part of the module asks it rather
+//! [`Term::field`] answers, recursively, the [`Field`] a term produces
+//! against a schema. Every other part of the module asks it rather
 //! than deciding for itself: [`bind`](super::bind) uses it to know what to
 //! coerce a literal into, the scalar evaluator uses it to know how to compare
 //! two values, and the vectorized evaluator uses it to know what array to
@@ -28,7 +28,8 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Expression, FieldSegment, Function, Literal, Operator, Safety};
+use super::path::FieldSegment;
+use super::{Function, Literal, Operator, Safety, Term, named};
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, TimeUnit};
 
 /// The widest exact decimal this crate builds by promotion.
@@ -37,19 +38,19 @@ const DECIMAL_LIMIT: u8 = 38;
 /// The fewest fractional places an exact quotient keeps.
 const MIN_QUOTIENT_SCALE: i8 = 6;
 
-impl Expression {
-    /// The [`Field`] this expression produces against a struct root schema.
+impl Term {
+    /// The [`Field`] this term produces against a struct root schema.
     ///
     /// # Errors
     ///
     /// Returns an error naming the column, the function, or the two datatypes
-    /// when the expression cannot be typed against this schema.
+    /// when the term cannot be typed against this schema.
     pub fn field(&self, schema: &Field) -> Result<Field> {
         self.check_budget()?;
         resolve(self, schema)
     }
 
-    /// Return whether this expression answers a boolean against a schema.
+    /// Return whether this term answers a boolean against a schema.
     ///
     /// # Errors
     ///
@@ -62,11 +63,6 @@ impl Expression {
     }
 }
 
-/// Name one output field after the text that produced it.
-fn named(expression: &Expression, dtype: DataType, nullable: bool) -> Field {
-    Field::new(SmolStr::new(expression.to_string()), dtype, nullable)
-}
-
 fn typing_error(reason: impl Into<SmolStr>) -> Error {
     Error::InvalidRecord {
         path: SmolStr::new_static("$"),
@@ -75,32 +71,40 @@ fn typing_error(reason: impl Into<SmolStr>) -> Error {
 }
 
 #[allow(clippy::too_many_lines)]
-fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
+fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
     match expression {
-        Expression::Literal(held) => Ok(named(
+        Term::Literal(held) => Ok(named(
             expression,
             held.dtype().clone(),
             held.value().is_null(),
         )),
-        Expression::Column(name) => schema
-            .get_field_by_path(name)
-            .cloned()
-            .ok_or_else(|| unknown_column(name, schema)),
-        Expression::Path(base, steps) => {
-            let mut field = resolve(base, schema)?;
-            for step in steps.iter() {
-                field = step_field(&field, step)?;
+        Term::Path(steps) => {
+            let (first, rest) = steps.split_first().ok_or_else(|| {
+                typing_error("expected a path to start at a column, got the row itself")
+            })?;
+            let FieldSegment::Field(name) = first else {
+                return Err(typing_error(format_smolstr!(
+                    "expected a path to start at a column, got the step {first}"
+                )));
+            };
+            let mut field = column_field(name, schema)?;
+            for step in rest {
+                field = step.apply_field(&field)?;
             }
-            Ok(field.with_name(SmolStr::new(expression.to_string())))
+            Ok(if rest.is_empty() {
+                field
+            } else {
+                field.with_name(SmolStr::new(expression.to_string()))
+            })
         }
-        Expression::Attribute(selector) => Ok(selector.field()),
+        Term::Attribute(attribute) => Ok(attribute.field()),
         // A parameter has no type until it is supplied. `bind` substitutes
         // every one before typing, so a parameter reaching here means the
         // caller asked for a type an unbound expression does not have.
-        Expression::Parameter(name) => Err(typing_error(format_smolstr!(
+        Term::Parameter(name) => Err(typing_error(format_smolstr!(
             "expected parameter :{name} to be supplied before typing"
         ))),
-        Expression::And(operands) | Expression::Or(operands) => {
+        Term::And(operands) | Term::Or(operands) => {
             let mut nullable = false;
             for operand in operands.iter() {
                 let field = resolve(operand, schema)?;
@@ -109,12 +113,12 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             }
             Ok(named(expression, DataType::Boolean, nullable))
         }
-        Expression::Not(inner) => {
+        Term::Not(inner) => {
             let field = resolve(inner, schema)?;
             require_boolean(&field, expression)?;
             Ok(named(expression, DataType::Boolean, field.is_nullable()))
         }
-        Expression::Compare(left, comparison, right) => {
+        Term::Compare(left, comparison, right) => {
             let left = resolve(left, schema)?;
             let right = resolve(right, schema)?;
             common_type(left.dtype(), right.dtype()).ok_or_else(|| {
@@ -131,7 +135,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 !comparison.is_two_valued() && (left.is_nullable() || right.is_nullable());
             Ok(named(expression, DataType::Boolean, nullable))
         }
-        Expression::In(value, list) => {
+        Term::In(value, list) => {
             let value = resolve(value, schema)?;
             let mut nullable = value.is_nullable();
             for item in list.iter() {
@@ -147,7 +151,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             }
             Ok(named(expression, DataType::Boolean, nullable))
         }
-        Expression::Between(value, low, high) => {
+        Term::Between(value, low, high) => {
             let value = resolve(value, schema)?;
             let low = resolve(low, schema)?;
             let high = resolve(high, schema)?;
@@ -166,11 +170,11 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 value.is_nullable() || low.is_nullable() || high.is_nullable(),
             ))
         }
-        Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+        Term::IsNull(inner) | Term::IsNotNull(inner) => {
             resolve(inner, schema)?;
             Ok(named(expression, DataType::Boolean, false))
         }
-        Expression::Like { value, pattern, .. } | Expression::Glob(value, pattern) => {
+        Term::Like { value, pattern, .. } | Term::Glob(value, pattern) => {
             let value = resolve(value, schema)?;
             let pattern = resolve(pattern, schema)?;
             for side in [&value, &pattern] {
@@ -187,7 +191,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 value.is_nullable() || pattern.is_nullable(),
             ))
         }
-        Expression::Arithmetic(left, operator, right) => {
+        Term::Arithmetic(left, operator, right) => {
             let left = resolve(left, schema)?;
             let right = resolve(right, schema)?;
             let dtype =
@@ -204,7 +208,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             let nullable = left.is_nullable() || right.is_nullable();
             Ok(named(expression, dtype, nullable))
         }
-        Expression::Negate(inner) => {
+        Term::Negate(inner) => {
             let field = resolve(inner, schema)?;
             if !is_signed_numeric(field.dtype()) {
                 return Err(typing_error(format_smolstr!(
@@ -218,10 +222,10 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 field.is_nullable(),
             ))
         }
-        Expression::Function(function, arguments) => {
-            function_field(expression, *function, arguments, schema)
+        Term::Function(function, arguments) => {
+            function_field(expression, function, arguments, schema)
         }
-        Expression::Cast(inner, dtype, safety) => {
+        Term::Cast(inner, dtype, safety) => {
             let field = resolve(inner, schema)?;
             Ok(named(
                 expression,
@@ -229,7 +233,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 field.is_nullable() || matches!(safety, Safety::Safe),
             ))
         }
-        Expression::Case {
+        Term::Case {
             branches,
             otherwise,
         } => {
@@ -253,14 +257,14 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
                 nullable,
             ))
         }
-        Expression::Struct(children) => {
+        Term::Struct(children) => {
             let mut fields = Vec::with_capacity(children.len());
             for (name, value) in children.iter() {
                 fields.push(resolve(value, schema)?.with_name(name.clone()));
             }
             Ok(named(expression, DataType::from_fields(fields)?, false))
         }
-        Expression::List(items) => {
+        Term::List(items) => {
             let mut unified: Option<DataType> = None;
             let mut nullable = false;
             for item in items.iter() {
@@ -271,7 +275,7 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
             let item = Field::new("item", unified.unwrap_or(DataType::Null), nullable);
             Ok(named(expression, DataType::list(item), false))
         }
-        Expression::Map(entries) => {
+        Term::Map(entries) => {
             let mut keys: Option<DataType> = None;
             let mut values: Option<DataType> = None;
             let mut nullable = false;
@@ -294,6 +298,44 @@ fn resolve(expression: &Expression, schema: &Field) -> Result<Field> {
     }
 }
 
+/// The top-level column a name resolves to, ASCII case-insensitively.
+///
+/// A schema that declares two columns differing only in case makes an
+/// unquoted reference genuinely ambiguous, and first-match-wins is the one
+/// resolution rule nobody can debug. Both names are reported.
+pub(crate) fn column_index(name: &str, schema: &Field) -> Result<usize> {
+    let matches: Vec<usize> = schema
+        .fields()
+        .iter()
+        .enumerate()
+        .filter(|(_, field)| field.name().eq_ignore_ascii_case(name))
+        .map(|(index, _)| index)
+        .collect();
+    if matches.len() > 1 {
+        let names: Vec<&str> = matches
+            .iter()
+            .filter_map(|index| schema.get_field(*index).map(Field::name))
+            .collect();
+        return Err(typing_error(format_smolstr!(
+            "expected {name:?} to name one column, got {}; quote the one meant",
+            names.join(" and ")
+        )));
+    }
+    matches
+        .first()
+        .copied()
+        .ok_or_else(|| unknown_column(name, schema))
+}
+
+/// The top-level column a name resolves to, as a field.
+pub(crate) fn column_field(name: &str, schema: &Field) -> Result<Field> {
+    let index = column_index(name, schema)?;
+    schema
+        .get_field(index)
+        .cloned()
+        .ok_or_else(|| unknown_column(name, schema))
+}
+
 /// The error a column the schema does not declare produces.
 ///
 /// One sentence, shared with [`bind`](super::bind), so the same typo reads the
@@ -311,7 +353,7 @@ pub(crate) fn unknown_column(name: &str, schema: &Field) -> Error {
     ))
 }
 
-fn require_boolean(field: &Field, expression: &Expression) -> Result<()> {
+fn require_boolean(field: &Field, expression: &Term) -> Result<()> {
     if matches!(field.dtype(), DataType::Boolean | DataType::Null) {
         return Ok(());
     }
@@ -322,7 +364,7 @@ fn require_boolean(field: &Field, expression: &Expression) -> Result<()> {
 }
 
 /// Unify one more branch type into the type a multi-branch node produces.
-fn unify(held: Option<&DataType>, next: &DataType, expression: &Expression) -> Result<DataType> {
+fn unify(held: Option<&DataType>, next: &DataType, expression: &Term) -> Result<DataType> {
     let Some(held) = held else {
         return Ok(next.clone());
     };
@@ -331,94 +373,6 @@ fn unify(held: Option<&DataType>, next: &DataType, expression: &Expression) -> R
             "expected every branch of {expression} to share a type, got {held} and {next}"
         ))
     })
-}
-
-/// Step one path segment through a field's datatype.
-pub(crate) fn step_field(field: &Field, segment: &FieldSegment) -> Result<Field> {
-    let dtype = unwrap_dictionary(field.dtype());
-    match segment {
-        FieldSegment::Field(name) => match dtype {
-            DataType::Struct(fields) => fields
-                .as_fields()
-                .iter()
-                .find(|child| child.name().eq_ignore_ascii_case(name))
-                .cloned()
-                // A struct child reached through a path is nullable even when
-                // the child is declared required, because the parent may be
-                // null and then the whole path is.
-                .map(|child| child.with_nullable(true))
-                .ok_or_else(|| {
-                    typing_error(format_smolstr!(
-                        "expected a child of {}, got {name:?}",
-                        field.dtype()
-                    ))
-                }),
-            DataType::Map(map) => Ok(map_value_field(map)?.with_nullable(true)),
-            other => Err(typing_error(format_smolstr!(
-                "expected a struct or a map to reach .{name} through, got {other}"
-            ))),
-        },
-        FieldSegment::Index(_) => match dtype {
-            DataType::List(item)
-            | DataType::ListView(item)
-            | DataType::FixedSizeList(item, _)
-            | DataType::LargeList(item)
-            | DataType::LargeListView(item) => Ok(item.as_ref().clone().with_nullable(true)),
-            other => Err(typing_error(format_smolstr!(
-                "expected a list to index into, got {other}"
-            ))),
-        },
-        FieldSegment::Key(key) => match dtype {
-            DataType::Map(map) => {
-                let keys = map_key_field(map)?;
-                common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
-                    typing_error(format_smolstr!(
-                        "expected a key comparable with {}, got {}",
-                        keys.dtype(),
-                        key.dtype()
-                    ))
-                })?;
-                Ok(map_value_field(map)?.with_nullable(true))
-            }
-            DataType::Struct(fields) => {
-                let Some(name) = key.value().as_str() else {
-                    return Err(typing_error(format_smolstr!(
-                        "expected a text key to reach a struct child, got {}",
-                        key.dtype()
-                    )));
-                };
-                fields
-                    .as_fields()
-                    .iter()
-                    .find(|child| child.name().eq_ignore_ascii_case(name))
-                    .cloned()
-                    .map(|child| child.with_nullable(true))
-                    .ok_or_else(|| {
-                        typing_error(format_smolstr!(
-                            "expected a child of {}, got {name:?}",
-                            field.dtype()
-                        ))
-                    })
-            }
-            other => Err(typing_error(format_smolstr!(
-                "expected a map or a struct to key into, got {other}"
-            ))),
-        },
-    }
-}
-
-fn map_key_field(map: &crate::MapType) -> Result<Field> {
-    map.entries()
-        .get_field(0)
-        .cloned()
-        .ok_or_else(|| typing_error("expected a map whose entries carry a key field"))
-}
-
-fn map_value_field(map: &crate::MapType) -> Result<Field> {
-    map.entries()
-        .get_field(1)
-        .cloned()
-        .ok_or_else(|| typing_error("expected a map whose entries carry a value field"))
 }
 
 /// Look through a dictionary to the type it encodes.
@@ -655,11 +609,25 @@ fn exact_parts(dtype: &DataType) -> Option<(u8, i8)> {
 
 /// The output field of one function call.
 fn function_field(
-    expression: &Expression,
-    function: Function,
-    arguments: &[Expression],
+    expression: &Term,
+    function: &Function,
+    arguments: &[Term],
     schema: &Field,
 ) -> Result<Field> {
+    // A user function is typed by its registered signature, and refused by
+    // name when nothing is registered under it.
+    if let Function::User(reference) = function {
+        let registered = super::user::lookup_function(reference)
+            .map_err(|error| typing_error(format_smolstr!("{error}")))?;
+        let mut fields = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            fields.push(resolve(argument, schema)?);
+        }
+        return registered
+            .signature()
+            .output_field(&fields, expression)
+            .map_err(|error| typing_error(format_smolstr!("{error}")));
+    }
     let (least, most) = function.arity();
     if arguments.len() < least || arguments.len() > most {
         return Err(typing_error(format_smolstr!(
@@ -729,6 +697,7 @@ fn function_field(
             DataType::Int32
         }
         Function::Truncate => first.clone(),
+        Function::User(_) => unreachable!("a user function returned above"),
         Function::Coalesce | Function::IfNull => {
             let mut unified: Option<DataType> = None;
             for field in &fields {
@@ -756,14 +725,37 @@ fn function_field(
             let key = fields
                 .get(1)
                 .ok_or_else(|| typing_error("expected a key for get"))?;
-            let segment = match key.dtype() {
-                dtype if is_integer(dtype) => FieldSegment::Index(0),
-                _ => FieldSegment::Key(
-                    Literal::new(key.dtype().clone(), Scalar::Null)
-                        .map_err(|error| typing_error(format_smolstr!("{error}")))?,
-                ),
+            // A constant key names the child it reaches, which is what typing
+            // a struct child needs; a computed key can only say its type.
+            let segment = match arguments.get(1).and_then(Term::as_literal) {
+                Some(literal) if !literal.is_null() => match literal.value().as_i64() {
+                    Some(index) if literal.value().as_str().is_none() => FieldSegment::Index(index),
+                    _ => FieldSegment::Key(literal.clone()),
+                },
+                _ => match key.dtype() {
+                    dtype if is_integer(dtype) => FieldSegment::Index(0),
+                    _ => FieldSegment::Key(
+                        Literal::new(key.dtype().clone(), Scalar::Null)
+                            .map_err(|error| typing_error(format_smolstr!("{error}")))?,
+                    ),
+                },
             };
-            return Ok(step_field(&fields[0], &segment)?
+            return Ok(segment
+                .apply_field(&fields[0])?
+                .with_name(SmolStr::new(expression.to_string()))
+                .with_nullable(true));
+        }
+        Function::Slice => {
+            for bound in fields.iter().skip(1) {
+                if !is_integer(bound.dtype()) && !matches!(bound.dtype(), DataType::Null) {
+                    return Err(typing_error(format_smolstr!(
+                        "expected a whole position to slice at, got {}",
+                        bound.dtype()
+                    )));
+                }
+            }
+            return Ok(FieldSegment::range(None, None)
+                .apply_field(&fields[0])?
                 .with_name(SmolStr::new(expression.to_string()))
                 .with_nullable(true));
         }

@@ -8,7 +8,7 @@
 | --- | --- |
 | Owns | `ipc::read_field`, `ipc::read_batch_reader`, `ipc::overwrite_arrow_reader`, `Ipc<H>`, `IpcOptions` |
 | Handle surface | `overwrite_*`, `append_*`, keyed `merge_*`, `read_arrow_reader`, `read_arrow_field` from [`IOMedia`](../../holder/iobase/records.md) |
-| Merge | `merge_by_names` supplies identity only; the method name carries intent, never the key |
+| Merge | `merge_by` supplies identity only; the method name carries intent, never the key |
 | Schema | self-describing; `dtype` set skips the handle; root name defaults to `DEFAULT_ROOT_NAME` (`"row"`) |
 | Pushdown | `field`, a non-null struct root naming a subset, projects at decode; keeps stored order and types, never casts |
 | Coding | the content coding the name declares (`.gz`, `.zst`); `level` is the only compression setting |
@@ -260,7 +260,7 @@ The encoding applies the content coding the name declares on write and strips it
 
 ## Options
 
-IPC adds no setting of its own. `IpcOptions` holds the shared record settings as public fields - `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, and `filter_partitions` - and converts into [`RecordOptions`](../options.md#use), whose page demonstrates the settings each binding carries (`batch_byte_size` is Rust only). The `ipc::*` functions handle only the encoding seam; the [`IOMedia`](../../holder/iobase/records.md) path adds casting, re-chunking, selection, limits, partition filters, commit cadence, and write intent.
+IPC adds no setting of its own. `IpcOptions` holds the shared record settings as public fields - `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, and `level` - and converts into [`RecordOptions`](../options.md#use), whose page demonstrates the settings each binding carries (`batch_byte_size` is Rust only). The `ipc::*` functions handle only the encoding seam; the [`IOMedia`](../../holder/iobase/records.md) path adds casting, re-chunking, the plan's `where` and `select`, limits, commit cadence, and write intent.
 
 ## Absence
 

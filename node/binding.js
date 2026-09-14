@@ -170,7 +170,6 @@ const {
   AvroBlocks: NativeAvroBlocks,
   AvroSchema: NativeAvroSchema,
   DataType: NativeDataType,
-  Expression: NativeExpression,
   Field: NativeField,
   MediaType: NativeMediaType,
   MimeType: NativeMimeType,
@@ -182,7 +181,7 @@ const {
   Version,
 } = binding
 
-// The pivot keeps its private conversion handles inside this loader: `fromJs`
+// The pivot keeps its private conversion handles inside this loader: `from`
 // needs the intrinsic tables assembled below and `asJs` needs the transport
 // reader, and neither of those belongs on the published class.
 const nativeScalarFromJs = NativeScalar._fromJsNative.bind(NativeScalar)
@@ -204,12 +203,13 @@ const nativeScalarArithmetic = Object.freeze({
   negate: NativeScalar.prototype._negateNative,
   absolute: NativeScalar.prototype._absoluteNative,
 })
-const nativeExpressionArithmetic = Object.freeze({
-  add: NativeExpression.prototype._addNative,
-  subtract: NativeExpression.prototype._subtractNative,
-  multiply: NativeExpression.prototype._multiplyNative,
-  divide: NativeExpression.prototype._divideNative,
-  remainder: NativeExpression.prototype._remainderNative,
+const NativeTerm = binding.Term
+const nativeTermArithmetic = Object.freeze({
+  add: NativeTerm.prototype._addNative,
+  subtract: NativeTerm.prototype._subtractNative,
+  multiply: NativeTerm.prototype._multiplyNative,
+  divide: NativeTerm.prototype._divideNative,
+  remainder: NativeTerm.prototype._remainderNative,
 })
 const nativeScalarFromArrowScalar =
   NativeScalar._fromArrowScalarIpcNative.bind(NativeScalar)
@@ -274,7 +274,7 @@ for (const nativeName of [
   '_divideNative',
   '_remainderNative',
 ]) {
-  delete NativeExpression.prototype[nativeName]
+  delete NativeTerm.prototype[nativeName]
 }
 delete NativeScalar.prototype._intoArrowScalarIpcNative
 delete NativeScalar.prototype._intoArrowArrayIpcNative
@@ -419,7 +419,13 @@ delete binding.JsAvroSchema
 // Structural expression values already produce canonical JSON in Rust. The
 // language hook returns the parsed document so JSON.stringify composes them
 // naturally instead of double-encoding that native JSON string.
-for (const StructuralValue of [binding.Expression, binding.Statement]) {
+for (const StructuralValue of [
+  binding.Term,
+  binding.Filter,
+  binding.Selector,
+  binding.Plan,
+  binding.Expression,
+]) {
   Object.defineProperty(StructuralValue.prototype, 'toJSON', {
     configurable: true,
     value() {
@@ -823,7 +829,7 @@ function fillingArguments(options) {
   return [
     placeholders === undefined || placeholders === null
       ? null
-      : Scalar.fromJs(placeholders),
+      : Scalar.from(placeholders),
     environment === undefined ? null : environment,
   ]
 }
@@ -1094,9 +1100,9 @@ function fromTransport(value) {
   return result
 }
 
-// The conversion pair every codec entry point crosses. `dumps` is `fromJs`
+// The conversion pair every codec entry point crosses. `dumps` is `from`
 // with bytes on the far side and `loads` is `asJs`; they run this exact code.
-Object.defineProperty(Scalar, 'fromJs', {
+Object.defineProperty(Scalar, 'from', {
   value(value, options) {
     options = checkedOptions(options)
     return nativeScalarFromJs(
@@ -1110,19 +1116,19 @@ Object.defineProperty(Scalar, 'fromJs', {
 })
 
 Object.defineProperties(
-  NativeExpression.prototype,
+  NativeTerm.prototype,
   Object.fromEntries(
-    Object.entries(nativeExpressionArithmetic).map(([name, native]) => [
+    Object.entries(nativeTermArithmetic).map(([name, native]) => [
       name,
       {
         configurable: true,
         value(other) {
           const operand =
-            other instanceof NativeExpression
+            other instanceof NativeTerm
               ? other
               : typeof other === 'string'
-                ? new NativeExpression(other)
-                : NativeExpression.literal(Scalar.fromJs(other))
+                ? new NativeTerm(other)
+                : NativeTerm.literal(Scalar.from(other))
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1143,7 +1149,7 @@ Object.defineProperty(Scalar.prototype, 'asJs', {
 Object.defineProperty(PartitionSpec, 'fromJSON', {
   configurable: true,
   value(value) {
-    return nativePartitionSpecFromValue(Scalar.fromJs(value))
+    return nativePartitionSpecFromValue(Scalar.from(value))
   },
 })
 
@@ -1207,7 +1213,7 @@ Object.defineProperties(Scalar.prototype, {
             return Reflect.apply(native, this, [])
           }
           const operand =
-            other instanceof NativeScalar ? other : Scalar.fromJs(other)
+            other instanceof NativeScalar ? other : Scalar.from(other)
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1233,7 +1239,7 @@ Object.defineProperties(Scalar.prototype, {
       if (this.kind === 'record' && typeof key !== 'string') {
         throw new TypeError('record field names must be strings')
       }
-      const nativeKey = key instanceof Scalar ? key : Scalar.fromJs(key)
+      const nativeKey = key instanceof Scalar ? key : Scalar.from(key)
       return Reflect.apply(nativeScalarGet, this, [nativeKey])
     },
   },
@@ -1249,8 +1255,8 @@ Object.defineProperties(Scalar.prototype, {
       if (this.kind === 'record' && typeof key !== 'string') {
         throw new TypeError('record field names must be strings')
       }
-      const nativeKey = key instanceof Scalar ? key : Scalar.fromJs(key)
-      const nativeItem = value instanceof Scalar ? value : Scalar.fromJs(value)
+      const nativeKey = key instanceof Scalar ? key : Scalar.from(key)
+      const nativeItem = value instanceof Scalar ? value : Scalar.from(value)
       return Reflect.apply(nativeScalarSet, this, [nativeKey, nativeItem])
     },
   },
@@ -1260,7 +1266,7 @@ Object.defineProperties(Scalar.prototype, {
       if (typeof key !== 'string') {
         throw new TypeError('remove requires a string key')
       }
-      return Reflect.apply(nativeScalarRemove, this, [Scalar.fromJs(key)])
+      return Reflect.apply(nativeScalarRemove, this, [Scalar.from(key)])
     },
   },
   intoArrowScalar: {
@@ -1375,7 +1381,7 @@ function avroSchemaFrom(value, clone = false, options) {
   ) {
     return nativeAvroSchemaFromBytes(toBytes(value), limits)
   }
-  return nativeAvroSchemaFromValue(Scalar.fromJs(value), limits)
+  return nativeAvroSchemaFromValue(Scalar.from(value), limits)
 }
 
 function avroBytes(value, label) {
@@ -1412,7 +1418,7 @@ Object.defineProperties(AvroSchema.prototype, {
   intoSingleObject: {
     value(value) {
       return Reflect.apply(nativeAvroIntoSingleObject, this, [
-        Scalar.fromJs(value),
+        Scalar.from(value),
       ])
     },
   },
@@ -1514,7 +1520,7 @@ function avroLoads(input, options) {
     // Scalar shape. A primitive schema is therefore `"long"`, not the JSON
     // source text `'"long"'`; keep it on the native-Scalar path so those two
     // intentionally distinct inputs cannot be confused.
-    schema: nativeAvroSchemaFromValue(Scalar.fromJs(decoded.schema)),
+    schema: nativeAvroSchemaFromValue(Scalar.from(decoded.schema)),
   }
 }
 
@@ -1530,7 +1536,7 @@ function avroBlocks(input, options) {
 function avroDumps(rows, schema, metadata) {
   return nativeAvroDumps(
     avroSchemaFrom(schema),
-    Scalar.fromJs(avroRows(rows)),
+    Scalar.from(avroRows(rows)),
     avroMetadata(metadata),
   )
 }
@@ -2637,7 +2643,7 @@ Object.defineProperties(IOBase.prototype, {
     value(value) {
       return nativeIOWriteValue.call(
         this,
-        value instanceof Scalar ? value : Scalar.fromJs(value),
+        value instanceof Scalar ? value : Scalar.from(value),
       )
     },
   },
@@ -2788,27 +2794,6 @@ const { BatchReader, RecordOptions, TextOptions } = binding
 // a fourth public write abstraction.
 delete binding.ArrowWriteSession
 
-// The declared root metadata takes the same inputs `Field.prototype.update`
-// does: entries, a plain object, a Map, or a Field's own pairs.
-for (const Options of [RecordOptions, TextOptions]) {
-  const recordMetadata = Object.getOwnPropertyDescriptor(
-    Options.prototype,
-    'metadata',
-  )
-  Object.defineProperty(Options.prototype, 'metadata', {
-    configurable: true,
-    enumerable: recordMetadata.enumerable,
-    get: recordMetadata.get,
-    set(values) {
-      recordMetadata.set.call(this, normalizeMetadata(values))
-    },
-  })
-  const recordWithMetadata = Options.prototype.withMetadata
-  Options.prototype.withMetadata = function withMetadata(values) {
-    return recordWithMetadata.call(this, normalizeMetadata(values))
-  }
-}
-
 // The record surface is one shape in both directions: a read returns a
 // `BatchReader` and a write consumes one. This installs the Apache Arrow JS
 // translation and the argument coercion around it.
@@ -2824,114 +2809,197 @@ const { icebergBatchReader, intoField } = installRecords({
 })
 binding.intoField = intoField
 
-// A Statement binds once in the native core. JavaScript widens only the two
+// A clause binds once in the native core. JavaScript widens only the two
 // inputs it can spell more conveniently: any FieldLike becomes one native
 // Field, and an ordinary parameter object becomes the shared nested Record.
-// Batch execution then keeps the caller's Arrow holder: readers stay lazy,
-// tables remain tables, and a one-batch sort remains a RecordBatch operation.
-const NativeStatement = binding.Statement
-const BoundStatement = binding.BoundStatement
-const nativeStatementBind = NativeStatement.prototype._bindNative
-const nativeStatementProjectReader =
-  BoundStatement.prototype._projectArrowReaderNative
-const nativeStatementProjectBatch =
-  BoundStatement.prototype._projectArrowBatchNative
-const nativeStatementSortBatch = BoundStatement.prototype._sortArrowBatchNative
-for (const [owner, name, method] of [
-  [NativeStatement.prototype, '_bindNative', nativeStatementBind],
-  [
-    BoundStatement.prototype,
-    '_projectArrowReaderNative',
-    nativeStatementProjectReader,
-  ],
-  [
-    BoundStatement.prototype,
-    '_projectArrowBatchNative',
-    nativeStatementProjectBatch,
-  ],
-  [BoundStatement.prototype, '_sortArrowBatchNative', nativeStatementSortBatch],
-]) {
+// Batch application then keeps the caller's Arrow holder: readers stay lazy,
+// tables remain tables, and a one-batch call remains a RecordBatch operation.
+const NativeFilter = binding.Filter
+const NativeSelector = binding.Selector
+const NativeBoundSelector = binding.BoundSelector
+const NativeBound = binding.Bound
+const NativePlan = binding.Plan
+const NativeExpression = binding.Expression
+const NativeRecords = binding.Records
+
+function takePrivate(owner, name) {
+  const method = owner.prototype[name]
   if (typeof method !== 'function') {
-    throw new TypeError(
-      `native binding is missing ${owner.constructor.name}.${name}`,
-    )
+    throw new TypeError(`native binding is missing ${owner.name}.${name}`)
   }
-  delete owner[name]
+  delete owner.prototype[name]
+  return method
 }
 
-Object.defineProperty(NativeStatement.prototype, 'bind', {
-  configurable: true,
-  value(schema, parameters) {
-    const supplied =
-      parameters === undefined || parameters === null
-        ? undefined
-        : parameters instanceof Scalar
-          ? parameters
-          : Scalar.fromJs(parameters)
-    return nativeStatementBind.call(this, intoField(schema), supplied)
-  },
-})
+function suppliedParameters(parameters) {
+  return parameters === undefined || parameters === null
+    ? undefined
+    : parameters instanceof Scalar
+      ? parameters
+      : Scalar.from(parameters)
+}
 
-Object.defineProperties(BoundStatement.prototype, {
-  projectArrowReader: {
+for (const Clause of [NativeTerm, NativeFilter, NativeSelector]) {
+  const nativeBind = takePrivate(Clause, '_bindNative')
+  Object.defineProperty(Clause.prototype, 'bind', {
     configurable: true,
-    value(reader) {
-      if (!(reader instanceof BatchReader)) {
-        throw new TypeError(
-          'reader must be a native BatchReader; use projectArrow for inferred Arrow input',
+    value(schema, parameters) {
+      return nativeBind.call(this, intoField(schema), suppliedParameters(parameters))
+    },
+  })
+}
+
+// One Arrow surface per applier: `applyArrowReader` keeps a native reader
+// lazy, `applyArrowBatch` and `applyArrowTable` keep the Apache Arrow JS
+// holder they were given, and `applyArrow` infers which of the three it has.
+function defineArrowAppliers(Owner, label, { records = true } = {}) {
+  const nativeReader = takePrivate(Owner, '_applyArrowReaderNative')
+  const nativeBatch = takePrivate(Owner, '_applyArrowBatchNative')
+  const properties = {
+    applyArrowReader: {
+      configurable: true,
+      value(reader) {
+        if (!(reader instanceof BatchReader)) {
+          throw new TypeError(
+            'reader must be a native BatchReader; use applyArrow for inferred Arrow input',
+          )
+        }
+        return nativeReader.call(this, reader)
+      },
+    },
+    applyArrowBatch: {
+      configurable: true,
+      value(batch) {
+        const reader = BatchReader.fromIpc(
+          arrowBatchIntoIPC(batch, `${label}.applyArrowBatch input`),
         )
-      }
-      return nativeStatementProjectReader.call(this, reader)
+        return arrowBatchFromIPC(
+          nativeBatch.call(this, reader).intoIpc(),
+          `${label}.applyArrowBatch output`,
+        )
+      },
     },
-  },
-  projectArrowBatch: {
-    configurable: true,
-    value(batch) {
-      const reader = BatchReader.fromIpc(
-        arrowBatchIntoIPC(batch, 'BoundStatement.projectArrowBatch input'),
-      )
-      return arrowBatchFromIPC(
-        nativeStatementProjectBatch.call(this, reader).intoIpc(),
-        'BoundStatement.projectArrowBatch output',
-      )
+    applyArrowTable: {
+      configurable: true,
+      value(table) {
+        const reader = BatchReader.fromIpc(
+          arrowTableIntoIPC(table, `${label}.applyArrowTable input`),
+        )
+        return nativeReader.call(this, reader).intoTable()
+      },
     },
-  },
-  projectArrowTable: {
-    configurable: true,
-    value(table) {
-      const reader = BatchReader.fromIpc(
-        arrowTableIntoIPC(table, 'BoundStatement.projectArrowTable input'),
-      )
-      return nativeStatementProjectReader.call(this, reader).intoTable()
+    applyArrow: {
+      configurable: true,
+      value(value) {
+        if (value instanceof BatchReader) return this.applyArrowReader(value)
+        const runtime = arrow()
+        if (runtime.isArrowRecordBatch(value)) return this.applyArrowBatch(value)
+        if (runtime.isArrowTable(value)) return this.applyArrowTable(value)
+        throw new TypeError(
+          'value must be a native BatchReader, Apache Arrow RecordBatch, or Apache Arrow Table',
+        )
+      },
     },
-  },
-  projectArrow: {
-    configurable: true,
-    value(value) {
-      if (value instanceof BatchReader) return this.projectArrowReader(value)
-      const runtime = arrow()
-      if (runtime.isArrowRecordBatch(value)) {
-        return this.projectArrowBatch(value)
-      }
-      if (runtime.isArrowTable(value)) return this.projectArrowTable(value)
-      throw new TypeError(
-        'value must be a native BatchReader, Apache Arrow RecordBatch, or Apache Arrow Table',
-      )
+  }
+  if (records) {
+    const nativeRecords = takePrivate(Owner, '_applyRecordsNative')
+    properties.applyRecords = {
+      configurable: true,
+      value(rows, schema) {
+        const held = rows instanceof Scalar ? rows : Scalar.from(Array.from(rows))
+        const root = schema === undefined || schema === null ? undefined : intoField(schema)
+        return nativeRecords.call(this, held, root)
+      },
+    }
+  }
+  Object.defineProperties(Owner.prototype, properties)
+}
+
+defineArrowAppliers(NativeFilter, 'Filter')
+defineArrowAppliers(NativeSelector, 'Selector')
+defineArrowAppliers(NativeBoundSelector, 'BoundSelector', { records: false })
+defineArrowAppliers(NativePlan, 'Plan')
+defineArrowAppliers(NativeExpression, 'Expression')
+
+// A bound predicate filters the same three holders.
+{
+  const nativeReader = takePrivate(NativeBound, '_filterArrowReaderNative')
+  const nativeBatch = takePrivate(NativeBound, '_filterArrowBatchNative')
+  Object.defineProperties(NativeBound.prototype, {
+    filterArrowReader: {
+      configurable: true,
+      value(reader) {
+        if (!(reader instanceof BatchReader)) {
+          throw new TypeError(
+            'reader must be a native BatchReader; use filterArrow for inferred Arrow input',
+          )
+        }
+        return nativeReader.call(this, reader)
+      },
     },
-  },
-  sortArrowBatch: {
-    configurable: true,
-    value(batch) {
-      const reader = BatchReader.fromIpc(
-        arrowBatchIntoIPC(batch, 'BoundStatement.sortArrowBatch input'),
-      )
-      return arrowBatchFromIPC(
-        nativeStatementSortBatch.call(this, reader).intoIpc(),
-        'BoundStatement.sortArrowBatch output',
-      )
+    filterArrowBatch: {
+      configurable: true,
+      value(batch) {
+        const reader = BatchReader.fromIpc(
+          arrowBatchIntoIPC(batch, 'Bound.filterArrowBatch input'),
+        )
+        return arrowBatchFromIPC(
+          nativeBatch.call(this, reader).intoIpc(),
+          'Bound.filterArrowBatch output',
+        )
+      },
     },
-  },
-})
+    filterArrowTable: {
+      configurable: true,
+      value(table) {
+        const reader = BatchReader.fromIpc(
+          arrowTableIntoIPC(table, 'Bound.filterArrowTable input'),
+        )
+        return nativeReader.call(this, reader).intoTable()
+      },
+    },
+    filterArrow: {
+      configurable: true,
+      value(value) {
+        if (value instanceof BatchReader) return this.filterArrowReader(value)
+        const runtime = arrow()
+        if (runtime.isArrowRecordBatch(value)) return this.filterArrowBatch(value)
+        if (runtime.isArrowTable(value)) return this.filterArrowTable(value)
+        throw new TypeError(
+          'value must be a native BatchReader, Apache Arrow RecordBatch, or Apache Arrow Table',
+        )
+      },
+    },
+  })
+}
+
+// Records stream one native row at a time and iterate as JavaScript does.
+{
+  const nativeNext = takePrivate(NativeRecords, '_nextNative')
+  Object.defineProperties(NativeRecords.prototype, {
+    next: {
+      configurable: true,
+      value() {
+        const row = nativeNext.call(this)
+        return row === null || row === undefined
+          ? { done: true, value: undefined }
+          : { done: false, value: row }
+      },
+    },
+    [Symbol.iterator]: {
+      configurable: true,
+      value() {
+        return this
+      },
+    },
+    collect: {
+      configurable: true,
+      value() {
+        return Array.from(this)
+      },
+    },
+  })
+}
 
 // Parquet's DTOs cross through the shared Scalar transport, never through a
 // second JavaScript metadata model.
@@ -3080,11 +3148,11 @@ const iceberg = Object.freeze({
   assignFieldIds: binding.icebergAssignFieldIdsNative,
   canPromote: binding.icebergCanPromoteNative,
   // A metadata document is whatever the JSON facade decoded, so a plain object
-  // crosses through the one conversion `Scalar.fromJs` already owns.
+  // crosses through the one conversion `Scalar.from` already owns.
   schemaFromJson(name, document) {
     return nativeSchemaFromJson(
       name,
-      document instanceof Scalar ? document : Scalar.fromJs(document),
+      document instanceof Scalar ? document : Scalar.from(document),
     )
   },
   schemaIntoJson: binding.icebergSchemaIntoJsonNative,
@@ -3323,11 +3391,11 @@ for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
 // dictionary, the message it types and the process default are one name rather
 // than four top-level classes.
 //
-// A message value is whatever `Scalar.fromJs` reads, and that conversion lives
+// A message value is whatever `Scalar.from` reads, and that conversion lives
 // in this loader, so the public constructor is the one widening gate and hands
 // the native class the value it already understands.
 const NativeFixMsg = binding.FixMsg
-const asScalar = (value) => (value instanceof Scalar ? value : Scalar.fromJs(value))
+const asScalar = (value) => (value instanceof Scalar ? value : Scalar.from(value))
 function FixMsg(field, value, registry) {
   if (new.target === undefined) {
     throw new TypeError(
@@ -3343,7 +3411,7 @@ Object.defineProperty(FixMsg.prototype, 'constructor', {
   writable: true,
 })
 // A row read back and a value written cross the same gate the constructor
-// does: whatever `Scalar.fromJs` reads, and the core alone types it.
+// does: whatever `Scalar.from` reads, and the core alone types it.
 FixMsg.fromRow = function fromRow(schema, row, registry) {
   return NativeFixMsg.fromRow(schema, asScalar(row), registry)
 }
@@ -3359,7 +3427,7 @@ function Plugin(mbean, attributes) {
   }
   return new NativePlugin(
     mbean,
-    attributes instanceof Scalar ? attributes : Scalar.fromJs(attributes),
+    attributes instanceof Scalar ? attributes : Scalar.from(attributes),
   )
 }
 Plugin.prototype = NativePlugin.prototype
@@ -3373,7 +3441,7 @@ Plugin.fromJsonBytes = function fromJsonBytes(body) {
 }
 Plugin.fromJsonScalar = function fromJsonScalar(document) {
   return NativePlugin.fromJsonScalar(
-    document instanceof Scalar ? document : Scalar.fromJs(document),
+    document instanceof Scalar ? document : Scalar.from(document),
   )
 }
 Plugin.fromFixmsg = function fromFixmsg(message) {

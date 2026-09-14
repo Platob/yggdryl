@@ -107,8 +107,8 @@ impl Field {
     /// Apply this schema's metadata-declared columns to one Arrow batch.
     ///
     /// A [`Field`] states more about a batch than its shape: a
-    /// [`partition:`](crate::PartitionField::apply_arrow_batch) declaration
-    /// says a column is *derived* from another, and a
+    /// [`transform:`](crate::TransformField::apply_arrow_batch) declaration
+    /// says a column is *derived* from others, and a
     /// [`digest:`](crate::DigestField::apply_arrow_batch) role says a column
     /// *holds* the row's hash. Each protocol owns how it answers, including
     /// how far down it walks, and this is the one entry point that asks them
@@ -187,11 +187,11 @@ impl Field {
         &self,
         batch: &arrow_array::RecordBatch,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         options: crate::ArrowCastOptions,
     ) -> Result<arrow_array::RecordBatch> {
-        AppliedPlan::compile(self, batch.schema(), digest, partition, cast, options)?.apply(batch)
+        AppliedPlan::compile(self, batch.schema(), digest, transform, cast, options)?.apply(batch)
     }
 
     /// Answer the schema [`Self::apply_arrow_batch`] produces, with no rows.
@@ -240,11 +240,11 @@ impl Field {
         &self,
         schema: arrow_schema::SchemaRef,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         options: crate::ArrowCastOptions,
     ) -> Result<arrow_schema::SchemaRef> {
-        Ok(AppliedPlan::compile(self, schema, digest, partition, cast, options)?.schema)
+        Ok(AppliedPlan::compile(self, schema, digest, transform, cast, options)?.schema)
     }
 
     /// Wrap a reader so every batch it yields has this schema applied.
@@ -267,14 +267,14 @@ impl Field {
         &self,
         inner: crate::arrow::BatchReader,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         options: crate::ArrowCastOptions,
     ) -> Result<crate::arrow::BatchReader> {
-        if !digest && !partition && !cast {
+        if !digest && !transform && !cast {
             return Ok(inner);
         }
-        let plan = AppliedPlan::compile(self, inner.schema(), digest, partition, cast, options)?;
+        let plan = AppliedPlan::compile(self, inner.schema(), digest, transform, cast, options)?;
         Ok(Box::new(AppliedReader { inner, plan }))
     }
 
@@ -743,7 +743,7 @@ impl TryFrom<ArrowField> for Field {
 pub(crate) struct AppliedPlan {
     root: Field,
     cast: Option<crate::types::cast::ArrowCastPlan>,
-    partition: bool,
+    transform: bool,
     digest: bool,
     /// The strict re-check over the finished batch, compiled only when a
     /// protocol was allowed to leave a hole for itself, or when no cast ran.
@@ -759,7 +759,7 @@ impl AppliedPlan {
         root: &Field,
         source: arrow_schema::SchemaRef,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         options: crate::ArrowCastOptions,
     ) -> Result<Self> {
@@ -772,10 +772,10 @@ impl AppliedPlan {
         // the cast. The question is answered on the declaration, so it reads
         // no row - but only after `require_struct`, because a root the
         // protocols cannot run on at all is refused rather than skipped.
-        if partition || digest {
+        if transform || digest {
             root.require_struct()?;
         }
-        let partition = partition && root.as_partition().declares_derivation();
+        let transform = transform && root.as_transform().declares_derivation();
         let digest = digest && root.as_digest().declares_holder();
 
         let cast = if cast {
@@ -783,7 +783,7 @@ impl AppliedPlan {
                 &source,
                 root,
                 options,
-                Deferred { partition, digest },
+                Deferred { transform, digest },
             )?)
         } else {
             None
@@ -792,11 +792,11 @@ impl AppliedPlan {
         // an empty batch: nothing is decoded, and a declaration that cannot be
         // satisfied fails here rather than on the first batch.
         let empty = arrow_array::RecordBatch::new_empty(source);
-        let applied = Self::stages(root, cast.as_ref(), partition, digest, &empty)?;
+        let applied = Self::stages(root, cast.as_ref(), transform, digest, &empty)?;
         let schema = applied.schema();
         // A cast with no protocol behind it already refused every hole, so the
         // re-check exists only where something could still have left one.
-        let verify = if options.nullability().is_strict() && (partition || digest || cast.is_none())
+        let verify = if options.nullability().is_strict() && (transform || digest || cast.is_none())
         {
             Some(ArrowCastPlan::compile(schema.as_ref(), root, options)?)
         } else {
@@ -805,19 +805,19 @@ impl AppliedPlan {
         Ok(Self {
             root: root.clone(),
             cast,
-            partition,
+            transform,
             digest,
             verify,
             schema,
         })
     }
 
-    /// Run cast, then partition, then digest - the order their answers depend
+    /// Run cast, then transform, then digest - the order their answers depend
     /// on, and the order this crate publishes.
     fn stages(
         root: &Field,
         cast: Option<&crate::types::cast::ArrowCastPlan>,
-        partition: bool,
+        transform: bool,
         digest: bool,
         batch: &arrow_array::RecordBatch,
     ) -> Result<arrow_array::RecordBatch> {
@@ -825,8 +825,8 @@ impl AppliedPlan {
             Some(plan) => plan.apply(batch.clone())?,
             None => batch.clone(),
         };
-        if partition {
-            applied = root.as_partition().apply_arrow_batch(&applied)?;
+        if transform {
+            applied = root.as_transform().apply_arrow_batch(&applied)?;
         }
         if digest {
             applied = root.as_digest().apply_arrow_batch(&applied)?;
@@ -842,7 +842,7 @@ impl AppliedPlan {
         let applied = Self::stages(
             &self.root,
             self.cast.as_ref(),
-            self.partition,
+            self.transform,
             self.digest,
             batch,
         )?;

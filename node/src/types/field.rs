@@ -1360,6 +1360,12 @@ impl JsField {
         JsProtocolField::new(reference, CoreScheme::PARTITION)
     }
 
+    /// The live generic transform-field property view.
+    #[napi(getter)]
+    pub fn transform(&self, reference: Reference<JsField>) -> JsProtocolField {
+        JsProtocolField::new(reference, CoreScheme::TRANSFORM)
+    }
+
     /// The live Amazon S3 property view.
     #[napi(getter)]
     pub fn s3(&self, reference: Reference<JsField>) -> JsProtocolField {

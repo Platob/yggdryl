@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::{DataTypeId, DataTypeKind, Error, Field, Result, TimeUnit, UnionMode};
+use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, UnionMode};
 
 use super::decimal::validate_decimal;
 use super::geospatial::GeospatialParameters;
@@ -336,6 +336,42 @@ impl DataType {
     }
 
     /// Builds a nullable [`Field`] of this datatype.
+    /// Convert one value into this datatype, exactly.
+    ///
+    /// This is the one scalar conversion of the crate - the same one a
+    /// `cast(...)` in an expression runs and a literal is coerced with - so
+    /// a value converts one way wherever it is asked to. Text is read the
+    /// way the datatype reads it, a number widens or narrows when it fits,
+    /// and anything that would lose a digit, a character or a second is
+    /// refused rather than rounded.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(DataType::Int32.cast_scalar(&Scalar::from("42"))?, Scalar::from(42_i32));
+    /// assert_eq!(DataType::utf8().cast_scalar(&Scalar::from(42_i64))?, Scalar::from("42"));
+    /// assert!(DataType::Int8.cast_scalar(&Scalar::from(1_000_i64)).is_err());
+    /// assert!(DataType::Int8.try_cast_scalar(&Scalar::from(1_000_i64)).is_null());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value cannot be held by this datatype
+    /// without loss.
+    pub fn cast_scalar(&self, value: &Scalar) -> Result<Scalar> {
+        crate::expression::convert_scalar(self, value, true)
+    }
+
+    /// Convert one value into this datatype, or answer null when it cannot
+    /// be: the best-effort reading of a cast.
+    #[must_use]
+    pub fn try_cast_scalar(&self, value: &Scalar) -> Scalar {
+        crate::expression::convert_scalar(self, value, false).unwrap_or(Scalar::Null)
+    }
+
     pub fn nullable_field(self, name: impl Into<SmolStr>) -> Field {
         self.named_field(name, true)
     }

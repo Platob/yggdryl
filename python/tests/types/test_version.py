@@ -102,7 +102,7 @@ def test_order_hash_copy_pickle_and_readonly_parts():
     assert value != "5.0.300"
     assert hash(Version(5)) == hash(Version.from_str("5.0.0"))
     assert {Version(5), Version.from_str("5.0")} == {Version(5)}
-    assert value.stable_hash() == Scalar.from_py(value).stable_hash()
+    assert value.stable_hash() == Scalar.from_(value).stable_hash()
     for clone in (copy.copy(value), copy.deepcopy(value), pickle.loads(pickle.dumps(value))):
         assert type(clone) is Version
         assert clone == value
@@ -118,7 +118,7 @@ def test_order_hash_copy_pickle_and_readonly_parts():
 def test_scalar_fields_and_annotations_preserve_native_version_identity():
     value = Version(5, 0, 300)
     field = types.version("release", nullable=False)
-    native = Scalar.from_py(value)
+    native = Scalar.from_(value)
     assert native.id == "version"
     assert type(native.as_py()) is Version
     assert native.as_py() == value
@@ -141,7 +141,7 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     assert Field.from_arrow(arrow_field) == field
     array = field.cast_arrow_array(pa.array(["005.00.00300", "5.0", "255.255.65535"]))
     assert array.to_pylist() == ["5.0.300", "5", "255.255.65535"]
-    scalar = Scalar.from_py(Version(5, 0, 300))
+    scalar = Scalar.from_(Version(5, 0, 300))
     assert scalar.into_arrow_scalar(field).as_py() == "5.0.300"
     batch = pa.record_batch([array], schema=pa.schema([arrow_field]))
     native = Scalar.from_arrow_batch(batch)
@@ -180,7 +180,7 @@ def test_version_annotations_and_generated_dataclasses_keep_the_native_type():
     assert decoded == value
     assert type(decoded.version) is Version
     assert json.dumps(decoded) == b'{"version":"5.0.300"}'
-    inferred = Scalar.from_py([value]).into_struct_field()
+    inferred = Scalar.from_([value]).into_struct_field()
     assert inferred.dtype["version"].dtype == DataType("version")
     arrow_root = root.into_arrow_schema()
     assert Field.from_arrow_schema(arrow_root).dtype["version"].dtype == DataType("version")

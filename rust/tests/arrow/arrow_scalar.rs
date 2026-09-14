@@ -5,7 +5,8 @@ use arrow_array::RecordBatch;
 use yggdryl::arrow::{batch_reader, batch_to_value};
 use yggdryl::holder::Buffer;
 use yggdryl::{
-    ArrowCastOptions, ArrowShape, ArrowValue, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url,
+    ArrowCastOptions, ArrowScalar, ArrowShape, DataType, Field, IOBase, IOMedia, IOMode, Scalar,
+    Url,
 };
 
 /// An in-memory handle whose media type is the one its name implies.
@@ -31,8 +32,21 @@ fn quote_rows() -> Vec<Scalar> {
     ]
 }
 
-fn quotes() -> ArrowValue {
-    ArrowValue::from_rows(&quote_root(), &Scalar::from_sequence(quote_rows()))
+/// The one section a structured document reads off record options: the
+/// declared field, carried by any record encoding's options.
+fn declaring(field: &Field) -> yggdryl::media::RecordOptions {
+    use yggdryl::media::IORecordOptions;
+
+    let mut options = yggdryl::media::RecordOptions::for_media_type(&yggdryl::MediaType::new(
+        yggdryl::MimeType::ARROW_STREAM,
+    ))
+    .expect("the IPC encoding is built in");
+    options.set_field(field.clone());
+    options
+}
+
+fn quotes() -> ArrowScalar {
+    ArrowScalar::from_rows(&quote_root(), &Scalar::from_sequence(quote_rows()))
         .expect("the rows materialize")
 }
 
@@ -41,17 +55,17 @@ fn quote_batch() -> RecordBatch {
 }
 
 /// A reader over `count` copies of the quotes.
-fn quote_stream(count: usize) -> ArrowValue {
+fn quote_stream(count: usize) -> ArrowScalar {
     let schema = quote_root()
         .into_arrow_schema()
         .expect("the root projects to Arrow");
     let batches: Vec<RecordBatch> = (0..count).map(|_| quote_batch()).collect();
-    ArrowValue::from_reader(batch_reader(schema, batches)).expect("the reader names its root")
+    ArrowScalar::from_reader(batch_reader(schema, batches)).expect("the reader names its root")
 }
 
 /// One value of each shape, labelled, with the root its rows land under and
 /// the rows they spell once laid out.
-fn shaped_values() -> Vec<(ArrowShape, ArrowValue, Field, Scalar)> {
+fn shaped_values() -> Vec<(ArrowShape, ArrowScalar, Field, Scalar)> {
     let price = DataType::Int64.required_field("price");
     let price_root = root([price.clone()]);
     let priced = |value: i64| Scalar::from_sequence([Scalar::from(value)]);
@@ -59,13 +73,14 @@ fn shaped_values() -> Vec<(ArrowShape, ArrowValue, Field, Scalar)> {
     vec![
         (
             ArrowShape::Scalar,
-            ArrowValue::from_value(&price, &Scalar::from(125_i64)).expect("one value materializes"),
+            ArrowScalar::from_value(&price, &Scalar::from(125_i64))
+                .expect("one value materializes"),
             price_root.clone(),
             Scalar::from_sequence([priced(125)]),
         ),
         (
             ArrowShape::Array,
-            ArrowValue::from_values(
+            ArrowScalar::from_values(
                 &price,
                 &Scalar::from_sequence([Scalar::from(125_i64), Scalar::from(126_i64)]),
             )
@@ -126,14 +141,15 @@ fn nested_rows() -> Vec<Scalar> {
     ]
 }
 
-fn nested() -> ArrowValue {
-    ArrowValue::from_rows(&nested_root(), &Scalar::from_sequence(nested_rows()))
+fn nested() -> ArrowScalar {
+    ArrowScalar::from_rows(&nested_root(), &Scalar::from_sequence(nested_rows()))
         .expect("the rows materialize")
 }
 
 mod structured_text {
     use super::{
-        ArrowShape, Field, IOBase, IOMedia, IOMode, Scalar, handle, quotes, shaped_values,
+        ArrowShape, Field, IOBase, IOMedia, IOMode, Scalar, declaring, handle, quotes,
+        shaped_values,
     };
 
     /// The number of values one of `rows`' rows carries.
@@ -157,11 +173,11 @@ mod structured_text {
                 assert_eq!(value.shape(), shape, "the {shape} fixture");
                 let mut target = handle(&format!("shaped.{format}"));
                 target
-                    .write_arrow_value(value, IOMode::Overwrite)
+                    .write_arrow(value, IOMode::Overwrite, None)
                     .unwrap_or_else(|error| panic!("a {shape} writes to {format}: {error}"));
 
                 let read = target
-                    .read_arrow_value(Some(&root))
+                    .read_arrow(Some(&declaring(&root)))
                     .unwrap_or_else(|error| panic!("a {shape} reads from {format}: {error}"));
                 // A document has no frame to read a prefix of, so the four
                 // shapes converge on the one held batch their rows parse into.
@@ -184,13 +200,13 @@ mod structured_text {
     fn an_append_is_refused_naming_the_mode_a_document_cannot_take() {
         let mut target = handle("quotes.yaml");
         target
-            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .write_arrow(quotes(), IOMode::Overwrite, None)
             .expect("the rows write");
         let published = target.read_all_bytes().expect("the bytes read");
         assert!(!published.is_empty());
 
         let refused = target
-            .write_arrow_value(quotes(), IOMode::Append)
+            .write_arrow(quotes(), IOMode::Append, None)
             .expect_err("a document has no append");
         assert!(refused.to_string().contains("append"), "{refused}");
 
@@ -203,15 +219,13 @@ mod structured_text {
     fn a_document_read_without_a_root_orders_the_columns_the_way_a_record_does() {
         let mut target = handle("quotes.jsonl");
         target
-            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .write_arrow(quotes(), IOMode::Overwrite, None)
             .expect("the rows write");
 
         // Nothing is declared, so the root is what the document proves - and a
         // document names its values rather than ordering them, which is why
         // the inferred columns are sorted and not the declaration's order.
-        let read = target
-            .read_arrow_value(None)
-            .expect("the document proves a root");
+        let read = target.read_arrow(None).expect("the document proves a root");
         let names: Vec<&str> = read
             .dtype()
             .as_fields()
@@ -232,18 +246,18 @@ mod structured_text {
 
 mod record_encodings {
     use super::{
-        ArrowShape, ArrowValue, DataType, IOMedia, IOMode, Scalar, handle, quote_root, quote_rows,
-        quotes, root,
+        ArrowScalar, ArrowShape, DataType, IOMedia, IOMode, Scalar, declaring, handle, quote_root,
+        quote_rows, quotes, root,
     };
 
     /// The rows `name` holds after `quotes()` was written to it.
-    fn stored(name: &str) -> ArrowValue {
+    fn stored(name: &str) -> ArrowScalar {
         let mut target = handle(name);
         target
-            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .write_arrow(quotes(), IOMode::Overwrite, None)
             .unwrap_or_else(|error| panic!("{name} writes: {error}"));
         target
-            .read_arrow_value(None)
+            .read_arrow(None)
             .unwrap_or_else(|error| panic!("{name} reads: {error}"))
     }
 
@@ -279,13 +293,13 @@ mod record_encodings {
     fn an_append_keeps_the_rows_a_record_encoding_already_holds() {
         let mut target = handle("quotes.arrows");
         target
-            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .write_arrow(quotes(), IOMode::Overwrite, None)
             .expect("the rows write");
         target
-            .write_arrow_value(quotes(), IOMode::Append)
+            .write_arrow(quotes(), IOMode::Append, None)
             .expect("the rows append");
 
-        let read = target.read_arrow_value(None).expect("the rows read");
+        let read = target.read_arrow(None).expect("the rows read");
         assert_eq!(
             read.into_scalar().expect("the rows decode"),
             Scalar::from_sequence([quote_rows(), quote_rows()].concat())
@@ -296,7 +310,7 @@ mod record_encodings {
     fn a_declared_root_casts_the_rows_a_record_encoding_stored() {
         let mut target = handle("quotes.arrows");
         target
-            .write_arrow_value(quotes(), IOMode::Overwrite)
+            .write_arrow(quotes(), IOMode::Overwrite, None)
             .expect("the rows write");
 
         let declared = root([
@@ -308,7 +322,7 @@ mod record_encodings {
             .required_field("size"),
         ]);
         let read = target
-            .read_arrow_value(Some(&declared))
+            .read_arrow(Some(&declaring(&declared)))
             .expect("the declared root casts the stored int64 column");
 
         assert_eq!(read.field(), &declared);
@@ -323,16 +337,16 @@ mod record_encodings {
 
     #[test]
     fn an_empty_table_round_trips_and_keeps_the_columns_it_declared() {
-        let empty = ArrowValue::from_rows(&quote_root(), &Scalar::from_sequence([]))
+        let empty = ArrowScalar::from_rows(&quote_root(), &Scalar::from_sequence([]))
             .expect("no rows still materialize");
         assert_eq!(empty.row_size(), Some(0));
 
         let mut target = handle("empty.arrows");
         target
-            .write_arrow_value(empty, IOMode::Overwrite)
+            .write_arrow(empty, IOMode::Overwrite, None)
             .expect("the rows write");
 
-        let read = target.read_arrow_value(None).expect("the rows read");
+        let read = target.read_arrow(None).expect("the rows read");
         // The schema is what an empty table carries, so it is the whole claim.
         assert_eq!(read.field(), &quote_root());
         assert_eq!(read.into_batch().expect("the stream drains").num_rows(), 0);
@@ -345,15 +359,15 @@ mod record_encodings {
                 Scalar::from_sequence([Scalar::from(format!("S{index}")), Scalar::from(index)])
             })
             .collect();
-        let value = ArrowValue::from_rows(&quote_root(), &Scalar::from_sequence(rows.clone()))
+        let value = ArrowScalar::from_rows(&quote_root(), &Scalar::from_sequence(rows.clone()))
             .expect("the rows materialize");
 
         let mut target = handle("wide.arrows");
         target
-            .write_arrow_value(value, IOMode::Overwrite)
+            .write_arrow(value, IOMode::Overwrite, None)
             .expect("the rows write");
 
-        let read = target.read_arrow_value(None).expect("the rows read");
+        let read = target.read_arrow(None).expect("the rows read");
         assert_eq!(
             read.into_scalar().expect("the rows decode"),
             Scalar::from_sequence(rows)
@@ -362,7 +376,7 @@ mod record_encodings {
 }
 
 mod nesting {
-    use super::{IOMedia, IOMode, Scalar, handle, nested, nested_root, nested_rows};
+    use super::{IOMedia, IOMode, Scalar, declaring, handle, nested, nested_root, nested_rows};
 
     #[test]
     fn nested_children_keep_their_values_in_every_encoding_that_carries_them() {
@@ -375,11 +389,11 @@ mod nesting {
         ] {
             let mut target = handle(name);
             target
-                .write_arrow_value(nested(), IOMode::Overwrite)
+                .write_arrow(nested(), IOMode::Overwrite, None)
                 .unwrap_or_else(|error| panic!("{name} writes: {error}"));
 
             let read = target
-                .read_arrow_value(Some(&nested_root()))
+                .read_arrow(Some(&declaring(&nested_root())))
                 .unwrap_or_else(|error| panic!("{name} reads: {error}"));
             assert_eq!(
                 read.into_scalar().expect("the rows decode"),
@@ -393,14 +407,14 @@ mod nesting {
     fn a_record_encoding_names_every_nested_child_it_stored() {
         let mut target = handle("nested.arrows");
         target
-            .write_arrow_value(nested(), IOMode::Overwrite)
+            .write_arrow(nested(), IOMode::Overwrite, None)
             .expect("the rows write");
 
         // Nothing is declared on the read: the struct child, the list item,
         // the nullable column, the decimal, and the temporal all come back
         // named and parameterized by the schema the write stored.
         let read = target
-            .read_arrow_value(None)
+            .read_arrow(None)
             .expect("the stored schema names the columns");
         assert_eq!(read.field(), &nested_root());
     }

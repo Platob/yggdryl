@@ -61,7 +61,7 @@ function main() {
   const date = new Date('2023-11-14T22:13:20Z')
   const short = PAYLOAD.subarray(0, 240)
   const hasher = new TxHasher('xxh3-64', 'us', 7n)
-  const row = Scalar.fromJs([1_234_567, 'XNAS', 150.25, 'AAPL'])
+  const row = Scalar.from([1_234_567, 'XNAS', 150.25, 'AAPL'])
   measure('txh3 240 B (Date instant)', 240, 200_000, () => txhash.txh3(short, date))
   measure('hasher.digest 240 B', 240, 200_000, () => hasher.digest(short, INSTANT))
   measure('hasher.digestScalar (four-column row)', 1, 100_000, () => hasher.digestScalar(row, INSTANT))

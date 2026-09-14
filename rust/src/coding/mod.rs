@@ -264,8 +264,7 @@ impl<H: IOBase> Coding<H> {
             )?,
             None => reader,
         };
-        let reader = crate::media::partition::filtered_reader(reader, options)?;
-        options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
+        options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
     }
 }
 

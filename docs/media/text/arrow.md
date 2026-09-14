@@ -95,7 +95,7 @@ called.
 
 | column | also found as |
 | --- | --- |
-| `url` | `source`, `uri`, `path`, `file`, `location` |
+| `sourceurl` | `url`, `source`, `uri`, `path`, `file`, `location` |
 | `rownum` | `row_number`, `rownumber`, `line_number`, `lineno`, `row` |
 | `mtime` | `timestamp`, `time`, `ts`, `written_at`, `event_time` |
 | `mimetype` | `bodytype`, `content_type`, `contenttype`, `media_type` |

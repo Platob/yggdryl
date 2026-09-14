@@ -16,7 +16,7 @@
 //! - a **data file** carries per-column bounds and null counts, so a file whose
 //!   statistics cannot hold the value is skipped without being opened.
 //!
-//! A filter is an [`Expression`], the same one that filters a lake through
+//! A filter is a [`Filter`], the same one that filters a lake through
 //! [`IOBase::children_matching`](crate::IOBase::children_matching) and a
 //! batch through [`Bound::filter`](crate::expression::Bound::filter). Each
 //! level of the chain answers it from the statistics it carries, expressed as
@@ -37,10 +37,10 @@ use super::manifest::{DataFile, EntryStatus, ManifestContent, ManifestEntry, Man
 use super::partition::{PartitionSpec, Transform};
 use super::value::single_to_value;
 use crate::arrow::BatchReader;
-use crate::expression::{Bound, Bounds, Selector};
+use crate::expression::{Attribute, Bound, Bounds};
 use crate::holder::Holder;
 use crate::types::cast::{ArrowCast, ArrowCastOptions};
-use crate::{DataType, Error, Expression, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Filter, Result, Scalar};
 
 /// One data file a scan reads, with everything a rewrite of it would need.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -145,8 +145,12 @@ impl ScanPlan {
 ///
 /// Returns an error when the predicate names a column the schema does not
 /// declare, or two operands that share no type.
-pub(super) fn conjuncts(schema: &Field, filter: &Expression) -> Result<Vec<Bound>> {
+pub(super) fn conjuncts(schema: &Field, filter: &Filter) -> Result<Vec<Bound>> {
+    // The simplified form is what is split: a negated conjunction has already
+    // become the conjuncts it hid, and a run of equalities one membership
+    // test, so every level of the metadata prunes on the smallest shape.
     filter
+        .simplify()
         .conjuncts()
         .iter()
         .map(|conjunct| conjunct.bind(schema))
@@ -204,7 +208,7 @@ pub(super) fn manifest_bounds(
             if low == high {
                 let text = Scalar::from(super::value::scalar_text(low).as_str());
                 bounds = bounds.with_attribute(
-                    Selector::Partition(column.name().into()),
+                    Attribute::Partition(column.name().into()),
                     Some(text.clone()),
                     Some(text),
                     Some(0),
@@ -258,7 +262,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let text = Scalar::from(super::value::scalar_text(&value).as_str());
         bounds = bounds
             .with_attribute(
-                Selector::Partition(column.name().into()),
+                Attribute::Partition(column.name().into()),
                 Some(text.clone()),
                 Some(text),
                 Some(0),
@@ -1048,7 +1052,7 @@ pub(super) fn partition_columns(
 /// A filter may name a column the caller never asked for, and the rows still
 /// have to be tested against it, so the column is read and then dropped by the
 /// final cast rather than left out of the pushdown.
-pub(super) fn read_root(root: &Field, schema: &Field, filter: &Expression) -> Result<Field> {
+pub(super) fn read_root(root: &Field, schema: &Field, filter: &Filter) -> Result<Field> {
     let mut children: Vec<Field> = root.fields().to_vec();
     for name in filter.columns() {
         if children
@@ -1321,7 +1325,7 @@ mod bound_tests {
             upper_bounds: vec![(1, upper)],
             ..DataFile::default()
         };
-        let filter = Expression::column("value").eq(Expression::literal(value));
+        let filter = Filter::new(crate::Term::column("value").eq(crate::Term::literal(value)));
         let conjuncts = conjuncts(&schema, &filter).unwrap();
         file_residual(
             &file_bounds(&file, &PartitionSpec::unpartitioned(), &schema),

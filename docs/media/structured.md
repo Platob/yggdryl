@@ -108,7 +108,7 @@ JSON Lines is collection-valued, JSON and TOML return one value, and YAML can st
 
 ## Arrow rows
 
-A document is not a record encoding: [`RecordOptions`](options.md) names none of these formats, so `read_arrow_reader` and the three write intents refuse the name. `read_arrow_value` and `write_arrow_value` are the one bridge, and the two directions are asymmetric because the formats are.
+A document is not a record encoding: [`RecordOptions`](options.md) names none of these formats, so `read_arrow_reader` and the three write intents refuse the name. `read_arrow` and `write_arrow` are the one bridge, and the two directions are asymmetric because the formats are.
 
 | Direction | JSON, TOML | JSON Lines, YAML |
 | --- | --- | --- |

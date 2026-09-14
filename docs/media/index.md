@@ -47,7 +47,7 @@ Iceberg is a table over a folder rather than one leaf, so both surfaces live on 
 | Surface | Calls | Answers |
 | --- | --- | --- |
 | Scalars | `overwrite_records`, `append_records`, `merge_records`, `read_records`; `read_scalar` and `write_scalar` for a document | native rows: a tuple, a mapping, a dataclass, a plain object, a [`Scalar`](../types/scalar.md) |
-| Arrow | `read_arrow_reader`, `read_arrow_field`, the three `*_arrow_reader` intents; `read_arrow_value` and `write_arrow_value` | an [`arrow::BatchReader`](../arrow/readers.md), one batch at a time |
+| Arrow | `read_arrow_reader`, `read_arrow_field`, the three `*_arrow_reader` intents; `read_arrow` and `write_arrow` | an [`arrow::BatchReader`](../arrow/readers.md), one batch at a time |
 
 Choosing the scheme is the only thing that changes; the calls stay the same.
 

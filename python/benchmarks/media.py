@@ -172,12 +172,12 @@ POLARS_FRAME = _optional_frame("polars")
 ROW_MAPPINGS = TABLE.to_pylist()
 RECORD_BATCH = TABLE.combine_chunks().to_batches(max_chunksize=ROW_COUNT)[0]
 MERGE_OPTIONS = SINK_FILE.record_options()
-MERGE_OPTIONS.merge_by_names = ["id"]
+MERGE_OPTIONS.merge_by = ["id"]
 COMMIT_OPTIONS = SINK_FILE.record_options()
 COMMIT_OPTIONS.commit_row_size = BATCH_SIZE
 COMMIT_MERGE_OPTIONS = SINK_FILE.record_options()
 COMMIT_MERGE_OPTIONS.commit_row_size = BATCH_SIZE
-COMMIT_MERGE_OPTIONS.merge_by_names = ["id"]
+COMMIT_MERGE_OPTIONS.merge_by = ["id"]
 
 
 def _prepare_existing() -> object:
