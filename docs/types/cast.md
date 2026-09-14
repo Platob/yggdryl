@@ -620,7 +620,7 @@ no behavior of its own.
 - Python `cast_arrow_scalar` -> a scalar has no row to repair, so a null entering a non-nullable Field is refused under either policy.
 - Nullable field, `safe` -> the null stays.
 - A scalar wider than the declared type -> accepted when the value fits, then canonicalized into it (`U64` -> `I64`).
-- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../text/index.md) accepts, a duration included, which Arrow reads into none.
+- Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/structured.md) accepts, a duration included, which Arrow reads into none.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
 - Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.

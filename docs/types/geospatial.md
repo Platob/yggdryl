@@ -15,7 +15,7 @@ Variant, geometry, and geography datatypes plus the dependency-free WKB reader b
 
 ## Use
 
-Bare spellings fill the defaults [Parquet](../media/parquet.md) and [Iceberg](../media/iceberg/index.md) v3 share.
+Bare spellings fill the defaults [Parquet](../media/parquet/index.md) and [Iceberg](../media/iceberg/index.md) v3 share.
 
 === "Rust"
 

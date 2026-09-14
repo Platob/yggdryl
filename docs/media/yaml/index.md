@@ -17,6 +17,15 @@ Owns the YAML codec: natural types, exact Fields, documents and streams, formatt
 | Limits | `max_input_bytes` / `maxInputBytes`, depth, decoded nodes, documents; held input and streams alike; omitted means core defaults |
 | Errors | invalid UTF-8, duplicate keys, malformed syntax, exhaustion, Field conversion: YAML plus byte offset |
 
+## Surfaces
+
+| Page | Owns |
+| --- | --- |
+| [Scalars](scalar.md) | `loads` / `dumps`, document streams, block or flow layout, `read_scalar` / `write_scalar` over a handle |
+| [Arrow](arrow.md) | the document stream as Arrow rows, one document per row |
+
+The format-agnostic facade, limits, and `Format` vocabulary are on [Structured documents](../structured.md).
+
 ## Use
 
 Rust returns the shared `Scalar`; Python and JavaScript project it into native objects through the same codec.
@@ -79,7 +88,7 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 
 ## One inferring entry point
 
-`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are YAML's crate-root [inferring entry points](index.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
+`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are YAML's crate-root [inferring entry points](../structured.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Natural values and exact Fields
 
@@ -134,113 +143,22 @@ Schemaless reads keep only syntax-proven types; unknown custom tags read by thei
 
 A Struct Field resolves record names into its child order: a row `Sequence` in Rust, a dictionary or object in Python and JavaScript.
 
-## Documents and streams
-
-Python `load_all` and JavaScript `loadAll` keep readable streams lazy.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::yaml;
-
-    let documents = yaml::from_utf8_all("id: 1\n---\nid: 2\n")?;
-    let mut destination = Vec::new();
-    yaml::into_writer_all(&documents, &mut destination)?;
-
-    assert_eq!(documents.len(), 2);
-    assert_eq!(yaml::from_bytes_all(&destination)?, documents);
-    ```
-
-=== "Python"
-
-    ```python
-    import io
-
-    from yggdryl.text import yaml
-
-    documents = list(yaml.load_all(io.BytesIO(b"id: 1\n---\nid: 2\n")))
-
-    assert documents == [{"id": 1}, {"id": 2}]
-    assert yaml.dumps_all(documents) == b"id: 1\n---\nid: 2\n"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const documents = yaml.loadsAll('id: 1\n---\nid: 2\n')
-    const encoded = yaml.dumpAll(documents)
-
-    assert.deepEqual(documents, [{ id: 1 }, { id: 2 }])
-    assert.deepEqual(yaml.loadsAll(encoded), documents)
-    ```
-
-## Formatting
-
-Layout changes bytes, never meaning; the writer quotes scalars whose plain spelling would change type or structure. Deterministic Record order makes repeated dumps byte-identical.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::Formatting;
-    use yggdryl::{Scalar};
-    use yggdryl::text::yaml;
-
-    let value = Scalar::from_record([("id", Scalar::from(1_i64))])?;
-    let flow =
-        yaml::into_utf8_with_formatting(&value, Formatting::compact())?;
-
-    assert_eq!(flow, "{id: 1}\n");
-    assert_eq!(yaml::from_utf8(&flow)?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.text import yaml
-
-    value = {"child": {"id": 1}}
-    laid_out = yaml.dumps(value, indent=4)
-    flow = yaml.dumps(value, indent=None)
-
-    assert b"\n    id:" in laid_out
-    assert flow.startswith(b"{")
-    assert yaml.loads(laid_out) == yaml.loads(flow) == value
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const value = { child: { id: 1 } }
-    const laidOut = yaml.dumps(value, { indent: 4 })
-    const flow = yaml.dumps(value, { indent: null })
-
-    assert.ok(laidOut.includes(Buffer.from('\n    id:')))
-    assert.equal(flow[0], '{'.charCodeAt(0))
-    assert.deepEqual(yaml.loads(laidOut), yaml.loads(flow))
-    ```
-
 ## Placeholders
 
-Substitution is opt-in, runs after parsing, and touches string values only, never keys or structure; a quoted `"{{ PORT }}"` becomes the variable's own typed value. Quote placeholders, since unquoted braces are YAML flow-mapping syntax: `port: {{ PORT }}` parses as a mapping before substitution runs. The YAML example, syntax, security, and measured overhead live on [Placeholders](placeholders.md).
+Substitution is opt-in, runs after parsing, and touches string values only, never keys or structure; a quoted `"{{ PORT }}"` becomes the variable's own typed value. Quote placeholders, since unquoted braces are YAML flow-mapping syntax: `port: {{ PORT }}` parses as a mapping before substitution runs. The YAML example, syntax, security, and measured overhead live on [Placeholders](../placeholders.md).
 
 ## Edges
 
 - A second document through a one-document form -> error; use the stream forms.
 - Stream failure -> the error names the document start and the failing byte offset; the iterator is then exhausted.
-- Quoted `"AP8="` -> a string unless a [`Field`](../types/field.md) declares it binary.
+- Quoted `"AP8="` -> a string unless a [`Field`](../../types/field.md) declares it binary.
 - Malformed exact value or missing required Struct child -> Field conversion error.
 - Text naming an existing file -> that plain string scalar, not the file's content.
 - Unquoted `port: {{ PORT }}` -> a flow mapping, not a placeholder.
 - Placeholder sources -> the supplied mapping wins; environment lookup is a separate switch, off by default.
 - Placeholder under a Field -> interpretation runs after substitution, so the resolved string becomes the exact typed value.
 - `.yaml.gz` handle -> `from_io` / `into_io` infer YAML and the outer coding; Python takes `PathLike`, JavaScript paths, descriptors, file URLs, streams.
-- Line-record media -> use [Text records](../media/text.md) for Arrow batches with overwrite and append; keyed merge is refused.
+- Line-record media -> use [Text records](../text/index.md) for Arrow batches with overwrite and append; keyed merge is refused.
 
 ## Commands
 

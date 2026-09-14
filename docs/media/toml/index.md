@@ -9,11 +9,20 @@ One natural record document backed by the shared Rust codec.
 | Root | one table as a sorted `Record`; repeated writes are byte-identical |
 | Proves | strings, `i64`, `f64`, booleans, arrays, tables, four date/time forms |
 | Lacks | null, non-string keys, scalar root, streams, private markers |
-| Exact | decimal scale, binary, string temporals, Struct order need a [`Field`](../types/field.md) |
+| Exact | decimal scale, binary, string temporals, Struct order need a [`Field`](../../types/field.md) |
 | Selector | Python `cls=Scalar`, JavaScript `{ scalar: true }`; omitted returns natural mappings |
 | Limits | byte, depth, decoded-node, document; nullable binding options, snake_case in Python and camelCase in JavaScript, core defaults when omitted |
 | Errors | name TOML and a byte offset; `validate_for_write` rejects before a destination opens |
-| `IOBase` | `from_io` / `into_io` infer TOML and outer [coding](../coding/index.md) from the media type |
+| `IOBase` | `from_io` / `into_io` infer TOML and outer [coding](../../coding/index.md) from the media type |
+
+## Surfaces
+
+| Page | Owns |
+| --- | --- |
+| [Scalars](scalar.md) | `loads` / `dumps`, the one string-key record, formatting, `read_scalar` / `write_scalar` over a handle |
+| [Arrow](arrow.md) | the document as Arrow rows: one array of tables under the root's name |
+
+The format-agnostic facade, limits, and `Format` vocabulary are on [Structured documents](../structured.md).
 
 ## Use
 
@@ -82,7 +91,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 
 ## Inferring entry point
 
-`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](index.md#raw-document-codecs), answering a `Record`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
+`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](../structured.md#raw-document-codecs), answering a `Record`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Natural values and exact Fields
 
@@ -157,7 +166,7 @@ A Struct Field yields a row `Sequence` in Rust; bindings restore field names, an
 
 ### Dates and times
 
-Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../types/numeric.md).
+Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../../types/numeric.md).
 
 | value | TOML behavior |
 | --- | --- |
@@ -166,112 +175,9 @@ Every native temporal carries a `TimeUnit` and a non-null [`Timezone`](../types/
 | outside the grammar, or named zone | ISO string or count, never a rewritten offset |
 | bindings | closest lossless native temporal; `Scalar` keeps the rest |
 
-## Documents and streams
-
-Rust `from_utf8`, `from_bytes`, `from_reader` decode one document; `into_utf8`, `into_bytes`, `into_writer` encode one. Binding `loads` takes content, paths, descriptors, file URLs, and readers; `dump` returns bytes or text or writes directly.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::toml;
-
-    let value = toml::from_utf8("id = 1\n")?;
-    let mut destination = Vec::new();
-    toml::into_writer(&value, &mut destination)?;
-
-    assert_eq!(toml::from_bytes(&destination)?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    import io
-
-    from yggdryl.text import toml
-
-    destination = io.BytesIO()
-    toml.dump({"id": 1}, destination)
-
-    assert toml.loads(destination.getvalue()) == {"id": 1}
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { pathToFileURL } = require('node:url')
-    const { toml } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-toml-'))
-    const target = path.join(root, 'value.toml')
-    toml.dump({ id: 1 }, target)
-
-    assert.deepEqual(toml.load(pathToFileURL(target)), { id: 1 })
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-## Formatting
-
-`Formatting::indented(n)` lays array items out vertically; `Formatting::compact()` adds no layout. Objects stay inline tables and only whitespace changes.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::Formatting;
-    use yggdryl::{Scalar};
-    use yggdryl::text::toml;
-
-    let value = Scalar::from_record([(
-        "items",
-        Scalar::from_sequence([
-            Scalar::from(1_i64),
-            Scalar::from(2_i64),
-            Scalar::from(3_i64),
-        ]),
-    )])?;
-    let laid_out =
-        toml::into_utf8_with_formatting(&value, Formatting::indented(2))?;
-    let compact = toml::into_utf8_with_formatting(&value, Formatting::compact())?;
-
-    assert_ne!(laid_out, compact);
-    assert_eq!(toml::from_utf8(&laid_out)?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.text import toml
-
-    value = {"items": [1, 2, 3]}
-    laid_out = toml.dumps(value, indent=2)
-    compact = toml.dumps(value, indent=None)
-
-    assert laid_out != compact
-    assert toml.loads(laid_out) == toml.loads(compact) == value
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { toml } = require('yggdryl')
-
-    const value = { items: [1, 2, 3] }
-    const laidOut = toml.dumps(value, { indent: 2 })
-    const compact = toml.dumps(value, { indent: null })
-
-    assert.notDeepEqual(laidOut, compact)
-    assert.deepEqual(toml.loads(laidOut), toml.loads(compact))
-    ```
-
-Keys are always quoted, so dots, spaces, and syntax-like names round-trip unchanged.
-
 ## Placeholders
 
-Opt-in, inside quoted strings, substituted after parsing and before Field interpretation, at any table depth; each quoted placeholder becomes the variable's own typed value. [Placeholders](placeholders.md) shows a TOML table taking a string and an integer variable.
+Opt-in, inside quoted strings, substituted after parsing and before Field interpretation, at any table depth; each quoted placeholder becomes the variable's own typed value. [Placeholders](../placeholders.md) shows a TOML table taking a string and an integer variable.
 
 ## Edges
 
@@ -281,7 +187,7 @@ Opt-in, inside quoted strings, substituted after parsing and before Field interp
 - Rust `_all` forms -> exactly one value; bindings expose no `loads_all`, `dump_all`, or streams.
 - user key spelled like a private marker -> ordinary data.
 - placeholder mapping -> wins over the environment, never read unless enabled.
-- Arrow batches -> [Text records](../media/text.md), which refuse keyed merge.
+- Arrow batches -> [Text records](../text/index.md), which refuse keyed merge.
 
 ## Commands
 

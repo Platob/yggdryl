@@ -14,7 +14,7 @@ Owns the Parquet footer: field identifiers, `FileStatistics`, geospatial and var
 | Geospatial column | no min/max; `bounding_box` plus sorted ISO `geometry_types`; a geography records no box |
 | Variant column | the metadata/value storage struct under a schema-level `VARIANT` logical type only |
 | Cache | `open` parses the footer once, `close` drops it, any write invalidates it |
-| Bindings | `read_parquet_statistics` and `read_parquet_geospatial_statistics(column)` (camelCase in JavaScript) return native records through [`Scalar`](../types/scalar.md) |
+| Bindings | `read_parquet_statistics` and `read_parquet_geospatial_statistics(column)` (camelCase in JavaScript) return native records through [`Scalar`](../../types/scalar.md) |
 | Rust only | `Parquet<H>` and the `parquet::*` free functions |
 
 ## Use
@@ -124,7 +124,7 @@ Read the footer of a file written with two row groups and one key/value entry.
 
 ## Field identifiers
 
-Projecting the root to Arrow before the write carries the ids into the file; reading reverses it. A downstream [Iceberg](iceberg/schema.md) or Delta layer resolves a renamed or moved column by that id.
+Projecting the root to Arrow before the write carries the ids into the file; reading reverses it. A downstream [Iceberg](../iceberg/schema.md) or Delta layer resolves a renamed or moved column by that id.
 
 === "Rust"
 
@@ -238,7 +238,7 @@ Projecting the root to Arrow before the write carries the ids into the file; rea
 
 ## Geospatial and variant columns
 
-A [geometry or geography](../types/geospatial.md) field writes Parquet's `GEOMETRY` or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB; the defaults `OGC:CRS84` and `spherical` write as absent. `read_parquet_geospatial_statistics(column)` rescans the stored WKB as a projected read, so it answers when the writer recorded nothing.
+A [geometry or geography](../../types/geospatial.md) field writes Parquet's `GEOMETRY` or `GEOGRAPHY` logical type over `BYTE_ARRAY` WKB; the defaults `OGC:CRS84` and `spherical` write as absent. `read_parquet_geospatial_statistics(column)` rescans the stored WKB as a projected read, so it answers when the writer recorded nothing.
 
 === "Rust"
 
@@ -377,7 +377,7 @@ A [geometry or geography](../types/geospatial.md) field writes Parquet's `GEOMET
 
 ## The handle underneath
 
-Rust only. `Parquet<H>` is an [`IOBase`](../holder/index.md) over the handle it owns; it forwards every byte method and keeps `open`, `opened`, and `close`.
+Rust only. `Parquet<H>` is an [`IOBase`](../../holder/index.md) over the handle it owns; it forwards every byte method and keeps `open`, `opened`, and `close`.
 
 ```rust
 use std::sync::Arc;
@@ -427,7 +427,7 @@ assert!(!media.opened());
 
 ### Absent and empty files
 
-[`Media::parquet`](index.md) names the variant at run time and [`record_options`](options.md) derives `ParquetOptions` from the handle's media type.
+[`Media::parquet`](../index.md) names the variant at run time and [`record_options`](../options.md) derives `ParquetOptions` from the handle's media type.
 
 === "Rust"
 

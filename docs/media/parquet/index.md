@@ -1,154 +1,33 @@
 # Apache Parquet
 
-Read and write Apache Parquet over any handle; the footer's contents and the stateful `Parquet<H>` wrapper live on [Parquet footer](parquet-footer.md).
+Read and write Apache Parquet over any handle; the footer's contents and the stateful `Parquet<H>` wrapper live on [Parquet footer](footer.md).
 
 ## Contract
 
 | | |
 | --- | --- |
 | Owns | `yggdryl::media::parquet`: `ParquetOptions` and the free seams `read_arrow_schema`, `read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics`, taking the handle and a `&ParquetOptions` explicitly (Rust only) |
-| Feature flag | `parquet`, non-default; without it the module is absent and [`RecordOptions::for_mime_type`](options.md) reports `application/vnd.apache.parquet` as not implemented |
-| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../holder/iobase/records.md); the media type selects Parquet, `merge_by_names` supplies row-identity keys only |
-| Reads | `read_arrow_reader` returns an [`arrow::BatchReader`](../arrow/readers.md), `read_arrow_field` the canonical non-null struct root [`Field`](../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
+| Feature flag | `parquet`, non-default; without it the module is absent and [`RecordOptions::for_mime_type`](../options.md) reports `application/vnd.apache.parquet` as not implemented |
+| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../../holder/iobase/records.md); the media type selects Parquet, `merge_by_names` supplies row-identity keys only |
+| Reads | `read_arrow_reader` returns an [`arrow::BatchReader`](../../arrow/readers.md), `read_arrow_field` the canonical non-null struct root [`Field`](../../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
 | Pushdown | the read `field` is a `ProjectionMask` over root columns; excluded chunks are never located, decompressed, or decoded |
-| Options | `compression` (default Zstandard, default level), `max_row_group_size` (default 1,048,576), `key_value_metadata`, plus the shared [`IORecordOptions`](options.md) fields; `level` does nothing |
+| Options | `compression` (default Zstandard, default level), `max_row_group_size` (default 1,048,576), `key_value_metadata`, plus the shared [`IORecordOptions`](../options.md) fields; `level` does nothing |
 | Dimensions | `row_size` and `column_size` range-read only the eight-byte tail and footer; whole-file counts that ignore selection, filters, and limits |
 | Cached | `open` retains the inferred wrapper and footer until `close`; writes invalidate it; closed calls read a fresh footer |
 | Coded handles | any coding other than identity is refused on reads and writes before anything is encoded |
 | Bindings | Python exchanges `pyarrow.RecordBatchReader` over the Arrow C Stream; JavaScript exchanges Arrow JS values over copied IPC, one batch per stream; neither builds a table unasked |
 
+## Surfaces
+
+| Page | Owns |
+| --- | --- |
+| [Scalars](scalar.md) | native rows in and out: `overwrite_records`, `append_records`, `merge_records`, `read_records` |
+| [Arrow](arrow.md) | batch readers, the three write intents, the projection mask |
+| [Footer](footer.md) | footer metadata, statistics, field ids, the caching `Parquet<H>` wrapper |
+
 ## Use
 
-The handle's media type selects Parquet, so the three write intents take no format argument.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use yggdryl::media::IORecordOptions;
-    use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, Url};
-
-    let field = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("symbol"),
-    ])?
-    .required_field("row");
-    let schema = field.into_arrow_schema()?;
-    let batch = |ids: Vec<i64>, symbols: Vec<Option<&str>>| {
-        RecordBatch::try_new(
-            Arc::clone(&schema),
-            vec![
-                Arc::new(Int64Array::from(ids)),
-                Arc::new(StringArray::from(symbols)),
-            ],
-        )
-    };
-
-    // The name decides Parquet; the methods name the write intent.
-    let mut handle =
-        Buffer::new().with_media_type(Url::from_str("file:///trades.parquet")?.media_type());
-    let options = handle.record_options()?;
-    handle.overwrite_arrow_reader(
-        yggdryl::arrow::batch_reader(
-            Arc::clone(&schema),
-            [batch(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])?],
-        ),
-        &options,
-    )?;
-    handle.append_arrow_reader(
-        yggdryl::arrow::batch_reader(
-            Arc::clone(&schema),
-            [batch(vec![3], vec![Some("GOOG")])?],
-        ),
-        &options,
-    )?;
-    handle.merge_arrow_reader(
-        yggdryl::arrow::batch_reader(
-            Arc::clone(&schema),
-            [batch(vec![2, 4], vec![Some("NVDA"), None])?],
-        ),
-        &options.clone().with_merge_by_names(["id"]),
-    )?;
-
-    let rows = handle
-        .read_arrow_reader(&options)?
-        .map(|batch| batch.map(|batch| batch.num_rows()))
-        .sum::<Result<usize, _>>()?;
-    assert_eq!(rows, 4);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-
-    from yggdryl import IOBase
-
-    schema = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string()),
-    ])
-    batch = lambda ids, symbols: pa.record_batch(
-        {"id": ids, "symbol": symbols}, schema=schema
-    )
-
-    path = pathlib.Path(tempfile.mkdtemp()) / "trades.parquet"
-    with IOBase(path) as handle:
-        handle.overwrite_arrow_batch(batch([1, 2], ["AAPL", "MSFT"]))
-        handle.append_arrow_batch(batch([3], ["GOOG"]))
-
-        merging = handle.record_options()
-        merging.merge_by_names = ["id"]
-        handle.merge_arrow_batch(
-            batch([2, 4], ["NVDA", None]), options=merging
-        )
-
-        assert handle.read_arrow_reader().read_all().num_rows == 4
-
-    assert pq.read_table(path).num_rows == 4
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
-
-    const rows = (ids, symbols) => new arrow.Table({
-      id: arrow.vectorFromArray(ids.map(BigInt), new arrow.Int64()),
-      symbol: arrow.vectorFromArray(symbols, new arrow.Utf8()),
-    })
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const handle = new IOBase(path.join(root, 'trades.parquet'))
-    handle.overwriteArrowTable(rows([1, 2], ['AAPL', 'MSFT']))
-    handle.appendArrowTable(rows([3], ['GOOG']))
-    handle.mergeArrowTable(
-      rows([2, 4], ['NVDA', null]),
-      handle.recordOptions().withMergeByNames(['id']),
-    )
-
-    assert.equal(handle.readArrowReader().intoTable().numRows, 4)
-    assert.deepEqual([...handle.readBytes().subarray(0, 4)], [...Buffer.from('PAR1')])
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-## Dimensions and opened sessions
-
-Fresh calls read a footer each time; an opened handle answers from its cached one until `close`.
+The handle's media type selects Parquet, so no call names a format. `row_size` and `column_size` range-read the eight-byte tail and the footer, never a column chunk: fresh calls read a footer each time; an opened handle answers from its cached one until `close`.
 
 === "Rust"
 
@@ -214,154 +93,6 @@ Fresh calls read a footer each time; an opened handle answers from its cached on
     handle.close()
     fs.rmSync(root, { recursive: true, force: true })
     ```
-
-## Column pushdown
-
-A non-null struct root naming a subset of the stored columns reads only those chunks, in stored order with stored types. Unlike an [Arrow IPC](ipc.md) batch, one contiguous message, a Parquet column chunk is separately addressable.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Float64Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
-    use yggdryl::arrow;
-    use yggdryl::media::IORecordOptions;
-    use yggdryl::IOMedia;
-    use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::Parquet;
-    use yggdryl::{DataType, MimeType};
-
-    let stored = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().required_field("symbol"),
-        DataType::Float64.required_field("price"),
-        DataType::utf8().required_field("venue"),
-    ])?
-    .required_field("row");
-    let arrow_schema = stored.into_arrow_schema()?;
-
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![
-            Arc::new(Int64Array::from(vec![1, 2])),
-            Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
-            Arc::new(Float64Array::from(vec![1.5, 2.5])),
-            Arc::new(StringArray::from(vec!["XNAS", "XNAS"])),
-        ],
-    )?;
-
-    let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
-    let options = media.record_options()?;
-    media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
-
-    // Two of the four columns, named by a root Field of its own.
-    let wanted = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::Float64.required_field("price"),
-    ])?
-    .required_field("row");
-
-    let projected = media.read_arrow_reader(&options.clone().with_field(wanted))?;
-    assert_eq!(projected.schema().fields().len(), 2);
-    let read = projected.collect::<Result<Vec<_>, _>>()?;
-    assert_eq!(read[0].num_columns(), 2);
-
-    // The file is unchanged: it still stores all four.
-    assert_eq!(media.read_arrow_schema()?.fields().len(), 4);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    stored = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("symbol", pa.string(), nullable=False),
-        pa.field("price", pa.float64(), nullable=False),
-        pa.field("venue", pa.string(), nullable=False),
-    ])
-    rows = 4_096
-    batch = pa.record_batch(
-        {
-            "id": list(range(rows)),
-            "symbol": ["AAPL"] * rows,
-            "price": [1.5] * rows,
-            "venue": ["XNAS"] * rows,
-        },
-        schema=stored,
-    )
-
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet")
-    handle.overwrite_arrow_batch(batch)
-
-    # Two of the four columns, declared through the centralized options field.
-    options = handle.record_options()
-    options.field = pa.schema([
-        pa.field("id", pa.int64(), nullable=False),
-        pa.field("price", pa.float64(), nullable=False),
-    ])
-    projected = handle.read_arrow_reader(options=options).read_all()
-    assert projected.column_names == ["id", "price"]
-
-    # Less is read, and the bytes say so rather than the clock.
-    whole = handle.read_arrow_reader().read_all()
-    assert projected.nbytes * 2 <= whole.nbytes
-
-    # The file is unchanged: it still stores all four.
-    assert len(handle.read_arrow_field().dtype) == 4
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { Field, IOBase, fields } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const handle = new IOBase(path.join(root, 'trades.parquet'))
-    handle.overwriteArrowTable(
-      new arrow.Table({
-        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-        symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
-        price: arrow.vectorFromArray([1.5, 2.5], new arrow.Float64()),
-        venue: arrow.vectorFromArray(['XNAS', 'XNAS'], new arrow.Utf8()),
-      }),
-    )
-
-    // Two of the four columns, declared as this read's schema.
-    const wanted = fields.struct(
-      'row',
-      [Field.from('id: int64'), Field.from('price: float64')],
-      { nullable: false },
-    )
-
-    const options = handle.recordOptions().withField(wanted)
-    const projected = handle.readArrowReader(options).intoTable()
-    assert.equal(projected.numCols, 2)
-    assert.deepEqual(projected.schema.fields.map((child) => child.name), ['id', 'price'])
-
-    // The file is unchanged: it still stores all four.
-    assert.equal(handle.readArrowField().dtype.length, 4)
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-| root field | mask |
-| --- | --- |
-| a subset of the stored columns | only those chunks; a caller wanting another shape casts afterwards |
-| a nested column | its whole subtree; the mask is built from roots, not leaves |
-| every stored column, or one the file lacks | everything; a mask drops columns, never invents them |
 
 ## Options
 
@@ -529,7 +260,7 @@ Parquet's own settings and the shared ones are flat fields of one value.
 
 ## Compression
 
-The bindings name page compression as the text the `parquet` crate parses: `zstd(3)`, `snappy`, `uncompressed`. Compression is a write setting only; the footer records the codec, so every runtime reads every file.
+The bindings name page compression as the text the `parquet` crate parses: `zstd(3)`, `snappy`, `uncompressed`. Compression is a write setting only; the footer records the codec, so every runtime reads every file. A coding around the whole file would move the footer out of reach, so a coded name is refused before anything is encoded, and the handle is left untouched.
 
 === "Rust"
 
@@ -543,7 +274,7 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
     use yggdryl::media::parquet::{Parquet, ParquetOptions};
-    use yggdryl::{DataType, MimeType};
+    use yggdryl::{DataType, MimeType, Url};
 
     let field = DataType::from_fields([
         DataType::Int64.required_field("id"),
@@ -551,7 +282,7 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     ])?
     .required_field("row");
 
-    let ids: Vec<i64> = (0..4_000).collect();
+    let ids: Vec<i64> = (0..1_024).collect();
     let symbols: Vec<Option<&str>> = ids.iter().map(|_| Some("AAPL")).collect();
     let arrow_schema = field.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
@@ -590,6 +321,22 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     }
 
     assert!(sizes[0] > sizes[1] && sizes[0] > sizes[2], "{sizes:?}");
+
+    // A coding around the whole file is refused, and nothing is published.
+    let coded = Url::from_str("file:///trades.parquet.gz")?;
+    let mut media = Parquet::new(Buffer::new().with_media_type(coded.media_type()));
+    let options = media.record_options()?;
+    let message = media
+        .overwrite_arrow_reader(
+            arrow::batch_reader(Arc::clone(&arrow_schema), [batch]),
+            &options,
+        )
+        .unwrap_err()
+        .to_string();
+
+    assert!(message.contains("parquet compresses"), "{message}");
+    assert!(message.contains("ParquetOptions::compression"), "{message}");
+    assert!(media.handle().is_empty());
     ```
 
 === "Python"
@@ -599,11 +346,12 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     import tempfile
 
     import pyarrow as pa
+    import pytest
 
     from yggdryl import IOBase
 
     root = pathlib.Path(tempfile.mkdtemp())
-    rows = 4_000
+    rows = 1_024
     schema = pa.schema([
         pa.field("id", pa.int64(), nullable=False),
         pa.field("symbol", pa.string()),
@@ -627,6 +375,12 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
         sizes.append(handle.size)
 
     assert sizes[0] > sizes[1] and sizes[0] > sizes[2], sizes
+
+    # A coding around the whole file is refused, and nothing is published.
+    coded = IOBase(root / "trades.parquet.gz")
+    with pytest.raises(ValueError, match="parquet compresses"):
+        coded.overwrite_arrow_table(table)
+    assert coded.size == 0
     ```
 
 === "JavaScript"
@@ -640,7 +394,7 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
     const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const ids = Array.from({ length: 4_000 }, (_, index) => BigInt(index))
+    const ids = Array.from({ length: 1_024 }, (_, index) => BigInt(index))
     const table = new arrow.Table({
       id: arrow.vectorFromArray(ids, new arrow.Int64()),
       symbol: arrow.vectorFromArray(ids.map(() => 'AAPL'), new arrow.Utf8()),
@@ -658,108 +412,25 @@ The bindings name page compression as the text the `parquet` crate parses: `zstd
 
       // Nothing on the read side names the compression: the footer records it.
       const read = handle.readArrowReader(options).intoTable()
-      assert.equal(read.numRows, 4_000, compression)
+      assert.equal(read.numRows, 1_024, compression)
       sizes.push(handle.size)
     }
 
     assert.ok(sizes[0] > sizes[1] && sizes[0] > sizes[2], sizes.join())
 
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-## Coded handles are rejected
-
-A coding around the whole file moves the footer out of reach, so the media type must declare identity coding. The refusal happens before anything is encoded and leaves the handle untouched.
-
-=== "Rust"
-
-    ```rust
-    use arrow_array::RecordBatch;
-    use yggdryl::arrow;
-    use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::Buffer;
-    use yggdryl::media::parquet::Parquet;
-    use yggdryl::{DataType, Url};
-
-    let field = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-
-    // The name declares gzip over the Parquet file.
-    let url = Url::from_str("file:///trades.parquet.gz")?;
-    let mut media = Parquet::new(Buffer::new().with_media_type(url.media_type()));
-
-    let empty = arrow::batch_reader(field.into_arrow_schema()?, std::iter::empty::<RecordBatch>());
-    let options = media.record_options()?;
-    let message = media
-        .overwrite_arrow_reader(empty, &options)
-        .unwrap_err()
-        .to_string();
-    assert!(message.contains("parquet compresses"), "{message}");
-    assert!(message.contains("ParquetOptions::compression"), "{message}");
-
-    // Nothing was published.
-    assert!(media.handle().is_empty());
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-    import pytest
-
-    from yggdryl import IOBase
-
-    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-
-    # The name declares gzip over the Parquet file.
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.parquet.gz")
-
-    with pytest.raises(ValueError, match="parquet compresses"):
-        handle.overwrite_arrow_batch(pa.record_batch({"id": [1]}, schema=schema))
-
-    # Nothing was published.
-    assert handle.size == 0
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-
-    // The name declares gzip over the Parquet file.
-    const handle = new IOBase(path.join(root, 'trades.parquet.gz'))
-
-    assert.throws(
-      () =>
-        handle.overwriteArrowTable(
-          new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) }),
-        ),
-      /parquet compresses/,
-    )
-
-    // Nothing was published.
-    assert.equal(handle.size, 0)
+    // A coding around the whole file is refused, and nothing is published.
+    const coded = new IOBase(path.join(root, 'trades.parquet.gz'))
+    assert.throws(() => coded.overwriteArrowTable(table), /parquet compresses/)
+    assert.equal(coded.size, 0)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
 ## Edges
 
-- keyed `merge_arrow_reader` -> upsert: rows matching `merge_by_names` are updated, misses are inserted.
 - `trades.parquet.gz`, or any non-identity coding -> refused on reads and writes with `parquet compresses`, naming `ParquetOptions::compression`.
-- other encodings, such as [Arrow IPC](ipc.md), take a coded name through the handle's [coding](../coding/index.md); Parquet alone refuses one.
+- other encodings, such as [Arrow IPC](../ipc/index.md), take a coded name through the handle's [coding](../../coding/index.md); Parquet alone refuses one.
 - `level` -> ignored; `compression` decides how the file compresses.
-- read `field` naming every stored column, or one the file lacks -> reads everything.
-- a pulled batch not matching the reader's field -> error naming the batch index.
 - declared `dtype` -> `read_arrow_field` returns it without reading the file, so an empty handle answers without a footer.
 
 ## Commands
@@ -834,7 +505,7 @@ parquet read whole               2.620 ms   25.0M rows/s
 PyArrow parquet read baseline    2.195 ms   29.9M rows/s
 ```
 
-Both directions sit within ~15% of PyArrow because both sides drive the same `parquet` machinery; [Arrow IPC](ipc.md) carries that encoding's rows from the same run.
+Both directions sit within ~15% of PyArrow because both sides drive the same `parquet` machinery; [Arrow IPC](../ipc/index.md) carries that encoding's rows from the same run.
 
 ```bash
 python/.venv/bin/python python/benchmarks/media.py --filter "parquet write" --filter "parquet read whole" --filter "parquet read subset" --filter "parquet read records" --filter "parquet row size" --filter "parquet column size" --filter "PyArrow parquet"

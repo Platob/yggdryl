@@ -15,7 +15,7 @@
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
 | Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
-| Serialization | inherited: `into_json` renders the schema, [`into_json_scalar`](../text/json.md) the value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root |
+| Serialization | inherited: `into_json` renders the schema, [`into_json_scalar`](../media/json/index.md) the value, `from_json_scalar_with_field` reads it back typed, ordered and canonicalized against the same root |
 | Restated | the [enriching pass's first step](#restated-at-the-dictionarys-newest-version) re-expresses the row at the registry's newest version from the dictionary alone; the entries never change |
 | Bindings | Rust, Python, JavaScript |
 

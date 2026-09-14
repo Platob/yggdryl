@@ -119,6 +119,73 @@ assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
 
+## Variants and arithmetic
+
+Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
+
+| group | variants |
+| --- | --- |
+| absence and logic | `Null`, `Boolean` |
+| integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
+| floats | `F16`, `F32`, `F64` |
+| decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
+| text and binary | `String`, `Code`, `Enum`, `Bytes`, `Geospatial` |
+| identifiers | `Uuid`, `Version`, `Url` |
+| date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
+| elapsed time | `Duration32`, `Duration64`, `Interval` |
+| containers | `Sequence`, `Mapping`, `Record` |
+
+Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
+
+| operands | supported operations | result rule |
+| --- | --- | --- |
+| integers | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | keep a shared width; mixed signed/unsigned inputs promote only when lossless |
+| floats | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | retain the widest float input; mixing an integer uses `F64` |
+| exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused |
+| temporal and duration | temporal `+/-` duration, temporal `-` temporal, duration `+/-` duration, duration `*` integer, duration `/` integer | preserve the temporal kind or return an exact duration in the finest required unit |
+| null | every binary operation above | propagate `Null` |
+
+Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_rem`, `checked_neg`, `checked_abs`, and `Result<Scalar>` operator traits; Python adds operators, JavaScript only the named methods.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::Scalar;
+
+    assert_eq!(
+        Scalar::from(-1_i8).checked_add(&Scalar::from(2_u8))?,
+        Scalar::from(1_i16),
+    );
+    assert_eq!(
+        Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0))?,
+        Scalar::d128(5, 1),
+    );
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Scalar
+
+    assert (Scalar.from_py(40) + 2).as_py() == 42
+    assert Scalar.decimal(1, 0).divide(Scalar.decimal(2, 0)) == Scalar.decimal(5, 1)
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar } = require('yggdryl')
+
+    assert.equal(Scalar.fromJs(40).add(2).asJs(), 42)
+    assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
+    ```
+
+| item | rule |
+| --- | --- |
+| rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
+| accessors | `as_bytes`, `as_str`, `as_json_bytes` / `as_json_utf8`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+
 ## FieldScalar
 
 One `Field` and the value its own contract answered, held together. The field is
@@ -202,11 +269,14 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     assert.equal(Scalar.fromJs([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
-See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Text](../text/index.md).
+See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured documents](../media/structured.md).
 
 ## Edges
 
 - `readonly` or `random` at a write entry point -> refused.
+- Overflow, division by zero, inexact decimal quotient, undefined operand pair -> four separate core errors.
+- `+` on text or containers -> absent; concatenation is not arithmetic.
+- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Empty or positional rows -> ambiguous; declare the `Field`.
 - Physical Arrow identity -> exact constructors, [Rust only](numeric.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
@@ -242,6 +312,8 @@ See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Text](../text/
 
 ## Performance
 
+### Enum and inference boundary
+
 Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18.0 (2026-08-24). No Node benchmark regenerates the JavaScript row.
 
 | boundary | construct | kind | spelling | ordinal |
@@ -260,5 +332,33 @@ Inference, same host, rustc 1.96.1 (2026-08-23), Criterion point estimates.
 
 ```bash
 cargo bench --manifest-path rust/Cargo.toml --bench types -- '^value/(stable_hash_|from_float32|family_constructors|as_|temporal_|enum_|infer_|record_field_update|json_|checked_)'
+python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
+```
+
+### Scalar and Arrow boundary costs
+
+Windows x86_64 release smoke runs, Criterion group `value` in `--bench types` and `python/benchmarks/types/scalars.py`, with conversion setup outside the timed loop. Regenerate on the deployment host before comparing releases.
+
+| Rust core operation | estimate |
+| --- | ---: |
+| stable hash of a four-field `Record` | 227 ns |
+| infer that Record's datatype | 675 ns |
+| persistent Record field update | 273 ns |
+| restate Date32 days as nanoseconds | 3.10 ns |
+| `as_json_bytes` | 2.67 us |
+| `as_json_utf8` | 2.67 us |
+
+| CPython release boundary | estimate |
+| --- | ---: |
+| native Python into / from `Scalar` | 1.66 us / 596 ns |
+| stable hash | 232 ns |
+| JSON bytes / UTF-8 | 675 ns / 664 ns |
+| Arrow scalar into / from `Scalar` | 16.3 us / 6.66 us |
+| Arrow array, 4,096 values, into / from `Scalar` | 312 us / 1.76 ms |
+| Arrow batch, 4,096 rows, into / from `Scalar` | 1.27 ms / 1.88 ms |
+| Arrow table, 4,096 rows, into / from `Scalar` | 1.39 ms / 1.94 ms |
+
+```bash
+cargo bench -p yggdryl --bench types -- value
 python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
 ```

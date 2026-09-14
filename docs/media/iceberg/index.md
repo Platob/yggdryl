@@ -153,7 +153,7 @@ Create in a folder, append, and reopen with no catalog in between.
 
 ## Pages
 
-Data files are [Parquet](../parquet.md) and manifests are [Avro](../avro.md); the [Media](../index.md) overview lists the other encodings.
+Data files are [Parquet](../parquet/index.md) and manifests are [Avro](../avro/index.md); the [Media](../index.md) overview lists the other encodings.
 
 | Page | Owns |
 | --- | --- |
@@ -520,7 +520,7 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 | `read_manifest`, manifest-list read | Official parser after bounded input checks; keeps encryption, delete-file, split, bound, and v3 row-lineage fields |
 | `read_manifest_spec` | Reads the bounded Avro header only; entries are never decoded |
 | `read_manifest_for_plan` | Projects the validated view to file identity, partition, size, counts, and bounds; scans select it automatically |
-| Writers | The core [`avro`](../avro.md) codec through `IOBase`; v3 follows the official row-id cursor rules, and a first post-upgrade commit assigns retained v2 files too |
+| Writers | The core [`avro`](../avro/index.md) codec through `IOBase`; v3 follows the official row-id cursor rules, and a first post-upgrade commit assigns retained v2 files too |
 | Statistics | From the Parquet footer just written; counts and sizes for every top-level column, bounds only where Parquet bytes equal the Iceberg encoding |
 
 ## Partition specs and the Hive layout
@@ -751,7 +751,7 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 
 ## Performance
 
-Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1. The fastavro and PyIceberg baseline over the same manifest reads sits on [Apache Avro](../avro.md).
+Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1. The fastavro and PyIceberg baseline over the same manifest reads sits on [Apache Avro](../avro/index.md).
 
 | Metadata operation | Median | Throughput |
 | --- | ---: | ---: |

@@ -450,7 +450,7 @@ Nesting is carried, not flattened, so every format round-trips it.
 
 | call | form |
 | --- | --- |
-| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../text/index.md), `indent=` in Python |
+| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../media/structured.md), `indent=` in Python |
 | `into_json_bytes`, `toJSONBytes` | the same JSON, encoded |
 | `from_json` | bytes, text, or a parsed object |
 

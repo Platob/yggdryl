@@ -38,7 +38,7 @@ Run the checks for what you changed; code, tests, and documentation agree before
 | `rust/src/coding/` | `rust/src/coding/tests.rs` | [Coding](coding/index.md) |
 | `rust/src/charset.rs`, `rust/src/charset/` | `rust/src/charset/tests.rs`, `rust/tests/charset/` | [Charset](charset/index.md) |
 | `rust/src/media/` | `rust/src/media/tests.rs`, `rust/tests/interop/` | [Media](media/index.md) |
-| `rust/src/text/` | `rust/tests/text/` | [Text](text/index.md) |
+| `rust/src/text/` | `rust/tests/text/` | [Structured documents](media/structured.md) |
 | `rust/src/uri/` | `rust/tests/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | `rust/tests/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | `rust/src/expression/tests.rs` | [Expression](expression/index.md) |
