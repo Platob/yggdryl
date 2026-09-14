@@ -2541,3 +2541,61 @@ until the Rust story, Python and Node were complete.
   the surviving example rather than disappearing.
 - `scripts/check_docs_examples.py` counts per language are reported before
   and after in the commit, as counts, not timings; Gate 4 runs whole.
+
+## 31. A line is the range of the window it was read into
+
+**Rule.** The splitter's window is the page every line cut from it is a range
+of. It is filled while nothing points into it and handed out only once the
+fill is complete, so a line costs one reference count rather than a copy of
+its bytes: the header off its front, the strips off both edges, the byte
+limit off its tail and every named capture are offsets into that page. A line
+takes a vector of its own only where it cannot be a range - one that spanned
+two windows, and one whose row header matched in the middle rather than at an
+edge. A window a line still names is never written over: the refill takes a
+fresh one and moves the open tail into it.
+
+**Why.** `media/text/bytes.rs` already said this - "The text reader fills one
+page-sized buffer, seals it, and hands out ranges into it, so a line costs one
+reference count rather than a copy of its own bytes" - and the reader did not
+do it. Every physical line was assembled into a vector of its own, the
+retained body was copied out of that into a second vector, the record copied
+that into a third, and the third was boxed into a page for that line alone:
+four allocations and three copies of every line's bytes, with four more per
+declared capture. The counting allocator pinned it at four a line and twelve
+for a header declaring two captures, and callgrind put 28% of an end-to-end
+text read inside `malloc`/`free` and 7% more inside `memcpy`. The window was
+already there, already one buffer, already filled in complete units; only the
+sealing was missing.
+
+Retention is the cost this trades against, and it is stated rather than
+hidden: a caller that keeps its lines keeps the windows they name, which is
+one page per 64 KiB of object read rather than one page per line of it. A
+caller that drops each line as it reads it - the fold, the Arrow builder, the
+codec - lets the splitter write the window over again and allocates nothing at
+all past the constant. A line that has not ended takes its vector before the
+refill rather than after, so a record larger than the window does not make the
+splitter take a fresh window for every part of it.
+
+**Written in:** `media/text/reader.rs`, on the module and on `Lines::rewind`;
+`media/text/arrow.rs`, on `Held`.
+**Fixtures:** in the counting allocator, `read_text_lines` over 16 and over
+1 024 rows at one constant and no slope, and a second case pinning what
+keeping every line costs - the constant, the collector's own vector, and two
+per window - and that the bodies of 1 024 rows name no more pages than the
+object has windows; through the reader, every existing line, framing, strip,
+limit, capture, charset and entries fixture unmoved.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `media/text/reader.rs` | the window behind a shared handle; `LinePart` carries a range; `rewind` takes a fresh window where the current one is named; the pinned multi-byte searcher built once per read | the flexible and single-byte scans; the overlap rule; where an over-long line is cut |
+| `media/text/arrow.rs` | `Held`; `RawRow` carries `TextBytes`; `header_match` reads into the reader's own landing place and cuts each capture out of the line's page | `RawRows`' framing, dedup, limit and leading-fragment rules; every error and its location |
+| `media/text/line.rs`, `bytes.rs`, `batch.rs` | `shared_url`; captures read where they stand; an owned vector becomes a page; the URL column clones a count | `TextLine`'s contract; `TextBytes`' identity, `from_bytes`, `from_page` |
+| tests | the two allocation pins above, restated | every behaviour fixture |
+
+**How it lands.** Measured against the commit before it on `text_lines`,
+`text_records`, `text_record_framing`, `text_batch` and `text_scan`, named
+baselines, beside the counting allocator and callgrind - because wall clock on
+a shared box moved an untouched scan by 4% in both directions across two runs,
+and the allocation and instruction counts did not move at all.
