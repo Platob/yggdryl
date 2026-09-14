@@ -316,7 +316,7 @@ assert!(message.contains("with_dtype"), "{message}");
 - `with_field(f)` for `f` named `"row"` with no metadata -> equal, and hash-equal, to `with_dtype(f.dtype().clone())`.
 - `existing` root -> the cast is always safe; an unconvertible value becomes null.
 - Every read and write path -> routes through `apply_arrow_batch` / `apply_arrow_reader`, so declaration, derivation, selection, and stored shape agree.
-- Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet.md).
+- Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet/index.md).
 - Content coding -> ignored, the derivation [`IOMedia::record_options`](index.md) also performs.
 - `max_row_group_size` on `trades.arrows` -> `None` in Python, `null` in JavaScript.
 

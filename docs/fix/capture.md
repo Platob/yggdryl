@@ -115,7 +115,7 @@ The verb is `parse`, and no reader takes a flag: what happens to a message once 
 | --- | --- | --- |
 | `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: [none, one or many](decode.md#a-line-yields-none-one-or-many-messages) - one per frame, one per configuration a bulk answer named, none for a line that states no message |
 | `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
-| `parse_text_line` | one [decoded line](../media/text.md#row-schema), its body and [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
+| `parse_text_line` | one [decoded line](../media/text/index.md#row-schema), its body and [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) | `FixMessages` |
 | `parse_text_lines` | any iterator of owned or borrowed lines, or `Result`s of them | a lazy iterator of `Result<FixMsg>`; lines are borrowed without cloning and a source error is moved into the stream unchanged |
 | `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
 | `parse_plugin_line` | a bulk or wildcard configuration body | `FixMessages`; a body that is not a Jolokia answer names no configuration and answers none, refusing nothing |

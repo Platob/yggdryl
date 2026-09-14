@@ -884,7 +884,8 @@ declares.
 
 ## Structured codecs
 
-`docs/text/` documents the surface; these bind a change to `text/`.
+`docs/media/structured.md` and the JSON, YAML, and TOML scheme pages document the
+surface; these bind a change to `text/`.
 
 - Parse bytes, slices, readers and emit bytes, writers over `Scalar`; string
   conveniences reuse the same parser with no intermediate serialization.
@@ -1125,7 +1126,10 @@ section change together. What binds every page:
   together, README stays a short landing page. A family page lives under
   `docs/<layer>/` for the layer owning the vocabulary, with
   `docs/<layer>/index.md` as its overview; extension pages document boundaries
-  only.
+  only. `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
+  Avro, plain text, JSON, YAML, TOML - each holding `index.md` for the scheme,
+  `scalar.md` for rows as native values, and `arrow.md` for rows as Arrow
+  batches; `text/` documents there too, as three of those schemes.
 - Every supported example uses tabs in Rust, Python, JavaScript order, the same
   operation expressed idiomatically; show Rust-only explicitly, never invent a
   binding. Every block is self-contained with an assertion and runs through
@@ -1151,6 +1155,10 @@ python scripts/check_docs_examples.py --lang python       # runs under python/.v
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
 python -m mkdocs build --strict --config-file mkdocs.yml
 ```
+
+The scripting halves run one process per block on a pool one process wide per
+core, since a block spends most of its life importing the extension; `--jobs N`
+narrows it when a machine has to stay responsive.
 
 ## Handoff
 

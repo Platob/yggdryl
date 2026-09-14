@@ -16,6 +16,15 @@ JSON and JSON Lines over the shared `Scalar` codec.
 | Lazy | `load_all` pulls a path or readable; `loads_all` decodes held content; iterators fuse after the first error |
 | Limits | nullable `max_depth` / `maxDepth`, input bytes, decoded nodes, document count; omitted means core defaults |
 
+## Surfaces
+
+| Page | Owns |
+| --- | --- |
+| [Scalars](scalar.md) | `loads` / `dumps`, documents and streams, formatting, `read_scalar` / `write_scalar` over a handle |
+| [Arrow](arrow.md) | the document as Arrow rows: one array of objects, or one object per line |
+
+The format-agnostic facade, limits, and `Format` vocabulary are on [Structured documents](../structured.md).
+
 ## Use
 
 Loads return only types the JSON grammar proves; dumps interoperate.
@@ -78,7 +87,7 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 
 ## Inferring entry point
 
-`from_json_scalar`, `from_json_scalar_with_field`, and `into_json_scalar` are the [inferring entry points](index.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
+`from_json_scalar`, `from_json_scalar_with_field`, and `into_json_scalar` are the [inferring entry points](../structured.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Natural values and exact Fields
 
@@ -92,7 +101,7 @@ Other native values use interoperable spellings, without a private marker envelo
 | non-finite float | error |
 | Mapping with non-string keys | error |
 
-A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to recover exact types. A [string](../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
+A schemaless reader sees strings; pass a native [`Field`](../../types/field.md) to recover exact types. A [string](../../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
 
 === "Rust"
 
@@ -175,59 +184,6 @@ A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to 
 
 A Struct Field yields one ordered row `Sequence` in Rust, a dictionary or object elsewhere; Python `cls=SomeDataclass` materializes it.
 
-## Documents and streams
-
-Reader iterators yield one `Result<Scalar>` at a time and writers stream to `Write`; Python and JavaScript keep `loads` / `dumps` and leave caller streams open.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::json;
-
-    let rows = json::from_lines_utf8("{\"id\":1}\n{\"id\":2}\n")?;
-    let mut destination = Vec::new();
-    json::into_writer_all(&rows, &mut destination)?;
-
-    assert_eq!(rows.len(), 2);
-    assert_eq!(destination, b"{\"id\":1}\n{\"id\":2}\n");
-    ```
-
-=== "Python"
-
-    ```python
-    import io
-
-    from yggdryl.text import json
-
-    rows = list(json.loads_all('{"id":1}\n{"id":2}\n'))
-    destination = io.BytesIO()
-    json.dump_all(rows, destination)
-
-    assert rows == [{"id": 1}, {"id": 2}]
-    assert destination.getvalue() == b'{"id":1}\n{"id":2}\n'
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { json } = require('yggdryl')
-
-    const rows = json.loadsAll('{"id":1}\n{"id":2}\n')
-    const encoded = json.dumpAll(rows)
-
-    assert.deepEqual(rows, [{ id: 1 }, { id: 2 }])
-    assert.deepEqual(json.loadsAll(encoded), rows)
-    ```
-
-## Formatting
-
-Rust `Formatting::indented(n)` adds layout and `Formatting::compact()` removes it; neither changes the parsed value. JSON is compact by default, and `indent=n` / `{ indent: n }` indents each nesting level by `n` spaces; the [structured-text Formatting](index.md#formatting) example pins JSON's exact pretty bytes in all three languages and its compact bytes in Python and JavaScript.
-
-## `IOBase` and content coding
-
-[Structured-text I/O](../holder/iobase/values.md) derives JSON and any outer [coding](../coding/index.md) from the handle's `MediaType`, so `quotes.json.gz` reads, writes, and publishes without arguments. Python accepts `PathLike`; JavaScript accepts path strings, file descriptors, file URLs, and streams.
-
 ## Edges
 
 - duplicate object names -> rejected.
@@ -235,8 +191,8 @@ Rust `Formatting::indented(n)` adds layout and `Formatting::compact()` removes i
 - invalid UTF-8, trailing data after one document, or a failed `Field` conversion -> error at the boundary, with the byte offset.
 - malformed JSON Lines row -> error at its offset in the original input, preceding lines included.
 - depth above the hard nesting ceiling -> refused, whatever `max_depth` asks.
-- placeholder options -> refused; only [YAML](yaml.md) and [TOML](toml.md) substitute, see [Placeholders](placeholders.md).
-- streamed Arrow batches -> [Text records](../media/text.md); keyed merge is refused there since a line has no row identity.
+- placeholder options -> refused; only [YAML](../yaml/index.md) and [TOML](../toml/index.md) substitute, see [Placeholders](../placeholders.md).
+- streamed Arrow batches -> [Text records](../text/index.md); keyed merge is refused there since a line has no row identity.
 
 ## Commands
 
