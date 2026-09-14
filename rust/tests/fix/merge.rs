@@ -1401,3 +1401,61 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     let restored = FixRegistry::from_json(&target.into_json().unwrap()).unwrap();
     assert_eq!(restored.msgtype("D").unwrap().name(), "NewOrderSingle");
 }
+
+/// Merging a dictionary that names one wire field differently keeps one member.
+///
+/// Two dictionaries reach tag 448 under two names, and each states the same
+/// component's member under its own. The merge folds the field - a tag
+/// another field holds is a merge, and the arriving spelling becomes an
+/// alias - and the component keeps one member, not two. Folding the same
+/// dictionary again changes nothing, which is the property a reload rests
+/// on.
+#[test]
+fn merging_two_spellings_of_one_field_keeps_one_member() {
+    let mut registry =
+        FixRegistry::from_fields([tagged("PartyID", 448, DataType::utf8())]).unwrap();
+    let mut member = registry.field(448).unwrap().clone();
+    member.as_fix_mut().set_field_ref("PartyID").unwrap();
+    registry
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([member])
+                .unwrap()
+                .required_field("Party"),
+        )
+        .unwrap();
+
+    let mut other = FixRegistry::from_fields([tagged("party_id", 448, DataType::utf8())]).unwrap();
+    let mut member = other.field(448).unwrap().clone();
+    member.as_fix_mut().set_field_ref("party_id").unwrap();
+    other
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([member])
+                .unwrap()
+                .required_field("Party"),
+        )
+        .unwrap();
+
+    registry.merge_with(&other).unwrap();
+    assert_eq!(
+        registry.field_by_name("party_id").unwrap().name(),
+        "PartyID"
+    );
+    let party = registry
+        .definition(FixCategory::Components, "Party")
+        .unwrap();
+    assert_eq!(party.fields().len(), 1, "one member, not two");
+    assert_eq!(party.fields()[0].name(), "PartyID");
+
+    registry.merge_with(&other).unwrap();
+    registry.merge_with(&other).unwrap();
+    assert_eq!(
+        registry
+            .definition(FixCategory::Components, "Party")
+            .unwrap()
+            .fields()
+            .len(),
+        1
+    );
+}
