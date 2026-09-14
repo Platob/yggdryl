@@ -9,10 +9,19 @@
 //! the plain splitters could address a list or a map at all.
 //!
 //! One grammar answers all of it: `.name` for a struct child, `[0]` and `[-1]`
-//! for a list element, `['key']` for a map entry. A name the bare spelling
-//! cannot carry is quoted, so `a.b` has exactly one spelling and it is not two
-//! levels. A trailing `as name`, spelled the way SQL spells it, says what to
-//! call what the path reached - the one thing a selector cannot say by itself.
+//! for a list element, `['key']` for a map entry, `[1:3]` for a run of list
+//! elements. A name the bare spelling cannot carry is quoted, so `a.b` has
+//! exactly one spelling and it is not two levels. A trailing `as name`, spelled
+//! the way SQL spells it, says what to call what the path reached - the one
+//! thing a selector cannot say by itself.
+//!
+//! The grammar is the expression grammar's own: a path is what a
+//! [`Term`](super::Term) reads at its leaf and what a [`Selector`](super::Selector)
+//! projects, and there is one parser behind all three. A path applies the same
+//! way everywhere - [`FieldSegment::apply_field`] types one step,
+//! [`FieldSegment::apply_scalar`] takes it through a value, and the Arrow tier
+//! takes it through a column - so a schema, a row, and a batch cannot disagree
+//! about what `legs[0].ccy` reaches.
 //!
 //! This is a *selector*: it says which child a caller wants. It is not the
 //! crate-private `Path` cons-list a recursive walk carries to report where a
@@ -26,13 +35,11 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::Literal;
-use crate::{Error, Result, Scalar};
+use super::typing::{common_type, unwrap_dictionary};
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What a parse failure names itself as.
-const TARGET: &str = "field path";
-
-/// The quote a text key is written in.
-const QUOTE: u8 = b'\'';
+pub(crate) const TARGET: &str = "field path";
 
 /// One step of a path into a nested schema or value.
 ///
@@ -52,6 +59,16 @@ pub enum FieldSegment {
     /// key type. A struct child may also be reached this way when the key is
     /// text, which is the spelling JSON tooling already uses.
     Key(Literal),
+    /// `[1:3]`, `[:2]`, `[-2:]` - a run of list elements, half-open the way
+    /// every slice in this crate is, a negative end counting back from the
+    /// end. The result is a list of the same item type, and a run that
+    /// reaches past either end is clipped rather than refused.
+    Range {
+        /// The first position kept; absent means the start of the list.
+        start: Option<i64>,
+        /// The first position not kept; absent means the end of the list.
+        end: Option<i64>,
+    },
 }
 
 impl FieldSegment {
@@ -65,6 +82,12 @@ impl FieldSegment {
     #[must_use]
     pub const fn index(position: i64) -> Self {
         Self::Index(position)
+    }
+
+    /// Name a run of list elements, half-open.
+    #[must_use]
+    pub const fn range(start: Option<i64>, end: Option<i64>) -> Self {
+        Self::Range { start, end }
     }
 
     /// Name a map entry by text key.
@@ -100,7 +123,7 @@ impl FieldSegment {
         match self {
             Self::Field(name) => Some(name.as_str()),
             Self::Key(key) => key.value().as_str(),
-            Self::Index(_) => None,
+            Self::Index(_) | Self::Range { .. } => None,
         }
     }
 
@@ -114,8 +137,234 @@ impl FieldSegment {
     pub const fn as_index(&self) -> Option<i64> {
         match self {
             Self::Index(position) => Some(*position),
-            Self::Field(_) | Self::Key(_) => None,
+            Self::Field(_) | Self::Key(_) | Self::Range { .. } => None,
         }
+    }
+
+    /// The field one step through `field` reaches.
+    ///
+    /// The one place a step is typed: the scalar walk, the Arrow walk, and a
+    /// selector's output schema all ask here, which is what keeps the three
+    /// from disagreeing about what a step produces. A child reached through a
+    /// step is nullable even when it is declared required, because the parent
+    /// may be null and then the whole path is.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the datatype when it has no such child, no
+    /// elements to index, or no entries to key.
+    pub fn apply_field(&self, field: &Field) -> Result<Field> {
+        let dtype = unwrap_dictionary(field.dtype());
+        match self {
+            Self::Field(name) => match dtype {
+                DataType::Struct(_) => struct_child_field(field, name),
+                DataType::Map(map) => Ok(map_value_field(map)?.with_nullable(true)),
+                other => Err(typing_error(format_smolstr!(
+                    "expected a struct or a map to reach .{name} through, got {other}"
+                ))),
+            },
+            Self::Index(_) => match list_item(dtype) {
+                Some(item) => Ok(item.clone().with_nullable(true)),
+                None => Err(typing_error(format_smolstr!(
+                    "expected a list to index into, got {dtype}"
+                ))),
+            },
+            Self::Range { .. } => match list_item(dtype) {
+                // A run keeps the list's own item type and stays a list; the
+                // clipped run of a null list is null, so the result is
+                // nullable whatever the list was.
+                Some(item) => Ok(Field::new(field.name(), DataType::list(item.clone()), true)),
+                None => Err(typing_error(format_smolstr!(
+                    "expected a list to take a range of, got {dtype}"
+                ))),
+            },
+            Self::Key(key) => match dtype {
+                DataType::Map(map) => {
+                    let keys = map_key_field(map)?;
+                    common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
+                        typing_error(format_smolstr!(
+                            "expected a key comparable with {}, got {}",
+                            keys.dtype(),
+                            key.dtype()
+                        ))
+                    })?;
+                    Ok(map_value_field(map)?.with_nullable(true))
+                }
+                DataType::Struct(_) => match key.value().as_str() {
+                    Some(name) => struct_child_field(field, name),
+                    None => Err(typing_error(format_smolstr!(
+                        "expected a text key to reach a struct child, got {}",
+                        key.dtype()
+                    ))),
+                },
+                other => Err(typing_error(format_smolstr!(
+                    "expected a map or a struct to key into, got {other}"
+                ))),
+            },
+        }
+    }
+
+    /// The value one step through `value`, typed as `field`, reaches.
+    ///
+    /// Absence is null rather than an error on the read path: a position past
+    /// the end, a key no entry holds, and a null container all answer null,
+    /// the way a missing map key answers everywhere else in this crate.
+    #[must_use]
+    pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Scalar {
+        if value.is_null() {
+            return Scalar::Null;
+        }
+        match self {
+            Self::Field(name) => struct_child(field, value, name),
+            Self::Index(position) => {
+                let Some(items) = value.as_sequence() else {
+                    return Scalar::Null;
+                };
+                resolve_index(*position, items.len())
+                    .and_then(|index| items.get(index))
+                    .cloned()
+                    .unwrap_or(Scalar::Null)
+            }
+            Self::Range { start, end } => {
+                let Some(items) = value.as_sequence() else {
+                    return Scalar::Null;
+                };
+                let (from, until) = resolve_range(*start, *end, items.len());
+                Scalar::from_sequence(items[from..until].iter().cloned())
+            }
+            Self::Key(key) => {
+                if let Some(entries) = value.as_mapping() {
+                    let dtype = key.dtype();
+                    return entries
+                        .iter()
+                        .find(|(held, _)| {
+                            super::eval::compare(
+                                dtype,
+                                held,
+                                super::Comparison::IsNotDistinctFrom,
+                                key.value(),
+                            )
+                            .as_bool()
+                                == Some(true)
+                        })
+                        .map_or(Scalar::Null, |(_, held)| held.clone());
+                }
+                match key.value().as_str() {
+                    Some(name) => struct_child(field, value, name),
+                    None => Scalar::Null,
+                }
+            }
+        }
+    }
+}
+
+/// The position a possibly negative index names in a run of `length`.
+pub(crate) fn resolve_index(position: i64, length: usize) -> Option<usize> {
+    let length = i64::try_from(length).unwrap_or(i64::MAX);
+    let resolved = if position < 0 {
+        length + position
+    } else {
+        position
+    };
+    (resolved >= 0 && resolved < length).then(|| usize::try_from(resolved).unwrap_or(0))
+}
+
+/// The clipped `[from, until)` a half-open range names in a run of `length`.
+pub(crate) fn resolve_range(start: Option<i64>, end: Option<i64>, length: usize) -> (usize, usize) {
+    let bound = |position: Option<i64>, default: usize| -> usize {
+        let Some(position) = position else {
+            return default;
+        };
+        let signed = i64::try_from(length).unwrap_or(i64::MAX);
+        let resolved = if position < 0 {
+            signed + position
+        } else {
+            position
+        };
+        usize::try_from(resolved.clamp(0, signed)).unwrap_or(0)
+    };
+    let from = bound(start, 0);
+    let until = bound(end, length).max(from);
+    (from, until)
+}
+
+/// Read one struct child from its mapping or schema-ordered sequence spelling.
+fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
+    if let Some(entries) = value.as_mapping() {
+        return entries
+            .iter()
+            .find(|(key, _)| {
+                key.as_str()
+                    .is_some_and(|held| held.eq_ignore_ascii_case(name))
+            })
+            .map_or(Scalar::Null, |(_, held)| held.clone());
+    }
+    if let Some(record) = value.as_record() {
+        return record
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map_or(Scalar::Null, |(_, held)| held.clone());
+    }
+    // A struct spelled as a bare sequence takes its order from the schema.
+    if let (Some(values), DataType::Struct(fields)) =
+        (value.as_sequence(), unwrap_dictionary(field.dtype()))
+    {
+        return fields
+            .as_fields()
+            .iter()
+            .position(|child| child.name().eq_ignore_ascii_case(name))
+            .and_then(|index| values.get(index))
+            .cloned()
+            .unwrap_or(Scalar::Null);
+    }
+    Scalar::Null
+}
+
+fn struct_child_field(field: &Field, name: &str) -> Result<Field> {
+    field
+        .fields()
+        .iter()
+        .find(|child| child.name().eq_ignore_ascii_case(name))
+        .cloned()
+        .map(|child| child.with_nullable(true))
+        .ok_or_else(|| {
+            typing_error(format_smolstr!(
+                "expected a child of {}, got {name:?}",
+                field.dtype()
+            ))
+        })
+}
+
+/// The item field of a list-shaped datatype, whichever layout it uses.
+pub(crate) fn list_item(dtype: &DataType) -> Option<&Field> {
+    match dtype {
+        DataType::List(item)
+        | DataType::ListView(item)
+        | DataType::FixedSizeList(item, _)
+        | DataType::LargeList(item)
+        | DataType::LargeListView(item) => Some(item.as_ref()),
+        _ => None,
+    }
+}
+
+fn map_key_field(map: &crate::MapType) -> Result<Field> {
+    map.entries()
+        .get_field(0)
+        .cloned()
+        .ok_or_else(|| typing_error("expected a map whose entries carry a key field"))
+}
+
+fn map_value_field(map: &crate::MapType) -> Result<Field> {
+    map.entries()
+        .get_field(1)
+        .cloned()
+        .ok_or_else(|| typing_error("expected a map whose entries carry a value field"))
+}
+
+fn typing_error(reason: impl Into<SmolStr>) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: reason.into(),
     }
 }
 
@@ -125,6 +374,18 @@ impl Ord for FieldSegment {
             (Self::Field(left), Self::Field(right)) => left.cmp(right),
             (Self::Index(left), Self::Index(right)) => left.cmp(right),
             (Self::Key(left), Self::Key(right)) => left.cmp(right),
+            (
+                Self::Range {
+                    start: left_start,
+                    end: left_end,
+                },
+                Self::Range {
+                    start: right_start,
+                    end: right_end,
+                },
+            ) => left_start
+                .cmp(right_start)
+                .then_with(|| left_end.cmp(right_end)),
             (left, right) => left.rank().cmp(&right.rank()),
         }
     }
@@ -143,6 +404,7 @@ impl FieldSegment {
             Self::Field(_) => 0,
             Self::Index(_) => 1,
             Self::Key(_) => 2,
+            Self::Range { .. } => 3,
         }
     }
 }
@@ -155,6 +417,17 @@ impl fmt::Display for FieldSegment {
                 write_identifier(formatter, name)
             }
             Self::Index(index) => write!(formatter, "[{index}]"),
+            Self::Range { start, end } => {
+                formatter.write_char('[')?;
+                if let Some(start) = start {
+                    write!(formatter, "{start}")?;
+                }
+                formatter.write_char(':')?;
+                if let Some(end) = end {
+                    write!(formatter, "{end}")?;
+                }
+                formatter.write_char(']')
+            }
             Self::Key(key) => {
                 formatter.write_char('[')?;
                 write_key(formatter, key)?;
@@ -193,6 +466,11 @@ impl FieldPath {
         }
     }
 
+    /// Build a path over segments already shared.
+    pub(crate) fn from_shared(segments: Arc<[FieldSegment]>, alias: Option<SmolStr>) -> Self {
+        Self { segments, alias }
+    }
+
     /// Parse one path.
     ///
     /// # Errors
@@ -207,6 +485,11 @@ impl FieldPath {
     #[must_use]
     pub fn segments(&self) -> &[FieldSegment] {
         &self.segments
+    }
+
+    /// Share the resolved segments.
+    pub(crate) fn shared_segments(&self) -> Arc<[FieldSegment]> {
+        Arc::clone(&self.segments)
     }
 
     /// The number of segments.
@@ -339,6 +622,51 @@ impl FieldPath {
         }
     }
 
+    /// The field this path reaches through `root`.
+    ///
+    /// Every step is typed by [`FieldSegment::apply_field`], and the result is
+    /// named by [`Self::column_name`] - the alias where one is written, the
+    /// last segment's own name otherwise, and the path's own text when it ends
+    /// on a position that names nothing. The root path answers `root` itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the step that the schema cannot take.
+    pub fn apply_field(&self, root: &Field) -> Result<Field> {
+        let mut field = root.clone();
+        for segment in self.segments.iter() {
+            field = segment.apply_field(&field)?;
+        }
+        Ok(match self.column_name() {
+            Some(name) => field.with_name(SmolStr::new(name)),
+            None if self.is_root() => field,
+            None => field.with_name(SmolStr::new(self.to_string())),
+        })
+    }
+
+    /// The value this path reaches through `value`, typed as `root`.
+    ///
+    /// Absence at any step answers null, the way [`FieldSegment::apply_scalar`]
+    /// does, and typing is asked of the schema rather than guessed from the
+    /// value, so a struct spelled as a bare sequence is read in schema order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a step the schema cannot take is reached.
+    pub fn apply_scalar(&self, root: &Field, value: &Scalar) -> Result<Scalar> {
+        let mut field = root.clone();
+        let mut held = value.clone();
+        for segment in self.segments.iter() {
+            let next = segment.apply_field(&field)?;
+            held = segment.apply_scalar(&field, &held);
+            field = next;
+            if held.is_null() {
+                break;
+            }
+        }
+        Ok(held)
+    }
+
     /// A deterministic hash of the complete path.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
@@ -348,15 +676,7 @@ impl FieldPath {
 
 impl fmt::Display for FieldPath {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (index, segment) in self.segments.iter().enumerate() {
-            match segment {
-                // The leading dot is written between steps, never in front of
-                // the first one: a one-name path renders as that name, which
-                // is what every caller writing one spells.
-                FieldSegment::Field(name) if index == 0 => write_identifier(formatter, name)?,
-                segment => write!(formatter, "{segment}")?,
-            }
-        }
+        write_segments(formatter, &self.segments)?;
         // An alias never sits on the root, so this never opens the rendering
         // with a space, and parsing it back is the exact inverse.
         if let Some(alias) = &self.alias {
@@ -365,6 +685,23 @@ impl fmt::Display for FieldPath {
         }
         Ok(())
     }
+}
+
+/// Write a run of segments, the leading dot of a first name left off.
+///
+/// A one-name path renders as that name, which is what every caller writing
+/// one spells; a later name keeps its dot so two names never run together.
+pub(crate) fn write_segments(
+    formatter: &mut fmt::Formatter<'_>,
+    segments: &[FieldSegment],
+) -> fmt::Result {
+    for (index, segment) in segments.iter().enumerate() {
+        match segment {
+            FieldSegment::Field(name) if index == 0 => write_identifier(formatter, name)?,
+            segment => write!(formatter, "{segment}")?,
+        }
+    }
+    Ok(())
 }
 
 impl FromIterator<FieldSegment> for FieldPath {
@@ -398,7 +735,7 @@ impl FromStr for FieldPath {
     type Err = Error;
 
     fn from_str(value: &str) -> Result<Self> {
-        Parser::new(value).path()
+        super::parser::parse_field_path(value)
     }
 }
 
@@ -425,8 +762,8 @@ impl<'de> ::serde::Deserialize<'de> for FieldPath {
 
 /// Write one identifier, quoting it only when the bare spelling would not come
 /// back as itself.
-fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result {
-    if is_bare_identifier(name) {
+pub(crate) fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result {
+    if super::display::is_bare_identifier(name) {
         return formatter.write_str(name);
     }
     formatter.write_char('"')?;
@@ -445,240 +782,9 @@ fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -> fmt::Resu
 /// writes, so rendering a path is always the exact inverse of parsing one.
 fn write_key(formatter: &mut fmt::Formatter<'_>, key: &Literal) -> fmt::Result {
     if let Some(text) = key.value().as_str() {
-        formatter.write_char('\'')?;
-        for character in text.chars() {
-            if character == '\'' {
-                formatter.write_char('\'')?;
-            }
-            formatter.write_char(character)?;
-        }
-        return formatter.write_char('\'');
+        return super::display::write_text_literal(formatter, text);
     }
     formatter.write_str("''")
-}
-
-/// Whether a name is spelled the way a bare segment is spelled.
-///
-/// Deliberately narrow: anything else is quoted rather than guessed at, so a
-/// name carrying a dot, a bracket or a space round-trips instead of becoming
-/// two segments.
-fn is_bare_identifier(name: &str) -> bool {
-    let mut characters = name.chars();
-    let Some(first) = characters.next() else {
-        return false;
-    };
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return false;
-    }
-    characters.all(|character| character.is_ascii_alphanumeric() || character == '_')
-}
-
-/// The one path parser.
-struct Parser<'a> {
-    bytes: &'a [u8],
-    text: &'a str,
-    at: usize,
-}
-
-impl<'a> Parser<'a> {
-    const fn new(text: &'a str) -> Self {
-        Self {
-            bytes: text.as_bytes(),
-            text,
-            at: 0,
-        }
-    }
-
-    fn path(mut self) -> Result<FieldPath> {
-        let mut segments: Vec<FieldSegment> = Vec::new();
-        let mut alias = None;
-        self.skip_space();
-        if self.at == self.bytes.len() {
-            return Ok(FieldPath::root());
-        }
-        loop {
-            self.skip_space();
-            match self.peek() {
-                Some(b'[') => segments.push(self.bracketed()?),
-                Some(b'.') => {
-                    self.at += 1;
-                    segments.push(FieldSegment::Field(self.name()?));
-                }
-                // A leading dot is optional, so the first step may be a bare
-                // name. A later one may not: two names in a row with nothing
-                // between them is a typo, not a path.
-                Some(_) if segments.is_empty() => {
-                    segments.push(FieldSegment::Field(self.name()?));
-                }
-                Some(_) => {
-                    return Err(self.fail("expected `.` or `[` between path segments"));
-                }
-                None => break,
-            }
-            self.skip_space();
-            if self.at == self.bytes.len() {
-                break;
-            }
-            if self.eat_as() {
-                alias = Some(self.alias_name()?);
-                self.skip_space();
-                if self.at != self.bytes.len() {
-                    return Err(self.fail("expected the end of the path after its alias"));
-                }
-                break;
-            }
-        }
-        Ok(FieldPath {
-            segments: segments.into(),
-            alias,
-        })
-    }
-
-    /// Take the `as` keyword, when that is what comes next.
-    ///
-    /// A boundary is required after it, so `assets` stays one name rather than
-    /// `as` followed by `sets`. The keyword is only looked for once a path has
-    /// something to alias, which is what leaves `as` usable as a segment name.
-    fn eat_as(&mut self) -> bool {
-        let rest = &self.bytes[self.at..];
-        if rest.len() < 2 || !rest[..2].eq_ignore_ascii_case(b"as") {
-            return false;
-        }
-        match rest.get(2) {
-            Some(byte) if byte.is_ascii_whitespace() || *byte == b'"' || *byte == QUOTE => {}
-            _ => return false,
-        }
-        self.at += 2;
-        true
-    }
-
-    /// Read one `[...]` step: a position, or a constant key.
-    fn bracketed(&mut self) -> Result<FieldSegment> {
-        self.at += 1;
-        self.skip_space();
-        let segment = match self.peek() {
-            Some(b'\'') => FieldSegment::Key(text_key(self.quoted(b'\'')?)?),
-            Some(b'"') => FieldSegment::Key(text_key(self.quoted(b'"')?)?),
-            Some(byte) if byte == b'-' || byte.is_ascii_digit() => self.position()?,
-            _ => return Err(self.fail("expected a position or a quoted key inside `[`")),
-        };
-        self.skip_space();
-        if self.peek() != Some(b']') {
-            return Err(self.fail("expected `]` closing a path step"));
-        }
-        self.at += 1;
-        Ok(segment)
-    }
-
-    /// Read one list position.
-    fn position(&mut self) -> Result<FieldSegment> {
-        let start = self.at;
-        if self.peek() == Some(b'-') {
-            self.at += 1;
-        }
-        while self.peek().is_some_and(|byte| byte.is_ascii_digit()) {
-            self.at += 1;
-        }
-        let text = &self.text[start..self.at];
-        text.parse::<i64>()
-            .map(FieldSegment::Index)
-            .map_err(|_| Error::Parse {
-                target: TARGET,
-                position: start,
-                reason: format_smolstr!("expected a position that fits in 64 bits, got {text:?}"),
-            })
-    }
-
-    /// Read one alias, bare or quoted either way.
-    ///
-    /// Wider at intake than a segment name is, because an alias is written by
-    /// hand and both quotes are spellings people reach for. It still renders
-    /// back one way.
-    fn alias_name(&mut self) -> Result<SmolStr> {
-        self.skip_space();
-        if self.peek() == Some(QUOTE) {
-            return Ok(SmolStr::new(self.quoted(QUOTE)?));
-        }
-        self.name()
-    }
-
-    /// Read one segment name, bare or double-quoted.
-    fn name(&mut self) -> Result<SmolStr> {
-        self.skip_space();
-        if self.peek() == Some(b'"') {
-            return Ok(SmolStr::new(self.quoted(b'"')?));
-        }
-        let start = self.at;
-        while self
-            .peek()
-            .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
-        {
-            self.at += 1;
-        }
-        if self.at == start {
-            return Err(self.fail("expected a segment name"));
-        }
-        Ok(SmolStr::new(&self.text[start..self.at]))
-    }
-
-    /// Read one quoted run, with the quote doubled to mean itself.
-    fn quoted(&mut self, quote: u8) -> Result<String> {
-        let opened = self.at;
-        self.at += 1;
-        let mut value = String::new();
-        loop {
-            let Some(byte) = self.peek() else {
-                return Err(Error::Parse {
-                    target: TARGET,
-                    position: opened,
-                    reason: format_smolstr!(
-                        "expected a closing {:?}, got the end of the path",
-                        char::from(quote)
-                    ),
-                });
-            };
-            if byte == quote {
-                if self.bytes.get(self.at + 1) == Some(&quote) {
-                    value.push(char::from(quote));
-                    self.at += 2;
-                    continue;
-                }
-                self.at += 1;
-                return Ok(value);
-            }
-            let rest = &self.text[self.at..];
-            let character = rest.chars().next().unwrap_or_default();
-            value.push(character);
-            self.at += character.len_utf8();
-        }
-    }
-
-    const fn peek(&self) -> Option<u8> {
-        if self.at < self.bytes.len() {
-            Some(self.bytes[self.at])
-        } else {
-            None
-        }
-    }
-
-    const fn skip_space(&mut self) {
-        while self.at < self.bytes.len() && self.bytes[self.at].is_ascii_whitespace() {
-            self.at += 1;
-        }
-    }
-
-    fn fail(&self, reason: &'static str) -> Error {
-        Error::Parse {
-            target: TARGET,
-            position: self.at,
-            reason: SmolStr::new_static(reason),
-        }
-    }
-}
-
-/// Pair one text key with the datatype it is read at.
-fn text_key(value: String) -> Result<Literal> {
-    Literal::infer(Scalar::from(value))
 }
 
 #[cfg(test)]

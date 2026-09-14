@@ -166,6 +166,91 @@ impl Holder {
         Ok(Self::Path(crate::holder::local::Path::new(path)?))
     }
 
+    /// Hold the resource a URL names, opened with properties.
+    ///
+    /// This is the one door every backend is behind, and what a plan's
+    /// target opens: a `file:` URL is a local path, resolved to a folder or a
+    /// file when an operation needs to know; a `file:` URL with a fragment is
+    /// a member of a ZIP archive; an object-store URL - `s3:`, `gs:`, `az:`
+    /// and their aliases - is held through the `object` feature, configured
+    /// by the properties the store's own tooling names, read the way the
+    /// object store options read them.
+    ///
+    /// Two properties are read here whatever the scheme: `media_type` (or
+    /// `mime_type`, `content_type`) declares what the bytes are, and `codec`
+    /// (or `content_encoding`) presents them decoded. Every other property
+    /// is left to the backend, which ignores what it does not know.
+    ///
+    /// ```
+    /// use yggdryl::holder::Holder;
+    /// use yggdryl::{IOBase, MimeType, Url};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let url = Url::from_str("file:///lake/trades.bin")?;
+    /// let held = Holder::from_url(&url, [("media_type", "application/vnd.apache.parquet")])?;
+    /// assert_eq!(held.media_type().base(), &MimeType::PARQUET);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the scheme is one no backend of this build
+    /// holds, or a property this method reads does not parse.
+    pub fn from_url<K, V>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        let properties: Vec<(String, String)> = properties
+            .into_iter()
+            .map(|(name, value)| (name.as_ref().to_owned(), value.as_ref().to_owned()))
+            .collect();
+        let mut held = if url.is_local() {
+            if url
+                .fragment(false)?
+                .is_some_and(|fragment| !fragment.is_empty())
+            {
+                crate::holder::zip::from_url(url)?
+            } else {
+                Self::Path(crate::holder::local::Path::from_url(url.clone())?)
+            }
+        } else if url.scheme().is_object_store() {
+            #[cfg(feature = "object")]
+            {
+                let options = crate::holder::object::ObjectOptions::from_properties(
+                    properties.iter().map(|(name, value)| (name, value)),
+                )?;
+                crate::holder::object::located_with(&url.to_string(), options)?
+            }
+            #[cfg(not(feature = "object"))]
+            {
+                return Err(crate::Error::unsupported(
+                    "holding an object store location without the object feature",
+                    url.scheme().as_str(),
+                ));
+            }
+        } else {
+            return Err(crate::Error::unsupported(
+                "holding a location of this scheme",
+                url.scheme().as_str(),
+            ));
+        };
+        for (name, value) in &properties {
+            match name.to_ascii_lowercase().replace('-', "_").as_str() {
+                "media_type" | "mime_type" | "content_type" => {
+                    held.set_media_type(value.parse::<MediaType>()?);
+                }
+                "codec" | "content_encoding" => {
+                    let codec = value.parse::<crate::Codec>()?;
+                    held = held.into_coded_with(codec, crate::Level::default());
+                }
+                _ => {}
+            }
+        }
+        Ok(held)
+    }
+
     /// Hold the members of the archive `handle` addresses.
     ///
     /// The answer is the archive root: a container whose children are the
@@ -813,6 +898,15 @@ impl IOBase for Holder {
 
     fn is_tabular(&self) -> bool {
         self.as_io().is_tabular()
+    }
+}
+
+impl TryFrom<&Url> for Holder {
+    type Error = crate::Error;
+
+    fn try_from(url: &Url) -> Result<Self> {
+        let none: [(&str, &str); 0] = [];
+        Self::from_url(url, none)
     }
 }
 

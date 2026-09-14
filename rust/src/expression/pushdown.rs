@@ -26,10 +26,10 @@
 
 use smol_str::SmolStr;
 
+use super::attribute::Attribute;
 use super::bind::{Bound, Kind, Node};
 use super::eval::{compare as compare_values, order};
-use super::selector::Selector;
-use super::{Comparison, Expression, Function};
+use super::{Comparison, Filter, Function};
 use crate::{Field, Scalar};
 
 /// What a statistics-level answer can be.
@@ -101,7 +101,7 @@ impl ColumnBounds {
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Bounds {
     columns: Vec<(SmolStr, ColumnBounds)>,
-    attributes: Vec<(Selector, ColumnBounds)>,
+    attributes: Vec<(Attribute, ColumnBounds)>,
     rows: Option<u64>,
 }
 
@@ -181,13 +181,13 @@ impl Bounds {
     #[must_use]
     pub fn with_attribute(
         mut self,
-        selector: Selector,
+        attribute: Attribute,
         minimum: Option<Scalar>,
         maximum: Option<Scalar>,
         nulls: Option<u64>,
     ) -> Self {
         self.attributes.push((
-            selector,
+            attribute,
             ColumnBounds {
                 minimum,
                 maximum,
@@ -199,23 +199,23 @@ impl Bounds {
 
     /// The statistics an identifier states about itself.
     ///
-    /// Every free selector answers exactly, so each one is a minimum equal to
+    /// Every free attribute answers exactly, so each one is a minimum equal to
     /// its maximum: a path does not bound its own name, it *is* its name.
     #[must_use]
     pub fn from_url(url: &crate::Url) -> Self {
         let mut bounds = Self::new(None);
-        for selector in Selector::ALL {
-            if !matches!(selector.cost(), super::selector::Cost::Free) {
+        for attribute in Attribute::ALL {
+            if !matches!(attribute.cost(), super::attribute::Cost::Free) {
                 continue;
             }
-            let value = selector.read_url(url);
+            let value = attribute.read_url(url);
             let nulls = Some(u64::from(value.is_null()));
-            bounds = bounds.with_attribute(selector, Some(value.clone()), Some(value), nulls);
+            bounds = bounds.with_attribute(attribute, Some(value.clone()), Some(value), nulls);
         }
         for (column, _) in url.hive_partitions() {
-            let selector = Selector::Partition(SmolStr::new(&column));
-            let value = selector.read_url(url);
-            bounds = bounds.with_attribute(selector, Some(value.clone()), Some(value), Some(0));
+            let attribute = Attribute::Partition(SmolStr::new(&column));
+            let value = attribute.read_url(url);
+            bounds = bounds.with_attribute(attribute, Some(value.clone()), Some(value), Some(0));
         }
         bounds
     }
@@ -242,10 +242,10 @@ impl Bounds {
 
     /// One attribute's statistics.
     #[must_use]
-    pub fn attribute(&self, selector: &Selector) -> Option<&ColumnBounds> {
+    pub fn attribute(&self, attribute: &Attribute) -> Option<&ColumnBounds> {
         self.attributes
             .iter()
-            .find(|(held, _)| held == selector)
+            .find(|(held, _)| held == attribute)
             .map(|(_, bounds)| bounds)
     }
 
@@ -265,20 +265,20 @@ impl Bounds {
 /// that makes running them in two places sound.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Residual {
-    answerable: Expression,
-    remaining: Expression,
+    answerable: Filter,
+    remaining: Filter,
 }
 
 impl Residual {
     /// The conjuncts a partition layout or a listing can settle by itself.
     #[must_use]
-    pub const fn answerable(&self) -> &Expression {
+    pub const fn answerable(&self) -> &Filter {
         &self.answerable
     }
 
     /// The conjuncts that still need the rows.
     #[must_use]
-    pub const fn remaining(&self) -> &Expression {
+    pub const fn remaining(&self) -> &Filter {
         &self.remaining
     }
 
@@ -318,9 +318,7 @@ impl Bound {
     /// satisfies a conjunct does not have to re-test it row by row.
     #[must_use]
     pub fn statistics_certainty(&self, bounds: &Bounds) -> Option<bool> {
-        // The statistics target never fails: a statistic it cannot read only
-        // widens the answer to unknown, which is already the conservative one.
-        super::ApplyExpression::apply_expression(bounds, self).unwrap_or(None)
+        bounds.certainty(self)
     }
 
     /// Split this predicate into the part a partition layout answers and the
@@ -347,30 +345,27 @@ impl Bound {
             }
         }
         Residual {
-            answerable: Expression::all(answerable),
-            remaining: Expression::all(remaining),
+            answerable: Filter::all(answerable.into_iter().map(Filter::new)),
+            remaining: Filter::all(remaining.into_iter().map(Filter::new)),
         }
     }
 }
 
-/// One container's statistics apply to the three-valued certainty pruning
-/// runs on.
-///
-/// The implementation lives here rather than beside the trait because it is
-/// the pruning rules below asked as one question, and the rules and their
-/// caller belong on the same page.
-impl super::ApplyExpression for Bounds {
-    type Output = Option<bool>;
-
-    fn apply_expression(&self, bound: &Bound) -> crate::Result<Option<bool>> {
+impl Bounds {
+    /// What these statistics settle about one bound predicate, three-valued.
+    ///
+    /// The pruning rules below asked as one question; a statistic that cannot
+    /// be read only widens the answer to unknown, which is already the
+    /// conservative one.
+    fn certainty(&self, bound: &Bound) -> Option<bool> {
         if self.row_count() == Some(0) {
-            return Ok(Some(false));
+            return Some(false);
         }
-        Ok(match prune(bound.node(), bound.schema(), self) {
+        match prune(bound.node(), bound.schema(), self) {
             Certainty::Always => Some(true),
             Certainty::Never => Some(false),
             Certainty::Unknown => None,
-        })
+        }
     }
 }
 
@@ -504,8 +499,8 @@ fn column_bounds<'bounds>(
     schema: &Field,
     bounds: &'bounds Bounds,
 ) -> Option<&'bounds ColumnBounds> {
-    if let Kind::Attribute(selector) = &node.kind {
-        return bounds.attribute(selector);
+    if let Kind::Attribute(attribute) = &node.kind {
+        return bounds.attribute(attribute);
     }
     let index = node.as_column()?;
     let field = schema.get_field(index)?;

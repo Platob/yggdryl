@@ -116,6 +116,27 @@ impl Field {
         validate_row(self, value)
     }
 
+    /// Convert one value into what this field holds.
+    ///
+    /// [`DataType::cast_scalar`] for the datatype, then the field's own
+    /// contract: a null lands only in a nullable field. This is what a
+    /// declared column casts a computed value with.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the value cannot be held by the datatype
+    /// without loss, or is null in a required field.
+    pub fn cast_scalar(&self, value: &Scalar) -> Result<Scalar> {
+        let converted = self.dtype().cast_scalar(value)?;
+        if converted.is_null() && !self.is_nullable() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new(self.name()),
+                reason: SmolStr::new_static("non-nullable field received null"),
+            });
+        }
+        Ok(converted)
+    }
+
     /// Rewrites one row value into the exact representation this root declares.
     ///
     /// # Errors

@@ -45,24 +45,22 @@ fn rows(reader: BatchReader) -> usize {
 }
 
 #[test]
-fn the_declared_field_is_built_from_its_three_parts() {
+fn the_declared_field_is_one_section_of_the_plan() {
     let declared = schema();
     let mut options = IpcOptions::new();
 
-    // Nothing declared: no field, the default root name, no metadata.
+    // Nothing declared: no field, the default root name, an empty plan.
     assert!(options.field().is_none());
     assert_eq!(options.name(), crate::media::DEFAULT_ROOT_NAME);
-    assert_eq!(options.dtype(), None);
-    assert!(options.metadata().is_empty());
+    assert!(options.plan().is_empty());
     let message = options.require_field().unwrap_err().to_string();
     assert!(message.contains("with_field"), "{message}");
     assert!(message.contains("with_dtype"), "{message}");
 
-    // A field declares all three parts at once and builds back the same.
+    // A field declares the `create` section and builds back the same.
     options.set_field(declared.clone());
     assert_eq!(options.name(), "row");
-    assert_eq!(options.dtype(), Some(declared.dtype()));
-    assert!(options.metadata().is_empty());
+    assert_eq!(options.plan().to_string(), "create (id int64 not null)");
     assert_eq!(options.field(), Some(declared.clone()));
     assert_eq!(options.require_field().unwrap(), declared);
 
@@ -75,31 +73,33 @@ fn the_declared_field_is_built_from_its_three_parts() {
         RecordOptions::Ipc(by_dtype).stable_hash()
     );
 
-    // Each part mutates alone and the next build reflects it.
-    options.set_name("trade".into());
+    // The root name is the `create` target, and the field takes it.
+    options = options.with_name("trade");
     assert_eq!(options.name(), "trade");
+    assert_eq!(
+        options.plan().to_string(),
+        "create trade (id int64 not null)"
+    );
     assert_eq!(options.field().unwrap().name(), "trade");
     assert_eq!(options.field().unwrap().dtype(), declared.dtype());
 
-    let metadata = crate::Metadata::from_entries([("source", "test")]).unwrap();
-    options.set_metadata(metadata.clone());
-    assert_eq!(options.metadata(), &metadata);
+    // Column metadata rides the declaration, spelled and read back.
+    let mut child = declared.fields()[0].clone();
+    child.insert_metadata("field:comment", "the key").unwrap();
+    let sourced = declared
+        .clone()
+        .try_with_dtype(DataType::from_fields([child]).unwrap())
+        .unwrap();
+    let with_metadata = IpcOptions::new().with_field(sourced.clone());
     assert_eq!(
-        options.field().unwrap().get_metadata("source"),
-        Some("test")
+        with_metadata.plan().to_string(),
+        "create (id int64 not null with (\"field:comment\" = 'the key'))"
     );
-    assert!(!options.field().unwrap().is_nullable());
-
-    let widened = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("venue"),
-    ])
-    .unwrap();
-    options.set_dtype(Some(widened.clone()));
-    let built = options.field().unwrap();
-    assert_eq!(built.name(), "trade");
-    assert_eq!(built.dtype(), &widened);
-    assert_eq!(built.get_metadata("source"), Some("test"));
+    assert_eq!(with_metadata.field(), Some(sourced.clone()));
+    let respelled = IpcOptions::new()
+        .with_plan(with_metadata.plan().to_string())
+        .unwrap();
+    assert_eq!(respelled.field(), Some(sourced));
 
     // A declared field's nullability is not part of the declaration: the
     // build is the non-null row root.
@@ -107,22 +107,35 @@ fn the_declared_field_is_built_from_its_three_parts() {
     assert!(!nullable.field().unwrap().is_nullable());
     assert_eq!(nullable, IpcOptions::new().with_field(declared.clone()));
 
-    // Taking the field clears the datatype and metadata; the name still names
-    // the root a delegated write infers.
+    // Taking the field clears the `create` columns; the name still names the
+    // root a delegated write infers.
     let mut taken = options.clone();
-    assert_eq!(taken.take_field(), Some(built.clone()));
+    assert_eq!(taken.take_field(), Some(options.field().unwrap()));
     assert!(taken.field().is_none());
-    assert_eq!(taken.dtype(), None);
-    assert!(taken.metadata().is_empty());
     assert_eq!(taken.name(), "trade");
     assert_eq!(taken.take_field(), None);
 
-    // Without a datatype there is nothing to build, whatever else is set, and
-    // taking still clears the metadata that would otherwise resurface.
-    let mut named = IpcOptions::new().with_name("trade").with_metadata(metadata);
-    assert!(named.field().is_none());
-    assert_eq!(named.take_field(), None);
-    assert!(named.metadata().is_empty());
+    // A plan lands in the properties section by section, and composes back.
+    let planned = IpcOptions::new()
+        .with_plan("create trade (id int64 not null) upsert by (id) select id where id > 1")
+        .unwrap();
+    assert_eq!(
+        planned.plan().to_string(),
+        "create trade (id int64 not null) upsert by (id) select id where id > 1"
+    );
+    assert_eq!(planned.name(), "trade");
+    assert_eq!(planned.merge_by().to_string(), "id");
+    assert_eq!(planned.selector().to_string(), "id");
+    assert_eq!(planned.filter().to_string(), "id > 1");
+    assert_eq!(planned.apply_columns(), Some(vec!["id".to_owned()]));
+    let narrowed = planned.with_filter("id = 7 and venue = 'XNAS'").unwrap();
+    assert_eq!(
+        narrowed.partition_pairs(),
+        vec![
+            ("id".to_owned(), "7".to_owned()),
+            ("venue".to_owned(), "XNAS".to_owned())
+        ]
+    );
 
     let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
     let options = RecordOptions::for_media_type(&media_type)
@@ -133,9 +146,8 @@ fn the_declared_field_is_built_from_its_three_parts() {
     let RecordOptions::Ipc(inner) = options else {
         panic!("an arrows handle names the IPC encoding");
     };
-    assert_eq!(inner.name, "row");
-    assert_eq!(inner.dtype.as_ref(), Some(declared.dtype()));
-    assert!(inner.metadata.is_empty());
+    assert_eq!(inner.field.as_ref().map(Field::name), Some("row"));
+    assert_eq!(inner.field, Some(declared));
 }
 
 #[test]
@@ -316,14 +328,15 @@ fn a_satisfied_limit_stops_pulling_the_inner_reader() {
 fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
     let options = IpcOptions::new()
         .with_max_row_size(10)
-        .with_merge_by_names(["id"]);
+        .with_merge_by(["id"])
+        .unwrap();
     let Err(error) = options.limit_arrow_reader(reader(1, 2)) else {
         panic!("a limited merge must be refused");
     };
     let message = error.to_string();
 
     assert!(message.contains("max_row_size = 10"), "{message}");
-    assert!(message.contains("merge_by_names [\"id\"]"), "{message}");
+    assert!(message.contains("merge_by `id`"), "{message}");
 }
 
 #[test]
@@ -363,19 +376,16 @@ fn record_options_preflight_each_write_intent_without_an_input_reader() {
         .unwrap_err()
         .to_string();
     assert!(merge.contains("write mode merge requires"), "{merge}");
-    assert!(merge.contains("$.merge_by_names"), "{merge}");
+    assert!(merge.contains("$.merge_by"), "{merge}");
 
-    let keyed = plain.with_merge_by_names(["id"]);
+    let keyed = plain.with_merge_by(["id"]).unwrap();
     keyed.require_write_mode(crate::IOMode::Merge).unwrap();
     for refused in [
         keyed.require_write_mode(crate::IOMode::Overwrite),
         keyed.require_write_mode(crate::IOMode::Append),
     ] {
         let message = refused.unwrap_err().to_string();
-        assert!(
-            message.contains("does not accept merge_by_names"),
-            "{message}"
-        );
+        assert!(message.contains("does not accept merge_by"), "{message}");
         assert!(message.contains("use merge mode"), "{message}");
     }
 }

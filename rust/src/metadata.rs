@@ -186,6 +186,14 @@ macro_rules! for_each_well_known_protocol {
             PartitionFieldMut,
             "partition"
         );
+        $emit!(
+            as_transform,
+            as_transform_mut,
+            TRANSFORM,
+            TransformField,
+            TransformFieldMut,
+            "transform"
+        );
         $emit!(as_s3, as_s3_mut, S3, S3Field, S3FieldMut, "Amazon S3");
         $emit!(
             as_gs,
@@ -899,14 +907,14 @@ mod validation;
 pub use protocol::ProtocolMetadata;
 use validation::*;
 pub(crate) use validation::{
-    ALL_SOURCES, parse_content_length, parse_field_id, parse_reserved_bool, parse_source_list,
-    parse_string_enum, property_key, property_name, protocol_metadata_prefix, render_source_list,
-    write_json_string,
+    ALL_SOURCES, parse_content_length, parse_field_id, parse_partition_transform,
+    parse_reserved_bool, parse_source_list, parse_string_enum, property_key, property_name,
+    protocol_metadata_prefix, render_source_list, write_json_string,
 };
-// Read only by `xxhash::arrow` and `media::partition`, both of which the
-// `arrow` feature gates, so the names it carries are gated the same way.
+// Read only by `xxhash::arrow`, which the `arrow` feature gates, so the name
+// is gated the same way.
 #[cfg(feature = "arrow")]
-pub(crate) use validation::{is_all_sources, parse_partition_transform};
+pub(crate) use validation::is_all_sources;
 
 #[cfg(test)]
 mod tests;

@@ -96,13 +96,14 @@ fn merging(handle: &Buffer) -> RecordOptions {
         .record_options()
         .unwrap()
         .with_field(schema())
-        .with_merge_by_names(["id"])
+        .with_merge_by(["id"])
+        .unwrap()
 }
 
 /// Every `(id, symbol)` pair a handle holds, in stored order.
 fn stored(handle: &impl IOBase, options: &RecordOptions) -> Vec<(i64, Option<String>)> {
     let mut plain = options.clone();
-    plain.set_merge_by_names(Vec::new());
+    plain.set_merge_by(crate::Selector::all());
     let mut found = Vec::new();
     for batch in handle.read_arrow_reader(&plain).unwrap() {
         let batch = batch.unwrap();
@@ -158,7 +159,8 @@ fn a_key_resolves_the_way_every_other_name_resolves() {
         .record_options()
         .unwrap()
         .with_field(schema())
-        .with_merge_by_names(["ID"]);
+        .with_merge_by(["ID"])
+        .unwrap();
     handle
         .merge_arrow_reader(
             reader(vec![rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")])]),
@@ -182,7 +184,8 @@ fn a_key_naming_no_stored_column_is_still_refused() {
         .record_options()
         .unwrap()
         .with_field(schema())
-        .with_merge_by_names(["venue"]);
+        .with_merge_by(["venue"])
+        .unwrap();
     let error = handle
         .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
         .unwrap_err()
@@ -223,7 +226,10 @@ fn a_key_stored_twice_has_every_occurrence_updated() {
                 rows(vec![1], vec![Some("AAPL")]),
                 rows(vec![1, 2], vec![Some("AAPL"), Some("MSFT")]),
             ]),
-            &options.clone().with_merge_by_names(Vec::<String>::new()),
+            &options
+                .clone()
+                .with_merge_by(crate::Selector::all())
+                .unwrap(),
         )
         .unwrap();
 
@@ -277,7 +283,14 @@ fn incoming_payload_batches_are_released_before_the_next_is_pulled() {
         previous: None,
     });
 
-    let merged = super::merged(stored, incoming, &schema(), &["id".to_owned()], true).unwrap();
+    let merged = super::merged(
+        stored,
+        incoming,
+        &schema(),
+        &crate::Selector::from_columns(["id"]),
+        true,
+    )
+    .unwrap();
     let rows: usize = merged.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
 }
@@ -327,7 +340,8 @@ fn a_null_key_matches_another_null_key() {
         .record_options()
         .unwrap()
         .with_field(field)
-        .with_merge_by_names(["id"]);
+        .with_merge_by(["id"])
+        .unwrap();
     handle
         .merge_arrow_reader(
             crate::arrow::batch_reader(Arc::clone(&arrow), [batch(vec![None], vec![Some("AAPL")])]),
@@ -344,7 +358,7 @@ fn a_null_key_matches_another_null_key() {
     // Arrow's row encoding gives absence one exact spelling, so two null keys
     // are the same key rather than two rows that merely both lack a value.
     let total: usize = handle
-        .read_arrow_reader(&options.with_merge_by_names(Vec::<String>::new()))
+        .read_arrow_reader(&options.with_merge_by(crate::Selector::all()).unwrap())
         .unwrap()
         .map(|batch| batch.unwrap().num_rows())
         .sum();
@@ -378,7 +392,8 @@ fn a_composite_key_matches_on_every_column() {
         .record_options()
         .unwrap()
         .with_field(field)
-        .with_merge_by_names(["venue", "id"]);
+        .with_merge_by(["venue", "id"])
+        .unwrap();
     handle
         .merge_arrow_reader(
             crate::arrow::batch_reader(
@@ -400,7 +415,12 @@ fn a_composite_key_matches_on_every_column() {
         .unwrap();
 
     let read: Vec<RecordBatch> = handle
-        .read_arrow_reader(&options.clone().with_merge_by_names(Vec::<String>::new()))
+        .read_arrow_reader(
+            &options
+                .clone()
+                .with_merge_by(crate::Selector::all())
+                .unwrap(),
+        )
         .unwrap()
         .map(std::result::Result::unwrap)
         .collect();
@@ -466,7 +486,8 @@ fn a_match_key_naming_an_unknown_column_is_refused_by_name() {
         .record_options()
         .unwrap()
         .with_field(schema())
-        .with_merge_by_names(["nowhere"]);
+        .with_merge_by(["nowhere"])
+        .unwrap();
 
     let message = handle
         .merge_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
@@ -517,7 +538,7 @@ fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
 
     // Selecting one column yields exactly that column; the name matches the
     // way every cast matches, ASCII case-insensitively.
-    let selecting = options.clone().with_select_by_names(["SYMBOL"]);
+    let selecting = options.clone().with_selector("SYMBOL").unwrap();
     let mut symbols = Vec::new();
     for batch in handle.read_arrow_reader(&selecting).unwrap() {
         let batch = batch.unwrap();
@@ -535,7 +556,7 @@ fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
 
     // The selection also orders: naming both columns reversed yields them
     // reversed, which a plain read never does.
-    let reversed = options.with_select_by_names(["symbol", "id"]);
+    let reversed = options.with_selector("symbol, id").unwrap();
     let first = handle
         .read_arrow_reader(&reversed)
         .unwrap()
@@ -559,7 +580,8 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
     let narrowing = handle
         .record_options()
         .unwrap()
-        .with_select_by_names(["id"]);
+        .with_selector("id")
+        .unwrap();
     handle
         .overwrite_arrow_reader(
             reader(vec![rows(vec![7, 8], vec![Some("AAPL"), Some("MSFT")])]),
@@ -578,7 +600,7 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
     assert_eq!(batch.schema().field(0).name(), "id");
 
     // A name the rows do not have is an error naming what is there.
-    let missing = plain.with_select_by_names(["absent"]);
+    let missing = plain.with_selector("absent").unwrap();
     let error = handle
         .read_arrow_reader(&missing)
         .err()
@@ -610,7 +632,7 @@ fn append_refuses_a_match_key_and_merge_uses_it_explicitly() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("write mode append"), "{error}");
-    assert!(error.contains("merge_by_names"), "{error}");
+    assert!(error.contains("merge_by"), "{error}");
     assert_eq!(handle.as_slice(), before.as_slice());
 
     handle
@@ -633,7 +655,9 @@ fn append_refuses_a_match_key_and_merge_uses_it_explicitly() {
 #[test]
 fn an_append_naming_no_match_key_still_appends_every_row() {
     let mut handle = handle("append-plain.arrows");
-    let options = merging(&handle).with_merge_by_names(Vec::<String>::new());
+    let options = merging(&handle)
+        .with_merge_by(crate::Selector::all())
+        .unwrap();
     handle
         .overwrite_arrow_reader(reader(vec![rows(vec![1], vec![Some("AAPL")])]), &options)
         .unwrap();

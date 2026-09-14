@@ -236,8 +236,8 @@ pub trait IOMedia: Send {
     /// Per the laziness contract, a resource that does not exist yet holds no
     /// batches rather than failing.
     ///
-    /// The shaping order is fixed: declared schema, then selection, then
-    /// completion cast, then partition filter, then
+    /// The shaping order is fixed: declared schema, then partition filter,
+    /// then the applied expressions, then
     /// [`max_row_size`](crate::media::IORecordOptions::max_row_size) and
     /// [`max_byte_size`](crate::media::IORecordOptions::max_byte_size)
     /// last - so a limit counts result rows, and a limit of ten with a filter
@@ -255,17 +255,14 @@ pub trait IOMedia: Send {
         let reader = if handle.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::media::iceberg::located(handle)? {
-                let filtered =
-                    crate::media::partition::filtered_reader(table.read(options)?, options)?;
-                return options
-                    .limit_arrow_reader(crate::iobase::select_reader(filtered, options)?);
+                let read = table.read(options)?;
+                return options.limit_arrow_reader(options.apply_arrow_expressions(read)?);
             }
             crate::media::partition::folder_reader(handle, options)?
         } else {
             crate::iobase::leaf_reader(handle, options)?
         };
-        let reader = crate::media::partition::filtered_reader(reader, options)?;
-        options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
+        options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
     }
 
     /// Read this resource's rows as one [`ArrowValue`](crate::ArrowValue).
@@ -735,8 +732,8 @@ pub trait IOMedia: Send {
     /// Merge native row values into this resource by explicit keys.
     ///
     /// This is the row-by-row adapter over
-    /// [`merge_arrow_reader`](Self::merge_arrow_reader). `merge_by_names` must
-    /// contain at least one field name; an empty iterator is a no-op once that
+    /// [`merge_arrow_reader`](Self::merge_arrow_reader). `merge_by` must
+    /// name at least one key; an empty iterator is a no-op once that
     /// intent has been validated.
     ///
     /// # Errors
@@ -815,8 +812,8 @@ fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
     use crate::media::IORecordOptions;
 
     let mut options = media.record_options()?;
-    options.set_select_by_names(Vec::new());
-    options.set_filter_partitions(Vec::new());
+    options.set_filter(crate::Filter::always_true());
+    options.set_selector(crate::Selector::all());
     options.set_max_row_size(None);
     options.set_max_byte_size(None);
     Ok(options)

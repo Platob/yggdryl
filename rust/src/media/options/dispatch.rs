@@ -2,7 +2,7 @@ use smol_str::SmolStr;
 
 use super::{IORecordOptions, RecordOptions};
 use crate::media::ipc::IpcOptions;
-use crate::{DataType, Level, Metadata};
+use crate::{Field, Filter, Level, Selector};
 
 impl IORecordOptions for RecordOptions {
     fn name(&self) -> &str {
@@ -25,43 +25,83 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
-    fn dtype(&self) -> Option<&DataType> {
+    fn declared(&self) -> Option<&Field> {
         match self {
-            Self::Ipc(options) => options.dtype(),
+            Self::Ipc(options) => options.declared(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.dtype(),
-            Self::Avro(options) => options.dtype(),
-            Self::Text(options) => options.dtype(),
+            Self::Parquet(options) => options.declared(),
+            Self::Avro(options) => options.declared(),
+            Self::Text(options) => options.declared(),
         }
     }
 
-    fn set_dtype(&mut self, dtype: Option<DataType>) {
+    fn set_declared(&mut self, field: Option<Field>) {
         match self {
-            Self::Ipc(options) => options.set_dtype(dtype),
+            Self::Ipc(options) => options.set_declared(field),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_dtype(dtype),
-            Self::Avro(options) => options.set_dtype(dtype),
-            Self::Text(options) => options.set_dtype(dtype),
+            Self::Parquet(options) => options.set_declared(field),
+            Self::Avro(options) => options.set_declared(field),
+            Self::Text(options) => options.set_declared(field),
         }
     }
 
-    fn metadata(&self) -> &Metadata {
+    fn merge_by(&self) -> &Selector {
         match self {
-            Self::Ipc(options) => options.metadata(),
+            Self::Ipc(options) => options.merge_by(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.metadata(),
-            Self::Avro(options) => options.metadata(),
-            Self::Text(options) => options.metadata(),
+            Self::Parquet(options) => options.merge_by(),
+            Self::Avro(options) => options.merge_by(),
+            Self::Text(options) => options.merge_by(),
         }
     }
 
-    fn set_metadata(&mut self, metadata: Metadata) {
+    fn set_merge_by(&mut self, merge_by: Selector) {
         match self {
-            Self::Ipc(options) => options.set_metadata(metadata),
+            Self::Ipc(options) => options.set_merge_by(merge_by),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_metadata(metadata),
-            Self::Avro(options) => options.set_metadata(metadata),
-            Self::Text(options) => options.set_metadata(metadata),
+            Self::Parquet(options) => options.set_merge_by(merge_by),
+            Self::Avro(options) => options.set_merge_by(merge_by),
+            Self::Text(options) => options.set_merge_by(merge_by),
+        }
+    }
+
+    fn filter(&self) -> &Filter {
+        match self {
+            Self::Ipc(options) => options.filter(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.filter(),
+            Self::Avro(options) => options.filter(),
+            Self::Text(options) => options.filter(),
+        }
+    }
+
+    fn set_filter(&mut self, filter: Filter) {
+        match self {
+            Self::Ipc(options) => options.set_filter(filter),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_filter(filter),
+            Self::Avro(options) => options.set_filter(filter),
+            Self::Text(options) => options.set_filter(filter),
+        }
+    }
+
+    fn selector(&self) -> &Selector {
+        match self {
+            Self::Ipc(options) => options.selector(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.selector(),
+            Self::Avro(options) => options.selector(),
+            Self::Text(options) => options.selector(),
+        }
+    }
+
+    fn set_selector(&mut self, selector: Selector) {
+        match self {
+            Self::Ipc(options) => options.set_selector(selector),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_selector(selector),
+            Self::Avro(options) => options.set_selector(selector),
+            Self::Text(options) => options.set_selector(selector),
         }
     }
 
@@ -202,66 +242,6 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_level(level),
             Self::Avro(options) => options.set_level(level),
             Self::Text(options) => options.set_level(level),
-        }
-    }
-
-    fn merge_by_names(&self) -> &[String] {
-        match self {
-            Self::Ipc(options) => options.merge_by_names(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.merge_by_names(),
-            Self::Avro(options) => options.merge_by_names(),
-            Self::Text(options) => options.merge_by_names(),
-        }
-    }
-
-    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
-        match self {
-            Self::Ipc(options) => options.set_merge_by_names(merge_by_names),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_merge_by_names(merge_by_names),
-            Self::Avro(options) => options.set_merge_by_names(merge_by_names),
-            Self::Text(options) => options.set_merge_by_names(merge_by_names),
-        }
-    }
-
-    fn select_by_names(&self) -> &[String] {
-        match self {
-            Self::Ipc(options) => options.select_by_names(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.select_by_names(),
-            Self::Avro(options) => options.select_by_names(),
-            Self::Text(options) => options.select_by_names(),
-        }
-    }
-
-    fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
-        match self {
-            Self::Ipc(options) => options.set_select_by_names(select_by_names),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_select_by_names(select_by_names),
-            Self::Avro(options) => options.set_select_by_names(select_by_names),
-            Self::Text(options) => options.set_select_by_names(select_by_names),
-        }
-    }
-
-    fn filter_partitions(&self) -> &[(String, String)] {
-        match self {
-            Self::Ipc(options) => options.filter_partitions(),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.filter_partitions(),
-            Self::Avro(options) => options.filter_partitions(),
-            Self::Text(options) => options.filter_partitions(),
-        }
-    }
-
-    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
-        match self {
-            Self::Ipc(options) => options.set_filter_partitions(filter_partitions),
-            #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_filter_partitions(filter_partitions),
-            Self::Avro(options) => options.set_filter_partitions(filter_partitions),
-            Self::Text(options) => options.set_filter_partitions(filter_partitions),
         }
     }
 }

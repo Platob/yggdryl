@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use crate::Scalar;
-use crate::expression::Function;
+use crate::expression::{Function, TRANSFORM_EXPRESSION_KEY, canonicalize_transform_expression};
 use crate::hashing::txhash::{
     DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
 };
@@ -262,6 +262,9 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         PARTITION_SOURCES_KEY => canonicalize_source_list(PARTITION_SOURCES_KEY, &value)?,
         PARTITION_TRANSFORM_KEY => {
             canonicalize_partition_transform(PARTITION_TRANSFORM_KEY, &value)?
+        }
+        TRANSFORM_EXPRESSION_KEY => {
+            canonicalize_transform_expression(TRANSFORM_EXPRESSION_KEY, &value)?
         }
         DIGEST_ROLE_KEY => {
             if value.as_str() != DIGEST_ROLE_HOLDER {

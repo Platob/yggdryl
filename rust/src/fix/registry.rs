@@ -108,7 +108,7 @@ fn segment_name(segment: &FieldSegment) -> Option<&str> {
     match segment {
         FieldSegment::Field(name) => Some(name.as_str()),
         FieldSegment::Key(key) => key.value().as_str(),
-        FieldSegment::Index(_) => None,
+        FieldSegment::Index(_) | FieldSegment::Range { .. } => None,
     }
 }
 

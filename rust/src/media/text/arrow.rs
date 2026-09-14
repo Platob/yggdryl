@@ -98,7 +98,7 @@ fn text_lines(
     mtime: Option<i128>,
     options: &TextOptions,
 ) -> Result<TextLines> {
-    let plan = options.plan()?;
+    let plan = options.line_plan()?;
     let timestamp_capture = options
         .parse_mtime
         .then(|| (0..options.capture_names().len()).find(|index| options.consumes_capture(*index)))

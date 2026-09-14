@@ -153,7 +153,8 @@ impl Located {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        self.table.commit_merge_where(&pairs, batches, &[], safe)
+        self.table
+            .commit_merge_where(&pairs, batches, &crate::Selector::all(), safe)
     }
 
     /// Publish one already-shaped append cadence.
@@ -165,7 +166,7 @@ impl Located {
     pub(crate) fn merge_prepared(
         &mut self,
         batches: crate::arrow::BatchReader,
-        merge_by_names: &[String],
+        merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
         let filters = self.filters.clone();
@@ -174,7 +175,7 @@ impl Located {
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         self.table
-            .commit_merge_where(&pairs, batches, merge_by_names, safe)
+            .commit_merge_where(&pairs, batches, merge_by, safe)
     }
 
     /// Return the table a container handle addresses, if it addresses one.
@@ -262,10 +263,11 @@ impl Located {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
+        let overwrite = crate::Selector::all();
         if commit_row_size.is_none() {
             return self
                 .table
-                .commit_merge_where(&pairs, batches, &[], options.safe());
+                .commit_merge_where(&pairs, batches, &overwrite, options.safe());
         }
         let schema = batches.schema();
         let mut commits = options.commit_arrow_readers(batches)?;
@@ -273,12 +275,12 @@ impl Located {
             return self.table.commit_merge_where(
                 &pairs,
                 crate::arrow::batch_reader(schema, []),
-                &[],
+                &overwrite,
                 options.safe(),
             );
         };
         self.table
-            .commit_merge_where(&pairs, first?, &[], options.safe())?;
+            .commit_merge_where(&pairs, first?, &overwrite, options.safe())?;
         for commit in commits {
             self.table.commit_append(commit?)?;
         }
@@ -354,17 +356,13 @@ impl Located {
             return self.table.commit_merge_where(
                 &pairs,
                 batches,
-                options.merge_by_names(),
+                options.merge_by(),
                 options.safe(),
             );
         }
         for commit in options.commit_arrow_readers(batches)? {
-            self.table.commit_merge_where(
-                &pairs,
-                commit?,
-                options.merge_by_names(),
-                options.safe(),
-            )?;
+            self.table
+                .commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
         }
         Ok(())
     }

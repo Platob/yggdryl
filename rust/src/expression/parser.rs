@@ -1,18 +1,21 @@
 //! One recursive grammar, re-entered by every nested construct.
 //!
 //! There is exactly one parser in this module and exactly one in the workspace
-//! that reads a predicate. It is recursive descent with explicit precedence,
-//! it re-enters itself for every operand - a `case` arm holds a full
-//! expression, a list element holds a full expression, a cast target holds a
-//! full datatype through the crate's own datatype grammar - and it refuses
-//! past [`RECURSION_LIMIT`](super::RECURSION_LIMIT) with a typed error rather
-//! than by overflowing a stack.
+//! that reads a path, a term, a filter or a selector. It is recursive descent
+//! with explicit precedence, it re-enters itself for every operand - a `case`
+//! arm holds a full term, a list element holds a full term, a cast target
+//! holds a full datatype through the crate's own datatype grammar - and it
+//! refuses past [`RECURSION_LIMIT`](super::RECURSION_LIMIT) with a typed error
+//! rather than by overflowing a stack.
 //!
 //! # The shape
 //!
 //! ```text
-//! statement  := "select" projections ["where" expr] ["order" "by" orders] ["limit" n]
-//! expr       := disjunction
+//! expression := "select" selector | "where" filter
+//! selector   := "*" | projection ("," projection)*
+//! projection := term ["as" identifier] [datatype ["null" | "not" "null"]]
+//! filter     := term
+//! term       := disjunction
 //! disjunction:= conjunction ("or" conjunction)*
 //! conjunction:= negation ("and" negation)*
 //! negation   := "not" negation | predicate
@@ -20,321 +23,178 @@
 //! additive   := product (("+" | "-") product)*
 //! product    := unary (("*" | "/" | "%") unary)*
 //! unary      := "-" unary | accessor
-//! accessor   := atom ("." identifier | "[" key "]")*
-//! atom       := literal | "(" expr ")" | column | "&holder." selector | ":" parameter
-//!             | "cast" "(" expr "as" datatype ")" | "case" .. "end"
-//!             | function "(" expr,* ")" | "[" expr,* "]" | "{" expr ":" expr,* "}"
-//!             | "struct" "(" expr "as" identifier,* ")" | datatype text
+//! accessor   := atom ("." identifier | "[" segment "]")*
+//! segment    := integer | "'key'" | [integer] ":" [integer]
+//! atom       := literal | "(" term ")" | column | "&holder." attribute | ":" parameter
+//!             | "cast" "(" term "as" datatype ")" | "case" .. "end"
+//!             | function "(" term,* ")" | "[" term,* "]" | "{" term ":" term,* "}"
+//!             | "struct" "(" term "as" identifier,* ")" | datatype text
+//! path       := ["."] identifier ("." identifier | "[" segment "]")* ["as" identifier]
 //! ```
 //!
 //! # What is deliberately not here
 //!
-//! No subquery, no join, no aggregate, no window. Every one of those needs a
-//! second relation, and this is a filter and projection tree over one. A
-//! grammar that accepts them and then refuses them at bind time has told the
-//! caller a lie at the point where the error message was still cheap.
+//! No subquery, no join, no aggregate, no window, no ordering. Every one of
+//! those needs a second relation or the whole of one, and this is a projection
+//! and filter tree over rows that stream. A grammar that accepts them and then
+//! refuses them at bind time has told the caller a lie at the point where the
+//! error message was still cheap.
 
 use std::str::FromStr;
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::attribute::Attribute;
 use super::display::{is_bare_identifier, is_reserved};
-use super::selector::Selector;
+use super::path::{FieldPath, FieldSegment};
+use super::plan::{Location, Ordering, Plan, Source, Target, Verb, Write};
+use super::selector::{Projection, Selector};
 use super::{
-    Comparison, Expression, FieldSegment, Function, Literal, Operator, RECURSION_LIMIT, Safety,
+    Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
 };
-use crate::{DataType, Error, I256, Result, Scalar};
+use crate::{DataType, Error, I256, Result, Scalar, Url};
 
-/// Which way one ordering key sorts.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Default,
-    ::serde::Serialize,
-    ::serde::Deserialize,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum Direction {
-    /// Smallest first.
-    #[default]
-    Ascending,
-    /// Largest first.
-    Descending,
-}
+impl FromStr for Term {
+    type Err = Error;
 
-/// Where nulls sit in an ordering.
-#[derive(
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    ::serde::Serialize,
-    ::serde::Deserialize,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum NullsOrder {
-    /// Nulls sort before every value.
-    First,
-    /// Nulls sort after every value.
-    Last,
-}
-
-/// One ordering key: an expression, a direction, and where nulls sit.
-#[derive(
-    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
-)]
-pub struct Order {
-    expression: Expression,
-    direction: Direction,
-    nulls: Option<NullsOrder>,
-}
-
-impl Order {
-    /// Sort ascending by an expression, leaving null placement to the reader.
-    #[must_use]
-    pub const fn new(expression: Expression) -> Self {
-        Self {
-            expression,
-            direction: Direction::Ascending,
-            nulls: None,
-        }
-    }
-
-    /// Set the direction.
-    #[must_use]
-    pub const fn with_direction(mut self, direction: Direction) -> Self {
-        self.direction = direction;
-        self
-    }
-
-    /// Set where nulls sit.
-    #[must_use]
-    pub const fn with_nulls(mut self, nulls: NullsOrder) -> Self {
-        self.nulls = Some(nulls);
-        self
-    }
-
-    /// The expression sorted by.
-    #[must_use]
-    pub const fn expression(&self) -> &Expression {
-        &self.expression
-    }
-
-    /// The direction sorted in.
-    #[must_use]
-    pub const fn direction(&self) -> Direction {
-        self.direction
-    }
-
-    /// Where nulls sit, when the statement said.
-    #[must_use]
-    pub const fn nulls(&self) -> Option<NullsOrder> {
-        self.nulls
+    fn from_str(input: &str) -> Result<Self> {
+        let mut parser = Parser::new(input)?;
+        let term = parser.term()?;
+        parser.expect_end()?;
+        term.check_budget()?;
+        Ok(term)
     }
 }
 
-/// One output column: an expression and the name it is published under.
-#[derive(
-    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
-)]
-pub struct Projection {
-    expression: Expression,
-    alias: Option<SmolStr>,
+/// Parse one filter, with or without its `where` keyword in front.
+pub(crate) fn parse_filter(input: &str) -> Result<Filter> {
+    let mut parser = Parser::new(input)?;
+    let _ = parser.eat_word("where");
+    let term = parser.term()?;
+    parser.expect_end()?;
+    term.check_budget()?;
+    Ok(Filter::new(term))
 }
 
-impl Projection {
-    /// Publish an expression under the name it derives.
-    #[must_use]
-    pub const fn new(expression: Expression) -> Self {
-        Self {
-            expression,
-            alias: None,
-        }
-    }
-
-    /// Publish an expression under an explicit name.
-    #[must_use]
-    pub fn aliased(expression: Expression, alias: impl Into<SmolStr>) -> Self {
-        Self {
-            expression,
-            alias: Some(alias.into()),
-        }
-    }
-
-    /// The expression computed.
-    #[must_use]
-    pub const fn expression(&self) -> &Expression {
-        &self.expression
-    }
-
-    /// The explicit name, when the statement gave one.
-    #[must_use]
-    pub fn alias(&self) -> Option<&str> {
-        self.alias.as_deref()
-    }
-
-    /// The name this projection publishes.
-    ///
-    /// An aliased projection uses its alias; a bare column keeps its own name;
-    /// anything else is named by its canonical text, so a statement never
-    /// produces two columns that are impossible to tell apart.
-    #[must_use]
-    pub fn name(&self) -> SmolStr {
-        if let Some(alias) = &self.alias {
-            return alias.clone();
-        }
-        match &self.expression {
-            Expression::Column(name) => name.clone(),
-            Expression::Path(_, steps) => match steps.last() {
-                Some(FieldSegment::Field(name)) => name.clone(),
-                _ => SmolStr::new(self.expression.to_string()),
-            },
-            other => SmolStr::new(other.to_string()),
-        }
-    }
+/// Parse one selector, with or without its `select` keyword in front.
+pub(crate) fn parse_selector(input: &str) -> Result<Selector> {
+    let mut parser = Parser::new(input)?;
+    let _ = parser.eat_word("select");
+    let selector = parser.selector()?;
+    parser.expect_end()?;
+    selector.check_budget()?;
+    Ok(selector)
 }
 
-/// A projection list, an optional predicate, an ordering, and a limit.
+/// Parse one projection: a term, its alias, its declared type.
+pub(crate) fn parse_projection(input: &str) -> Result<Projection> {
+    let mut parser = Parser::new(input)?;
+    let projection = parser.projection()?;
+    parser.expect_end()?;
+    projection.term().check_budget()?;
+    Ok(projection)
+}
+
+/// Parse one expression: a plan, or plans separated by `;`.
 ///
-/// This is the whole of what a read can be asked for over one relation. It is
-/// deliberately not a query language: there is no `from`, because the relation
-/// is the handle the statement is given to, and no `join`, because there is
-/// only ever one.
-#[derive(
-    Clone,
-    Debug,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    Default,
-    ::serde::Serialize,
-    ::serde::Deserialize,
-)]
-pub struct Statement {
-    projections: Vec<Projection>,
-    predicate: Option<Expression>,
-    ordering: Vec<Order>,
-    limit: Option<u64>,
+/// A plan spelling only its `select` section is the selector; only its
+/// `where` section, the filter. Anything else is the plan itself.
+pub(crate) fn parse_expression(input: &str) -> Result<Expression> {
+    let mut parser = Parser::new(input)?;
+    let mut steps = Vec::new();
+    loop {
+        if parser.peek().is_none() && !steps.is_empty() {
+            break;
+        }
+        let plan = parser.plan()?;
+        plan.check_budget()?;
+        steps.push(plan.into_expression());
+        if !parser.eat_symbol(";") {
+            break;
+        }
+    }
+    parser.expect_end()?;
+    Ok(Expression::sequence(steps))
 }
 
-impl Statement {
-    /// Return a deterministic hash of the canonical statement text.
-    pub fn stable_hash(&self) -> u64 {
-        crate::hashing::stable_hash_display(self)
-    }
-
-    /// Select every column, unfiltered.
-    #[must_use]
-    pub const fn all() -> Self {
-        Self {
-            projections: Vec::new(),
-            predicate: None,
-            ordering: Vec::new(),
-            limit: None,
-        }
-    }
-
-    /// Select the given projections.
-    #[must_use]
-    pub fn select(projections: impl IntoIterator<Item = Projection>) -> Self {
-        Self {
-            projections: projections.into_iter().collect(),
-            ..Self::all()
-        }
-    }
-
-    /// Filter by a predicate.
-    #[must_use]
-    pub fn with_predicate(mut self, predicate: Expression) -> Self {
-        self.predicate = Some(predicate);
-        self
-    }
-
-    /// Order by the given keys.
-    #[must_use]
-    pub fn with_ordering(mut self, ordering: impl IntoIterator<Item = Order>) -> Self {
-        self.ordering = ordering.into_iter().collect();
-        self
-    }
-
-    /// Stop after this many rows.
-    #[must_use]
-    pub const fn with_limit(mut self, limit: u64) -> Self {
-        self.limit = Some(limit);
-        self
-    }
-
-    /// The projections, empty when the statement selected `*`.
-    #[must_use]
-    pub fn projections(&self) -> &[Projection] {
-        &self.projections
-    }
-
-    /// The predicate, when the statement had a `where`.
-    #[must_use]
-    pub const fn predicate(&self) -> Option<&Expression> {
-        self.predicate.as_ref()
-    }
-
-    /// The ordering keys, in priority order.
-    #[must_use]
-    pub fn ordering(&self) -> &[Order] {
-        &self.ordering
-    }
-
-    /// The row limit, when the statement had one.
-    #[must_use]
-    pub const fn limit(&self) -> Option<u64> {
-        self.limit
-    }
-
-    /// Return whether this statement selects every column unchanged.
-    #[must_use]
-    pub fn is_all(&self) -> bool {
-        self.projections.is_empty()
-    }
+/// Parse one plan and nothing else.
+pub(crate) fn parse_plan(input: &str) -> Result<Plan> {
+    let mut parser = Parser::new(input)?;
+    let plan = parser.plan()?;
+    parser.expect_end()?;
+    plan.check_budget()?;
+    Ok(plan)
 }
 
-impl FromStr for Expression {
-    type Err = Error;
-
-    fn from_str(input: &str) -> Result<Self> {
-        let mut parser = Parser::new(input)?;
-        let expression = parser.expression()?;
-        parser.expect_end()?;
-        expression.check_budget()?;
-        Ok(expression)
-    }
+/// Parse one target: a URL, or a catalog path, with its properties.
+pub(crate) fn parse_target(input: &str) -> Result<Target> {
+    let mut parser = Parser::new(input)?;
+    let target = parser.target()?;
+    parser.expect_end()?;
+    Ok(target)
 }
 
-impl FromStr for Statement {
-    type Err = Error;
+/// Parse one field path: steps and an alias, and nothing else.
+///
+/// The empty text is the root. A leading dot is optional, a name after a dot
+/// may be any word, and both quote styles are read for an alias - the widths
+/// a hand-written path needs at intake, rendered back one way.
+pub(crate) fn parse_field_path(input: &str) -> Result<FieldPath> {
+    field_path(input).map_err(|error| match error {
+        Error::Parse {
+            position, reason, ..
+        } => Error::Parse {
+            target: super::path::TARGET,
+            position,
+            reason,
+        },
+        other => other,
+    })
+}
 
-    fn from_str(input: &str) -> Result<Self> {
-        let mut parser = Parser::new(input)?;
-        let statement = parser.statement()?;
-        parser.expect_end()?;
-        if let Some(predicate) = &statement.predicate {
-            predicate.check_budget()?;
-        }
-        for projection in &statement.projections {
-            projection.expression.check_budget()?;
-        }
-        Ok(statement)
+fn field_path(input: &str) -> Result<FieldPath> {
+    let mut parser = Parser::new(input)?;
+    if parser.peek().is_none() {
+        return Ok(FieldPath::root());
     }
+    let mut segments: Vec<FieldSegment> = Vec::new();
+    // A leading dot is optional, so the first step may be a bare name.
+    if parser.eat_symbol(".") {
+        segments.push(FieldSegment::Field(parser.step_name()?));
+    } else if parser.at_symbol("[") {
+        parser.cursor += 1;
+        segments.push(parser.segment()?);
+        parser.expect_symbol("]")?;
+    } else if let Some(Token::Number(text)) = parser.peek().cloned() {
+        // A bare decimal is a name and not a position, exactly as it is one
+        // layer down: a text line's entry keyed `55` is reached by the path
+        // `55`, and a term reads the same number as a literal.
+        parser.cursor += 1;
+        segments.push(FieldSegment::Field(text));
+    } else {
+        segments.push(FieldSegment::Field(parser.identifier()?));
+    }
+    loop {
+        if parser.eat_symbol(".") {
+            segments.push(FieldSegment::Field(parser.step_name()?));
+            continue;
+        }
+        if parser.at_symbol("[") {
+            parser.cursor += 1;
+            segments.push(parser.segment()?);
+            parser.expect_symbol("]")?;
+            continue;
+        }
+        break;
+    }
+    let mut path = FieldPath::new(segments);
+    if parser.eat_word("as") {
+        let alias = parser.alias_name()?;
+        path.set_alias(Some(&alias))?;
+    }
+    parser.expect_end()?;
+    Ok(path)
 }
 
 // ---------------------------------------------------------------------------
@@ -362,9 +222,9 @@ struct Spanned {
 }
 
 /// The multi-character symbols, longest first so `<=` never reads as `<`.
-const SYMBOLS: [&str; 22] = [
-    "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", "&", "*", "+",
-    "-", "/", "%", "=",
+const SYMBOLS: [&str; 23] = [
+    "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", ";", "&", "*",
+    "+", "-", "/", "%", "=",
 ];
 
 fn tokenize(input: &str) -> Result<Vec<Spanned>> {
@@ -378,7 +238,7 @@ fn tokenize(input: &str) -> Result<Vec<Spanned>> {
             continue;
         }
         // `--` to end of line is the one comment form, because it is the one
-        // every SQL dialect agrees on and it cannot start an expression.
+        // every SQL dialect agrees on and it cannot start a term.
         if byte == b'-' && bytes.get(cursor + 1) == Some(&b'-') {
             while cursor < bytes.len() && bytes[cursor] != b'\n' {
                 cursor += 1;
@@ -507,6 +367,30 @@ fn read_number(input: &str, start: usize) -> Result<(SmolStr, usize)> {
         }
     }
     Ok((SmolStr::new(&input[start..cursor]), cursor))
+}
+
+/// Return whether a word opens a plan section, so it cannot be a location.
+fn is_section_word(word: &str) -> bool {
+    matches!(
+        word.to_ascii_lowercase().as_str(),
+        "select"
+            | "from"
+            | "where"
+            | "with"
+            | "by"
+            | "on"
+            | "order"
+            | "limit"
+            | "offset"
+            | "create"
+            | "insert"
+            | "upsert"
+            | "merge"
+            | "delete"
+            | "append"
+            | "overwrite"
+            | "replace"
+    )
 }
 
 fn parse_error(position: usize, reason: impl Into<SmolStr>) -> Error {
@@ -653,98 +537,403 @@ impl<'input> Parser<'input> {
         self.depth -= 1;
     }
 
-    // -- statement ----------------------------------------------------------
+    // -- selector -----------------------------------------------------------
 
-    fn statement(&mut self) -> Result<Statement> {
-        self.expect_word("select")?;
-        let mut projections = Vec::new();
+    fn selector(&mut self) -> Result<Selector> {
         if self.eat_symbol("*") {
-            // `select *` is the empty projection list: every column, unchanged.
-        } else {
-            loop {
-                let expression = self.expression()?;
-                let alias = if self.eat_word("as") {
-                    Some(self.identifier()?)
-                } else {
-                    None
-                };
-                projections.push(match alias {
-                    Some(alias) => Projection::aliased(expression, alias),
-                    None => Projection::new(expression),
-                });
-                if !self.eat_symbol(",") {
-                    break;
-                }
-            }
-        }
-        let predicate = if self.eat_word("where") {
-            Some(self.expression()?)
-        } else {
-            None
-        };
-        let mut ordering = Vec::new();
-        if self.eat_word("order") {
-            self.expect_word("by")?;
-            loop {
-                let expression = self.expression()?;
-                let direction = if self.eat_word("desc") {
-                    Direction::Descending
-                } else {
-                    let _ = self.eat_word("asc");
-                    Direction::Ascending
-                };
-                let nulls = if self.eat_word("nulls") {
-                    if self.eat_word("first") {
-                        Some(NullsOrder::First)
-                    } else {
-                        self.expect_word("last")?;
-                        Some(NullsOrder::Last)
+            // `select *` is the empty projection list: every column, unchanged;
+            // `* exclude (a, b)` is the same list with names left out.
+            if self.eat_word("exclude") || self.eat_word("except") {
+                self.expect_symbol("(")?;
+                let mut names = Vec::new();
+                loop {
+                    names.push(self.identifier()?);
+                    if !self.eat_symbol(",") {
+                        break;
                     }
-                } else {
-                    None
-                };
-                let mut order = Order::new(expression).with_direction(direction);
-                if let Some(nulls) = nulls {
-                    order = order.with_nulls(nulls);
                 }
-                ordering.push(order);
-                if !self.eat_symbol(",") {
-                    break;
-                }
+                self.expect_symbol(")")?;
+                return Ok(Selector::all_except(names));
+            }
+            return Ok(Selector::all());
+        }
+        if self.peek().is_none() {
+            return Err(parse_error(
+                self.position(),
+                "expected a projection or `*`, got the end of the expression",
+            ));
+        }
+        let mut projections = Vec::new();
+        loop {
+            projections.push(self.projection()?);
+            if !self.eat_symbol(",") {
+                break;
             }
         }
-        let limit = if self.eat_word("limit") {
-            let position = self.position();
-            let Some(Token::Number(text)) = self.advance() else {
-                return Err(parse_error(position, "expected a whole number of rows"));
-            };
-            Some(text.parse::<u64>().map_err(|_| {
-                parse_error(
-                    position,
-                    format_smolstr!("expected a whole number of rows, got {text}"),
-                )
-            })?)
-        } else {
-            None
-        };
-        Ok(Statement {
-            projections,
-            predicate,
-            ordering,
-            limit,
-        })
+        Ok(Selector::new(projections))
     }
 
-    // -- expression ---------------------------------------------------------
+    /// Read one projection: a term, then its alias and its declared type in
+    /// either order, the way both `select ... as name` and a `create table`
+    /// column definition write them.
+    fn projection(&mut self) -> Result<Projection> {
+        let mut projection = Projection::new(self.term()?);
+        loop {
+            if self.eat_word("as") {
+                projection = projection.with_alias(self.identifier()?);
+                continue;
+            }
+            if self.at_word("with") && self.peek_at(1) == Some(&Token::Symbol("(")) {
+                let position = self.position();
+                self.cursor += 1;
+                let entries = self.properties()?;
+                let metadata = crate::Metadata::try_from(
+                    entries
+                        .into_iter()
+                        .collect::<std::collections::BTreeMap<_, _>>(),
+                )
+                .map_err(|error| parse_error(position, format_smolstr!("{error}")))?;
+                projection = projection.with_metadata(metadata);
+                continue;
+            }
+            if projection.dtype().is_none() {
+                if let Some(dtype) = self.declared_dtype()? {
+                    projection = projection.with_dtype(dtype);
+                    if self.eat_word("null") {
+                        projection = projection.with_nullable(true);
+                    } else if self.at_word("not") {
+                        self.cursor += 1;
+                        self.expect_word("null")?;
+                        projection = projection.with_nullable(false);
+                    }
+                    continue;
+                }
+            }
+            return Ok(projection);
+        }
+    }
 
-    fn expression(&mut self) -> Result<Expression> {
+    /// Read a datatype where a projection may declare one, without consuming
+    /// anything that is not one.
+    fn declared_dtype(&mut self) -> Result<Option<DataType>> {
+        let Some(Token::Word(word)) = self.peek() else {
+            return Ok(None);
+        };
+        if is_reserved(word) {
+            return Ok(None);
+        }
+        let restore = self.cursor;
+        match self.dtype() {
+            Ok(dtype) => Ok(Some(dtype)),
+            Err(_) => {
+                self.cursor = restore;
+                Ok(None)
+            }
+        }
+    }
+
+    // -- plan -------------------------------------------------------------
+
+    /// Read one plan: its sections in order, each optional, at least one.
+    fn plan(&mut self) -> Result<Plan> {
+        let start = self.position();
+        let mut plan = Plan::new();
+        let mut any = false;
+        if self.eat_word("create") {
+            any = true;
+            let _ = self.eat_word("table") || self.eat_word("view");
+            let target = if self.at_symbol("(") {
+                None
+            } else {
+                Some(self.target()?)
+            };
+            let schema = if self.eat_symbol("(") {
+                let schema = self.selector()?;
+                self.expect_symbol(")")?;
+                schema
+            } else {
+                Selector::all()
+            };
+            plan = plan.create(target, schema);
+            if self.at_word("with") && self.peek_at(1) == Some(&Token::Symbol("(")) {
+                let position = self.position();
+                self.cursor += 1;
+                let entries = self.properties()?;
+                let metadata = crate::Metadata::try_from(
+                    entries
+                        .into_iter()
+                        .collect::<std::collections::BTreeMap<_, _>>(),
+                )
+                .map_err(|error| parse_error(position, format_smolstr!("{error}")))?;
+                plan.set_root_metadata(metadata);
+            }
+        }
+        if let Some(verb) = self.verb()? {
+            any = true;
+            let mut write = Write::new(verb);
+            if self.at_location() {
+                write = write.into(self.target()?);
+            }
+            if verb == Verb::Upsert && (self.eat_word("by") || self.eat_word("on")) {
+                self.expect_symbol("(")?;
+                let keys = self.selector()?;
+                self.expect_symbol(")")?;
+                write = write.by(keys);
+            }
+            plan = plan.write(write);
+        }
+        if self.eat_word("select") {
+            any = true;
+            plan.set_selector(self.selector()?);
+        }
+        if self.eat_word("from") {
+            any = true;
+            plan = plan.read_from(self.source()?);
+        }
+        if self.eat_word("where") {
+            any = true;
+            plan.set_filter(Filter::new(self.term()?));
+        }
+        if self.at_word("order") {
+            self.cursor += 1;
+            self.expect_word("by")?;
+            any = true;
+            let mut keys = Vec::new();
+            loop {
+                keys.push(self.ordering()?);
+                if !self.eat_symbol(",") {
+                    break;
+                }
+            }
+            plan = plan.order_by(keys);
+        }
+        if self.eat_word("limit") {
+            any = true;
+            plan = plan.limit(Some(self.count()?));
+        }
+        if self.eat_word("offset") {
+            any = true;
+            plan = plan.offset(Some(self.count()?));
+        }
+        if !any {
+            return Err(super::unknown_clause(self.input[start..].trim()));
+        }
+        Ok(plan)
+    }
+
+    /// Read a write verb in any spelling this grammar reads, answering its
+    /// canonical one; nothing when no verb is here.
+    fn verb(&mut self) -> Result<Option<Verb>> {
+        // The word after the verb - `into`, `to`, `from` - introduces a
+        // target and is optional, since a write with no target writes to the
+        // handle the plan is given to.
+        if self.eat_word("insert") {
+            if self.eat_word("overwrite") {
+                let _ = self.eat_word("into");
+                return Ok(Some(Verb::Overwrite));
+            }
+            let _ = self.eat_word("into");
+            return Ok(Some(Verb::Insert));
+        }
+        if self.eat_word("append") {
+            let _ = self.eat_word("into") || self.eat_word("to");
+            return Ok(Some(Verb::Insert));
+        }
+        if self.eat_word("overwrite") || self.eat_word("replace") {
+            let _ = self.eat_word("into");
+            return Ok(Some(Verb::Overwrite));
+        }
+        if self.eat_word("upsert") || self.eat_word("merge") {
+            let _ = self.eat_word("into");
+            return Ok(Some(Verb::Upsert));
+        }
+        if self.eat_word("delete") {
+            let _ = self.eat_word("from");
+            return Ok(Some(Verb::Delete));
+        }
+        Ok(None)
+    }
+
+    /// Return whether a location starts here: a quoted URL, a name, a quoted
+    /// name, a bracketed name, or a number.
+    fn at_location(&self) -> bool {
+        match self.peek() {
+            Some(Token::Text(_) | Token::Quoted(_) | Token::Number(_)) => true,
+            Some(Token::Symbol("[")) => true,
+            Some(Token::Word(word)) => !is_section_word(word),
+            _ => false,
+        }
+    }
+
+    /// Read one target: a location and its `with (...)` properties.
+    fn target(&mut self) -> Result<Target> {
+        let mut target = Target::new(self.location()?);
+        if self.at_word("with") && self.peek_at(1) == Some(&Token::Symbol("(")) {
+            self.cursor += 1;
+            target = target.with_properties(self.properties()?);
+        }
+        Ok(target)
+    }
+
+    /// Read one location: a quoted URL, or a dotted catalog path.
+    fn location(&mut self) -> Result<Location> {
+        let position = self.position();
+        if let Some(Token::Text(text)) = self.peek().cloned() {
+            self.cursor += 1;
+            return Url::from_str(&text)
+                .map(Location::Url)
+                .map_err(|error| parse_error(position, format_smolstr!("{error}")));
+        }
+        let mut parts = vec![self.part()?];
+        while self.eat_symbol(".") {
+            parts.push(self.part()?);
+        }
+        Ok(Location::Parts(parts))
+    }
+
+    /// Read one part of a catalog path, quoted any way an engine quotes it.
+    fn part(&mut self) -> Result<SmolStr> {
+        let position = self.position();
+        match self.peek().cloned() {
+            Some(Token::Word(word)) if !is_section_word(&word) => {
+                self.cursor += 1;
+                Ok(word)
+            }
+            Some(Token::Quoted(name) | Token::Number(name)) => {
+                self.cursor += 1;
+                Ok(name)
+            }
+            Some(Token::Symbol("[")) => {
+                // A bracketed name is read from the text itself, so whatever
+                // the brackets hold - spaces, dots, dashes - is one part.
+                let open = self.cursor;
+                let close = (open + 1..self.tokens.len())
+                    .find(|index| matches!(self.tokens[*index].token, Token::Symbol("]")))
+                    .ok_or_else(|| parse_error(position, "expected a closing \"]\""))?;
+                let text = self.input[self.token_end(open)..self.tokens[close].position].trim();
+                if text.is_empty() {
+                    return Err(parse_error(position, "expected a name inside the brackets"));
+                }
+                self.cursor = close + 1;
+                Ok(SmolStr::new(text))
+            }
+            _ => Err(parse_error(
+                position,
+                format_smolstr!(
+                    "expected a location - a quoted URL or a catalog path - got {}",
+                    self.describe()
+                ),
+            )),
+        }
+    }
+
+    /// Read one source: a target, or a plan in parentheses.
+    fn source(&mut self) -> Result<Source> {
+        if self.eat_symbol("(") {
+            self.enter()?;
+            let plan = self.plan();
+            self.leave();
+            let plan = plan?;
+            self.expect_symbol(")")?;
+            return Ok(Source::Plan(Box::new(plan)));
+        }
+        Ok(Source::Target(self.target()?))
+    }
+
+    /// Read `(name = 'value', ...)`, the `with` keyword already consumed.
+    fn properties(&mut self) -> Result<Vec<(String, String)>> {
+        self.expect_symbol("(")?;
+        let mut properties = Vec::new();
+        loop {
+            let position = self.position();
+            let mut name = match self.peek().cloned() {
+                Some(Token::Word(word) | Token::Quoted(word) | Token::Number(word)) => {
+                    self.cursor += 1;
+                    word.to_string()
+                }
+                _ => {
+                    return Err(parse_error(
+                        position,
+                        format_smolstr!("expected a property name, got {}", self.describe()),
+                    ));
+                }
+            };
+            while self.eat_symbol(".") {
+                name.push('.');
+                name.push_str(&self.step_name()?);
+            }
+            self.expect_symbol("=")?;
+            let position = self.position();
+            let value = match self.peek().cloned() {
+                Some(Token::Text(text) | Token::Number(text) | Token::Word(text)) => {
+                    self.cursor += 1;
+                    text.to_string()
+                }
+                _ => {
+                    return Err(parse_error(
+                        position,
+                        format_smolstr!("expected a property value, got {}", self.describe()),
+                    ));
+                }
+            };
+            properties.push((name, value));
+            if !self.eat_symbol(",") {
+                break;
+            }
+        }
+        self.expect_symbol(")")?;
+        Ok(properties)
+    }
+
+    /// Read one `order by` key.
+    fn ordering(&mut self) -> Result<Ordering> {
+        let term = self.term()?;
+        let mut key = if self.eat_word("desc") {
+            Ordering::desc(term)
+        } else {
+            let _ = self.eat_word("asc");
+            Ordering::asc(term)
+        };
+        if self.eat_word("nulls") {
+            if self.eat_word("first") {
+                key = key.nulls_first(true);
+            } else {
+                self.expect_word("last")?;
+            }
+        }
+        Ok(key)
+    }
+
+    /// Read one whole number, for a `limit` or an `offset`.
+    fn count(&mut self) -> Result<u64> {
+        let position = self.position();
+        match self.peek().cloned() {
+            Some(Token::Number(text)) => {
+                self.cursor += 1;
+                text.parse().map_err(|_| {
+                    parse_error(
+                        position,
+                        format_smolstr!("expected a row count, got {text}"),
+                    )
+                })
+            }
+            _ => Err(parse_error(
+                position,
+                format_smolstr!("expected a row count, got {}", self.describe()),
+            )),
+        }
+    }
+
+    // -- term ---------------------------------------------------------------
+
+    fn term(&mut self) -> Result<Term> {
         self.enter()?;
         let parsed = self.disjunction();
         self.leave();
         parsed
     }
 
-    fn disjunction(&mut self) -> Result<Expression> {
+    fn disjunction(&mut self) -> Result<Term> {
         let mut operands = vec![self.conjunction()?];
         while self.eat_word("or") {
             operands.push(self.conjunction()?);
@@ -752,11 +941,11 @@ impl<'input> Parser<'input> {
         Ok(if operands.len() == 1 {
             operands.swap_remove(0)
         } else {
-            Expression::any(operands)
+            Term::any(operands)
         })
     }
 
-    fn conjunction(&mut self) -> Result<Expression> {
+    fn conjunction(&mut self) -> Result<Term> {
         let mut operands = vec![self.negation()?];
         while self.eat_word("and") {
             operands.push(self.negation()?);
@@ -764,11 +953,11 @@ impl<'input> Parser<'input> {
         Ok(if operands.len() == 1 {
             operands.swap_remove(0)
         } else {
-            Expression::all(operands)
+            Term::all(operands)
         })
     }
 
-    fn negation(&mut self) -> Result<Expression> {
+    fn negation(&mut self) -> Result<Term> {
         if self.eat_word("not") {
             self.enter()?;
             let inner = self.negation();
@@ -779,7 +968,7 @@ impl<'input> Parser<'input> {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn predicate(&mut self) -> Result<Expression> {
+    fn predicate(&mut self) -> Result<Term> {
         let left = self.additive()?;
         if let Some(comparison) = self.comparison_symbol() {
             let right = self.additive()?;
@@ -825,7 +1014,7 @@ impl<'input> Parser<'input> {
                 ));
             }
             loop {
-                list.push(self.expression()?);
+                list.push(self.term()?);
                 if !self.eat_symbol(",") {
                     break;
                 }
@@ -859,7 +1048,7 @@ impl<'input> Parser<'input> {
             } else {
                 None
             };
-            Expression::Like {
+            Term::Like {
                 value: Box::new(left),
                 pattern: Box::new(pattern),
                 case_insensitive,
@@ -897,7 +1086,7 @@ impl<'input> Parser<'input> {
         Some(comparison)
     }
 
-    fn additive(&mut self) -> Result<Expression> {
+    fn additive(&mut self) -> Result<Term> {
         let mut left = self.product()?;
         loop {
             let operator = if self.at_symbol("+") {
@@ -913,7 +1102,7 @@ impl<'input> Parser<'input> {
         }
     }
 
-    fn product(&mut self) -> Result<Expression> {
+    fn product(&mut self) -> Result<Term> {
         let mut left = self.unary()?;
         loop {
             let operator = if self.at_symbol("*") {
@@ -931,7 +1120,7 @@ impl<'input> Parser<'input> {
         }
     }
 
-    fn unary(&mut self) -> Result<Expression> {
+    fn unary(&mut self) -> Result<Term> {
         if self.eat_symbol("-") {
             self.enter()?;
             let inner = self.unary();
@@ -945,11 +1134,11 @@ impl<'input> Parser<'input> {
         self.accessor()
     }
 
-    fn accessor(&mut self) -> Result<Expression> {
+    fn accessor(&mut self) -> Result<Term> {
         let mut base = self.atom()?;
         loop {
             if self.eat_symbol(".") {
-                let name = self.identifier()?;
+                let name = self.step_name()?;
                 base = base.child(name);
                 continue;
             }
@@ -966,36 +1155,33 @@ impl<'input> Parser<'input> {
         }
     }
 
-    /// Read one path step: an integer position, or a constant key.
+    /// Read one path step: an integer position, a run of positions, or a
+    /// constant key.
     fn segment(&mut self) -> Result<FieldSegment> {
         let position = self.position();
-        let negative = self.eat_symbol("-");
-        if let Some(Token::Number(text)) = self.peek().cloned() {
-            if !text.contains(['.', 'e', 'E']) {
-                self.cursor += 1;
-                let magnitude = text.parse::<i64>().map_err(|_| {
-                    parse_error(
-                        position,
-                        format_smolstr!(
-                            "expected a list position that fits in 64 bits, got {text}"
-                        ),
-                    )
-                })?;
-                return Ok(FieldSegment::Index(if negative {
-                    -magnitude
-                } else {
-                    magnitude
-                }));
-            }
+        // A run: `[:]`, `[:3]`, `[1:]`, `[1:3]`, either bound negative.
+        if self.eat_symbol(":") {
+            let end = self.optional_position()?;
+            return Ok(FieldSegment::Range { start: None, end });
         }
-        if negative {
+        if let Some(start) = self.optional_position()? {
+            if self.eat_symbol(":") {
+                let end = self.optional_position()?;
+                return Ok(FieldSegment::Range {
+                    start: Some(start),
+                    end,
+                });
+            }
+            return Ok(FieldSegment::Index(start));
+        }
+        if self.at_symbol("-") {
             return Err(parse_error(
                 position,
                 "expected a whole list position after `-`",
             ));
         }
-        let key = self.expression()?;
-        let Expression::Literal(held) = key else {
+        let key = self.term()?;
+        let Term::Literal(held) = key else {
             return Err(parse_error(
                 position,
                 "expected a constant key; use get(container, key) for a computed one",
@@ -1004,6 +1190,35 @@ impl<'input> Parser<'input> {
         Ok(FieldSegment::Key(held))
     }
 
+    /// Read one optionally negative whole position, when one is here.
+    fn optional_position(&mut self) -> Result<Option<i64>> {
+        let position = self.position();
+        let negative = self.at_symbol("-")
+            && matches!(self.peek_at(1), Some(Token::Number(text)) if !text.contains(['.', 'e', 'E']));
+        if negative {
+            self.cursor += 1;
+        }
+        let Some(Token::Number(text)) = self.peek().cloned() else {
+            return Ok(None);
+        };
+        if text.contains(['.', 'e', 'E']) {
+            return Err(parse_error(
+                position,
+                format_smolstr!("expected a whole list position, got {text}"),
+            ));
+        }
+        self.cursor += 1;
+        let magnitude = text.parse::<i64>().map_err(|_| {
+            parse_error(
+                position,
+                format_smolstr!("expected a list position that fits in 64 bits, got {text}"),
+            )
+        })?;
+        Ok(Some(if negative { -magnitude } else { magnitude }))
+    }
+
+    /// Read one name where the grammar admits only a name: an alias, a struct
+    /// child in a constructor, a column.
     fn identifier(&mut self) -> Result<SmolStr> {
         let position = self.position();
         match self.peek().cloned() {
@@ -1026,11 +1241,42 @@ impl<'input> Parser<'input> {
         }
     }
 
+    /// Read one name after a dot, where any word is a name.
+    ///
+    /// A step is unambiguous: nothing but a name can follow a dot, so a child
+    /// called `as` or `select` is reachable without quotes.
+    fn step_name(&mut self) -> Result<SmolStr> {
+        let position = self.position();
+        match self.peek().cloned() {
+            Some(Token::Quoted(name) | Token::Word(name) | Token::Number(name)) => {
+                self.cursor += 1;
+                Ok(name)
+            }
+            _ => Err(parse_error(
+                position,
+                format_smolstr!("expected a segment name, got {}", self.describe()),
+            )),
+        }
+    }
+
+    /// Read one alias, bare or quoted either way.
+    ///
+    /// Wider at intake than a name is, because an alias is written by hand
+    /// and both quote styles are spellings people reach for. It still renders
+    /// back one way.
+    fn alias_name(&mut self) -> Result<SmolStr> {
+        if let Some(Token::Text(text)) = self.peek().cloned() {
+            self.cursor += 1;
+            return Ok(text);
+        }
+        self.identifier()
+    }
+
     #[allow(clippy::too_many_lines)]
-    fn atom(&mut self) -> Result<Expression> {
+    fn atom(&mut self) -> Result<Term> {
         let position = self.position();
         if self.eat_symbol("(") {
-            let inner = self.expression()?;
+            let inner = self.term()?;
             self.expect_symbol(")")?;
             return Ok(inner);
         }
@@ -1038,22 +1284,22 @@ impl<'input> Parser<'input> {
             let mut items = Vec::new();
             if !self.at_symbol("]") {
                 loop {
-                    items.push(self.expression()?);
+                    items.push(self.term()?);
                     if !self.eat_symbol(",") {
                         break;
                     }
                 }
             }
             self.expect_symbol("]")?;
-            return Ok(Expression::List(Arc::from(items)));
+            return Ok(Term::List(Arc::from(items)));
         }
         if self.eat_symbol("{") {
             let mut entries = Vec::new();
             if !self.at_symbol("}") {
                 loop {
-                    let key = self.expression()?;
+                    let key = self.term()?;
                     self.expect_symbol(":")?;
-                    let value = self.expression()?;
+                    let value = self.term()?;
                     entries.push((key, value));
                     if !self.eat_symbol(",") {
                         break;
@@ -1061,13 +1307,13 @@ impl<'input> Parser<'input> {
                 }
             }
             self.expect_symbol("}")?;
-            return Ok(Expression::Map(Arc::from(entries)));
+            return Ok(Term::Map(Arc::from(entries)));
         }
         if self.eat_symbol("&") {
             return self.attribute(position);
         }
         if self.eat_symbol(":") {
-            return Ok(Expression::parameter(self.identifier()?));
+            return Ok(Term::parameter(self.identifier()?));
         }
         match self.peek().cloned() {
             Some(Token::Number(text)) => {
@@ -1076,11 +1322,11 @@ impl<'input> Parser<'input> {
             }
             Some(Token::Text(text)) => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::from(text)));
+                return Ok(Term::literal(Scalar::from(text)));
             }
             Some(Token::Quoted(name)) => {
                 self.cursor += 1;
-                return Ok(Expression::column(name));
+                return Ok(Term::column(name));
             }
             _ => {}
         }
@@ -1094,15 +1340,15 @@ impl<'input> Parser<'input> {
         match lowered.as_str() {
             "null" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::Null));
+                return Ok(Term::literal(Scalar::Null));
             }
             "true" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::from(true)));
+                return Ok(Term::literal(Scalar::from(true)));
             }
             "false" => {
                 self.cursor += 1;
-                return Ok(Expression::literal(Scalar::from(false)));
+                return Ok(Term::literal(Scalar::from(false)));
             }
             "cast" | "try_cast" => {
                 self.cursor += 1;
@@ -1142,7 +1388,7 @@ impl<'input> Parser<'input> {
                         ),
                     ));
                 }
-                return Ok(Expression::call(function, arguments));
+                return Ok(Term::call(function, arguments));
             }
             if let Some(literal) = self.typed_literal(position)? {
                 return Ok(literal);
@@ -1161,11 +1407,11 @@ impl<'input> Parser<'input> {
             }
         }
         self.cursor += 1;
-        Ok(Expression::column(word))
+        Ok(Term::column(word))
     }
 
-    /// Read `&holder.<selector>`, the one attribute spelling.
-    fn attribute(&mut self, position: usize) -> Result<Expression> {
+    /// Read `&holder.<attribute>`, the one attribute spelling.
+    fn attribute(&mut self, position: usize) -> Result<Term> {
         let holder = self.identifier()?;
         if !holder.eq_ignore_ascii_case("holder") {
             return Err(parse_error(
@@ -1186,19 +1432,19 @@ impl<'input> Parser<'input> {
                 ));
             };
             self.expect_symbol("]")?;
-            return Ok(Expression::attribute(Selector::Partition(column)));
+            return Ok(Term::attribute(Attribute::Partition(column)));
         }
-        let selector = Selector::from_name(&name)
-            .ok_or_else(|| super::selector::unknown(&name, name_position))?;
-        Ok(Expression::attribute(selector))
+        let attribute = Attribute::from_name(&name)
+            .ok_or_else(|| super::attribute::unknown(&name, name_position))?;
+        Ok(Term::attribute(attribute))
     }
 
-    fn arguments(&mut self) -> Result<Vec<Expression>> {
+    fn arguments(&mut self) -> Result<Vec<Term>> {
         self.expect_symbol("(")?;
         let mut arguments = Vec::new();
         if !self.at_symbol(")") {
             loop {
-                arguments.push(self.expression()?);
+                arguments.push(self.term()?);
                 if !self.eat_symbol(",") {
                     break;
                 }
@@ -1208,13 +1454,13 @@ impl<'input> Parser<'input> {
         Ok(arguments)
     }
 
-    fn cast(&mut self, keyword: &str) -> Result<Expression> {
+    fn cast(&mut self, keyword: &str) -> Result<Term> {
         self.expect_symbol("(")?;
-        let inner = self.expression()?;
+        let inner = self.term()?;
         self.expect_word("as")?;
         let dtype = self.dtype()?;
         self.expect_symbol(")")?;
-        Ok(Expression::Cast(
+        Ok(Term::Cast(
             Box::new(inner),
             dtype,
             if keyword == "try_cast" {
@@ -1225,33 +1471,33 @@ impl<'input> Parser<'input> {
         ))
     }
 
-    fn case(&mut self) -> Result<Expression> {
+    fn case(&mut self) -> Result<Term> {
         let position = self.position();
         let mut branches = Vec::new();
         while self.eat_word("when") {
-            let when = self.expression()?;
+            let when = self.term()?;
             self.expect_word("then")?;
-            let then = self.expression()?;
+            let then = self.term()?;
             branches.push((when, then));
         }
         if branches.is_empty() {
             return Err(parse_error(position, "expected at least one `when` branch"));
         }
         let otherwise = if self.eat_word("else") {
-            Some(self.expression()?)
+            Some(self.term()?)
         } else {
             None
         };
         self.expect_word("end")?;
-        Ok(Expression::case(branches, otherwise))
+        Ok(Term::case(branches, otherwise))
     }
 
-    fn structure(&mut self) -> Result<Expression> {
+    fn structure(&mut self) -> Result<Term> {
         self.expect_symbol("(")?;
         let mut children = Vec::new();
         if !self.at_symbol(")") {
             loop {
-                let value = self.expression()?;
+                let value = self.term()?;
                 self.expect_word("as")?;
                 let name = self.identifier()?;
                 children.push((name, value));
@@ -1261,7 +1507,7 @@ impl<'input> Parser<'input> {
             }
         }
         self.expect_symbol(")")?;
-        Ok(Expression::Struct(Arc::from(children)))
+        Ok(Term::Struct(Arc::from(children)))
     }
 
     /// Read one datatype through the crate's own datatype grammar.
@@ -1280,6 +1526,8 @@ impl<'input> Parser<'input> {
         self.cursor += 1;
         let end = if self.at_symbol("(") {
             self.skip_balanced()?
+        } else if self.at_symbol("<") {
+            self.skip_angled()?
         } else {
             self.token_end(self.cursor - 1)
         };
@@ -1314,6 +1562,33 @@ impl<'input> Parser<'input> {
         }
     }
 
+    /// Consume a balanced `<...>` run, the nested datatype spelling, and
+    /// answer the byte just past it.
+    fn skip_angled(&mut self) -> Result<usize> {
+        let opened = self.position();
+        let mut depth = 0_usize;
+        loop {
+            match self.peek() {
+                Some(Token::Symbol("<")) => depth += 1,
+                Some(Token::Symbol(">")) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let end = self.token_end(self.cursor);
+                        self.cursor += 1;
+                        return Ok(end);
+                    }
+                }
+                // `>=` and `<>` never occur inside a datatype, so either one
+                // is the end of the run this parser was asked to skip.
+                Some(Token::Symbol(">=" | "<>" | "<=")) | None => {
+                    return Err(parse_error(opened, "expected a closing \">\""));
+                }
+                _ => {}
+            }
+            self.cursor += 1;
+        }
+    }
+
     /// The byte just past the token at `index`.
     fn token_end(&self, index: usize) -> usize {
         self.tokens
@@ -1325,7 +1600,7 @@ impl<'input> Parser<'input> {
     ///
     /// Answers `None` without consuming anything when the word is not a
     /// datatype, so the caller can fall back to reading it as a column.
-    fn typed_literal(&mut self, position: usize) -> Result<Option<Expression>> {
+    fn typed_literal(&mut self, position: usize) -> Result<Option<Term>> {
         let restore = self.cursor;
         let Ok(dtype) = self.dtype() else {
             self.cursor = restore;
@@ -1335,14 +1610,13 @@ impl<'input> Parser<'input> {
             Some(Token::Text(text)) => {
                 self.cursor += 1;
                 let value = value_from_text(&dtype, &text, position)?;
-                Ok(Some(Expression::Literal(
-                    Literal::new(dtype, value)
-                        .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
-                )))
+                Ok(Some(Term::Literal(Literal::new(dtype, value).map_err(
+                    |error| parse_error(position, format_smolstr!("{error}")),
+                )?)))
             }
             Some(Token::Word(word)) if word.eq_ignore_ascii_case("null") => {
                 self.cursor += 1;
-                Ok(Some(Expression::Literal(
+                Ok(Some(Term::Literal(
                     Literal::new(dtype, Scalar::Null)
                         .map_err(|error| parse_error(position, format_smolstr!("{error}")))?,
                 )))
@@ -1367,7 +1641,7 @@ fn arity_text(least: usize, most: usize) -> SmolStr {
 }
 
 /// Read one numeric literal: `int64` when whole, `float64` when not.
-fn number_literal(text: &str, position: usize) -> Result<Expression> {
+fn number_literal(text: &str, position: usize) -> Result<Term> {
     if text.contains(['.', 'e', 'E']) {
         let held = text.parse::<f64>().map_err(|_| {
             parse_error(
@@ -1375,7 +1649,7 @@ fn number_literal(text: &str, position: usize) -> Result<Expression> {
                 format_smolstr!("expected a 64-bit floating-point number, got {text}"),
             )
         })?;
-        return Ok(Expression::literal(held));
+        return Ok(Term::literal(held));
     }
     let held = text.parse::<i64>().map_err(|_| {
         parse_error(
@@ -1383,7 +1657,7 @@ fn number_literal(text: &str, position: usize) -> Result<Expression> {
             format_smolstr!("expected a whole number that fits in 64 bits, got {text}"),
         )
     })?;
-    Ok(Expression::literal(held))
+    Ok(Term::literal(held))
 }
 
 /// Read one value out of the text half of a typed literal.
@@ -1547,8 +1821,8 @@ fn bytes_from_hex(text: &str) -> Option<Vec<u8>> {
 
 /// Return whether a name needs quoting to survive a round trip.
 ///
-/// Exposed for the bindings, which build expressions from caller-supplied
-/// column names and must not have to guess this rule.
+/// Exposed for the bindings, which build terms from caller-supplied column
+/// names and must not have to guess this rule.
 #[must_use]
 pub fn needs_quoting(name: &str) -> bool {
     !is_bare_identifier(name)

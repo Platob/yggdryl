@@ -364,7 +364,9 @@ fn merge_keys_that_exist_only_in_partition_paths_are_refused() {
         seed(&root, "year=2024/month=01", &prices());
         let field = schema();
         let incoming = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
-        let mut merging = options(Some(field.clone())).with_merge_by_names(["year", "month"]);
+        let mut merging = options(Some(field.clone()))
+            .with_merge_by(["year", "month"])
+            .unwrap();
         merging.set_commit_row_size(cadence);
 
         let message = handle
@@ -375,7 +377,7 @@ fn merge_keys_that_exist_only_in_partition_paths_are_refused() {
             .unwrap_err()
             .to_string();
 
-        assert!(message.contains("merge_by_names"), "{label}: {message}");
+        assert!(message.contains("merge_by"), "{label}: {message}");
         assert!(message.contains("partition"), "{label}: {message}");
         assert_eq!(
             rows(&handle, &field),
@@ -403,8 +405,9 @@ fn a_partition_filter_prunes_leaves_and_filters_rows() {
     let field = schema();
     // A path filter prunes: only the leaves whose directories name the
     // value are read at all, and the restored column carries it.
-    let filtered =
-        options(Some(field.clone())).with_filter_partitions([("month", "01"), ("year", "2024")]);
+    let filtered = options(Some(field.clone()))
+        .with_filter("month = '01' and year = '2024'")
+        .unwrap();
     let mut found = Vec::new();
     for batch in handle.read_arrow_reader(&filtered).unwrap() {
         let batch = batch.unwrap();
@@ -424,7 +427,9 @@ fn a_partition_filter_prunes_leaves_and_filters_rows() {
 
     // A data-carried column filters row by row through the same option:
     // the same lake, filtered on a column the paths do not spell.
-    let by_price = options(Some(field.clone())).with_filter_partitions([("price", "20")]);
+    let by_price = options(Some(field.clone()))
+        .with_filter("price = '20'")
+        .unwrap();
     let mut matched = 0;
     for batch in handle.read_arrow_reader(&by_price).unwrap() {
         matched += batch.unwrap().num_rows();
@@ -515,7 +520,9 @@ fn a_merge_across_a_folder_updates_inside_each_partition() {
     handle
         .merge_arrow_reader(
             crate::arrow::batch_reader(updates.schema(), [updates]),
-            &options(Some(field.clone())).with_merge_by_names(["price"]),
+            &options(Some(field.clone()))
+                .with_merge_by(["price"])
+                .unwrap(),
         )
         .unwrap();
 

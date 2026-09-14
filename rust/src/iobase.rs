@@ -81,7 +81,7 @@ pub use transfer::{ArrowWriteSession, overwrite_arrow_reader_default};
 pub(crate) use transfer::{
     append_arrow_reader_default, leaf_field, leaf_reader, leaf_row_size, leaf_writer,
     merge_arrow_reader_default, non_empty_arrow_reader, overwrite_arrow_reader_default_with_field,
-    select_reader, stored_field,
+    stored_field,
 };
 /// Random-access byte storage addressed by explicit offsets.
 ///
@@ -409,7 +409,7 @@ pub trait IOBase: Send + IOMedia {
     /// keep a file the rows will later discard, and can never discard a file
     /// the rows would have kept.
     ///
-    /// Cost drives the order. [`bind`](crate::Expression::bind) puts the free
+    /// Cost drives the order. [`bind`](crate::Filter::bind) puts the free
     /// attributes - the ones a URL answers - in front of the ones that cost a
     /// stat, and evaluation stops at the first `false`, so a listing filtered
     /// by path alone performs no call into the backing store at all.
@@ -434,16 +434,14 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// Returns a bind failure when the predicate names something a holder
     /// cannot answer, or the backing store's listing failure.
-    fn children_matching(
-        &self,
-        filter: &crate::Expression,
-        include_private: bool,
-    ) -> Result<Listing> {
+    fn children_matching(&self, filter: &crate::Filter, include_private: bool) -> Result<Listing> {
         // Only the conjuncts a listing can settle are kept. Dropping a conjunct
         // from a conjunction only ever widens what is kept, which is the whole
-        // reason this is sound.
-        let answerable = crate::Expression::all(
+        // reason this is sound - and the simplified form is what is split, so
+        // a negated conjunction has already become the conjuncts it hides.
+        let answerable = crate::Filter::all(
             filter
+                .simplify()
                 .conjuncts()
                 .into_iter()
                 .filter(|conjunct| conjunct.columns().is_empty()),
@@ -501,7 +499,7 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// Returns the backing store's listing failure.
     fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing> {
-        let filter = crate::Expression::all_holder_partitions_carried(filters.iter().copied());
+        let filter = crate::Filter::all_holder_partitions_carried(filters.iter().copied());
         Ok(self
             .children_matching(&filter, include_private)?
             .keeping(|entry| !entry.is_container()))

@@ -1768,10 +1768,10 @@ mod records {
             )
             .unwrap();
         media.options_mut().set_max_row_size(Some(1));
-        media.options_mut().set_select_by_names(vec!["id".into()]);
+        media.options_mut().set_selector("id".parse().unwrap());
         media
             .options_mut()
-            .set_filter_partitions(vec![("id".into(), "999".into())]);
+            .set_filter("id = '999'".parse().unwrap());
 
         assert_eq!(media.row_size().unwrap(), 6);
         assert_eq!(media.column_size().unwrap(), field.field_len());
@@ -1934,7 +1934,7 @@ mod records {
             let mut media = Avro::new(Buffer::new()).with_field(field.clone());
             let mut options = RecordOptions::Ipc(crate::media::ipc::IpcOptions::new());
             if operation == "merge" {
-                options.set_merge_by_names(vec!["id".into()]);
+                options.set_merge_by(crate::Selector::from_columns(["id"]));
             }
             let result = match operation {
                 "overwrite" => crate::IOMedia::overwrite_arrow_reader(
@@ -2139,7 +2139,9 @@ mod records {
             6
         );
 
-        media.options_mut().set_merge_by_names(vec!["id".into()]);
+        media
+            .options_mut()
+            .set_merge_by(crate::Selector::from_columns(["id"]));
         let (_, merged) = batch();
         let merge_options = media.record_options().unwrap();
         media

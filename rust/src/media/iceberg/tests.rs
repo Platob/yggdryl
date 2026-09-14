@@ -2768,7 +2768,7 @@ mod tables {
             }),
         );
         let merge_error = table
-            .commit_merge_where(&[], reader, &["id".to_owned()], true)
+            .commit_merge_where(&[], reader, &crate::Selector::from_columns(["id"]), true)
             .expect_err("v3 keyed merge must preserve existing row IDs");
         assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 0);
         assert!(
@@ -2821,7 +2821,7 @@ mod tables {
         table
             .commit_merge(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
-                &["id".to_owned()],
+                &crate::Selector::from_columns(["id"]),
                 true,
             )
             .unwrap();
@@ -3406,7 +3406,7 @@ mod handles {
             )
             .unwrap();
 
-        let merge = options.clone().with_merge_by_names(["id"]);
+        let merge = options.clone().with_merge_by(["id"]).unwrap();
         let batch = trades(
             &[2, 4],
             &[Some("MSFT.L"), Some("BP")],
@@ -3456,7 +3456,7 @@ mod handles {
         table
             .commit_merge(
                 crate::arrow::batch_reader(batch.schema(), [batch]),
-                &["id".to_owned()],
+                &crate::Selector::from_columns(["id"]),
                 true,
             )
             .unwrap();
@@ -3609,7 +3609,7 @@ mod handles {
 
         // A partition filter is answered by the plan - the other partitions'
         // files are never opened - and the rows match the folder route's.
-        let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
+        let filtered = options.clone().with_filter("venue = 'XNYS'").unwrap();
         assert_eq!(
             collect(table.read_arrow_reader(&filtered).unwrap()),
             vec![(2, Some("MSFT".to_owned()), Some("XNYS".to_owned()))]
@@ -3619,7 +3619,7 @@ mod handles {
         assert!(plan.excluded.len() + plan.skipped.len() >= 1);
 
         // A selection narrows the read to the named columns.
-        let selected = options.clone().with_select_by_names(["id"]);
+        let selected = options.clone().with_selector("id").unwrap();
         let reader = table.read_arrow_reader(&selected).unwrap();
         let names: Vec<String> = reader
             .schema()
@@ -3631,7 +3631,7 @@ mod handles {
 
         // A filter naming a column the schema does not declare is an error,
         // exactly as `scan_where` reports it: the schema is authoritative.
-        let unanswerable = options.clone().with_filter_partitions([("desk", "42")]);
+        let unanswerable = options.clone().with_filter("desk = '42'").unwrap();
         assert!(table.read_arrow_reader(&unanswerable).is_err());
 
         // The folder route reads the same rows through the same snapshot.
@@ -3683,7 +3683,7 @@ mod handles {
         assert_eq!(collect(table.scan_at(past, &[], None).unwrap()).len(), 2);
 
         // A match key merges: `9` is stored and updates, `10` appends.
-        let merging = options.clone().with_merge_by_names(["id"]);
+        let merging = options.clone().with_merge_by(["id"]).unwrap();
         let batch = trades(
             &[9, 10],
             &[Some("BP.L"), Some("SHEL")],
@@ -3741,7 +3741,8 @@ mod handles {
         // on a table exactly as on a leaf.
         let merging = options
             .clone()
-            .with_merge_by_names(["id"])
+            .with_merge_by(["id"])
+            .unwrap()
             .with_max_row_size(1);
         let batch = trades(&[3], &[Some("VOD")], &[Some("XLON")]);
         let Err(error) = table.merge_arrow_reader(
@@ -3752,7 +3753,7 @@ mod handles {
         };
         let message = error.to_string();
         assert!(message.contains("max_row_size = 1"), "{message}");
-        assert!(message.contains("merge_by_names [\"id\"]"), "{message}");
+        assert!(message.contains("merge_by `id`"), "{message}");
     }
 
     #[test]
@@ -3784,11 +3785,11 @@ mod handles {
         let message = table
             .merge_arrow_reader(
                 counted(batch, Arc::clone(&pulls)),
-                &options.with_merge_by_names(["id"]).with_max_byte_size(1),
+                &options.with_merge_by(["id"]).unwrap().with_max_byte_size(1),
             )
             .unwrap_err()
             .to_string();
-        assert!(message.contains("merge_by_names"), "{message}");
+        assert!(message.contains("merge_by"), "{message}");
         assert_eq!(pulls.load(Ordering::SeqCst), 0);
     }
 
@@ -3913,7 +3914,7 @@ mod handles {
             .unwrap();
         assert_eq!(table.metadata().snapshots.len(), 5);
 
-        let merging = options.clone().with_merge_by_names(["id"]);
+        let merging = options.clone().with_merge_by(["id"]).unwrap();
         let batch = trades(
             &[2, 6],
             &[Some("MSFT.L"), Some("ARM")],
@@ -4023,7 +4024,7 @@ mod handles {
         table
             .merge_arrow_reader(
                 crate::arrow::batch_reader(zero.schema(), [zero]),
-                &options.with_merge_by_names(["id"]),
+                &options.with_merge_by(["id"]).unwrap(),
             )
             .unwrap();
 
@@ -5485,7 +5486,7 @@ mod datatype_coverage {
         table
             .commit_merge(
                 crate::arrow::batch_reader(second.schema(), [second]),
-                &["id".to_owned(), "venue".to_owned()],
+                &crate::Selector::from_columns(["id", "venue"]),
                 false,
             )
             .unwrap();
@@ -5595,7 +5596,7 @@ mod concurrency_and_compaction {
         let error = stale
             .commit_merge(
                 crate::arrow::batch_reader(incoming.schema(), [incoming]),
-                &["id".to_owned()],
+                &crate::Selector::from_columns(["id"]),
                 false,
             )
             .expect_err("a beaten merge cannot rebase");

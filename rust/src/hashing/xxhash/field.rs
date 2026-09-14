@@ -127,7 +127,7 @@ impl DigestField<'_> {
     ///
     /// A holder holding anything but its canonical
     /// [default](crate::Field::default_value) is left alone - the rule
-    /// [`PartitionField::apply_arrow_batch`](crate::PartitionField::apply_arrow_batch)
+    /// [`TransformField::apply_arrow_batch`](crate::TransformField::apply_arrow_batch)
     /// follows for the same reason: recomputing a written value would hide a
     /// mismatch. A holder that is absent, or present holding nothing but that
     /// default, was never written and is filled.

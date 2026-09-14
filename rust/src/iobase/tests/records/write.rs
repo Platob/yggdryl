@@ -176,7 +176,7 @@ fn every_write_intent_retains_its_intent_for_each_commit() {
             "overwrite" => handle.overwrite_arrow_reader(incoming, &options).unwrap(),
             "append" => handle.append_arrow_reader(incoming, &options).unwrap(),
             "merge" => handle
-                .merge_arrow_reader(incoming, &options.with_merge_by_names(["id"]))
+                .merge_arrow_reader(incoming, &options.with_merge_by(["id"]).unwrap())
                 .unwrap(),
             _ => unreachable!(),
         }
@@ -242,7 +242,7 @@ fn zero_commit_row_size_is_rejected_before_any_input_pull() {
             "overwrite" => handle.overwrite_arrow_reader(source, &options),
             "append" => handle.append_arrow_reader(source, &options),
             "merge" => {
-                handle.merge_arrow_reader(source, &options.clone().with_merge_by_names(["id"]))
+                handle.merge_arrow_reader(source, &options.clone().with_merge_by(["id"]).unwrap())
             }
             _ => unreachable!(),
         };
@@ -294,7 +294,7 @@ fn empty_append_and_merge_do_not_touch_the_destination() {
 
     handle.append_arrow_reader(empty(), &options).unwrap();
     handle
-        .merge_arrow_reader(empty(), &options.with_merge_by_names(["id"]))
+        .merge_arrow_reader(empty(), &options.with_merge_by(["id"]).unwrap())
         .unwrap();
 
     assert_eq!(touches.load(Ordering::SeqCst), 0);
@@ -327,13 +327,15 @@ fn zero_append_limits_and_invalid_merge_limits_do_not_pull() {
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_merge_by_names(["id"])
+            .with_merge_by(["id"])
+            .unwrap()
             .with_max_row_size(1),
         handle("merge-limit-options.arrows")
             .record_options()
             .unwrap()
             .with_field(schema())
-            .with_merge_by_names(["id"])
+            .with_merge_by(["id"])
+            .unwrap()
             .with_max_byte_size(1),
     ] {
         let pulls = Arc::new(AtomicUsize::new(0));
@@ -343,7 +345,7 @@ fn zero_append_limits_and_invalid_merge_limits_do_not_pull() {
             .merge_arrow_reader(source, &limited)
             .unwrap_err()
             .to_string();
-        assert!(message.contains("merge_by_names"), "{message}");
+        assert!(message.contains("merge_by"), "{message}");
         assert_eq!(pulls.load(Ordering::SeqCst), 0);
     }
 }
@@ -382,7 +384,7 @@ fn a_later_source_failure_leaves_each_successful_prefix_visible() {
             "overwrite" => handle.overwrite_arrow_reader(source, &options),
             "append" => handle.append_arrow_reader(source, &options),
             "merge" => {
-                handle.merge_arrow_reader(source, &options.clone().with_merge_by_names(["id"]))
+                handle.merge_arrow_reader(source, &options.clone().with_merge_by(["id"]).unwrap())
             }
             _ => unreachable!(),
         };
@@ -581,7 +583,8 @@ fn resumed_sessions_keep_append_and_merge_intent_for_every_cadence() {
     let merge_options = plain
         .clone()
         .with_commit_row_size(1)
-        .with_merge_by_names(["id"]);
+        .with_merge_by(["id"])
+        .unwrap();
     let mut merge = ArrowWriteSession::merge(&merge_options).unwrap();
     merge
         .push(
@@ -808,7 +811,7 @@ fn bounded_empty_intents_publish_only_overwrite() {
 
     handle.append_arrow_reader(empty(), &bounded).unwrap();
     handle
-        .merge_arrow_reader(empty(), &bounded.clone().with_merge_by_names(["id"]))
+        .merge_arrow_reader(empty(), &bounded.clone().with_merge_by(["id"]).unwrap())
         .unwrap();
     assert_eq!(handle.publications.load(Ordering::SeqCst), 0);
     assert_eq!(rows(&handle, &plain), 2);
@@ -841,7 +844,7 @@ fn record_batch_adapters_route_to_each_explicit_reader_primitive() {
     handle.append_arrow_batch(batch(), &options).unwrap();
     assert_eq!(rows(&handle, &options), 4);
 
-    let merging = options.clone().with_merge_by_names(["id"]);
+    let merging = options.clone().with_merge_by(["id"]).unwrap();
     handle.merge_arrow_batch(batch(), &merging).unwrap();
     // Both stored copies of each key update in place; merge does not turn
     // either incoming row into a third copy.

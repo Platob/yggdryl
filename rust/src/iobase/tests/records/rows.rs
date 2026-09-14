@@ -45,7 +45,7 @@ fn native_struct_row_adapters_route_all_three_intents() {
                     symbol: Some("AMD"),
                 },
             ],
-            &options.clone().with_merge_by_names(["id"]),
+            &options.clone().with_merge_by(["id"]).unwrap(),
         )
         .unwrap();
 
@@ -80,7 +80,7 @@ fn native_row_methods_require_a_field_before_pulling() {
             "append" => handle.append_records(CountedRows(Arc::clone(&pulls)), &options),
             "merge" => handle.merge_records(
                 CountedRows(Arc::clone(&pulls)),
-                &options.with_merge_by_names(["id"]),
+                &options.with_merge_by(["id"]).unwrap(),
             ),
             _ => unreachable!(),
         };
@@ -109,15 +109,17 @@ fn native_row_methods_validate_intent_before_building_or_pulling_the_iterator() 
         let plain = handle.record_options().unwrap().with_field(schema());
         let result = match intent {
             "overwrite" => {
-                handle.overwrite_records(records, &plain.clone().with_merge_by_names(["id"]))
+                handle.overwrite_records(records, &plain.clone().with_merge_by(["id"]).unwrap())
             }
-            "append" => handle.append_records(records, &plain.clone().with_merge_by_names(["id"])),
+            "append" => {
+                handle.append_records(records, &plain.clone().with_merge_by(["id"]).unwrap())
+            }
             "merge" => handle.merge_records(records, &plain),
             _ => unreachable!(),
         };
 
         let message = result.unwrap_err().to_string();
-        assert!(message.contains("merge_by_names"), "{intent}: {message}");
+        assert!(message.contains("merge_by"), "{intent}: {message}");
         assert_eq!(pulls.load(Ordering::SeqCst), 0, "{intent}");
         assert!(handle.is_empty(), "{intent}");
     }
@@ -219,7 +221,7 @@ fn native_row_conversion_stops_at_each_commit_for_all_intents() {
             "overwrite" => handle.overwrite_records(records, &committed),
             "append" => handle.append_records(records, &committed),
             "merge" => {
-                handle.merge_records(records, &committed.clone().with_merge_by_names(["id"]))
+                handle.merge_records(records, &committed.clone().with_merge_by(["id"]).unwrap())
             }
             _ => unreachable!(),
         };
@@ -326,7 +328,7 @@ fn empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops()
     handle
         .append_records(
             std::iter::empty::<NativeRow>(),
-            &options.clone().with_select_by_names(["absent"]),
+            &options.clone().with_selector("absent").unwrap(),
         )
         .unwrap();
     handle
@@ -334,8 +336,10 @@ fn empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops()
             std::iter::empty::<NativeRow>(),
             &options
                 .clone()
-                .with_merge_by_names(["id"])
-                .with_select_by_names(["absent"]),
+                .with_merge_by(["id"])
+                .unwrap()
+                .with_selector("absent")
+                .unwrap(),
         )
         .unwrap();
     assert_eq!(handle.as_slice(), before.as_slice());
@@ -363,7 +367,7 @@ fn empty_append_and_merge_are_byte_for_byte_no_ops() {
                 crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
                 [],
             ),
-            &options.clone().with_select_by_names(["absent"]),
+            &options.clone().with_selector("absent").unwrap(),
         )
         .unwrap();
     assert!(missing.is_empty(), "an empty append must not create bytes");
@@ -376,8 +380,10 @@ fn empty_append_and_merge_are_byte_for_byte_no_ops() {
             crate::arrow::batch_reader(zero.schema(), [zero]),
             &options
                 .clone()
-                .with_merge_by_names(["id"])
-                .with_select_by_names(["absent"]),
+                .with_merge_by(["id"])
+                .unwrap()
+                .with_selector("absent")
+                .unwrap(),
         )
         .unwrap();
     assert_eq!(missing.as_slice(), before.as_slice());
@@ -476,7 +482,8 @@ fn overwrite_refuses_a_match_key_and_a_limited_merge_names_both_settings() {
         .record_options()
         .unwrap()
         .with_field(schema())
-        .with_merge_by_names(["id"]);
+        .with_merge_by(["id"])
+        .unwrap();
     let before = handle.as_slice().to_vec();
 
     // The operation carries intent: overwrite never silently becomes a
@@ -486,7 +493,7 @@ fn overwrite_refuses_a_match_key_and_a_limited_merge_names_both_settings() {
         .unwrap_err()
         .to_string();
     assert!(message.contains("write mode overwrite"), "{message}");
-    assert!(message.contains("merge_by_names"), "{message}");
+    assert!(message.contains("merge_by"), "{message}");
     assert_eq!(handle.as_slice(), before.as_slice());
 
     // A truncated merge would update the matched keys it kept and
@@ -498,7 +505,7 @@ fn overwrite_refuses_a_match_key_and_a_limited_merge_names_both_settings() {
         .unwrap_err()
         .to_string();
     assert!(message.contains("max_row_size = 1"), "{message}");
-    assert!(message.contains("merge_by_names [\"id\"]"), "{message}");
+    assert!(message.contains("merge_by `id`"), "{message}");
     assert_eq!(handle.as_slice(), before.as_slice());
 }
 
@@ -539,7 +546,7 @@ fn merge_refuses_an_empty_match_key_before_pulling_the_reader() {
         .to_string();
 
     assert!(message.contains("requires at least one"), "{message}");
-    assert!(message.contains("merge_by_names"), "{message}");
+    assert!(message.contains("merge_by"), "{message}");
     assert_eq!(pulls.load(Ordering::SeqCst), 0);
     assert!(handle.is_empty());
 }

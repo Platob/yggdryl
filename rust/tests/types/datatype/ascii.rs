@@ -12,7 +12,7 @@ use yggdryl::expression::Literal;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::types::{Str, StringLayout, StringParameters};
-use yggdryl::{Charset, DataType, DataTypeId, Expression, Field, Scalar, StringEnum, Url};
+use yggdryl::{Charset, DataType, DataTypeId, Field, Scalar, StringEnum, Term, Url};
 use yggdryl::{IOBase, IOMedia};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -47,7 +47,7 @@ fn a_filter_over_an_ascii_column_binds_and_evaluates() {
 
     // The column meets the literal at utf8, and the cast trims the padding.
     let bound = "ccy = 'USD'"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap()
         .bind(&schema)
         .unwrap();
@@ -84,11 +84,7 @@ fn two_ascii_columns_compare_at_both_tiers() {
 
     // Two ASCII operands meet at their own width, so the row tier compares
     // the trimmed text the same way the column tier compares storage.
-    let equal = "a = b"
-        .parse::<Expression>()
-        .unwrap()
-        .bind(&schema)
-        .unwrap();
+    let equal = "a = b".parse::<Term>().unwrap().bind(&schema).unwrap();
     assert_eq!(equal.filter(&batch).unwrap().num_rows(), 1);
     assert!(
         equal
@@ -106,11 +102,7 @@ fn two_ascii_columns_compare_at_both_tiers() {
             ]))
             .unwrap()
     );
-    let before = "a < b"
-        .parse::<Expression>()
-        .unwrap()
-        .bind(&schema)
-        .unwrap();
+    let before = "a < b".parse::<Term>().unwrap().bind(&schema).unwrap();
     assert_eq!(before.filter(&batch).unwrap().num_rows(), 1);
     assert!(
         before
@@ -139,7 +131,7 @@ fn string_functions_read_an_ascii_column_as_text() {
         ("starts_with(ccy, 'U')", 1),
         ("concat(ccy, 'X') = 'USDX'", 1),
     ] {
-        let bound = text.parse::<Expression>().unwrap().bind(&schema).unwrap();
+        let bound = text.parse::<Term>().unwrap().bind(&schema).unwrap();
         assert_eq!(bound.filter(&batch).unwrap().num_rows(), kept, "{text}");
         assert!(bound.matches(&usd).unwrap(), "{text}");
     }
@@ -155,7 +147,7 @@ fn a_cast_to_a_bounded_ascii_obeys_the_bound_on_rows() {
     .unwrap();
 
     let bound = "cast(ccy as ascii(4)) = 'USD'"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap()
         .bind(&schema)
         .unwrap();
@@ -173,7 +165,7 @@ fn a_cast_to_a_bounded_ascii_obeys_the_bound_on_rows() {
         .to_string();
     assert!(message.contains("at most 4 bytes"), "{message}");
     let refused = "cast('EURO!' as ascii(4)) = ccy"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap()
         .bind(&schema)
         .unwrap();
@@ -197,7 +189,7 @@ fn a_cast_into_a_securities_number_holds_the_column_to_the_canonical_spelling() 
         .unwrap()
     };
     let bound = "cast(sid as isin) = 'US0378331005'"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap()
         .bind(&schema)
         .unwrap();
@@ -231,38 +223,32 @@ fn a_cast_into_a_securities_number_holds_the_column_to_the_canonical_spelling() 
 
 #[test]
 fn an_ascii_literal_has_a_text_form() {
-    let parsed = "ccy = ascii(4) 'USD'".parse::<Expression>().unwrap();
-    let Expression::Compare(_, _, literal) = &parsed else {
+    let parsed = "ccy = ascii(4) 'USD'".parse::<Term>().unwrap();
+    let Term::Compare(_, _, literal) = &parsed else {
         panic!("a comparison, got {parsed}");
     };
     // `ascii(4)` is the bounded string, not the padded one.
     assert_eq!(
         **literal,
-        Expression::Literal(Literal::new(DataType::from_str("ascii(4)").unwrap(), "USD").unwrap())
+        Term::Literal(Literal::new(DataType::from_str("ascii(4)").unwrap(), "USD").unwrap())
     );
     // The literal prints in its own datatype and re-parses; a registered code
     // spells a literal of its own, which is not the literal of the width that
     // happens to hold the same bytes.
     assert_eq!(parsed.to_string(), "ccy = ascii(4) 'USD'");
-    assert_eq!(parsed.to_string().parse::<Expression>().unwrap(), parsed);
-    let currency = "ccy = currency 'USD'".parse::<Expression>().unwrap();
+    assert_eq!(parsed.to_string().parse::<Term>().unwrap(), parsed);
+    let currency = "ccy = currency 'USD'".parse::<Term>().unwrap();
     assert_eq!(currency.to_string(), "ccy = currency 'USD'");
-    assert_eq!(
-        currency.to_string().parse::<Expression>().unwrap(),
-        currency
-    );
-    assert_ne!(
-        currency,
-        "ccy = ascii(3) 'USD'".parse::<Expression>().unwrap()
-    );
+    assert_eq!(currency.to_string().parse::<Term>().unwrap(), currency);
+    assert_ne!(currency, "ccy = ascii(3) 'USD'".parse::<Term>().unwrap());
     let refused = "ccy = country 'USD'"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap_err()
         .to_string();
     assert!(refused.contains("at most 2 bytes"), "{refused}");
 
     let message = "ccy = ascii(4) 'EURO!'"
-        .parse::<Expression>()
+        .parse::<Term>()
         .unwrap_err()
         .to_string();
     assert!(message.contains("at most 4 bytes"), "{message}");

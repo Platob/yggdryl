@@ -1,8 +1,10 @@
-//! The compile step: one [`Expression`] and one schema become one [`Bound`].
+//! The compile step: one [`Term`] and one schema become one [`Bound`].
 //!
 //! Everything that can be decided before the first row is decided here, once:
 //!
 //! * every parameter is substituted, so nothing is late-bound during a scan;
+//! * the tree is [simplified](Term::simplify), so a negation never hides a
+//!   comparison and a run of equalities is one membership test;
 //! * every column name becomes an index into the schema, so no row lookup ever
 //!   compares a string;
 //! * every literal is converted into the type it is compared against, so
@@ -25,11 +27,11 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::attribute::{Attribute, Attributes, Cost};
 use super::eval::{Row, convert};
-use super::parser::{Direction, NullsOrder, Statement};
-use super::selector::{Attributes, Cost, Selector};
-use super::typing::common_type;
-use super::{Comparison, Expression, FieldSegment, Function, Literal, Operator, Safety};
+use super::path::FieldSegment;
+use super::typing::{column_index, common_type};
+use super::{Comparison, Filter, Function, Literal, Operator, Safety, Term, named};
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What one node costs to answer, in units of "a free attribute read".
@@ -49,7 +51,7 @@ pub(crate) struct Node {
     pub(crate) cost: u32,
 }
 
-/// The resolved form of every [`Expression`] variant.
+/// The resolved form of every [`Term`] variant.
 #[derive(Clone, Debug)]
 pub(crate) enum Kind {
     /// A constant, already in this node's declared datatype.
@@ -59,7 +61,7 @@ pub(crate) enum Kind {
     /// A path into a value.
     Path(Box<Node>, Arc<[FieldSegment]>),
     /// A holder attribute.
-    Attribute(Selector),
+    Attribute(Attribute),
     /// Conjunction, operands ordered cheapest-first.
     And(Vec<Node>),
     /// Disjunction, operands ordered cheapest-first.
@@ -217,7 +219,7 @@ impl Node {
     }
 }
 
-/// One expression, resolved against one schema, ready to answer.
+/// One term, resolved against one schema, ready to answer.
 ///
 /// A `Bound` is built once per stream and answers three ways: row at a time
 /// over [`Scalar`], vectorized over an Arrow batch, and three-valued over
@@ -225,39 +227,40 @@ impl Node {
 #[derive(Clone, Debug)]
 pub struct Bound {
     schema: Field,
-    expression: Expression,
+    term: Term,
     node: Node,
 }
 
 impl Bound {
-    /// The struct root this expression was bound against.
+    /// The struct root this term was bound against.
     #[must_use]
     pub const fn schema(&self) -> &Field {
         &self.schema
     }
 
-    /// The expression as it stands after substitution, folding, and ordering.
+    /// The term as it stands after substitution, simplification, folding, and
+    /// ordering.
     ///
     /// This is what a log line should print: it is the plan that will actually
     /// run, not the text the caller wrote.
     #[must_use]
-    pub const fn expression(&self) -> &Expression {
-        &self.expression
+    pub const fn term(&self) -> &Term {
+        &self.term
     }
 
-    /// The output field this expression produces.
+    /// The output field this term produces.
     #[must_use]
     pub const fn field(&self) -> &Field {
         &self.node.field
     }
 
-    /// Return whether this expression answers a boolean.
+    /// Return whether this term answers a boolean.
     #[must_use]
     pub fn is_predicate(&self) -> bool {
         matches!(self.node.field.dtype(), DataType::Boolean | DataType::Null)
     }
 
-    /// The schema column indices this expression reads, ascending.
+    /// The schema column indices this term reads, ascending.
     ///
     /// This is projection pushdown: a reader decodes these and no others.
     #[must_use]
@@ -265,7 +268,7 @@ impl Bound {
         self.node.column_indices()
     }
 
-    /// The schema column names this expression reads, in index order.
+    /// The schema column names this term reads, in index order.
     #[must_use]
     pub fn column_names(&self) -> Vec<String> {
         let fields = self.schema.fields();
@@ -275,7 +278,7 @@ impl Bound {
             .collect()
     }
 
-    /// Return whether answering this expression requires reading rows.
+    /// Return whether answering this term requires reading rows.
     #[must_use]
     pub fn reads_rows(&self) -> bool {
         self.node.reads_rows()
@@ -286,11 +289,10 @@ impl Bound {
         &self.node
     }
 
-    /// Evaluate this expression for one row.
+    /// Evaluate this term for one row.
     ///
-    /// The row is a [`crate::types::nested::Sequence`] of column values in schema order. This
-    /// is the row target's [`ApplyExpression`](super::ApplyExpression), spelled
-    /// from the expression's side.
+    /// The row is a [`crate::types::nested::Sequence`] of column values in
+    /// schema order.
     ///
     /// # Errors
     ///
@@ -298,10 +300,11 @@ impl Bound {
     /// cast refuses a value, or checked arithmetic overflows, divides by zero,
     /// or cannot represent an exact decimal result.
     pub fn eval(&self, row: &Scalar) -> Result<Scalar> {
-        super::ApplyExpression::apply_expression(row, self)
+        let values = row_values(row, &self.schema)?;
+        self.node.eval(&Row::new(Some(values), None))
     }
 
-    /// Evaluate this expression for one row alongside a holder.
+    /// Evaluate this term for one row alongside a holder.
     ///
     /// # Errors
     ///
@@ -332,19 +335,51 @@ impl Bound {
         Ok(self.eval_with(row, holder)?.as_bool().unwrap_or(false))
     }
 
+    /// What a holder alone settles about this predicate, three-valued.
+    ///
+    /// Only the conjuncts a holder can answer are evaluated - the ones that
+    /// read no column. Every other conjunct leaves the conjunction unknown,
+    /// and an unknown conjunct excludes nothing, which is what keeps a listing
+    /// filter conservative: it may keep a file the rows will later discard,
+    /// and it may never discard a file that would have matched.
+    ///
+    /// The conjuncts run cheapest-first and stop at the first `false`, so a
+    /// predicate answerable from the path alone performs no backend call.
+    ///
+    /// # Errors
+    ///
+    /// Returns the holder's failure when a stat attribute cannot be read.
+    pub fn settle_holder(&self, holder: &dyn Attributes) -> Result<Scalar> {
+        let row = Row::new(None, Some(holder));
+        let mut unknown = false;
+        for conjunct in self.node.conjuncts() {
+            if conjunct.reads_rows() {
+                unknown = true;
+                continue;
+            }
+            match conjunct.eval(&row)?.as_bool() {
+                Some(false) => return Ok(Scalar::from(false)),
+                Some(true) => {}
+                None => unknown = true,
+            }
+        }
+        Ok(if unknown {
+            Scalar::Null
+        } else {
+            Scalar::from(true)
+        })
+    }
+
     /// Return whether a holder is *not ruled out* by this predicate.
     ///
-    /// The holder target's [`ApplyExpression`](super::ApplyExpression) answers
-    /// three-valued - what the holder alone settles - and this reads its
-    /// answer conservatively: only a proven `false` excludes, so an unknown
-    /// keeps the holder. It may keep a file the rows will later discard, and
-    /// it may never discard a file that would have matched.
+    /// [`Self::settle_holder`] read conservatively: only a proven `false`
+    /// excludes, so an unknown keeps the holder.
     ///
     /// # Errors
     ///
     /// Returns the holder's failure when a stat attribute cannot be read.
     pub fn matches_holder(&self, holder: &dyn Attributes) -> Result<bool> {
-        Ok(super::ApplyExpression::apply_expression(holder, self)?.as_bool() != Some(false))
+        Ok(self.settle_holder(holder)?.as_bool() != Some(false))
     }
 }
 
@@ -373,67 +408,12 @@ pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'ro
 
 impl std::fmt::Display for Bound {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.expression)
+        write!(formatter, "{}", self.term)
     }
 }
 
-/// A [`Statement`] resolved against one schema.
-#[derive(Clone, Debug)]
-pub struct BoundStatement {
-    schema: Field,
-    output: Field,
-    projections: Vec<Bound>,
-    predicate: Option<Bound>,
-    ordering: Vec<(Bound, Direction, Option<NullsOrder>)>,
-    limit: Option<u64>,
-}
-
-impl BoundStatement {
-    /// The struct root this statement was bound against.
-    #[must_use]
-    pub const fn schema(&self) -> &Field {
-        &self.schema
-    }
-
-    /// The struct root this statement produces.
-    #[must_use]
-    pub const fn output(&self) -> &Field {
-        &self.output
-    }
-
-    /// The bound projections, in output order. Empty means every column.
-    #[must_use]
-    pub fn projections(&self) -> &[Bound] {
-        &self.projections
-    }
-
-    /// The bound predicate, when the statement had one.
-    #[must_use]
-    pub const fn predicate(&self) -> Option<&Bound> {
-        self.predicate.as_ref()
-    }
-
-    /// The bound ordering keys, in priority order.
-    #[must_use]
-    pub fn ordering(&self) -> &[(Bound, Direction, Option<NullsOrder>)] {
-        &self.ordering
-    }
-
-    /// The row limit, when the statement had one.
-    #[must_use]
-    pub const fn limit(&self) -> Option<u64> {
-        self.limit
-    }
-
-    /// Return whether this statement selects every column unchanged.
-    #[must_use]
-    pub fn is_all(&self) -> bool {
-        self.projections.is_empty()
-    }
-}
-
-impl Expression {
-    /// Resolve this expression against a schema.
+impl Term {
+    /// Resolve this term against a schema.
     ///
     /// # Errors
     ///
@@ -443,104 +423,57 @@ impl Expression {
         self.bind_with(schema, &[])
     }
 
-    /// Resolve this expression against a schema, supplying its parameters.
+    /// Resolve this term against a schema, supplying its parameters.
     ///
     /// # Errors
     ///
-    /// Returns an error when a parameter is missing or the expression cannot
-    /// be resolved.
+    /// Returns an error when a parameter is missing or the term cannot be
+    /// resolved.
     pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound> {
         schema.require_struct()?;
         self.check_budget()?;
-        let supplied = substitute(self, parameters)?;
+        let supplied = substitute(self, parameters)?.simplify();
         let binder = Binder { schema };
         let node = binder.lower(&supplied, None)?;
         Ok(Bound {
             schema: schema.clone(),
-            expression: rebuild(&node),
+            term: rebuild(&node),
             node,
         })
     }
 }
 
-impl Statement {
-    /// Resolve this statement against a schema.
+impl Filter {
+    /// Resolve this filter against a schema.
     ///
     /// # Errors
     ///
-    /// Returns an error when any projection, the predicate, or an ordering key
-    /// cannot be resolved.
-    pub fn bind(&self, schema: &Field) -> Result<BoundStatement> {
+    /// Returns an error when the term cannot be resolved, or when it answers
+    /// anything but a boolean.
+    pub fn bind(&self, schema: &Field) -> Result<Bound> {
         self.bind_with(schema, &[])
     }
 
-    /// Resolve this statement against a schema, supplying its parameters.
+    /// Resolve this filter against a schema, supplying its parameters.
     ///
     /// # Errors
     ///
-    /// Returns an error when a parameter is missing or a part cannot resolve.
-    pub fn bind_with(
-        &self,
-        schema: &Field,
-        parameters: &[(&str, Scalar)],
-    ) -> Result<BoundStatement> {
-        schema.require_struct()?;
-        let mut projections = Vec::with_capacity(self.projections().len());
-        let mut fields = Vec::with_capacity(self.projections().len());
-        for projection in self.projections() {
-            let bound = projection.expression().bind_with(schema, parameters)?;
-            fields.push(bound.field().clone().with_name(projection.name()));
-            projections.push(bound);
-        }
-        let output = if fields.is_empty() {
-            schema.clone()
-        } else {
-            schema
-                .clone()
-                .try_with_dtype(DataType::from_fields(fields)?)?
-        };
-        let predicate = match self.predicate() {
-            Some(predicate) => {
-                let bound = predicate.bind_with(schema, parameters)?;
-                if !bound.is_predicate() {
-                    return Err(Error::InvalidRecord {
-                        path: SmolStr::new_static("$"),
-                        reason: format_smolstr!(
-                            "expected a boolean `where` clause, got {}",
-                            bound.field().dtype()
-                        ),
-                    });
-                }
-                Some(bound)
-            }
-            None => None,
-        };
-        let mut ordering = Vec::with_capacity(self.ordering().len());
-        for order in self.ordering() {
-            ordering.push((
-                order.expression().bind_with(schema, parameters)?,
-                order.direction(),
-                order.nulls(),
-            ));
-        }
-        Ok(BoundStatement {
-            schema: schema.clone(),
-            output,
-            projections,
-            predicate,
-            ordering,
-            limit: self.limit(),
-        })
+    /// Returns an error when a parameter is missing, the term cannot be
+    /// resolved, or it answers anything but a boolean.
+    pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound> {
+        let bound = self.term().bind_with(schema, parameters)?;
+        super::filter::require_boolean(bound.field())?;
+        Ok(bound)
     }
 }
 
 /// Replace every parameter with the value supplied for it.
-fn substitute(expression: &Expression, parameters: &[(&str, Scalar)]) -> Result<Expression> {
-    if parameters.is_empty() && expression.parameters().is_empty() {
-        return Ok(expression.clone());
+fn substitute(term: &Term, parameters: &[(&str, Scalar)]) -> Result<Term> {
+    if parameters.is_empty() && term.parameters().is_empty() {
+        return Ok(term.clone());
     }
-    map_children(expression, &mut |node| match node {
-        Expression::Parameter(name) => {
+    term.map(&mut |node| match node {
+        Term::Parameter(name) => {
             let supplied = parameters
                 .iter()
                 .find(|(held, _)| held.eq_ignore_ascii_case(name))
@@ -548,178 +481,76 @@ fn substitute(expression: &Expression, parameters: &[(&str, Scalar)]) -> Result<
                     path: SmolStr::new_static("$"),
                     reason: format_smolstr!("expected a value for parameter :{name}"),
                 })?;
-            Ok(Some(Expression::literal(supplied.1.clone())))
+            Ok(Some(Term::literal(supplied.1.clone())))
         }
         _ => Ok(None),
     })
 }
 
-/// Rebuild an expression, letting `replace` swap any node for another.
-///
-/// Written once so a rewrite never has to re-list twenty-three variants.
-fn map_children(
-    expression: &Expression,
-    replace: &mut dyn FnMut(&Expression) -> Result<Option<Expression>>,
-) -> Result<Expression> {
-    if let Some(replaced) = replace(expression)? {
-        return Ok(replaced);
-    }
-    // Taking the callback as a trait object rather than a generic is what keeps
-    // this one function instead of one instantiation per nesting depth.
-    let mapped = map_children;
-    Ok(match expression {
-        Expression::Literal(_)
-        | Expression::Column(_)
-        | Expression::Attribute(_)
-        | Expression::Parameter(_) => expression.clone(),
-        Expression::Path(base, steps) => {
-            Expression::Path(Box::new(mapped(base, replace)?), steps.clone())
-        }
-        Expression::And(operands) => Expression::And(map_slice(operands, replace)?),
-        Expression::Or(operands) => Expression::Or(map_slice(operands, replace)?),
-        Expression::Not(inner) => Expression::Not(Box::new(mapped(inner, replace)?)),
-        Expression::Compare(left, comparison, right) => Expression::Compare(
-            Box::new(mapped(left, replace)?),
-            *comparison,
-            Box::new(mapped(right, replace)?),
-        ),
-        Expression::In(value, list) => {
-            Expression::In(Box::new(mapped(value, replace)?), map_slice(list, replace)?)
-        }
-        Expression::Between(value, low, high) => Expression::Between(
-            Box::new(mapped(value, replace)?),
-            Box::new(mapped(low, replace)?),
-            Box::new(mapped(high, replace)?),
-        ),
-        Expression::IsNull(inner) => Expression::IsNull(Box::new(mapped(inner, replace)?)),
-        Expression::IsNotNull(inner) => Expression::IsNotNull(Box::new(mapped(inner, replace)?)),
-        Expression::Like {
-            value,
-            pattern,
-            case_insensitive,
-            escape,
-        } => Expression::Like {
-            value: Box::new(mapped(value, replace)?),
-            pattern: Box::new(mapped(pattern, replace)?),
-            case_insensitive: *case_insensitive,
-            escape: *escape,
-        },
-        Expression::Glob(value, pattern) => Expression::Glob(
-            Box::new(mapped(value, replace)?),
-            Box::new(mapped(pattern, replace)?),
-        ),
-        Expression::Arithmetic(left, operator, right) => Expression::Arithmetic(
-            Box::new(mapped(left, replace)?),
-            *operator,
-            Box::new(mapped(right, replace)?),
-        ),
-        Expression::Negate(inner) => Expression::Negate(Box::new(mapped(inner, replace)?)),
-        Expression::Function(function, arguments) => {
-            Expression::Function(*function, map_slice(arguments, replace)?)
-        }
-        Expression::Cast(inner, dtype, safety) => {
-            Expression::Cast(Box::new(mapped(inner, replace)?), dtype.clone(), *safety)
-        }
-        Expression::Case {
-            branches,
-            otherwise,
-        } => {
-            let mut mapped_branches = Vec::with_capacity(branches.len());
-            for (when, then) in branches.iter() {
-                mapped_branches.push((mapped(when, replace)?, mapped(then, replace)?));
-            }
-            Expression::Case {
-                branches: Arc::from(mapped_branches),
-                otherwise: match otherwise {
-                    Some(otherwise) => Some(Box::new(mapped(otherwise, replace)?)),
-                    None => None,
-                },
-            }
-        }
-        Expression::Struct(children) => {
-            let mut mapped_children = Vec::with_capacity(children.len());
-            for (name, value) in children.iter() {
-                mapped_children.push((name.clone(), mapped(value, replace)?));
-            }
-            Expression::Struct(Arc::from(mapped_children))
-        }
-        Expression::List(items) => Expression::List(map_slice(items, replace)?),
-        Expression::Map(entries) => {
-            let mut mapped_entries = Vec::with_capacity(entries.len());
-            for (key, value) in entries.iter() {
-                mapped_entries.push((mapped(key, replace)?, mapped(value, replace)?));
-            }
-            Expression::Map(Arc::from(mapped_entries))
-        }
-    })
-}
-
-fn map_slice(
-    operands: &[Expression],
-    replace: &mut dyn FnMut(&Expression) -> Result<Option<Expression>>,
-) -> Result<Arc<[Expression]>> {
-    let mut mapped = Vec::with_capacity(operands.len());
-    for operand in operands {
-        mapped.push(map_children(operand, replace)?);
-    }
-    Ok(Arc::from(mapped))
-}
-
-/// Everything that turns one typed expression into one resolved node.
+/// Everything that turns one typed term into one resolved node.
 struct Binder<'schema> {
     schema: &'schema Field,
 }
 
 impl Binder<'_> {
-    /// Lower one expression, converting it into `want` when one is named.
+    /// Lower one term, converting it into `want` when one is named.
     #[allow(clippy::too_many_lines)]
-    fn lower(&self, expression: &Expression, want: Option<&DataType>) -> Result<Node> {
-        let node = match expression {
-            Expression::Literal(held) => {
+    fn lower(&self, term: &Term, want: Option<&DataType>) -> Result<Node> {
+        let node = match term {
+            Term::Literal(held) => {
                 let target = want.unwrap_or_else(|| held.dtype());
                 let value = convert(target, held.value(), Safety::Strict)?;
-                self.leaf(
-                    expression,
-                    target.clone(),
-                    value.is_null(),
-                    Kind::Literal(value),
-                    0,
-                )
-            }
-            Expression::Column(name) => {
-                let index = self.index_of(name)?;
-                let field = self.schema.fields()[index].clone();
                 Node {
+                    field: named(term, target.clone(), value.is_null()),
+                    kind: Kind::Literal(value),
+                    cost: 0,
+                }
+            }
+            Term::Path(steps) => {
+                let (first, rest) = steps.split_first().ok_or_else(|| {
+                    incompatible("a path that starts at a column, got the row itself")
+                })?;
+                let FieldSegment::Field(name) = first else {
+                    return Err(incompatible(&format!(
+                        "a path that starts at a column, got the step {first}"
+                    )));
+                };
+                let index = column_index(name, self.schema)?;
+                let column = self.schema.fields()[index].clone();
+                let base = Node {
                     cost: COST_COLUMN,
-                    field,
+                    field: column.clone(),
                     kind: Kind::Column(index),
+                };
+                if rest.is_empty() {
+                    base
+                } else {
+                    let mut field = column;
+                    for step in rest {
+                        field = step.apply_field(&field)?;
+                    }
+                    Node {
+                        field: field.with_name(SmolStr::new(term.to_string())),
+                        kind: Kind::Path(Box::new(base), Arc::from(rest)),
+                        cost: COST_COLUMN + 1,
+                    }
                 }
             }
-            Expression::Path(base, steps) => {
-                let base = self.lower(base, None)?;
-                let field = expression.field(self.schema)?;
-                let cost = base.cost + 1;
-                Node {
-                    field,
-                    kind: Kind::Path(Box::new(base), steps.clone()),
-                    cost,
-                }
-            }
-            Expression::Attribute(selector) => Node {
-                field: selector.field(),
-                cost: match selector.cost() {
+            Term::Attribute(attribute) => Node {
+                field: attribute.field(),
+                cost: match attribute.cost() {
                     Cost::Free => COST_FREE_ATTRIBUTE,
                     Cost::Stat => COST_STAT,
                 },
-                kind: Kind::Attribute(selector.clone()),
+                kind: Kind::Attribute(attribute.clone()),
             },
-            Expression::Parameter(name) => {
+            Term::Parameter(name) => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
                     reason: format_smolstr!("expected a value for parameter :{name}"),
                 });
             }
-            Expression::And(operands) | Expression::Or(operands) => {
+            Term::And(operands) | Term::Or(operands) => {
                 let mut lowered = Vec::with_capacity(operands.len());
                 for operand in operands.iter() {
                     lowered.push(self.lower(operand, Some(&DataType::Boolean))?);
@@ -730,27 +561,27 @@ impl Binder<'_> {
                 lowered.sort_by_key(|node| node.cost);
                 let nullable = lowered.iter().any(|node| node.field.is_nullable());
                 let cost = lowered.iter().map(|node| node.cost).max().unwrap_or(0);
-                let kind = if matches!(expression, Expression::And(_)) {
+                let kind = if matches!(term, Term::And(_)) {
                     Kind::And(lowered)
                 } else {
                     Kind::Or(lowered)
                 };
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind,
                     cost,
                 }
             }
-            Expression::Not(inner) => {
+            Term::Not(inner) => {
                 let inner = self.lower(inner, Some(&DataType::Boolean))?;
                 let (nullable, cost) = (inner.field.is_nullable(), inner.cost);
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind: Kind::Not(Box::new(inner)),
                     cost,
                 }
             }
-            Expression::Compare(left, comparison, right) => {
+            Term::Compare(left, comparison, right) => {
                 let shared = self.shared_type(left, right)?;
                 let left = self.lower(left, Some(&shared))?;
                 let right = self.lower(right, Some(&shared))?;
@@ -758,18 +589,13 @@ impl Binder<'_> {
                     && (left.field.is_nullable() || right.field.is_nullable());
                 let cost = left.cost + right.cost;
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind: Kind::Compare(Box::new(left), *comparison, Box::new(right)),
                     cost,
                 }
             }
-            Expression::In(value, list) => {
-                let mut shared = self.type_of(value)?;
-                for item in list.iter() {
-                    shared = common_type(&shared, &self.type_of(item)?).ok_or_else(|| {
-                        incompatible("an `in` list that shares a type with its value")
-                    })?;
-                }
+            Term::In(value, list) => {
+                let shared = self.list_type(value, list)?;
                 let value = self.lower(value, Some(&shared))?;
                 let mut lowered = Vec::with_capacity(list.len());
                 for item in list.iter() {
@@ -779,17 +605,14 @@ impl Binder<'_> {
                     || lowered.iter().any(|node| node.field.is_nullable());
                 let cost = value.cost + lowered.iter().map(|node| node.cost).sum::<u32>();
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind: Kind::In(Box::new(value), lowered),
                     cost,
                 }
             }
-            Expression::Between(value, low, high) => {
-                let mut shared = self.type_of(value)?;
-                for bound in [low, high] {
-                    shared = common_type(&shared, &self.type_of(bound)?)
-                        .ok_or_else(|| incompatible("`between` bounds that share a type"))?;
-                }
+            Term::Between(value, low, high) => {
+                let shared =
+                    self.list_type(value, &[low.as_ref().clone(), high.as_ref().clone()])?;
                 let value = self.lower(value, Some(&shared))?;
                 let low = self.lower(low, Some(&shared))?;
                 let high = self.lower(high, Some(&shared))?;
@@ -798,26 +621,26 @@ impl Binder<'_> {
                     || high.field.is_nullable();
                 let cost = value.cost + low.cost + high.cost;
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind: Kind::Between(Box::new(value), Box::new(low), Box::new(high)),
                     cost,
                 }
             }
-            Expression::IsNull(inner) | Expression::IsNotNull(inner) => {
+            Term::IsNull(inner) | Term::IsNotNull(inner) => {
                 let inner = self.lower(inner, None)?;
                 let cost = inner.cost;
-                let kind = if matches!(expression, Expression::IsNull(_)) {
+                let kind = if matches!(term, Term::IsNull(_)) {
                     Kind::IsNull(Box::new(inner))
                 } else {
                     Kind::IsNotNull(Box::new(inner))
                 };
                 Node {
-                    field: named(expression, DataType::Boolean, false),
+                    field: named(term, DataType::Boolean, false),
                     kind,
                     cost,
                 }
             }
-            Expression::Like {
+            Term::Like {
                 value,
                 pattern,
                 case_insensitive,
@@ -837,7 +660,7 @@ impl Binder<'_> {
                     let (nullable, cost) = (value.field.is_nullable(), value.cost);
                     return self.coerce(
                         Node {
-                            field: named(expression, DataType::Boolean, nullable),
+                            field: named(term, DataType::Boolean, nullable),
                             kind: Kind::Compare(Box::new(value), Comparison::Eq, Box::new(literal)),
                             cost,
                         },
@@ -846,7 +669,7 @@ impl Binder<'_> {
                 }
                 let (nullable, cost) = (value.field.is_nullable(), value.cost);
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind: Kind::Like {
                         value: Box::new(value),
                         pattern,
@@ -856,18 +679,18 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Glob(value, pattern) => {
+            Term::Glob(value, pattern) => {
                 let value = self.lower(value, Some(&DataType::utf8()))?;
                 let pattern = self.constant_pattern(pattern, "glob")?;
                 let (nullable, cost) = (value.field.is_nullable(), value.cost);
                 Node {
-                    field: named(expression, DataType::Boolean, nullable),
+                    field: named(term, DataType::Boolean, nullable),
                     kind: Kind::Glob(Box::new(value), pattern),
                     cost,
                 }
             }
-            Expression::Arithmetic(left, operator, right) => {
-                let field = expression.field(self.schema)?;
+            Term::Arithmetic(left, operator, right) => {
+                let field = term.field(self.schema)?;
                 let operand =
                     arithmetic_operand_type(&field, self.type_of(left)?, self.type_of(right)?);
                 let left = self.lower(left, operand.as_ref())?;
@@ -879,8 +702,8 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Negate(inner) => {
-                let field = expression.field(self.schema)?;
+            Term::Negate(inner) => {
+                let field = term.field(self.schema)?;
                 let inner = self.lower(inner, None)?;
                 let cost = inner.cost;
                 Node {
@@ -889,8 +712,8 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Function(function, arguments) => {
-                let field = expression.field(self.schema)?;
+            Term::Function(function, arguments) => {
+                let field = term.field(self.schema)?;
                 let mut lowered = Vec::with_capacity(arguments.len());
                 let unified = matches!(function, Function::Coalesce | Function::IfNull)
                     .then(|| field.dtype().clone());
@@ -904,21 +727,21 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Cast(inner, dtype, safety) => {
+            Term::Cast(inner, dtype, safety) => {
                 let inner = self.lower(inner, None)?;
                 let nullable = inner.field.is_nullable() || matches!(safety, Safety::Safe);
                 let cost = inner.cost + 1;
                 Node {
-                    field: named(expression, dtype.clone(), nullable),
+                    field: named(term, dtype.clone(), nullable),
                     kind: Kind::Cast(Box::new(inner), *safety),
                     cost,
                 }
             }
-            Expression::Case {
+            Term::Case {
                 branches,
                 otherwise,
             } => {
-                let field = expression.field(self.schema)?;
+                let field = term.field(self.schema)?;
                 let target = field.dtype().clone();
                 let mut lowered = Vec::with_capacity(branches.len());
                 let mut cost = 0;
@@ -945,8 +768,8 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Struct(children) => {
-                let field = expression.field(self.schema)?;
+            Term::Struct(children) => {
+                let field = term.field(self.schema)?;
                 let mut lowered = Vec::with_capacity(children.len());
                 for (index, (_, value)) in children.iter().enumerate() {
                     let target = field.get_field(index).map(|held| held.dtype().clone());
@@ -959,8 +782,8 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::List(items) => {
-                let field = expression.field(self.schema)?;
+            Term::List(items) => {
+                let field = term.field(self.schema)?;
                 let target = list_item_type(&field);
                 let mut lowered = Vec::with_capacity(items.len());
                 for item in items.iter() {
@@ -973,8 +796,8 @@ impl Binder<'_> {
                     cost,
                 }
             }
-            Expression::Map(entries) => {
-                let field = expression.field(self.schema)?;
+            Term::Map(entries) => {
+                let field = term.field(self.schema)?;
                 let (key_type, value_type) = map_entry_types(&field);
                 let mut lowered = Vec::with_capacity(entries.len());
                 for (key, value) in entries.iter() {
@@ -996,23 +819,6 @@ impl Binder<'_> {
         };
         let node = fold(node)?;
         self.coerce(node, want)
-    }
-
-    /// Build one leaf node.
-    fn leaf(
-        &self,
-        expression: &Expression,
-        dtype: DataType,
-        nullable: bool,
-        kind: Kind,
-        cost: u32,
-    ) -> Node {
-        let _ = self;
-        Node {
-            field: named(expression, dtype, nullable),
-            kind,
-            cost,
-        }
     }
 
     /// Convert a lowered node into `want`, when it is not already there.
@@ -1052,40 +858,8 @@ impl Binder<'_> {
         })
     }
 
-    /// The column index a name resolves to, ASCII case-insensitively.
-    fn index_of(&self, name: &str) -> Result<usize> {
-        // A schema that declares two columns differing only in case makes an
-        // unquoted reference genuinely ambiguous, and first-match-wins is the
-        // one resolution rule nobody can debug. Both names are reported.
-        let matches: Vec<usize> = self
-            .schema
-            .fields()
-            .iter()
-            .enumerate()
-            .filter(|(_, field)| field.name().eq_ignore_ascii_case(name))
-            .map(|(index, _)| index)
-            .collect();
-        if matches.len() > 1 {
-            let names: Vec<&str> = matches
-                .iter()
-                .filter_map(|index| self.schema.get_field(*index).map(Field::name))
-                .collect();
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$"),
-                reason: format_smolstr!(
-                    "expected {name:?} to name one column, got {}; quote the one meant",
-                    names.join(" and ")
-                ),
-            });
-        }
-        matches
-            .first()
-            .copied()
-            .ok_or_else(|| super::typing::unknown_column(name, self.schema))
-    }
-
-    fn type_of(&self, expression: &Expression) -> Result<DataType> {
-        Ok(expression.field(self.schema)?.dtype().clone())
+    fn type_of(&self, term: &Term) -> Result<DataType> {
+        Ok(term.field(self.schema)?.dtype().clone())
     }
 
     /// The type two compared operands meet in.
@@ -1094,33 +868,79 @@ impl Binder<'_> {
     /// which is what keeps `int32_column = 1` an `int32` comparison instead of
     /// widening a whole column to `int64` per batch. When it does not fit, the
     /// promotion table decides and neither side loses anything.
-    fn shared_type(&self, left: &Expression, right: &Expression) -> Result<DataType> {
+    fn shared_type(&self, left: &Term, right: &Term) -> Result<DataType> {
         let left_type = self.type_of(left)?;
         let right_type = self.type_of(right)?;
-        for (literal, other) in [(left, &right_type), (right, &left_type)] {
-            if let Expression::Literal(held) = literal {
-                // Narrowing is only ever a *choice between* types the promotion
-                // table already accepts. Without that guard a `1` would narrow
-                // into a text column and `s > 1` would quietly become a string
-                // comparison, which is the exact silent widening this module
-                // exists to refuse.
-                if held.value().is_null() || common_type(held.dtype(), other).is_none() {
+        for (constant, other) in [(left, &right_type), (right, &left_type)] {
+            if let Some(held) = self.constant(constant)? {
+                // A constant that the other operand's type holds exactly is
+                // read in that type: `ts > '2024-01-01'` compares timestamps,
+                // `id = '7'` compares integers, `s = 1` compares text. The
+                // conversion is exact and checked both ways, so a constant a
+                // column cannot hold is never quietly rounded into it.
+                if held.value().is_null() {
                     continue;
                 }
-                if fits(other, held) {
+                if fits(other, &held) {
                     return Ok(other.clone());
                 }
             }
         }
-        common_type(&left_type, &right_type).ok_or_else(|| {
-            incompatible(&format!(
-                "comparable operands, got {left_type} and {right_type}"
-            ))
-        })
+        // Two operands with no common type still compare: as text, which
+        // every value spells. That is the best-effort reading this crate
+        // takes everywhere - a comparison that could mean something is not
+        // refused for the shape it was written in.
+        Ok(common_type(&left_type, &right_type).unwrap_or_else(DataType::utf8))
+    }
+
+    /// The type a value is compared with a list of operands in.
+    ///
+    /// The value's own type wins when every other operand is a constant it
+    /// can hold without loss - the narrowing [`Self::shared_type`] makes for
+    /// one comparison - so `n in (1, 2)` reads the column as it is stored and
+    /// its statistics stay readable. Otherwise the operands meet at their
+    /// common type, or are refused when they have none.
+    fn list_type(&self, value: &Term, others: &[Term]) -> Result<DataType> {
+        let value_type = self.type_of(value)?;
+        let mut shared = Some(value_type.clone());
+        let mut narrow = true;
+        for other in others {
+            let other_type = self.type_of(other)?;
+            shared = shared.and_then(|held| common_type(&held, &other_type));
+            narrow = narrow
+                && self
+                    .constant(other)?
+                    .is_some_and(|held| held.value().is_null() || fits(&value_type, &held));
+        }
+        if narrow {
+            return Ok(value_type);
+        }
+        // As for one comparison: operands that share no type meet as text.
+        Ok(shared.unwrap_or_else(DataType::utf8))
+    }
+
+    /// The constant a term is, when it reads no row and no holder.
+    ///
+    /// A literal is itself; anything else that reads nothing - `2 * 50`, a
+    /// cast of a literal, a parameter already substituted - is evaluated
+    /// here, so what it compares with is chosen against its value and not
+    /// against the widest type its spelling could have had.
+    fn constant(&self, term: &Term) -> Result<Option<Literal>> {
+        if let Term::Literal(held) = term {
+            return Ok(Some(held.clone()));
+        }
+        if !term.columns().is_empty() || term.has_attributes() || !term.parameters().is_empty() {
+            return Ok(None);
+        }
+        let node = fold(self.lower(term, None)?)?;
+        let Kind::Literal(value) = &node.kind else {
+            return Ok(None);
+        };
+        Ok(Literal::new(node.field.dtype().clone(), value.clone()).ok())
     }
 
     /// Read the constant pattern a match operator requires.
-    fn constant_pattern(&self, pattern: &Expression, operator: &str) -> Result<SmolStr> {
+    fn constant_pattern(&self, pattern: &Term, operator: &str) -> Result<SmolStr> {
         let lowered = self.lower(pattern, Some(&DataType::utf8()))?;
         match lowered.as_literal().and_then(Scalar::as_str) {
             Some(text) => Ok(SmolStr::new(text)),
@@ -1140,6 +960,11 @@ fn fits(dtype: &DataType, held: &Literal) -> bool {
     let Ok(converted) = convert(dtype, held.value(), Safety::Strict) else {
         return false;
     };
+    // Text is read, not rounded: a spelling the datatype parses is exactly
+    // the value it parses to, whatever canonical spelling it prints back as.
+    if super::typing::is_text(held.dtype()) && !super::typing::is_text(dtype) {
+        return true;
+    }
     // A conversion that cannot be undone lost something, and a lost digit
     // turns `=` into a quiet lie.
     convert(held.dtype(), &converted, Safety::Strict).is_ok_and(|back| &back == held.value())
@@ -1187,14 +1012,7 @@ fn arithmetic_operand_type(field: &Field, left: DataType, right: DataType) -> Op
 
 /// The declared element type of a list field.
 fn list_item_type(field: &Field) -> Option<DataType> {
-    match field.dtype() {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some(item.dtype().clone()),
-        _ => None,
-    }
+    super::path::list_item(field.dtype()).map(|item| item.dtype().clone())
 }
 
 /// The declared key and value types of a map field.
@@ -1242,10 +1060,6 @@ fn unescape(pattern: &str, escape: Option<char>) -> SmolStr {
     SmolStr::new(text)
 }
 
-fn named(expression: &Expression, dtype: DataType, nullable: bool) -> Field {
-    Field::new(SmolStr::new(expression.to_string()), dtype, nullable)
-}
-
 fn incompatible(expected: &str) -> Error {
     Error::InvalidRecord {
         path: SmolStr::new_static("$"),
@@ -1253,59 +1067,59 @@ fn incompatible(expected: &str) -> Error {
     }
 }
 
-/// Rebuild the expression a resolved tree stands for.
+/// Rebuild the term a resolved tree stands for.
 ///
 /// The result is what actually runs: folded, ordered, and with every literal in
 /// the type it will be compared in. Printing it is how a caller sees what bind
 /// decided without a second representation to keep in step.
-pub(crate) fn rebuild(node: &Node) -> Expression {
+pub(crate) fn rebuild(node: &Node) -> Term {
     match &node.kind {
         Kind::Literal(value) => Literal::new(node.field.dtype().clone(), value.clone())
-            .map_or_else(|_| Expression::literal(value.clone()), Expression::Literal),
-        Kind::Column(_) => Expression::column(node.field.name()),
-        Kind::Path(base, steps) => Expression::Path(Box::new(rebuild(base)), steps.clone()),
-        Kind::Attribute(selector) => Expression::attribute(selector.clone()),
-        Kind::And(operands) => Expression::And(operands.iter().map(rebuild).collect()),
-        Kind::Or(operands) => Expression::Or(operands.iter().map(rebuild).collect()),
-        Kind::Not(inner) => Expression::Not(Box::new(rebuild(inner))),
-        Kind::Compare(left, comparison, right) => Expression::Compare(
+            .map_or_else(|_| Term::literal(value.clone()), Term::Literal),
+        Kind::Column(_) => Term::column(node.field.name()),
+        Kind::Path(base, steps) => rebuild(base).path(steps.iter().cloned()),
+        Kind::Attribute(attribute) => Term::attribute(attribute.clone()),
+        Kind::And(operands) => Term::And(operands.iter().map(rebuild).collect()),
+        Kind::Or(operands) => Term::Or(operands.iter().map(rebuild).collect()),
+        Kind::Not(inner) => Term::Not(Box::new(rebuild(inner))),
+        Kind::Compare(left, comparison, right) => Term::Compare(
             Box::new(rebuild(left)),
             *comparison,
             Box::new(rebuild(right)),
         ),
         Kind::In(value, list) => {
-            Expression::In(Box::new(rebuild(value)), list.iter().map(rebuild).collect())
+            Term::In(Box::new(rebuild(value)), list.iter().map(rebuild).collect())
         }
-        Kind::Between(value, low, high) => Expression::Between(
+        Kind::Between(value, low, high) => Term::Between(
             Box::new(rebuild(value)),
             Box::new(rebuild(low)),
             Box::new(rebuild(high)),
         ),
-        Kind::IsNull(inner) => Expression::IsNull(Box::new(rebuild(inner))),
-        Kind::IsNotNull(inner) => Expression::IsNotNull(Box::new(rebuild(inner))),
+        Kind::IsNull(inner) => Term::IsNull(Box::new(rebuild(inner))),
+        Kind::IsNotNull(inner) => Term::IsNotNull(Box::new(rebuild(inner))),
         Kind::Like {
             value,
             pattern,
             case_insensitive,
             escape,
-        } => Expression::Like {
+        } => Term::Like {
             value: Box::new(rebuild(value)),
-            pattern: Box::new(Expression::literal(Scalar::from(pattern.clone()))),
+            pattern: Box::new(Term::literal(Scalar::from(pattern.clone()))),
             case_insensitive: *case_insensitive,
             escape: *escape,
         },
-        Kind::Glob(value, pattern) => Expression::Glob(
+        Kind::Glob(value, pattern) => Term::Glob(
             Box::new(rebuild(value)),
-            Box::new(Expression::literal(Scalar::from(pattern.clone()))),
+            Box::new(Term::literal(Scalar::from(pattern.clone()))),
         ),
         Kind::Arithmetic(left, operator, right) => {
-            Expression::Arithmetic(Box::new(rebuild(left)), *operator, Box::new(rebuild(right)))
+            Term::Arithmetic(Box::new(rebuild(left)), *operator, Box::new(rebuild(right)))
         }
-        Kind::Negate(inner) => Expression::Negate(Box::new(rebuild(inner))),
+        Kind::Negate(inner) => Term::Negate(Box::new(rebuild(inner))),
         Kind::Function(function, arguments) => {
-            Expression::Function(*function, arguments.iter().map(rebuild).collect())
+            Term::Function(*function, arguments.iter().map(rebuild).collect())
         }
-        Kind::Cast(inner, safety) => Expression::Cast(
+        Kind::Cast(inner, safety) => Term::Cast(
             Box::new(rebuild(inner)),
             node.field.dtype().clone(),
             *safety,
@@ -1313,14 +1127,14 @@ pub(crate) fn rebuild(node: &Node) -> Expression {
         Kind::Case {
             branches,
             otherwise,
-        } => Expression::Case {
+        } => Term::Case {
             branches: branches
                 .iter()
                 .map(|(when, then)| (rebuild(when), rebuild(then)))
                 .collect(),
             otherwise: otherwise.as_ref().map(|held| Box::new(rebuild(held))),
         },
-        Kind::Struct(children) => Expression::Struct(
+        Kind::Struct(children) => Term::Struct(
             node.field
                 .fields()
                 .iter()
@@ -1328,8 +1142,8 @@ pub(crate) fn rebuild(node: &Node) -> Expression {
                 .zip(children.iter().map(rebuild))
                 .collect(),
         ),
-        Kind::List(items) => Expression::List(items.iter().map(rebuild).collect()),
-        Kind::Map(entries) => Expression::Map(
+        Kind::List(items) => Term::List(items.iter().map(rebuild).collect()),
+        Kind::Map(entries) => Term::Map(
             entries
                 .iter()
                 .map(|(key, value)| (rebuild(key), rebuild(value)))

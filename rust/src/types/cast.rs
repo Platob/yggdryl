@@ -214,8 +214,8 @@ enum StructPolicy {
 /// done.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Deferred {
-    /// `partition:sources` derives the column from another.
-    pub(crate) partition: bool,
+    /// A `transform:` or partition declaration derives the column from others.
+    pub(crate) transform: bool,
     /// `digest:role=holder` says the column holds the row's hash.
     pub(crate) digest: bool,
 }
@@ -226,7 +226,7 @@ impl Deferred {
         if self.digest && field.as_digest().is_holder() {
             return Ok(true);
         }
-        Ok(self.partition && field.as_partition().sources()?.is_some())
+        Ok(self.transform && field.as_transform().is_derived())
     }
 }
 

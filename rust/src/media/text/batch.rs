@@ -27,8 +27,8 @@ where
     I: IntoIterator,
     I::Item: Into<Result<TextLine>>,
 {
-    let plan = options.plan()?;
-    let field = plan.field(options.name.clone())?;
+    let plan = options.line_plan()?;
+    let field = plan.field(SmolStr::new(options.name()))?;
     let rows = lines
         .into_iter()
         .map(|line| line.into().and_then(|line| row_of(&plan, &line, options)))
@@ -64,8 +64,8 @@ where
     I::Item: Into<Result<TextLine>>,
     I::IntoIter: Send + 'static,
 {
-    let plan = Arc::new(options.plan()?);
-    let field = plan.field(options.name.clone())?;
+    let plan = Arc::new(options.line_plan()?);
+    let field = plan.field(SmolStr::new(options.name()))?;
     let shared = Arc::new(options.clone());
     let rows = lines.into_iter().map({
         let plan = Arc::clone(&plan);
@@ -265,7 +265,7 @@ impl Intake {
         schema: &arrow_schema::Schema,
         options: &TextOptions,
     ) -> Result<Self> {
-        let field = plan.field(options.name.clone())?;
+        let field = plan.field(SmolStr::new(options.name()))?;
         let mut positions = Vec::with_capacity(plan.columns().len());
         for (column, child) in plan.columns().iter().zip(field.fields()) {
             let at = locate(schema, column);
@@ -309,7 +309,7 @@ pub fn from_arrow_batch(
     batch: &arrow_array::RecordBatch,
     options: &TextOptions,
 ) -> Result<Vec<TextLine>> {
-    let plan = options.plan()?;
+    let plan = options.line_plan()?;
     let intake = Intake::resolve(&plan, batch.schema_ref(), options)?;
     let mut lines = Vec::with_capacity(batch.num_rows());
     for row in 0..batch.num_rows() {
@@ -331,7 +331,7 @@ pub fn from_arrow_reader(
     batches: BatchReader,
     options: &TextOptions,
 ) -> Result<impl std::iter::FusedIterator<Item = Result<TextLine>> + Send + 'static> {
-    let plan = options.plan()?;
+    let plan = options.line_plan()?;
     let schema = batches.schema();
     let intake = Intake::resolve(&plan, &schema, options)?;
     let mut batches = batches;

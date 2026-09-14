@@ -465,11 +465,8 @@ impl<H: IOBase> Table<H> {
     /// Returns an error when the predicate is text that does not parse, names
     /// a column the schema does not declare, or when a manifest that had to be
     /// read cannot be reached or decoded.
-    pub fn plan_matching(
-        &self,
-        filter: impl crate::expression::IntoExpression,
-    ) -> Result<ScanPlan> {
-        let filter = filter.into_expression()?;
+    pub fn plan_matching(&self, filter: impl crate::expression::IntoFilter) -> Result<ScanPlan> {
+        let filter = filter.into_filter()?;
         let conjuncts = super::scan::conjuncts(self.schema()?, &filter)?;
         let schema = self.schema()?.clone();
         self.planned(&conjuncts, &schema, false)
@@ -954,11 +951,11 @@ impl<H: IOBase> Table<H> {
     /// manifest cannot be read, or when the scan root cannot be projected.
     pub fn scan_matching(
         &self,
-        filter: impl crate::expression::IntoExpression,
+        filter: impl crate::expression::IntoFilter,
         field: Option<&Field>,
     ) -> Result<BatchReader> {
         let stored = self.schema()?.clone();
-        let filter = filter.into_expression()?;
+        let filter = filter.into_filter()?;
         let conjuncts = super::scan::conjuncts(&stored, &filter)?;
         let plan = self.planned(&conjuncts, &stored, true)?;
         self.reader(plan.tasks, &stored, field, &filter)
@@ -970,7 +967,7 @@ impl<H: IOBase> Table<H> {
         tasks: Vec<ScanTask>,
         stored: &Field,
         field: Option<&Field>,
-        filter: &crate::Expression,
+        filter: &crate::Filter,
     ) -> Result<BatchReader> {
         let root = field.map_or_else(|| stored.clone(), Clone::clone);
         let read_root = super::scan::read_root(&root, stored, filter)?;
@@ -1082,7 +1079,7 @@ impl<H: IOBase> Table<H> {
         Ok(())
     }
 
-    /// Merge `batches` into the stored rows, matching on the `merge_by_names` columns.
+    /// Merge `batches` into the stored rows, matching on the `merge_by` columns.
     ///
     /// # Errors
     ///
@@ -1090,13 +1087,13 @@ impl<H: IOBase> Table<H> {
     pub fn commit_merge(
         &mut self,
         batches: BatchReader,
-        merge_by_names: &[String],
+        merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
-        self.commit_merge_where(&[], batches, merge_by_names, safe)
+        self.commit_merge_where(&[], batches, merge_by, safe)
     }
 
-    /// Merge `batches` into the rows `filters` selects, on the `merge_by_names` columns.
+    /// Merge `batches` into the rows `filters` selects, on the `merge_by` columns.
     ///
     /// This is the one place the *column statistics* decide what is read. A row
     /// can only update a file whose recorded bounds for every match-key column
@@ -1113,17 +1110,17 @@ impl<H: IOBase> Table<H> {
     /// # Errors
     ///
     /// Returns an error for a keyed merge on format v3, whose existing row IDs
-    /// this writer cannot yet preserve, when `merge_by_names` names a column
-    /// the schema does not declare, or for any read, join, or write failure,
+    /// this writer cannot yet preserve, when `merge_by` names a column the
+    /// schema does not declare, or for any read, join, or write failure,
     /// including a [`CommitConflict`] when a concurrent commit won.
     pub fn commit_merge_where(
         &mut self,
         filters: &[(&str, &str)],
         batches: BatchReader,
-        merge_by_names: &[String],
+        merge_by: &crate::Selector,
         safe: bool,
     ) -> Result<()> {
-        if merge_by_names.is_empty() {
+        if merge_by.is_empty() {
             return self.commit_overwrite_where(filters, batches);
         }
         self.require_row_id_preserving_rewrite("merge")?;
@@ -1145,7 +1142,7 @@ impl<H: IOBase> Table<H> {
                 incoming.push(batch);
             }
         }
-        let bounds = KeyBounds::of(&incoming, &schema, merge_by_names)?;
+        let bounds = KeyBounds::of(&incoming, &schema, merge_by)?;
 
         let plan = self.plan(filters)?;
         let mut selected = Vec::new();
@@ -1158,13 +1155,13 @@ impl<H: IOBase> Table<H> {
             }
         }
 
-        let stored = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
+        let stored = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
         let arrow_schema = crate::arrow::arrow_schema_from_field(&schema)?;
         let merged = crate::media::merge::merged(
             stored,
             crate::arrow::batch_reader(arrow_schema, incoming),
             &schema,
-            merge_by_names,
+            merge_by,
             safe,
         )?;
         self.commit(
@@ -1259,7 +1256,7 @@ impl<H: IOBase> Table<H> {
             self.metadata.location(),
         );
         let schema = self.schema()?.clone();
-        let rows = self.reader(selected, &schema, None, &crate::Expression::always_true())?;
+        let rows = self.reader(selected, &schema, None, &crate::Filter::always_true())?;
         let files_after = self.commit(
             rows,
             "replace",
@@ -2028,7 +2025,7 @@ impl<H: IOBase> Table<H> {
 /// no metadata document is re-read, [`crate::IOMedia::read_arrow_field`] is
 /// [`Table::schema`] with its field identifiers and protocol metadata rather
 /// than a shape lifted off decoded batches, and a
-/// [`filter_partitions`](IORecordOptions::filter_partitions) pair prunes data
+/// [`partition_pairs`](IORecordOptions::partition_pairs) pair prunes data
 /// files through [`Table::plan`] instead of filtering rows after they were
 /// decoded. The in-memory metadata stays current across commits, so
 /// [`Table::current_snapshot`] and [`Table::metadata_version`] reflect a write made
@@ -2197,7 +2194,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
 
     /// Scan the current snapshot, the options' filters answered by the plan.
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader> {
-        let filters = options.filter_partitions();
+        let filters = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
@@ -2205,7 +2202,7 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         let reader = self.scan_where(&pairs, options.field().as_ref())?;
         // The limit wraps last, as on every handle, so it counts result rows
         // and a satisfied scan stops decoding data files.
-        options.limit_arrow_reader(crate::iobase::select_reader(reader, options)?)
+        options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
     }
 
     /// One overwrite commit scoped to the selected partitions.
@@ -2219,13 +2216,14 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         let stored = self.schema()?.clone();
         let (batches, _, _) =
             crate::iobase::prepare_arrow_write_onto(batches, options, Some(&stored))?;
-        let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
+        let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
+        let overwrite = crate::Selector::all();
         if commit_row_size.is_none() {
-            return self.commit_merge_where(&pairs, batches, &[], options.safe());
+            return self.commit_merge_where(&pairs, batches, &overwrite, options.safe());
         }
         let schema = batches.schema();
         let mut commits = options.commit_arrow_readers(batches)?;
@@ -2233,11 +2231,11 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
             return self.commit_merge_where(
                 &pairs,
                 crate::arrow::batch_reader(schema, []),
-                &[],
+                &overwrite,
                 options.safe(),
             );
         };
-        self.commit_merge_where(&pairs, first?, &[], options.safe())?;
+        self.commit_merge_where(&pairs, first?, &overwrite, options.safe())?;
         for commit in commits {
             self.commit_append(commit?)?;
         }
@@ -2287,21 +2285,16 @@ impl<H: IOBase> crate::IOMedia for Table<H> {
         let Some(batches) = crate::iobase::non_empty_arrow_reader(batches)? else {
             return Ok(());
         };
-        let filters: Vec<(String, String)> = options.filter_partitions().to_vec();
+        let filters: Vec<(String, String)> = options.partition_pairs();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
         if commit_row_size.is_none() {
-            return self.commit_merge_where(
-                &pairs,
-                batches,
-                options.merge_by_names(),
-                options.safe(),
-            );
+            return self.commit_merge_where(&pairs, batches, options.merge_by(), options.safe());
         }
         for commit in options.commit_arrow_readers(batches)? {
-            self.commit_merge_where(&pairs, commit?, options.merge_by_names(), options.safe())?;
+            self.commit_merge_where(&pairs, commit?, options.merge_by(), options.safe())?;
         }
         Ok(())
     }
@@ -2621,9 +2614,26 @@ struct KeyBound {
 
 impl KeyBounds {
     /// Measure the incoming rows' range for every match-key column.
-    fn of(batches: &[RecordBatch], schema: &Field, merge_by_names: &[String]) -> Result<Self> {
-        let mut columns = Vec::with_capacity(merge_by_names.len());
-        for name in merge_by_names {
+    ///
+    /// A key that is one stored column is measured against that column's
+    /// statistics. A computed key has no statistics to prune on, so it keeps
+    /// every file a candidate; it is still typed, so a key that cannot be
+    /// computed over the table is refused before anything is read.
+    fn of(batches: &[RecordBatch], schema: &Field, merge_by: &crate::Selector) -> Result<Self> {
+        let mut columns = Vec::with_capacity(merge_by.len());
+        for projection in merge_by.projections() {
+            let Some(name) = projection.term().as_column() else {
+                let computed = projection.field(schema)?;
+                columns.push(KeyBound {
+                    id: 0,
+                    dtype: computed.dtype().clone(),
+                    unbounded: true,
+                    has_null: false,
+                    lower: None,
+                    upper: None,
+                });
+                continue;
+            };
             let field = schema.get_field_by_path(name).ok_or_else(|| {
                 let stored = schema
                     .fields()
@@ -2633,7 +2643,7 @@ impl KeyBounds {
                     .join(", ");
                 invalid(crate::text::expected_got(
                     format_args!(
-                        "a merge_by_names column the table schema declares, got {name:?}; it has"
+                        "a merge_by column the table schema declares, got {name:?}; it has"
                     ),
                     crate::text::elide_display(&stored),
                 ))
@@ -2784,7 +2794,8 @@ mod key_bound_tests {
         )
         .unwrap();
 
-        let bounds = KeyBounds::of(&[batch], &schema, &["ratio".to_owned()]).unwrap();
+        let bounds =
+            KeyBounds::of(&[batch], &schema, &crate::Selector::from_columns(["ratio"])).unwrap();
         assert!(bounds.columns[0].unbounded);
     }
 
@@ -3381,11 +3392,11 @@ fn invalid(reason: SmolStr) -> Error {
 /// evaluator, so there is no second filter language behind them. A pair naming
 /// a column the schema does not declare is left in as written, so binding it
 /// reports the column rather than silently ignoring it.
-fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Expression {
-    crate::Expression::all(pairs.iter().map(|(column, value)| {
+fn pairs_predicate(schema: &Field, pairs: &[(&str, &str)]) -> crate::Filter {
+    crate::Filter::all(pairs.iter().map(|(column, value)| {
         schema.get_field_by_path(column).map_or_else(
-            || crate::Expression::column(*column).eq(crate::Expression::literal(*value)),
-            |field| crate::Expression::partition_equals(column, value, field.dtype()),
+            || crate::Filter::new(crate::Term::column(*column).eq(crate::Term::literal(*value))),
+            |field| crate::Filter::partition_equals(column, value, field.dtype()),
         )
     }))
 }

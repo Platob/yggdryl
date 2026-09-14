@@ -60,6 +60,7 @@ use arrow_ipc::reader::StreamReader;
 use arrow_ipc::writer::StreamWriter;
 use arrow_schema::{ArrowError, Schema};
 
+use crate::Field;
 use crate::IOBase;
 use crate::Level;
 use crate::arrow::{
@@ -67,7 +68,6 @@ use crate::arrow::{
     projection_indices,
 };
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{DataType, Field, Metadata};
 use smol_str::SmolStr;
 
 /// The settings an Arrow IPC read or write takes.
@@ -76,12 +76,16 @@ use smol_str::SmolStr;
 /// and its content coding comes from the handle.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IpcOptions {
-    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) unless set.
-    pub name: SmolStr,
-    /// Declared root datatype; inferred from the stream when absent.
-    pub dtype: Option<DataType>,
-    /// Root metadata; empty unless declared.
-    pub metadata: Metadata,
+    /// Root Field name; the declared field's when one is declared.
+    pub name: smol_str::SmolStr,
+    /// The declared root; `None` infers the shape.
+    pub field: Option<crate::Field>,
+    /// The rows a read or write keeps.
+    pub filter: crate::Filter,
+    /// The columns a read or write publishes.
+    pub selector: crate::Selector,
+    /// The columns forming an explicit merge's match key.
+    pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch, when a reader should bound them.
@@ -99,21 +103,17 @@ pub struct IpcOptions {
     pub commit_row_size: Option<usize>,
     /// Compression level applied when the handle declares a coding.
     pub level: Level,
-    /// Column names forming a write's match key; empty means overwrite.
-    pub merge_by_names: Vec<String>,
-    /// Column names a read or write is narrowed to; empty selects everything.
-    pub select_by_names: Vec<String>,
-    /// Partition equalities a read is pruned and filtered by; empty keeps all.
-    pub filter_partitions: Vec<(String, String)>,
 }
 
 impl IpcOptions {
     /// Build the default IPC options.
     pub fn new() -> Self {
         Self {
-            name: SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
-            dtype: None,
-            metadata: Metadata::new(),
+            name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
+            field: None,
+            filter: crate::Filter::always_true(),
+            selector: crate::Selector::all(),
+            merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,
             batch_row_size: None,
@@ -121,9 +121,6 @@ impl IpcOptions {
             max_byte_size: None,
             commit_row_size: None,
             level: Level::DEFAULT,
-            merge_by_names: Vec::new(),
-            select_by_names: Vec::new(),
-            filter_partitions: Vec::new(),
         }
     }
 }
@@ -522,11 +519,10 @@ fn finish_batch_reader(
     field: Option<&Field>,
     options: &IpcOptions,
 ) -> Result<BatchReader> {
-    let indices = field.and_then(|field| {
-        stored
-            .as_ref()
-            .and_then(|stored| projection_indices(field, stored))
-    });
+    let columns = options.apply_columns();
+    let indices = stored
+        .as_ref()
+        .and_then(|stored| projection_indices(field, columns.as_deref(), stored));
     let Some(source) = source else {
         return empty_batch_reader(field, options);
     };
@@ -552,7 +548,7 @@ fn empty_batch_reader(field: Option<&Field>, options: &IpcOptions) -> Result<Bat
         Some(field) => arrow_schema_from_field(&field)?,
         None => Arc::new(Schema::empty()),
     };
-    let schema = match field.and_then(|field| projection_indices(field, &schema)) {
+    let schema = match projection_indices(field, options.apply_columns().as_deref(), &schema) {
         Some(indices) => Arc::new(schema.project(&indices)?),
         None => schema,
     };

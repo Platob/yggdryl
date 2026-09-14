@@ -630,7 +630,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
         ],
     )
     .expect("the upsert batch matches the schema");
-    let merge_by_names = vec!["id".to_owned()];
+    let merge_by = yggdryl::Selector::from_columns(["id"]);
 
     // Proven once outside the timer, which also settles the table into the
     // steady state every measured merge sees: the ten matched single-row files
@@ -639,7 +639,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
     table
         .commit_merge(
             yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
-            &merge_by_names,
+            &merge_by,
             true,
         )
         .expect("the priming merge commits");
@@ -660,7 +660,7 @@ fn merge_benchmarks(criterion: &mut Criterion) {
             table
                 .commit_merge(
                     yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
-                    black_box(&merge_by_names),
+                    black_box(&merge_by),
                     true,
                 )
                 .expect("the merge commits");

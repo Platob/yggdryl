@@ -88,27 +88,17 @@ pub(crate) fn merge_arrow_reader_default(
     if commit_row_size.is_some() {
         for commit in options.commit_arrow_readers(batches)? {
             match &target {
-                Some(target) => merge_leaf_onto(
-                    handle,
-                    commit?,
-                    &delegated,
-                    options.merge_by_names(),
-                    target,
-                )?,
-                None => merge_leaf(handle, commit?, &delegated, options.merge_by_names())?,
+                Some(target) => {
+                    merge_leaf_onto(handle, commit?, &delegated, options.merge_by(), target)?
+                }
+                None => merge_leaf(handle, commit?, &delegated, options.merge_by())?,
             }
         }
         return Ok(());
     }
     match target {
-        Some(target) => merge_leaf_onto(
-            handle,
-            batches,
-            &delegated,
-            options.merge_by_names(),
-            &target,
-        ),
-        None => merge_leaf(handle, batches, &delegated, options.merge_by_names()),
+        Some(target) => merge_leaf_onto(handle, batches, &delegated, options.merge_by(), &target),
+        None => merge_leaf(handle, batches, &delegated, options.merge_by()),
     }
 }
 
@@ -278,7 +268,7 @@ fn overwrite_arrow_reader_folder(
 
 /// Shape one incoming write stream and return options safe for delegation.
 ///
-/// The declared field and selection are applied before the limits. The field
+/// The declared field and expressions are applied before the limits. The field
 /// is then *taken* from the clone, and every other consumed shaping option is
 /// cleared - including `commit_row_size` - so a default append or merge can
 /// publish through an implementor's required overwrite hook without applying
@@ -318,7 +308,8 @@ pub(crate) fn prepare_arrow_write_onto(
     let batches = options.limit_arrow_reader(batches)?;
     let mut delegated = options.clone();
     let declared = delegated.take_field();
-    delegated.set_select_by_names(Vec::new());
+    delegated.set_filter(crate::Filter::always_true());
+    delegated.set_selector(crate::Selector::all());
     delegated.set_max_row_size(None);
     delegated.set_max_byte_size(None);
     delegated.set_commit_row_size(None);
@@ -448,7 +439,8 @@ impl ArrowWriteSession {
         options.require_write_limits()?;
         let mut delegated = options.clone();
         let declared = delegated.take_field();
-        delegated.set_select_by_names(Vec::new());
+        delegated.set_filter(crate::Filter::always_true());
+        delegated.set_selector(crate::Selector::all());
         delegated.set_max_row_size(None);
         delegated.set_max_byte_size(None);
         delegated.set_commit_row_size(None);
@@ -787,7 +779,7 @@ impl ArrowWriteSession {
                     handle,
                     batches,
                     &self.delegated,
-                    self.delegated.merge_by_names(),
+                    self.delegated.merge_by(),
                     stored,
                 )?,
                 crate::IOMode::ReadOnly | crate::IOMode::Random => {
@@ -804,12 +796,9 @@ impl ArrowWriteSession {
                     handle.overwrite_prepared_arrow_reader(batches, &self.delegated)?
                 }
                 crate::IOMode::Append => append_leaf(handle, batches, &self.delegated)?,
-                crate::IOMode::Merge => merge_leaf(
-                    handle,
-                    batches,
-                    &self.delegated,
-                    self.delegated.merge_by_names(),
-                )?,
+                crate::IOMode::Merge => {
+                    merge_leaf(handle, batches, &self.delegated, self.delegated.merge_by())?
+                }
                 crate::IOMode::ReadOnly | crate::IOMode::Random => {
                     return Err(crate::Error::InvalidRecord {
                         path: smol_str::SmolStr::new_static("$.mode"),
@@ -843,7 +832,7 @@ impl ArrowWriteSession {
                 crate::IOMode::Append => located.append_prepared(batches)?,
                 crate::IOMode::Merge => located.merge_prepared(
                     batches,
-                    self.delegated.merge_by_names(),
+                    self.delegated.merge_by(),
                     self.delegated.safe(),
                 )?,
                 crate::IOMode::ReadOnly | crate::IOMode::Random => {
@@ -922,37 +911,6 @@ fn routing_options(mut delegated: RecordOptions, declared: Option<crate::Field>)
         delegated.set_field(field);
     }
     delegated
-}
-
-/// Narrow a reader to the columns the options select, in the order they name.
-///
-/// An empty selection is the reader as it stands - the common case pays one
-/// slice borrow and nothing else. A non-empty one builds a target root holding
-/// exactly the named columns of the reader's own schema, resolved ASCII
-/// case-insensitively the way every cast matches names, and casts each batch
-/// onto it - which is a projection, because the columns keep their datatypes.
-/// A name the schema does not have is an error listing what is there, because
-/// a selection is a claim about the rows rather than a wish.
-#[cfg(feature = "arrow")]
-pub(crate) fn select_reader(
-    reader: crate::arrow::BatchReader,
-    options: &RecordOptions,
-) -> Result<crate::arrow::BatchReader> {
-    use crate::media::IORecordOptions;
-
-    let names = options.select_by_names();
-    if names.is_empty() {
-        return Ok(reader);
-    }
-    let root = crate::arrow::field_from_arrow_schema(options.name(), reader.schema().as_ref())?;
-    match crate::arrow::selected_root(&root, names, options.name())? {
-        Some(target) => Ok(crate::arrow::cast_reader(
-            reader,
-            &target,
-            crate::ArrowCastOptions::new().with_safe(options.safe()),
-        )?),
-        None => Ok(reader),
-    }
 }
 
 /// Decode one leaf, pushing the declared schema down and applying it to what
@@ -1093,14 +1051,14 @@ fn merge_leaf(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
     options: &RecordOptions,
-    merge_by_names: &[String],
+    merge_by: &crate::Selector,
 ) -> Result<()> {
     // A text line has no row identity: re-parsing the resource yields
     // projection rows, not the rows a caller wrote, so a key match would
     // silently compare against the wrong thing. Refused rather than guessed.
     if matches!(options, RecordOptions::Text(_)) {
         return Err(Error::InvalidRecord {
-            path: smol_str::SmolStr::new_static("$.merge_by_names"),
+            path: smol_str::SmolStr::new_static("$.merge_by"),
             reason: crate::text::expected_got(
                 "a record encoding with row identity to merge by (Arrow IPC, Parquet, Avro)",
                 "text lines, which have none - use overwrite or append",
@@ -1108,7 +1066,7 @@ fn merge_leaf(
         });
     }
     let target = target_field(handle, &incoming, options)?;
-    merge_leaf_onto(handle, incoming, options, merge_by_names, &target)
+    merge_leaf_onto(handle, incoming, options, merge_by, &target)
 }
 
 /// Merge an already-shaped cadence under one target fixed for the operation.
@@ -1117,7 +1075,7 @@ fn merge_leaf_onto(
     handle: &mut (impl IOBase + ?Sized),
     incoming: crate::arrow::BatchReader,
     options: &RecordOptions,
-    merge_by_names: &[String],
+    merge_by: &crate::Selector,
     target: &crate::Field,
 ) -> Result<()> {
     use crate::media::IORecordOptions;
@@ -1127,14 +1085,13 @@ fn merge_leaf_onto(
     let mut rewrite = options.clone();
     rewrite.set_field(target.clone());
     let stored = leaf_reader(handle, &rewrite)?;
-    let merged =
-        crate::media::merge::merged(stored, incoming, target, merge_by_names, options.safe())?;
+    let merged = crate::media::merge::merged(stored, incoming, target, merge_by, options.safe())?;
     // The merged contents are the whole new value. The cloned options already
     // had its declared field popped by `prepare_arrow_write`; clear the key as
     // well so the required overwrite hook sees exactly one publication and
     // cannot recursively merge the result against itself.
     rewrite.take_field();
-    rewrite.set_merge_by_names(Vec::new());
+    rewrite.set_merge_by(crate::Selector::all());
     handle.overwrite_prepared_arrow_reader(merged, &rewrite)
 }
 
@@ -1175,7 +1132,7 @@ fn append_leaf_onto(
     };
     let appended = crate::arrow::appended(current, incoming, target, options.safe())?;
     rewrite.take_field();
-    rewrite.set_merge_by_names(Vec::new());
+    rewrite.set_merge_by(crate::Selector::all());
     handle.overwrite_prepared_arrow_reader(appended, &rewrite)
 }
 

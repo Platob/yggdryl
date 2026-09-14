@@ -1,11 +1,11 @@
-//! Canonical text for every expression, chosen so that it re-parses.
+//! Canonical text for every term, chosen so that it re-parses.
 //!
 //! [`Display`](std::fmt::Display) here is not a debugging convenience: it is
 //! the inverse of [`FromStr`](std::str::FromStr), and the property test in
-//! [`tests`](super::tests) asserts that for every expression the module can
-//! build. That is what lets an expression cross a process boundary as text -
-//! into a log line, a Python repr, a manifest property - and come back the same
-//! expression.
+//! [`tests`](super::tests) asserts that for every term the module can build.
+//! That is what lets a term cross a process boundary as text - into a log
+//! line, a Python repr, a manifest property, a record option - and come back
+//! the same term.
 //!
 //! Two rules make the inverse hold.
 //!
@@ -24,8 +24,9 @@ use std::fmt::{self, Write as _};
 
 use smol_str::SmolStr;
 
-use super::parser::{Direction, NullsOrder, Order, Projection, Statement};
-use super::{Comparison, Expression, Function, Literal, Operator, Safety};
+use super::path::write_segments;
+use super::selector::{Projection, Selector};
+use super::{Comparison, Expression, Filter, Function, Literal, Operator, Safety, Term};
 use crate::{DataType, Scalar};
 
 /// Binding strength, low to high. Only the levels the grammar distinguishes.
@@ -49,7 +50,7 @@ pub(crate) enum Precedence {
     Atom,
 }
 
-impl Expression {
+impl Term {
     /// This node's binding strength, which is what decides its parentheses.
     pub(crate) const fn precedence(&self) -> Precedence {
         match self {
@@ -71,52 +72,127 @@ impl Expression {
     }
 }
 
-impl fmt::Display for Expression {
+impl fmt::Display for Term {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write_at(formatter, self, Precedence::Disjunction)
     }
 }
 
-/// Write `expression`, bracing it when it binds more loosely than `outer`.
+impl fmt::Display for Filter {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_at(formatter, self.term(), Precedence::Disjunction)
+    }
+}
+
+impl fmt::Display for Projection {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_at(formatter, self.term(), Precedence::Disjunction)?;
+        if let Some(alias) = self.alias() {
+            formatter.write_str(" as ")?;
+            write_identifier(formatter, alias)?;
+        }
+        if let Some(dtype) = self.dtype() {
+            write!(formatter, " {dtype}")?;
+        }
+        match self.nullable() {
+            Some(true) => formatter.write_str(" null")?,
+            Some(false) => formatter.write_str(" not null")?,
+            None => {}
+        }
+        if !self.metadata().is_empty() {
+            formatter.write_str(" with (")?;
+            for (index, (key, value)) in self.metadata().iter().enumerate() {
+                if index != 0 {
+                    formatter.write_str(", ")?;
+                }
+                write_identifier(formatter, key)?;
+                formatter.write_str(" = ")?;
+                write_text_literal(formatter, value)?;
+            }
+            formatter.write_str(")")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Selector {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.projections().is_empty() {
+            formatter.write_char('*')?;
+            if !self.excluded().is_empty() {
+                formatter.write_str(" exclude (")?;
+                for (index, name) in self.excluded().iter().enumerate() {
+                    if index != 0 {
+                        formatter.write_str(", ")?;
+                    }
+                    write_identifier(formatter, name)?;
+                }
+                formatter.write_str(")")?;
+            }
+            return Ok(());
+        }
+        for (index, projection) in self.projections().iter().enumerate() {
+            if index != 0 {
+                formatter.write_str(", ")?;
+            }
+            write!(formatter, "{projection}")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Selector(selector) => write!(formatter, "select {selector}"),
+            Self::Filter(filter) => write!(formatter, "where {filter}"),
+            Self::Plan(plan) => write!(formatter, "{plan}"),
+            Self::Sequence(steps) => {
+                for (index, step) in steps.iter().enumerate() {
+                    if index != 0 {
+                        formatter.write_str("; ")?;
+                    }
+                    write!(formatter, "{step}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Write `term`, bracing it when it binds more loosely than `outer`.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn write_at(
     formatter: &mut fmt::Formatter<'_>,
-    expression: &Expression,
+    term: &Term,
     outer: Precedence,
 ) -> fmt::Result {
-    let own = expression.precedence();
+    let own = term.precedence();
     if own < outer {
         formatter.write_char('(')?;
-        write_at(formatter, expression, Precedence::Disjunction)?;
+        write_at(formatter, term, Precedence::Disjunction)?;
         return formatter.write_char(')');
     }
-    match expression {
-        Expression::Literal(held) => write_literal(formatter, held),
-        Expression::Column(name) => write_identifier(formatter, name),
-        Expression::Path(base, steps) => {
-            write_at(formatter, base, Precedence::Atom)?;
-            for step in steps.iter() {
-                write!(formatter, "{step}")?;
-            }
-            Ok(())
-        }
-        Expression::Attribute(selector) => write!(formatter, "&holder.{selector}"),
-        Expression::Parameter(name) => {
+    match term {
+        Term::Literal(held) => write_literal(formatter, held),
+        Term::Path(steps) => write_segments(formatter, steps),
+        Term::Attribute(attribute) => write!(formatter, "&holder.{attribute}"),
+        Term::Parameter(name) => {
             formatter.write_char(':')?;
             write_identifier(formatter, name)
         }
-        Expression::And(operands) => write_joined(formatter, operands, " and ", own),
-        Expression::Or(operands) => write_joined(formatter, operands, " or ", own),
-        Expression::Not(inner) => {
+        Term::And(operands) => write_joined(formatter, operands, " and ", own),
+        Term::Or(operands) => write_joined(formatter, operands, " or ", own),
+        Term::Not(inner) => {
             formatter.write_str("not ")?;
             write_at(formatter, inner, Precedence::Negation)
         }
-        Expression::Compare(left, comparison, right) => {
+        Term::Compare(left, comparison, right) => {
             write_at(formatter, left, Precedence::Additive)?;
             write!(formatter, " {} ", comparison.as_str())?;
             write_at(formatter, right, Precedence::Additive)
         }
-        Expression::In(value, list) => {
+        Term::In(value, list) => {
             write_at(formatter, value, Precedence::Additive)?;
             formatter.write_str(" in (")?;
             for (index, item) in list.iter().enumerate() {
@@ -127,22 +203,22 @@ pub(crate) fn write_at(
             }
             formatter.write_char(')')
         }
-        Expression::Between(value, low, high) => {
+        Term::Between(value, low, high) => {
             write_at(formatter, value, Precedence::Additive)?;
             formatter.write_str(" between ")?;
             write_at(formatter, low, Precedence::Additive)?;
             formatter.write_str(" and ")?;
             write_at(formatter, high, Precedence::Additive)
         }
-        Expression::IsNull(inner) => {
+        Term::IsNull(inner) => {
             write_at(formatter, inner, Precedence::Additive)?;
             formatter.write_str(" is null")
         }
-        Expression::IsNotNull(inner) => {
+        Term::IsNotNull(inner) => {
             write_at(formatter, inner, Precedence::Additive)?;
             formatter.write_str(" is not null")
         }
-        Expression::Like {
+        Term::Like {
             value,
             pattern,
             case_insensitive,
@@ -161,32 +237,32 @@ pub(crate) fn write_at(
             }
             Ok(())
         }
-        Expression::Glob(value, pattern) => {
+        Term::Glob(value, pattern) => {
             write_at(formatter, value, Precedence::Additive)?;
             formatter.write_str(" glob ")?;
             write_at(formatter, pattern, Precedence::Additive)
         }
-        Expression::Arithmetic(left, operator, right) => {
+        Term::Arithmetic(left, operator, right) => {
             write_at(formatter, left, own)?;
             write!(formatter, " {} ", operator.as_str())?;
             // The right operand binds one level tighter, so `a - (b - c)`
             // keeps its braces and `a - b - c` does not grow any.
             write_at(formatter, right, next_tighter(own))
         }
-        Expression::Negate(inner) => {
+        Term::Negate(inner) => {
             formatter.write_char('-')?;
             write_at(formatter, inner, Precedence::Prefix)
         }
-        Expression::Function(function, arguments) => {
+        Term::Function(function, arguments) => {
             formatter.write_str(function.as_str())?;
             write_arguments(formatter, arguments)
         }
-        Expression::Cast(inner, dtype, safety) => {
+        Term::Cast(inner, dtype, safety) => {
             write!(formatter, "{}(", safety.as_str())?;
             write_at(formatter, inner, Precedence::Disjunction)?;
             write!(formatter, " as {dtype})")
         }
-        Expression::Case {
+        Term::Case {
             branches,
             otherwise,
         } => {
@@ -203,7 +279,7 @@ pub(crate) fn write_at(
             }
             formatter.write_str(" end")
         }
-        Expression::Struct(children) => {
+        Term::Struct(children) => {
             formatter.write_str("struct(")?;
             for (index, (name, value)) in children.iter().enumerate() {
                 if index != 0 {
@@ -215,7 +291,7 @@ pub(crate) fn write_at(
             }
             formatter.write_char(')')
         }
-        Expression::List(items) => {
+        Term::List(items) => {
             formatter.write_char('[')?;
             for (index, item) in items.iter().enumerate() {
                 if index != 0 {
@@ -225,7 +301,7 @@ pub(crate) fn write_at(
             }
             formatter.write_char(']')
         }
-        Expression::Map(entries) => {
+        Term::Map(entries) => {
             formatter.write_char('{')?;
             for (index, (key, value)) in entries.iter().enumerate() {
                 if index != 0 {
@@ -255,7 +331,7 @@ const fn next_tighter(level: Precedence) -> Precedence {
 
 fn write_joined(
     formatter: &mut fmt::Formatter<'_>,
-    operands: &[Expression],
+    operands: &[Term],
     separator: &str,
     own: Precedence,
 ) -> fmt::Result {
@@ -277,7 +353,7 @@ fn write_joined(
     Ok(())
 }
 
-fn write_arguments(formatter: &mut fmt::Formatter<'_>, arguments: &[Expression]) -> fmt::Result {
+fn write_arguments(formatter: &mut fmt::Formatter<'_>, arguments: &[Term]) -> fmt::Result {
     formatter.write_char('(')?;
     for (index, argument) in arguments.iter().enumerate() {
         if index != 0 {
@@ -291,17 +367,7 @@ fn write_arguments(formatter: &mut fmt::Formatter<'_>, arguments: &[Expression])
 /// Write one identifier, quoting it only when the bare spelling would not
 /// come back as itself.
 pub(crate) fn write_identifier(formatter: &mut fmt::Formatter<'_>, name: &str) -> fmt::Result {
-    if is_bare_identifier(name) {
-        return formatter.write_str(name);
-    }
-    formatter.write_char('"')?;
-    for character in name.chars() {
-        if character == '"' {
-            formatter.write_char('"')?;
-        }
-        formatter.write_char(character)?;
-    }
-    formatter.write_char('"')
+    super::path::write_identifier(formatter, name)
 }
 
 /// Write one text value as a single-quoted literal.
@@ -338,11 +404,10 @@ pub(crate) fn is_bare_identifier(name: &str) -> bool {
 /// error for a mistyped operator arrive as "no such column", which is the
 /// wrong sentence at the wrong place.
 pub(crate) fn is_reserved(name: &str) -> bool {
-    const RESERVED: [&str; 33] = [
+    const RESERVED: [&str; 25] = [
         "and", "or", "not", "is", "null", "true", "false", "in", "between", "like", "ilike",
         "glob", "escape", "case", "when", "then", "else", "end", "cast", "try_cast", "as",
-        "distinct", "from", "select", "where", "order", "by", "asc", "desc", "nulls", "first",
-        "last", "limit",
+        "distinct", "from", "select", "where",
     ];
     let lowered = name.to_ascii_lowercase();
     RESERVED.contains(&lowered.as_str())
@@ -569,78 +634,5 @@ impl fmt::Display for Function {
 impl fmt::Display for Safety {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
-    }
-}
-
-impl fmt::Display for Direction {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Ascending => "asc",
-            Self::Descending => "desc",
-        })
-    }
-}
-
-impl fmt::Display for NullsOrder {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::First => "nulls first",
-            Self::Last => "nulls last",
-        })
-    }
-}
-
-impl fmt::Display for Order {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_at(formatter, self.expression(), Precedence::Disjunction)?;
-        write!(formatter, " {}", self.direction())?;
-        if let Some(nulls) = self.nulls() {
-            write!(formatter, " {nulls}")?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Projection {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_at(formatter, self.expression(), Precedence::Disjunction)?;
-        if let Some(alias) = self.alias() {
-            formatter.write_str(" as ")?;
-            write_identifier(formatter, alias)?;
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Display for Statement {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("select ")?;
-        if self.projections().is_empty() {
-            formatter.write_char('*')?;
-        } else {
-            for (index, projection) in self.projections().iter().enumerate() {
-                if index != 0 {
-                    formatter.write_str(", ")?;
-                }
-                write!(formatter, "{projection}")?;
-            }
-        }
-        if let Some(predicate) = self.predicate() {
-            formatter.write_str(" where ")?;
-            write_at(formatter, predicate, Precedence::Disjunction)?;
-        }
-        if !self.ordering().is_empty() {
-            formatter.write_str(" order by ")?;
-            for (index, order) in self.ordering().iter().enumerate() {
-                if index != 0 {
-                    formatter.write_str(", ")?;
-                }
-                write!(formatter, "{order}")?;
-            }
-        }
-        if let Some(limit) = self.limit() {
-            write!(formatter, " limit {limit}")?;
-        }
-        Ok(())
     }
 }

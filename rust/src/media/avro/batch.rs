@@ -42,7 +42,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::{ArrowCast, ArrowCastOptions, DataType, Field, Level, Limits, Metadata};
+use crate::{ArrowCast, ArrowCastOptions, Field, Level, Limits};
 
 use super::arrow::{field_from_schema, schema_json_from_field};
 use super::container::{
@@ -58,12 +58,16 @@ use super::schema::{Node, Schema};
 /// an optional fixed synchronization marker for byte-reproducible output.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AvroOptions {
-    /// Root Field name; [`DEFAULT_ROOT_NAME`](crate::media::DEFAULT_ROOT_NAME) unless set.
-    pub name: SmolStr,
-    /// Declared root datatype; inferred from the container when absent.
-    pub dtype: Option<DataType>,
-    /// Root metadata; empty unless declared.
-    pub metadata: Metadata,
+    /// Root Field name; the declared field's when one is declared.
+    pub name: smol_str::SmolStr,
+    /// The declared root; `None` infers the shape.
+    pub field: Option<crate::Field>,
+    /// The rows a read or write keeps.
+    pub filter: crate::Filter,
+    /// The columns a read or write publishes.
+    pub selector: crate::Selector,
+    /// The columns forming an explicit merge's match key.
+    pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
     pub safe: bool,
     /// Rows per batch a reader yields.
@@ -81,12 +85,6 @@ pub struct AvroOptions {
     pub commit_row_size: Option<usize>,
     /// Compression level for the block codec.
     pub level: Level,
-    /// Column names forming a write's match key; empty means overwrite.
-    pub merge_by_names: Vec<String>,
-    /// Column names a read or write is narrowed to; empty selects everything.
-    pub select_by_names: Vec<String>,
-    /// Partition equalities a read is pruned and filtered by; empty keeps all.
-    pub filter_partitions: Vec<(String, String)>,
     /// The Avro codec name blocks are written with: `null`, `deflate`,
     /// `zstandard`, or - with the `parquet` feature - `snappy`.
     pub codec: SmolStr,
@@ -99,9 +97,11 @@ impl AvroOptions {
     /// Build the default Avro options.
     pub fn new() -> Self {
         Self {
-            name: SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
-            dtype: None,
-            metadata: Metadata::new(),
+            name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
+            field: None,
+            filter: crate::Filter::always_true(),
+            selector: crate::Selector::all(),
+            merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,
             batch_row_size: None,
@@ -109,9 +109,6 @@ impl AvroOptions {
             max_byte_size: None,
             commit_row_size: None,
             level: Level::DEFAULT,
-            merge_by_names: Vec::new(),
-            select_by_names: Vec::new(),
-            filter_partitions: Vec::new(),
             codec: SmolStr::new_static("deflate"),
             sync_marker: None,
         }
@@ -253,8 +250,14 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     let header = parse_header(&mut cursor, limits)?;
     let blocks_at = cursor.position;
 
-    let keep: Option<Vec<&str>> =
-        field.map(|field| field.fields().iter().map(|child| child.name()).collect());
+    // A declared root says what the rows are meant to be; without one, the
+    // expressions the options apply say which stored columns they read.
+    let columns = options.apply_columns();
+    let keep: Option<Vec<&str>> = match (field, &columns) {
+        (Some(field), _) => Some(field.fields().iter().map(|child| child.name()).collect()),
+        (None, Some(columns)) => Some(columns.iter().map(String::as_str).collect()),
+        (None, None) => None,
+    };
     let (root, arrow_schema) = RootReader::new(&header.schema, options.name(), keep.as_deref())?;
 
     Ok(Box::new(AvroBatchReader {

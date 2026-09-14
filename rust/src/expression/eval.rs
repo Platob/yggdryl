@@ -27,13 +27,12 @@ use std::cmp::Ordering;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::attribute::Attributes;
 use super::bind::{Kind, Node};
-use super::selector::Attributes;
-use super::typing::{
-    decimal_parts, is_binary, is_text, step_field, temporal_parts, unwrap_dictionary,
-};
-use super::{Comparison, FieldSegment, Function, Literal, Operator, Safety};
-use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit, Timezone};
+use super::path::{FieldSegment, resolve_range};
+use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
+use super::{Comparison, Function, Literal, Operator, Safety};
+use crate::{DataType, Error, I256, Result, Scalar, TimeUnit, Timezone};
 
 /// One row's worth of context: its column values and its holder.
 ///
@@ -86,8 +85,8 @@ impl Node {
                 let mut field = base.field.clone();
                 let mut value = base.eval(row)?;
                 for step in steps.iter() {
-                    let next = step_field(&field, step)?;
-                    value = apply_step(&field, &value, step);
+                    let next = step.apply_field(&field)?;
+                    value = step.apply_scalar(&field, &value);
                     field = next;
                     if value.is_null() {
                         break;
@@ -95,8 +94,8 @@ impl Node {
                 }
                 Ok(value)
             }
-            Kind::Attribute(selector) => match row.holder {
-                Some(holder) => holder.attribute(selector),
+            Kind::Attribute(attribute) => match row.holder {
+                Some(holder) => holder.attribute(attribute),
                 None => Ok(Scalar::Null),
             },
             Kind::And(operands) => {
@@ -265,75 +264,6 @@ impl Node {
             }
         }
     }
-}
-
-/// Reach one step into a value, answering null for anything absent.
-fn apply_step(field: &Field, value: &Scalar, segment: &FieldSegment) -> Scalar {
-    if value.is_null() {
-        return Scalar::Null;
-    }
-    match segment {
-        FieldSegment::Field(name) => struct_child(field, value, name),
-        FieldSegment::Index(position) => {
-            let Some(items) = value.as_sequence() else {
-                return Scalar::Null;
-            };
-            let length = i64::try_from(items.len()).unwrap_or(i64::MAX);
-            // A negative index counts from the end, and either end may miss.
-            let resolved = if *position < 0 {
-                length + position
-            } else {
-                *position
-            };
-            usize::try_from(resolved)
-                .ok()
-                .and_then(|index| items.get(index))
-                .cloned()
-                .unwrap_or(Scalar::Null)
-        }
-        FieldSegment::Key(key) => {
-            if let Some(entries) = value.as_mapping() {
-                let dtype = key.dtype();
-                return entries
-                    .iter()
-                    .find(|(held, _)| {
-                        compare(dtype, held, Comparison::IsNotDistinctFrom, key.value()).as_bool()
-                            == Some(true)
-                    })
-                    .map_or(Scalar::Null, |(_, held)| held.clone());
-            }
-            match key.value().as_str() {
-                Some(name) => struct_child(field, value, name),
-                None => Scalar::Null,
-            }
-        }
-    }
-}
-
-/// Read one struct child from its mapping or schema-ordered sequence spelling.
-fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
-    if let Some(entries) = value.as_mapping() {
-        return entries
-            .iter()
-            .find(|(key, _)| {
-                key.as_str()
-                    .is_some_and(|held| held.eq_ignore_ascii_case(name))
-            })
-            .map_or(Scalar::Null, |(_, held)| held.clone());
-    }
-    // A struct spelled as a bare sequence takes its order from the schema.
-    if let (Some(values), DataType::Struct(fields)) =
-        (value.as_sequence(), unwrap_dictionary(field.dtype()))
-    {
-        return fields
-            .as_fields()
-            .iter()
-            .position(|child| child.name().eq_ignore_ascii_case(name))
-            .and_then(|index| values.get(index))
-            .cloned()
-            .unwrap_or(Scalar::Null);
-    }
-    Scalar::Null
 }
 
 /// Kleene conjunction of two already-evaluated booleans.
@@ -609,9 +539,12 @@ fn call(
 ) -> Result<Scalar> {
     let first = values.first().unwrap_or(&Scalar::Null);
     // Coalesce and its two-argument spelling are the only functions that mean
-    // something when an argument is null.
-    if !matches!(function, Function::Coalesce | Function::IfNull)
-        && values.iter().any(Scalar::is_null)
+    // something when an argument is null; a slice reads a null bound as the
+    // list's own end.
+    if !matches!(
+        function,
+        Function::Coalesce | Function::IfNull | Function::Slice
+    ) && values.iter().any(Scalar::is_null)
     {
         return Ok(Scalar::Null);
     }
@@ -704,7 +637,25 @@ fn call(
                 Some(index) if key.as_str().is_none() => FieldSegment::Index(index),
                 _ => FieldSegment::Key(Literal::infer(key)?),
             };
-            apply_step(&container.field, first, &segment)
+            segment.apply_scalar(&container.field, first)
+        }
+        Function::Slice => {
+            let Some(items) = first.as_sequence() else {
+                return Ok(Scalar::Null);
+            };
+            let bound = |value: Option<&Scalar>| -> Result<Option<i64>> {
+                match value {
+                    None => Ok(None),
+                    Some(held) if held.is_null() => Ok(None),
+                    Some(held) => held
+                        .as_i64()
+                        .map(Some)
+                        .ok_or_else(|| missing("a whole position to slice at")),
+                }
+            };
+            let (from, until) =
+                resolve_range(bound(values.get(1))?, bound(values.get(2))?, items.len());
+            Scalar::from_sequence(items[from..until].iter().cloned())
         }
     })
 }

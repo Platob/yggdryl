@@ -23,9 +23,8 @@ use arrow_array::{
 use arrow_buffer::BooleanBuffer;
 use arrow_ord::cmp;
 use criterion::{Criterion, criterion_group, criterion_main};
-use yggdryl::expression::Statement;
 use yggdryl::expression::{Bound, Bounds};
-use yggdryl::{DataType, Expression, Field, Scalar};
+use yggdryl::{DataType, Expression, Field, Scalar, Term};
 
 /// Rows enough to make a per-batch cost visible and small enough to stay warm.
 const ROWS: usize = bench_profile::corpus(65_536, 16_384);
@@ -125,7 +124,7 @@ fn parse_benchmarks(criterion: &mut Criterion) {
         group.bench_function(case.name, |bencher| {
             bencher.iter(|| {
                 black_box(case.text)
-                    .parse::<Expression>()
+                    .parse::<Term>()
                     .expect("the static predicate must parse")
             });
         });
@@ -133,15 +132,15 @@ fn parse_benchmarks(criterion: &mut Criterion) {
     group.bench_function("nested_path", |bencher| {
         bencher.iter(|| {
             black_box("trade.legs[0]['ccy'] = 'EUR' and trade.legs[1].size between 1 and 10")
-                .parse::<Expression>()
+                .parse::<Term>()
                 .expect("the static predicate must parse")
         });
     });
-    group.bench_function("statement", |bencher| {
+    group.bench_function("selector", |bencher| {
         bencher.iter(|| {
-            black_box("select ccy, price as amount where ccy = 'EUR' order by price desc limit 10")
-                .parse::<yggdryl::expression::Statement>()
-                .expect("the static statement must parse")
+            black_box("select ccy, price * 2 as amount, lower(venue) as venue string not null")
+                .parse::<Expression>()
+                .expect("the static selector must parse")
         });
     });
     group.finish();
@@ -152,7 +151,7 @@ fn bind_benchmarks(criterion: &mut Criterion) {
     let schema = schema();
     let mut group = criterion.benchmark_group("expression_bind");
     for case in &CASES {
-        let parsed: Expression = case.text.parse().unwrap();
+        let parsed: Term = case.text.parse().unwrap();
         group.bench_function(case.name, |bencher| {
             bencher.iter(|| {
                 black_box(&parsed)
@@ -165,23 +164,21 @@ fn bind_benchmarks(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("expression_display");
     for case in &CASES {
-        let parsed: Expression = case.text.parse().unwrap();
+        let parsed: Term = case.text.parse().unwrap();
         group.bench_function(case.name, |bencher| {
             bencher.iter(|| black_box(&parsed).to_string());
         });
     }
     group.finish();
 
-    let expression: Expression = "ccy = 'EUR' and size > 500".parse().unwrap();
-    let statement: Statement = "select ccy, price where ccy = 'EUR' order by price desc limit 10"
-        .parse()
-        .unwrap();
+    let filter: Expression = "where ccy = 'EUR' and size > 500".parse().unwrap();
+    let selector: Expression = "select ccy, price * 2 as amount".parse().unwrap();
     let mut group = criterion.benchmark_group("expression_identity");
-    group.bench_function("stable_hash_expression", |bencher| {
-        bencher.iter(|| black_box(&expression).stable_hash());
+    group.bench_function("stable_hash_filter", |bencher| {
+        bencher.iter(|| black_box(&filter).stable_hash());
     });
-    group.bench_function("stable_hash_statement", |bencher| {
-        bencher.iter(|| black_box(&statement).stable_hash());
+    group.bench_function("stable_hash_selector", |bencher| {
+        bencher.iter(|| black_box(&selector).stable_hash());
     });
     group.finish();
 }
@@ -192,13 +189,7 @@ fn apply_benchmarks(criterion: &mut Criterion) {
     let batch = batch();
     let bound: Vec<Bound> = CASES
         .iter()
-        .map(|case| {
-            case.text
-                .parse::<Expression>()
-                .unwrap()
-                .bind(&schema)
-                .unwrap()
-        })
+        .map(|case| case.text.parse::<Term>().unwrap().bind(&schema).unwrap())
         .collect();
 
     let mut group = criterion.benchmark_group("expression_mask");
@@ -319,12 +310,7 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("expression_rows");
     group.throughput(criterion::Throughput::Elements(rows.len() as u64));
     for case in &CASES {
-        let bound = case
-            .text
-            .parse::<Expression>()
-            .unwrap()
-            .bind(&schema)
-            .unwrap();
+        let bound = case.text.parse::<Term>().unwrap().bind(&schema).unwrap();
         group.bench_function(case.name, |bencher| {
             bencher.iter(|| {
                 black_box(&rows)
@@ -367,12 +353,7 @@ fn prune_benchmarks(criterion: &mut Criterion) {
         );
     let mut group = criterion.benchmark_group("expression_prune");
     for case in &CASES {
-        let bound = case
-            .text
-            .parse::<Expression>()
-            .unwrap()
-            .bind(&schema)
-            .unwrap();
+        let bound = case.text.parse::<Term>().unwrap().bind(&schema).unwrap();
         group.bench_function(case.name, |bencher| {
             bencher.iter(|| black_box(&bound).statistics_prune(black_box(&bounds)));
         });

@@ -367,7 +367,6 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     assert!(!state.load(Ordering::SeqCst));
 }
 
-mod applying;
 mod buffered_handle;
 mod conformance;
 mod laziness;

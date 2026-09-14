@@ -169,10 +169,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .expect("a canonical transform round trips")
         });
     });
-    group.bench_function("partition_apply_arrow_batch_1024", |bencher| {
+    group.bench_function("transform_apply_arrow_batch_1024", |bencher| {
         bencher.iter(|| {
             black_box(&declaring)
-                .as_partition()
+                .as_transform()
                 .apply_arrow_batch(black_box(&events))
                 .expect("the declared source column is in the batch")
         });
