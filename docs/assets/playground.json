@@ -4,6 +4,7 @@
     {
       "dtype": "ascii",
       "fixedByteWidth": null,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "Utf8",
       "extensionName": "yggdryl.string",
@@ -13,6 +14,7 @@
     {
       "dtype": "fixed_ascii(2)",
       "fixedByteWidth": 2,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "FixedSizeBinary[2]",
       "extensionName": "yggdryl.string",
@@ -22,6 +24,7 @@
     {
       "dtype": "fixed_ascii(3)",
       "fixedByteWidth": 3,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "FixedSizeBinary[3]",
       "extensionName": "yggdryl.string",
@@ -31,6 +34,7 @@
     {
       "dtype": "fixed_ascii(4)",
       "fixedByteWidth": 4,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "FixedSizeBinary[4]",
       "extensionName": "yggdryl.string",
@@ -40,6 +44,7 @@
     {
       "dtype": "fixed_ascii(8)",
       "fixedByteWidth": 8,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "FixedSizeBinary[8]",
       "extensionName": "yggdryl.string",
@@ -49,6 +54,7 @@
     {
       "dtype": "fixed_ascii(12)",
       "fixedByteWidth": 12,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "FixedSizeBinary[12]",
       "extensionName": "yggdryl.string",
@@ -58,6 +64,7 @@
     {
       "dtype": "fixed_ascii(16)",
       "fixedByteWidth": 16,
+      "codeWidth": null,
       "kind": "text",
       "arrow": "FixedSizeBinary[16]",
       "extensionName": "yggdryl.string",
@@ -66,36 +73,40 @@
     },
     {
       "dtype": "country",
-      "fixedByteWidth": 2,
+      "fixedByteWidth": null,
+      "codeWidth": 2,
       "kind": "code",
-      "arrow": "FixedSizeBinary[2]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.country",
       "extensionDocument": "",
       "call": "fields.struct('row', [fields.country('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "currency",
-      "fixedByteWidth": 3,
+      "fixedByteWidth": null,
+      "codeWidth": 3,
       "kind": "code",
-      "arrow": "FixedSizeBinary[3]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.currency",
       "extensionDocument": "",
       "call": "fields.struct('row', [fields.currency('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "mic",
-      "fixedByteWidth": 4,
+      "fixedByteWidth": null,
+      "codeWidth": 4,
       "kind": "code",
-      "arrow": "FixedSizeBinary[4]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.mic",
       "extensionDocument": "",
       "call": "fields.struct('row', [fields.mic('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
     },
     {
       "dtype": "cfi",
-      "fixedByteWidth": 6,
+      "fixedByteWidth": null,
+      "codeWidth": 6,
       "kind": "code",
-      "arrow": "FixedSizeBinary[6]",
+      "arrow": "Utf8",
       "extensionName": "yggdryl.cfi",
       "extensionDocument": "",
       "call": "fields.struct('row', [fields.cfi('ccy')], { nullable: false }).castArrow(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) })).schema.fields[0]"
@@ -1165,12 +1176,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.country('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }), { safe: false })\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0
-      ],
-      "storageHex": "00 00",
-      "storageEscaped": "\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1260,13 +1268,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.currency('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }), { safe: false })\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00",
-      "storageEscaped": "\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1360,14 +1364,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.mic('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }), { safe: false })\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -1467,16 +1466,9 @@
       "inputLiteral": "''",
       "call": "const stored = fields.struct('row', [fields.cfi('ccy')], { nullable: false })\n  .castArrow(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }), { safe: false })\nfields.struct('row', [fields.utf8('ccy')], { nullable: false }).castArrow(stored)",
       "ok": true,
-      "storage": [
-        0,
-        0,
-        0,
-        0,
-        0,
-        0
-      ],
-      "storageHex": "00 00 00 00 00 00",
-      "storageEscaped": "\\0\\0\\0\\0\\0\\0",
+      "storage": [],
+      "storageHex": "",
+      "storageEscaped": "",
       "readBack": ""
     },
     {
@@ -2126,7 +2118,7 @@
         "code": "3362048",
         "generated": "_3M",
         "isPrebuilt": false,
-        "storageHex": "33 4d 00",
+        "storageHex": "33 4d",
         "call": "'currency' packs '3M' as 3362048n"
       }
     ],

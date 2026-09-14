@@ -8,7 +8,7 @@ One string family in five layouts, one byte family in four, the version and URL 
 | --- | --- |
 | Owns | `DataType::String(StringParameters)`, `DataType::Bytes(BytesParameters)`, the values `Str` and `Bytes`, `Version`, `Url` |
 | Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(n)`, `fixed_ascii(n)`, `binary`, `large_binary`, `binary_view`, `fixed_size_binary(n)` pick a layout once |
-| Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters |
+| Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters, and a code answers `code_width` instead |
 | Bound | one number per declaration: the exact width on a fixed layout, the maximum stored bytes elsewhere; zero refused; a fixed layout with no width refused |
 | Value | holds UTF-8 (or the payload) beside its layout, charset and fixed width; never a maximum |
 | Arrow | text storage for UTF-8 and US-ASCII, binary storage for every other charset; `yggdryl.string` / `yggdryl.bytes` only where Arrow cannot say what is declared |
@@ -915,7 +915,7 @@ native Version example corpus.
 - Text a legacy charset has no bytes for -> held as a value, refused when the column is written, naming the scalar; the value door counts rather than judges.
 - A value never carries a maximum: `Scalar::dtype()` of a cell read out of `utf8(32)` is `utf8`, of `binary(16)` is `binary`.
 - `Scalar::from("USD")` and a value read out of an `ascii` column are one value; `Str` equality, order and hash read the characters alone.
-- `string_parameters` on a code, `bytes_parameters` on a UUID -> `None`; `fixed_byte_width` answers for a fixed string, fixed bytes, a code, a UUID and the numbers.
+- `string_parameters` on a code, `bytes_parameters` on a UUID -> `None`; `fixed_byte_width` answers for a fixed string, fixed bytes, a UUID and the numbers, and a code answers `code_width`, the maximum its standard fixes over the text it stores.
 - A `yggdryl.string` or `yggdryl.bytes` document over a storage it does not describe -> imports as the storage.
 - A stored column carrying `yggdryl.msgdirection` or `yggdryl.direction` -> imports as the `fixed_size_binary(4)` it is: the datatype was retired with decision 14, and which way a message moved is FIX's tag 385, text over its code set.
 - Arrow JS rows carry no extension identity, so a `fixed_ascii(n)` column arrives as its padded bytes through `readRecords`; declare `utf8` to read text.

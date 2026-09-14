@@ -322,9 +322,12 @@ const textTableCall = (value) =>
 
 /** A one-element Arrow JS table of storage bytes, the input side of a decode.
  *
- * A fixed width stores under Arrow's `FixedSizeBinary`; the variable form
- * rides Arrow's `Utf8`, so a run of its bytes reaches it as a bare `Binary`
- * column, which the cast reads as bytes already in the declared charset.
+ * The corpus is runs of bytes a fixed-width column would carry, so each rides
+ * Arrow's `FixedSizeBinary` and the cast trims the padding that slot wrote.
+ * The variable `ascii` form rides Arrow's `Utf8`, so a run of its bytes
+ * reaches it as a bare `Binary` column, which the cast reads as bytes already
+ * in the declared charset. A code's own column is `Utf8` and pads nothing;
+ * what this shows is that a fixed slot is still a spelling it reads.
  */
 const storageTable = (dtype, bytes) =>
   new arrow.Table({
@@ -362,6 +365,7 @@ function widths() {
     return {
       dtype: type.toString(),
       fixedByteWidth: type.fixedByteWidth,
+      codeWidth: type.codeWidth,
       kind: type.kind,
       arrow: String(projected.type),
       extensionName: projected.metadata.get('ARROW:extension:name'),
