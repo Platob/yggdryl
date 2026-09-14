@@ -744,8 +744,11 @@ pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
                     reason: format_smolstr!("payload is not UTF-8: {error}"),
                 })
         }
-        Scalar::Geospatial(geospatial) => {
-            crate::types::geospatial::wkb::into_wkt(geospatial.as_bytes()).map(Str::from)
+        Scalar::Geometry(value) => {
+            crate::types::geospatial::wkb::into_wkt(value.as_bytes()).map(Str::from)
+        }
+        Scalar::Geography(value) => {
+            crate::types::geospatial::wkb::into_wkt(value.as_bytes()).map(Str::from)
         }
         _ => return None,
     })

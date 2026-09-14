@@ -60,9 +60,6 @@ mod typing;
 #[cfg(feature = "arrow")]
 mod arrow;
 
-#[cfg(test)]
-mod tests;
-
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
@@ -1311,18 +1308,18 @@ fn negate_value(value: &crate::Scalar) -> Option<crate::Scalar> {
 
     matches!(
         value,
-        Scalar::I8(_)
-            | Scalar::I16(_)
-            | Scalar::I32(_)
-            | Scalar::I64(_)
-            | Scalar::I128(_)
-            | Scalar::F16(_)
-            | Scalar::F32(_)
-            | Scalar::F64(_)
-            | Scalar::D32(_)
-            | Scalar::D64(_)
-            | Scalar::D128(_)
-            | Scalar::D256(_)
+        Scalar::Int8(_)
+            | Scalar::Int16(_)
+            | Scalar::Int32(_)
+            | Scalar::Int64(_)
+            | Scalar::Int128(_)
+            | Scalar::Float16(_)
+            | Scalar::Float32(_)
+            | Scalar::Float64(_)
+            | Scalar::Decimal32(_)
+            | Scalar::Decimal64(_)
+            | Scalar::Decimal128(_)
+            | Scalar::Decimal256(_)
             | Scalar::Duration32(_)
             | Scalar::Duration64(_)
     )

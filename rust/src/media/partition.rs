@@ -1458,4 +1458,5 @@ fn retried<T>(mut step: impl FnMut() -> Result<T>) -> Result<T> {
 }
 
 #[cfg(test)]
+#[path = "partition/tests.rs"]
 mod tests;

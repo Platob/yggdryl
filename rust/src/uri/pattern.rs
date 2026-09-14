@@ -162,4 +162,5 @@ pub(super) fn matches_segment(segment: &str, pattern: &str) -> bool {
 }
 
 #[cfg(test)]
+#[path = "pattern/tests.rs"]
 mod tests;

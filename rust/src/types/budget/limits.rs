@@ -321,6 +321,9 @@ impl MaterializationBudget {
             }
             DataType::Version
             | DataType::Url
+            | DataType::Timezone
+            | DataType::MimeType
+            | DataType::MediaType
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -429,6 +432,9 @@ impl MaterializationBudget {
             }
             DataType::Version
             | DataType::Url
+            | DataType::Timezone
+            | DataType::MimeType
+            | DataType::MediaType
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.

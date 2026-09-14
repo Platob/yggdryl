@@ -960,13 +960,14 @@ fn convert_count(count: i64, from: TimeUnit, to: TimeUnit) -> Option<i64> {
 /// Read a decimal's unscaled integer at the schema's scale.
 fn decimal_unscaled(value: &Scalar, scale: u32) -> Result<i128> {
     match value {
-        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => {
-            value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
-                invalid(format_smolstr!(
-                    "expected a decimal exactly representable at scale {scale}"
-                ))
-            })
-        }
+        Scalar::Decimal32(_)
+        | Scalar::Decimal64(_)
+        | Scalar::Decimal128(_)
+        | Scalar::Decimal256(_) => value.decimal_unscaled_at(scale as i8).ok_or_else(|| {
+            invalid(format_smolstr!(
+                "expected a decimal exactly representable at scale {scale}"
+            ))
+        }),
         other => {
             if let Some(bytes) = other.as_bytes() {
                 return decimal_from_bytes(bytes).ok_or_else(|| {

@@ -151,6 +151,9 @@ from .temporal import (
     time64,
     datetime64,
 )
+from .mediatype import MediaTypeField, mediatype
+from .mimetype import MimeTypeField, mimetype
+from .timezone import TimezoneField, timezone
 from .url import UrlField, url
 from .version import Version, VersionField, version
 
@@ -221,6 +224,9 @@ __all__ = [
     "UnionField",
     "VariantField",
     "UrlField",
+    "TimezoneField",
+    "MimeTypeField",
+    "MediaTypeField",
     "Version",
     "VersionField",
     "ascii",
@@ -290,4 +296,7 @@ __all__ = [
     "variant",
     "url",
     "version",
+    "timezone",
+    "mimetype",
+    "mediatype",
 ]

@@ -686,52 +686,56 @@ enum ColumnReader {
 
 /// The Arrow decimal builder selected by the Avro precision.
 enum DecimalColumn {
-    D32(Decimal32Builder),
-    D64(Decimal64Builder),
-    D128(Decimal128Builder),
+    Decimal32(Decimal32Builder),
+    Decimal64(Decimal64Builder),
+    Decimal128(Decimal128Builder),
 }
 
 impl DecimalColumn {
     fn append_value(&mut self, value: i128) -> crate::Result<()> {
         match self {
-            Self::D32(builder) => builder.append_value(i32::try_from(value).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected an Avro decimal fitting signed 32 bits, got {value}"
-                ))
-            })?),
-            Self::D64(builder) => builder.append_value(i64::try_from(value).map_err(|_| {
-                invalid(format_smolstr!(
-                    "expected an Avro decimal fitting signed 64 bits, got {value}"
-                ))
-            })?),
-            Self::D128(builder) => builder.append_value(value),
+            Self::Decimal32(builder) => {
+                builder.append_value(i32::try_from(value).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro decimal fitting signed 32 bits, got {value}"
+                    ))
+                })?)
+            }
+            Self::Decimal64(builder) => {
+                builder.append_value(i64::try_from(value).map_err(|_| {
+                    invalid(format_smolstr!(
+                        "expected an Avro decimal fitting signed 64 bits, got {value}"
+                    ))
+                })?)
+            }
+            Self::Decimal128(builder) => builder.append_value(value),
         }
         Ok(())
     }
 
     fn append_null(&mut self) {
         match self {
-            Self::D32(builder) => builder.append_null(),
-            Self::D64(builder) => builder.append_null(),
-            Self::D128(builder) => builder.append_null(),
+            Self::Decimal32(builder) => builder.append_null(),
+            Self::Decimal64(builder) => builder.append_null(),
+            Self::Decimal128(builder) => builder.append_null(),
         }
     }
 
     fn finish(&mut self, precision: u8, scale: i8) -> crate::Result<ArrayRef> {
         let array: ArrayRef = match self {
-            Self::D32(builder) => Arc::new(
+            Self::Decimal32(builder) => Arc::new(
                 builder
                     .finish()
                     .with_precision_and_scale(precision, scale)
                     .map_err(|error| invalid(format_smolstr!("{error}")))?,
             ),
-            Self::D64(builder) => Arc::new(
+            Self::Decimal64(builder) => Arc::new(
                 builder
                     .finish()
                     .with_precision_and_scale(precision, scale)
                     .map_err(|error| invalid(format_smolstr!("{error}")))?,
             ),
-            Self::D128(builder) => Arc::new(
+            Self::Decimal128(builder) => Arc::new(
                 builder
                     .finish()
                     .with_precision_and_scale(precision, scale)
@@ -770,9 +774,15 @@ impl ColumnReader {
             Node::Duration(_) => Self::Interval(PrimitiveBuilder::new()),
             Node::Decimal(decimal) => Self::Decimal {
                 builder: match arrow {
-                    ArrowDataType::Decimal32(..) => DecimalColumn::D32(Decimal32Builder::new()),
-                    ArrowDataType::Decimal64(..) => DecimalColumn::D64(Decimal64Builder::new()),
-                    ArrowDataType::Decimal128(..) => DecimalColumn::D128(Decimal128Builder::new()),
+                    ArrowDataType::Decimal32(..) => {
+                        DecimalColumn::Decimal32(Decimal32Builder::new())
+                    }
+                    ArrowDataType::Decimal64(..) => {
+                        DecimalColumn::Decimal64(Decimal64Builder::new())
+                    }
+                    ArrowDataType::Decimal128(..) => {
+                        DecimalColumn::Decimal128(Decimal128Builder::new())
+                    }
                     _ => return Err(shape_error(node, arrow)),
                 },
                 precision: u8::try_from(decimal.precision).map_err(|_| {

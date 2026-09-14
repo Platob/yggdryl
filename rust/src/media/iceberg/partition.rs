@@ -766,7 +766,7 @@ impl PartitionTransform {
         // so keep caller-controlled extremes out of that panic path.
         if let Scalar::Date32(date) = &value {
             let days = date.count();
-            let (year, month, _) = crate::timezone::civil_from_days(i64::from(days));
+            let (year, month, _) = crate::types::timezone::civil_from_days(i64::from(days));
             let month = i32::try_from(month).map_err(|_| {
                 invalid(format_smolstr!(
                     "expected a calendar month fitting i32, got {month}"

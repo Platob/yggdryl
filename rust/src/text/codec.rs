@@ -265,6 +265,3 @@ text_format!(
 );
 text_format!(Toml, Format::Toml, "One TOML document.");
 text_format!(Yaml, Format::Yaml, "One or more YAML documents.");
-
-#[cfg(test)]
-mod tests;

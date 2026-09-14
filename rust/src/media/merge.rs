@@ -470,4 +470,5 @@ fn oversized_row(_: std::num::TryFromIntError) -> Error {
 }
 
 #[cfg(test)]
+#[path = "merge/tests.rs"]
 mod tests;

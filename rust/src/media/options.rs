@@ -1115,4 +1115,5 @@ impl RecordOptions {
 }
 
 #[cfg(test)]
+#[path = "options/tests.rs"]
 mod tests;

@@ -693,6 +693,3 @@ impl fmt::Debug for Encoder<'_> {
             .finish()
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -755,6 +755,3 @@ impl<'de> Deserialize<'de> for Uri {
         .map_err(D::Error::custom)
     }
 }
-
-#[cfg(test)]
-mod tests;

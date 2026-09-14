@@ -1,12 +1,12 @@
 # Strings & bytes
 
-One string family in five layouts, one byte family in four, the version and URL values, and the regex that turns named captures into a schema.
+One string family in five layouts, one byte family in four, the canonical text values - version, URL, time zone, MIME type, media type - and the regex that turns named captures into a schema.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Owns | `DataType::String(StringParameters)`, `DataType::Bytes(BytesParameters)`, the values `Str` and `Bytes`, `Version`, `Url` |
+| Owns | `DataType::String(StringParameters)`, `DataType::Bytes(BytesParameters)`, the values `Str` and `Bytes`, `Version`, `Url`, `Timezone`, `MimeType`, `MediaType` |
 | Constructors | `DataType::string` / `DataType::bytes` take the whole declaration; `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_utf8(n)`, `fixed_ascii(n)`, `binary`, `large_binary`, `binary_view`, `fixed_size_binary(n)` pick a layout once |
 | Reads back | `string_parameters`, `bytes_parameters`, `charset`, `fixed_byte_width`, `is_string`; a [code](codes.md), a [UUID](uuid.md) and a geospatial value answer no parameters, and a code answers `code_width` instead |
 | Bound | one number per declaration: the exact width on a fixed layout, the maximum stored bytes elsewhere; zero refused; a fixed layout with no width refused |
@@ -47,6 +47,9 @@ maxima, `fixed_ascii(4)` and `fixed_utf8(32)` are widths.
 | `string(windows-1252,32)` | at most 32 windows-1252 bytes | any charset alias, case-insensitive |
 | `version` | `Version` | - |
 | `url` | `Url` | - |
+| `timezone` | `Timezone` | `tz`, `timezone_name` |
+| `mimetype` | `MimeType` | `mime` |
+| `mediatype` | `MediaType` | `content_type` |
 
 ### Bytes
 
@@ -902,6 +905,147 @@ native Version example corpus.
 | Ordering | the canonical text's, which is Arrow's own string order; there is no numeric component to sort by |
 | Default | `file:///`, the shortest URL the validator accepts, because a location has no zero |
 | Merging | only with itself: merging into text would drop the validation that makes it a URL |
+
+## Time zones
+
+`Timezone` is the crate's own zone carried as a column: the same four-byte
+interned handle every temporal datatype and value already declares, so a zone
+read out of a table is a zone a `datetime64` column can be built with, not text
+that happens to name one. Parsing canonicalizes, so an alias, a case and a
+fixed offset each hold one spelling.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone};
+
+    let zone = Timezone::from_str("Asia/Calcutta")?;
+    // An alias resolves to what it stands for, so two spellings are one value.
+    assert_eq!(zone.as_str(), "Asia/Kolkata");
+    assert_eq!(Timezone::from_str("-0800")?.as_str(), "-08:00");
+
+    let field = Field::new("zone", DataType::Timezone, false);
+    assert_eq!(field.scalar("Asia/Calcutta")?, Scalar::Timezone(zone));
+    // The value is the one a temporal column declares, rules and all.
+    assert_eq!(Scalar::datetime64(0, TimeUnit::Second, zone)?.temporal_timezone(), Some(zone));
+    assert!(field.scalar("+99:00").is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    dtype = DataType("timezone")
+    field = types.timezone("zone", nullable=False)
+    value = json.loads('"Asia/Calcutta"', field=field, cls=Scalar)
+    assert dtype.kind == "text"
+    assert value.as_py() == "Asia/Kolkata"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const dtype = new DataType('timezone')
+    const value = json.loads('"Asia/Calcutta"', {
+      field: fields.timezone('zone', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(dtype.kind, 'text')
+    assert.equal(value.asJs(), 'Asia/Kolkata')
+    ```
+
+| rule | behaviour |
+| --- | --- |
+| Kind | `text`; the aliases are `TimezoneField`, `types.timezone`, `fields.timezone` |
+| Value | `crate::Timezone`, four bytes, interned for the process lifetime |
+| Storage | `Utf8` holding the canonical name, extension name `yggdryl.timezone` |
+| Ordering | the canonical name's, which is Arrow's own string order |
+| Default | `NAIVE`, the zone-free marker every temporal already defaults to |
+| Merging | only with itself: merging into text would drop the canonicalization |
+| Bindings | the value crosses as its canonical name; a zone has no wrapper class of its own in either language |
+
+## Media types
+
+`MimeType` is one canonical `type/subtype` name; `MediaType` is that name with
+the [charset](../charset/index.md) and the ordered content codings it was
+declared under. Both are the values the [media layer](../media/index.md) routes
+a record read on, carried as columns rather than restated.
+
+A MIME type refuses text that is not a `type/subtype` name. A media type does
+not: it is also the crate's filename and content-negotiation reader, so its
+intake is total by construction and unrecognized text answers the default base.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{Charset, DataType, Field, MediaType, MimeType, Scalar};
+
+    let mime = MimeType::from_str("APPLICATION/JSON")?;
+    assert_eq!(mime, MimeType::JSON);
+    assert_eq!(mime.as_str(), "application/json");
+
+    let field = Field::new("held", DataType::MimeType, false);
+    assert_eq!(field.scalar("APPLICATION/JSON")?, Scalar::MimeType(mime));
+    assert!(field.scalar("not a type").is_err());
+
+    // A media type carries the charset and the codings in one rendering.
+    let media = MediaType::from_str("text/csv; charset=utf-8")?;
+    assert_eq!(media.base(), &MimeType::CSV);
+    assert_eq!(media.charset(), Some(Charset::Utf8));
+    let field = Field::new("held", DataType::MediaType, false);
+    assert_eq!(field.scalar("TEXT/CSV; CHARSET=UTF-8")?, Scalar::from(media));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    field = types.mimetype("held", nullable=False)
+    value = json.loads('"APPLICATION/JSON"', field=field, cls=Scalar)
+    assert DataType("mimetype").kind == "text"
+    assert value.as_py() == "application/json"
+
+    media = types.mediatype("held", nullable=False)
+    declared = json.loads('"TEXT/CSV; CHARSET=UTF-8"', field=media, cls=Scalar)
+    assert declared.as_py() == "text/csv;charset=utf-8"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const value = json.loads('"APPLICATION/JSON"', {
+      field: fields.mimetype('held', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(new DataType('mimetype').kind, 'text')
+    assert.equal(value.asJs(), 'application/json')
+
+    const declared = json.loads('"TEXT/CSV; CHARSET=UTF-8"', {
+      field: fields.mediatype('held', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(declared.asJs(), 'text/csv;charset=utf-8')
+    ```
+
+| rule | behaviour |
+| --- | --- |
+| Kind | `text`; the aliases are `MimeTypeField` and `MediaTypeField`, `types.mimetype` / `fields.mimetype` and `types.mediatype` / `fields.mediatype` |
+| Value | `crate::MimeType` inline; `crate::MediaType` behind one shared pointer, because a base, a charset and a coding list are wider than the scalar |
+| Storage | `Utf8` holding the canonical text, extension names `yggdryl.mimetype` and `yggdryl.mediatype` |
+| Intake | a MIME type refuses a name that is not `type/subtype`; a media type infers, so every text has an answer |
+| Default | `application/octet-stream`, which is what both values answer `Default` with |
+| Merging | only with itself, and never with each other: a media type models a charset and codings a MIME type does not |
+| Bindings | both cross as their canonical text; neither has a wrapper class of its own in Python or JavaScript |
 
 ## Edges
 

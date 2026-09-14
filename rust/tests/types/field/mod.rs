@@ -1,3 +1,5 @@
+//! The field: its value contract, its projections, and its comparisons.
+
 mod arrow;
 mod ascii;
 mod binary;
@@ -11,3 +13,4 @@ mod scalar;
 mod serde;
 mod temporal;
 mod typed;
+mod unit;

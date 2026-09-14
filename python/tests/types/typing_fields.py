@@ -21,7 +21,15 @@ from yggdryl import (
 )
 from yggdryl import enums
 from yggdryl.text import json, toml, yaml
-from yggdryl.types import CurrencyField, StructField, UrlField, VersionField
+from yggdryl.types import (
+    CurrencyField,
+    MediaTypeField,
+    MimeTypeField,
+    StructField,
+    TimezoneField,
+    UrlField,
+    VersionField,
+)
 
 
 @scalar(frozen=True, slots=True)
@@ -69,6 +77,10 @@ version: VersionField = types.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = types.url("url")
 location_dtype: DataType = location.dtype
+zone: TimezoneField = types.timezone("zone")
+mime: MimeTypeField = types.mimetype("mime")
+media: MediaTypeField = types.mediatype("media")
+canonical_text_dtypes: tuple[DataType, ...] = (zone.dtype, mime.dtype, media.dtype)
 python_view: ProtocolField = root.python
 declared: PythonMetadata | None = python_view.class_metadata
 declared_module: str = PythonMetadata(__name__, "TypedOrder", "field").module
@@ -89,3 +101,8 @@ assert dynamic_class.into_field() is imported  # type: ignore[attr-defined]
 assert currency_default_scalar.as_py() == ""
 assert version_default_scalar.as_py() == Version(0)
 assert location_dtype == DataType("url")
+assert canonical_text_dtypes == (
+    DataType("timezone"),
+    DataType("mimetype"),
+    DataType("mediatype"),
+)

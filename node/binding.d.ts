@@ -239,6 +239,9 @@ export type DataTypeId =
   | 'uuid'
   | 'version'
   | 'url'
+  | 'timezone'
+  | 'mimetype'
+  | 'mediatype'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -321,6 +324,9 @@ interface DataTypeKindById {
   uuid: 'uuid'
   version: 'text'
   url: 'text'
+  timezone: 'text'
+  mimetype: 'text'
+  mediatype: 'text'
   list: 'nested'
   list_view: 'nested'
   fixed_size_list: 'nested'
@@ -768,6 +774,12 @@ export type VersionField = FieldOf<'version', Version>
 
 /** One validated, canonical location. */
 export type UrlField = FieldOf<'url', string>
+/** One canonical time zone name, a fixed offset, or the zone-free marker. */
+export type TimezoneField = FieldOf<'timezone', string>
+/** One validated, canonical MIME type. */
+export type MimeTypeField = FieldOf<'mimetype', string>
+/** A MIME type with its charset and content codings. */
+export type MediaTypeField = FieldOf<'mediatype', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -975,6 +987,9 @@ export interface FieldsNamespace {
   uuid(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
   url(name: string, options?: FieldOptions): UrlField
+  timezone(name: string, options?: FieldOptions): TimezoneField
+  mimetype(name: string, options?: FieldOptions): MimeTypeField
+  mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField

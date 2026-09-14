@@ -235,6 +235,9 @@ test('typed field factories cover every native datatype variant', () => {
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
+    ['timezone', fields.timezone('value')],
+    ['mimetype', fields.mimetype('value')],
+    ['mediatype', fields.mediatype('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -257,7 +260,7 @@ test('typed field factories cover every native datatype variant', () => {
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
   // so no field builds them.
-  assert.equal(byId.size, 58)
+  assert.equal(byId.size, 61)
   assert.deepEqual(
     [...byId.keys()].sort(),
     binding.enums.dataTypeIds.filter((id) => id !== 'int128' && id !== 'uint128').sort(),

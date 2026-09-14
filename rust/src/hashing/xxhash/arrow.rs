@@ -40,7 +40,7 @@ use crate::metadata::is_all_sources;
 use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
 use crate::types::string::is_text_storage;
 use crate::types::{BytesLayout, Str, StringLayout, StringParameters};
-use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
@@ -1102,22 +1102,22 @@ fn feed_cell(
         ),
         DataType::Decimal32 { scale, .. } => write_decimal(
             digester,
-            I256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
+            i256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
             *scale,
         ),
         DataType::Decimal64 { scale, .. } => write_decimal(
             digester,
-            I256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
+            i256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
             *scale,
         ),
         DataType::Decimal128 { scale, .. } => write_decimal(
             digester,
-            I256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
+            i256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
             *scale,
         ),
         DataType::Decimal256 { scale, .. } => write_decimal(
             digester,
-            I256::from_le_bytes(
+            i256::from_le_bytes(
                 downcast::<Decimal256Array>(array)?
                     .value(index)
                     .to_le_bytes(),
@@ -1215,6 +1215,9 @@ fn feed_cell(
         | DataType::Uuid
         | DataType::Version
         | DataType::Url
+        | DataType::Timezone
+        | DataType::MimeType
+        | DataType::MediaType
         | DataType::List(_)
         | DataType::ListView(_)
         | DataType::FixedSizeList(..)
@@ -1265,9 +1268,6 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
         ))
     })
 }
-
-#[cfg(test)]
-mod tests;
 
 /// Feed one string cell as the characters a [`Str`] read from it holds.
 ///

@@ -13,7 +13,7 @@
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
-| Widths | one flat enum: every width is its own variant (`Scalar::I32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
+| Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
 | Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
@@ -94,12 +94,12 @@ The readers answer across widths and `None` for another kind; an interval's `tem
 Rust only.
 
 ```rust
-use yggdryl::{I256, Scalar, TemporalFamily, TimeUnit, Timezone};
+use yggdryl::{i256, Scalar, TemporalFamily, TimeUnit, Timezone};
 
 let date = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
 let duration = Scalar::from_duration(i64::from(i32::MAX) + 1, TimeUnit::Second, Timezone::NAIVE)?;
-let decimal = Scalar::from_decimal(I256::from_i128(1_250), 2);
+let decimal = Scalar::from_decimal(i256::from_i128(1_250), 2);
 
 // The variant is the width, and `kind()` names it.
 assert!(matches!(date, Scalar::Date32(_)));
@@ -113,15 +113,15 @@ assert_eq!(duration.temporal_count(), Some(i64::from(i32::MAX) + 1));
 assert_eq!(decimal.temporal_family(), None);
 
 // Numbers read across widths, and one number at two widths is one value.
-assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
-assert_eq!(decimal, Scalar::d256(I256::from_i128(125), 1));
+assert_eq!(decimal.as_decimal(), Some((i256::from_i128(1_250), 2)));
+assert_eq!(decimal, Scalar::d256(i256::from_i128(125), 1));
 assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
 
 ## Variants and arithmetic
 
-Every width is a direct `Scalar` variant, with no family enum between (`Scalar::I32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`I32(7)` equals `U8(7)`). Width stays available for datatype and Arrow projection.
+Every width is a direct `Scalar` variant, with no family enum between (`Scalar::Int32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`Int32(7)` equals `UInt8(7)`). Width stays available for datatype and Arrow projection.
 
 | group | variants |
 | --- | --- |
@@ -203,7 +203,7 @@ let held = FieldScalar::new(&price, 7_i64)?;
 assert_eq!(held.name(), "price");
 assert_eq!(held.dtype(), &DataType::Int32);
 // The value was narrowed to the width the field declares.
-assert!(matches!(held.value(), Scalar::I32(_)));
+assert!(matches!(held.value(), Scalar::Int32(_)));
 assert_eq!(held.as_i64(), Some(7));
 
 // Nullability is the field's rule, so a required column refuses a null.
@@ -220,7 +220,7 @@ assert_eq!(inferred.dtype(), &DataType::Int64);
 // Unchecked, the text is held as given and read on demand.
 let raw = UncheckedFieldScalar::from_str(&price, "42");
 assert_eq!(raw.as_i64(), Some(42));
-assert!(matches!(raw.checked()?.value(), Scalar::I32(_)));
+assert!(matches!(raw.checked()?.value(), Scalar::Int32(_)));
 ```
 
 ## Inferred fields

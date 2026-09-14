@@ -1,5 +1,7 @@
 //! Structured-text integration tests.
 
+#[path = "text/codec.rs"]
+mod codec;
 #[path = "text/format.rs"]
 mod format;
 #[path = "text/json.rs"]
@@ -8,6 +10,8 @@ mod json;
 mod placeholder;
 #[path = "text/structured.rs"]
 mod structured;
+#[path = "text/structured_limits.rs"]
+mod structured_limits;
 #[path = "text/toml.rs"]
 mod toml;
 #[path = "text/value.rs"]

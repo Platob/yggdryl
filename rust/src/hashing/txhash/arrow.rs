@@ -641,4 +641,5 @@ fn timestamps(counts: ScalarBuffer<i64>, nulls: Option<NullBuffer>, unit: TimeUn
 }
 
 #[cfg(test)]
+#[path = "arrow/tests.rs"]
 mod tests;

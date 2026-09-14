@@ -602,9 +602,8 @@ impl From<Arc<[u8]>> for Scalar {
 pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     match value {
         Scalar::Bytes(bytes) => Some(bytes.clone()),
-        Scalar::Geospatial(geospatial) => {
-            Some(Bytes::from_shared(Arc::clone(geospatial.storage())))
-        }
+        Scalar::Geometry(value) => Some(Bytes::from_shared(Arc::clone(value.storage()))),
+        Scalar::Geography(value) => Some(Bytes::from_shared(Arc::clone(value.storage()))),
         Scalar::Uuid(uuid) => Some(Bytes::new(uuid.into_bytes())),
         _ => value.as_str().map(|text| Bytes::new(text.as_bytes())),
     }

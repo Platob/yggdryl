@@ -1187,4 +1187,5 @@ impl DataType {
 }
 
 #[cfg(test)]
+#[path = "diff/tests.rs"]
 mod tests;

@@ -163,6 +163,17 @@ pub enum DataType {
     Geometry(Arc<GeospatialParameters>),
     /// Geospatial features on a sphere or spheroid, carried as WKB.
     Geography(Arc<GeospatialParameters>),
+    // Appended rather than grouped with the text datatypes: `Hash` is derived
+    // here and a derived discriminant is what a stored digest of a schema is
+    // over, so a variant inserted in the middle would move every one after it.
+    /// A canonical time zone name, a fixed offset, or the zone-free marker,
+    /// stored as its canonical text.
+    Timezone,
+    /// A validated, canonical MIME type, stored as its canonical text.
+    MimeType,
+    /// A MIME type with its charset and content codings, stored as the
+    /// canonical text that spells all three.
+    MediaType,
 }
 
 impl DataType {
@@ -254,6 +265,9 @@ impl DataType {
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
             Self::Url => DataTypeId::Url,
+            Self::Timezone => DataTypeId::Timezone,
+            Self::MimeType => DataTypeId::MimeType,
+            Self::MediaType => DataTypeId::MediaType,
             Self::List(_) => DataTypeId::List,
             Self::ListView(_) => DataTypeId::ListView,
             Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
@@ -553,6 +567,9 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::TimeInForce => 56,
         DataType::Url => 57,
         DataType::Isin => 58,
+        DataType::Timezone => 59,
+        DataType::MimeType => 60,
+        DataType::MediaType => 61,
     }
 }
 

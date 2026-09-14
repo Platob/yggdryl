@@ -115,20 +115,32 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     dtype: &CoreDataType,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    // A declared string, a code, a UUID, a Version, and a Url carry value
-    // rules `PyArrow` does not own. Route them through the core once rather
-    // than letting Python's storage shape silently bypass padding, a bound, a
-    // charset, parsing, or canonicalization.
-    if needs_core_value_rules(dtype)
-        || matches!(
-            dtype,
-            CoreDataType::Uuid | CoreDataType::Version | CoreDataType::Url
-        )
-    {
+    // A declared string, a code, a UUID, a Version, a Url, a zone, a MIME type
+    // and a media type carry value rules `PyArrow` does not own. Route them
+    // through the core once rather than letting Python's storage shape
+    // silently bypass padding, a bound, a charset, parsing, or
+    // canonicalization.
+    if needs_core_value_rules(dtype) || is_parsed_text(dtype) {
         return core_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
     arrow_scalar_to_pyarrow_type(py, value, target, safe)
+}
+
+/// Whether a datatype parses and canonicalizes its own text.
+///
+/// These read back as one spelling per value, which is a rule Arrow's plain
+/// string layout does not carry, so the core owns their intake.
+pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
+    matches!(
+        dtype,
+        CoreDataType::Uuid
+            | CoreDataType::Version
+            | CoreDataType::Url
+            | CoreDataType::Timezone
+            | CoreDataType::MimeType
+            | CoreDataType::MediaType
+    )
 }
 
 /// Whether a string or code datatype holds value rules `PyArrow` cannot check.
@@ -452,6 +464,9 @@ impl PyDataType {
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
+            "timezone" => CoreDataType::Timezone,
+            "mimetype" => CoreDataType::MimeType,
+            "mediatype" => CoreDataType::MediaType,
             _ => {
                 return Err(PyValueError::new_err(format!(
                     "{kind:?} is not a parameter-free datatype kind"

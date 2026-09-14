@@ -880,7 +880,7 @@ macro_rules! impl_default_iomedia {
             batches: $crate::arrow::BatchReader,
             options: &$crate::media::RecordOptions,
         ) -> $crate::Result<()> {
-            $crate::iobase::overwrite_arrow_reader_default(self, batches, options)
+            $crate::overwrite_arrow_reader_default(self, batches, options)
         }
     };
 }

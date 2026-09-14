@@ -626,4 +626,4 @@ impl<H: IOBase> IOBase for Buffered<H> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;

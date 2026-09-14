@@ -112,7 +112,9 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/temporal/` | the calendar and clock datatypes, their units and zones, and `iso.rs` - the ISO 8601 spellings every text codec and the scalar renderer write through |
-| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families |
+| `types/timezone/` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
+| `types/{mime_type,media_type}/` | the `mimetype` and `mediatype` datatypes over the root values, which stay the media layer's routing vocabulary |
+| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families; `i256.rs` holds the `i256`/`u256` pair the exact decimals compute in |
 | `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
@@ -139,6 +141,27 @@ builder, or line-only read/write. Sole dispatchers, delegating complete contract
 with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 (digests), `MediaType` via `RecordOptions` (encoding).
 
+### Where a test lives
+
+`rust/tests/` is the contract a caller has: one top-level `<theme>.rs` per
+subtree - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
+`expression`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]` modules
+that mirror `src/`. A test there reaches the crate through `yggdryl::` and
+nothing else, so what it proves is what a caller can rely on, and a fixture
+builds its own inputs rather than borrowing the code under test.
+
+A `#[cfg(test)]` module stays in `src/` only where the thing tested is not
+reachable from outside, and its module doc says which private item that is and
+where the rest of the suite lives. That is the whole rule: `Iceberg`'s nine
+private modules and `TableMetadata`'s fields, the object client's signing and
+XML, the ZIP format readers, `canonicalize_dtype_value`, the ISO readers, the
+bundled zone registry, and roughly twenty single-item pins - `value_rank`,
+`low_64`, `read_at`, `convert`, `open_builder`, `home_from` and their kind.
+A shared measuring instrument crosses that line by being written twice -
+`Counting` in `tests/support/` and a smaller one beside the pins that need it -
+because an integration test cannot see a `#[cfg(test)]` item and publishing one
+would put a test fixture in the crate's API.
+
 ## Ownership
 
 - One row schema: a non-null Struct `Field`. Rows canonicalize to ordered
@@ -158,7 +181,9 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 - Shared and dispatch enums each live in their named root file, re-exported from
   the crate root: `Charset`, `Codec`, `DataTypeId`, `DataTypeKind`,
   `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
-  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `UnionMode`. `Timezone` is the
+  exception that moved: it is a datatype of its own, so it lives in
+  `types/timezone/` and is re-exported from the crate root like `Scalar`. No
   local copies, no `enums` module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
   `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
   `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already
@@ -372,11 +397,14 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 
 - `types::Scalar` is the single cross-platform scalar: no parallel value tree, no
   retired alias.
-- Variants match native/Arrow widths: `I8`..`I64`, `U8`..`U64`, `I128`, `U128`;
-  `F16`, `F32`, `F64`; `D32`, `D64`, `D128`, `D256`; `Date32`, `Date64`;
+- Variants are spelled as their datatype is: `Int8`..`Int64`, `UInt8`..`UInt64`,
+  `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
+  `Decimal64`, `Decimal128`, `Decimal256`; `Date32`, `Date64`;
   `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
-  `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
+  `Geometry`, `Geography`; `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
+  The wire vocabulary does not follow the spelling: `Scalar::kind()` and the
+  serde tags keep the short `i8`, `d128` names they always wrote.
 - `Scalar::Record` is a deterministic sorted name-to-`Scalar` map, resolved to an
   ordered sequence by Struct-field canonicalization; enum scalars keep generic
   enum identity in the smallest lossless integer representation.
@@ -391,7 +419,8 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
 - Rust keeps exact-width variants and constructors, every width a direct
-  `Scalar` variant with no family enum between; shared logic goes through the
+  `Scalar` variant with no family enum between, and each geospatial reading
+  likewise; `Code` is the one family enum left; shared logic goes through the
   cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
   `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
   family constructor picks the physical width once.

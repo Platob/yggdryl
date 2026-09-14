@@ -251,6 +251,3 @@ impl<H: IOBase> crate::IOMedia for Zstd<H> {
 impl<H: IOBase> IOBase for Zstd<H> {
     crate::delegate_iobase!(coding);
 }
-
-#[cfg(test)]
-mod tests;

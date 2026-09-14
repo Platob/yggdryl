@@ -22,3 +22,7 @@ mod cast_plan;
 mod combined;
 #[path = "arrow/row_value.rs"]
 mod row_value;
+#[path = "arrow/scalars.rs"]
+mod scalars;
+#[path = "arrow/value.rs"]
+mod value;

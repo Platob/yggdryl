@@ -909,4 +909,5 @@ pub(crate) use validation::{
 pub(crate) use validation::{is_all_sources, parse_partition_transform};
 
 #[cfg(test)]
+#[path = "metadata/tests.rs"]
 mod tests;

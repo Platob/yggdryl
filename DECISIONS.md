@@ -2686,3 +2686,160 @@ baselines, beside the counting allocator and callgrind - because wall clock on
 a shared box moved an untouched scan by 4% in both directions across two runs,
 and the allocation and instruction counts did not move at all.
 
+## 33. A scalar variant is spelled as its datatype, and geospatial flattens too
+
+Decision 29 flattened the five width families into `Scalar` and kept their
+short names, on the reasoning that a second spelling would be a rename rather
+than a flattening. The rename is what is wanted: `Scalar::I8` sits beside
+`DataTypeId::Int8`, `DataType::Int8` and the parser's `int8`, and `i8` is a
+spelling the datatype grammar does not accept at all. Decision 29's
+flattening stands; only its naming clause and its geospatial exception move.
+
+- Every width variant takes its datatype's spelling: `Int8`..`Int64`,
+  `UInt8`..`UInt64`, `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`;
+  `Decimal32`, `Decimal64`, `Decimal128`, `Decimal256`. The leaf type, the
+  `DataTypeId` and the variant are now one identifier, so
+  `integer_scalar_value!`, `floating_value!`, `decimal_value!` and
+  `width_value_from!` lose the arguments that repeated it.
+- `Geospatial` goes the way the width families went. `Scalar::Geometry(Geometry)`
+  and `Scalar::Geography(Geography)` hold their leaves directly, each leaf is
+  its own `ScalarFamily`, and the enum is deleted outright. `Code` is the one
+  family enum left, because a code is an identity over a registry rather than a
+  width of one thing.
+- Cross-reading value semantics are unchanged, and that is what keeps the
+  flattening honest: geometry and geography share `value_rank` 14 and compare
+  by their WKB, exactly as `Geospatial` did, through a `geospatial_bytes`
+  reader beside `float_value` and `decimal_value`. One payload is one value
+  under both readings, in equality, order and hash.
+- The wire vocabulary does not follow the Rust spelling. `Scalar::kind()` and
+  the serde tags keep `i8`..`d256`, which decision 29 pinned as already
+  wire-visible and which `every_width_leaf_round_trips_under_its_unchanged_tag`
+  still holds. The one tag that does move is geometry's: `geospatial` was the
+  family's name on the wire for a value the datatype grammar, the `DataTypeId`
+  and the digest feed all call `geometry`, and with the family gone there is
+  nothing left to call it. `kind()` and the serde tag both read `geometry`;
+  `geography` was already itself.
+- `i256` moves from a root file into `types/`, where the decimals that need it
+  live, and is spelled like the native integer it extends. Its unsigned
+  magnitude becomes `u256` rather than a file of free `[u64; 4]` helpers: every
+  wide add, multiply and division was already unsigned arithmetic with the sign
+  handled around it, so the pair is the shape the code had. `u256` is a value
+  in its own right - parse, render, compare, checked arithmetic, serde, stable
+  hash - and `i256::unsigned_abs` answers it, which is how the signed minimum
+  gets a magnitude at all.
+
+**Written in:** `types/scalar.rs`, on `Scalar` and `ScalarFamily`;
+`types/geospatial/scalars.rs`, on `geospatial_value!`; `types/i256.rs`, on the
+module and both structs.
+**Fixtures:** `a_geospatial_value_is_its_own_kind_over_its_bytes` and
+`the_structural_wire_round_trips_a_geospatial_value` restate the moved tag;
+`every_width_leaf_round_trips_under_its_unchanged_tag` and the pinned stable
+hashes are unmoved; `types/i256/tests.rs` keeps every signed fixture and adds
+the unsigned boundaries, division identity, byte round trip and serde.
+
+## 34. A canonical text value the crate already owns is a datatype of its own
+
+A time zone, a MIME type and a media type were vocabularies the crate parsed,
+canonicalized and rendered for its own routing, and nothing else. A column of
+them had to be `utf8` - which is to say the validation, the canonical spelling
+and the identity were dropped at the column boundary and re-derived by whoever
+read it. `Url` and `Version` already answered this: a value that parses,
+canonicalizes and renders itself is its own datatype.
+
+- `DataType::Timezone`, `DataType::MimeType` and `DataType::MediaType`, each
+  parameter-free, each `DataTypeKind::Text`, each stored as Arrow `Utf8` under
+  its own extension name (`yggdryl.timezone`, `yggdryl.mimetype`,
+  `yggdryl.mediatype`), each with a typed field marker, a prebuilt shared
+  field, an ingest cast and a default. `Scalar::Timezone`, `Scalar::MimeType`
+  and `Scalar::MediaType` hold the crate's own value types, not a second
+  spelling of them: a zone read out of a column is the zone a `datetime64`
+  column declares, and a media type read out of one is what `RecordOptions`
+  routes a record read on.
+- `Scalar::MediaType` is behind an `Arc`, as `Scalar::Url` is, because a base,
+  a charset and a coding list are wider than the 48-byte scalar. The other two
+  ride inline.
+- Not registered codes. A code is at most twelve US-ASCII bytes so it never
+  touches the heap, and its identity is a published registry; an IANA zone name
+  and a parameterised media type are neither, and a media type has no
+  borrowable canonical text at all - it renders one.
+- They are appended, three ways, because three numberings are wire contracts:
+  `DataTypeId` takes 61, 62 and 63; `DataType` takes its three variants at the
+  end of the enum, because `Hash` is derived there and a stored schema digest
+  is over the derived discriminant; `Scalar::value_rank` takes 21, 22 and 23,
+  the next free numbers. `dtype_rank` takes 59, 60 and 61.
+- Intake follows each value, not a new rule. A zone takes an alias, a case and
+  a fixed offset; a MIME type refuses a name that is not `type/subtype`; a
+  media type infers, so its intake is total and unrecognized text answers the
+  default base rather than refusing - it is also the crate's filename and
+  content-negotiation reader, and a column of them holds what that answers.
+- Merging is the `Version`/`Url` rule extended: only with itself. Merging into
+  text would drop exactly the canonicalization that makes the column worth
+  declaring, and a MIME type and a media type never merge into each other.
+- `timezone.rs` moves from a root file into `types/timezone/`, beside the
+  temporal datatypes that declare a zone and the datatype that now holds one.
+  The value's crate-root export is unchanged. `MimeType` and `MediaType` keep
+  their root files, as `Url` keeps `uri/`: the value is the media layer's
+  routing vocabulary and `types/{mime_type,media_type}/` holds only what makes
+  it a datatype.
+
+**Written in:** `types/timezone/mod.rs`, `types/mime_type/mod.rs` and
+`types/media_type/mod.rs`, on each module; `types/scalar.rs`, on
+`text_scalar_value!`, which is the one shape `Version`, `Timezone` and
+`MimeType` now share instead of three copies of it.
+**Fixtures:** `types/tests/timezone.rs` and `types/tests/media.rs` - identity,
+canonicalization, ordering and hashing, the structural wire, the Arrow
+extension round trip, a text column ingested with a located bad row, defaults,
+merges and typed fields, and that the value is the one the rest of the crate
+already routes on; the digest corpus and the prebuilt-field allocation pin
+both name all three.
+**Bindings:** `types.timezone` / `fields.timezone`, `types.mimetype` /
+`fields.mimetype` and `types.mediatype` / `fields.mediatype`, built the way
+`url` is: each value crosses as its canonical text, so neither language grows
+a wrapper class and neither can hold a spelling the core did not produce.
+
+## 35. A test in `src` names what only the crate can see
+
+Two thirds of the Rust suite lived in `src` under `#[cfg(test)]`, and most of
+it had no reason to: it drove `DataType`, `Field`, `Scalar`, the Arrow
+boundary, the handles and the record formats through the same doors a caller
+has - from inside, where a private helper is one `super::` away and nothing
+says which contract is under test. A suite that can reach anything proves
+nothing about what is reachable.
+
+- About 1 600 tests move into `rust/tests/`, one top-level theme per subtree,
+  `#[path]` modules mirroring `src/`. Every one reaches the crate as
+  `yggdryl::` and no other way.
+- What stays in `src` stays for one stated reason each, written in the module
+  doc: the tested item is not reachable from outside. `media/iceberg` (nine
+  private modules and every `TableMetadata` field), `holder/object` (signing,
+  XML, the dialects), `holder/zip` (the format readers), `fix` (the identifier
+  control byte, the lineage and code-set renderers, `FixMsg::from_parts`),
+  `types/value` (`canonicalize_dtype_value`), `types/temporal/iso` (the ISO
+  readers), `types/timezone` (the bundled registry), and about twenty
+  single-item pins - `value_rank`, `leaf_display`, `low_64`,
+  `algorithm_of_width`, `accepts_time`, `read_at`, `convert`, `order`,
+  `open_builder`, `home_from`, `matches_segment`, `utf8_transcribe_into`,
+  `from_decimal_text`, `rendered_len`, `commit_arrow_readers`, `merged`,
+  `folder_reader`, `schema_json_from_field`, `Schema::names`, `Ipc`'s handle
+  field, and `Metadata`'s shared pointer.
+- A fixture stops borrowing the code under test where the move made that
+  possible: the geometry default is compared against stated `POINT EMPTY`
+  bytes, the Avro container fixture writes its own zig-zag `long`, an Arrow
+  array is narrowed with a local `downcast`, a row is read through a
+  one-element slice and `scalar_value`, and an equality-hash check uses
+  `DefaultHasher` rather than the crate's private stable hash.
+- One fixture is deliberately written twice. `Counting` - the handle that
+  mirrors a `Buffer` and tallies what reaches it - lives in `tests/support/`
+  for the three themes that assert against it, and a smaller one lives beside
+  the page-eviction pins, which need it *and* the private `read_at`. An
+  integration test cannot see a `#[cfg(test)]` item, and making the instrument
+  public to share it would put a measuring device in the crate's API.
+- Two defects the move surfaced, both invisible from inside: the exported
+  `impl_default_iomedia!` expanded to `$crate::iobase::…`, a private module, so
+  it never compiled outside the crate at all; and the two coupled-digest column
+  readings matched `DigestAlgorithm` exhaustively, which a caller cannot do
+  because the enum is `#[non_exhaustive]`.
+
+**Written in:** AGENTS "Where a test lives"; each `src` suite's module doc.
+**Fixtures:** every test name in the tree before the move is in it after -
+3 288 before, 3 291 after, the three added being pins the split created.

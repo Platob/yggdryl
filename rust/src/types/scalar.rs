@@ -41,7 +41,10 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Error, I256, Result, TimeUnit, Timezone};
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone,
+    i256,
+};
 
 use super::boolean::Boolean;
 use super::bytes::Bytes;
@@ -49,7 +52,7 @@ use super::decimal::scalars as decimal;
 use super::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
 use super::enumeration::Enum;
 use super::floating::scalars::{Float16, Float32, Float64};
-use super::geospatial::Geospatial;
+use super::geospatial::{Geography, Geometry};
 use super::integer::scalars::{compare_integer_parts, integer_parts};
 use super::integer::{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128};
 use super::nested::{Children, Mapping, Record, Sequence};
@@ -95,9 +98,9 @@ pub trait ScalarValue:
 
 /// One dynamic family of scalar representations.
 ///
-/// [`Code`] and [`Geospatial`] group several leaves; every other leaf,
-/// including each integer, float, decimal, temporal and nested width, is its
-/// own family.
+/// [`Code`] is the one family grouping several leaves; every other leaf,
+/// including each integer, float, decimal, temporal, geospatial and nested
+/// width, is its own family.
 pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash {
     /// The datatype family shared by every member.
     const KIND: DataTypeKind;
@@ -112,6 +115,75 @@ pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + H
     fn from_scalar(value: &Scalar) -> Option<&Self>;
 }
 
+/// Make one canonical text value a scalar leaf of its own.
+///
+/// A value that parses, canonicalizes and renders itself - a version, a time
+/// zone, a MIME type - is its own family: it holds no narrower leaf and no
+/// wider one holds it, so every method here is the same four lines under a
+/// different name. The wrapping variant is named because a value wider than
+/// the enum rides behind a shared pointer instead.
+macro_rules! text_scalar_value {
+    ($leaf:ty, $variant:ident, $id:expr, $dtype:expr) => {
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Text;
+
+            fn id(&self) -> DataTypeId {
+                $id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok($dtype)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl ScalarValue for $leaf {
+            type Family = Self;
+
+            const ID: DataTypeId = $id;
+            const KIND: DataTypeKind = DataTypeKind::Text;
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok($dtype)
+            }
+
+            fn into_family(self) -> Self::Family {
+                self
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                Some(family)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl From<$leaf> for Scalar {
+            fn from(value: $leaf) -> Self {
+                Self::$variant(value)
+            }
+        }
+    };
+}
+
+pub(crate) use text_scalar_value;
+
 /// The shared deterministic scalar spanning native and structured formats.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
@@ -121,39 +193,39 @@ pub enum Scalar {
     /// A boolean.
     Boolean(Boolean),
     /// A signed 8-bit integer.
-    I8(Int8),
+    Int8(Int8),
     /// A signed 16-bit integer.
-    I16(Int16),
+    Int16(Int16),
     /// A signed 32-bit integer.
-    I32(Int32),
+    Int32(Int32),
     /// A signed 64-bit integer.
-    I64(Int64),
+    Int64(Int64),
     /// An unsigned 8-bit integer.
-    U8(UInt8),
+    UInt8(UInt8),
     /// An unsigned 16-bit integer.
-    U16(UInt16),
+    UInt16(UInt16),
     /// An unsigned 32-bit integer.
-    U32(UInt32),
+    UInt32(UInt32),
     /// An unsigned 64-bit integer.
-    U64(UInt64),
+    UInt64(UInt64),
     /// A signed 128-bit integer.
-    I128(Int128),
+    Int128(Int128),
     /// An unsigned 128-bit integer.
-    U128(UInt128),
+    UInt128(UInt128),
     /// An IEEE binary16 float.
-    F16(Float16),
+    Float16(Float16),
     /// An IEEE binary32 float.
-    F32(Float32),
+    Float32(Float32),
     /// An IEEE binary64 float.
-    F64(Float64),
+    Float64(Float64),
     /// A 32-bit coefficient-and-scale decimal.
-    D32(Decimal32),
+    Decimal32(Decimal32),
     /// A 64-bit coefficient-and-scale decimal.
-    D64(Decimal64),
+    Decimal64(Decimal64),
     /// A 128-bit coefficient-and-scale decimal.
-    D128(Decimal128),
+    Decimal128(Decimal128),
     /// A 256-bit coefficient-and-scale decimal.
-    D256(Decimal256),
+    Decimal256(Decimal256),
     /// A 32-bit day-count date.
     Date32(Date32),
     /// A 64-bit millisecond-count date.
@@ -184,12 +256,24 @@ pub enum Scalar {
     /// Behind one shared pointer: a parsed [`crate::Url`] is far wider than
     /// this enum, and a column of them is cloned once per row.
     Url(Arc<crate::Url>),
+    /// A canonical time zone name, a fixed offset, or the zone-free marker.
+    Timezone(Timezone),
+    /// A validated, canonical MIME type.
+    MimeType(MimeType),
+    /// A MIME type with its charset and content codings.
+    ///
+    /// Behind one shared pointer: a media type carries a base, a charset and a
+    /// coding list, which is wider than this enum, and a column of them is
+    /// cloned once per row.
+    MediaType(Arc<MediaType>),
     /// One identity-preserving member of a shared static enum.
     Enum(Enum),
     /// Opaque bytes retaining their storage representation.
     Bytes(Bytes),
-    /// Geometry or geography as validated Well-Known Binary.
-    Geospatial(Geospatial),
+    /// Planar geometry as validated Well-Known Binary.
+    Geometry(Geometry),
+    /// Geographic coordinates as validated Well-Known Binary.
+    Geography(Geography),
     /// A schema-free ordered sequence of values.
     Sequence(Sequence),
     /// A schema-free insertion-ordered mapping of arbitrary keys.
@@ -258,35 +342,35 @@ impl Serialize for Scalar {
                 document.end()
             }
             Self::Boolean(value) => tagged(serializer, "bool", &value.get()),
-            Self::I8(value) => tagged(serializer, "i8", &value.get()),
-            Self::I16(value) => tagged(serializer, "i16", &value.get()),
-            Self::I32(value) => tagged(serializer, "i32", &value.get()),
-            Self::I64(value) => tagged(serializer, "i64", &value.get()),
-            Self::U8(value) => tagged(serializer, "u8", &value.get()),
-            Self::U16(value) => tagged(serializer, "u16", &value.get()),
-            Self::U32(value) => tagged(serializer, "u32", &value.get()),
-            Self::U64(value) => tagged(serializer, "u64", &value.get()),
-            Self::I128(value) => tagged(serializer, "i128", &value.get()),
-            Self::U128(value) => tagged(serializer, "u128", &value.get()),
-            Self::F16(value) => tagged(serializer, "f16", value),
-            Self::F32(value) => tagged(serializer, "f32", value),
-            Self::F64(value) => tagged(serializer, "f64", value),
-            Self::D32(value) => tagged(
+            Self::Int8(value) => tagged(serializer, "i8", &value.get()),
+            Self::Int16(value) => tagged(serializer, "i16", &value.get()),
+            Self::Int32(value) => tagged(serializer, "i32", &value.get()),
+            Self::Int64(value) => tagged(serializer, "i64", &value.get()),
+            Self::UInt8(value) => tagged(serializer, "u8", &value.get()),
+            Self::UInt16(value) => tagged(serializer, "u16", &value.get()),
+            Self::UInt32(value) => tagged(serializer, "u32", &value.get()),
+            Self::UInt64(value) => tagged(serializer, "u64", &value.get()),
+            Self::Int128(value) => tagged(serializer, "i128", &value.get()),
+            Self::UInt128(value) => tagged(serializer, "u128", &value.get()),
+            Self::Float16(value) => tagged(serializer, "f16", value),
+            Self::Float32(value) => tagged(serializer, "f32", value),
+            Self::Float64(value) => tagged(serializer, "f64", value),
+            Self::Decimal32(value) => tagged(
                 serializer,
                 "d32",
                 &Pair(&value.coefficient(), &value.scale()),
             ),
-            Self::D64(value) => tagged(
+            Self::Decimal64(value) => tagged(
                 serializer,
                 "d64",
                 &Pair(&value.coefficient(), &value.scale()),
             ),
-            Self::D128(value) => tagged(
+            Self::Decimal128(value) => tagged(
                 serializer,
                 "d128",
                 &Pair(&value.coefficient(), &value.scale()),
             ),
-            Self::D256(value) => tagged(
+            Self::Decimal256(value) => tagged(
                 serializer,
                 "d256",
                 &Pair(&value.coefficient(), &value.scale()),
@@ -304,16 +388,17 @@ impl Serialize for Scalar {
                 tagged(serializer, "uuid", &value.render(&mut slot))
             }
             Self::Version(value) => tagged(serializer, "version", value),
+            Self::Timezone(value) => tagged(serializer, "timezone", &value.as_str()),
+            Self::MimeType(value) => tagged(serializer, "mimetype", &value.as_str()),
+            Self::MediaType(value) => tagged(serializer, "mediatype", &value.to_string()),
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Enum(value) => tagged(serializer, "enum", value),
             // One tag for every byte value: the ordinary payload writes its
             // bytes and nothing else, and a layout or a fixed width is what
             // makes a value carry more than that.
             Self::Bytes(value) => tagged(serializer, "bytes", value),
-            Self::Geospatial(value) => match value {
-                Geospatial::Geometry(value) => tagged(serializer, "geospatial", &value.as_bytes()),
-                Geospatial::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
-            },
+            Self::Geometry(value) => tagged(serializer, "geometry", &value.as_bytes()),
+            Self::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
             // A temporal is its classic ISO spelling wherever it has one; a
             // reading with no classic spelling keeps its structural parts.
             Self::Date32(value) => match super::temporal::iso::format_date(value.count()) {
@@ -462,9 +547,10 @@ impl<'de> Deserialize<'de> for Scalar {
             }
         }
 
-        // This mirror must stay variant-for-variant identical to `Scalar`: a
-        // variant missing here is not a compile error, it is a variant serde
-        // silently refuses to read back.
+        // This mirror must cover every `Scalar` variant: one missing here is
+        // not a compile error, it is a variant serde silently refuses to read
+        // back. Its names are the wire tags, snake-cased, so they spell the
+        // tag that is written rather than the Rust variant.
         #[derive(Deserialize)]
         #[serde(tag = "type", content = "value", rename_all = "snake_case")]
         enum StructuralValue {
@@ -486,7 +572,7 @@ impl<'de> Deserialize<'de> for Scalar {
             D32(i32, i8),
             D64(i64, i8),
             D128(i128, i8),
-            D256(I256, i8),
+            D256(i256, i8),
             String(Str),
             Country(SmolStr),
             Currency(SmolStr),
@@ -499,10 +585,15 @@ impl<'de> Deserialize<'de> for Scalar {
             TimeInForce(SmolStr),
             Uuid(SmolStr),
             Version(Version),
+            Timezone(SmolStr),
+            #[serde(rename = "mimetype")]
+            MimeType(SmolStr),
+            #[serde(rename = "mediatype")]
+            MediaType(SmolStr),
             Url(SmolStr),
             Enum(Enum),
             Bytes(Bytes),
-            Geospatial(Arc<[u8]>),
+            Geometry(Arc<[u8]>),
             Geography(Arc<[u8]>),
             Date32(Temporal32),
             Date64(Temporal64),
@@ -531,15 +622,15 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralValue::U64(value) => Ok(Self::from(value)),
             StructuralValue::I128(value) => Ok(Self::from(value)),
             StructuralValue::U128(value) => Ok(Self::from(value)),
-            StructuralValue::F16(value) => Ok(Self::F16(value)),
-            StructuralValue::F32(value) => Ok(Self::F32(value)),
-            StructuralValue::F64(value) => Ok(Self::F64(value)),
-            StructuralValue::D32(unscaled, scale) => {
-                Ok(Self::D32(super::decimal::Decimal32::new(unscaled, scale)))
-            }
-            StructuralValue::D64(unscaled, scale) => {
-                Ok(Self::D64(super::decimal::Decimal64::new(unscaled, scale)))
-            }
+            StructuralValue::F16(value) => Ok(Self::Float16(value)),
+            StructuralValue::F32(value) => Ok(Self::Float32(value)),
+            StructuralValue::F64(value) => Ok(Self::Float64(value)),
+            StructuralValue::D32(unscaled, scale) => Ok(Self::Decimal32(
+                super::decimal::Decimal32::new(unscaled, scale),
+            )),
+            StructuralValue::D64(unscaled, scale) => Ok(Self::Decimal64(
+                super::decimal::Decimal64::new(unscaled, scale),
+            )),
             StructuralValue::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralValue::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
             StructuralValue::String(value) => Ok(Self::String(value)),
@@ -572,16 +663,25 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map(Self::Uuid)
                 .map_err(D::Error::custom),
             StructuralValue::Version(value) => Ok(Self::Version(value)),
+            StructuralValue::Timezone(value) => Timezone::from_str(value.as_str())
+                .map(Self::Timezone)
+                .map_err(D::Error::custom),
+            StructuralValue::MimeType(value) => MimeType::from_str(value.as_str())
+                .map(Self::MimeType)
+                .map_err(D::Error::custom),
+            StructuralValue::MediaType(value) => MediaType::from_str(value.as_str())
+                .map(|value| Self::MediaType(Arc::new(value)))
+                .map_err(D::Error::custom),
             StructuralValue::Url(value) => crate::Url::from_str(value.as_str())
                 .map(|value| Self::Url(Arc::new(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Enum(value) => Ok(Self::Enum(value)),
             StructuralValue::Bytes(value) => Ok(Self::Bytes(value)),
-            StructuralValue::Geospatial(value) => super::geospatial::Geometry::new(value)
-                .map(|value| Self::Geospatial(Geospatial::Geometry(value)))
+            StructuralValue::Geometry(value) => super::geospatial::Geometry::new(value)
+                .map(Self::Geometry)
                 .map_err(D::Error::custom),
             StructuralValue::Geography(value) => super::geospatial::Geography::new(value)
-                .map(|value| Self::Geospatial(Geospatial::Geography(value)))
+                .map(Self::Geography)
                 .map_err(D::Error::custom),
             StructuralValue::Date32(Temporal32::Triple(count, unit, zone)) => {
                 Self::date32_in(count, unit, zone).map_err(D::Error::custom)
@@ -719,6 +819,11 @@ impl Ord for Scalar {
                 return left.1.cmp(&right.1).then_with(|| left.2.cmp(&right.2));
             }
         }
+        // Geometry and geography differ in the coordinate reference they
+        // name, not in the bytes, so one WKB payload is one value under both.
+        if let (Some(left), Some(right)) = (geospatial_bytes(self), geospatial_bytes(other)) {
+            return left.cmp(right);
+        }
         let rank = value_rank(self).cmp(&value_rank(other));
         if rank != Ordering::Equal {
             return rank;
@@ -737,20 +842,20 @@ impl Ord for Scalar {
         match self {
             Self::Null => Ordering::Equal,
             Self::Boolean(left) => same_kind!(Self::Boolean(right) => left.cmp(right)),
-            Self::I8(_)
-            | Self::I16(_)
-            | Self::I32(_)
-            | Self::I64(_)
-            | Self::U8(_)
-            | Self::U16(_)
-            | Self::U32(_)
-            | Self::U64(_)
-            | Self::I128(_)
-            | Self::U128(_) => unreachable!("every integer width returned above"),
-            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+            Self::Int8(_)
+            | Self::Int16(_)
+            | Self::Int32(_)
+            | Self::Int64(_)
+            | Self::UInt8(_)
+            | Self::UInt16(_)
+            | Self::UInt32(_)
+            | Self::UInt64(_)
+            | Self::Int128(_)
+            | Self::UInt128(_) => unreachable!("every integer width returned above"),
+            Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
                 unreachable!("all float widths returned above")
             }
-            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_) => {
+            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
                 unreachable!("all decimal widths returned above")
             }
             // Two temporals of one family returned above, and two families
@@ -767,10 +872,15 @@ impl Ord for Scalar {
             Self::Code(left) => same_kind!(Self::Code(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
+            Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
+            Self::MimeType(left) => same_kind!(Self::MimeType(right) => left.cmp(right)),
+            Self::MediaType(left) => same_kind!(Self::MediaType(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
             Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
-            Self::Geospatial(left) => same_kind!(Self::Geospatial(right) => left.cmp(right)),
+            Self::Geometry(_) | Self::Geography(_) => {
+                unreachable!("both geospatial readings returned above")
+            }
             Self::Sequence(left) => same_kind!(Self::Sequence(right) => left.cmp(right)),
             Self::Mapping(left) => same_kind!(Self::Mapping(right) => left.cmp(right)),
             Self::Record(left) => same_kind!(Self::Record(right) => left.cmp(right)),
@@ -803,20 +913,20 @@ impl Hash for Scalar {
         match self {
             Self::Null => {}
             Self::Boolean(value) => value.hash(state),
-            Self::I8(_)
-            | Self::I16(_)
-            | Self::I32(_)
-            | Self::I64(_)
-            | Self::U8(_)
-            | Self::U16(_)
-            | Self::U32(_)
-            | Self::U64(_)
-            | Self::I128(_)
-            | Self::U128(_) => unreachable!("integer values returned above"),
-            Self::F16(_) | Self::F32(_) | Self::F64(_) => {
+            Self::Int8(_)
+            | Self::Int16(_)
+            | Self::Int32(_)
+            | Self::Int64(_)
+            | Self::UInt8(_)
+            | Self::UInt16(_)
+            | Self::UInt32(_)
+            | Self::UInt64(_)
+            | Self::Int128(_)
+            | Self::UInt128(_) => unreachable!("integer values returned above"),
+            Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
                 unreachable!("float values returned above")
             }
-            Self::D32(_) | Self::D64(_) | Self::D128(_) | Self::D256(_) => {
+            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
                 unreachable!("decimal values returned above")
             }
             Self::Date32(_)
@@ -837,10 +947,14 @@ impl Hash for Scalar {
             Self::Code(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
+            Self::Timezone(value) => value.hash(state),
+            Self::MimeType(value) => value.hash(state),
+            Self::MediaType(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
             Self::Enum(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
-            Self::Geospatial(value) => value.hash(state),
+            Self::Geometry(value) => value.hash(state),
+            Self::Geography(value) => value.hash(state),
             Self::Sequence(value) => {
                 0_isize.hash(state);
                 value.hash(state);
@@ -862,8 +976,17 @@ fn float_value(value: &Scalar) -> Option<Float64> {
     value.as_f64().map(Float64::from_f64)
 }
 
-fn decimal_value(value: &Scalar) -> Option<(I256, i8)> {
+fn decimal_value(value: &Scalar) -> Option<(i256, i8)> {
     value.as_decimal()
+}
+
+/// The validated WKB every geospatial reading orders and hashes by.
+fn geospatial_bytes(value: &Scalar) -> Option<&[u8]> {
+    match value {
+        Scalar::Geometry(value) => Some(value.as_bytes()),
+        Scalar::Geography(value) => Some(value.as_bytes()),
+        _ => None,
+    }
 }
 
 /// The family, normalized count, and zone of one temporal.
@@ -893,18 +1016,21 @@ const fn value_rank(value: &Scalar) -> u8 {
     match value {
         Scalar::Null => 0,
         Scalar::Boolean(_) => 1,
-        Scalar::I8(_)
-        | Scalar::I16(_)
-        | Scalar::I32(_)
-        | Scalar::I64(_)
-        | Scalar::U8(_)
-        | Scalar::U16(_)
-        | Scalar::U32(_)
-        | Scalar::U64(_)
-        | Scalar::I128(_)
-        | Scalar::U128(_) => 2,
-        Scalar::F16(_) | Scalar::F32(_) | Scalar::F64(_) => 3,
-        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => 4,
+        Scalar::Int8(_)
+        | Scalar::Int16(_)
+        | Scalar::Int32(_)
+        | Scalar::Int64(_)
+        | Scalar::UInt8(_)
+        | Scalar::UInt16(_)
+        | Scalar::UInt32(_)
+        | Scalar::UInt64(_)
+        | Scalar::Int128(_)
+        | Scalar::UInt128(_) => 2,
+        Scalar::Float16(_) | Scalar::Float32(_) | Scalar::Float64(_) => 3,
+        Scalar::Decimal32(_)
+        | Scalar::Decimal64(_)
+        | Scalar::Decimal128(_)
+        | Scalar::Decimal256(_) => 4,
         Scalar::String(_) => 5,
         Scalar::Bytes(_) => 6,
         Scalar::Date32(_) | Scalar::Date64(_) => 7,
@@ -914,13 +1040,16 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Sequence(_) => 11,
         Scalar::Mapping(_) => 12,
         Scalar::Record(_) => 13,
-        Scalar::Geospatial(_) => 14,
+        Scalar::Geometry(_) | Scalar::Geography(_) => 14,
         Scalar::Enum(_) => 15,
         Scalar::Interval(_) => 16,
         Scalar::Uuid(_) => 17,
         Scalar::Code(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
+        Scalar::Timezone(_) => 21,
+        Scalar::MimeType(_) => 22,
+        Scalar::MediaType(_) => 23,
     }
 }
 
@@ -935,23 +1064,23 @@ impl Scalar {
         match self {
             Self::Null => DataTypeId::Null,
             Self::Boolean(_) => DataTypeId::Boolean,
-            Self::I8(_) => DataTypeId::Int8,
-            Self::I16(_) => DataTypeId::Int16,
-            Self::I32(_) => DataTypeId::Int32,
-            Self::I64(_) => DataTypeId::Int64,
-            Self::I128(_) => DataTypeId::Int128,
-            Self::U8(_) => DataTypeId::UInt8,
-            Self::U16(_) => DataTypeId::UInt16,
-            Self::U32(_) => DataTypeId::UInt32,
-            Self::U64(_) => DataTypeId::UInt64,
-            Self::U128(_) => DataTypeId::UInt128,
-            Self::F16(_) => DataTypeId::Float16,
-            Self::F32(_) => DataTypeId::Float32,
-            Self::F64(_) => DataTypeId::Float64,
-            Self::D32(_) => DataTypeId::Decimal32,
-            Self::D64(_) => DataTypeId::Decimal64,
-            Self::D128(_) => DataTypeId::Decimal128,
-            Self::D256(_) => DataTypeId::Decimal256,
+            Self::Int8(_) => DataTypeId::Int8,
+            Self::Int16(_) => DataTypeId::Int16,
+            Self::Int32(_) => DataTypeId::Int32,
+            Self::Int64(_) => DataTypeId::Int64,
+            Self::Int128(_) => DataTypeId::Int128,
+            Self::UInt8(_) => DataTypeId::UInt8,
+            Self::UInt16(_) => DataTypeId::UInt16,
+            Self::UInt32(_) => DataTypeId::UInt32,
+            Self::UInt64(_) => DataTypeId::UInt64,
+            Self::UInt128(_) => DataTypeId::UInt128,
+            Self::Float16(_) => DataTypeId::Float16,
+            Self::Float32(_) => DataTypeId::Float32,
+            Self::Float64(_) => DataTypeId::Float64,
+            Self::Decimal32(_) => DataTypeId::Decimal32,
+            Self::Decimal64(_) => DataTypeId::Decimal64,
+            Self::Decimal128(_) => DataTypeId::Decimal128,
+            Self::Decimal256(_) => DataTypeId::Decimal256,
             Self::Date32(_) => DataTypeId::Date32,
             Self::Date64(_) => DataTypeId::Date64,
             Self::Time32(_) => DataTypeId::Time32,
@@ -965,11 +1094,14 @@ impl Scalar {
             Self::Code(code) => code.identifier(),
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
+            Self::Timezone(_) => DataTypeId::Timezone,
+            Self::MimeType(_) => DataTypeId::MimeType,
+            Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
             Self::Enum(_) => DataTypeId::String,
             Self::Bytes(bytes) => bytes.layout().id(),
-            Self::Geospatial(Geospatial::Geometry(_)) => DataTypeId::Geometry,
-            Self::Geospatial(Geospatial::Geography(_)) => DataTypeId::Geography,
+            Self::Geometry(_) => DataTypeId::Geometry,
+            Self::Geography(_) => DataTypeId::Geography,
             Self::Sequence(_) => DataTypeId::List,
             Self::Mapping(_) => DataTypeId::Map,
             Self::Record(_) => DataTypeId::Struct,
@@ -990,35 +1122,38 @@ impl Scalar {
         match self {
             Self::Null => "null",
             Self::Boolean(_) => "boolean",
-            Self::I8(_) => "i8",
-            Self::I16(_) => "i16",
-            Self::I32(_) => "i32",
-            Self::I64(_) => "i64",
-            Self::U8(_) => "u8",
-            Self::U16(_) => "u16",
-            Self::U32(_) => "u32",
-            Self::U64(_) => "u64",
-            Self::I128(_) => "i128",
-            Self::U128(_) => "u128",
-            Self::F16(_) => "f16",
-            Self::F32(_) => "f32",
-            Self::F64(_) => "f64",
-            Self::D32(_) => "d32",
-            Self::D64(_) => "d64",
-            Self::D128(_) => "d128",
-            Self::D256(_) => "d256",
+            Self::Int8(_) => "i8",
+            Self::Int16(_) => "i16",
+            Self::Int32(_) => "i32",
+            Self::Int64(_) => "i64",
+            Self::UInt8(_) => "u8",
+            Self::UInt16(_) => "u16",
+            Self::UInt32(_) => "u32",
+            Self::UInt64(_) => "u64",
+            Self::Int128(_) => "i128",
+            Self::UInt128(_) => "u128",
+            Self::Float16(_) => "f16",
+            Self::Float32(_) => "f32",
+            Self::Float64(_) => "f64",
+            Self::Decimal32(_) => "d32",
+            Self::Decimal64(_) => "d64",
+            Self::Decimal128(_) => "d128",
+            Self::Decimal256(_) => "d256",
             Self::String(text) => text.layout().as_str(),
             Self::Code(code) => code.identifier().as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
+            Self::Timezone(_) => "timezone",
+            Self::MimeType(_) => "mimetype",
+            Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
             Self::Enum(_) => "enum",
             Self::Bytes(bytes) => match bytes.layout() {
                 super::bytes::BytesLayout::Binary => "bytes",
                 other => other.as_str(),
             },
-            Self::Geospatial(Geospatial::Geometry(_)) => "geospatial",
-            Self::Geospatial(Geospatial::Geography(_)) => "geography",
+            Self::Geometry(_) => "geometry",
+            Self::Geography(_) => "geography",
             Self::Date32(_) => "date32",
             Self::Date64(_) => "date64",
             Self::Time32(_) => "time32",
@@ -1146,7 +1281,8 @@ impl Scalar {
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
             Self::Bytes(value) => Some(value.as_bytes()),
-            Self::Geospatial(value) => Some(value.as_bytes()),
+            Self::Geometry(value) => Some(value.as_bytes()),
+            Self::Geography(value) => Some(value.as_bytes()),
             _ => None,
         }
     }
@@ -1276,13 +1412,13 @@ impl Scalar {
         self.is_integer()
             || matches!(
                 self,
-                Self::F16(_)
-                    | Self::F32(_)
-                    | Self::F64(_)
-                    | Self::D32(_)
-                    | Self::D64(_)
-                    | Self::D128(_)
-                    | Self::D256(_)
+                Self::Float16(_)
+                    | Self::Float32(_)
+                    | Self::Float64(_)
+                    | Self::Decimal32(_)
+                    | Self::Decimal64(_)
+                    | Self::Decimal128(_)
+                    | Self::Decimal256(_)
             )
     }
 
@@ -1294,23 +1430,23 @@ impl Scalar {
     /// variant answers `None`, because its spelling is the caller's to choose.
     pub(crate) fn leaf_display(&self) -> Option<&dyn fmt::Display> {
         let leaf: &dyn fmt::Display = match self {
-            Self::I8(value) => value,
-            Self::I16(value) => value,
-            Self::I32(value) => value,
-            Self::I64(value) => value,
-            Self::U8(value) => value,
-            Self::U16(value) => value,
-            Self::U32(value) => value,
-            Self::U64(value) => value,
-            Self::I128(value) => value,
-            Self::U128(value) => value,
-            Self::F16(value) => value,
-            Self::F32(value) => value,
-            Self::F64(value) => value,
-            Self::D32(value) => value,
-            Self::D64(value) => value,
-            Self::D128(value) => value,
-            Self::D256(value) => value,
+            Self::Int8(value) => value,
+            Self::Int16(value) => value,
+            Self::Int32(value) => value,
+            Self::Int64(value) => value,
+            Self::UInt8(value) => value,
+            Self::UInt16(value) => value,
+            Self::UInt32(value) => value,
+            Self::UInt64(value) => value,
+            Self::Int128(value) => value,
+            Self::UInt128(value) => value,
+            Self::Float16(value) => value,
+            Self::Float32(value) => value,
+            Self::Float64(value) => value,
+            Self::Decimal32(value) => value,
+            Self::Decimal64(value) => value,
+            Self::Decimal128(value) => value,
+            Self::Decimal256(value) => value,
             Self::Date32(value) => value,
             Self::Date64(value) => value,
             Self::Time32(value) => value,
@@ -1331,7 +1467,11 @@ impl Scalar {
             | Self::Url(_)
             | Self::Enum(_)
             | Self::Bytes(_)
-            | Self::Geospatial(_) => return None,
+            | Self::Geometry(_)
+            | Self::Geography(_)
+            | Self::Timezone(_)
+            | Self::MimeType(_)
+            | Self::MediaType(_) => return None,
         };
         Some(leaf)
     }
