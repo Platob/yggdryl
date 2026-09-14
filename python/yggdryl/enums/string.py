@@ -14,9 +14,9 @@ length and has no integer its bytes always fit, and a fixed UTF-8 string holds
 bytes the packing does not read.
 
 A width says how many bytes a value may take. A registered code says what the
-value *is*, and carries that identity across Arrow, so a vocabulary declared
-over `CurrencyCode` builds a `currency` column rather than three anonymous
-bytes.
+value *is*, and carries that identity across Arrow under its own extension
+name, so a vocabulary declared over `CurrencyCode` builds a `currency` column
+rather than anonymous text.
 
 The vocabulary stays open: a valid value that was not declared reads back as a
 member under its own packed code, registered once and announced once on the
