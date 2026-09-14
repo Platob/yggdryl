@@ -11,7 +11,9 @@ The 128-bit identifier, its spellings, and its `arrow.uuid` storage.
 | Canonical text | 36-character lowercase hyphenated |
 | Accepts | hyphenated, 32-digit bare hex, either case, sixteen bytes |
 | Default | the nil UUID |
-| Storage | `FixedSizeBinary(16)`, extension `arrow.uuid` |
+| Storage | `FixedSizeBinary(16)`, extension `arrow.uuid` - the width the canonical Arrow extension fixes, and 16 bytes against the 36 a spelling would take |
+| Reads into | every [string](text.md) datatype, as the canonical spelling, and every byte framing, as the sixteen bytes; one cast tier reads both |
+| Rendering | `Uuid::render` writes the spelling into a caller's `[u8; Uuid::TEXT_LEN]` and allocates nothing |
 | Iceberg | [`uuid`](../media/iceberg/schema.md) maps onto it |
 | Validator | one rule for [field](field.md) validation, Arrow ingest, every [cast](cast.md) tier |
 
@@ -55,6 +57,13 @@ Every spelling reads to the same bytes and writes back canonical.
     assert_eq!(arrow.data_type(), &ArrowDataType::FixedSizeBinary(16));
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "arrow.uuid");
     assert_eq!(Field::from_arrow(&arrow)?, id);
+
+    // The spelling goes into a caller's slot, so a writer that wants a
+    // `&str` allocates nothing for it.
+    use yggdryl::types::Uuid;
+    let mut slot = [0_u8; Uuid::TEXT_LEN];
+    assert_eq!(Uuid::new(packed).render(&mut slot), text);
+    assert_eq!(Uuid::TEXT_LEN, 36);
 
     assert!(uuid.uuid_packed(b"not-a-uuid").is_err());
     ```
@@ -123,6 +132,10 @@ Every spelling reads to the same bytes and writes back canonical.
 - `uuid_packed` or `uuid_value` on another datatype -> `InvalidDataType`.
 - Packed integer -> the same in every process, and what a stable hash hashes.
 - [Merged](field.md) with `fixed_size_binary(16)` -> those bytes widening, `uuid` narrowing; any other width -> `binary`; `bytes_parameters` -> `None`, a UUID is bytes with an identity rather than a byte column.
+- A recognized identifier column into any [string](text.md) datatype -> the canonical spelling, under that datatype's own layout, charset and bound; a bound the 36 characters outgrow -> refused naming the row.
+- A recognized identifier column into any byte framing -> the sixteen bytes; a width that is not sixteen -> refused naming both sides, at plan time when the source width is declared and at the row otherwise.
+- Into `uuid` -> sixteen bytes read as the identifier they are, a fixed slot of any other width read as the spelling it holds with the slot's padding trimmed, and any text read as a spelling. Sixteen bytes are never trimmed: every one of them carries identity, and a trailing `0x00` is one of them.
+- `Uuid::render` -> the same characters `Display` writes, into the caller's slot; `to_string` is that string when an owned one is what the caller needs.
 
 ## Commands
 

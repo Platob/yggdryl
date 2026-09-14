@@ -12,7 +12,9 @@
 //! [`crate::DataType::String`], from them; `utf8`, `ascii`, `varchar(32)`
 //! and `char(8)` are spellings of it, never datatypes of their own.
 //! [`Str`] is the one string value, and the eight registered codes beside it
-//! are identities with a storage rather than strings with a charset.
+//! are identities over a published registry rather than strings with a
+//! charset: each stores as the ASCII text it is, under its own Arrow
+//! extension name and held to its own standard's width.
 //!
 //! ```
 //! use yggdryl::types::{StringLayout, StringParameters};
@@ -58,9 +60,6 @@ mod scalars;
 
 pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
 pub use code::{Cfi, Code, CodeValue, Country, Currency, Isin, Mic, Side, State, TimeInForce};
-// The padding is the payload a declared width stores, which a value answers
-// with or without an Arrow array around it.
-pub(crate) use codes::ascii_padded;
 pub(crate) use codes::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
     TIMEINFORCE_WIDTH, ascii_bytes, ascii_text, code_cell_text, code_extension_name,
@@ -113,8 +112,10 @@ pub enum StringLayout {
 /// Strip the padding a fixed-width storage writes.
 ///
 /// Trailing NUL is that padding wherever this crate lays a value out in a
-/// slot wider than itself - a [`StringLayout::FixedString`] cell or a
-/// registered code - so the rule lives here once rather than at each reader.
+/// slot wider than itself - a [`StringLayout::FixedString`] cell - so the
+/// rule lives here once rather than at each reader. A code stores as the
+/// text it is and pads nothing, but a code's *intake* is wide: a cell
+/// arriving from a fixed-width column is trimmed here on the way in.
 pub(crate) fn trim_padding(bytes: &[u8]) -> &[u8] {
     let end = bytes
         .iter()

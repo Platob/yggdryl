@@ -249,7 +249,8 @@ pub enum DataTypeId
   pub const fn is_string(self) -> bool
   pub const fn is_nested(self) -> bool
   pub const fn is_wrapper(self) -> bool
-  pub const fn fixed_byte_width(self) -> Option<usize>
+  pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
+  pub const fn code_width(self) -> Option<usize>  (the eight registered codes; the most bytes one value may be)
 
 ### yggdryl::root::datatype_kind  [rust\src\datatype_kind.rs]
 pub enum DataTypeKind
@@ -3107,12 +3108,14 @@ pub const fn uuid() -> Self
 
 ### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
 pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarFamily and ScalarValue)
+  pub const TEXT_LEN: usize = 36;
   pub const fn new(value: u128) -> Self
   pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
   pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
   pub fn from_bytes(value: &[u8]) -> Result<Self>
   pub const fn get(self) -> u128
   pub const fn into_bytes(self) -> [u8; 16]
+  pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str  (the canonical spelling into the caller's slot; allocates nothing)
 
 ### yggdryl::types::version  [rust\src\types\version\mod.rs]
 pub struct Version
@@ -3563,7 +3566,7 @@ impl DataType
   pub const fn string_parameters(&self) -> Option<StringParameters>  (String only; codes answer None)
   pub const fn is_string(&self) -> bool
   pub const fn charset(&self) -> Option<Charset>
-  pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width)
+  pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width; None for a code)
 
 ### yggdryl::types::string::scalars  [rust\src\types\string\scalars.rs]
 pub const INLINE_CAPACITY: usize = 23;
@@ -3623,8 +3626,9 @@ impl DataType
   pub const fn cfi() -> Self
   pub const fn isin() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
+  pub const fn code_width(&self) -> Option<usize>  (the most bytes one value may be; a maximum, so fixed_byte_width is None)
   pub const fn is_code(&self) -> bool
-  pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>  (a fixed US-ASCII string of at most sixteen bytes, or a code)
+  pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>  (a fixed US-ASCII string of at most sixteen bytes, or a code; padded to that width by the packing, never by a column)
   pub fn ascii_value(&self, packed: i128) -> Result<Str>
 
 ### yggdryl::types::string::dictionary  [rust\src\types\string\dictionary.rs]

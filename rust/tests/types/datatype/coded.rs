@@ -24,7 +24,7 @@ fn text(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-/// The eight codes, each with its fixed width and one value its standard names.
+/// The eight codes, each with its width and one value its standard names.
 const CODED: [(&str, DataType, usize, &str); 8] = [
     ("country", DataType::Country, 2, "US"),
     ("currency", DataType::Currency, 3, "USD"),
@@ -53,11 +53,15 @@ fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         );
 
         // Identity: the discriminant, the family, the width, and the listing.
-        // A code is an identity with a storage, not a string with a charset.
+        // A code is an identity over a registry, not a string with a charset.
         assert_eq!(dtype.id().as_str(), *name, "{name}");
         assert_eq!(dtype.kind(), DataTypeKind::Code, "{name}");
-        assert_eq!(dtype.fixed_byte_width(), Some(*width), "{name}");
-        assert_eq!(dtype.id().fixed_byte_width(), Some(*width), "{name}");
+        // The width bounds a value; a code stores as the text it is, so no
+        // code claims a fixed layout.
+        assert_eq!(dtype.code_width(), Some(*width), "{name}");
+        assert_eq!(dtype.id().code_width(), Some(*width), "{name}");
+        assert_eq!(dtype.fixed_byte_width(), None, "{name}");
+        assert_eq!(dtype.id().fixed_byte_width(), None, "{name}");
         assert!(dtype.is_code(), "{name}");
         assert!(dtype.id().is_string(), "{name}");
         assert!(!dtype.is_string(), "{name}");
@@ -153,8 +157,9 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
     assert_eq!(side.as_str(), Some("1"));
     assert_eq!(DataType::Side.scalar(side.clone()).unwrap(), side);
 
-    // Packing is the crate's fixed-ASCII packing at the fixed width:
-    // NUL-padded up to it, the padding gone on the way back.
+    // Packing is the crate's fixed-ASCII packing at the code's own width:
+    // NUL-padded up to it, the padding gone on the way back. The padding is
+    // the packing's; the column stores no padding at all.
     assert_eq!(
         DataType::Side.ascii_packed(b"1").unwrap(),
         DataType::fixed_ascii(4)
@@ -175,33 +180,45 @@ fn a_coded_value_is_checked_rewritten_and_packed_at_its_own_width() {
 }
 
 #[test]
-fn a_cast_into_a_code_pads_and_reading_it_back_trims() {
+fn a_cast_into_a_code_stores_the_text_and_reading_it_back_keeps_it() {
     let venue = Field::new("venue", DataType::Mic, false);
-    let padded = venue
+    let stored = venue
         .cast_arrow_array(
             text(&["XPAR", "XLON"]),
             ArrowCastOptions::new().with_safe(false),
         )
         .unwrap();
-    let bytes = padded
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
-    assert_eq!(bytes.value_length(), 4);
-    assert_eq!(bytes.value(0), b"XPAR");
+    let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(cells.value(0), "XPAR");
+    assert_eq!(cells.value(1), "XLON");
 
-    // A shorter value pads; the column read under `utf8` trims it back.
+    // A value shorter than the width stores as itself: there is no slot to
+    // fill, so nothing is padded and nothing has to be trimmed back.
     let short = venue
         .cast_arrow_array(text(&["BX"]), ArrowCastOptions::new().with_safe(false))
         .unwrap();
-    let short = short
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
+    let short = short.as_any().downcast_ref::<StringArray>().unwrap();
+    assert_eq!(short.value(0), "BX");
+    assert_eq!(short.value_length(0), 2);
+
+    // A fixed-width column is still a spelling a cast reads, and the padding
+    // its slot wrote is the slot's rather than the value's.
+    let slots: ArrayRef =
+        Arc::new(FixedSizeBinaryArray::try_from_iter([b"BX\0\0".to_vec()].into_iter()).unwrap());
+    let trimmed = venue
+        .cast_arrow_array(slots, ArrowCastOptions::new().with_safe(false))
         .unwrap();
-    assert_eq!(short.value(0), b"BX\0\0");
+    assert_eq!(
+        trimmed
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .value(0),
+        "BX"
+    );
 
     let row = root([venue.clone()]);
-    let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![padded]).unwrap();
+    let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![stored]).unwrap();
     let as_text = root([DataType::utf8().required_field("venue")]);
     let trimmed = as_text
         .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
@@ -332,16 +349,12 @@ fn a_coded_column_casts_to_text_and_back_and_refuses_a_number() {
 }
 
 #[test]
-fn every_code_stores_the_width_its_standard_fixes() {
+fn every_code_stores_as_the_text_it_is_under_its_own_extension() {
     for (name, dtype, width, sample) in &CODED {
         let field = Field::new("code", dtype.clone(), false);
         let arrow = field.clone().into_arrow().unwrap();
 
-        assert_eq!(
-            arrow.data_type(),
-            &ArrowDataType::FixedSizeBinary(i32::try_from(*width).unwrap()),
-            "{name}"
-        );
+        assert_eq!(arrow.data_type(), &ArrowDataType::Utf8, "{name}");
         assert_eq!(
             arrow.metadata()["ARROW:extension:name"],
             format!("yggdryl.{name}"),
@@ -351,22 +364,18 @@ fn every_code_stores_the_width_its_standard_fixes() {
         // The identity round-trips: the same bytes come back the same code.
         assert_eq!(Field::from_arrow(&arrow).unwrap(), field, "{name}");
 
-        // A value is stored padded to the width and read back trimmed, and
-        // text cast into the column becomes the same cell.
+        // A value is stored as exactly its own bytes, and text cast into the
+        // column becomes the same cell.
         let value = dtype.scalar(Scalar::from(*sample)).unwrap();
         let stored = scalar_array(&field, &value).unwrap();
-        let bytes = stored
-            .as_any()
-            .downcast_ref::<FixedSizeBinaryArray>()
-            .unwrap();
+        let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
+        assert_eq!(cells.value(0), *sample, "{name}");
         assert_eq!(
-            bytes.value_length(),
-            i32::try_from(*width).unwrap(),
+            usize::try_from(cells.value_length(0)).unwrap(),
+            sample.len(),
             "{name}"
         );
-        let mut padded = sample.as_bytes().to_vec();
-        padded.resize(*width, 0);
-        assert_eq!(bytes.value(0), padded.as_slice(), "{name}");
+        assert!(sample.len() <= *width, "{name}");
         assert_eq!(
             scalar_value(&field, stored.as_ref()).unwrap(),
             value,
@@ -377,7 +386,7 @@ fn every_code_stores_the_width_its_standard_fixes() {
             .unwrap();
         assert_eq!(cast.as_ref(), stored.as_ref(), "{name}");
 
-        // And the column's own storage ingests without re-padding or
+        // And the column's own storage ingests without rewriting or
         // refusing: the plan asks `is_code`, so a code added to the listing
         // is planned without being named again.
         let again = field
@@ -389,8 +398,8 @@ fn every_code_stores_the_width_its_standard_fixes() {
         assert_eq!(again.as_ref(), stored.as_ref(), "{name}");
 
         // A value past the width is refused at the code's own width, naming
-        // the row it was in - one refusal shape for all nine, where the four
-        // FIX codes used to fall to Arrow's builder complaint instead.
+        // the row it was in: the width is a bound the value rule keeps even
+        // though no layout enforces it any more.
         let over = "X".repeat(*width + 1);
         let refused = field
             .cast_arrow_array(
@@ -411,27 +420,30 @@ fn every_code_stores_the_width_its_standard_fixes() {
 }
 
 #[test]
-fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
+fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
     let currency = Field::new("ccy", DataType::Currency, false);
-    let ascii24 = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
+    let bounded = Field::new("ccy", DataType::from_str("ascii(3)").unwrap(), false);
 
-    // Identical storage, different identity, so neither imports as the other.
+    // Identical storage, different identity, so neither imports as the other:
+    // the extension *name* is what separates them, never the storage.
     let currency_arrow = currency.clone().into_arrow().unwrap();
-    let ascii_arrow = ascii24.clone().into_arrow().unwrap();
-    assert_eq!(currency_arrow.data_type(), ascii_arrow.data_type());
-    assert_ne!(currency_arrow.metadata(), ascii_arrow.metadata());
+    let bounded_arrow = bounded.clone().into_arrow().unwrap();
+    assert_eq!(currency_arrow.data_type(), &ArrowDataType::Utf8);
+    assert_eq!(bounded_arrow.data_type(), &ArrowDataType::Utf8);
+    assert_ne!(currency_arrow.metadata(), bounded_arrow.metadata());
     assert_eq!(Field::from_arrow(&currency_arrow).unwrap(), currency);
-    assert_eq!(Field::from_arrow(&ascii_arrow).unwrap(), ascii24);
+    assert_eq!(Field::from_arrow(&bounded_arrow).unwrap(), bounded);
 
-    // The same three bytes under no extension at all stay a fixed binary.
-    let plain = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(3), false);
+    // The same text under no extension at all stays plain text.
+    let plain = arrow_schema::Field::new("ccy", ArrowDataType::Utf8, false);
     assert_eq!(
         Field::from_arrow(&plain).unwrap().dtype(),
-        &DataType::fixed_size_binary(3).unwrap()
+        &DataType::utf8()
     );
 
-    // A code's own name over the wrong width is not that code either.
-    let mismatched = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(4), false)
+    // A code's own name over a storage it does not lay out is not that code
+    // either: it stays the storage it is.
+    let mismatched = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(3), false)
         .with_metadata(
             [
                 (
@@ -445,21 +457,18 @@ fn a_code_and_the_width_that_holds_it_are_not_the_same_column() {
         );
     assert_eq!(
         Field::from_arrow(&mismatched).unwrap().dtype(),
-        &DataType::fixed_size_binary(4).unwrap()
+        &DataType::fixed_size_binary(3).unwrap()
     );
 }
 
 #[test]
-fn a_cfi_stores_six_bytes_rather_than_padding_into_eight() {
+fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
     let cfi = Field::new("classification", DataType::Cfi, false);
     let stored = scalar_array(&cfi, &Scalar::from("ESVUFR")).unwrap();
-    let bytes = stored
-        .as_any()
-        .downcast_ref::<FixedSizeBinaryArray>()
-        .unwrap();
+    let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
 
-    assert_eq!(bytes.value_length(), 6);
-    assert_eq!(bytes.value(0), b"ESVUFR");
+    assert_eq!(cells.value(0), "ESVUFR");
+    assert_eq!(cells.value_length(0), 6);
     assert_eq!(
         scalar_value(&cfi, stored.as_ref()).unwrap(),
         DataType::Cfi.scalar(Scalar::from("ESVUFR")).unwrap()
@@ -500,6 +509,22 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
             .is_err()
     );
     assert!(FieldScalar::new(venue.as_field(), "XPARIS").is_err());
+
+    // A typed field hands back the exact array its code stores as, which is
+    // text: the marker names the array type at compile time, so a storage
+    // change that the marker did not follow is a downcast failure here.
+    let cells = ccy
+        .cast_arrow_array(
+            text(&["USD", "EUR"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+    assert_eq!(cells.value(0), "USD");
+    assert_eq!(cells.value(1), "EUR");
+    let one = venue
+        .cast_arrow_scalar(text(&["XPAR"]), ArrowCastOptions::new().with_safe(false))
+        .unwrap();
+    assert_eq!(one.into_inner().value(0), "XPAR");
 }
 
 #[test]
@@ -691,17 +716,17 @@ fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
         assert_eq!(dtype.to_string(), name);
         assert_eq!(dtype.kind(), DataTypeKind::Code);
         assert!(dtype.is_code());
-        assert_eq!(dtype.fixed_byte_width(), Some(width));
+        assert_eq!(dtype.code_width(), Some(width));
 
-        // And it crosses Arrow as the fixed width it is, extension name and
-        // all, so a column round-trips without becoming plain bytes.
+        // And it crosses Arrow as the text it is, extension name and all, so
+        // a column round-trips without becoming anonymous text.
         let field = Field::new(name, dtype.clone(), true);
         let recovered = Field::from_arrow(&field.clone().into_arrow().unwrap()).unwrap();
         assert_eq!(recovered, field);
     }
 
-    // A value wider than the storage is refused by the datatype rather than
-    // truncated into something that reads.
+    // A value wider than the code's own width is refused by the datatype
+    // rather than truncated into something that reads.
     assert!(DataType::State.scalar(Scalar::from("20NEW")).is_ok());
     assert!(DataType::State.scalar(Scalar::from("40PARTFILL")).is_ok());
     assert!(
@@ -710,4 +735,93 @@ fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
             .is_err()
     );
     assert!(DataType::TimeInForce.scalar(Scalar::from("0")).is_ok());
+}
+
+/// Every string and byte datatype a code column reaches, and what it reads
+/// back as.
+///
+/// A code is ASCII text bounded by its standard's width, and that reading has
+/// to survive every layout, charset and bound the string family offers and
+/// every framing the byte family does - a code stores as text now, so both
+/// families are one cast away in each direction.
+#[test]
+fn a_code_column_reads_into_every_string_and_byte_datatype() {
+    let strict = || ArrowCastOptions::new().with_safe(false);
+    let ccy = Field::new("v", DataType::Currency, false);
+    let stored = ccy.cast_arrow_array(text(&["USD"]), strict()).unwrap();
+    // The column carries `yggdryl.currency`, which is what a reading reads it
+    // under.
+    let batch = RecordBatch::try_new(
+        root([ccy.clone()]).into_arrow_schema().unwrap(),
+        vec![Arc::clone(&stored)],
+    )
+    .unwrap();
+    let into = |target: DataType| -> ArrayRef {
+        Arc::clone(
+            root([Field::new("v", target, false)])
+                .cast_arrow_batch(batch.clone(), strict())
+                .unwrap()
+                .column(0),
+        )
+    };
+
+    for spelling in [
+        "utf8",
+        "large_utf8",
+        "utf8_view",
+        "ascii",
+        "utf8(3)",
+        "large_ascii",
+        "fixed_ascii(3)",
+        "string(windows-1252)",
+        "binary",
+        "large_binary",
+        "binary_view",
+        "fixed_size_binary(3)",
+        "binary(3)",
+    ] {
+        let read = into(DataType::from_str(spelling).unwrap());
+        let back = ccy
+            .cast_arrow_array(read, strict())
+            .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
+        assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
+    }
+
+    // A width the value does not fill is a different payload either way, and
+    // each refusal names both sides rather than leaving Arrow's builder to
+    // complain about a slice length.
+    for (spelling, expected) in [
+        ("fixed_size_binary(8)", "exactly 8 bytes"),
+        ("binary(2)", "at most 2 bytes"),
+        ("utf8(2)", "at most 2"),
+    ] {
+        let refused = root([Field::new(
+            "v",
+            DataType::from_str(spelling).unwrap(),
+            false,
+        )])
+        .cast_arrow_batch(batch.clone(), strict())
+        .unwrap_err()
+        .to_string();
+        assert!(refused.contains(expected), "{spelling}: {refused}");
+        assert!(refused.contains("row 0"), "{spelling}: {refused}");
+    }
+
+    // And the same readings hold one value at a time: a code spells its text,
+    // and that text's bytes are its payload.
+    let value = DataType::Currency.scalar(Scalar::from("USD")).unwrap();
+    assert_eq!(
+        DataType::utf8().scalar(value.clone()).unwrap().as_str(),
+        Some("USD")
+    );
+    assert_eq!(
+        DataType::binary().scalar(value.clone()).unwrap().as_bytes(),
+        Some(b"USD".as_slice())
+    );
+    assert_eq!(
+        DataType::Currency
+            .scalar(Scalar::from(b"USD".to_vec()))
+            .unwrap(),
+        value
+    );
 }

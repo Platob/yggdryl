@@ -172,7 +172,7 @@ impl DataType {
     /// checked against the datatype and rewritten into the exact
     /// representation it declares - an integer narrowed to its width, a
     /// decimal restated at its scale, a temporal restated at its unit, an
-    /// ASCII value trimmed of the padding its storage adds. A value that
+    /// ASCII value trimmed of the padding a fixed slot adds. A value that
     /// already matches comes back untouched, so a correctly built value costs
     /// one walk and no allocation, and nothing downstream checks it again.
     ///
@@ -184,7 +184,7 @@ impl DataType {
     /// use yggdryl::{DataType, DataTypeId, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// // The padded spelling storage holds becomes the exact code leaf, trimmed.
+    /// // Every spelling a code is written in becomes the exact code leaf.
     /// let currency = DataType::Currency.scalar("USD\0")?;
     /// assert_eq!(currency.id(), DataTypeId::Currency);
     /// assert_eq!(currency.as_str(), Some("USD"));

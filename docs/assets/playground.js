@@ -114,6 +114,7 @@
     for (const name of [
       'datatype',
       'fixedByteWidth',
+      'codeWidth',
       'kind',
       'Arrow storage',
       'extension name',
@@ -133,6 +134,7 @@
       line.append(first)
       for (const value of [
         String(width.fixedByteWidth),
+        String(width.codeWidth),
         width.kind,
         width.arrow,
         width.extensionName,

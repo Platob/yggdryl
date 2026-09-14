@@ -395,13 +395,12 @@ pub(crate) enum RecognizedExtension {
     /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
     /// document says whether it is a geometry or a geography.
     Geospatial(GeospatialParameters),
-    /// A code's own `yggdryl.{country,currency,mic,cfi}` over the
-    /// `FixedSizeBinary` width that code fixes.
+    /// A code's own `yggdryl.{country,currency,mic,cfi}` over Utf8.
     ///
     /// It is separate from [`Self::String`] because the identity is the
-    /// point: three bytes under `yggdryl.currency` are a currency and three
-    /// bytes under `yggdryl.string` are a `fixed_ascii(3)`, and neither
-    /// imports as the other.
+    /// point: text under `yggdryl.currency` is a currency and the same text
+    /// under `yggdryl.string` is a bounded ASCII string, and neither imports
+    /// as the other.
     Code(DataType),
     /// The `yggdryl.string` extension: a layout, a charset and a bound over
     /// the Arrow storage that layout and charset lay out.
@@ -442,8 +441,8 @@ impl RecognizedExtension {
 /// over its exact storage struct with an empty extension metadata document,
 /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
 /// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
-/// the width that code fixes, and the canonical `arrow.uuid` over
-/// `FixedSizeBinary(16)`, each with an empty or absent document.
+/// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with
+/// an empty or absent document.
 ///
 /// The answer is what the extension describes, which is the *values* of a
 /// dictionary-encoded column: [`encoded_values`] peels the encoding here and
@@ -453,7 +452,9 @@ impl RecognizedExtension {
 /// Any other pairing keeps today's behavior exactly - a foreign extension
 /// name, one of ours over a storage it does not spell, a variant or a code
 /// with a non-empty document: the field imports as its storage type with the
-/// `ARROW:extension:*` keys as plain metadata.
+/// `ARROW:extension:*` keys as plain metadata. A code, a version and a URL
+/// all ride Utf8, so it is the *name* that separates them, and a name none of
+/// them claims leaves the column the plain text it is.
 ///
 /// # Errors
 ///
@@ -537,12 +538,9 @@ pub(crate) fn recognized_arrow_extension(
         URL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Url))
         }
-        code if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::FixedSizeBinary(width) => {
-                code_for_extension(code, *width).map(RecognizedExtension::Code)
-            }
-            _ => None,
-        }),
+        code if document.unwrap_or("").is_empty() && matches!(storage, ArrowDataType::Utf8) => {
+            Ok(code_for_extension(code).map(RecognizedExtension::Code))
+        }
         _ => Ok(None),
     }
 }

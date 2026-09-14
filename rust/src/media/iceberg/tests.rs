@@ -2953,11 +2953,16 @@ mod tables {
 }
 
 mod planning {
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+
     use super::{
         Field, FormatVersion, IOBase, PartitionSpec, Table, collect, root, trade_schema, trades,
     };
     use crate::DataType;
     use crate::holder::local::Folder;
+    use crate::media::iceberg::schema::assign_field_ids;
 
     /// A table partitioned by venue, with one commit per venue.
     ///
@@ -3228,6 +3233,63 @@ mod planning {
             .collect();
         venues.sort();
         assert_eq!(venues, ["XLON", "XNAS", "XNYS"]);
+    }
+
+    #[test]
+    fn a_code_column_bounds_a_manifest_by_the_text_iceberg_reads() {
+        // Iceberg has `string` and nothing that carries a code's identity, so
+        // a `mic` column's bound is the text a reader compares. That was
+        // already true of a padded column - the Iceberg writer trimmed on the
+        // way out - and this pins that the storage change did not move it:
+        // the bound is the value, at either end of the width.
+        let path = root("code-bounds");
+        let mut schema = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Mic.nullable_field("venue"),
+        ])
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema.insert_metadata("iceberg:schema-id", "0").unwrap();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        for (id, venue) in [(1_i64, "XNAS"), (2, "BX")] {
+            let batch = RecordBatch::try_new(
+                Arc::clone(&arrow),
+                vec![
+                    Arc::new(Int64Array::from(vec![id])),
+                    Arc::new(StringArray::from(vec![Some(venue)])),
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+
+        let mut bounds: Vec<String> = table
+            .manifests()
+            .unwrap()
+            .iter()
+            .map(|manifest| {
+                String::from_utf8(manifest.partitions[0].lower_bound.clone().unwrap()).unwrap()
+            })
+            .collect();
+        bounds.sort();
+        // `BX` is shorter than the width its standard fixes, and its bound is
+        // still exactly `BX`.
+        assert_eq!(bounds, ["BX", "XNAS"]);
+
+        // And the column reads back a market identifier, not anonymous text.
+        let plan = table.plan(&[("venue", "BX")]).unwrap();
+        assert_eq!(plan.tasks.len(), 1);
     }
 
     #[test]

@@ -428,9 +428,9 @@ export declare class DataType {
   /**
    * The parameters a string datatype declares, `null` for every other.
    *
-   * The registered codes are not strings - a currency is three ASCII
-   * bytes with an identity - so they answer `null` here and
-   * `fixedByteWidth` instead.
+   * The registered codes are not strings - a currency is an identity over
+   * ISO 4217 that stores as the text it is - so they answer `null` here
+   * and `codeWidth` instead.
    */
   get stringParameters(): StringParameters | null
   /**
@@ -447,20 +447,32 @@ export declare class DataType {
   get charset(): string | null
   /**
    * The fixed byte width of one value, `null` when the width varies: a
-   * fixed string or fixed bytes answer their declared width, the numbers,
-   * the codes and a UUID their storage width.
+   * fixed string or fixed bytes answer their declared width, the numbers
+   * and a UUID their storage width. A code's width bounds its values
+   * rather than laying them out, so a code answers `codeWidth`.
    */
   get fixedByteWidth(): number | null
   /**
-   * The integer an ASCII value packs into: its storage bytes, big-endian.
+   * The most bytes a registered code's value may be, `null` for every
+   * other datatype.
+   *
+   * The number its standard fixes - three for a currency, six for a CFI
+   * classification - and a maximum rather than a layout: a code stores as
+   * the text it is, so `fixedByteWidth` answers `null` and this answers
+   * the bound its values are held to.
+   */
+  get codeWidth(): number | null
+  /**
+   * The integer an ASCII value packs into: its bytes padded with trailing
+   * NUL to the width, big-endian.
    *
    * The packed integer is the same in every process, so it is what an enum
-   * member and a stable hash are, and it is exactly the bytes a fixed
-   * US-ASCII column or a code stores. It reaches 128 bits at the widest
+   * member and a stable hash are. The padding is the packing's: a code's
+   * column stores the text alone. It reaches 128 bits at the widest
    * packable width, so it crosses as a `bigint` at every width.
    */
   asciiPacked(value: string): bigint
-  /** The ASCII value a packed integer carries, without its padding. */
+  /** The ASCII value a packed integer carries, without that padding. */
   asciiValue(packed: bigint): string
   /** Whether this type owns child fields. */
   get nested(): boolean

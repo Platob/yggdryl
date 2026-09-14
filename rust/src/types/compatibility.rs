@@ -358,7 +358,8 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         D::Bytes(_) => Ok((D::binary(), true)),
         // No fixed-width text and no charset to declare here, so a string
         // exchanges as the characters it holds, the cast encodes them as
-        // UTF-8 and trims a fixed width's padding.
+        // UTF-8 and trims a fixed width's padding. A code already holds its
+        // characters; what it loses here is the identity, not the bytes.
         D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
             Ok((D::utf8(), true))
         }
@@ -658,8 +659,9 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         ),
         D::Bytes(_) => Ok((D::binary(), true)),
         // Iceberg has `string` and `fixed[n]` and no charset to declare, so a
-        // string exchanges as the characters it holds: every Iceberg reader
-        // must see `USD`, never the padded bytes.
+        // string exchanges as the characters it holds, and a code as the ones
+        // it already stores: every Iceberg reader sees `USD`, under a type it
+        // can name.
         D::String(_)
         | D::Country
         | D::Currency

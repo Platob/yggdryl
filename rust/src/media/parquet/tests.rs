@@ -1070,20 +1070,23 @@ mod limits {
     }
 }
 
-/// The geospatial pair and the variant storage struct: logical types in the
-/// footer, refused value bounds, and the WKB statistics written instead.
-mod geospatial {
+/// The extension-typed columns: the logical type each writes into the footer,
+/// the value bounds it does or does not earn there, and what a read of our own
+/// file gets back - the geospatial pair, the variant storage struct, the
+/// declared strings, and the registered codes.
+mod extensions {
     use std::collections::HashMap;
     use std::sync::Arc;
 
     use arrow_array::cast::AsArray;
-    use arrow_array::{Array, ArrayRef, BinaryArray, Int64Array, RecordBatch};
+    use arrow_array::{Array, ArrayRef, BinaryArray, Int64Array, RecordBatch, StringArray};
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
     use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType};
 
     use super::{Parquet, handle};
     use crate::holder::Buffer;
     use crate::{ArrowCast, ArrowCastOptions};
+    use crate::{DataType, Field};
     use crate::{IOBase, IOMedia};
 
     /// One little-endian ISO WKB point.
@@ -1147,6 +1150,57 @@ mod geospatial {
             .iter()
             .find(|column| column.path().string() == path)
             .and_then(|column| column.logical_type_ref().cloned())
+    }
+
+    #[test]
+    fn a_code_column_writes_parquet_string_and_keeps_its_identity() {
+        // A code stores as text, so Parquet gives it the String logical type
+        // and bounds over the codes themselves. A padded column had no
+        // logical type at all - a reader outside this crate saw an untyped
+        // FIXED_LEN_BYTE_ARRAY where a currency is a string - and its bounds
+        // carried the slot's NUL for every value short of the width.
+        let media = written(
+            "currency.parquet",
+            vec![
+                ArrowField::new("id", ArrowDataType::Int64, false),
+                extension_field("ccy", ArrowDataType::Utf8, "yggdryl.currency", Some("")),
+            ],
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])),
+                Arc::new(StringArray::from(vec![Some("EUR"), None, Some("USD")])),
+            ],
+        );
+        assert_eq!(leaf_logical(&media, "ccy"), Some(LogicalType::String));
+
+        // Which means a planner gets bounds over the codes themselves.
+        let statistics = media.read_statistics().unwrap();
+        let ccy = statistics.row_groups[0]
+            .columns
+            .iter()
+            .find(|column| column.path == "ccy")
+            .unwrap();
+        assert_eq!(ccy.min_bytes.as_deref(), Some(b"EUR".as_slice()));
+        assert_eq!(ccy.max_bytes.as_deref(), Some(b"USD".as_slice()));
+        assert_eq!(ccy.null_count, Some(1));
+
+        // And the column reads back a currency rather than anonymous text.
+        let options = media.record_options().unwrap();
+        let batches: Vec<_> = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| batch.unwrap())
+            .collect();
+        let restored = Field::from_arrow(batches[0].schema().field(1)).unwrap();
+        assert_eq!(restored.dtype(), &DataType::Currency);
+        assert_eq!(restored.name(), "ccy");
+        let cells = batches[0]
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(cells.value(0), "EUR");
+        assert!(cells.is_null(1));
+        assert_eq!(cells.value(2), "USD");
     }
 
     #[test]

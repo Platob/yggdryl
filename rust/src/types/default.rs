@@ -317,8 +317,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // validator accepts: the filesystem root.
         D::Url => scalar(DefaultPlan::Url, false),
         // A string defaults to the empty one, restated under its parameters
-        // by the value door; on a fixed layout, and for a code, storage pads
-        // it to all-NUL.
+        // by the value door; on a fixed layout storage pads it to all-NUL,
+        // and a code, which stores as its text, holds the empty text itself.
         D::String(_)
         | D::Country
         | D::Currency

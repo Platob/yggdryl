@@ -1,6 +1,8 @@
 //! Binary layout accounting and identity checks for Arrow casts.
 
-use arrow_array::builder::{BinaryBuilder, BinaryViewBuilder, LargeBinaryBuilder};
+use arrow_array::builder::{
+    BinaryBuilder, BinaryViewBuilder, FixedSizeBinaryBuilder, LargeBinaryBuilder,
+};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
@@ -142,7 +144,11 @@ pub(crate) fn ingest_bytes_array(
 /// Builds the storage of one bounded byte layout from one cell per row.
 ///
 /// Unexposed rows are null: an ancestor hides them, so their bytes are
-/// neither measured nor copied.
+/// neither measured nor copied. A maximum takes every payload up to it; a
+/// fixed width takes only the payload that fills it exactly, because a slot
+/// is the value rather than a frame around it. Either way the refusal names
+/// the field and the row, which is what Arrow's own builder complaint does
+/// not.
 fn bytes_storage<'a>(
     target: BytesParameters,
     field: &Field,
@@ -152,18 +158,21 @@ fn bytes_storage<'a>(
     budget: &mut MaterializationBudget,
     cell: impl Fn(usize) -> Option<&'a [u8]>,
 ) -> Result<ArrayRef> {
-    // A fixed width is the storage itself, which is why no maximum ever
-    // reaches it and why this reader owes it nothing.
-    let Some(max) = target.max() else {
+    let Some(bound) = target.bound() else {
         return Err(internal_target_error("bytes"));
     };
+    let exact = target.is_fixed();
     budget.add_array(field.dtype(), rows)?;
     let mut payload = 0_usize;
     let accepted = |index: usize| -> Result<Option<&'a [u8]>> {
         let Some(bytes) = cell(index).filter(|_| is_exposed(exposure, index)) else {
             return Ok(None);
         };
-        if bytes.len() <= max as usize {
+        let fits = match exact {
+            true => bytes.len() == bound as usize,
+            false => bytes.len() <= bound as usize,
+        };
+        if fits {
             return Ok(Some(bytes));
         }
         if safe {
@@ -175,7 +184,13 @@ fn bytes_storage<'a>(
             Err(crate::Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
                 reason: crate::text::expected_got(
-                    format_args!("at most {max} bytes"),
+                    format_args!(
+                        "{} {bound} bytes",
+                        match exact {
+                            true => "exactly",
+                            false => "at most",
+                        }
+                    ),
                     format_smolstr!("{} bytes", bytes.len()),
                 ),
             }),
@@ -203,7 +218,21 @@ fn bytes_storage<'a>(
         // Arrow's view layout carries a prefix per cell rather than offsets,
         // so it takes the row count and grows its own payload blocks.
         BytesLayout::BinaryView => filled!(BinaryViewBuilder::with_capacity(rows)),
-        BytesLayout::FixedSizeBinary => return Err(internal_target_error("bytes")),
+        // Every accepted cell is exactly the width, which is what the builder
+        // needs; a cell that is not was refused or nulled above. Its
+        // `append_value` answers a `Result` the other three do not, so this
+        // arm is written out rather than bent through the macro.
+        BytesLayout::FixedSizeBinary => {
+            let width = i32::try_from(bound).map_err(|_| internal_target_error("bytes"))?;
+            let mut builder = FixedSizeBinaryBuilder::with_capacity(rows, width);
+            for index in 0..rows {
+                match accepted(index)? {
+                    Some(bytes) => builder.append_value(bytes)?,
+                    None => builder.append_null(),
+                }
+            }
+            Arc::new(builder.finish()) as ArrayRef
+        }
     })
 }
 

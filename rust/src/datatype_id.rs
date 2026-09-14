@@ -503,6 +503,8 @@ impl DataTypeId {
     /// Return the fixed byte width of one value, when the variant has one.
     ///
     /// Variable-width, view, parameterized, and nested layouts return `None`.
+    /// A registered code is variable-width text, so its standard's width is
+    /// [`Self::code_width`] - a maximum - rather than a width answered here.
     pub const fn fixed_byte_width(self) -> Option<usize> {
         match self {
             Self::Boolean => Some(1),
@@ -516,16 +518,32 @@ impl DataTypeId {
             | Self::Duration64
             | Self::DateTime64
             | Self::Decimal64 => Some(8),
-            Self::Duration32 | Self::Mic => Some(4),
-            Self::Country => Some(2),
-            Self::Currency => Some(3),
-            Self::Cfi => Some(6),
-            Self::Isin => Some(12),
-            Self::Side => Some(4),
-            Self::TimeInForce => Some(8),
-            Self::State => Some(10),
+            Self::Duration32 => Some(4),
             Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
             Self::Decimal256 => Some(32),
+            _ => None,
+        }
+    }
+
+    /// Return the most bytes one registered code's value may be.
+    ///
+    /// The number each standard fixes: two for a country, three for a
+    /// currency, four for a market identifier or a side, six for a
+    /// classification, eight for a time in force, ten for a state, and
+    /// twelve for a securities number. It is a maximum, not a layout - a
+    /// code stores as the text it is - and it is what the value rule holds
+    /// a cell to and what [`crate::DataType::ascii_packed`] pads into.
+    ///
+    /// Every other variant returns `None`.
+    pub const fn code_width(self) -> Option<usize> {
+        match self {
+            Self::Country => Some(2),
+            Self::Currency => Some(3),
+            Self::Mic | Self::Side => Some(4),
+            Self::Cfi => Some(6),
+            Self::TimeInForce => Some(8),
+            Self::State => Some(10),
+            Self::Isin => Some(12),
             _ => None,
         }
     }
@@ -628,7 +646,10 @@ mod tests {
             assert_eq!(id.kind(), DataTypeKind::Code);
             assert!(id.is_string());
             assert!(!id.is_parameterized());
-            assert_eq!(id.fixed_byte_width(), Some(*width));
+            // A code's width bounds its values; it is not a layout, so the
+            // identifier names no fixed width.
+            assert_eq!(id.code_width(), Some(*width));
+            assert_eq!(id.fixed_byte_width(), None);
         }
         assert_eq!(DataTypeId::from_str("STRING").unwrap(), DataTypeId::String);
         assert_eq!(
@@ -742,7 +763,7 @@ mod tests {
             DataTypeId::ALL.iter().all(|id| id.as_u8() != 58),
             "58 is retired and never reused"
         );
-        assert_eq!(DataTypeId::Isin.fixed_byte_width(), Some(12));
+        assert_eq!(DataTypeId::Isin.code_width(), Some(12));
     }
 
     #[test]
@@ -762,12 +783,23 @@ mod tests {
     fn fixed_widths_match_their_layout() {
         assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
         assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
-        assert_eq!(DataTypeId::Currency.fixed_byte_width(), Some(3));
-        assert_eq!(DataTypeId::Cfi.fixed_byte_width(), Some(6));
+        assert_eq!(DataTypeId::Uuid.fixed_byte_width(), Some(16));
         // A fixed string's width is a parameter, so the identifier alone has
         // none: `DataType::fixed_byte_width` is what answers for one value.
         assert_eq!(DataTypeId::FixedString.fixed_byte_width(), None);
         assert_eq!(DataTypeId::String.fixed_byte_width(), None);
         assert_eq!(DataTypeId::Struct.fixed_byte_width(), None);
+    }
+
+    #[test]
+    fn a_code_width_is_a_bound_and_never_a_layout() {
+        assert_eq!(DataTypeId::Currency.code_width(), Some(3));
+        assert_eq!(DataTypeId::Cfi.code_width(), Some(6));
+        assert_eq!(DataTypeId::Currency.fixed_byte_width(), None);
+        assert_eq!(DataTypeId::Cfi.fixed_byte_width(), None);
+        // Only a code has one: a width that is a layout is not this fact.
+        assert_eq!(DataTypeId::Uuid.code_width(), None);
+        assert_eq!(DataTypeId::FixedString.code_width(), None);
+        assert_eq!(DataTypeId::Int32.code_width(), None);
     }
 }

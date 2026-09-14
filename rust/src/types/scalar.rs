@@ -299,7 +299,10 @@ impl Serialize for Scalar {
             Self::String(value) => tagged(serializer, "string", value),
             // A code writes its text under its own datatype's name.
             Self::Code(value) => tagged(serializer, value.identifier().as_str(), &value.as_str()),
-            Self::Uuid(value) => tagged(serializer, "uuid", &value.to_string()),
+            Self::Uuid(value) => {
+                let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
+                tagged(serializer, "uuid", &value.render(&mut slot))
+            }
             Self::Version(value) => tagged(serializer, "version", value),
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Enum(value) => tagged(serializer, "enum", value),

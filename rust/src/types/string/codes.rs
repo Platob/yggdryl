@@ -1,27 +1,30 @@
 //! The registered codes: the identifiers of a trade, each its own datatype.
 //!
 //! A country, a currency, a market identifier and a CFI classification are
-//! not four names for an ASCII width. Each is a distinct logical type over a
-//! published registry, each has exactly one storage width, and a column of
-//! one is never a column of another however alike their bytes look. So each
-//! is a [`DataType`] variant of its own, with its own Arrow extension name,
-//! its own typed field and scalar, and its own fixed-width cast path.
+//! not four names for a bounded ASCII string. Each is a distinct logical type
+//! over a published registry, each has exactly one width its standard fixes,
+//! and a column of one is never a column of another however alike their bytes
+//! look. So each is a [`DataType`] variant of its own, with its own Arrow
+//! extension name, its own typed field and scalar, and its own cast path.
 //!
-//! The value contract is the fixed US-ASCII string's, stated once here: a
-//! value is ASCII text - every byte at most `0x7F` - of at most the width in
-//! bytes, with no NUL byte; storage pads with trailing `\0` to exactly the
-//! width, and every string rendering trims the padding.
-//! [`DataType::fixed_byte_width`] answers for a code exactly as it does for a
-//! fixed string, so [`DataType::ascii_packed`] and [`super::StringEnum`] work
-//! over a code with nothing added: an enum member is still the integer its
-//! value packs into.
+//! The value contract, stated once here: a value is ASCII text - every byte
+//! at most `0x7F` - of at most the code's width in bytes, with no NUL byte.
+//! Storage is Arrow's `Utf8`, which is what the text is, so a cell holds the
+//! value exactly and there is no padding to write or trim.
 //!
-//! What a code adds over the width that would hold it is identity and a
-//! constant. The identity crosses Arrow as its own extension name, so a
-//! currency column reads back a currency and not three anonymous bytes. The
-//! constant is the width: it is known at compile time for each code, so the
-//! ingest and render paths here are monomorphized per width rather than
-//! reading a length out of the datatype on every row.
+//! What a code adds over the text that would hold it is identity and a
+//! bound. The identity crosses Arrow as its own extension name, so a
+//! currency column reads back a currency and not anonymous text. The bound
+//! is [`DataType::code_width`]: it is known at compile time for each code,
+//! so the ingest path here is monomorphized per width rather than reading a
+//! length out of the datatype on every row, and it is the width
+//! [`DataType::ascii_packed`] pads into, so [`super::StringEnum`] works over
+//! a code with nothing added - an enum member is still the integer its value
+//! packs into.
+//!
+//! The width is a maximum, never a layout: [`DataType::fixed_byte_width`]
+//! answers `None` for a code, exactly as it does for the variable string a
+//! code stores like.
 //!
 //! The widths are the ones the standards fix: two bytes for ISO 3166-1's
 //! country code, three for ISO 4217's currency, four for ISO 10383's market
@@ -56,44 +59,44 @@ pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
 /// The Arrow extension name of how long an order stands.
 pub(crate) const TIMEINFORCE_EXTENSION_NAME: &str = "yggdryl.timeinforce";
 
-/// The storage width of ISO 3166-1's country code.
+/// The most bytes ISO 3166-1's country code may be.
 pub(crate) const COUNTRY_WIDTH: usize = 2;
 
-/// The storage width of ISO 4217's currency code.
+/// The most bytes ISO 4217's currency code may be.
 pub(crate) const CURRENCY_WIDTH: usize = 3;
 
-/// The storage width of ISO 10383's market identifier code.
+/// The most bytes ISO 10383's market identifier code may be.
 pub(crate) const MIC_WIDTH: usize = 4;
 
-/// The storage width of ISO 10962's classification code.
+/// The most bytes ISO 10962's classification code may be.
 pub(crate) const CFI_WIDTH: usize = 6;
 
-/// The storage width of an ISO 6166 securities identification number.
+/// The most bytes an ISO 6166 securities identification number may be.
 ///
 /// Two letters of prefix, nine of national number and one check digit:
 /// twelve, which the standard fixes and the check digit closes.
 pub(crate) const ISIN_WIDTH: usize = 12;
 
-/// The storage width of FIX's side of a trade.
+/// The most bytes FIX's side of a trade may be.
 ///
 /// The standard's values are one character and a venue's are not going to be
 /// five, so four is room without waste.
 pub(crate) const SIDE_WIDTH: usize = 4;
 
-/// The storage width of a thing's state.
+/// The most bytes a thing's state may be.
 ///
 /// Two decimal digits of rank and up to eight name bytes. Ten because the
 /// rank has to leave room for a name a person can read, and because widening
 /// later would change a discriminant, which is a wire contract.
 pub(crate) const STATE_WIDTH: usize = 10;
 
-/// The storage width of how long an order stands.
+/// The most bytes how long an order stands may be.
 ///
 /// The standard's values are one character; eight leaves room for venue codes.
 pub(crate) const TIMEINFORCE_WIDTH: usize = 8;
 
 impl DataType {
-    /// Every registered code, with its canonical name and storage width.
+    /// Every registered code, with its canonical name and width.
     ///
     /// The one listing: the parser, the Arrow extension table and every
     /// binding read the codes from here rather than repeating four arms.
@@ -115,7 +118,7 @@ impl DataType {
     ///
     /// assert_eq!(DataType::country(), DataType::Country);
     /// assert_eq!(DataType::country().to_string(), "country");
-    /// assert_eq!(DataType::country().fixed_byte_width(), Some(2));
+    /// assert_eq!(DataType::country().code_width(), Some(2));
     /// ```
     #[must_use]
     pub const fn country() -> Self {
@@ -129,7 +132,7 @@ impl DataType {
     ///
     /// assert_eq!(DataType::currency(), DataType::Currency);
     /// assert_eq!(DataType::currency().to_string(), "currency");
-    /// assert_eq!(DataType::currency().fixed_byte_width(), Some(3));
+    /// assert_eq!(DataType::currency().code_width(), Some(3));
     /// ```
     #[must_use]
     pub const fn currency() -> Self {
@@ -143,7 +146,7 @@ impl DataType {
     ///
     /// assert_eq!(DataType::mic(), DataType::Mic);
     /// assert_eq!(DataType::mic().to_string(), "mic");
-    /// assert_eq!(DataType::mic().fixed_byte_width(), Some(4));
+    /// assert_eq!(DataType::mic().code_width(), Some(4));
     /// ```
     #[must_use]
     pub const fn mic() -> Self {
@@ -157,7 +160,7 @@ impl DataType {
     ///
     /// assert_eq!(DataType::cfi(), DataType::Cfi);
     /// assert_eq!(DataType::cfi().to_string(), "cfi");
-    /// assert_eq!(DataType::cfi().fixed_byte_width(), Some(6));
+    /// assert_eq!(DataType::cfi().code_width(), Some(6));
     /// ```
     #[must_use]
     pub const fn cfi() -> Self {
@@ -171,7 +174,7 @@ impl DataType {
     ///
     /// assert_eq!(DataType::isin(), DataType::Isin);
     /// assert_eq!(DataType::isin().to_string(), "isin");
-    /// assert_eq!(DataType::isin().fixed_byte_width(), Some(12));
+    /// assert_eq!(DataType::isin().code_width(), Some(12));
     /// ```
     #[must_use]
     pub const fn isin() -> Self {
@@ -207,6 +210,28 @@ impl DataType {
         }
     }
 
+    /// The most bytes a registered code's value may be, `None` for every
+    /// other type.
+    ///
+    /// The number its standard fixes, and a maximum rather than a layout: a
+    /// code stores as the text it is, so `fixed_byte_width` answers `None`
+    /// and this answers the bound the value rule holds a cell to.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(DataType::Currency.code_width(), Some(3));
+    /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
+    /// assert_eq!(DataType::fixed_ascii(3)?.code_width(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn code_width(&self) -> Option<usize> {
+        self.id().code_width()
+    }
+
     /// Whether this is one of the registered codes.
     ///
     /// ```
@@ -236,25 +261,23 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
     }
 }
 
-/// The code one Arrow extension name and storage width import as.
+/// The code one Arrow extension name imports as.
 ///
-/// A name over the wrong width is not this code: the pair has to agree, so a
-/// `yggdryl.currency` over four bytes stays the fixed binary it is rather
-/// than silently becoming a currency.
-pub(crate) fn code_for_extension(name: &str, width: i32) -> Option<DataType> {
-    let dtype = match name {
-        COUNTRY_EXTENSION_NAME => DataType::Country,
-        CURRENCY_EXTENSION_NAME => DataType::Currency,
-        MIC_EXTENSION_NAME => DataType::Mic,
-        CFI_EXTENSION_NAME => DataType::Cfi,
-        ISIN_EXTENSION_NAME => DataType::Isin,
-        SIDE_EXTENSION_NAME => DataType::Side,
-        STATE_EXTENSION_NAME => DataType::State,
-        TIMEINFORCE_EXTENSION_NAME => DataType::TimeInForce,
-        _ => return None,
-    };
-    (usize::try_from(width).is_ok_and(|width| dtype.fixed_byte_width() == Some(width)))
-        .then_some(dtype)
+/// The name alone, because a code's storage is Arrow's `Utf8` and the caller
+/// has already checked it: a `yggdryl.currency` over anything else stays the
+/// storage it is rather than silently becoming a currency.
+pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
+    match name {
+        COUNTRY_EXTENSION_NAME => Some(DataType::Country),
+        CURRENCY_EXTENSION_NAME => Some(DataType::Currency),
+        MIC_EXTENSION_NAME => Some(DataType::Mic),
+        CFI_EXTENSION_NAME => Some(DataType::Cfi),
+        ISIN_EXTENSION_NAME => Some(DataType::Isin),
+        SIDE_EXTENSION_NAME => Some(DataType::Side),
+        STATE_EXTENSION_NAME => Some(DataType::State),
+        TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
+        _ => None,
+    }
 }
 
 /// Validates bytes as one code value of a width known at compile time.
@@ -309,26 +332,28 @@ pub(crate) fn code_refusal(dtype: &DataType) -> Error {
 }
 
 impl DataType {
-    /// The integer an ASCII value packs into: its storage bytes, big-endian.
+    /// The integer an ASCII value packs into: its bytes padded with trailing
+    /// NUL to the width, big-endian.
     ///
-    /// Storage pads with trailing NUL to the width, so the packed integer
-    /// orders exactly as the text does and is the same integer in every
-    /// process - what a stable hash and a portable enum member both need. An
-    /// ASCII byte is at most `0x7F`, so the sign bit is never set and the
-    /// value is never negative: four bytes fill an `i32`, eight an `i64`, and
-    /// sixteen the whole `i128`.
+    /// The padding is the packing's, never a column's - a code stores as the
+    /// text it is - and it is what makes the integer order exactly as the
+    /// text does and be the same integer in every process, which is what a
+    /// stable hash and a portable enum member both need. An ASCII byte is at
+    /// most `0x7F`, so the sign bit is never set and the value is never
+    /// negative: four bytes fill an `i32`, eight an `i64`, and sixteen the
+    /// whole `i128`.
     ///
-    /// Only a fixed US-ASCII width has one. A variable string takes a value
-    /// of any length, so there is no integer its bytes always fit; another
-    /// charset can set the sign bit; and a width above sixteen bytes
-    /// outgrows the widest integer this crate carries. All three are refused
-    /// rather than truncated.
+    /// Only a fixed US-ASCII width and a registered code have one. A variable
+    /// string takes a value of any length, so there is no integer its bytes
+    /// always fit; another charset can set the sign bit; and a width above
+    /// sixteen bytes outgrows the widest integer this crate carries. All
+    /// three are refused rather than truncated.
     ///
     /// ```
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// // `USD` stores as `USD\0` under `fixed_ascii(4)`, which is that
+    /// // `USD` packs into `USD\0` under `fixed_ascii(4)`, which is that
     /// // big-endian `i32`; under `currency` it is the three bytes alone.
     /// let ccy = DataType::fixed_ascii(4)?;
     /// assert_eq!(ccy.ascii_packed(b"USD")?, 0x5553_4400);
@@ -391,20 +416,30 @@ impl DataType {
         let text = ascii_text(width, stored)?;
         Str::new(text).try_with_parameters(match self {
             Self::String(parameters) => *parameters,
-            // A code is its own fixed US-ASCII slot.
-            _ => super::StringParameters::ascii(super::StringLayout::FixedString)
+            // A code is US-ASCII bounded at the width its standard fixes.
+            _ => super::StringParameters::ascii(super::StringLayout::String)
                 .try_with_bound(width as u32)?,
         })
     }
 
     /// The width a packed integer may be built from, refusing the rest.
+    ///
+    /// A code packs into the width its standard fixes; a string packs into
+    /// the width that makes it fixed, and only in US-ASCII, where no byte
+    /// sets the sign bit.
     fn packed_width(&self) -> Result<usize> {
-        let ascii = self.is_code()
-            || self
+        let width = match self.code_width() {
+            Some(width) => Some(width),
+            None if self
                 .string_parameters()
-                .is_some_and(|parameters| parameters.charset() == crate::Charset::Ascii);
-        match self.fixed_byte_width() {
-            Some(width) if ascii && width <= PACKED_LIMIT => Ok(width),
+                .is_some_and(|parameters| parameters.charset() == crate::Charset::Ascii) =>
+            {
+                self.fixed_byte_width()
+            }
+            None => None,
+        };
+        match width {
+            Some(width) if width <= PACKED_LIMIT => Ok(width),
             _ => Err(ascii_values_refusal(self)),
         }
     }
@@ -462,18 +497,6 @@ pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&st
     std::str::from_utf8(text).map_err(|error| ascii_refusal(width, format_smolstr!("{error}")))
 }
 
-/// Pads `text` with trailing NUL into one storage slot.
-///
-/// The slot is one value of the fixed-width storage; `text` has already
-/// passed [`ascii_text`] for that width, so it fits. It is the payload the
-/// width stores, so a value answers with it whether or not an Arrow array is
-/// being built around it.
-pub(crate) fn ascii_padded(slot: &mut [u8], text: &str) {
-    let length = text.len().min(slot.len());
-    slot[..length].copy_from_slice(&text.as_bytes()[..length]);
-    slot[length..].fill(0);
-}
-
 /// The bytes a code value carries, in any accepted spelling.
 pub(crate) fn ascii_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
@@ -519,24 +542,49 @@ mod tests {
     fn every_code_names_itself_and_its_width() {
         for (name, dtype, width) in DataType::CODES {
             assert_eq!(dtype.code_name(), Some(*name));
-            assert_eq!(dtype.fixed_byte_width(), Some(*width));
-            assert_eq!(dtype.id().fixed_byte_width(), Some(*width));
+            assert_eq!(dtype.code_width(), Some(*width));
+            assert_eq!(dtype.id().code_width(), Some(*width));
+            // The width is a maximum, so no code claims a fixed layout.
+            assert_eq!(dtype.fixed_byte_width(), None);
             assert_eq!(dtype.to_string(), *name);
             assert_eq!(DataType::from_str(name).unwrap(), *dtype);
             assert!(dtype.is_code());
             assert!(!dtype.is_string());
         }
         assert!(!DataType::fixed_ascii(3).unwrap().is_code());
+        assert_eq!(DataType::fixed_ascii(3).unwrap().code_width(), None);
     }
 
     #[test]
-    fn an_extension_name_needs_its_own_width() {
+    fn only_a_registered_name_is_a_code() {
         assert_eq!(
-            code_for_extension("yggdryl.currency", 3),
+            code_for_extension("yggdryl.currency"),
             Some(DataType::Currency)
         );
-        assert_eq!(code_for_extension("yggdryl.currency", 4), None);
-        assert_eq!(code_for_extension("yggdryl.ascii", 3), None);
+        assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::Cfi));
+        assert_eq!(code_for_extension("yggdryl.ascii"), None);
+        assert_eq!(code_for_extension("arrow.uuid"), None);
+    }
+
+    #[test]
+    fn a_code_packs_at_the_width_its_standard_fixes() {
+        // The packing pads; the column does not. Both codes and fixed ASCII
+        // widths answer, and nothing else does.
+        assert_eq!(
+            DataType::Currency.ascii_packed(b"USD").unwrap(),
+            0x0055_5344
+        );
+        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
+        assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
+        assert_eq!(
+            DataType::fixed_ascii(4)
+                .unwrap()
+                .ascii_packed(b"USD")
+                .unwrap(),
+            0x5553_4400
+        );
+        assert!(DataType::Currency.ascii_packed(b"EURO").is_err());
+        assert!(DataType::utf8().ascii_packed(b"USD").is_err());
     }
 
     #[test]
