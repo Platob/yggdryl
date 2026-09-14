@@ -500,13 +500,17 @@ impl FixRegistry {
             resolver.definition(key, 0)?;
         }
         let resolved = resolver.resolved;
+        // Built whole and settled once: nothing reads this catalog until it
+        // is adopted below, so the order and the two derived indexes are
+        // owed once at the end rather than once per definition.
         let mut catalog = super::catalog::Catalog::default();
         for key in keys {
             let (field, _) = resolved
                 .get(&key)
                 .ok_or_else(|| Error::absent(key.0.as_str(), key.1.as_str()))?;
-            catalog.insert(key.0, field.clone())?;
+            catalog.push(key.0, field.clone())?;
         }
+        catalog.settle_indexes();
         self.catalog = catalog;
         self.refresh_msgtype_aliases();
         Ok(())

@@ -34,7 +34,7 @@ const CHILD_DOMAIN: u64 = 0x4d53_475f_4348_4c44;
 #[derive(Clone, Debug)]
 pub struct MsgType {
     field: Field,
-    groups: HashMap<i32, Option<GroupOccurrence>>,
+    groups: super::registry::FixMap<i32, Option<GroupOccurrence>>,
     /// The direct scalar children carrying a tag, by folded name: what a
     /// key the dictionary does not name resolves against, answered by one
     /// probe rather than by a walk of a wide message's three hundred
@@ -108,7 +108,7 @@ impl MsgType {
                 (index, tag)
             })
             .collect();
-        let mut groups = HashMap::new();
+        let mut groups = super::registry::FixMap::default();
         Self::index_groups(&field, &mut Vec::new(), &mut groups, &mut HashMap::new())?;
         // Only a scalar child carrying a tag answers for a key: a nested
         // level is addressed by its own located key and never by a leaf,
@@ -262,7 +262,7 @@ impl MsgType {
     fn index_groups(
         field: &Field,
         path: &mut Vec<GroupStep>,
-        groups: &mut HashMap<i32, Option<GroupOccurrence>>,
+        groups: &mut super::registry::FixMap<i32, Option<GroupOccurrence>>,
         plans: &mut HashMap<Vec<GroupStep>, Arc<GroupPlan>>,
     ) -> Result<()> {
         if path.len() > 64 {

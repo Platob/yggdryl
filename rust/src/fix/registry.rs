@@ -36,7 +36,7 @@ pub(super) fn metadata_only_change(stored: &Field, incoming: &Field) -> bool {
 
 /// Finalize integer keys before hashbrown selects a control byte.
 #[derive(Clone, Copy, Debug, Default)]
-struct Mix(u64);
+pub(super) struct Mix(u64);
 
 impl Mix {
     const fn finalise(mut value: u64) -> u64 {
@@ -172,6 +172,14 @@ impl Hasher for Mix {
 }
 
 type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
+
+/// A map keyed by something already spread over its bits.
+///
+/// The dictionary's own hasher, for every index in the FIX layer that keys
+/// on a tag, a digest or an identity: those keys are integers a digest or
+/// the wire already spread, and SipHash would rehash what is hashed. The
+/// name-keyed maps keep the default, which is what an unspread key needs.
+pub(super) type FixMap<K, V> = HashMap<K, V, BuildHasherDefault<Mix>>;
 
 /// Fold a name directly into a seeded streaming state.
 ///
