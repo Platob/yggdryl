@@ -444,8 +444,9 @@ test('the url factory builds a validated, canonical location column', () => {
 
 test('the registered codes build their own datatype at their own width', () => {
   // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
-  // and ISO 6166 twelve: each factory builds the code, never the ASCII width
-  // that would hold the same bytes without the identity.
+  // and ISO 6166 twelve: each factory builds the code, held to that width,
+  // never the ASCII width that would hold the same text without the
+  // identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
     ['currency', [fields.currency('settlement_ccy'), 3]],
@@ -456,7 +457,8 @@ test('the registered codes build their own datatype at their own width', () => {
 
   for (const [name, [value, width]] of declared) {
     assert.equal(value.dtype.id, name, name)
-    assert.equal(value.dtype.fixedByteWidth, width, name)
+    assert.equal(value.dtype.codeWidth, width, name)
+    assert.equal(value.dtype.fixedByteWidth, null, name)
     assert.equal(value.dtype.kind, 'code', name)
     assert.equal(value.dtype.stringParameters, null, name)
     assert.ok(value.dtype.equals(new DataType(name)), name)

@@ -2030,7 +2030,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
       ['state', 'State', 65015, 'state'],
     ],
   )
-  assert.equal(derived[2].dtype.fixedByteWidth, 10)
+  assert.equal(derived[2].dtype.codeWidth, 10)
 
   // And the three identities - the instrument, the message's time/content
   // UUID and the event chain's - native UUIDs rather than untyped bytes, so
