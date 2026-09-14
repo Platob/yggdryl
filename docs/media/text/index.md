@@ -1,7 +1,7 @@
 # Plain-text records
 
-`TextOptions` reads a handle as physical-line or framed records, writes one line
-per row, and converts into the text variant of [`RecordOptions`](options.md).
+`TextOptions` reads a handle as physical-line or framed records and writes one
+line per row; it converts into the text variant of [`RecordOptions`](../options.md).
 
 ## Contract
 
@@ -21,6 +21,13 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `lift_names` / `liftNames` | entry paths lifted into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
 | `timezone` | zone applied when autotyping offset-free timestamps |
+
+## Surfaces
+
+| Page | Owns |
+| --- | --- |
+| [Scalars](scalar.md) | one line per row in and out: `read_records`, `overwrite_records`, `append_records` |
+| [Arrow](arrow.md) | the batch surface, and the Rust line/batch converters |
 
 ## Use
 
@@ -149,30 +156,30 @@ The source field is complete before any source bytes are read.
 Named `rowheader` captures follow these columns and stay nullable in both modes,
 and the columns `lift_names` [lifts](#lifting-an-entry-into-a-column) follow
 the captures.
-[`DataType::from_regex`](../types/text.md) types captures constrained to
+[`DataType::from_regex`](../../types/text.md) types captures constrained to
 booleans, signed 64-bit integers, finite floats, ISO dates, times, and
 datetimes. `yggdryl::ULBRIDGE_ROWHEADER` is the header a bridge log writes,
-its captures named for the [FIX columns they fill](../fix/arrow.md#a-bridge-log-names-what-it-fills)
+its captures named for the [FIX columns they fill](../../fix/arrow.md#a-bridge-log-names-what-it-fills)
 when the read goes on into a FIX batch.
 
 ### Classifying each record
 
-`mtime` says when the record was written, and has two sources for one column. A row header that declares an `mtime` capture dates each line from the line itself, and the capture fills the column rather than appearing beside it — so a capture spelled that way is read at `datetime64(ns, UTC)` whatever its own syntax suggests, and a reading that names no offset is resolved through `timezone`. A header that declares no such capture, or a line the header did not match, falls back to [`IOBase::mtime`](../holder/iobase/bytes.md#modification-time) — the handle's own modification time, read once per read and shared by every row. Neither available is null, which is what an unlocated buffer answers. Turning `parse_mtime` off removes the column, and frees the name for an ordinary capture.
+`mtime` says when the record was written, and has two sources for one column. A row header that declares an `mtime` capture dates each line from the line itself, and the capture fills the column rather than appearing beside it — so a capture spelled that way is read at `datetime64(ns, UTC)` whatever its own syntax suggests, and a reading that names no offset is resolved through `timezone`. A header that declares no such capture, or a line the header did not match, falls back to [`IOBase::mtime`](../../holder/iobase/bytes.md#modification-time) — the handle's own modification time, read once per read and shared by every row. Neither available is null, which is what an unlocated buffer answers. Turning `parse_mtime` off removes the column, and frees the name for an ordinary capture.
 
-The classification column is the [capture reading](../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is. It needs no dictionary and costs one shallow scan per record, which is why it is opt-in — a read that only needs rows should not pay for it. Which way a line moved is FIX's own fact, tag 385, and the [codec](../fix/decode.md) reads it from the prose in front of the payload; the reader states no direction of its own and takes nothing off the body.
+The classification column is the [capture reading](../../fix/registry.md#classifying-a-captured-line) run over each record's body: what the line is. It needs no dictionary and costs one shallow scan per record, which is why it is opt-in — a read that only needs rows should not pay for it. Which way a line moved is FIX's own fact, tag 385, and the [codec](../../fix/decode.md) reads it from the prose in front of the payload; the reader states no direction of its own and takes nothing off the body.
 
-The reader states no message type of its own either: a line's type is what its frame says, and reading a frame is the [codec's](../fix/decode.md) work rather than the classifier's. The scan stops at the first frame it locates, so on a line carrying two of them the `mimetype` a row holds — and the message code that same reading infers — describes the first frame and no other, which is what a classifier can answer without parsing.
+The reader states no message type of its own either: a line's type is what its frame says, and reading a frame is the [codec's](../../fix/decode.md) work rather than the classifier's. The scan stops at the first frame it locates, so on a line carrying two of them the `mimetype` a row holds — and the message code that same reading infers — describes the first frame and no other, which is what a classifier can answer without parsing.
 
-[FIX decoding](../fix/decode.md) consumes these captured records through a lazy
+[FIX decoding](../../fix/decode.md) consumes these captured records through a lazy
 `FixMessages` iterator, which answers none, one or many messages a record: a
 line carrying two frames yields both, one bulk configuration answer yields a
 flat message per configuration it names and none where it names none, and a
 line the codec finds no message in yields none. Each retains the originating capture columns, and a
-[FIX batch](../fix/arrow.md#one-row-per-message) is therefore one row per
+[FIX batch](../../fix/arrow.md#one-row-per-message) is therefore one row per
 message. The text reader is what answers one row per line: it emits every
 framed record, whatever the codec would go on to make of it.
 
-Measured in [Classifying a capture](../fix/registry.md#classifying-a-capture).
+Measured in [Classifying a capture](../../fix/registry.md#classifying-a-capture).
 
 ## Lines
 
@@ -266,7 +273,7 @@ crate holds - stays the range of the page it was read into and costs nothing
 beyond the validation. A body that is not is decoded once, for that line, into
 a page of its own: every valid UTF-8 run is kept as it is, and every byte of
 every invalid run is read as the character Windows-1252 gives it, through the
-[charset layer's](../charset/index.md#reading-what-cannot-be-read) generated
+[charset layer's](../../charset/index.md#reading-what-cannot-be-read) generated
 `windows-1252` table with its rule for the five bytes that table leaves
 unassigned - the one rule for a stray byte, written there once, which the
 reader calls and does not restate. A byte the wire held is a fact, and the
@@ -353,7 +360,7 @@ find the lines the reader repaired without decoding them again.
 The codec's own byte doors - `parse_fix_line`, `parse_ullink_line`,
 `parse_pairs` - take bytes as given and decode nothing, so a caller holding the
 wire still reads it as the wire; a message read from a line the text reader made
-reads that line's text, and [re-emits](../fix/encode.md) it. A data field whose
+reads that line's text, and [re-emits](../../fix/encode.md) it. A data field whose
 stated length reaches no boundary of the decoded line is not honoured, exactly
 as any stated length that reaches no boundary is not: the value stays what the
 frame cut, and the line's `decoded_byte_size` says the line was decoded.
@@ -366,7 +373,7 @@ declares their codings: `Buffer::with_media_type` in Rust, `media_type` /
 located resource's media type already carries. The reader reads
 the declaration once, where it builds its transport, and lays a transcribing
 stream decoder over the coding chain - coding first, charset second, the order
-the [structured plan](../text/index.md) composes in - so the line splitter,
+the [structured plan](../structured.md) composes in - so the line splitter,
 the row header, `lstrip` / `rstrip`, adjacent deduplication and
 the entries all read the declared text, and every line is text as read. UTF-8
 and US-ASCII are never wrapped: the line layer already reads both by [the rule
@@ -379,7 +386,7 @@ for the sequence that is left. The one byte-order mark taken off is the
 declared form's own - `FF FE` under `charset=utf-16le` - the declaration
 winning over the mark; every other mark is data, `FE FF` under that
 declaration the code unit it is, because a line refuses nothing and a mark for
-another form is a fact of the wire, where the [structured plan](../text/index.md)
+another form is a fact of the wire, where the [structured plan](../structured.md)
 strips whatever mark it finds because a parser would refuse `U+FEFF`. No mark
 is read under UTF-8 either, wrapped as it never is: `EF BB BF` under
 `charset=utf-8` is the first three bytes of the first line exactly as it is
@@ -411,7 +418,7 @@ A declaration is believed. A media type set from a stale `Content-Type` -
 `charset=iso-8859-1` over UTF-8 bytes, a common server default - reads the
 mojibake it declares, `café` as `cafÃ©`, with `decoded_byte_size` `0`, where the
 undeclared read finds `é`. The override is the handle's media type, corrected,
-or [`Transcoded::new(handle, Charset::Utf8)`](../charset/transcoded.md) around
+or [`Transcoded::new(handle, Charset::Utf8)`](../../charset/transcoded.md) around
 it. There is still no charset option: which charset a resource is in is the
 handle's fact, not a second option on every reader.
 
@@ -531,7 +538,7 @@ for a reader that reads a nested value by rules of its own, as the FIX codec
 reads a data field to the length it stated; the tree would be a second reading
 of the same bytes, paid on every value holding an `=` and then thrown away.
 
-An entry is addressed by [`FieldPath`](../types/paths.md), the crate's one path
+An entry is addressed by [`FieldPath`](../../types/paths.md), the crate's one path
 grammar: `.name` for a child, `[0]` and `[-1]` for a position, `['key']` for a
 key, and a quoted name for one carrying a dot. `get_entry_by_path` answers
 `None` for a miss, because a path naming something a line did not carry is the
@@ -601,7 +608,7 @@ exists in the schema whether or not any row carries that entry — a row without
 it is null — so the schema is still complete before a byte is read, exactly as
 `autotype` already guarantees for captures.
 
-A lifted column takes the path's [alias](../types/paths.md#aliases) where it
+A lifted column takes the path's [alias](../../types/paths.md#aliases) where it
 writes one, and the last segment's own name otherwise. `"55" as symbol` selects
 and names in one breath, which is also how two paths ending in the same segment
 are told apart. `rename_columns` still renames it like any other column.
@@ -623,102 +630,6 @@ UTF-8](#a-line-is-text): decoded into a page of its own, once, for that line.
 Every value crossing into Python or JavaScript is copied by contract: `str` and
 strings own their text, and the `bytes` and `Buffer` the `_bytes` accessors
 answer own their bytes.
-
-## Reading Arrow back into lines
-
-`into_arrow_batch` / `into_arrow_reader` build batches from lines and
-`from_arrow_batch` / `from_arrow_reader` read them back, so a text read
-round-trips through Arrow as lines. All four are Rust only: Python and
-JavaScript bind none of them.
-
-Column names are matched exactly first, then ignoring case, then against the
-spellings each column is commonly written under, keyed by its default name so a
-renamed column still finds them. Intake is where flexibility belongs: a batch
-another producer wrote names its columns the way that producer named them.
-Meaning stays exact: nothing guesses what a value means, only what a column is
-called.
-
-| column | also found as |
-| --- | --- |
-| `url` | `source`, `uri`, `path`, `file`, `location` |
-| `rownum` | `row_number`, `rownumber`, `line_number`, `lineno`, `row` |
-| `mtime` | `timestamp`, `time`, `ts`, `written_at`, `event_time` |
-| `mimetype` | `bodytype`, `content_type`, `contenttype`, `media_type` |
-| `body` | `payload`, `message`, `line`, `text`, `content`, `raw` |
-| `dropped_byte_size` | `dropped`, `dropped_bytes`, `truncated_bytes` |
-
-- The column plan is resolved once, at intake: a matched column whose Arrow
-  datatype is not the one the options plan for it is refused there, at
-  `$.<column>`, before any row. A column the batch does not carry leaves its
-  field at the default, because absence is not a failure on the read path.
-- `from_arrow_reader` holds one batch and one row cursor and decodes a row only
-  when it is pulled. A batch whose schema differs from the reader's declared
-  schema, a source error, or any row refusal is answered once and fuses the
-  iterator. `from_arrow_batch` reads its one bounded batch into a `Vec`.
-- A persisted `rownum` is `start_rownum` plus the line's index; reading
-  subtracts the same configured start and refuses a row number before it.
-  Without a `rownum` column the index is the row's stream ordinal, continuous
-  across batches, so physical gaps the read dropped are not recovered.
-- A null cell stays absent. A malformed present value - a `rownum` before the
-  start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
-  that does not parse, a null in the required `body` - is refused rather than
-  read as zero or dropped.
-- Every row refusal is located by the stream ordinal and the column,
-  `$[3].mimetype`, never by a row number an earlier column of the same row
-  restored.
-- A capture keeps its declared index even where the batch carries no column
-  for an earlier one. A typed capture renders through the canonical scalar
-  text, so its original spelling is not kept: `0007` read as `int64` comes
-  back `7`.
-
-```rust
-use std::sync::Arc;
-
-use arrow_array::{ArrayRef, RecordBatch, StringArray};
-use yggdryl::arrow::batch_reader;
-use yggdryl::media::text::{
-    TextBytes, TextLine, TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch,
-};
-
-let mut options = TextOptions::new().try_with_rowheader(r"^(?<level>[A-Z]+) (?<id>\d+) ")?;
-options.start_rownum = Some(10);
-let line = TextLine::from_bytes(2, TextBytes::from_bytes("first")?)?
-    .with_captures(vec![None, Some(TextBytes::from_bytes("0007")?)])?;
-let batch = into_arrow_batch([line], &options)?;
-
-// The stored rownum is 12, and reading subtracts the start again; the `id`
-// capture is int64, so it comes back canonical, still at index 1.
-let lines = from_arrow_batch(&batch, &options)?;
-assert_eq!(lines[0].index(), 2);
-assert_eq!((lines[0].capture(0), lines[0].capture(1)), (None, Some("7")));
-
-// Under a later start the stored row would precede it: refused, located by
-// stream ordinal and column.
-options.start_rownum = Some(13);
-let error = from_arrow_batch(&batch, &options).unwrap_err().to_string();
-assert!(error.contains("$[0].rownum"), "{error}");
-
-// No rownum column: indices are stream ordinals across batches, and a batch
-// with another schema refuses once and fuses the stream.
-let bodies = |name: &str, values: Vec<&'static str>| {
-    RecordBatch::try_from_iter([(name, Arc::new(StringArray::from(values)) as ArrayRef)])
-};
-let first = bodies("body", vec!["one", "two"])?;
-let batches = batch_reader(
-    first.schema(),
-    [first, bodies("body", vec!["three"])?, bodies("payload", vec!["four"])?],
-);
-let mut read = from_arrow_reader(batches, &TextOptions::new())?;
-let indices = read
-    .by_ref()
-    .take(3)
-    .map(|line| line.map(|line| line.index()))
-    .collect::<Result<Vec<_>, _>>()?;
-assert_eq!(indices, [0, 1, 2]);
-let error = read.next().unwrap().unwrap_err().to_string();
-assert!(error.contains("$[3]"), "{error}");
-assert!(read.next().is_none());
-```
 
 ## Framing
 
@@ -756,18 +667,6 @@ without retaining it.
 | omitted bytes | reported in `dropped_byte_size`, in the same units |
 | `max_row_size`, `max_byte_size` | total result rows and total Arrow result memory; independent and unchanged |
 
-## Writes
-
-Writes stay physical-line operations, consuming the non-null `utf8` `body`
-column - `utf8`, `large_utf8` or `utf8_view`, or any of those behind a
-dictionary, which is what Arrow JS infers for a plain record's string and is
-unpacked once per batch - one spelling here - and appending
-the terminator, both written in the charset the handle's media type
-[declares](#declaring-a-charset) and as they are under UTF-8 or US-ASCII. A
-batch carrying a `binary` body is refused naming what was
-expected: a `binary` column may hold anything, and rendering one would write
-bytes no reader of the file could read back as the rows they were.
-
 ## Edges
 
 - `framing` without `rowheader` -> refused.
@@ -779,21 +678,17 @@ bytes no reader of the file could read back as the rows they were.
 - `autotype = false` or a broad capture (`\S+`) -> `utf8`.
 - classification columns ahead of the captures -> the captures keep the types their patterns gave them; a `thread` capture is `utf8` whatever the classification read before it.
 - an unlocated buffer -> `url` and `mtime` are both null: a buffer has no location and records no modification time, and neither the empty string nor a clock reading is one.
-- Python `read_records()` over a file whose modification time is finer than a microsecond -> the `datetime` a record hands back is floored to the microsecond it can hold, never refused. The batch path carries the full nanosecond reading.
 - a row header declaring an `mtime` capture with `parse_mtime` off -> an ordinary capture, typed by its own syntax.
 - empty, missing, compressed, local, or foreign Arrow-filesystem resource -> the full schema before iteration.
 - a rename onto a name another column already emits -> refused when the option is set, naming both.
 - a lifted path no line carries -> that column is null in every row; the column still exists in the schema.
 - a lifted path whose last segment names nothing -> refused when the option is set.
-- `body` holding the terminator -> write refused.
-- a `binary` `body` column -> write refused: `expected a utf8 body column, got Binary`.
 - a body or capture that is not UTF-8 -> [decoded](#a-line-is-text), never refused and never `U+FFFD`; `decoded_byte_size` counts the bytes it took.
 - `max_record_byte_size` cutting inside a multi-byte character -> the orphan bytes decode as the Windows-1252 characters they are; the count dropped is still in bytes as read. Under a declared charset the same: the limit counts decoded bytes and can land inside one scalar of the decoded text, and the stray bytes the cut made are read and counted exactly as on an undeclared read - `Zürich` declared `windows-1252` under a limit of `2` is the body `ZÃ`, `5` dropped, `decoded_byte_size` `1`. A declared line the limit did not cut inside a scalar counts `0`.
 - a handle declaring a charset other than UTF-8 or US-ASCII -> [decoded at the transport](#declaring-a-charset), below the splitter: the header, the strips and every byte count see the declared text, `decoded_byte_size` is `0` unless a limit cut inside a scalar, and a write encodes back into it. `us-ascii` is never wrapped: a stray byte under it reads by the one rule and is counted.
 - a mis-declared handle - `charset=iso-8859-1` over UTF-8 bytes -> the mojibake it declares, `café` as `cafÃ©`, with `decoded_byte_size` `0`; correct the media type, or wrap the handle in `Transcoded::new(handle, Charset::Utf8)`.
 - `utf-16le` with its `FF FE` mark -> the mark comes off and the rows read as they do without it; `FE FF` under that declaration is data, read as the code unit it is; an odd trailing byte reads `U+FFFD` and refuses nothing.
-- keyed merge -> unsupported; overwrite and append only.
-- `app.log.gz` or a folder mixing plain, gzip, and zstd leaves -> same options, one stream, no reopened handle and no retained prior page. The transport is read one [fetch window](../holder/iobase/bytes.md#fetch-window) at a time, whatever the decoder pulls.
+- `app.log.gz` or a folder mixing plain, gzip, and zstd leaves -> same options, one stream, no reopened handle and no retained prior page. The transport is read one [fetch window](../../holder/iobase/bytes.md#fetch-window) at a time, whatever the decoder pulls.
 - `Text` handle -> options only, no line iterator or schema builder.
 
 ## Commands

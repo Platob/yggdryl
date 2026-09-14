@@ -130,7 +130,7 @@ paths already resolved. Applying a resolved path allocates nothing.
 
 - The [expression grammar](../expression/index.md) writes the same steps and
   shares the one segment type, which is why the path value lives beside it.
-- [Text lines](../media/text.md#entries-and-paths) address one entry of a
+- [Text lines](../media/text/index.md#entries-and-paths) address one entry of a
   decoded line, and `lift_names` names the entry paths that become columns,
   each taking its alias where it writes one.
 

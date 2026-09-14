@@ -754,7 +754,7 @@ bare text or bytes under the default parameters and an object otherwise.
 | Autotyping argument | required in Rust, defaults to `true` in Python and JavaScript |
 | Typed captures | boolean, integer, finite float, ISO date, time, datetime |
 | Broad captures | a capture such as `\S+` stays `utf8` |
-| Rows read | none, so [plain-text records](../media/text.md) publish a schema before opening a source |
+| Rows read | none, so [plain-text records](../media/text/index.md) publish a schema before opening a source |
 
 ## Versions
 

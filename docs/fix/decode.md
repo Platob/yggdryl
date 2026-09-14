@@ -93,7 +93,7 @@ is a duplicate tag rather than a new message. A key the bridge marked is the
 bridge's own spelling, so a `#8=` opens nothing and a `#10=` closes nothing.
 
 A run of named pairs is a bridge row rather than prose carrying an `=` where the
-line [named a separator](../media/text.md#where-a-pair-ends) for it - a pipe, a
+line [named a separator](../media/text/index.md#where-a-pair-ends) for it - a pipe, a
 `SOH`, or [a spelling a log escaped one with](capture.md#a-printed-separator-is-still-the-separator),
 never whitespace - or where the bridge marked one of its keys with `#`. A
 numeric frame needs neither: a run of tag-keyed pairs is FIX whatever separated
@@ -239,7 +239,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 - A row a data field carries is a message of its own type, at its own version, and is read against both. A bridge writes a whole trade capture into a `35=UL` frame's `XmlData`, and `UL` says nothing about the groups that row nests or the spellings its dialect gave two tags; the frame's `BeginString` is the envelope's version and says nothing about which FIX the row was written to, which is routinely a later one than the session speaks. The row states neither, so its type falls to what it declares and its version to the dictionary's newest. A version the caller pinned is the caller speaking for the whole run and answers for the row too, and the frame's own statements stay the frame's.
 - A key nothing names at all is kept under its own spelling and its arrival value, its arrival entry carrying tag 0 - a name or a numeric key alike, since tag 0 is never a registry identity. Nothing is dropped for being unexplained.
 - Bulk and wildcard configuration input yields all selected configurations; empty answers yield none. A conversion error propagates and fuses the cursor.
-- The page reads text; the package's byte doors - `parse_line`, `parse_lines`, `parse_fix_line`, `parse_ullink_line`, `parse_pairs` - read bytes as given. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is those doors' to read properly. A line the [text reader](../media/text.md#a-line-is-text) made was decoded before the codec read it, so through `parse_text_line` and `parse_text_arrow_reader` the codec reads text, and the line's `decoded_byte_size` says whether any byte was decoded.
+- The page reads text; the package's byte doors - `parse_line`, `parse_lines`, `parse_fix_line`, `parse_ullink_line`, `parse_pairs` - read bytes as given. A frame whose bytes are not text — a `data` field carrying binary — decodes lossily here and is those doors' to read properly. A line the [text reader](../media/text/index.md#a-line-is-text) made was decoded before the codec read it, so through `parse_text_line` and `parse_text_arrow_reader` the codec reads text, and the line's `decoded_byte_size` says whether any byte was decoded.
 
 ## Commands
 

@@ -523,7 +523,7 @@ The JavaScript constructor takes an object naming any of the ten fields, and eve
 
 ## The data-file MIME type
 
-`data_mime_type` / `dataMimeType` accepts a `MimeType` or anything its parser accepts, such as `parquet`, `.avro`, or a canonical MIME name. Each manifest stays authoritative, so a snapshot mixing [Parquet](../parquet.md) and [Avro](../avro.md) files scans as one table.
+`data_mime_type` / `dataMimeType` accepts a `MimeType` or anything its parser accepts, such as `parquet`, `.avro`, or a canonical MIME name. Each manifest stays authoritative, so a snapshot mixing [Parquet](../parquet/index.md) and [Avro](../avro/index.md) files scans as one table.
 
 === "Rust"
 

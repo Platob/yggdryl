@@ -71,7 +71,7 @@ Explicit offsets mean two readers never interfere and a footer-first container r
 
 ## Modification time
 
-`mtime()` answers when the bytes were last written, as UTC nanoseconds since the Unix epoch, for a handle whose store records one. A local file and a foreign-filesystem file read it from the same stat their `size` comes from; a ZIP member reads it from the index the archive already holds; every other handle keeps the default `None`, because an in-memory buffer records no such fact and inventing a clock reading would be worse than saying so. It is the fallback behind the [`mtime` column](../../media/text.md#row-schema) of a plain-text read, asked once per read rather than once per row.
+`mtime()` answers when the bytes were last written, as UTC nanoseconds since the Unix epoch, for a handle whose store records one. A local file and a foreign-filesystem file read it from the same stat their `size` comes from; a ZIP member reads it from the index the archive already holds; every other handle keeps the default `None`, because an in-memory buffer records no such fact and inventing a clock reading would be worse than saying so. It is the fallback behind the [`mtime` column](../../media/text/index.md#row-schema) of a plain-text read, asked once per read rather than once per row.
 
 Rust only: neither binding reaches the accessor today, though both reach the text column it fills through `parse_mtime` / `parseMtime`.
 
@@ -764,10 +764,10 @@ A closed handle re-derives metadata on every ask; an open one holds what `open` 
 | [`Buffer`](../backends/buffer.md) | nothing; `opened` stays `false` |
 | [`local::File`](../backends/local.md) | descriptor and memory mapping |
 | [`Coded`](../../coding/index.md) | the decoded value |
-| [IPC](../../media/ipc.md) | schema and dimensions |
-| [Parquet](../../media/parquet.md) | the footer |
-| [Avro](../../media/avro.md) | header and block metadata |
-| [Text](../../media/text.md) | resolved field, coding plan, dimensions |
+| [IPC](../../media/ipc/index.md) | schema and dimensions |
+| [Parquet](../../media/parquet/index.md) | the footer |
+| [Avro](../../media/avro/index.md) | header and block metadata |
+| [Text](../../media/text/index.md) | resolved field, coding plan, dimensions |
 
 ## Clearing and removing
 

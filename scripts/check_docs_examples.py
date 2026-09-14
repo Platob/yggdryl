@@ -15,15 +15,21 @@ rather than hidden. The comma form other tools accept is not one superfences
 highlights, so a fence written that way is reported as a formatting failure
 instead of shipping as an unhighlighted paragraph.
 
+The scripting halves run one process per block, on a pool one process wide per
+core; ``--jobs`` narrows it.
+
 Usage:
     python scripts/check_docs_examples.py                 # every language
     python scripts/check_docs_examples.py --lang rust     # one language
+    python scripts/check_docs_examples.py --jobs 4        # four at a time
     python scripts/check_docs_examples.py --keep          # keep generated files
 """
 
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
+import os
 import pathlib
 import re
 import subprocess
@@ -202,17 +208,24 @@ def run_rust() -> int:
     return result.returncode
 
 
-def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
-    """Run every block of one scripting language, returning counts and failures."""
+def run_scripts(pages, language: str, jobs: int) -> tuple[int, int, list[str]]:
+    """Run every block of one scripting language, returning counts and failures.
+
+    One block is one process, and a process spends most of its life importing
+    the extension rather than running the example, so the blocks run on a pool
+    rather than one after another. Each block writes its own file under the
+    workspace and reads nothing another block writes, so the only shared state
+    is the temporary directory.
+    """
     if language == "python" and not PYTHON.exists():
         return 0, 0, [f"{language}: no interpreter at {PYTHON}"]
 
-    ran = 0
     skipped = 0
     failures: list[str] = []
 
     with tempfile.TemporaryDirectory() as directory:
         workspace = pathlib.Path(directory)
+        pending: list[tuple[pathlib.Path, Block, list[str]]] = []
         for page in pages:
             for block in blocks(page):
                 if block.language != language:
@@ -238,11 +251,16 @@ def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
                         )
                     script.write_text(rewired, encoding="utf-8")
                     command = ["node", str(script)]
+                pending.append((page, block, command))
 
-                ran += 1
-                result = subprocess.run(
-                    command, cwd=ROOT, check=False, capture_output=True, text=True
-                )
+        def run(command: list[str]) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+
+        # `map` yields in submission order, so failures stay in page order
+        # however the processes happen to finish.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+            results = pool.map(run, [command for _, _, command in pending])
+            for (page, block, _), result in zip(pending, results):
                 if result.returncode != 0:
                     tail = (result.stderr or result.stdout).strip().splitlines()
                     detail = "\n      ".join(tail[-6:])
@@ -250,7 +268,7 @@ def run_scripts(pages, language: str) -> tuple[int, int, list[str]]:
                         f"{page.relative_to(ROOT)} {language} block {block.index}:\n      {detail}"
                     )
 
-    return ran, skipped, failures
+    return len(pending), skipped, failures
 
 
 def main() -> int:
@@ -258,6 +276,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lang", choices=[*LANGUAGES, "all"], default="all")
     parser.add_argument("--keep", action="store_true", help="keep the generated Rust target")
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=min(32, (os.cpu_count() or 4)),
+        help="scripting-language blocks to run at once (default: one per core)",
+    )
     arguments = parser.parse_args()
 
     pages = sorted(DOCS.rglob("*.md"))
@@ -283,8 +307,11 @@ def main() -> int:
     for language in ("python", "javascript"):
         if arguments.lang not in (language, "all"):
             continue
-        ran, skipped, failures = run_scripts(pages, language)
-        print(f"{language}: {ran} examples run, {skipped} skipped, {len(failures)} failed")
+        ran, skipped, failures = run_scripts(pages, language, max(1, arguments.jobs))
+        print(
+            f"{language}: {ran} examples run on {max(1, arguments.jobs)} workers, "
+            f"{skipped} skipped, {len(failures)} failed"
+        )
         for failure in failures:
             print(f"  {failure}")
         if failures:
