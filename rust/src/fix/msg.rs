@@ -381,7 +381,6 @@ impl FixMsg {
             field,
             value,
             entries,
-            tags: _,
             ..
         } = built;
         let initial = super::schema::column_plan(&field, &registry)?;
