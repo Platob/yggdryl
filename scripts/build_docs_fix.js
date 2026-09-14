@@ -365,7 +365,8 @@ function frameCase(registry, reader, schema, key, label, line) {
   }).filter((column) => column !== null)
 
   const ticker = held.symbolTicker()
-  const clock = held.marketTimestamp()
+  // The settled grid clock every message carries (decision 26).
+  const clock = held.updatedat()
   const partition = held.unixPartition(3600)
   const text = escapedText([...bytes])
   return {
@@ -385,16 +386,12 @@ function frameCase(registry, reader, schema, key, label, line) {
     size: held.size,
     columns,
     arrivals: held.arrivals().map(([tag, key_, value]) => [String(tag), key_, value]),
-    unmapped: held
-      .arrivals()
-      .filter(([tag]) => registry.getFieldByTag(tag) === null)
-      .map(([, key_]) => key_),
     // A lift source is the tag the facet was read from, or null.
     lift: held.lift().map(([facet, value]) => [facet, String(value.toJSON()), held.liftSource(facet)]),
     anomalies: held.anomalies(),
     digest: Buffer.from(held.digest()).toString('hex'),
     ticker: ticker === null ? null : String(ticker.toJSON()),
-    clock: clock === null ? null : String(clock.toJSON()),
+    clock: String(clock.toJSON()),
     partition: partition === null ? null : String(partition.toJSON()),
     // What the package re-emits from the entries, which is the encoder's
     // proof: a composed frame that does not match this is a composed frame

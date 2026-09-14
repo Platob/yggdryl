@@ -7,7 +7,10 @@ const path = require('node:path')
 const { test } = require('node:test')
 const arrow = require('apache-arrow')
 
-const { DataType, Field, IOBase, Scalar, xxhash } = require('yggdryl')
+const yggdryl = require('yggdryl')
+
+const { DataType, Field, IOBase, Scalar, hashing } = yggdryl
+const { xxhash } = hashing
 
 const PAYLOAD = Buffer.from('{"symbol": "AAPL", "price": 187.23}\n'.repeat(512))
 
@@ -25,6 +28,21 @@ function secret(length) {
   for (let index = 0; index < length; index += 1) bytes[index] = (index * 17 + 3) % 256
   return bytes
 }
+
+test('hashing is the one frozen owner of both digest families', () => {
+  assert.ok(Object.isFrozen(hashing))
+  assert.deepEqual(Object.keys(hashing), ['xxhash', 'txhash'])
+  assert.ok(Object.isFrozen(hashing.xxhash))
+  assert.ok(Object.isFrozen(hashing.txhash))
+  assert.equal('xxhash' in yggdryl, false, 'no top-level xxhash path remains')
+  assert.equal('txhash' in yggdryl, false, 'no top-level txhash path remains')
+  for (const name of ['Digest', 'Xxh32', 'Xxh64', 'Xxh3', 'Xxh128']) {
+    assert.equal(xxhash[name], yggdryl[name], name)
+  }
+  assert.throws(() => {
+    hashing.xxhash = null
+  }, TypeError)
+})
 
 test('published vectors pin every algorithm', () => {
   const empty = Buffer.alloc(0)

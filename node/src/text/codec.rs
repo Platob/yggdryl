@@ -521,12 +521,12 @@ impl JsScalar {
     /// temporal widths, because the feed writes each family's canonical form
     /// rather than its storage width.
     #[napi]
-    pub fn digest(&self, algorithm: Option<String>) -> Result<crate::xxhash::JsDigest> {
+    pub fn digest(&self, algorithm: Option<String>) -> Result<crate::hashing::xxhash::JsDigest> {
         let algorithm = match algorithm.as_deref() {
-            Some(algorithm) => crate::xxhash::algorithm_from_str(algorithm)?,
+            Some(algorithm) => crate::hashing::xxhash::algorithm_from_str(algorithm)?,
             None => yggdryl::DigestAlgorithm::Xxh3,
         };
-        Ok(crate::xxhash::JsDigest::from_core(
+        Ok(crate::hashing::xxhash::JsDigest::from_core(
             self.inner.digest(algorithm),
         ))
     }

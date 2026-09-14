@@ -276,6 +276,19 @@ void stalePin
 // @ts-expect-error no pin names a dialect: the dictionary is one namespace
 const dialectPin: FixCodec = new fix.FixCodec(loaded, { branch: 'cme' })
 void dialectPin
+// The SendingTime an undated message takes is a `Scalar` or a `Date`, read
+// back as the native clock or `null` where each new message reads now.
+const dated: FixCodec = new fix.FixCodec(loaded, { defaultSendingTime: value })
+const datedFromDate: FixCodec = new fix.FixCodec(loaded, { defaultSendingTime: new Date(0) })
+const undated: FixCodec = new fix.FixCodec(loaded, { defaultSendingTime: null })
+const defaultSendingTime: Scalar | null = dated.defaultSendingTime
+void datedFromDate
+void undated
+void defaultSendingTime
+// @ts-expect-error the default sending time is a Scalar or a Date, never text
+new fix.FixCodec(loaded, { defaultSendingTime: '2024-01-02T10:15:30Z' })
+// @ts-expect-error the default sending time is fixed at construction
+dated.defaultSendingTime = value
 const readRegistry: FixRegistry = reader.registry
 const pinnedVersion: string | null = pinned.version
 const pinnedSeparator: number | null = pinned.separator
@@ -299,12 +312,39 @@ const readerCopy: FixCodec = reader.clone()
 const lifeClass: typeof FixLifecycle = fix.FixLifecycle
 const life: FixLifecycle = new fix.FixLifecycle(loaded)
 const defaultLife: FixLifecycle = new fix.FixLifecycle()
+const gridded: FixLifecycle = new fix.FixLifecycle(loaded, { intervalNs: 10n })
+const griddedByNumber: FixLifecycle = new fix.FixLifecycle(null, { intervalNs: 1_000 })
+const defaultInterval: bigint = fix.FixLifecycle.DEFAULT_INTERVAL_NS
+const intervalNs: bigint = gridded.intervalNs
+gridded.setIntervalNs(10n)
+gridded.setIntervalNs(10)
 const stamped: FixMsg = life.fill(fromText)
+const singleSnapshot: FixMsg | null = gridded.snapshot(fromText)
 const alive: number = life.alive
 const lifeRendered: string = life.toString()
 life.clear()
 const stream: FixMessages = reader.lifecycle([fromText, stamped])
 const stampedAgain: FixMessages = reader.lifecycle(stream)
+const snapshots: FixMessages = griddedByNumber.snapshots([fromText, stamped])
+const snapshotsOfStream: FixMessages = new fix.FixLifecycle().snapshots(reader.parseLines(['8=FIX.4.4|35=D|10=0|']))
+
+void griddedByNumber
+void defaultInterval
+void intervalNs
+void singleSnapshot
+void snapshots
+void snapshotsOfStream
+
+// @ts-expect-error the interval is a bigint or a number, never text
+new fix.FixLifecycle(loaded, { intervalNs: '10' })
+// @ts-expect-error the interval is read, and changed only through setIntervalNs
+gridded.intervalNs = 10n
+// @ts-expect-error the default interval is the core's constant
+fix.FixLifecycle.DEFAULT_INTERVAL_NS = 1n
+// @ts-expect-error a snapshot takes one message, never a stream
+gridded.snapshot([fromText])
+// @ts-expect-error the snapshot stream is an iterable of messages
+gridded.snapshots(fromText)
 
 // The Arrow twins take and answer batch readers, and a stream crosses back.
 const parsedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromIpc(new Uint8Array()))
@@ -355,7 +395,13 @@ const pluginComponent: Field = fix.pluginMessage()
 // Everything the core derives about a message.
 const digest: Buffer = fromText.digest()
 const ticker: Scalar | null = fromText.symbolTicker()
-const clock: Scalar | null = fromText.marketTimestamp()
+// The settled clocks and identities are never null.
+const clock: Scalar = fromText.updatedat()
+const created: Scalar = fromText.createdat()
+const messageUuid: Scalar = fromText.uuid()
+const chainUuid: Scalar = fromText.puuid()
+// @ts-expect-error the market timestamp reader is retired: updatedat is the settled clock
+fromText.marketTimestamp()
 const partition: Scalar | null = fromText.unixPartition(3600)
 const lifted: Scalar | null = fromText.lifted('bidpx')
 const liftSource: number | null = fromText.liftSource('bidpx')
@@ -385,6 +431,9 @@ void pluginComponent
 void digest
 void ticker
 void clock
+void created
+void messageUuid
+void chainUuid
 void partition
 void lifted
 void liftSource

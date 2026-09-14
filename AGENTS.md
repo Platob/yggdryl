@@ -1082,7 +1082,7 @@ git diff --exit-code -- node/index.js node/index.d.ts    # generated loader and 
 npm test --prefix node                                   # node --test plus tsc --noEmit
 node scripts/build_docs_playground.js --check            # generated docs manifests not stale
 node scripts/build_docs_fix.js --check
-npm run --prefix node bench:<coding|fix|holder|media|text|types|xxhash>   # release addon
+npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>   # release addon
 ```
 
 # 5. Documentation

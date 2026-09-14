@@ -9,7 +9,9 @@
 const { performance } = require('node:perf_hooks')
 const arrow = require('apache-arrow')
 
-const { DataType, Field, Scalar, TxHash, TxHasher, txhash, xxhash } = require('yggdryl')
+const { DataType, Field, Scalar, TxHash, TxHasher, hashing } = require('yggdryl')
+
+const { txhash, xxhash } = hashing
 
 const PAYLOAD = Buffer.from('{"id": 1234567, "venue": "XNAS", "price": "150.2500"}\n'.repeat(20_000))
 const INSTANT = 1_700_000_000_000_000n

@@ -41,7 +41,7 @@ use crate::{exact_u64, napi_error};
 /// the rest of the tree already agrees on.
 fn digest_algorithm(value: Option<&str>) -> Result<yggdryl::DigestAlgorithm> {
     match value {
-        Some(value) => crate::xxhash::algorithm_from_str(value),
+        Some(value) => crate::hashing::xxhash::algorithm_from_str(value),
         None => Ok(yggdryl::DigestAlgorithm::Xxh3),
     }
 }
@@ -938,11 +938,14 @@ impl JsIOBase {
     /// one window rather than a copy. A resource that does not exist digests
     /// as empty, per the laziness contract; a container throws.
     #[napi]
-    pub fn read_digest(&self, algorithm: Option<String>) -> Result<crate::xxhash::JsDigest> {
+    pub fn read_digest(
+        &self,
+        algorithm: Option<String>,
+    ) -> Result<crate::hashing::xxhash::JsDigest> {
         let algorithm = digest_algorithm(algorithm.as_deref())?;
         self.inner
             .read_digest(algorithm)
-            .map(crate::xxhash::JsDigest::from_core)
+            .map(crate::hashing::xxhash::JsDigest::from_core)
             .map_err(napi_error)
     }
 
@@ -953,13 +956,13 @@ impl JsIOBase {
         offset: i64,
         length: u32,
         algorithm: Option<String>,
-    ) -> Result<crate::xxhash::JsDigest> {
+    ) -> Result<crate::hashing::xxhash::JsDigest> {
         let algorithm = digest_algorithm(algorithm.as_deref())?;
         let offset =
             u64::try_from(offset).map_err(|_| napi_error("offset must not be negative"))?;
         self.inner
             .read_range_digest(offset, length as usize, algorithm)
-            .map(crate::xxhash::JsDigest::from_core)
+            .map(crate::hashing::xxhash::JsDigest::from_core)
             .map_err(napi_error)
     }
 

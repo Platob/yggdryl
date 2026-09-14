@@ -11,7 +11,9 @@
 const { performance } = require('node:perf_hooks')
 const arrow = require('apache-arrow')
 
-const { DataType, Field, Scalar, xxhash } = require('yggdryl')
+const { DataType, Field, Scalar, hashing } = require('yggdryl')
+
+const { xxhash } = hashing
 
 const PAYLOAD = Buffer.from('{"id": 1234567, "venue": "XNAS", "price": "150.2500"}\n'.repeat(20_000))
 

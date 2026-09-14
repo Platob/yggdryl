@@ -1929,7 +1929,8 @@ impl JsProtocolField {
         self.field.inner.as_fix().tag().map_err(napi_error)
     }
 
-    /// Record the canonical FIX tag, rejecting anything but an exact `i32`.
+    /// Record the canonical FIX tag, rejecting anything but an exact positive
+    /// `i32`; zero belongs only to unresolved arrival entries.
     #[napi(setter)]
     pub fn set_tag(&mut self, env: Env, value: f64) -> Result<()> {
         self.require_fix(env, "tag")?;
@@ -1948,7 +1949,7 @@ impl JsProtocolField {
         self.field.inner.as_fix().counter().map_err(napi_error)
     }
 
-    /// Set a repeating group's exact signed 32-bit counter tag.
+    /// Set a repeating group's exact positive 32-bit counter tag.
     #[napi(setter)]
     pub fn set_counter(&mut self, env: Env, value: f64) -> Result<()> {
         self.require_fix(env, "counter")?;
@@ -2065,7 +2066,8 @@ impl JsProtocolField {
         self.field.inner.as_fix().tags().map_err(napi_error)
     }
 
-    /// Record the alternate tags; an empty array removes the property.
+    /// Record the alternate tags, each an exact positive `i32`; an empty array
+    /// removes the property.
     #[napi(setter)]
     pub fn set_tags(&mut self, env: Env, values: Vec<f64>) -> Result<()> {
         self.require_fix(env, "tags")?;

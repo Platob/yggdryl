@@ -3436,16 +3436,19 @@ function asLine(value) {
   return value
 }
 {
+  // `FixLifecycle.snapshots` is the same kind of stage: the stream it answers
+  // owns the lifecycle and pulls the iterable exactly as a codec stage does.
   const streams = [
-    ['parseLines', '_parseLinesNative', toBytes, 'lines'],
-    ['parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
-    ['enrichMessages', '_enrichMessagesNative', asMessage, 'messages'],
-    ['lifecycle', '_lifecycleNative', asMessage, 'messages'],
+    [binding.FixCodec, 'parseLines', '_parseLinesNative', toBytes, 'lines'],
+    [binding.FixCodec, 'parseTextLines', '_parseTextLinesNative', asLine, 'lines'],
+    [binding.FixCodec, 'enrichMessages', '_enrichMessagesNative', asMessage, 'messages'],
+    [binding.FixCodec, 'lifecycle', '_lifecycleNative', asMessage, 'messages'],
+    [binding.FixLifecycle, 'snapshots', '_snapshotsNative', asMessage, 'messages'],
   ]
-  for (const [name, hidden, read, what] of streams) {
-    const native = binding.FixCodec.prototype[hidden]
-    delete binding.FixCodec.prototype[hidden]
-    binding.FixCodec.prototype[name] = {
+  for (const [owner, name, hidden, read, what] of streams) {
+    const native = owner.prototype[hidden]
+    delete owner.prototype[hidden]
+    owner.prototype[name] = {
       [name](iterable) {
         const failed = {}
         const stream = native.call(this, pullOf(iterable, read, what, failed))
@@ -3463,6 +3466,14 @@ function asLine(value) {
     return nativeArrowReader.call(this, intoField(schema), pullOf(messages, asMessage, 'messages'))
   }
 }
+
+// The grid interval a lifecycle truncates `updatedat` to when none is
+// configured, read once from the core, which owns the constant.
+Object.defineProperty(binding.FixLifecycle, 'DEFAULT_INTERVAL_NS', {
+  enumerable: true,
+  value: binding._fixLifecycleDefaultIntervalNsNative(),
+  writable: false,
+})
 
 const nativeFixMessagesNext = binding.FixMessages.prototype.next
 binding.FixMessages.prototype.next = function next() {
@@ -3557,6 +3568,7 @@ for (const name of [
   'fixSchema',
   'fixSchemaCarrying',
   'fixSchemaTags',
+  '_fixLifecycleDefaultIntervalNsNative',
 ]) {
   delete binding[name]
 }
@@ -3611,10 +3623,11 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   })
 }
 
-// The digest surface, grouped the way the documentation names it. The native
-// halves carry a leading underscore so only this namespace is the public
-// spelling, and every one of them takes bytes the wrapper has already narrowed
-// to a window over the caller's own memory.
+// The digest surface, grouped under one `hashing` owner the way the core
+// groups it: `hashing.xxhash` and `hashing.txhash`. The native halves carry a
+// leading underscore so only this namespace is the public spelling, and every
+// one of them takes bytes the wrapper has already narrowed to a window over
+// the caller's own memory.
 {
   const xxh32Native = binding._xxh32Native
   const xxh64Native = binding._xxh64Native
@@ -3689,7 +3702,7 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     })
   }
 
-  binding.xxhash = Object.freeze({
+  const xxhash = Object.freeze({
     SECRET_MINIMUM_LENGTH: secretMinimumLength,
     Digest: binding.Digest,
     Xxh32: binding.Xxh32,
@@ -3839,7 +3852,7 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
     },
   })
 
-  binding.txhash = Object.freeze({
+  const txhash = Object.freeze({
     DEFAULT_UNIT: defaultUnit,
     UNIX_WIDTH: 8,
     TxHash,
@@ -3890,6 +3903,8 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
       return dtypeNative(algorithm)
     },
   })
+
+  binding.hashing = Object.freeze({ xxhash, txhash })
 }
 
 binding.codec = codec

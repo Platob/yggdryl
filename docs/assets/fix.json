@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6261,
+    "fields": 6265,
     "groups": 581,
     "enumFields": 2026,
     "codes": 27209,
@@ -105,7 +105,7 @@
     "alternates": 0,
     "messages": 182,
     "components": 929,
-    "columns": 106,
+    "columns": 109,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 19,
@@ -117,7 +117,7 @@
       ],
       [
         "utf8",
-        1931
+        1932
       ],
       [
         "float64",
@@ -141,7 +141,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        69
+        72
       ],
       [
         "time64(ns)",
@@ -164,7 +164,7 @@
         12
       ],
       [
-        "fixed_size_binary(16)",
+        "uuid",
         4
       ],
       [
@@ -222346,23 +222346,6 @@
       },
       {
         "dtype": {
-          "fixed": 16,
-          "layout": "fixed_size_binary",
-          "type": "binary"
-        },
-        "metadata": {
-          "description": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out.",
-          "digest:algorithm": "xxh3-128",
-          "digest:role": "holder",
-          "digest:sources": "[\"nofixentries\"]",
-          "display": "MsgHash",
-          "fix:tag": "65000"
-        },
-        "name": "msghash",
-        "nullable": true
-      },
-      {
-        "dtype": {
           "type": "string"
         },
         "metadata": {
@@ -222392,23 +222375,23 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-          "display": "Timestamp",
+          "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+          "display": "UpdatedAt",
           "fix:tag": "65003"
         },
-        "name": "timestamp",
-        "nullable": true
+        "name": "updatedat",
+        "nullable": false
       },
       {
         "dtype": {
           "type": "int64"
         },
         "metadata": {
-          "description": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width.",
+          "description": "The partition updatedat falls in, as whole seconds since the epoch floored to the partition width.",
           "display": "UnixPartition",
           "fix:tag": "65004",
           "iceberg:transform": "truncate[3600]",
-          "partition:sources": "[\"timestamp\"]"
+          "partition:sources": "[\"updatedat\"]"
         },
         "name": "unixpartition",
         "nullable": true
@@ -222550,45 +222533,39 @@
       },
       {
         "dtype": {
-          "fixed": 16,
-          "layout": "fixed_size_binary",
-          "type": "binary"
+          "type": "uuid"
         },
         "metadata": {
-          "description": "The instrument's own identity: the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
-          "display": "InstId",
+          "description": "The instrument's version-8 UUID over the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
+          "display": "InstUuid",
           "fix:tag": "65016"
         },
-        "name": "instid",
+        "name": "instuuid",
         "nullable": true
       },
       {
         "dtype": {
-          "fixed": 16,
-          "layout": "fixed_size_binary",
-          "type": "binary"
+          "type": "uuid"
         },
         "metadata": {
-          "description": "The message's own identity: the instant closest to the market impact in microseconds, then the xxh3 digest of what it said.",
-          "display": "Id",
+          "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+          "display": "Uuid",
           "fix:tag": "65017"
         },
-        "name": "id",
-        "nullable": true
+        "name": "uuid",
+        "nullable": false
       },
       {
         "dtype": {
-          "fixed": 16,
-          "layout": "fixed_size_binary",
-          "type": "binary"
+          "type": "uuid"
         },
         "metadata": {
-          "description": "The order chain's identity: the instant it was created, then the xxh3 digest of its instrument and first identifier, carried by every later message sharing one of its identifiers.",
-          "display": "PersistentId",
+          "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+          "display": "PUuid",
           "fix:tag": "65018"
         },
-        "name": "persistentid",
-        "nullable": true
+        "name": "puuid",
+        "nullable": false
       },
       {
         "dtype": {
@@ -222601,6 +222578,72 @@
         },
         "name": "targetsessionid",
         "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "description": "The preceding message's timestamp in the selected event chain.",
+          "display": "PrevTimestamp",
+          "fix:tag": "65021"
+        },
+        "name": "prevtimestamp",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "uuid"
+        },
+        "metadata": {
+          "description": "The preceding message's UUID in the selected event chain.",
+          "display": "PrevUuid",
+          "fix:tag": "65022"
+        },
+        "name": "prevuuid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "description": "The creation instant, preserved after initial materialization.",
+          "display": "CreatedAt",
+          "fix:tag": "65023"
+        },
+        "name": "createdat",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "description": "The exact event-chain name; empty means unknown.",
+          "display": "Code",
+          "fix:tag": "65024"
+        },
+        "name": "code",
+        "nullable": false
+      },
+      {
+        "dtype": {
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
+        },
+        "metadata": {
+          "description": "The real event's instant, independent of the snapshot grid.",
+          "display": "SnapshotAt",
+          "fix:tag": "65025"
+        },
+        "name": "snapshotat",
+        "nullable": false
       }
     ],
     "groups": [
@@ -237122,13 +237165,6 @@
         "x": "Three byte, simple checksum (see Volume 2: \"Checksum Calculation\" for description). ALWAYS LAST FIELD IN MESSAGE; i.e. serves, with the trailing <SOH>, as the end-of-message delimiter. Always defined as three characters. (Always unencrypted)"
       },
       {
-        "c": "msghash",
-        "t": 65000,
-        "n": "MsgHash",
-        "y": "fixed_size_binary(16)",
-        "x": "The xxh128 digest of what the message said, over the arrival record with the envelope tags left out."
-      },
-      {
         "c": "version",
         "t": 65001,
         "n": "Version",
@@ -237143,18 +237179,18 @@
         "x": "One instrument symbol that is the same across venues, qualified by its scheme and its exchange where the message states them."
       },
       {
-        "c": "timestamp",
+        "c": "updatedat",
         "t": 65003,
-        "n": "Timestamp",
+        "n": "UpdatedAt",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness."
+        "x": "The settled message instant, truncated to the snapshot grid by the lifecycle."
       },
       {
         "c": "unixpartition",
         "t": 65004,
         "n": "UnixPartition",
         "y": "int64",
-        "x": "The partition the market timestamp falls in, as whole seconds since the epoch floored to the partition width."
+        "x": "The partition updatedat falls in, as whole seconds since the epoch floored to the partition width."
       },
       {
         "c": "parentclordid",
@@ -237234,25 +237270,25 @@
         "x": "The state the order is in: OrdStatus, else ExecType, read as one lifecycle vocabulary."
       },
       {
-        "c": "instid",
+        "c": "instuuid",
         "t": 65016,
-        "n": "InstId",
-        "y": "fixed_size_binary(16)",
-        "x": "The instrument's own identity: the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
+        "n": "InstUuid",
+        "y": "uuid",
+        "x": "The instrument's version-8 UUID over the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
       },
       {
-        "c": "id",
+        "c": "uuid",
         "t": 65017,
-        "n": "Id",
-        "y": "fixed_size_binary(16)",
-        "x": "The message's own identity: the instant closest to the market impact in microseconds, then the xxh3 digest of what it said."
+        "n": "Uuid",
+        "y": "uuid",
+        "x": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64."
       },
       {
-        "c": "persistentid",
+        "c": "puuid",
         "t": 65018,
-        "n": "PersistentId",
-        "y": "fixed_size_binary(16)",
-        "x": "The order chain's identity: the instant it was created, then the xxh3 digest of its instrument and first identifier, carried by every later message sharing one of its identifiers."
+        "n": "PUuid",
+        "y": "uuid",
+        "x": "The event chain's version-8 UUID over XXH3-128 of code alone."
       },
       {
         "c": "targetsessionid",
@@ -237269,6 +237305,41 @@
         "x": "The identifiers this message states at its own level, keyed by canonical field name in sorted order; repeating-group members are not flattened."
       },
       {
+        "c": "prevtimestamp",
+        "t": 65021,
+        "n": "PrevTimestamp",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The preceding message's timestamp in the selected event chain."
+      },
+      {
+        "c": "prevuuid",
+        "t": 65022,
+        "n": "PrevUuid",
+        "y": "uuid",
+        "x": "The preceding message's UUID in the selected event chain."
+      },
+      {
+        "c": "createdat",
+        "t": 65023,
+        "n": "CreatedAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The creation instant, preserved after initial materialization."
+      },
+      {
+        "c": "code",
+        "t": 65024,
+        "n": "Code",
+        "y": "utf8",
+        "x": "The exact event-chain name; empty means unknown."
+      },
+      {
+        "c": "snapshotat",
+        "t": 65025,
+        "n": "SnapshotAt",
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The real event's instant, independent of the snapshot grid."
+      },
+      {
         "c": "msgdirection",
         "t": 385,
         "n": "MsgDirection",
@@ -237281,13 +237352,6 @@
         "n": "NoFixEntries",
         "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
         "x": "Every pair the message carried, in arrival order and untranslated."
-      },
-      {
-        "c": "nounmappedfixentries",
-        "t": 0,
-        "n": "NoUnmappedFixEntries",
-        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
-        "x": "The pairs no dictionary explained, a view over the arrival record."
       }
     ],
     "call": "const registry = fix.FixRegistry.fromHandle('config/fix')\nfix.schema(registry, 'FixMessage')"
@@ -237565,11 +237629,75 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
               "nullable": false
             }
           ],
@@ -237599,12 +237727,17 @@
         "S",
         "4.4",
         "029",
+        "2024-02-01T12:34:56.123000000Z",
+        "2024-02-01T12:34:56.123000000Z",
+        "97afbd46-ed48-834c-81c1-33c5be5a5166",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
         "2024-02-01T12:34:56.123000000Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": "S",
-      "size": 20,
+      "size": 25,
       "columns": [
         {
           "t": 35,
@@ -237760,7 +237893,6 @@
           "029"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "id",
@@ -238130,11 +238262,75 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
               "nullable": false
             }
           ],
@@ -238166,12 +238362,17 @@
         "2024-02-01T12:34:57.900000000Z",
         "4.4",
         "249",
+        "2024-02-01T12:34:57.900000000Z",
+        "2024-02-01T12:34:57.900000000Z",
+        "97afbd47-5733-8130-81e4-d828437f8142",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
         "2024-02-01T12:34:57.900000000Z"
       ],
       "mime": "text/fix",
       "msgtype": "8",
       "direction": null,
-      "size": 22,
+      "size": 27,
       "columns": [
         {
           "t": 35,
@@ -238342,7 +238543,6 @@
           "249"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "id",
@@ -238768,11 +238968,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -238815,12 +239094,18 @@
         "2024-02-01T12:35:02.000000000Z",
         "4.4",
         "055",
-        "2024-02-01T12:35:02.000000000Z"
+        "2024-02-01T12:35:02.000000000Z",
+        "2024-02-01T12:35:02.000000000Z",
+        "97afbd48-4b94-81c0-8023-70c9e927a0ef",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2024-02-01T12:35:02.000000000Z",
+        "2026-09-14T00:46:38.253172700Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 16,
+      "size": 22,
       "columns": [
         {
           "t": 35,
@@ -238974,7 +239259,6 @@
           "055"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "id",
@@ -239015,6 +239299,11 @@
           "transacttime",
           "2024-02-01T12:35:02.000000000Z",
           60
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.253172700Z",
+          52
         ],
         [
           "sender",
@@ -241959,11 +242248,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -242219,12 +242587,18 @@
         ],
         "4.4",
         "026",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.259497100Z",
+        "2026-09-14T00:46:38.259497100Z",
+        "98d5096e-c23d-8688-b222-d860a6112e1a",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.259497100Z",
+        "2026-09-14T00:46:38.259497100Z"
       ],
       "mime": "text/fix",
       "msgtype": "W",
       "direction": null,
-      "size": 11,
+      "size": 17,
       "columns": [
         {
           "t": 35,
@@ -242323,12 +242697,21 @@
           "026"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "symbol",
           "BRN",
           55
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.259497100Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.259497100Z",
+          52
         ],
         [
           "sender",
@@ -242344,8 +242727,8 @@
       "anomalies": [],
       "digest": "948e968e4353a7779eb307909c4d96bc",
       "ticker": "BRN",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.259497100Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))]"
     },
@@ -242510,11 +242893,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -242536,12 +242998,18 @@
         "2024-02-01T12:35:00.000000000Z",
         "4.4",
         "240",
-        "2024-02-01T12:35:00.000000000Z"
+        "2024-02-01T12:35:00.000000000Z",
+        "2024-02-01T12:35:00.000000000Z",
+        "97afbd47-d45e-8880-8315-c76d9966b47f",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2024-02-01T12:35:00.000000000Z",
+        "2026-09-14T00:46:38.277298100Z"
       ],
       "mime": "text/fix",
       "msgtype": "S",
       "direction": null,
-      "size": 12,
+      "size": 18,
       "columns": [
         {
           "t": 35,
@@ -242626,7 +243094,6 @@
           "240"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "symbol",
@@ -242657,6 +243124,11 @@
           "transacttime",
           "2024-02-01T12:35:00.000000000Z",
           60
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.277298100Z",
+          52
         ]
       ],
       "anomalies": [],
@@ -242857,11 +243329,75 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
               "nullable": false
             }
           ],
@@ -242885,12 +243421,17 @@
         "9",
         "4.4",
         "228",
+        "2024-02-01T12:00:00.000000000Z",
+        "2024-02-01T12:00:00.000000000Z",
+        "97afbb5e-e29d-8800-82ac-335528966c78",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
         "2024-02-01T12:00:00.000000000Z"
       ],
       "mime": "text/fix",
       "msgtype": "A",
       "direction": null,
-      "size": 14,
+      "size": 19,
       "columns": [
         {
           "t": 35,
@@ -242979,7 +243520,6 @@
           "228"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "transacttime",
@@ -243150,11 +243690,75 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
               "nullable": false
             }
           ],
@@ -243174,12 +243778,17 @@
         "2024-02-01T12:35:01.000000000Z",
         "4.2",
         "151",
+        "2024-02-01T12:35:01.000000000Z",
+        "2024-02-01T12:35:01.000000000Z",
+        "97afbd48-0ff9-8520-82d1-a51ca6874d26",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
         "2024-02-01T12:35:01.000000000Z"
       ],
       "mime": "text/fix",
       "msgtype": "0",
       "direction": null,
-      "size": 10,
+      "size": 15,
       "columns": [
         {
           "t": 35,
@@ -243248,7 +243857,6 @@
           "151"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "transacttime",
@@ -243471,11 +244079,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -243499,12 +244186,18 @@
         "Incorrect data format for value",
         "4.4",
         "179",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.290360200Z",
+        "2026-09-14T00:46:38.290360200Z",
+        "98d5096e-c414-8578-a124-b6d23b950359",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.290360200Z",
+        "2026-09-14T00:46:38.290360200Z"
       ],
       "mime": "text/fix",
       "msgtype": "3",
       "direction": null,
-      "size": 14,
+      "size": 20,
       "columns": [
         {
           "t": 35,
@@ -243593,8 +244286,17 @@
           "179"
         ]
       ],
-      "unmapped": [],
       "lift": [
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.290360200Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.290360200Z",
+          52
+        ],
         [
           "seqnum",
           "99",
@@ -243624,8 +244326,8 @@
       "anomalies": [],
       "digest": "8822601c8c9d30edb2547aec5aaae324",
       "ticker": null,
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.290360200Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))]"
     },
@@ -243859,11 +244561,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -243890,12 +244671,18 @@
         "2024-02-01T12:36:00.000000000Z",
         "4.4",
         "104",
-        "2024-02-01T12:36:00.000000000Z"
+        "2024-02-01T12:36:00.000000000Z",
+        "2024-02-01T12:36:00.000000000Z",
+        "97afbd55-cca5-8e00-80ce-117a744a542d",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2024-02-01T12:36:00.000000000Z",
+        "2026-09-14T00:46:38.294834000Z"
       ],
       "mime": "text/fix",
       "msgtype": "G",
       "direction": null,
-      "size": 17,
+      "size": 23,
       "columns": [
         {
           "t": 35,
@@ -244029,7 +244816,6 @@
           "104"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "id",
@@ -244075,6 +244861,11 @@
           "transacttime",
           "2024-02-01T12:36:00.000000000Z",
           60
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.294834000Z",
+          52
         ],
         [
           "sender",
@@ -244270,11 +245061,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -244297,12 +245167,18 @@
         "USD",
         "4.4",
         "045",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.299180700Z",
+        "2026-09-14T00:46:38.299180700Z",
+        "98d5096e-c49a-8ee9-b1e7-17980ac06a5c",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.299180700Z",
+        "2026-09-14T00:46:38.299180700Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 13,
+      "size": 19,
       "columns": [
         {
           "t": 35,
@@ -244410,7 +245286,6 @@
           "045"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "symbol",
@@ -244446,13 +245321,23 @@
           "currency",
           "USD",
           15
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.299180700Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.299180700Z",
+          52
         ]
       ],
       "anomalies": [],
       "digest": "f03766f963a31ac8a60e5fb3f77fc1f5",
       "ticker": "4:US0378331005@XNAS",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.299180700Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))]"
     },
@@ -244701,11 +245586,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -244733,12 +245697,18 @@
         "202403",
         "4.4",
         "042",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.303536500Z",
+        "2026-09-14T00:46:38.303536500Z",
+        "98d5096e-c4dd-8657-910a-54153548a169",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.303536500Z",
+        "2026-09-14T00:46:38.303536500Z"
       ],
       "mime": "text/fix",
       "msgtype": "d",
       "direction": null,
-      "size": 18,
+      "size": 24,
       "columns": [
         {
           "t": 35,
@@ -244865,7 +245835,6 @@
           "042"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "symbol",
@@ -244876,6 +245845,16 @@
           "currency",
           "GBP",
           15
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.303536500Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.303536500Z",
+          52
         ],
         [
           "sender",
@@ -244891,8 +245870,8 @@
       "anomalies": [],
       "digest": "5095235cdd04feda1527428a535bfcbb",
       "ticker": "BRN@XLON",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.303536500Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))]"
     },
@@ -245068,11 +246047,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -245097,12 +246155,18 @@
           ]
         ],
         "5.0.2",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.310029900Z",
+        "2026-09-14T00:46:38.310029900Z",
+        "98d5096e-c540-87a4-b1bb-73e283e7482b",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.310029900Z",
+        "2026-09-14T00:46:38.310029900Z"
       ],
       "mime": "text/ullink",
       "msgtype": null,
       "direction": null,
-      "size": 9,
+      "size": 15,
       "columns": [
         {
           "t": 55,
@@ -245161,9 +246225,6 @@
           "PARTYID=BUYSIDE\u0004\u0003PARTYIDSOURCE=D\u0004\u0003PARTYROLE=1"
         ]
       ],
-      "unmapped": [
-        "NOPARTYIDS[0]"
-      ],
       "lift": [
         [
           "symbol",
@@ -245184,6 +246245,16 @@
           "quantity",
           "1200",
           38
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.310029900Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.310029900Z",
+          52
         ]
       ],
       "anomalies": [
@@ -245191,8 +246262,8 @@
       ],
       "digest": "3453421e1590f50e8050f00d019b5c82",
       "ticker": "TTF",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.310029900Z",
+      "partition": "1789344000",
       "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE\\x04\\x03PARTYIDSOURCE=D\\x04\\x03PARTYROLE=1|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
     },
@@ -245330,11 +246401,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -245354,12 +246504,18 @@
         100,
         "4.4",
         "122",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.314080200Z",
+        "2026-09-14T00:46:38.314080200Z",
+        "98d5096e-c57e-847c-a10b-844afbc67ccc",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.314080200Z",
+        "2026-09-14T00:46:38.314080200Z"
       ],
       "mime": "text/fixul",
       "msgtype": "D",
       "direction": null,
-      "size": 10,
+      "size": 16,
       "columns": [
         {
           "t": 35,
@@ -245428,7 +246584,6 @@
           "122"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "id",
@@ -245454,13 +246609,23 @@
           "quantity",
           "100",
           38
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.314080200Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.314080200Z",
+          52
         ]
       ],
       "anomalies": [],
       "digest": "1c8e0f1914ec2b3c2c234d9b635b209a",
       "ticker": "AAPL",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.314080200Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))]"
     },
@@ -245593,11 +246758,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -245617,12 +246861,18 @@
         "house-flag",
         "4.4",
         "204",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.317837500Z",
+        "2026-09-14T00:46:38.317837500Z",
+        "98d5096e-c5b7-89cb-b3b6-05338ed8bdcc",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.317837500Z",
+        "2026-09-14T00:46:38.317837500Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 10,
+      "size": 16,
       "columns": [
         {
           "t": 35,
@@ -245681,7 +246931,7 @@
           "100"
         ],
         [
-          "9999",
+          "0",
           "9999",
           "house-flag"
         ],
@@ -245690,9 +246940,6 @@
           "10",
           "204"
         ]
-      ],
-      "unmapped": [
-        "9999"
       ],
       "lift": [
         [
@@ -245714,13 +246961,23 @@
           "quantity",
           "100",
           38
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.317837500Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.317837500Z",
+          52
         ]
       ],
       "anomalies": [],
-      "digest": "555c78be6bd879bbd4109616689a485b",
+      "digest": "b7512dfb3ab7518e3742f082a095d3e0",
       "ticker": "AAPL",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.317837500Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))]"
     },
@@ -245858,11 +247115,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -245882,12 +247218,18 @@
         null,
         "4.4",
         "029",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.322768700Z",
+        "2026-09-14T00:46:38.322768700Z",
+        "98d5096e-c602-8db3-b195-6e93c2b8ef18",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.322768700Z",
+        "2026-09-14T00:46:38.322768700Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 10,
+      "size": 16,
       "columns": [
         {
           "t": 35,
@@ -245950,7 +247292,6 @@
           "029"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "symbol",
@@ -245961,6 +247302,16 @@
           "side",
           "1",
           54
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.322768700Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.322768700Z",
+          52
         ]
       ],
       "anomalies": [
@@ -245969,8 +247320,8 @@
       ],
       "digest": "3b30ede943bb27d750388e53d2ae5dac",
       "ticker": "AAPL",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.322768700Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))]"
     },
@@ -246049,11 +247400,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -246069,12 +247499,18 @@
         "MCFP2",
         "XPAR",
         "5.0.2",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.326469500Z",
+        "2026-09-14T00:46:38.326469500Z",
+        "98d5096e-c63b-8537-b1ec-6b9f5cbefd12",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.326469500Z",
+        "2026-09-14T00:46:38.326469500Z"
       ],
       "mime": "text/key-value",
       "msgtype": null,
       "direction": null,
-      "size": 6,
+      "size": 12,
       "columns": [],
       "arrivals": [
         [
@@ -246093,15 +247529,23 @@
           "XPAR"
         ]
       ],
-      "unmapped": [
-        "VENUE"
+      "lift": [
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.326469500Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.326469500Z",
+          52
+        ]
       ],
-      "lift": [],
       "anomalies": [],
       "digest": "070d81d9300f0d2932ca48fdea0a0537",
       "ticker": null,
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.326469500Z",
+      "partition": "1789344000",
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR\", 'binary'))]"
     },
@@ -246239,11 +247683,90 @@
                 "unit": "nanosecond"
               },
               "metadata": {
-                "description": "The timestamp a capture is ordered by: the row's own clock, else the first clock the message answers in decreasing exactness.",
-                "display": "Timestamp",
+                "description": "The settled message instant, truncated to the snapshot grid by the lifecycle.",
+                "display": "UpdatedAt",
                 "fix:tag": "65003"
               },
-              "name": "timestamp",
+              "name": "updatedat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The creation instant, preserved after initial materialization.",
+                "display": "CreatedAt",
+                "fix:tag": "65023"
+              },
+              "name": "createdat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "display": "Uuid",
+                "fix:tag": "65017"
+              },
+              "name": "uuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "uuid"
+              },
+              "metadata": {
+                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "display": "PUuid",
+                "fix:tag": "65018"
+              },
+              "name": "puuid",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "type": "string"
+              },
+              "metadata": {
+                "description": "The exact event-chain name; empty means unknown.",
+                "display": "Code",
+                "fix:tag": "65024"
+              },
+              "name": "code",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "The real event's instant, independent of the snapshot grid.",
+                "display": "SnapshotAt",
+                "fix:tag": "65025"
+              },
+              "name": "snapshotat",
+              "nullable": false
+            },
+            {
+              "dtype": {
+                "timezone": "UTC",
+                "type": "datetime64",
+                "unit": "nanosecond"
+              },
+              "metadata": {
+                "description": "Time of message transmission (always expressed in UTC (Universal Time Coordinated, also known as \"GMT\")",
+                "display": "SendingTime",
+                "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"sendingtime\",\"type\":{\"type\":\"datetime64\",\"unit\":\"nanosecond\",\"timezone\":\"UTC\"}}]}",
+                "fix:tag": "52"
+              },
+              "name": "sendingtime",
               "nullable": false
             }
           ],
@@ -246263,12 +247786,18 @@
         10.5,
         "4.4",
         "999",
-        "1970-01-01T00:00:00.000000000Z"
+        "2026-09-14T00:46:38.329368800Z",
+        "2026-09-14T00:46:38.329368800Z",
+        "98d5096e-c667-890e-82b8-73555f624d9c",
+        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "",
+        "2026-09-14T00:46:38.329368800Z",
+        "2026-09-14T00:46:38.329368800Z"
       ],
       "mime": "text/fix",
       "msgtype": "D",
       "direction": null,
-      "size": 10,
+      "size": 16,
       "columns": [
         {
           "t": 35,
@@ -246349,7 +247878,6 @@
           "999"
         ]
       ],
-      "unmapped": [],
       "lift": [
         [
           "symbol",
@@ -246380,13 +247908,23 @@
           "quantity",
           "100",
           38
+        ],
+        [
+          "transacttime",
+          "2026-09-14T00:46:38.329368800Z",
+          52
+        ],
+        [
+          "sendingtime",
+          "2026-09-14T00:46:38.329368800Z",
+          52
         ]
       ],
       "anomalies": [],
       "digest": "3dc6316f635adb56b2e58b2ab9e48aa1",
       "ticker": "AAPL",
-      "clock": "1970-01-01T00:00:00.000000000Z",
-      "partition": "0",
+      "clock": "2026-09-14T00:46:38.329368800Z",
+      "partition": "1789344000",
       "emitted": "8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|",
       "call": "[...new fix.FixCodec(registry).parseLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))]"
     }

@@ -1164,10 +1164,14 @@ export type JsFieldPath = FieldPath
  * Arrow methods take and answer a `BatchReader`, one batch at a time.
  *
  * Every message it builds opens with `beginstring` - the wire's own, else
- * the version the message was read at - and closes with the crate's
- * `timestamp`: the first clock the message carries, else the epoch. Neither
- * is an entry unless the line carried it, so `intoBytes` re-emits the line
- * byte for byte.
+ * the version the message was read at - and carries the settled replay
+ * fields: `SendingTime` is the message's valid tag 52, else the carrier's,
+ * else `defaultSendingTime`, else UTC now read once for that new message;
+ * `snapshotat` is `TransactTime` (60) else `SendingTime`; `updatedat` and
+ * `createdat` default to that instant; `code`, `uuid` and `puuid` follow.
+ * None of them is an entry unless the line carried it, so `intoBytes`
+ * re-emits the line byte for byte. Parsing undated bytes without a default
+ * sending time is deliberately not deterministic.
  */
 export declare class FixCodec {
   /**
@@ -1184,7 +1188,11 @@ export declare class FixCodec {
    * takes on the batch door, any spelling of one - `"S"`, `"Send"`,
    * `"R"` - the core's `Send` code when unstated and no pin at all when
    * empty; `batchByteSize` is the raw bytes one Arrow batch targets, the
-   * core's 128 MiB when unstated.
+   * core's 128 MiB when unstated; `defaultSendingTime` is the
+   * `SendingTime` an undated message takes when neither it nor its carrier
+   * states one - a `Scalar` crosses as it is and must already be
+   * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
+   * in nanoseconds, and `null` or absence reads UTC now per new message.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -1215,6 +1223,11 @@ export declare class FixCodec {
    * at this boundary is.
    */
   get batchByteSize(): number
+  /**
+   * The `SendingTime` an undated message takes, `DateTime64(ns, UTC)`, or
+   * `null` where each new undated message reads UTC now.
+   */
+  get defaultSendingTime(): JsScalar | null
   /** The complete raw message code declared by captured bytes. */
   static inferMsgtypeBytes(body: Buffer): Buffer | null
   /** The complete raw message code declared by captured text. */
@@ -1238,9 +1251,12 @@ export declare class FixCodec {
   /**
    * One line a text reader answered: its messages.
    *
-   * The line's body is the bytes read, its timestamp the clock that stamps
-   * the message, and its row-header captures state the rest - the plugin
-   * that logged it, the version, and every field a capture's name reaches.
+   * The line's body is the bytes read, and its row-header captures state
+   * the rest - the plugin that logged it, the version, and every field a
+   * capture's name reaches. The line's timestamp is capture context only:
+   * it stamps no FIX clock. `SendingTime` is the message's own, else a
+   * capture reaching that field, else the codec's `defaultSendingTime`,
+   * else UTC now.
    * `withCaptureNames` is what decides which capture is which, once for
    * the whole run, because a line answers its captures by position.
    *
@@ -1354,43 +1370,80 @@ export declare class FixFieldIterator {
 export type JsFixFieldIterator = FixFieldIterator
 
 /**
- * The state a stream of messages has reached, one chain per order alive.
+ * The state a stream of messages has reached, one chain per live event.
  *
  * Built once per stream, over one dictionary or the process default, and fed
- * every message in order through `fill`, which stamps the three identities
- * the stream implies: `instid`, the instrument; `id`, the message, sorting by
- * the market's own clock; `persistentid`, the order chain that every message
- * sharing one of its identifiers carries. A terminal state closes the chain
- * and forgets its identifiers, so what is held is the orders still alive.
- * `FixCodec.lifecycle` runs one of these over an iterable.
+ * every message in order. A nonempty `code` names its chain globally;
+ * otherwise the first identifier - stated `altids`, else the message type's
+ * declared identifiers - reaching a live chain under the effective
+ * `instuuid` scope supplies its code, and a new chain is named
+ * `<scope UUID or ->/<first identifier>`. Occupied identifiers are never
+ * stolen, and an empty code opens no chain. `puuid` hashes the settled code.
+ *
+ * Every accepted message has `updatedat` truncated to its epoch grid bucket
+ * of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
+ * carries its first message's `createdat` and hands each later message the
+ * previous message's `prevtimestamp` and `prevuuid`. A terminal state closes
+ * the chain; what is held is the live chains, their code, first creation
+ * instant, last clock and UUID, and highest consumed bucket - never pending
+ * messages. `FixCodec.lifecycle` runs one at the default cadence over an
+ * iterable.
  */
 export declare class FixLifecycle {
   /**
-   * A stream with no order alive yet.
+   * A stream with no event alive yet.
    *
-   * The three columns are the registry's own crate fields, which every
-   * registry this package builds holds.
+   * `options.intervalNs` is the positive grid interval in nanoseconds,
+   * `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) when unstated; a
+   * nonpositive one throws the core's located refusal. The stamped columns
+   * are the registry's own crate fields, which every registry holds.
    */
-  constructor(registry?: FixRegistry | undefined | null)
+  constructor(registry?: FixRegistry | undefined | null, options?: FixLifecycleOptions | undefined | null)
+  /** The epoch-grid interval in nanoseconds. */
+  get intervalNs(): bigint
   /**
-   * Stamps one message with its three identities and moves the chain it
-   * belongs to along.
+   * Selects a positive grid interval before any chain is live.
    *
-   * A stated value is never overwritten: a message already carrying an
-   * `id` keeps it, and one carrying a `persistentid` joins nothing new,
-   * which is what makes a second pass over a stamped stream a no-op. Only
-   * the row is stamped: the arrival record is what the wire carried, so
-   * `toBytes` re-emits the received line either way.
+   * Repeating the current interval is a no-op even while chains are live;
+   * a nonpositive interval, or a change while a chain is live, throws and
+   * changes nothing.
+   */
+  setIntervalNs(intervalNs: bigint | number): void
+  /**
+   * Answers one message normalized to its grid and moves its chain along.
+   *
+   * The chain is selected by `code`, else by identifier; the message's
+   * `updatedat` becomes its grid instant, it takes the live chain's first
+   * `createdat`, each absent previous stamp comes from the chain's last
+   * message while a stated one is kept, and `uuid` is finalized after
+   * every stamp. A fresh or cleared lifecycle replaying the same stream
+   * answers the same messages. Only the row is stamped: the arrival record
+   * is what the wire carried, so `intoBytes` re-emits the received line.
+   * A refusal throws and changes no chain, history, bucket or identifier.
    */
   fill(message: FixMsg): FixMsg
   /**
-   * How many orders are alive: opened by a message and not yet closed by
+   * Processes one message as `fill` does, answering it only as a new
+   * snapshot, else `null`.
+   *
+   * A message emits only when it arrived off-grid in a bucket above its
+   * live chain's highest consumed one. An already-aligned arrival consumes
+   * its bucket without emitting; equal or older buckets and messages with
+   * no chain name answer `null`. Suppressed messages still advance history
+   * and a terminal one still closes its chain.
+   */
+  snapshot(message: FixMsg): FixMsg | null
+  /**
+   * How many events are alive: opened by a message and not yet closed by
    * a terminal state.
    */
   get alive(): number
-  /** Forgets every chain, as a new session or a new day would. */
+  /**
+   * Forgets every chain's creation, history and bucket, as a new session
+   * or a new day would, keeping the interval.
+   */
   clear(): void
-  /** How this stream renders: the orders alive in it. */
+  /** How this stream renders: the events alive in it. */
   toString(): string
 }
 export type JsFixLifecycle = FixLifecycle
@@ -1429,6 +1482,11 @@ export type JsFixMessages = FixMessages
  * what the wire carried. The message compares, hashes, renders and clones by
  * the schema and the value it carries, against the registry it was resolved
  * against.
+ *
+ * Every message carries the settled replay fields, never null: `updatedat`,
+ * `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime` (52).
+ * The four the readers of the same names answer are held beside the row, so
+ * reading them costs no lookup.
  */
 export declare class FixMsg {
   /**
@@ -1436,7 +1494,11 @@ export declare class FixMsg {
    *
    * The loader widens `value`: anything `Scalar.fromJs` reads becomes the
    * native value first, and the core alone validates and canonicalizes it
-   * against `field`.
+   * against `field`. A mandatory replay field the root lacks is appended:
+   * `SendingTime` reads UTC now when the value states none, `snapshotat`
+   * is `TransactTime` (60) else `SendingTime`, `updatedat` and `createdat`
+   * default to that instant, `code` to the empty name, and `uuid` and
+   * `puuid` are computed. A stated identity must match what is computed.
    */
   constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -1449,8 +1511,11 @@ export declare class FixMsg {
    * names, reached by tag as a parsed message's are, and the entries are
    * rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
    * line the row was read from; a row without that column has no entries.
-   * Nothing is parsed again. The process default is the registry when
-   * none is named.
+   * Nothing is parsed again and no clock is read: the row must carry the
+   * seven non-null replay fields - `updatedat`, `createdat`, `uuid`,
+   * `puuid`, `code`, `snapshotat`, `SendingTime` - and its `uuid` and
+   * `puuid` must match what its content computes, or it throws the located
+   * refusal. The process default is the registry when none is named.
    */
   static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
   /** The registry this message resolves against, sharing it. */
@@ -1523,7 +1588,8 @@ export declare class FixMsg {
    * `null` is stored as a stated null. An existing child is replaced where
    * it stands and an absent one appended; a bare tag no dictionary explains
    * appends a text child named by its decimal. Only the row changes: the
-   * entries, the wire and the digest stay what they were.
+   * entries, the wire and the digest stay what they were, while `uuid` and
+   * `puuid` are recomputed from the new content. No clock is read.
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was.
@@ -1534,6 +1600,10 @@ export declare class FixMsg {
    *
    * The key resolves as `set` resolves one, and a key reaching nothing
    * answers `null` and changes nothing. The entries are untouched.
+   *
+   * A mandatory replay field - `updatedat`, `createdat`, `uuid`, `puuid`,
+   * `code`, `snapshotat` or `SendingTime` - refuses removal and throws,
+   * leaving the message exactly as it was; so does any other refusal.
    */
   remove(key: number | string): JsScalar | null
   /**
@@ -1553,15 +1623,39 @@ export declare class FixMsg {
   /** One instrument symbol that is the same across venues, or `null`. */
   symbolTicker(): JsScalar | null
   /**
-   * The timestamp a capture is ordered by, or `null`.
+   * The settled message instant, `DateTime64(ns, UTC)`, never null.
    *
-   * The crate's `timestamp` child every built message closes with: the
-   * first clock the message carries, else the epoch - so a message the
-   * reader built always answers, and only a message built by hand without
-   * that child does not.
+   * Settled once, when the message is first built: a valid stated
+   * `updatedat`, else the event instant `snapshotat` holds. A lifecycle
+   * truncates it to its snapshot grid. Mutation and enrichment carry it
+   * unless it is written explicitly; no clock is read after intake.
    */
-  marketTimestamp(): JsScalar | null
-  /** The partition that timestamp falls in, in whole seconds. */
+  updatedat(): JsScalar
+  /**
+   * The settled creation instant, `DateTime64(ns, UTC)`, never null.
+   *
+   * A valid stated `createdat`, else the event instant; a lifecycle
+   * carries the first creation instant of the live chain a message joins.
+   */
+  createdat(): JsScalar
+  /**
+   * The message's time/content UUID, never null.
+   *
+   * A version-8 UUID of `updatedat`'s signed nanoseconds and 58 bits of
+   * the canonical named content's XXH64; `updatedat`, `createdat`, `uuid`
+   * itself and the arrival record are not content. A stated `uuid` must
+   * match it.
+   */
+  uuid(): JsScalar
+  /**
+   * The event chain's UUID, never null.
+   *
+   * A version-8 UUID over XXH3-128 of the exact `code` bytes alone, so the
+   * empty (unknown) code has one deterministic `puuid` too. A stated
+   * `puuid` must match it.
+   */
+  puuid(): JsScalar
+  /** The partition `updatedat` falls in, in whole seconds. */
   unixPartition(seconds: number): JsScalar | null
   /** One lifted facet's value, or `null` where nothing carries it. */
   lifted(facet: string): JsScalar | null
@@ -1589,7 +1683,10 @@ export declare class FixMsg {
    * What arrived, in arrival order, untranslated.
    *
    * Flattened pre-order: a group's members follow the counter pair that
-   * heads them, so a caller reading the array reads the wire.
+   * heads them, so a caller reading the array reads the wire. Each entry
+   * is `[tag, key, value]`; tag 0 marks a key the dictionary did not
+   * resolve, whether it arrived as a name or as a number, and its raw key
+   * is kept.
    */
   arrivals(): Array<[number, string, string]>
   /**
@@ -1598,8 +1695,13 @@ export declare class FixMsg {
    * `schema` is the fixed root `fixSchema` builds: every column is filled by
    * the tag its field carries - never by its spelling - so a message that
    * carried nothing at a column answers null there rather than shifting its
-   * neighbours, and a column no tag names answers null because it is the
-   * capture's rather than the message's.
+   * neighbours. A column no tag names is the capture's: it takes the child
+   * of that name where the message has one, else null. The arrival record
+   * closes the row under `nofixentries`, unresolved keys at tag 0.
+   *
+   * A replayable row keeps the seven replay fields; a schema missing or
+   * mistyping one, or a cell its column cannot represent, throws the
+   * located refusal. No clock is read.
    */
   intoRow(schema: JsField): JsScalar
   /** Re-emit this message on the wire, separated by `separator`. */
@@ -1689,10 +1791,13 @@ export declare class FixRegistry {
   /**
    * A registry holding the built-in definitions.
    *
-   * Every registry holds the twenty scalar fields and sorted `altids` Map
-   * group that `fixCrateFields` lists, and the `pluginconfig` component.
-   * A dictionary loaded from a store, built from fields or left alone
-   * holds them alike; scalar lookups and `size` exclude groups and components.
+   * Every registry holds the twenty-four scalar fields and the sorted
+   * `altids` Map group that `fixCrateFields` lists, and the `pluginconfig`
+   * component. It also holds the standard `SendingTime` (52) and
+   * `TransactTime` (60) clock fields, seeded where the dictionary defines
+   * no field of its own at those tags. A dictionary loaded from a store,
+   * built from fields or left alone holds them alike; scalar lookups and
+   * `size` exclude groups and components, so a new registry's `size` is 26.
    */
   constructor()
   /**
@@ -1706,10 +1811,12 @@ export declare class FixRegistry {
    *
    * `location` is an `IOBase` handle, a `Url`, or the string naming one, run
    * through the coercion every folder-shaped entry point uses. A folder that
-   * is not there loads as a new registry - the crate's own fields and
-   * nothing else - and is not created; a stored copy of one of the crate's
-   * own fields, a standard field from 65000 up, is read past, because the
-   * crate's own definition is the one that types a row. A shard that does
+   * is not there loads as a new registry - the crate's own fields and the
+   * two seeded clocks, nothing else - and is not created; a stored copy of
+   * one of the crate's own fields, in its tag block from 65000, is read
+   * past, because the crate's own definition is the one that types a row.
+   * The standard clocks are seeded after the store loads, so a stored
+   * `SendingTime` or `TransactTime` keeps its own metadata. A shard that does
    * not parse, and a root still holding the retired `records/` layout,
    * throw with the URL named.
    */
@@ -1746,12 +1853,15 @@ export declare class FixRegistry {
    * Write every populated shard under `<location>/fields/<shard>.json` and
    * every definition under `<location>/<category>/<name>.json`, removing
    * the shards and trees no field populates any more. The crate's own
-   * fields - the standard fields from 65000 up - are never written: they
-   * are the crate's rather than the store's, and every registry holds them
+   * fields - its tag block from 65000 - are never written: they are the
+   * crate's rather than the store's, and every registry holds them
    * already.
    */
   writeInto(location: LocationInput): void
-  /** How many scalar fields are held, the crate's own twenty among them. */
+  /**
+   * How many scalar fields are held, the crate's own twenty-four among
+   * them, 26 for a new registry with its two seeded clocks.
+   */
   get size(): number
   /**
    * The field one identifier names exactly, or `null`.
@@ -2217,9 +2327,9 @@ export declare class IOBase {
    * one window rather than a copy. A resource that does not exist digests
    * as empty, per the laziness contract; a container throws.
    */
-  readDigest(algorithm?: string | undefined | null): JsDigest
+  readDigest(algorithm?: string | undefined | null): Digest
   /** Digest `length` bytes from `offset`, streaming the window. */
-  readRangeDigest(offset: number, length: number, algorithm?: string | undefined | null): JsDigest
+  readRangeDigest(offset: number, length: number, algorithm?: string | undefined | null): Digest
   /** Read every byte here as UTF-8 text. */
   readText(): string
   /** Replace what is here with `data`, as `fs.writeFileSync`. */
@@ -3077,11 +3187,14 @@ export declare class ProtocolField {
    * removes it, the way every other property is removed.
    */
   get tag(): number | null
-  /** Record the canonical FIX tag, rejecting anything but an exact `i32`. */
+  /**
+   * Record the canonical FIX tag, rejecting anything but an exact positive
+   * `i32`; zero belongs only to unresolved arrival entries.
+   */
   set tag(value: number)
   /** The scalar counter referenced by a repeating group. */
   get counter(): number | null
-  /** Set a repeating group's exact signed 32-bit counter tag. */
+  /** Set a repeating group's exact positive 32-bit counter tag. */
   set counter(value: number)
   /** The component definition named by this FIX occurrence. */
   get component(): string | null
@@ -3110,7 +3223,10 @@ export declare class ProtocolField {
    * removes it: a field states alternate tags only when it has them.
    */
   get tags(): Array<number>
-  /** Record the alternate tags; an empty array removes the property. */
+  /**
+   * Record the alternate tags, each an exact positive `i32`; an empty array
+   * removes the property.
+   */
   set tags(values: Array<number>)
   /**
    * The alternate names, highest priority first.
@@ -3443,7 +3559,7 @@ export declare class Scalar {
    * temporal widths, because the feed writes each family's canonical form
    * rather than its storage width.
    */
-  digest(algorithm?: string | undefined | null): JsDigest
+  digest(algorithm?: string | undefined | null): Digest
   /**
    * Compare two native values by the core's total value order.
    *
@@ -4496,15 +4612,24 @@ export declare class TxHash {
   /** The digest half, carrying its algorithm. */
   get digest(): JsDigest
   /** The datatype a column of values like this one is stored under. */
-  get dtype(): DataType
+  get dtype(): JsDataType
   /** Restate the instant at another clock resolution, keeping the digest. */
   withUnit(unit: string): TxHash
   /** The canonical bytes: the instant big-endian, then the digest. */
   bytes(): Uint8Array
   /** The instant as a UTC datetime `Scalar` at this value's resolution. */
-  intoDatetime(): Scalar
+  intoDatetime(): JsScalar
   /** The canonical bytes as a fixed-width byte `Scalar`. */
-  intoScalar(): Scalar
+  intoScalar(): JsScalar
+  /**
+   * The RFC 9562 `UUIDv8` projection, as a `uuid` `Scalar`.
+   *
+   * The instant restates exactly to signed nanoseconds, then the digest's
+   * low 58 bits follow, so the UUIDs order by instant across the epoch.
+   * Lossy: neither the unit nor the algorithm is kept. Throws for a digest
+   * that is not 64 bits wide, or an instant past signed 64-bit nanoseconds.
+   */
+  intoUuid(): JsScalar
   /** Exact equality: another unit or algorithm is another value. */
   equals(other: TxHash): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
@@ -4548,7 +4673,7 @@ export declare class TxHasher {
   /** The width of every answer's canonical bytes. */
   get width(): number
   /** The datatype a column of answers is stored under. */
-  get dtype(): DataType
+  get dtype(): JsDataType
   /** Make a cheap native clone. */
   clone(): TxHasher
 }
@@ -4934,7 +5059,7 @@ export declare class Xxh128 {
   /** Feed raw bytes or a string's UTF-8. */
   writeBytes(data: Buffer | Uint8Array | string): void
   /** Feed one value's canonical byte representation. */
-  writeScalar(value: Scalar): void
+  writeScalar(value: JsScalar): void
   /**
    * Answer the digest of everything fed so far.
    *
@@ -4949,8 +5074,8 @@ export declare class Xxh128 {
   /**
    * Start a state, optionally seeded and with a custom secret.
    *
-   * A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
-   * length whatever the payload, for the reason `Xxh3` states.
+   * A secret shorter than `hashing.xxhash.SECRET_MINIMUM_LENGTH` is
+   * rejected by length whatever the payload, for the reason `Xxh3` states.
    */
   constructor(seed?: bigint | undefined | null, secret?: Uint8Array | undefined | null)
   /** The seed this state was constructed with. */
@@ -4967,7 +5092,7 @@ export declare class Xxh3 {
   /** Feed raw bytes or a string's UTF-8. */
   writeBytes(data: Buffer | Uint8Array | string): void
   /** Feed one value's canonical byte representation. */
-  writeScalar(value: Scalar): void
+  writeScalar(value: JsScalar): void
   /**
    * Answer the digest of everything fed so far.
    *
@@ -4982,10 +5107,10 @@ export declare class Xxh3 {
   /**
    * Start a state, optionally seeded and with a custom secret.
    *
-   * A secret shorter than `xxhash.SECRET_MINIMUM_LENGTH` is rejected by
-   * length whatever the payload: the reference only consults a secret past
-   * its 240-byte cutoff, and a secret that is sometimes used is worse than
-   * one that is refused.
+   * A secret shorter than `hashing.xxhash.SECRET_MINIMUM_LENGTH` is
+   * rejected by length whatever the payload: the reference only consults a
+   * secret past its 240-byte cutoff, and a secret that is sometimes used is
+   * worse than one that is refused.
    */
   constructor(seed?: bigint | undefined | null, secret?: Uint8Array | undefined | null)
   /** The seed this state was constructed with. */
@@ -5002,7 +5127,7 @@ export declare class Xxh32 {
   /** Feed raw bytes or a string's UTF-8. */
   writeBytes(data: Buffer | Uint8Array | string): void
   /** Feed one value's canonical byte representation. */
-  writeScalar(value: Scalar): void
+  writeScalar(value: JsScalar): void
   /**
    * Answer the digest of everything fed so far.
    *
@@ -5033,7 +5158,7 @@ export declare class Xxh64 {
   /** Feed raw bytes or a string's UTF-8. */
   writeBytes(data: Buffer | Uint8Array | string): void
   /** Feed one value's canonical byte representation. */
-  writeScalar(value: Scalar): void
+  writeScalar(value: JsScalar): void
   /**
    * Answer the digest of everything fed so far.
    *
@@ -5205,21 +5330,31 @@ export interface FixCodecOptions {
   direction?: string
   /** The raw bytes one Arrow batch targets; the core's 128 MiB when unstated. */
   batchByteSize?: number
+  /**
+   * The `SendingTime` an undated message takes when neither it nor its
+   * carrier states one: a `DateTime64(ns, UTC)` `Scalar`, or a `Date`
+   * restated in nanoseconds. UTC now per new message when unstated or
+   * `null`.
+   */
+  defaultSendingTime?: Scalar | Date | null
 }
 
 /**
- * The twenty-one definitions this crate owns, in tag order from 65000:
- * twenty scalar fields and the sorted `altids` Map group at 65020.
+ * The twenty-five definitions this crate owns, in tag order: twenty-four
+ * scalar fields at 65001 to 65019 and 65021 to 65025, and the sorted
+ * `altids` Map group at 65020. Tag 65000 is retired and not reused.
  *
- * The digest, the version read at, the ticker, the clock and its partition,
- * the parent identifiers, the session the message states, the bridge's
- * message context, the plugin that logged the line and the one it came
- * through before that, the two session names the line spells, the ISIN, MIC
- * and order state a row derives, and the instrument, message and order-chain
- * identities a lifecycle pass stamps, plus the direct identifiers enrichment
- * records in `altids`. Every registry already holds them in their category, so
- * this is the listing a schema or a document walks rather than something a
- * caller registers.
+ * The version read at, the ticker, `updatedat` and its partition, the
+ * parent identifiers, the sessions the message states, the bridge's message
+ * context, the plugin that logged the line and the one it came through
+ * before that, the two session names the line spells, the ISIN, MIC and
+ * order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
+ * the direct identifiers enrichment records in `altids`, the previous
+ * message's `prevtimestamp` and `prevuuid`, and `createdat`, `code` and
+ * `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+ * `snapshotat` are non-null. Every registry already holds them in their
+ * category, so this is the listing a schema or a document walks rather than
+ * something a caller registers.
  */
 export declare function fixCrateFields(): Array<JsField>
 
@@ -5229,6 +5364,15 @@ export interface FixDirection {
   code: string
   /** The `regex::bytes` patterns, any of which names the code in the prose before a payload. */
   patterns: Array<string>
+}
+
+/** How a lifecycle is configured, where a caller configures it at all. */
+export interface FixLifecycleOptions {
+  /**
+   * The positive epoch-grid interval in nanoseconds;
+   * `FixLifecycle.DEFAULT_INTERVAL_NS` when unstated.
+   */
+  intervalNs?: bigint | number
 }
 
 /** The scalar fields the plugin dictionary owns. */
@@ -5250,10 +5394,14 @@ export declare function fixPluginMessage(): JsField
  * The fixed root every message answers as, built from one dictionary.
  *
  * Header, the fields a consumer reads, the groups worth persisting whole, the
- * trailer, this crate's own derived facts, and the two lists that close every
- * row. Columns are spelled by the dictionary's folded canonical names -
- * `msgtype`, never `35` - so a row reads the way a message reads; the tag
- * stays each column's identity, on its `fix:tag`, and is what fills it.
+ * trailer, this crate's own derived facts through tag 65025, `MsgDirection`
+ * (385), and the one list that closes every row: `nofixentries`, the whole
+ * arrival record, unresolved keys at tag 0. Columns are spelled by the
+ * dictionary's folded canonical names - `msgtype`, never `35` - so a row
+ * reads the way a message reads; the tag stays each column's identity, on
+ * its `fix:tag`, and is what fills it. `beginstring`, `unixpartition` and
+ * the replay fields - `sendingtime`, `updatedat`, `createdat`, `uuid`,
+ * `puuid`, `code`, `snapshotat` - are required.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 

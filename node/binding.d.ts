@@ -495,7 +495,11 @@ declare module './index' {
      * none.
      */
     enrichMessages(messages: Iterable<FixMsg>): FixMessages
-    /** One lifecycle over a whole stream of messages, one at a time. */
+    /**
+     * One lifecycle at `FixLifecycle.DEFAULT_INTERVAL_NS` over a whole stream
+     * of messages, one at a time, answering every message as
+     * `FixLifecycle.fill` does.
+     */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**
      * A stream of messages as batches of FIX rows under `schema`, closed on
@@ -507,6 +511,21 @@ declare module './index' {
     enrichMessagesArrowReader(source: BatchSource): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
+  }
+  interface FixLifecycle {
+    /**
+     * The snapshots a stream of messages emits, pulled one at a time: only
+     * messages `snapshot` would answer `null` for disappear. The stream owns
+     * this lifecycle - its interval and live chains - so every later call on
+     * this object throws. A refused message throws where it is met without
+     * advancing state and the stream continues; a failure of the iterable
+     * throws as itself and ends it.
+     */
+    snapshots(messages: Iterable<FixMsg>): FixMessages
+  }
+  namespace FixLifecycle {
+    /** The grid interval, in nanoseconds, a lifecycle uses unless configured: one second. */
+    const DEFAULT_INTERVAL_NS: bigint
   }
 
   interface Field {
@@ -2258,81 +2277,87 @@ export interface DigestOptions {
   readonly secret?: DigestContent
 }
 
-/**
- * XXH32, XXH64, XXH3-64, and XXH3-128 over bytes, values, and handles.
- *
- * The one-shot functions answer a `number` for XXH32 - a 32-bit value always
- * fits one exactly - and a `bigint` for the wider results. `Digest` is the
- * answer that carries its algorithm with it, which is what keeps `xxh64` and
- * `xxh3-64`, both 64 bits wide, from being confused for one another.
- *
- * xxHash is not a cryptographic hash: a digest detects accidental change,
- * never an adversary who chooses the input. It is also not Iceberg's `bucket`
- * transform, which the specification pins to murmur3 x86_32.
- */
-export declare const xxhash: {
-  /** The shortest custom secret XXH3 accepts, in bytes. */
-  readonly SECRET_MINIMUM_LENGTH: number
-  readonly Digest: typeof Digest
-  readonly Xxh32: typeof Xxh32
-  readonly Xxh64: typeof Xxh64
-  readonly Xxh3: typeof Xxh3
-  readonly Xxh128: typeof Xxh128
-  /** Digest a complete value with XXH32. */
-  xxh32(data: DigestContent, options?: DigestOptions | bigint | number): number
-  /** Digest a complete value with XXH64. */
-  xxh64(data: DigestContent, options?: DigestOptions | bigint | number): bigint
-  /** Digest a complete value with XXH3, answering 64 bits. */
-  xxh3(data: DigestContent, options?: DigestOptions | bigint | number): bigint
-  /** Digest a complete value with XXH3, answering 128 bits. */
-  xxh128(data: DigestContent, options?: DigestOptions | bigint | number): bigint
-  /** Digest a complete value, carrying the algorithm with the answer. */
-  digest(data: DigestContent, algorithm: DigestAlgorithm): Digest
-}
-
 /** Anything the loader reads an instant from. */
 export type UnixLike = bigint | number | Date | string | Scalar
 
 /**
- * An instant coupled with an xxHash digest, in one sortable value.
- *
- * A `TxHash` is a unix count followed by a digest: the instant first,
- * big-endian, so `bytes()` sorts by time and then by content; the digest
- * after it, at its algorithm's exact width. The instant is always UTC and
- * counted in microseconds unless a resolution is named, and the digest is
- * what `xxhash` answers for the same bytes.
- *
- * Every `unix` argument reads the same way: a `bigint` or an integer
- * `number` is the count already; a `Date` is its UTC millisecond instant; a
- * string is timestamp text; a `Scalar` holds any of those.
+ * The digest owner: `hashing.xxhash` and `hashing.txhash`, the one public
+ * path to both families. The classes they carry are also top-level exports.
  */
-export declare const txhash: {
-  /** The resolution a unix count carries when a caller names none. */
-  readonly DEFAULT_UNIT: string
-  /** The bytes the instant takes at the front of every value. */
-  readonly UNIX_WIDTH: number
-  readonly TxHash: typeof TxHash
-  readonly TxHasher: typeof TxHasher
-  /** Couple a microsecond instant with XXH32 of a complete value. */
-  txh32(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
-  /** Couple a microsecond instant with XXH64 of a complete value. */
-  txh64(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
-  /** Couple a microsecond instant with XXH3-64 of a complete value. */
-  txh3(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
-  /** Couple a microsecond instant with XXH3-128 of a complete value. */
-  txh128(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
-  /** Couple a microsecond instant with a complete value's digest. */
-  digest(data: DigestContent, unix: UnixLike, algorithm: DigestAlgorithm): TxHash
-  /** Read the system clock as a unix count of `unit`, microseconds by default. */
-  unixNow(unit?: string): bigint
-  /** Read any instant as a unix count of `unit`, microseconds by default. */
-  unixOf(value: UnixLike, unit?: string): bigint
-  /** Restate a count of one resolution as a count of another. */
-  restateUnix(count: bigint | number, from: string, into: string): bigint
-  /** The width of a value coupling an instant with an algorithm's digest. */
-  width(algorithm: DigestAlgorithm): number
-  /** The datatype a column of coupled values is stored under. */
-  dtype(algorithm: DigestAlgorithm): DataType
+export declare const hashing: {
+  /**
+   * XXH32, XXH64, XXH3-64, and XXH3-128 over bytes, values, and handles.
+   *
+   * The one-shot functions answer a `number` for XXH32 - a 32-bit value
+   * always fits one exactly - and a `bigint` for the wider results. `Digest`
+   * is the answer that carries its algorithm with it, which is what keeps
+   * `xxh64` and `xxh3-64`, both 64 bits wide, from being confused for one
+   * another.
+   *
+   * xxHash is not a cryptographic hash: a digest detects accidental change,
+   * never an adversary who chooses the input. It is also not Iceberg's
+   * `bucket` transform, which the specification pins to murmur3 x86_32.
+   */
+  readonly xxhash: {
+    /** The shortest custom secret XXH3 accepts, in bytes. */
+    readonly SECRET_MINIMUM_LENGTH: number
+    readonly Digest: typeof Digest
+    readonly Xxh32: typeof Xxh32
+    readonly Xxh64: typeof Xxh64
+    readonly Xxh3: typeof Xxh3
+    readonly Xxh128: typeof Xxh128
+    /** Digest a complete value with XXH32. */
+    xxh32(data: DigestContent, options?: DigestOptions | bigint | number): number
+    /** Digest a complete value with XXH64. */
+    xxh64(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+    /** Digest a complete value with XXH3, answering 64 bits. */
+    xxh3(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+    /** Digest a complete value with XXH3, answering 128 bits. */
+    xxh128(data: DigestContent, options?: DigestOptions | bigint | number): bigint
+    /** Digest a complete value, carrying the algorithm with the answer. */
+    digest(data: DigestContent, algorithm: DigestAlgorithm): Digest
+  }
+  /**
+   * An instant coupled with an xxHash digest, in one sortable value.
+   *
+   * A `TxHash` is a unix count followed by a digest: the instant first,
+   * big-endian, so `bytes()` sorts by time and then by content; the digest
+   * after it, at its algorithm's exact width. The instant is always UTC and
+   * counted in microseconds unless a resolution is named, and the digest is
+   * what `hashing.xxhash` answers for the same bytes.
+   *
+   * Every `unix` argument reads the same way: a `bigint` or an integer
+   * `number` is the count already; a `Date` is its UTC millisecond instant; a
+   * string is timestamp text; a `Scalar` holds any of those.
+   */
+  readonly txhash: {
+    /** The resolution a unix count carries when a caller names none. */
+    readonly DEFAULT_UNIT: string
+    /** The bytes the instant takes at the front of every value. */
+    readonly UNIX_WIDTH: number
+    readonly TxHash: typeof TxHash
+    readonly TxHasher: typeof TxHasher
+    /** Couple a microsecond instant with XXH32 of a complete value. */
+    txh32(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+    /** Couple a microsecond instant with XXH64 of a complete value. */
+    txh64(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+    /** Couple a microsecond instant with XXH3-64 of a complete value. */
+    txh3(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+    /** Couple a microsecond instant with XXH3-128 of a complete value. */
+    txh128(data: DigestContent, unix: UnixLike, options?: DigestOptions | bigint | number): TxHash
+    /** Couple a microsecond instant with a complete value's digest. */
+    digest(data: DigestContent, unix: UnixLike, algorithm: DigestAlgorithm): TxHash
+    /** Read the system clock as a unix count of `unit`, microseconds by default. */
+    unixNow(unit?: string): bigint
+    /** Read any instant as a unix count of `unit`, microseconds by default. */
+    unixOf(value: UnixLike, unit?: string): bigint
+    /** Restate a count of one resolution as a count of another. */
+    restateUnix(count: bigint | number, from: string, into: string): bigint
+    /** The width of a value coupling an instant with an algorithm's digest. */
+    width(algorithm: DigestAlgorithm): number
+    /** The datatype a column of coupled values is stored under. */
+    dtype(algorithm: DigestAlgorithm): DataType
+  }
 }
 
 export interface ArrowStringCompatible {
@@ -2979,7 +3004,11 @@ export type FixValueInput =
  * takes: `Scalar.fromJs` lives in the loader, so it runs here.
  */
 export interface FixMsgConstructor {
-  /** Build a message, linking the process default when none is named. */
+  /**
+   * Build a message, linking the process default when none is named. A
+   * mandatory replay field the root lacks is appended - `SendingTime` reads
+   * UTC now when the value states none - and `uuid`/`puuid` are computed.
+   */
   new (
     field: Field,
     value: FixValueInput,
@@ -2987,7 +3016,8 @@ export interface FixMsgConstructor {
   ): FixMsg
   /**
    * The message a fixed row holds: the inverse of `intoRow`, its entries
-   * rebuilt from the `nofixentries` column without a parse.
+   * rebuilt from the `nofixentries` column without a parse. The row carries
+   * the seven non-null replay fields and no clock is read.
    */
   fromRow(schema: Field, row: FixValueInput, registry?: FixRegistry | null): FixMsg
   readonly prototype: FixMsg
@@ -3029,10 +3059,14 @@ export interface Fix {
   readonly Plugin: PluginConstructor
   readonly Plugins: abstract new () => Plugins
   /**
-   * The state a stream of messages has reached, one chain per order alive:
-   * `fill` stamps each message with its instrument, its own identity and
-   * the order chain it belongs to, `alive` counts the chains a terminal
-   * state has not closed, and `clear` forgets them all.
+   * The state a stream of messages has reached, one chain per live event:
+   * `fill` names each message's chain by `code` (else by identifier),
+   * truncates `updatedat` to the `intervalNs` epoch grid while `snapshotat`
+   * keeps the real instant, carries the chain's first `createdat` and the
+   * previous message's `prevtimestamp`/`prevuuid`, and finalizes `uuid`;
+   * `snapshot` and `snapshots` answer only new grid snapshots; `alive`
+   * counts the chains a terminal state has not closed, and `clear` forgets
+   * them all.
    */
   readonly FixLifecycle: typeof FixLifecycle
   /**
@@ -3047,27 +3081,31 @@ export interface Fix {
    * The fixed root behind a capture's own columns, which lead the row.
    *
    * A carried column whose folded name a FIX column already takes -
-   * `sessionId` and `sessionid` are one name - is dropped rather than
-   * renamed: the FIX column is the one a reader spelling it means, and
-   * `sessionid` means the session the message itself states. A bridge's own
-   * session instance is captured as `sessionUid` for that reason and leads
-   * the row, while its `plugin` capture fills the plugin session the line's
-   * direction names: the sender's for a line it sent, the target's for one
-   * it received.
+   * `senderSessionId` and `sendersessionid` are one name - is dropped rather
+   * than renamed: the FIX column is the one a reader spelling it means. A
+   * bridge's row header spells the session instance it handled a line on as
+   * `senderSessionId` for that reason, so the value reaches the FIX column
+   * rather than leading the row - never over a reading the message stated
+   * itself - and its `pluginid` capture reaches the crate's own column.
    */
   schemaCarrying(carrier: Field, read: Field): Field
-  /** One row's columns, in order, as tags. */
+  /**
+   * One row's tagged columns, in order, ending `..., 65025, 385`; the
+   * `nofixentries` list that closes the row has no tag.
+   */
   schemaTags(): number[]
   /**
-   * The twenty-one crate definitions in tag order from 65000: twenty scalar
-   * fields and the sorted `altids` Map group at 65020 - the digest,
-   * the clock and its partition, the session a message states, the bridge's
-   * message context, the plugins and plugin sessions a line moved between,
-   * the ISIN, MIC and order state a row derives, and the instrument, message
-   * and order-chain identities a lifecycle pass stamps, plus the direct
-   * identifiers enrichment records in `altids`. Every registry holds them
-   * in their category from construction; `size` counts the twenty scalar
-   * members of this listing, not the group.
+   * The twenty-five crate definitions in tag order: twenty-four scalar
+   * fields at 65001-65019 and 65021-65025 and the sorted `altids` Map group
+   * at 65020 (65000 is retired) - the version, the ticker, `updatedat` and
+   * its partition, the sessions a message states, the bridge's message
+   * context, the plugins and plugin sessions a line moved between, the
+   * ISIN, MIC and order state a row derives, the `instuuid`, `uuid` and
+   * `puuid` identities, the direct identifiers enrichment records in
+   * `altids`, `prevtimestamp`/`prevuuid`, and `createdat`, `code` and
+   * `snapshotat`. Every registry holds them in their category from
+   * construction, beside the seeded `SendingTime` (52) and `TransactTime`
+   * (60) clocks, so a new registry's `size` is 26.
    */
   crateFields(): Field[]
   /** The native ULBridge scalar definitions. */

@@ -17,6 +17,9 @@ pub mod coding;
 mod enums;
 mod expression;
 mod fix;
+// Discovered through NAPI's generated registration inventory, like `enums`.
+#[allow(dead_code)]
+mod hashing;
 mod holder;
 mod iobase;
 mod iomedia;
@@ -28,11 +31,6 @@ mod types;
 // inventory rather than ordinary Rust call sites.
 #[allow(dead_code)]
 mod uri;
-// Discovered through NAPI's generated registration inventory, like `enums`.
-#[allow(dead_code)]
-mod txhash;
-#[allow(dead_code)]
-mod xxhash;
 
 use std::cmp::Ordering;
 

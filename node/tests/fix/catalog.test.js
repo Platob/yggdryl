@@ -91,11 +91,15 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
     assert.equal(registry.getDefinition(category, name), null)
     assert.equal(registry.removeDefinition(category, name), null)
   }
-  // Only the crate's own fields are left: they seed every registry and
-  // are never a definition a caller can remove.
-  assert.equal(registry.size, 20)
-  assert.equal([...registry.definitions('fields')].length, 20)
-  assert.equal(fix.crateFields().length, 21)
+  // Only what seeds every registry is left: the crate's own twenty-four
+  // scalar fields and the standard SendingTime (52) and TransactTime (60)
+  // clocks (`seeded_fields()` in `rust/tests/fix.rs`), all of them in the
+  // fields category. The crate's twenty-five definitions add the altids group.
+  assert.equal(registry.size, 26)
+  assert.equal([...registry.definitions('fields')].length, 26)
+  assert.equal(registry.fieldByTag(52).name, 'sendingtime')
+  assert.equal(registry.fieldByTag(60).name, 'transacttime')
+  assert.equal(fix.crateFields().length, 25)
   assert.equal(registry.groupByCounter(65020).name, 'altids')
 })
 
@@ -499,7 +503,9 @@ for (const [property, key, value] of [['counter', 'counter', 453], ['component',
     assert.equal(field.fix[property], expected)
     assert.equal(field.get(`fix:${key}`), String(expected))
     const before = JSON.stringify(field)
-    for (const invalid of property === 'counter' ? [-1, 1.5, 2 ** 31] : ['', '\u0000']) {
+    // A counter is a positive tag: zero marks an unresolved arrival and is
+    // refused like any other nonpositive number (`rust/tests/fix/zero_entries.rs`).
+    for (const invalid of property === 'counter' ? [0, -1, 1.5, 2 ** 31] : ['', '\u0000']) {
       assert.throws(() => { field.fix[property] = invalid })
       assert.equal(JSON.stringify(field), before)
     }

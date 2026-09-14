@@ -17,14 +17,14 @@ use yggdryl::hashing::txhash::{self, TxHash, TxHasher};
 use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Scalar, TimeUnit};
 
+use super::xxhash::{
+    JsDigest, JsXxh3, JsXxh32, JsXxh64, JsXxh128, algorithm_from_str, apply_arrow_batch_ipc,
+    content_bytes, seed_from_bigint,
+};
 use crate::napi_error;
 use crate::text::codec::JsScalar;
 use crate::types::datatype::JsDataType;
 use crate::types::field::JsField;
-use crate::xxhash::{
-    JsDigest, JsXxh3, JsXxh32, JsXxh64, JsXxh128, algorithm_from_str, apply_arrow_batch_ipc,
-    content_bytes, seed_from_bigint,
-};
 
 /// Anything the loader hands a native entry point as an instant.
 ///
@@ -221,6 +221,21 @@ impl JsTxHash {
     #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
     pub fn into_scalar(&self) -> JsScalar {
         JsScalar::from_core(self.inner.into_scalar())
+    }
+
+    /// The RFC 9562 `UUIDv8` projection, as a `uuid` `Scalar`.
+    ///
+    /// The instant restates exactly to signed nanoseconds, then the digest's
+    /// low 58 bits follow, so the UUIDs order by instant across the epoch.
+    /// Lossy: neither the unit nor the algorithm is kept. Throws for a digest
+    /// that is not 64 bits wide, or an instant past signed 64-bit nanoseconds.
+    #[napi]
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
+    pub fn into_uuid(&self) -> Result<JsScalar> {
+        self.inner
+            .into_uuid()
+            .map(|uuid| JsScalar::from_core(Scalar::Uuid(uuid)))
+            .map_err(napi_error)
     }
 
     /// Exact equality: another unit or algorithm is another value.

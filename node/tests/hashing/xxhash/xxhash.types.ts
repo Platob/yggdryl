@@ -1,7 +1,13 @@
 import { Buffer } from 'node:buffer'
 import type { RecordBatch as ArrowRecordBatch } from 'apache-arrow'
 
-import { Digest, Field, IOBase, Scalar, Xxh3, Xxh128, Xxh32, Xxh64, enums, xxhash } from 'yggdryl'
+import * as yggdryl from 'yggdryl'
+import { Digest, Field, IOBase, Scalar, Xxh3, Xxh128, Xxh32, Xxh64, enums, hashing } from 'yggdryl'
+
+// The one public path: the family lives under the hashing owner.
+const { xxhash } = hashing
+// @ts-expect-error there is no top-level xxhash export
+void yggdryl.xxhash
 
 const payload = Buffer.from('AAPL,187.23')
 

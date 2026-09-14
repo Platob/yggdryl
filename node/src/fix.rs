@@ -25,16 +25,18 @@ pub use plugin::{JsPlugin, JsPlugins};
 use std::sync::{Arc, Mutex};
 use std::thread::ThreadId;
 
+use napi::JsDate;
 use napi::JsValue as _;
 use napi::bindgen_prelude::{
-    Buffer, ClassInstance, Either, Env, FromNapiValue, Function, FunctionRef, Generator,
-    JsObjectValue as _, Object, Result, Status, Unknown, ValueType,
+    BigInt, Buffer, ClassInstance, Either, Either3, Env, FromNapiValue, Function, FunctionRef,
+    Generator, JsObjectValue as _, Null, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
 use yggdryl::{
-    Error as CoreError, Field as CoreField, FixCategory, FixCodec as CoreFixCodec,
-    FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
-    FixRegistry as CoreFixRegistry, Scalar, Version as CoreVersion,
+    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCategory,
+    FixCodec as CoreFixCodec, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, TimeUnit, Timezone,
+    Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -308,10 +310,13 @@ impl JsFixRegistry {
 
     /// A registry holding the built-in definitions.
     ///
-    /// Every registry holds the twenty scalar fields and sorted `altids` Map
-    /// group that `fixCrateFields` lists, and the `pluginconfig` component.
-    /// A dictionary loaded from a store, built from fields or left alone
-    /// holds them alike; scalar lookups and `size` exclude groups and components.
+    /// Every registry holds the twenty-four scalar fields and the sorted
+    /// `altids` Map group that `fixCrateFields` lists, and the `pluginconfig`
+    /// component. It also holds the standard `SendingTime` (52) and
+    /// `TransactTime` (60) clock fields, seeded where the dictionary defines
+    /// no field of its own at those tags. A dictionary loaded from a store,
+    /// built from fields or left alone holds them alike; scalar lookups and
+    /// `size` exclude groups and components, so a new registry's `size` is 26.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -331,10 +336,12 @@ impl JsFixRegistry {
     ///
     /// `location` is an `IOBase` handle, a `Url`, or the string naming one, run
     /// through the coercion every folder-shaped entry point uses. A folder that
-    /// is not there loads as a new registry - the crate's own fields and
-    /// nothing else - and is not created; a stored copy of one of the crate's
-    /// own fields, a standard field from 65000 up, is read past, because the
-    /// crate's own definition is the one that types a row. A shard that does
+    /// is not there loads as a new registry - the crate's own fields and the
+    /// two seeded clocks, nothing else - and is not created; a stored copy of
+    /// one of the crate's own fields, in its tag block from 65000, is read
+    /// past, because the crate's own definition is the one that types a row.
+    /// The standard clocks are seeded after the store loads, so a stored
+    /// `SendingTime` or `TransactTime` keeps its own metadata. A shard that does
     /// not parse, and a root still holding the retired `records/` layout,
     /// throw with the URL named.
     #[napi(factory)]
@@ -400,8 +407,8 @@ impl JsFixRegistry {
     /// Write every populated shard under `<location>/fields/<shard>.json` and
     /// every definition under `<location>/<category>/<name>.json`, removing
     /// the shards and trees no field populates any more. The crate's own
-    /// fields - the standard fields from 65000 up - are never written: they
-    /// are the crate's rather than the store's, and every registry holds them
+    /// fields - its tag block from 65000 - are never written: they are the
+    /// crate's rather than the store's, and every registry holds them
     /// already.
     #[napi]
     pub fn write_into(&self, location: LocationInput<'_>) -> Result<()> {
@@ -409,7 +416,8 @@ impl JsFixRegistry {
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many scalar fields are held, the crate's own twenty among them.
+    /// How many scalar fields are held, the crate's own twenty-four among
+    /// them, 26 for a new registry with its two seeded clocks.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -745,7 +753,9 @@ impl Generator for JsFixFieldIterator {
 /// shape. Order is the wire's.
 ///
 /// A tag is an `i32` and every `i32` is an exact `f64`, so the number
-/// JavaScript reads is the tag rather than a rounding of it.
+/// JavaScript reads is the tag rather than a rounding of it. A key the
+/// dictionary did not resolve - a name or a number alike - carries tag 0
+/// beside its raw key.
 fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, String, String)>) {
     for entry in entries {
         out.push((
@@ -766,6 +776,11 @@ fn flatten_entries(entries: &[yggdryl::FixEntry], out: &mut Vec<(f64, String, St
 /// what the wire carried. The message compares, hashes, renders and clones by
 /// the schema and the value it carries, against the registry it was resolved
 /// against.
+///
+/// Every message carries the settled replay fields, never null: `updatedat`,
+/// `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime` (52).
+/// The four the readers of the same names answer are held beside the row, so
+/// reading them costs no lookup.
 #[napi(js_name = "FixMsg")]
 pub struct JsFixMsg {
     inner: CoreFixMsg,
@@ -784,7 +799,11 @@ impl JsFixMsg {
     ///
     /// The loader widens `value`: anything `Scalar.fromJs` reads becomes the
     /// native value first, and the core alone validates and canonicalizes it
-    /// against `field`.
+    /// against `field`. A mandatory replay field the root lacks is appended:
+    /// `SendingTime` reads UTC now when the value states none, `snapshotat`
+    /// is `TransactTime` (60) else `SendingTime`, `updatedat` and `createdat`
+    /// default to that instant, `code` to the empty name, and `uuid` and
+    /// `puuid` are computed. A stated identity must match what is computed.
     #[napi(constructor)]
     pub fn new(
         field: &JsField,
@@ -806,8 +825,11 @@ impl JsFixMsg {
     /// names, reached by tag as a parsed message's are, and the entries are
     /// rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
     /// line the row was read from; a row without that column has no entries.
-    /// Nothing is parsed again. The process default is the registry when
-    /// none is named.
+    /// Nothing is parsed again and no clock is read: the row must carry the
+    /// seven non-null replay fields - `updatedat`, `createdat`, `uuid`,
+    /// `puuid`, `code`, `snapshotat`, `SendingTime` - and its `uuid` and
+    /// `puuid` must match what its content computes, or it throws the located
+    /// refusal. The process default is the registry when none is named.
     #[napi(factory)]
     pub fn from_row(
         schema: &JsField,
@@ -968,7 +990,8 @@ impl JsFixMsg {
     /// `null` is stored as a stated null. An existing child is replaced where
     /// it stands and an absent one appended; a bare tag no dictionary explains
     /// appends a text child named by its decimal. Only the row changes: the
-    /// entries, the wire and the digest stay what they were.
+    /// entries, the wire and the digest stay what they were, while `uuid` and
+    /// `puuid` are recomputed from the new content. No clock is read.
     ///
     /// A key reaching no field and no child, or a value the field refuses,
     /// throws the core's refusal and leaves the message as it was.
@@ -984,6 +1007,10 @@ impl JsFixMsg {
     ///
     /// The key resolves as `set` resolves one, and a key reaching nothing
     /// answers `null` and changes nothing. The entries are untouched.
+    ///
+    /// A mandatory replay field - `updatedat`, `createdat`, `uuid`, `puuid`,
+    /// `code`, `snapshotat` or `SendingTime` - refuses removal and throws,
+    /// leaving the message exactly as it was; so does any other refusal.
     #[napi(ts_args_type = "key: number | string")]
     pub fn remove(&mut self, env: Env, key: Unknown<'_>) -> Result<Option<JsScalar>> {
         let key = FixKeyArg::from_js(env, &key, "key")?;
@@ -1022,18 +1049,48 @@ impl JsFixMsg {
         answered(&self.inner.symbol_ticker())
     }
 
-    /// The timestamp a capture is ordered by, or `null`.
+    /// The settled message instant, `DateTime64(ns, UTC)`, never null.
     ///
-    /// The crate's `timestamp` child every built message closes with: the
-    /// first clock the message carries, else the epoch - so a message the
-    /// reader built always answers, and only a message built by hand without
-    /// that child does not.
+    /// Settled once, when the message is first built: a valid stated
+    /// `updatedat`, else the event instant `snapshotat` holds. A lifecycle
+    /// truncates it to its snapshot grid. Mutation and enrichment carry it
+    /// unless it is written explicitly; no clock is read after intake.
     #[napi]
-    pub fn updatedat(&self) -> Option<JsScalar> {
-        answered(self.inner.updatedat())
+    pub fn updatedat(&self) -> JsScalar {
+        JsScalar::from_core(self.inner.updatedat().clone())
     }
 
-    /// The partition that timestamp falls in, in whole seconds.
+    /// The settled creation instant, `DateTime64(ns, UTC)`, never null.
+    ///
+    /// A valid stated `createdat`, else the event instant; a lifecycle
+    /// carries the first creation instant of the live chain a message joins.
+    #[napi]
+    pub fn createdat(&self) -> JsScalar {
+        JsScalar::from_core(self.inner.createdat().clone())
+    }
+
+    /// The message's time/content UUID, never null.
+    ///
+    /// A version-8 UUID of `updatedat`'s signed nanoseconds and 58 bits of
+    /// the canonical named content's XXH64; `updatedat`, `createdat`, `uuid`
+    /// itself and the arrival record are not content. A stated `uuid` must
+    /// match it.
+    #[napi]
+    pub fn uuid(&self) -> JsScalar {
+        JsScalar::from_core(self.inner.uuid().clone())
+    }
+
+    /// The event chain's UUID, never null.
+    ///
+    /// A version-8 UUID over XXH3-128 of the exact `code` bytes alone, so the
+    /// empty (unknown) code has one deterministic `puuid` too. A stated
+    /// `puuid` must match it.
+    #[napi]
+    pub fn puuid(&self) -> JsScalar {
+        JsScalar::from_core(self.inner.puuid().clone())
+    }
+
+    /// The partition `updatedat` falls in, in whole seconds.
     #[napi]
     pub fn unix_partition(&self, seconds: f64) -> Result<Option<JsScalar>> {
         let seconds = exact_i64(seconds, "seconds")?;
@@ -1100,7 +1157,10 @@ impl JsFixMsg {
     /// What arrived, in arrival order, untranslated.
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
-    /// heads them, so a caller reading the array reads the wire.
+    /// heads them, so a caller reading the array reads the wire. Each entry
+    /// is `[tag, key, value]`; tag 0 marks a key the dictionary did not
+    /// resolve, whether it arrived as a name or as a number, and its raw key
+    /// is kept.
     #[napi(ts_return_type = "Array<[number, string, string]>")]
     pub fn arrivals(&self) -> Vec<(f64, String, String)> {
         let mut held = Vec::new();
@@ -1113,8 +1173,13 @@ impl JsFixMsg {
     /// `schema` is the fixed root `fixSchema` builds: every column is filled by
     /// the tag its field carries - never by its spelling - so a message that
     /// carried nothing at a column answers null there rather than shifting its
-    /// neighbours, and a column no tag names answers null because it is the
-    /// capture's rather than the message's.
+    /// neighbours. A column no tag names is the capture's: it takes the child
+    /// of that name where the message has one, else null. The arrival record
+    /// closes the row under `nofixentries`, unresolved keys at tag 0.
+    ///
+    /// A replayable row keeps the seven replay fields; a schema missing or
+    /// mistyping one, or a cell its column cannot represent, throws the
+    /// located refusal. No clock is read.
     #[napi]
     pub fn into_row(&self, schema: &JsField) -> Result<JsScalar> {
         self.inner
@@ -1440,10 +1505,14 @@ impl std::io::Write for JsSink<'_> {
 /// Arrow methods take and answer a `BatchReader`, one batch at a time.
 ///
 /// Every message it builds opens with `beginstring` - the wire's own, else
-/// the version the message was read at - and closes with the crate's
-/// `timestamp`: the first clock the message carries, else the epoch. Neither
-/// is an entry unless the line carried it, so `intoBytes` re-emits the line
-/// byte for byte.
+/// the version the message was read at - and carries the settled replay
+/// fields: `SendingTime` is the message's valid tag 52, else the carrier's,
+/// else `defaultSendingTime`, else UTC now read once for that new message;
+/// `snapshotat` is `TransactTime` (60) else `SendingTime`; `updatedat` and
+/// `createdat` default to that instant; `code`, `uuid` and `puuid` follow.
+/// None of them is an entry unless the line carried it, so `intoBytes`
+/// re-emits the line byte for byte. Parsing undated bytes without a default
+/// sending time is deliberately not deterministic.
 #[napi(js_name = "FixCodec")]
 pub struct JsFixCodec {
     inner: CoreFixCodec,
@@ -1465,11 +1534,15 @@ impl JsFixCodec {
     /// takes on the batch door, any spelling of one - `"S"`, `"Send"`,
     /// `"R"` - the core's `Send` code when unstated and no pin at all when
     /// empty; `batchByteSize` is the raw bytes one Arrow batch targets, the
-    /// core's 128 MiB when unstated.
+    /// core's 128 MiB when unstated; `defaultSendingTime` is the
+    /// `SendingTime` an undated message takes when neither it nor its carrier
+    /// states one - a `Scalar` crosses as it is and must already be
+    /// `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
+    /// in nanoseconds, and `null` or absence reads UTC now per new message.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
-        options: Option<FixCodecOptions>,
+        options: Option<FixCodecOptions<'_>>,
     ) -> Result<Self> {
         let registry = registry_or_global(registry)?;
         let options = options.unwrap_or_default();
@@ -1497,6 +1570,17 @@ impl JsFixCodec {
             let bytes = u64::try_from(bytes)
                 .map_err(|_| napi_error("batchByteSize must not be negative"))?;
             inner = inner.with_batch_byte_size(bytes);
+        }
+        // `null` states "no default" as leaving the option out does.
+        let sending_time = match options.default_sending_time {
+            Some(Either3::A(scalar)) => Some(Either::A(scalar)),
+            Some(Either3::B(date)) => Some(Either::B(date)),
+            Some(Either3::C(_)) | None => None,
+        };
+        if let Some(held) = sending_time {
+            inner = inner
+                .try_with_default_sending_time(Some(sending_time_from_js(held)?))
+                .map_err(napi_error)?;
         }
         Ok(Self { inner, registry })
     }
@@ -1550,6 +1634,16 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn batch_byte_size(&self) -> f64 {
         self.inner.batch_byte_size() as f64
+    }
+
+    /// The `SendingTime` an undated message takes, `DateTime64(ns, UTC)`, or
+    /// `null` where each new undated message reads UTC now.
+    #[napi(getter)]
+    pub fn default_sending_time(&self) -> Option<JsScalar> {
+        self.inner
+            .default_sending_time()
+            .cloned()
+            .map(JsScalar::from_core)
     }
 
     /// The complete raw message code declared by captured bytes.
@@ -1643,9 +1737,12 @@ impl JsFixCodec {
 
     /// One line a text reader answered: its messages.
     ///
-    /// The line's body is the bytes read, its timestamp the clock that stamps
-    /// the message, and its row-header captures state the rest - the plugin
-    /// that logged it, the version, and every field a capture's name reaches.
+    /// The line's body is the bytes read, and its row-header captures state
+    /// the rest - the plugin that logged it, the version, and every field a
+    /// capture's name reaches. The line's timestamp is capture context only:
+    /// it stamps no FIX clock. `SendingTime` is the message's own, else a
+    /// capture reaching that field, else the codec's `defaultSendingTime`,
+    /// else UTC now.
     /// `withCaptureNames` is what decides which capture is which, once for
     /// the whole run, because a line answers its captures by position.
     ///
@@ -1800,14 +1897,15 @@ impl JsFixCodec {
         Ok(JsBatchReader::from_core(reader, schema.inner.name()))
     }
 
-    /// Stamps a stream of messages with the identities it implies, in order,
-    /// lazily.
+    /// Fills a stream of messages through one lifecycle, in order, lazily.
     ///
-    /// One `FixLifecycle` over the whole iterable: each message gets its
-    /// `instid`, its `id` and - where it carries an order identifier - the
-    /// `persistentid` of the chain that identifier reaches, and a terminal
-    /// state closes the chain. The iterable is pulled once, in order, so the
-    /// chain a message joins depends on the messages before it.
+    /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
+    /// iterable, answering every message as `FixLifecycle.fill` does: its
+    /// chain `code`, `updatedat` truncated to the grid, the live chain's first
+    /// `createdat`, the previous message's `prevtimestamp` and `prevuuid`,
+    /// then `uuid` and `puuid` finalized; a terminal state closes the chain.
+    /// The iterable is pulled once, in order, so the chain a message joins
+    /// depends on the messages before it.
     #[napi(js_name = "_lifecycleNative", skip_typescript)]
     pub fn lifecycle_native(
         &self,
@@ -1864,9 +1962,9 @@ impl JsFixCodec {
 }
 
 /// How a codec is pinned, where a caller pins it at all.
-#[napi(object)]
+#[napi(object, object_to_js = false)]
 #[derive(Default)]
-pub struct FixCodecOptions {
+pub struct FixCodecOptions<'env> {
     /// The version built messages are expressed in.
     pub version: Option<String>,
     /// The byte a numeric frame splits on where the line does not say.
@@ -1884,6 +1982,29 @@ pub struct FixCodecOptions {
     pub direction: Option<String>,
     /// The raw bytes one Arrow batch targets; the core's 128 MiB when unstated.
     pub batch_byte_size: Option<f64>,
+    /// The `SendingTime` an undated message takes when neither it nor its
+    /// carrier states one: a `DateTime64(ns, UTC)` `Scalar`, or a `Date`
+    /// restated in nanoseconds. UTC now per new message when unstated or
+    /// `null`.
+    #[napi(ts_type = "Scalar | Date | null")]
+    pub default_sending_time: Option<Either3<ClassInstance<'env, JsScalar>, JsDate<'env>, Null>>,
+}
+
+/// The default sending time one codec option names, as the core takes it.
+///
+/// A `Scalar` crosses as it is, so a layout other than `DateTime64(ns, UTC)`
+/// is the core's refusal to state. A `Date` is its UTC millisecond instant,
+/// restated once through the clock datatype's own value contract.
+fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) -> Result<Scalar> {
+    match value {
+        Either::A(scalar) => Ok(scalar.inner.clone()),
+        Either::B(date) => {
+            let instant = crate::text::codec::scalar_from_date_millis(date.value_of()?)?;
+            CoreDataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)
+                .and_then(|clock| clock.scalar(instant))
+                .map_err(napi_error)
+        }
+    }
 }
 
 /// Read one FIX version, or report the native parse failure.
@@ -1892,76 +2013,217 @@ fn version_from_js(text: &str) -> Result<CoreVersion> {
     spelling.parse::<CoreVersion>().map_err(napi_error)
 }
 
-/// The state a stream of messages has reached, one chain per order alive.
+/// The state a stream of messages has reached, one chain per live event.
 ///
 /// Built once per stream, over one dictionary or the process default, and fed
-/// every message in order through `fill`, which stamps the three identities
-/// the stream implies: `instid`, the instrument; `id`, the message, sorting by
-/// the market's own clock; `persistentid`, the order chain that every message
-/// sharing one of its identifiers carries. A terminal state closes the chain
-/// and forgets its identifiers, so what is held is the orders still alive.
-/// `FixCodec.lifecycle` runs one of these over an iterable.
+/// every message in order. A nonempty `code` names its chain globally;
+/// otherwise the first identifier - stated `altids`, else the message type's
+/// declared identifiers - reaching a live chain under the effective
+/// `instuuid` scope supplies its code, and a new chain is named
+/// `<scope UUID or ->/<first identifier>`. Occupied identifiers are never
+/// stolen, and an empty code opens no chain. `puuid` hashes the settled code.
+///
+/// Every accepted message has `updatedat` truncated to its epoch grid bucket
+/// of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
+/// carries its first message's `createdat` and hands each later message the
+/// previous message's `prevtimestamp` and `prevuuid`. A terminal state closes
+/// the chain; what is held is the live chains, their code, first creation
+/// instant, last clock and UUID, and highest consumed bucket - never pending
+/// messages. `FixCodec.lifecycle` runs one at the default cadence over an
+/// iterable.
 #[napi(js_name = "FixLifecycle")]
 pub struct JsFixLifecycle {
-    inner: CoreFixLifecycle,
+    /// The lifecycle, until `snapshots` takes it for the stream it answers.
+    inner: Option<CoreFixLifecycle>,
+}
+
+/// What a lifecycle throws once `snapshots` owns it.
+///
+/// The core's snapshot stream consumes its lifecycle, so the stream is the
+/// one owner of that state: a later call gets this rather than a fresh
+/// lifecycle that looks like one with no chain alive.
+fn owned_by_snapshots() -> napi::Error {
+    napi_error("this FixLifecycle is owned by the stream snapshots() answered; build a new one")
+}
+
+/// Read one interval exactly: a `bigint` as is, a number below 2^53.
+fn interval_from_js(value: Either<BigInt, f64>) -> Result<i64> {
+    match value {
+        Either::A(count) => {
+            let (count, lossless) = count.get_i64();
+            if !lossless {
+                return Err(napi_error("intervalNs must fit a signed 64-bit integer"));
+            }
+            Ok(count)
+        }
+        Either::B(count) => exact_i64(count, "intervalNs"),
+    }
+}
+
+impl JsFixLifecycle {
+    /// Borrow the lifecycle, refusing one a snapshot stream owns.
+    fn live(&self) -> Result<&CoreFixLifecycle> {
+        self.inner.as_ref().ok_or_else(owned_by_snapshots)
+    }
+
+    /// Borrow the lifecycle for a transition, refusing one a snapshot stream
+    /// owns.
+    fn live_mut(&mut self) -> Result<&mut CoreFixLifecycle> {
+        self.inner.as_mut().ok_or_else(owned_by_snapshots)
+    }
 }
 
 #[napi]
 impl JsFixLifecycle {
-    /// A stream with no order alive yet.
+    /// A stream with no event alive yet.
     ///
-    /// The three columns are the registry's own crate fields, which every
-    /// registry this package builds holds.
+    /// `options.intervalNs` is the positive grid interval in nanoseconds,
+    /// `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) when unstated; a
+    /// nonpositive one throws the core's located refusal. The stamped columns
+    /// are the registry's own crate fields, which every registry holds.
     #[napi(constructor)]
-    pub fn new(registry: Option<ClassInstance<'_, JsFixRegistry>>) -> Result<Self> {
-        Ok(Self {
-            inner: CoreFixLifecycle::new(registry_or_global(registry)?),
-        })
+    pub fn new(
+        registry: Option<ClassInstance<'_, JsFixRegistry>>,
+        options: Option<FixLifecycleOptions>,
+    ) -> Result<Self> {
+        let mut inner = CoreFixLifecycle::new(registry_or_global(registry)?);
+        if let Some(held) = options.and_then(|options| options.interval_ns) {
+            inner = inner
+                .try_with_interval_ns(interval_from_js(held)?)
+                .map_err(napi_error)?;
+        }
+        Ok(Self { inner: Some(inner) })
     }
 
-    /// Stamps one message with its three identities and moves the chain it
-    /// belongs to along.
+    /// The epoch-grid interval in nanoseconds.
+    #[napi(getter)]
+    pub fn interval_ns(&self) -> Result<BigInt> {
+        Ok(BigInt::from(self.live()?.interval_ns()))
+    }
+
+    /// Selects a positive grid interval before any chain is live.
     ///
-    /// A stated value is never overwritten: a message already carrying an
-    /// `id` keeps it, and one carrying a `persistentid` joins nothing new,
-    /// which is what makes a second pass over a stamped stream a no-op. Only
-    /// the row is stamped: the arrival record is what the wire carried, so
-    /// `toBytes` re-emits the received line either way.
+    /// Repeating the current interval is a no-op even while chains are live;
+    /// a nonpositive interval, or a change while a chain is live, throws and
+    /// changes nothing.
+    #[napi]
+    pub fn set_interval_ns(&mut self, interval_ns: Either<BigInt, f64>) -> Result<()> {
+        let interval_ns = interval_from_js(interval_ns)?;
+        self.live_mut()?
+            .set_interval_ns(interval_ns)
+            .map_err(napi_error)
+    }
+
+    /// Answers one message normalized to its grid and moves its chain along.
+    ///
+    /// The chain is selected by `code`, else by identifier; the message's
+    /// `updatedat` becomes its grid instant, it takes the live chain's first
+    /// `createdat`, each absent previous stamp comes from the chain's last
+    /// message while a stated one is kept, and `uuid` is finalized after
+    /// every stamp. A fresh or cleared lifecycle replaying the same stream
+    /// answers the same messages. Only the row is stamped: the arrival record
+    /// is what the wire carried, so `intoBytes` re-emits the received line.
+    /// A refusal throws and changes no chain, history, bucket or identifier.
     #[napi]
     pub fn fill(&mut self, message: &JsFixMsg) -> Result<JsFixMsg> {
-        self.inner
+        self.live_mut()?
             .fill(message.inner.clone())
             .map(JsFixMsg::from_core)
             .map_err(napi_error)
     }
 
-    /// How many orders are alive: opened by a message and not yet closed by
+    /// Processes one message as `fill` does, answering it only as a new
+    /// snapshot, else `null`.
+    ///
+    /// A message emits only when it arrived off-grid in a bucket above its
+    /// live chain's highest consumed one. An already-aligned arrival consumes
+    /// its bucket without emitting; equal or older buckets and messages with
+    /// no chain name answer `null`. Suppressed messages still advance history
+    /// and a terminal one still closes its chain.
+    #[napi]
+    pub fn snapshot(&mut self, message: &JsFixMsg) -> Result<Option<JsFixMsg>> {
+        self.live_mut()?
+            .snapshot(message.inner.clone())
+            .map(|held| held.map(JsFixMsg::from_core))
+            .map_err(napi_error)
+    }
+
+    /// The snapshots a stream of messages emits, lazily; the loader publishes
+    /// it as `snapshots`.
+    ///
+    /// The stream owns this lifecycle, configured interval and live chains
+    /// alike, so every later call on this object throws. Only suppressed
+    /// messages disappear: a refused message throws where it is met without
+    /// advancing state and the stream continues, and a failure of the
+    /// iterable throws and ends it.
+    #[napi(js_name = "_snapshotsNative", skip_typescript)]
+    pub fn snapshots_native(
+        &mut self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<JsFixMessages> {
+        let pulled = Pulled::new(env, pull)?;
+        let life = self.inner.take().ok_or_else(owned_by_snapshots)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(|message| Ok::<CoreFixMsg, CoreError>(message.inner.clone()));
+        Ok(JsFixMessages::pulling(life.snapshots(messages), failed))
+    }
+
+    /// How many events are alive: opened by a message and not yet closed by
     /// a terminal state.
     #[napi(getter)]
-    pub fn alive(&self) -> u32 {
-        u32::try_from(self.inner.alive()).unwrap_or(u32::MAX)
+    pub fn alive(&self) -> Result<u32> {
+        Ok(u32::try_from(self.live()?.alive()).unwrap_or(u32::MAX))
     }
 
-    /// Forgets every chain, as a new session or a new day would.
+    /// Forgets every chain's creation, history and bucket, as a new session
+    /// or a new day would, keeping the interval.
     #[napi]
-    pub fn clear(&mut self) {
-        self.inner.clear();
+    pub fn clear(&mut self) -> Result<()> {
+        self.live_mut()?.clear();
+        Ok(())
     }
 
-    /// How this stream renders: the orders alive in it.
+    /// How this stream renders: the events alive in it.
     #[napi(js_name = "toString")]
     pub fn js_string(&self) -> String {
-        format!("FixLifecycle({} alive)", self.inner.alive())
+        self.inner.as_ref().map_or_else(
+            || "FixLifecycle(owned by its snapshot stream)".to_owned(),
+            |inner| format!("FixLifecycle({} alive)", inner.alive()),
+        )
     }
+}
+
+/// How a lifecycle is configured, where a caller configures it at all.
+#[napi(object, object_to_js = false)]
+pub struct FixLifecycleOptions {
+    /// The positive epoch-grid interval in nanoseconds;
+    /// `FixLifecycle.DEFAULT_INTERVAL_NS` when unstated.
+    pub interval_ns: Option<Either<BigInt, f64>>,
+}
+
+/// The lifecycle's default grid interval in nanoseconds: one second.
+///
+/// The loader publishes it as `FixLifecycle.DEFAULT_INTERVAL_NS`.
+// Discovered through NAPI's generated registration inventory rather than an
+// ordinary Rust call site, like the private natives in `hashing`.
+#[allow(dead_code)]
+#[napi(js_name = "_fixLifecycleDefaultIntervalNsNative", skip_typescript)]
+pub fn fix_lifecycle_default_interval_ns_native() -> BigInt {
+    BigInt::from(CoreFixLifecycle::DEFAULT_INTERVAL_NS)
 }
 
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
-/// trailer, this crate's own derived facts, and the two lists that close every
-/// row. Columns are spelled by the dictionary's folded canonical names -
-/// `msgtype`, never `35` - so a row reads the way a message reads; the tag
-/// stays each column's identity, on its `fix:tag`, and is what fills it.
+/// trailer, this crate's own derived facts through tag 65025, `MsgDirection`
+/// (385), and the one list that closes every row: `nofixentries`, the whole
+/// arrival record, unresolved keys at tag 0. Columns are spelled by the
+/// dictionary's folded canonical names - `msgtype`, never `35` - so a row
+/// reads the way a message reads; the tag stays each column's identity, on
+/// its `fix:tag`, and is what fills it. `beginstring`, `unixpartition` and
+/// the replay fields - `sendingtime`, `updatedat`, `createdat`, `uuid`,
+/// `puuid`, `code`, `snapshotat` - are required.
 #[napi(js_name = "fixSchema")]
 pub fn fix_schema(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2003,18 +2265,21 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The twenty-one definitions this crate owns, in tag order from 65000:
-/// twenty scalar fields and the sorted `altids` Map group at 65020.
+/// The twenty-five definitions this crate owns, in tag order: twenty-four
+/// scalar fields at 65001 to 65019 and 65021 to 65025, and the sorted
+/// `altids` Map group at 65020. Tag 65000 is retired and not reused.
 ///
-/// The digest, the version read at, the ticker, the clock and its partition,
-/// the parent identifiers, the session the message states, the bridge's
-/// message context, the plugin that logged the line and the one it came
-/// through before that, the two session names the line spells, the ISIN, MIC
-/// and order state a row derives, and the instrument, message and order-chain
-/// identities a lifecycle pass stamps, plus the direct identifiers enrichment
-/// records in `altids`. Every registry already holds them in their category, so
-/// this is the listing a schema or a document walks rather than something a
-/// caller registers.
+/// The version read at, the ticker, `updatedat` and its partition, the
+/// parent identifiers, the sessions the message states, the bridge's message
+/// context, the plugin that logged the line and the one it came through
+/// before that, the two session names the line spells, the ISIN, MIC and
+/// order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
+/// the direct identifiers enrichment records in `altids`, the previous
+/// message's `prevtimestamp` and `prevuuid`, and `createdat`, `code` and
+/// `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+/// `snapshotat` are non-null. Every registry already holds them in their
+/// category, so this is the listing a schema or a document walks rather than
+/// something a caller registers.
 #[napi(js_name = "fixCrateFields")]
 pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()
@@ -2050,7 +2315,8 @@ pub fn fix_plugin_message() -> Result<JsField> {
 /// The order is the core's: a registry installed by
 /// [`fix_install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY`
 /// names, then `~/.config/fix` when it exists, then a new registry holding the
-/// crate's own fields alone. Only the third step treats absence as that
+/// crate's own definitions and the two seeded clocks alone. Only the third
+/// step treats absence as that
 /// default; every other failure throws with the native message and the default
 /// stays unresolved, so the next call retries.
 #[napi(js_name = "fixGlobalRegistryNative", skip_typescript)]

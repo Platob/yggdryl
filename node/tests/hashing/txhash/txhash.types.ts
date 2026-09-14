@@ -1,7 +1,13 @@
 import { Buffer } from 'node:buffer'
 import type { RecordBatch as ArrowRecordBatch } from 'apache-arrow'
 
-import { DataType, Digest, Field, Scalar, TxHash, TxHasher, Xxh3, txhash, xxhash } from 'yggdryl'
+import * as yggdryl from 'yggdryl'
+import { DataType, Digest, Field, Scalar, TxHash, TxHasher, Xxh3, hashing } from 'yggdryl'
+
+// The one public path: both families live under the hashing owner.
+const { txhash, xxhash } = hashing
+// @ts-expect-error there is no top-level txhash export
+void yggdryl.txhash
 
 const payload = Buffer.from('AAPL,187.23')
 const instant = 1_700_000_000_000_000n
@@ -29,6 +35,7 @@ const bytes: Uint8Array = narrow.bytes()
 const restated: TxHash = narrow.withUnit('s')
 const datetime: Scalar = narrow.intoDatetime()
 const cell: Scalar = narrow.intoScalar()
+const projected: Scalar = wide.intoUuid()
 const same: boolean = narrow.equals(TxHash.from(narrow.toString()))
 const order: number = narrow.compare(wide)
 const stable: bigint = narrow.stableHash()
@@ -44,6 +51,7 @@ void dtype
 void restated
 void datetime
 void cell
+void projected
 void same
 void order
 void stable
