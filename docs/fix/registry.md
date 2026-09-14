@@ -66,7 +66,7 @@
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Order.Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     let message = registry.msgtype("D")?;
     assert_eq!(message.name(), "Order");
-    assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
+    assert_eq!(message.get_group_by_tag(453).unwrap().name(), "Parties");
     assert_eq!(registry.definitions(FixCategory::Groups).map(|field| field.name()).collect::<Vec<_>>(), ["Parties", "altids"]);
     ```
 
@@ -103,7 +103,7 @@
     assert registry.field_by_path("Order.Parties.PartyID").fix.tag == 448
     message = registry.msgtype("D")
     assert message.name == "Order"
-    assert message.get_group_by_counter(453).name == "Parties"
+    assert message.get_group_by_tag(453).name == "Parties"
     assert [field.name for field in registry.definitions("groups")] == ["Parties", "altids"]
     ```
 
@@ -140,7 +140,7 @@
     assert.equal(registry.fieldByPath('Order.Parties.PartyID').fix.tag, 448)
     const message = registry.msgtype('D')
     assert.equal(message.name, 'Order')
-    assert.equal(message.getGroupByCounter(453).name, 'Parties')
+    assert.equal(message.getGroupByTag(453).name, 'Parties')
     assert.deepEqual([...registry.definitions('groups')].map(field => field.name), ['Parties', 'altids'])
     ```
 
@@ -274,8 +274,8 @@ A field is its tag and its name, and a lookup asks for one of them: canonical be
 | `field_by_name(name)` | The canonical fold, then an alias fold |
 | `field_by_path(path)` | Canonical Map name before a scalar alias; otherwise scalar lookup, then a named message/component/group head and nested members |
 | `definition(category, name)` | One explicit category |
-| `group_by_counter(tag)` | Globally unique group for that counter tag |
-| `MsgType::get_group_by_counter(tag)` | Unique group within that message's structure |
+| `group_by_tag(tag)` | Globally unique group for that counter tag |
+| `MsgType::get_group_by_tag(tag)` | Unique group within that message's structure |
 
 The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a list, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
@@ -501,7 +501,7 @@ A dictionary is a membership, not a namespace: what it contributed is recorded o
 | `field_by_tag(i32)` | `field_by_tag(tag: int)` | `fieldByTag(tag: number)` |
 | `field_by_name(&str)` | `field_by_name(name)` | `fieldByName(name)` |
 | `field_by_path(&FieldPath)` | `field_by_path(path)` | `fieldByPath(path)` |
-| `group_by_counter(i32)` | `group_by_counter(tag: int)` | `groupByCounter(tag: number)` |
+| `group_by_tag(i32)` | `group_by_tag(tag: int)` | `groupByTag(tag: number)` |
 | `dialects()` | `dialects()` | `dialects()` |
 | `iter()` | `iter(registry)` | `registry[Symbol.iterator]()` |
 | `len()` | `len(registry)` | `registry.size` |

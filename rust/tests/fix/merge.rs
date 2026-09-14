@@ -336,7 +336,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
         registry
             .msgtype("D")
             .unwrap()
-            .get_group_by_counter(453)
+            .get_group_by_tag(453)
             .unwrap()
             .name(),
         "Parties"

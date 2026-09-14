@@ -722,14 +722,14 @@ def test_registry_coerces_every_identifier_argument(seed: FixRegistry) -> None:
     with pytest.raises(TypeError):
         seed.field_by_path("Symbol", None)  # type: ignore[call-arg]
     # The counter tables are keyed by counter tag.
-    assert seed.group_by_counter(453).name == "parties"
-    assert seed.get_group_by_counter(9999) is None
+    assert seed.group_by_tag(453).name == "parties"
+    assert seed.get_group_by_tag(9999) is None
     with pytest.raises(TypeError, match="not bool"):
-        seed.get_group_by_counter(True)
+        seed.get_group_by_tag(True)
     with pytest.raises(TypeError):
-        seed.group_by_counter("453:")  # type: ignore[arg-type]
+        seed.group_by_tag("453:")  # type: ignore[arg-type]
     with pytest.raises(KeyError):
-        seed.group_by_counter(9999)
+        seed.group_by_tag(9999)
 
 
 def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
@@ -2421,7 +2421,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     for name, field in fields.items():
         if name == "altids":
             assert registry.definition("groups", name) == field
-            assert registry.group_by_counter(65020) == field
+            assert registry.group_by_tag(65020) == field
             assert registry.get_field_by_name(name) is None
             assert registry.get_field_by_id(field.fix.id) is None
             assert registry.get_field_by_tag(65020) is None

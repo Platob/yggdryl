@@ -1059,14 +1059,19 @@ impl FixRegistry {
         Ok(removed)
     }
 
-    /// The unique group one counter tag opens; two groups on one counter
-    /// name nothing.
-    pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field> {
+    /// The unique group the field `tag` names opens; two groups on one
+    /// counter name nothing.
+    ///
+    /// `tag` is the counter's, not the group's own: a group is a catalog
+    /// definition and the field counting it is a scalar, so this is the one
+    /// lookup that crosses the two. [`Self::get_field_by_tag`] answers the
+    /// counter itself off the same key.
+    pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         Some(self.catalog.entries[position].field.as_field())
     }
 
-    pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
+    pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
             DefinitionField::Group(field, plan) if !matches!(field.dtype(), DataType::Map(_)) => {
@@ -1076,9 +1081,10 @@ impl FixRegistry {
         }
     }
 
-    /// The unique group a counter tag opens, reporting absence or ambiguity.
-    pub fn group_by_counter(&self, tag: i32) -> Result<&Field> {
-        self.get_group_by_counter(tag)
+    /// The unique group the counter `tag` names opens, reporting absence or
+    /// ambiguity.
+    pub fn group_by_tag(&self, tag: i32) -> Result<&Field> {
+        self.get_group_by_tag(tag)
             .ok_or_else(|| Error::absent("one unambiguous FIX group", tag))
     }
 
@@ -1207,7 +1213,7 @@ impl FixRegistry {
             if let Some(group) = field
                 .as_fix()
                 .tag()?
-                .and_then(|tag| self.get_group_by_counter(tag))
+                .and_then(|tag| self.get_group_by_tag(tag))
                 .filter(|group| matches!(group.dtype(), DataType::Map(_)))
             {
                 return Err(Error::conflict(

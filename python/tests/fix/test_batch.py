@@ -386,7 +386,7 @@ def test_altids_maps_cross_native_rows_and_arrow_without_changing_nullability(se
     # that root is the replayable row (``native_mapping_survives_message_rows_and_arrow_in_both_directions``).
     root = Field(
         "maprow",
-        DataType.from_fields([seed.group_by_counter(65020), seed.field_by_tag(52)]),
+        DataType.from_fields([seed.group_by_tag(65020), seed.field_by_tag(52)]),
         nullable=False,
     )
     values = [None, {}, {"clordid": "C-1", "orderid": "O-1"}]

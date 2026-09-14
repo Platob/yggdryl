@@ -232,9 +232,13 @@ impl MsgType {
             .expect("a registry message has a validated wire code")
     }
 
-    /// Borrows the unique repeating group using a counter in this message.
+    /// Borrows the unique repeating group the counter `tag` opens in this
+    /// message.
+    ///
+    /// The tag is the counter's, as it is on
+    /// [`FixRegistry::get_group_by_tag`](crate::FixRegistry::get_group_by_tag).
     /// Its path is compiled at registration; repeated contexts are ambiguous.
-    pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field> {
+    pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field> {
         let path = &self.groups.get(&tag)?.as_ref()?.path;
         let mut field = &self.field;
         for step in path {
@@ -246,11 +250,11 @@ impl MsgType {
         Some(field)
     }
 
-    pub(super) fn has_group_counter(&self, tag: i32) -> bool {
+    pub(super) fn has_group_tag(&self, tag: i32) -> bool {
         self.groups.contains_key(&tag)
     }
 
-    pub(super) fn get_group_plan_by_counter(&self, tag: i32) -> Option<&GroupPlan> {
+    pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let plan = &self.groups.get(&tag)?.as_ref()?.plan;
         (!matches!(plan.field().dtype(), DataType::Map(_))).then_some(plan)
     }

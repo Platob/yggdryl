@@ -642,10 +642,7 @@ fn registry_message_singletons_and_scoped_groups_are_borrowed() {
         .unwrap();
     let held = registry.msgtype("D").unwrap();
     let counter = 453;
-    assert_eq!(
-        held.get_group_by_counter(counter).unwrap().name(),
-        "Parties"
-    );
+    assert_eq!(held.get_group_by_tag(counter).unwrap().name(), "Parties");
     free("registry message singleton", || {
         black_box(registry.get_msgtype("D"));
         black_box(registry.msgtypes().next());
@@ -654,7 +651,7 @@ fn registry_message_singletons_and_scoped_groups_are_borrowed() {
         black_box(held.as_field());
         black_box(held.name());
         black_box(held.as_str());
-        black_box(held.get_group_by_counter(counter));
+        black_box(held.get_group_by_tag(counter));
     });
 }
 

@@ -1249,7 +1249,7 @@ impl FixMsg {
     pub(super) fn known_by_tag(&self, tag: i32) -> Option<&Field> {
         self.registry.get_field_by_tag(tag).or_else(|| {
             self.registry
-                .get_group_by_counter(tag)
+                .get_group_by_tag(tag)
                 .filter(|group| matches!(group.dtype(), DataType::Map(_)))
         })
     }

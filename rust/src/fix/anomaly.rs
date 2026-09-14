@@ -323,12 +323,9 @@ impl<'msg> FixAnomalies<'msg> {
                 .and_then(|context| context.plan.nested(entry.tag()).map(|(_, plan)| plan));
             let plan = nested.or_else(|| {
                 let tag = entry.tag();
-                match self
-                    .msgtype
-                    .filter(|message| message.has_group_counter(tag))
-                {
-                    Some(message) => message.get_group_plan_by_counter(tag),
-                    None => self.message.registry().get_group_plan_by_counter(tag),
+                match self.msgtype.filter(|message| message.has_group_tag(tag)) {
+                    Some(message) => message.get_group_plan_by_tag(tag),
+                    None => self.message.registry().get_group_plan_by_tag(tag),
                 }
             });
             if let Some(plan) = plan.filter(|_| self.numeric.len() < 64) {

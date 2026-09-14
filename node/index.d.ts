@@ -1744,9 +1744,9 @@ export type JsFixMsgEntries = FixMsgEntries
  */
 export declare class FixRegistry {
   /** Look up a globally unique group by its scalar counter tag. */
-  getGroupByCounter(tag: number): JsField | null
+  getGroupByTag(tag: number): JsField | null
   /** Look up a globally unique group, failing when absent or ambiguous. */
-  groupByCounter(tag: number): JsField
+  groupByTag(tag: number): JsField
   /** Look up a category definition, returning null when absent. */
   getDefinition(category: string, name: string): JsField | null
   /** Look up a category definition, failing when absent. */
@@ -2847,7 +2847,7 @@ export declare class MsgType {
    */
   identifierValues(message: FixMsg): Array<[Field, Scalar]>
   /** Look up the unique repeating group for a native counter tag. */
-  getGroupByCounter(tag: number): JsField | null
+  getGroupByTag(tag: number): JsField | null
   /** Compare the complete native values. */
   equals(other: MsgType): boolean
   /** Compare native message definitions using their total ordering. */

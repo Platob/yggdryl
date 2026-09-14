@@ -2831,7 +2831,7 @@ fn a_named_group_and_its_counter_keep_separate_identities() {
     assert!(FixId::is_definition_tag(derived), "{derived}");
     assert_ne!(derived, 453);
     assert_eq!(group.as_fix().counter().unwrap(), Some(453));
-    assert_eq!(registry.group_by_counter(453).unwrap(), group);
+    assert_eq!(registry.group_by_tag(453).unwrap(), group);
     assert_eq!(registry.field_by_tag(5).unwrap().name(), "Shadow");
 }
 

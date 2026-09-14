@@ -387,7 +387,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         "standard clock seeds remain"
     );
     let map = registry
-        .get_group_by_counter(yggdryl::ALTIDS_TAG_NAME.0)
+        .get_group_by_tag(yggdryl::ALTIDS_TAG_NAME.0)
         .unwrap();
     assert_eq!(map.name(), yggdryl::ALTIDS_TAG_NAME.1);
     assert_eq!(

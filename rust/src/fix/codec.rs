@@ -2004,9 +2004,9 @@ impl FixCodec {
                     self.registry.get_field_by_name(group)
                 }?;
                 let (tag, _) = self.registry.identity_of(counter)?;
-                match message.filter(|message| message.has_group_counter(tag)) {
-                    Some(message) => message.get_group_by_counter(tag),
-                    None => self.registry.get_group_by_counter(tag),
+                match message.filter(|message| message.has_group_tag(tag)) {
+                    Some(message) => message.get_group_by_tag(tag),
+                    None => self.registry.get_group_by_tag(tag),
                 }
             });
         found.filter(|field| field.dtype().is_nested())

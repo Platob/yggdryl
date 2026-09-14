@@ -1416,7 +1416,7 @@ impl FixRegistry {
         }
         for alternate in alternate {
             if let Some(group) = self
-                .get_group_by_counter(*alternate)
+                .get_group_by_tag(*alternate)
                 .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
             {
                 return Err(Error::conflict(

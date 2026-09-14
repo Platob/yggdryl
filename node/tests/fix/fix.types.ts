@@ -457,8 +457,8 @@ const previous: Field | null = loaded.insertDefinition('components', field)
 loaded.createDefinition('components', field)
 const replaced: Field = loaded.updateDefinition('components', field)
 const deleted: Field | null = loaded.removeDefinition('components', 'party')
-const groupByCounter: Field | null = loaded.getGroupByCounter(453)
-const requiredGroup: Field = loaded.groupByCounter(453)
+const groupByTag: Field | null = loaded.getGroupByTag(453)
+const requiredGroup: Field = loaded.groupByTag(453)
 const snapshot: string = loaded.intoJson()
 const restored: FixRegistry = fix.FixRegistry.fromJson(snapshot)
 loaded.withPluginFields()
@@ -476,7 +476,7 @@ for (const [identifierField, identifierValue] of identifierValues) {
   declaration.setName('independent')
   void nativeValue
 }
-const scoped: Field | null = order.getGroupByCounter(453)
+const scoped: Field | null = order.getGroupByTag(453)
 const singletonHash: bigint = order.stableHash()
 const singletonEqual: boolean = order.equals(order.clone())
 const singletonOrder: number = order.compare(order)
@@ -530,7 +530,7 @@ new fix.FixMessages()
 // @ts-expect-error counter metadata requires a number
 field.fix.counter = '453'
 
-void [group, counter, component, definitions, previous, replaced, deleted, groupByCounter,
+void [group, counter, component, definitions, previous, replaced, deleted, groupByTag,
   requiredGroup, restored, order, optionalOrder, messageTypes, registered, wireCode,
   messageDefinition, identifierValues, scoped, singletonHash, singletonEqual, singletonOrder, counterTag,
   componentRef, groupRef, fieldRef, messageCode, parsedConfigurations, nativeConfigurations,
