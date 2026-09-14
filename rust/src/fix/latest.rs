@@ -315,10 +315,14 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
             members.push(member);
         }
     }
-    let mut item = DataType::from_fields(members.clone())?.required_field(occurrence_name(&list));
+    let mut item = DataType::from_fields(members)?.required_field(occurrence_name(&list));
     if finished.iter().any(Option::is_none) {
         item.set_nullable(true);
     }
+    // The occurrence field owns the members now, so each row lays out against
+    // its own children rather than a copy of them: the copy was a whole field
+    // per member of every group of every message.
+    let members = item.fields();
     let rows = finished.into_iter().map(|occurrence| {
         let Some((fields, mut values)) = occurrence else {
             return Scalar::Null;
@@ -517,6 +521,13 @@ impl<'msg> Restater<'msg> {
                 .filter(|value| !value.is_null())
         };
         let mut decisions: Vec<Option<Decision>> = (0..count).map(|_| None).collect();
+        // One scratch for the whole level rather than one per child: two
+        // children reaching one registry field is the merge case, and in the
+        // ordinary one every child resolves to a field of its own, so this
+        // would otherwise allocate a vector of length one per column of a row
+        // eighty columns wide. Empty rather than sized, so a level with no
+        // resolved child gains no allocation it did not have.
+        let mut same: Vec<usize> = Vec::new();
         for index in 0..count {
             if decisions[index].is_some() {
                 continue;
@@ -524,13 +535,12 @@ impl<'msg> Restater<'msg> {
             let Some((known, _)) = resolved[index].as_ref() else {
                 continue;
             };
-            let same: Vec<usize> = (index..count)
-                .filter(|at| {
-                    resolved[*at]
-                        .as_ref()
-                        .is_some_and(|(held, _)| std::ptr::eq(*held, *known))
-                })
-                .collect();
+            same.clear();
+            same.extend((index..count).filter(|at| {
+                resolved[*at]
+                    .as_ref()
+                    .is_some_and(|(held, _)| std::ptr::eq(*held, *known))
+            }));
             let canonical = same
                 .iter()
                 .copied()
@@ -541,7 +551,7 @@ impl<'msg> Restater<'msg> {
                 .or_else(|| same.iter().copied().find_map(stated))
                 .cloned()
                 .unwrap_or(Scalar::Null);
-            for at in same {
+            for at in same.iter().copied() {
                 decisions[at] = Some(if at == kept {
                     Decision::Keep(value.clone())
                 } else if level.children[at].value().is_none_or(Scalar::is_null)
@@ -612,7 +622,11 @@ impl<'msg> Restater<'msg> {
             let mut remaining = usize::MAX;
             while remaining > 0 {
                 let mut plan = None;
-                let before;
+                // Copied only where a rule answered, because only the write
+                // that rule plans has anything to compare against. A field
+                // with no replacement rule - which is nearly every field of
+                // nearly every message - copies nothing.
+                let mut before: Option<Scalar> = None;
                 {
                     let Child::Flat(field, value) = &level.children[at] else {
                         break;
@@ -620,7 +634,6 @@ impl<'msg> Restater<'msg> {
                     if value.is_null() {
                         break;
                     }
-                    before = value.clone();
                     let mut rules = field.as_fix().replacements();
                     let mut count = 0;
                     while let Some(rule) = rules.next_ok() {
@@ -631,6 +644,7 @@ impl<'msg> Restater<'msg> {
                                 tag,
                                 when: rule.when(),
                             };
+                            before = Some(value.clone());
                             plan = Some(self.plan(level, &source, rule.fills()));
                         }
                     }
@@ -643,7 +657,7 @@ impl<'msg> Restater<'msg> {
                     level.apply(write);
                 }
                 remaining -= 1;
-                if level.value_at(at) == Some(&before) {
+                if level.value_at(at) == before.as_ref() {
                     break;
                 }
             }

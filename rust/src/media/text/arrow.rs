@@ -664,6 +664,19 @@ impl Held {
         self.push(&[byte]);
     }
 
+    /// Take a vector of this line's own, releasing the page it was a range of.
+    ///
+    /// For a line the splitter has not finished: it is going to span windows,
+    /// and a window it still names cannot be written over, so every refill
+    /// the rest of the line needs would take a fresh one. One copy of what
+    /// has been read so far buys the window back, and it is the copy the
+    /// first append would have made anyway.
+    fn detach(&mut self) {
+        if matches!(self, Self::Span { .. }) {
+            *self = Self::Owned(self.as_bytes().to_vec());
+        }
+    }
+
     /// `range` of what this holds, as a range of the same page.
     fn slice(&self, range: Range<usize>) -> Result<TextBytes> {
         match self {
@@ -1077,6 +1090,7 @@ impl<R: Read> RawRows<R> {
             if ends {
                 break;
             }
+            bytes.detach();
         }
         let line = PhysicalLine {
             bytes,

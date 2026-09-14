@@ -976,7 +976,10 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
         let Some(text) = entry.value().as_str() else {
             continue;
         };
-        dropped.push((tag, Scalar::from(text.to_owned())));
+        // `Scalar::from(&str)` holds the text as the compact string it is:
+        // an owned `String` here would be built only for the value to copy
+        // out of it and drop it again.
+        dropped.push((tag, Scalar::from(text)));
     }
     for (tag, value) in dropped {
         // The dictionary's own field types the text on the way in. Unresolved
@@ -1025,10 +1028,7 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
         }
         // A stated value is never overwritten, which is what makes this
         // idempotent: the second pass finds the first pass's answer stated.
-        if held
-            .get_by_tag(rule.tag)
-            .is_some_and(|value| value != &Scalar::Null)
-        {
+        if held.get_by_tag(rule.tag).is_some_and(|value| !value.is_null()) {
             continue;
         }
         if !rule.when.iter().all(|when| when.holds(&held)) {

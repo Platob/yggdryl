@@ -150,6 +150,14 @@ pub(super) struct Indexed {
     tag: Option<i32>,
     counter: Option<i32>,
     index: usize,
+    /// Whether the write put a differently named child in a child's place.
+    ///
+    /// The name table is derived from the children's names, so only this
+    /// makes it wrong: a replacement under the same name leaves every entry
+    /// where it was, and an append only adds one.
+    pub(super) renamed: bool,
+    /// Whether the write added a child rather than replacing one.
+    pub(super) appended: bool,
 }
 
 /// Stage proven writes without publishing a message or inventing a second row.
@@ -181,6 +189,10 @@ pub(super) fn stage_writes(
                 (members.len() - 1, None)
             }
         };
+        let renamed = replaced
+            .as_ref()
+            .is_some_and(|replaced| replaced.name() != members[index].name());
+        let appended = replaced.is_none();
         let held = replaced.as_ref().map(Field::as_fix);
         let written = members[index].as_fix();
         indexed.push(Indexed {
@@ -189,6 +201,8 @@ pub(super) fn stage_writes(
             tag: written.tag().ok().flatten(),
             counter: written.counter().ok().flatten(),
             index,
+            renamed,
+            appended,
         });
     }
     let dtype = DataType::from_fields(members)?;
@@ -862,8 +876,9 @@ impl FixMsg {
     /// message as it was. The tag and group indexes follow the children that
     /// changed: the entry a replaced child held is retired and the one the
     /// written child carries admitted, and nothing else is reread. The name
-    /// table is derived from the children and is dropped, to be derived
-    /// again on the next miss.
+    /// table is derived from the children, so it is carried through a write
+    /// that leaves it true - an append, or a replacement under the child's
+    /// own name - and dropped only where a rename makes it wrong.
     fn write_all(&mut self, writes: Vec<Write>) -> Result<()> {
         let mut assertions = super::identity::Assertions::default();
         for write in &writes {
@@ -877,10 +892,31 @@ impl FixMsg {
         let hard = plan.identity.finalize(&field, &mut values, assertions)?;
         self.field = field;
         self.value = Scalar::from_sequence(values);
+        // The name table is derived from the children, and most writes leave
+        // it true: a replacement under the child's own name moves nothing,
+        // and an append only adds an entry. Enrich is the case that matters -
+        // it alternates a miss, which builds this table over every column of
+        // a wide row, with a write that would have thrown it away - and every
+        // one of its writes is an append or a same-name replacement.
+        let mut named = self.named.take();
         for change in indexed {
+            if change.renamed {
+                named = None;
+            } else if change.appended {
+                if let (Some(named), Some(child)) =
+                    (named.as_mut(), self.field.fields().get(change.index))
+                {
+                    named
+                        .entry(SmolStr::new(child.name()))
+                        .or_insert(change.index);
+                }
+            }
             change.apply(&mut self.tags, Some(&mut self.groups));
         }
         self.named = OnceLock::new();
+        if let Some(named) = named {
+            let _ = self.named.set(named);
+        }
         self.publish_hard(hard);
         Ok(())
     }
