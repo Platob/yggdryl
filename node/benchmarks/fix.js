@@ -279,7 +279,7 @@ try {
   benchmark('fix/singleton_field', () => singleton.asField())
   benchmark('fix/singleton_hash', () => singleton.stableHash())
   benchmark('fix/singleton_compare', () => singleton.compare(singleton))
-  benchmark('fix/group_lookup', () => catalog.groupByCounter(453))
+  benchmark('fix/group_lookup', () => catalog.groupByTag(453))
   benchmark('fix/catalog_hash', () => catalog.stableHash())
   benchmark('fix/catalog_snapshot_write', () => catalog.intoJson())
   benchmark('fix/catalog_snapshot_read', () => fix.FixRegistry.fromJson(snapshot))

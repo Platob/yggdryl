@@ -38,7 +38,7 @@ The live additions are the crate's 24 scalar fields, the `altids` group and the 
     let parties = registry.definition(FixCategory::Groups, "parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    let altids = registry.group_by_counter(65_020)?;
+    let altids = registry.group_by_tag(65_020)?;
     assert_eq!(altids.name(), "altids");
     assert_eq!(altids.as_fix().tag()?, Some(65_020));
     assert_eq!(altids.as_fix().counter()?, Some(65_020));
@@ -66,7 +66,7 @@ The live additions are the crate's 24 scalar fields, the `altids` group and the 
     parties = registry.definition("groups", "parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
-    altids = registry.group_by_counter(65_020)
+    altids = registry.group_by_tag(65_020)
     assert altids.name == "altids" and altids.fix.tag == 65_020
     assert altids.fix.counter == 65_020
     assert altids.into_arrow().type.keys_sorted
@@ -93,7 +93,7 @@ The live additions are the crate's 24 scalar fields, the `altids` group and the 
     const parties = registry.definition('groups', 'parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
-    const altids = registry.groupByCounter(65020)
+    const altids = registry.groupByTag(65020)
     assert.equal(altids.name, 'altids')
     assert.equal(altids.fix.tag, 65020)
     assert.equal(altids.fix.counter, 65020)

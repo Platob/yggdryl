@@ -631,7 +631,7 @@ mod tests {
     fn stated_identifier_keys_share_long_strings() {
         let registry = Arc::new(FixRegistry::new());
         let field = registry
-            .get_group_by_counter(ALTIDS_TAG_NAME.0)
+            .get_group_by_tag(ALTIDS_TAG_NAME.0)
             .unwrap()
             .clone();
         let identifier = Scalar::from("identifier".repeat(128));

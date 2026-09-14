@@ -336,7 +336,7 @@ fn a_component_extended_by_a_member_is_seen_extended_by_every_reference() {
         registry
             .msgtype("D")
             .unwrap()
-            .get_group_by_counter(453)
+            .get_group_by_tag(453)
             .unwrap()
             .name(),
         "Parties"
@@ -1400,4 +1400,112 @@ fn a_bare_code_answers_the_message_the_code_set_names_else_the_first_in_name_ord
     assert_eq!(target.msgtype("D").unwrap().name(), "NewOrderSingle");
     let restored = FixRegistry::from_json(&target.into_json().unwrap()).unwrap();
     assert_eq!(restored.msgtype("D").unwrap().name(), "NewOrderSingle");
+}
+
+/// Merging a dictionary that names one wire field differently keeps one member.
+///
+/// Two dictionaries reach tag 448 under two names, and each states the same
+/// component's member under its own. The merge folds the field - a tag
+/// another field holds is a merge, and the arriving spelling becomes an
+/// alias - and the component keeps one member, not two. Folding the same
+/// dictionary again changes nothing, which is the property a reload rests
+/// on.
+#[test]
+fn merging_two_spellings_of_one_field_keeps_one_member() {
+    let mut registry =
+        FixRegistry::from_fields([tagged("PartyID", 448, DataType::utf8())]).unwrap();
+    let mut member = registry.field(448).unwrap().clone();
+    member.as_fix_mut().set_field_ref("PartyID").unwrap();
+    registry
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([member])
+                .unwrap()
+                .required_field("Party"),
+        )
+        .unwrap();
+
+    let mut other = FixRegistry::from_fields([tagged("party_id", 448, DataType::utf8())]).unwrap();
+    let mut member = other.field(448).unwrap().clone();
+    member.as_fix_mut().set_field_ref("party_id").unwrap();
+    other
+        .create_definition(
+            FixCategory::Components,
+            DataType::from_fields([member])
+                .unwrap()
+                .required_field("Party"),
+        )
+        .unwrap();
+
+    registry.merge_with(&other).unwrap();
+    assert_eq!(
+        registry.field_by_name("party_id").unwrap().name(),
+        "PartyID"
+    );
+    let party = registry
+        .definition(FixCategory::Components, "Party")
+        .unwrap();
+    assert_eq!(party.fields().len(), 1, "one member, not two");
+    assert_eq!(party.fields()[0].name(), "PartyID");
+
+    registry.merge_with(&other).unwrap();
+    registry.merge_with(&other).unwrap();
+    assert_eq!(
+        registry
+            .definition(FixCategory::Components, "Party")
+            .unwrap()
+            .fields()
+            .len(),
+        1
+    );
+}
+
+/// A merge reads the other dictionary in the order it answers in.
+///
+/// The fold's precedence is its input order, and a caller merging a registry
+/// supplies no order of its own - so the one a registry has is the one it
+/// publishes, tag-major and the tag's holder first. Storage order is neither
+/// that nor stable: a removal swaps the last field into the hole, and a
+/// store round trip writes in `iter` order and loads in file order. Reading
+/// it would make a merge depend on a permutation `PartialEq` deliberately
+/// does not compare, so two dictionaries that compare equal would merge to
+/// two different answers - and one file read twice would not answer twice
+/// the same.
+#[test]
+fn a_merge_reads_the_other_dictionary_in_the_order_it_answers_in() {
+    let described = |name: &str, tag: i32, description: &str| {
+        let mut field = tagged(name, tag, DataType::utf8());
+        field.as_fix_mut().set_description(description).unwrap();
+        field
+    };
+    let symbol = described("Symbol", 55, "from the first");
+    let ticker = described("Ticker", 9001, "from the second");
+
+    // Two sources that are equal as registries and stored differently: the
+    // second held one more field, and removing it swapped the last into the
+    // hole it left.
+    let one = FixRegistry::from_fields([symbol.clone(), ticker.clone()]).unwrap();
+    let mut two =
+        FixRegistry::from_fields([tagged("Scratch", 9999, DataType::utf8()), symbol, ticker])
+            .unwrap();
+    two.remove(FixId::of(9999, "Scratch").unwrap()).unwrap();
+    assert_eq!(one, two, "equal as dictionaries");
+
+    // The target answers to both spellings, so both of the other's fields
+    // reach one stored field and the order decides which description lands.
+    let target = || {
+        let mut field = tagged("Symbol", 55, DataType::utf8());
+        field.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+        FixRegistry::from_fields([field]).unwrap()
+    };
+    let mut left = target();
+    left.merge_with(&one).unwrap();
+    let mut right = target();
+    right.merge_with(&two).unwrap();
+
+    assert_eq!(left, right, "equal dictionaries merge alike");
+    assert_eq!(
+        left.field_by_tag(55).unwrap().description(),
+        right.field_by_tag(55).unwrap().description()
+    );
 }

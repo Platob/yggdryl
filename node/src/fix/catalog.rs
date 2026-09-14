@@ -112,11 +112,11 @@ impl JsMsgType {
 
     /// Look up the unique repeating group for a native counter tag.
     #[napi]
-    pub fn get_group_by_counter(&self, tag: f64) -> Result<Option<JsField>> {
+    pub fn get_group_by_tag(&self, tag: f64) -> Result<Option<JsField>> {
         let tag = exact_i32(tag, "tag")?;
         Ok(self
             .inner()
-            .get_group_by_counter(tag)
+            .get_group_by_tag(tag)
             .cloned()
             .map(JsField::from_core))
     }

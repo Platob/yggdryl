@@ -170,7 +170,7 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
             }
         }
         // A native Map group owns its counter; no scalar has to precede it.
-        if let Some(group) = registry.get_group_by_counter(tag) {
+        if let Some(group) = registry.get_group_by_tag(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
             fields.push(group);

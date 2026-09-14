@@ -615,14 +615,24 @@ decides which entry paths become columns and never what they are called.
 
 ### What is copied
 
-A body that was UTF-8 as read is a range of the page the line was read into, so
-a decoded line copies no byte of it, and the Arrow value it lands in is built
-from that same page. A record joining several physical lines is assembled into
-a page of its own and copies once, and so is a line that [was not
-UTF-8](#a-line-is-text): decoded into a page of its own, once, for that line.
-Every value crossing into Python or JavaScript is copied by contract: `str` and
-strings own their text, and the `bytes` and `Buffer` the `_bytes` accessors
-answer own their bytes.
+The page a line is a range of is the reader's own window, shared with every
+other line cut from it. A body that was UTF-8 as read copies no byte: the row
+header off its front, the strips off both edges, the byte limit off its tail
+and every named capture are offsets into that window, and the Arrow value the
+body lands in is built from the same page. A record joining several physical
+lines is assembled into a page of its own and copies once, and so is a line
+that spanned two windows, one whose row header matched in the middle rather
+than at an edge, and one that [was not UTF-8](#a-line-is-text). Every value
+crossing into Python or JavaScript is copied by contract: `str` and strings own
+their text, and the `bytes` and `Buffer` the `_bytes` accessors answer own
+their bytes.
+
+Keeping the lines keeps the windows they name. A reader that drops each line
+as it reads it - a fold, the Arrow builder, the FIX codec - lets the reader
+write its window over again and allocates nothing per line at all; one that
+collects them holds one page per 64 KiB of object rather than one page per
+line of it. Where that matters, read the field off the line and drop the line,
+or read into Arrow, which copies each value into its column.
 
 ## Reading Arrow back into lines
 

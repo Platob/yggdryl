@@ -149,7 +149,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
     group.bench_function("msgtype_scoped_group", |bencher| {
         let message = catalog.msgtype("D").unwrap();
-        bencher.iter(|| black_box(message.get_group_by_counter(black_box(453))));
+        bencher.iter(|| black_box(message.get_group_by_tag(black_box(453))));
     });
     let codec = yggdryl::FixCodec::new(std::sync::Arc::new(catalog.clone()));
     group.bench_function("numeric_group_cached_plan", |bencher| {

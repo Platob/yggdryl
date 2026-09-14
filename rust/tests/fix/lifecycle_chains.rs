@@ -34,7 +34,7 @@ pub(super) fn try_row(
     let mut values = Vec::new();
     for (tag, value) in cells {
         let known = if tag == ALTIDS_TAG_NAME.0 {
-            registry.get_group_by_counter(tag)
+            registry.get_group_by_tag(tag)
         } else {
             registry.get_field_by_tag(tag)
         };

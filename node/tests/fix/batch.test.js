@@ -434,7 +434,7 @@ test('altids crosses native rows and Arrow as a nullable sorted Map with non-nul
   // lacks, so the row it exchanges is the root it settled - the group, the
   // stated SendingTime and the six appended replay fields - exactly as the
   // Rust `fresh` helper in `rust/tests/fix/map_groups.rs` builds one.
-  const root = fields.struct('maprow', [registry.groupByCounter(65020), registry.fieldByTag(52)], { nullable: false })
+  const root = fields.struct('maprow', [registry.groupByTag(65020), registry.fieldByTag(52)], { nullable: false })
   const values = [null, new Map(), new Map([['clordid', 'C-1'], ['orderid', null]])]
   const messages = values.map((altids) => new fix.FixMsg(root, { altids, sendingtime: SENDING }, registry))
   const schema = messages[0].field
@@ -442,7 +442,7 @@ test('altids crosses native rows and Arrow as a nullable sorted Map with non-nul
   assert.ok(messages.every((message) => message.field.fieldLen === 8))
   // A replayable row carries the whole bundle: a row of the group alone is
   // refused at the first replay field it lacks.
-  const bare = fields.struct('maprow', [registry.groupByCounter(65020)], { nullable: false })
+  const bare = fields.struct('maprow', [registry.groupByTag(65020)], { nullable: false })
   assert.throws(() => fix.FixMsg.fromRow(bare, { altids: new Map() }, registry), /\$\.updatedat/)
   const table = codec.arrowReader(schema, messages).intoTable()
   const mapping = table.schema.fields.find((field) => field.name === 'altids')
@@ -527,7 +527,7 @@ test('the canonical altids Map name wins over a scalar alias at native name and 
   scalar.fix.tag = 9001
   scalar.fix.aliases = ['AltIds']
   const registry = fix.FixRegistry.fromFields([scalar])
-  const mapping = registry.groupByCounter(65020)
+  const mapping = registry.groupByTag(65020)
   const schema = fields.struct('row', [scalar, mapping, registry.fieldByTag(52)], { nullable: false })
   const value = new fix.FixMsg(schema, {
     venueid: 'scalar',

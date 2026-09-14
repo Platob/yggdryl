@@ -701,10 +701,10 @@ fn venue_groups_and_their_components_carry_the_membership_and_key_on_the_counter
             registry
                 .msgtype("D")
                 .unwrap()
-                .get_group_by_counter(counter)
+                .get_group_by_tag(counter)
                 .is_some()
         );
-        assert!(registry.get_group_by_counter(counter).is_some());
+        assert!(registry.get_group_by_tag(counter).is_some());
     }
     let DataType::List(item) = roots[0].get_field("vendorentries").unwrap().dtype() else {
         panic!("a list group");
@@ -1895,7 +1895,7 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
         ),
         ["venue"]
     );
-    assert!(seeded.get_group_by_counter(5000).is_some());
+    assert!(seeded.get_group_by_tag(5000).is_some());
     // A field no file touched states nothing still.
     assert!(branches(seeded.field_by_tag(35).unwrap()).is_empty());
 

@@ -144,7 +144,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         registry
             .msgtype("D")
             .unwrap()
-            .get_group_by_counter(5_000)
+            .get_group_by_tag(5_000)
             .is_some()
     );
     assert_eq!(registry.dialects(), [dialect.to_owned()]);

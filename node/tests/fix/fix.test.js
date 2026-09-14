@@ -1960,7 +1960,7 @@ test('the crate fields declare their own protocols', () => {
   assert.match(mapping.dtype.toString(), /keys_sorted=true/)
   for (const registry of [new fix.FixRegistry(), seed()]) {
     assert.ok(registry.definition('groups', 'altids').equals(mapping))
-    assert.ok(registry.groupByCounter(65020).equals(mapping))
+    assert.ok(registry.groupByTag(65020).equals(mapping))
     assert.equal(registry.getFieldByTag(65020), null)
     assert.equal(registry.getFieldByName('altids'), null)
     assert.equal(registry.getFieldById(mapping.fix.id), null)
@@ -2153,7 +2153,7 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
   assert.ok(fix.crateFields().every((field) => {
     const declared = field.fix.counter === null
       ? registry.fieldByTag(field.fix.tag)
-      : registry.groupByCounter(field.fix.counter)
+      : registry.groupByTag(field.fix.counter)
     return !declared.fix.hasBranch('bloomberg')
   }))
 
