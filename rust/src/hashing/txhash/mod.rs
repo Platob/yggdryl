@@ -106,4 +106,5 @@ pub fn digest(input: &[u8], unix: i64, algorithm: DigestAlgorithm) -> TxHash {
 }
 
 #[cfg(test)]
+#[path = "tests.rs"]
 mod tests;

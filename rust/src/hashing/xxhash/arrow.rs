@@ -1269,9 +1269,6 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
     })
 }
 
-#[cfg(test)]
-mod tests;
-
 /// Feed one string cell as the characters a [`Str`] read from it holds.
 ///
 /// Text storage was validated when it was written, so the cell is fed

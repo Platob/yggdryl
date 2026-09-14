@@ -8,9 +8,9 @@ use arrow_array::{
 };
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 
-use super::{column_digests, row_digests};
-use crate::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::hashing::xxhash::arrow::{column_digests, row_digests};
+use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
+use yggdryl::{DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, TimeUnit, Timezone};
 
 fn root(fields: impl IntoIterator<Item = Field>) -> Field {
     DataType::from_fields(fields).unwrap().required_field("row")
@@ -21,7 +21,7 @@ fn batch(fields: &[Field], columns: Vec<ArrayRef>) -> RecordBatch {
         .iter()
         .cloned()
         .map(Field::into_arrow)
-        .collect::<crate::Result<Vec<_>>>()
+        .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     RecordBatch::try_new(Arc::new(Schema::new(fields)), columns).unwrap()
 }
@@ -68,6 +68,9 @@ fn digests(array: &ArrayRef, algorithm: DigestAlgorithm) -> Vec<Digest> {
                 })
                 .collect()
         }
+        // `DigestAlgorithm` is non-exhaustive outside the crate; a new one
+        // reaching here has no column reading stated yet.
+        other => panic!("{other} has no digest column reading"),
     }
 }
 
@@ -530,7 +533,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    crate::types::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
+                    yggdryl::types::Interval::new(14, 0, 0, TimeUnit::YearMonth).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -543,7 +546,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    crate::types::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
+                    yggdryl::types::Interval::new(0, 3, 1_500_000_000, TimeUnit::DayTime).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -556,7 +559,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             ),
             Scalar::from_sequence([
                 Scalar::Interval(
-                    crate::types::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
+                    yggdryl::types::Interval::new(14, 3, 1_000, TimeUnit::MonthDayNano).unwrap(),
                 ),
                 Scalar::Null,
             ]),
@@ -700,7 +703,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Scalar::from_sequence([
                 // A minimal little-endian WKB point.
                 Scalar::Geometry(
-                    crate::types::Geometry::new([
+                    yggdryl::types::Geometry::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
@@ -712,7 +715,7 @@ fn columns() -> Vec<(Field, Scalar)> {
             Field::new("geography", DataType::from_str("geography").unwrap(), true),
             Scalar::from_sequence([
                 Scalar::Geography(
-                    crate::types::Geography::new([
+                    yggdryl::types::Geography::new([
                         1_u8, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     ])
                     .unwrap(),
@@ -726,12 +729,12 @@ fn columns() -> Vec<(Field, Scalar)> {
 #[test]
 fn a_column_digest_equals_the_value_feed_on_every_datatype_family() {
     for (field, values) in columns() {
-        let array = crate::arrow::array_from_value(&field, &values)
+        let array = yggdryl::arrow::array_from_value(&field, &values)
             .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
         // Read the values back through the shared boundary rather than reusing
         // the input, so a column that canonicalizes on the way in is compared
         // against what it actually stores.
-        let stored = crate::arrow::array_to_value(&field, array.as_ref())
+        let stored = yggdryl::arrow::array_to_value(&field, array.as_ref())
             .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
         let stored = stored.as_sequence().expect("a sequence of values");
 
@@ -778,7 +781,7 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
         };
         padded.resize(width, filler);
         let field = field.clone().with_nullable(true);
-        let array = crate::arrow::array_from_value(&field, &Scalar::from_sequence(padded))
+        let array = yggdryl::arrow::array_from_value(&field, &Scalar::from_sequence(padded))
             .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
         fields.push(field);
         arrays.push(array);
@@ -790,11 +793,11 @@ fn a_row_digest_equals_the_row_value_feed_on_every_datatype_family() {
         .expect("a struct root")
         .iter()
         .map(|field| field.clone().into_arrow())
-        .collect::<crate::Result<Vec<_>>>()
+        .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     let batch = RecordBatch::try_new(Arc::new(Schema::new(arrow_fields)), arrays).unwrap();
 
-    let rows = crate::arrow::batch_to_value(&batch).unwrap();
+    let rows = yggdryl::arrow::batch_to_value(&batch).unwrap();
     let rows = rows.as_sequence().expect("a sequence of rows");
     assert_eq!(rows.len(), width);
 
@@ -952,7 +955,7 @@ fn a_column_digest_still_refuses_what_no_cast_can_reconcile() {
     assert!(
         matches!(
             error,
-            crate::arrow::Error::IncompatibleSchema(_) | crate::arrow::Error::Core(_)
+            yggdryl::arrow::Error::IncompatibleSchema(_) | yggdryl::arrow::Error::Core(_)
         ),
         "{error}"
     );
@@ -1044,7 +1047,7 @@ fn rows_with_only_digest_holders_hash_as_empty_sequences() {
 fn a_null_never_collides_with_an_empty_value() {
     let field = Field::new("symbol", DataType::utf8(), true);
     let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
-    let array = crate::arrow::array_from_value(&field, &values).unwrap();
+    let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
     let column = digests(
         &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
         DigestAlgorithm::Xxh3,
@@ -1058,7 +1061,7 @@ fn a_null_never_collides_with_an_empty_value() {
 fn the_column_width_follows_the_algorithm() {
     let field = Field::new("quantity", DataType::Int64, false);
     let values = Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]);
-    let array = crate::arrow::array_from_value(&field, &values).unwrap();
+    let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
 
     let widths = [
         (DigestAlgorithm::Xxh32, ArrowDataType::UInt32),
@@ -1204,7 +1207,7 @@ fn holder_sources_are_ordered_and_preserve_explicit_empty() {
         Scalar::from(0_u64),
         Scalar::from(0_u64),
     ])]);
-    let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
+    let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
     let filled = Xxh3::new().apply_arrow_batch(&root, source, false).unwrap();
 
     let expected_ordered = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(7)])
@@ -1246,7 +1249,7 @@ fn nested_holders_fill_bottom_up_and_hidden_rows_stay_untouched() {
         ]),
         Scalar::from_sequence([Scalar::Null, Scalar::from(0_u64)]),
     ]);
-    let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
+    let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
 
     let conditional = Xxh3::new()
         .apply_arrow_batch(&root, source.clone(), false)
@@ -1533,9 +1536,9 @@ fn empty_batch() -> RecordBatch {
     RecordBatch::new_empty(Arc::new(Schema::empty()))
 }
 
-fn assert_metadata_error(error: crate::arrow::Error, key: &str, holder: &str) {
+fn assert_metadata_error(error: yggdryl::arrow::Error, key: &str, holder: &str) {
     match error {
-        crate::arrow::Error::Core(crate::Error::InvalidMetadataValue {
+        yggdryl::arrow::Error::Core(yggdryl::Error::InvalidMetadataValue {
             key: actual,
             reason,
         }) => {
@@ -1584,7 +1587,7 @@ fn invalid_holder_algorithms_and_metadata_ownership_are_rejected() {
         .apply_arrow_batch(&non_struct_root, empty_batch(), false)
         .unwrap_err();
     assert!(
-        matches!(error, crate::arrow::Error::IncompatibleSchema(_)),
+        matches!(error, yggdryl::arrow::Error::IncompatibleSchema(_)),
         "an invalid batch root remains a schema error"
     );
 }
@@ -1666,7 +1669,7 @@ fn digest_sources_try_later_literal_prefixes_and_allow_terminal_collections() {
         item_value.clone(),
         Scalar::from(0_u64),
     ])]);
-    let source = crate::arrow::batch_from_value(&root, &rows).unwrap();
+    let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
     let filled = Xxh3::new().apply_arrow_batch(&root, source, false).unwrap();
     let expected = Scalar::from_sequence([Scalar::from(2), item_value])
         .digest(DigestAlgorithm::Xxh3)
@@ -1729,8 +1732,8 @@ fn the_star_source_is_the_same_selection_as_naming_none() {
     ])]);
     let starred_root = root([a.clone(), b.clone(), starred]);
     let implied_root = root([a, b, implied]);
-    let starred_source = crate::arrow::batch_from_value(&starred_root, &rows).unwrap();
-    let implied_source = crate::arrow::batch_from_value(&implied_root, &rows).unwrap();
+    let starred_source = yggdryl::arrow::batch_from_value(&starred_root, &rows).unwrap();
+    let implied_source = yggdryl::arrow::batch_from_value(&implied_root, &rows).unwrap();
 
     let starred_filled = starred_root
         .as_digest()
