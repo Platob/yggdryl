@@ -1089,7 +1089,15 @@ impl FixRegistry {
     pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
         other.validate_catalog()?;
         let mut staged = self.clone();
-        let counts = staged.fold(other.fields.iter().cloned())?;
+        // In the order the other dictionary *answers*, never the order it
+        // happens to be stored in. The fold's precedence is its input order,
+        // and a caller merging a registry supplies no order of its own - so
+        // the one a registry has is the one it publishes: tag-major, the
+        // tag's holder first. Storage order is neither that nor stable: a
+        // removal swaps the last field into the hole, and a store round trip
+        // writes in `iter` order and loads in file order, so two dictionaries
+        // that compare equal could merge to two different answers.
+        let counts = staged.fold(other.iter().cloned())?;
         staged.merge_catalog(other)?;
         *self = staged;
         Ok(counts)

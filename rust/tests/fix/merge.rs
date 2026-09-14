@@ -1459,3 +1459,53 @@ fn merging_two_spellings_of_one_field_keeps_one_member() {
         1
     );
 }
+
+/// A merge reads the other dictionary in the order it answers in.
+///
+/// The fold's precedence is its input order, and a caller merging a registry
+/// supplies no order of its own - so the one a registry has is the one it
+/// publishes, tag-major and the tag's holder first. Storage order is neither
+/// that nor stable: a removal swaps the last field into the hole, and a
+/// store round trip writes in `iter` order and loads in file order. Reading
+/// it would make a merge depend on a permutation `PartialEq` deliberately
+/// does not compare, so two dictionaries that compare equal would merge to
+/// two different answers - and one file read twice would not answer twice
+/// the same.
+#[test]
+fn a_merge_reads_the_other_dictionary_in_the_order_it_answers_in() {
+    let described = |name: &str, tag: i32, description: &str| {
+        let mut field = tagged(name, tag, DataType::utf8());
+        field.as_fix_mut().set_description(description).unwrap();
+        field
+    };
+    let symbol = described("Symbol", 55, "from the first");
+    let ticker = described("Ticker", 9001, "from the second");
+
+    // Two sources that are equal as registries and stored differently: the
+    // second held one more field, and removing it swapped the last into the
+    // hole it left.
+    let one = FixRegistry::from_fields([symbol.clone(), ticker.clone()]).unwrap();
+    let mut two =
+        FixRegistry::from_fields([tagged("Scratch", 9999, DataType::utf8()), symbol, ticker])
+            .unwrap();
+    two.remove(FixId::of(9999, "Scratch").unwrap()).unwrap();
+    assert_eq!(one, two, "equal as dictionaries");
+
+    // The target answers to both spellings, so both of the other's fields
+    // reach one stored field and the order decides which description lands.
+    let target = || {
+        let mut field = tagged("Symbol", 55, DataType::utf8());
+        field.as_fix_mut().set_aliases(["Ticker"]).unwrap();
+        FixRegistry::from_fields([field]).unwrap()
+    };
+    let mut left = target();
+    left.merge_with(&one).unwrap();
+    let mut right = target();
+    right.merge_with(&two).unwrap();
+
+    assert_eq!(left, right, "equal dictionaries merge alike");
+    assert_eq!(
+        left.field_by_tag(55).unwrap().description(),
+        right.field_by_tag(55).unwrap().description()
+    );
+}
