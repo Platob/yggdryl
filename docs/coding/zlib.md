@@ -19,49 +19,7 @@ RFC 1950 zlib framing and raw RFC 1951 DEFLATE, as whole buffers, as streams, or
 
 ## Use
 
-`dump` and `load` handle a complete buffer; everything else is the same pair under another shape.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::coding::zlib;
-
-    let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
-    let plain = text.as_bytes();
-
-    let encoded = zlib::dump(plain)?;
-    assert_eq!(zlib::load(&encoded)?, plain);
-    assert!(encoded.len() < plain.len());
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.coding import zlib
-
-    plain = b"symbol,price\n" + b"AAPL,1\n" * 64
-
-    encoded = zlib.dumps(plain)
-    assert zlib.loads(encoded) == plain
-    assert len(encoded) < len(plain)
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { zlib } = require('yggdryl')
-
-    const plain = Buffer.from('symbol,price\n' + 'AAPL,1\n'.repeat(64))
-
-    const encoded = zlib.dumps(plain)
-    assert.deepEqual(zlib.loads(encoded), plain)
-    assert.ok(encoded.length < plain.length)
-    ```
-
-## Framed and raw
-
-The `*_raw` pair carries the DEFLATE stream alone: no zlib header, no Adler-32 trailer.
+`dump` and `load` handle a complete buffer; everything else is the same pair under another shape. The `*_raw` pair carries the DEFLATE stream alone: no zlib header, no Adler-32 trailer.
 
 === "Rust"
 
@@ -76,6 +34,7 @@ The `*_raw` pair carries the DEFLATE stream alone: no zlib header, no Adler-32 t
 
     assert_eq!(zlib::load(&framed)?, plain);
     assert_eq!(zlib::load_raw(&raw)?, plain);
+    assert!(framed.len() < plain.len());
 
     // The framing is a two-byte header plus a four-byte Adler-32 trailer.
     assert_eq!(framed.len(), raw.len() + 6);
@@ -101,6 +60,7 @@ The `*_raw` pair carries the DEFLATE stream alone: no zlib header, no Adler-32 t
 
     assert zlib.loads(framed) == plain
     assert zlib.loads_raw(raw) == plain
+    assert len(framed) < len(plain)
 
     # The framing is a two-byte header plus a four-byte Adler-32 trailer.
     assert len(framed) == len(raw) + 6
@@ -129,6 +89,7 @@ The `*_raw` pair carries the DEFLATE stream alone: no zlib header, no Adler-32 t
 
     assert.deepEqual(zlib.loads(framed), plain)
     assert.deepEqual(zlib.loadsRaw(raw), plain)
+    assert.ok(framed.length < plain.length)
 
     // The framing is a two-byte header plus a four-byte Adler-32 trailer.
     assert.equal(framed.length, raw.length + 6)
@@ -145,11 +106,11 @@ Use the raw pair where the framing belongs to something else: ZIP entries and HT
 
 ## Levels
 
-Every Rust entry point has a `_with_level` twin; the plain form is `Level::DEFAULT`.
+Every Rust entry point has a `_with_level` twin; the plain form is `Level::DEFAULT`. Rust only; the bindings pass `level` to `dumps`, as [gzip](gzip.md#levels) shows.
 
 ```rust
-use yggdryl::{Level};
 use yggdryl::coding::zlib;
+use yggdryl::Level;
 
 let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
 let plain = text.as_bytes();
@@ -169,11 +130,12 @@ assert_eq!(zlib::load_raw(&raw)?, plain);
 
 ## Streams
 
-Rust only. `writer` and `reader` do the same work without holding the whole payload.
+Rust only. `writer` and `reader` do the same work without holding the whole payload; `raw_writer` and `raw_reader` are the unframed pair, with `_with_level` on the writing side.
 
 ```rust
 use std::io::{Read, Write};
 use yggdryl::coding::zlib;
+use yggdryl::Level;
 
 let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
 let plain = text.as_bytes();
@@ -186,46 +148,36 @@ encoder.finish()?;
 let mut decoded = Vec::new();
 zlib::reader(target.as_slice()).read_to_end(&mut decoded)?;
 assert_eq!(decoded, plain);
-```
 
-`raw_writer` and `raw_reader` are the unframed pair, with `_with_level` on the writing side.
-
-```rust
-use std::io::{Read, Write};
-use yggdryl::{Level};
-use yggdryl::coding::zlib;
-
-let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
-let plain = text.as_bytes();
-
-let mut target = Vec::new();
-let mut encoder = zlib::raw_writer_with_level(&mut target, Level::BEST);
+let mut raw = Vec::new();
+let mut encoder = zlib::raw_writer_with_level(&mut raw, Level::BEST);
 encoder.write_all(plain)?;
 encoder.finish()?;
 
 let mut decoded = Vec::new();
-zlib::raw_reader(target.as_slice()).read_to_end(&mut decoded)?;
+zlib::raw_reader(raw.as_slice()).read_to_end(&mut decoded)?;
 assert_eq!(decoded, plain);
 
 // A raw stream is exactly what the buffer form would have produced.
-assert_eq!(zlib::load_raw(&target)?, plain);
+assert_eq!(zlib::load_raw(&raw)?, plain);
 ```
 
 ## The transparent handle
 
-`Zlib` wraps one [byte handle](../holder/index.md): reads decompress and writes compress, so an `IOBase` consumer sees plain bytes.
+`Zlib` wraps one [byte handle](../holder/index.md): reads decompress and writes compress, so an `IOBase` consumer sees plain bytes. Sequential reads use [`pstream_bytes`](../holder/iobase/bytes.md), decoding from the wrapped handle into bounded arrays. Consuming the handle publishes a pending write first.
 
 === "Rust"
 
     ```rust
-    use yggdryl::IOBase;
-    use yggdryl::holder::Buffer;
     use yggdryl::coding::zlib::{self, Zlib};
+    use yggdryl::holder::Buffer;
+    use yggdryl::{IOBase, Level};
 
     let text = "symbol,price\n".to_string() + &"AAPL,1\n".repeat(64);
     let plain = text.as_bytes();
 
-    let mut handle = Zlib::new(Buffer::new());
+    let mut handle = Zlib::new(Buffer::new()).with_level(Level::BEST);
+    assert_eq!(handle.level(), Level::BEST);
     handle.write_all_bytes(plain)?;
     handle.flush()?;
 
@@ -235,6 +187,11 @@ assert_eq!(zlib::load_raw(&target)?, plain);
 
     // The wrapped handle holds the compressed stream.
     assert_eq!(zlib::load(&handle.handle().read_all_bytes()?)?, plain);
+
+    // No flush: into_handle publishes first.
+    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
+    let inner = handle.into_handle()?;
+    assert_eq!(zlib::load(&inner.read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
     ```
 
 === "Python"
@@ -245,7 +202,7 @@ assert_eq!(zlib::load_raw(&target)?, plain);
 
     from yggdryl import IOBase
     from yggdryl.coding import Zlib, zlib
-    from yggdryl.holder import Path
+    from yggdryl.holder import Buffer, Path
 
     root = pathlib.Path(tempfile.mkdtemp())
     plain = b"symbol,price\n" + b"AAPL,1\n" * 64
@@ -262,64 +219,30 @@ assert_eq!(zlib::load_raw(&target)?, plain);
 
     # `Path` addresses the stored bytes: the compressed stream.
     assert zlib.loads(Path(root / "trades.zz").read_bytes()) == plain
-    ```
-
-Sequential reads use [`pstream_bytes`](../holder/iobase/bytes.md), decoding from the wrapped handle into bounded arrays. Consuming the handle publishes a pending write first.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::IOBase;
-    use yggdryl::holder::Buffer;
-    use yggdryl::coding::zlib::{self, Zlib};
-    use yggdryl::Level;
-
-    let plain: &[u8] = b"symbol,price\nAAPL,1\n";
-
-    let mut handle = Zlib::new(Buffer::new()).with_level(Level::BEST);
-    assert_eq!(handle.level(), Level::BEST);
-
-    handle.write_all_bytes(plain)?;
-
-    // No flush: into_handle publishes first.
-    let inner = handle.into_handle()?;
-    assert_eq!(zlib::load(&inner.read_all_bytes()?)?, plain);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import IOBase
-    from yggdryl.coding import zlib
-    from yggdryl.holder import Buffer
-
-    plain = b"symbol,price\nAAPL,1\n"
-
-    handle = IOBase.from_bytes(b"").into_coded("zlib", level=9)
-    handle.write_bytes(plain)
 
     # No flush: into_handle publishes first.
-    inner = handle.into_handle()
+    coded = IOBase.from_bytes(b"").into_coded("zlib", level=9)
+    coded.write_bytes(b"symbol,price\nAAPL,1\n")
+    inner = coded.into_handle()
     assert isinstance(inner, Buffer)
-    assert zlib.loads(inner.read_bytes()) == plain
+    assert zlib.loads(inner.read_bytes()) == b"symbol,price\nAAPL,1\n"
     ```
 
 ## Why raw DEFLATE has no handle
 
-A handle is chosen from what a payload declares, and raw DEFLATE declares nothing, so [`coding::Coded`](index.md) answers with the zlib handle. There is no `Deflate` handle in either language.
+A handle is chosen from what a payload declares, and raw DEFLATE declares nothing, so [`coding::Coded`](index.md) answers with the zlib handle. There is no `Deflate` handle in either language. Buffer and stream operations keep the distinction, and [`Codec`](index.md) dispatches to this module for both; that half is Rust only.
 
 === "Rust"
 
     ```rust
-    use yggdryl::coding::Coded;
-    use yggdryl::IOBase;
+    use yggdryl::coding::{zlib, Coded};
     use yggdryl::holder::Buffer;
-    use yggdryl::coding::zlib;
+    use yggdryl::{Codec, IOBase};
 
     let plain: &[u8] = b"symbol,price\nAAPL,1\n";
 
-    let mut handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Deflate);
-    assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
+    let mut handle = Coded::wrap(Buffer::new(), Codec::Deflate);
+    assert_eq!(handle.codec(), Codec::Zlib);
 
     handle.write_all_bytes(plain)?;
     handle.flush()?;
@@ -327,8 +250,17 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
     assert_eq!(zlib::load(&handle.handle().read_all_bytes()?)?, plain);
 
     // Nothing to detect: a coding, not a file format.
-    assert_eq!(yggdryl::Codec::Deflate.extension(), None);
-    assert_eq!(yggdryl::Codec::Zlib.extension(), Some("zz"));
+    assert_eq!(Codec::Deflate.extension(), None);
+    assert_eq!(Codec::Zlib.extension(), Some("zz"));
+
+    // An HTTP Content-Encoding header value parses directly, and its bytes
+    // really are unframed.
+    let coding = Codec::from_str("deflate")?;
+    assert_eq!(coding, Codec::Deflate);
+    let body = coding.dump(plain)?;
+    assert_eq!(coding.load(&body)?, plain);
+    assert_eq!(zlib::load_raw(&body)?, plain);
+    assert!(zlib::load(&body).is_err());
     ```
 
 === "Python"
@@ -348,25 +280,6 @@ A handle is chosen from what a payload declares, and raw DEFLATE declares nothin
     assert handle.read_bytes() == plain
     assert zlib.loads(handle.into_handle().read_bytes()) == plain
     ```
-
-Rust only. Buffer and stream operations keep the distinction; [`Codec`](index.md) dispatches to this module for both.
-
-```rust
-use yggdryl::{Codec};
-use yggdryl::coding::zlib;
-
-// An HTTP Content-Encoding header value parses directly.
-let coding = Codec::from_str("deflate")?;
-assert_eq!(coding, Codec::Deflate);
-
-let plain: &[u8] = b"symbol,price\nAAPL,1\n";
-let body = coding.dump(plain)?;
-
-assert_eq!(coding.load(&body)?, plain);
-// It really is unframed.
-assert_eq!(zlib::load_raw(&body)?, plain);
-assert!(zlib::load(&body).is_err());
-```
 
 ## Edges
 

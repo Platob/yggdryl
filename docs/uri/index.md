@@ -160,21 +160,7 @@ Two spellings of one resource compare equal and hash equal; the parser never gue
     assert.ok(Uri.from(uri.toString()).equals(uri))
     ```
 
-[Python](../extensions/python.md) wrappers stay editable until their first `hash(...)`.
-
-```python
-import copy
-
-from yggdryl import Url
-
-url = Url("https://example.test/data.json")
-lookup = {url: "cached"}  # locks this wrapper
-assert lookup[url] == "cached"
-
-editable = copy.copy(url)
-editable.set_extension("parquet")
-assert editable != url
-```
+[Python](../extensions/python.md) wrappers stay editable until their first `hash(...)`, which locks that wrapper against a later setter; `copy.copy` answers an unlocked, editable copy that no longer equals the original once edited.
 
 ## Credentials and store locations
 

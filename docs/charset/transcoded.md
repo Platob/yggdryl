@@ -51,7 +51,8 @@ use yggdryl::charset::Transcoded;
 use yggdryl::holder::Buffer;
 use yggdryl::{Charset, IOBase, IOCursor};
 
-let body = "symbol,désk,prix €\n".repeat(8 * 1024);
+// Past one 64 KiB stride, so the index holds more than its first point.
+let body = "symbol,désk,prix €\n".repeat(4 * 1024);
 let source = Buffer::from_bytes(Charset::Cp1252.encode(&body)?.into_owned());
 let handle = Transcoded::new(source, Charset::Cp1252);
 

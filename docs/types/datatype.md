@@ -6,14 +6,15 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 52 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the nine [codes](codes.md) |
+| Owns | 51 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the eight [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
-| Identity | `id()`, `kind()`: 61 ids, 12 kinds, parameter-free; a string's id is its layout, a byte column's its layout |
+| Identity | `id()`, `kind()`: 60 ids, 12 kinds, parameter-free; a string's id is its layout, a byte column's its layout |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
 | Compatibility | `arrow`, `spark`, `polars`, `pandas`, `iceberg`; layout rewrites only |
-| Rust only | the enum itself; YAML, TOML, `pretty` pending in JavaScript |
+| Rust only | the enum itself |
+| JavaScript | the model as JSON only: no YAML, TOML or `pretty` |
 | Serializes strings, bytes | one `string` tag and one `binary` tag with `layout`, `charset`, `fixed` or `max` ([Strings & bytes](text.md#serialized-shape)) |
 
 ## Use
@@ -442,9 +443,10 @@ Nesting is carried, not flattened, so every format round-trips it.
 
 === "JavaScript"
 
-    !!! note "Rust first"
-        The YAML and TOML pair lands in the JavaScript binding once the core surface settles;
-        `toJSON` is already there.
+    !!! note "Rust and Python only"
+        JavaScript has no YAML or TOML writer; it reads and writes the same model as JSON
+        through `toJSON`, `toJSONBytes`, `DataType.fromJSON`, and `DataType.fromJSONBytes`,
+        as [Use](#use) shows.
 
 | call | form |
 | --- | --- |
@@ -492,8 +494,8 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 
 === "JavaScript"
 
-    !!! note "Rust first"
-        `pretty` lands in the JavaScript binding once the core surface settles.
+    !!! note "Rust and Python only"
+        JavaScript has no `pretty`; `toString` is the compact form that round-trips.
 
 ## Compatibility rewriting
 

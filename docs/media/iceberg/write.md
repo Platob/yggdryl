@@ -178,7 +178,7 @@ A handle on a table folder is not a folder of Parquet files: it is read through 
 
 ### The table value as a handle
 
-A `Table` value is itself a handle, answering from metadata it already holds; the folder route probes the location on every call.
+A `Table` value is itself a handle, answering from metadata it already holds; the folder route probes the location on every call. A handle on one `column=value` directory addresses that partition, with its files taken from the manifest rather than a directory listing.
 
 Rust only.
 
@@ -235,6 +235,15 @@ let rows = |ids: Vec<i64>, venues: Vec<&'static str>| {
 // Each generic write is one commit, and the value's metadata follows it
 // without reopening anything.
 table.append_arrow_reader(rows(vec![1, 2], vec!["XNAS", "XNYS"]), &options)?;
+
+// A partition directory is a handle too, reading the files the manifest names.
+let partition = Folder::new(path.join("data").join("venue=XNYS"))?;
+let partition_rows: usize = partition
+    .read_arrow_reader(&partition.record_options()?)?
+    .map(|batch| batch.unwrap().num_rows())
+    .sum();
+assert_eq!(partition_rows, 1);
+
 let merging = options.clone().with_merge_by_names(["id"]);
 table.merge_arrow_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
 assert_eq!(table.metadata().snapshots().len(), 2);
@@ -248,52 +257,6 @@ let matching: usize = table
     .map(|batch| batch.unwrap().num_rows())
     .sum();
 assert_eq!(matching, 1);
-```
-
-### A partition directory as a handle
-
-A handle on one `column=value` directory addresses that partition, with its files taken from the manifest rather than a directory listing.
-
-Rust only.
-
-```rust
-use yggdryl::media::IORecordOptions;
-use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-use yggdryl::{IOBase, IOMedia};
-use yggdryl::holder::local::Folder;
-use yggdryl::{arrow, DataType};
-
-use arrow_array::{Int64Array, RecordBatch, StringArray};
-use std::sync::Arc;
-
-let mut schema = DataType::from_fields([
-    DataType::Int64.required_field("id"),
-    DataType::utf8().nullable_field("venue"),
-])?
-.required_field("row");
-assign_field_ids(&mut schema, 1)?;
-
-let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-partition");
-let _ = std::fs::remove_dir_all(&path);
-let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
-
-let batch = RecordBatch::try_new(
-    schema.into_arrow_schema()?,
-    vec![
-        Arc::new(Int64Array::from(vec![1_i64, 2])),
-        Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
-    ],
-)?;
-table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
-
-let partition = Folder::new(path.join("data").join("venue=XNYS"))?;
-let options = partition.record_options()?;
-let rows: usize = partition
-    .read_arrow_reader(&options)?
-    .map(|batch| batch.unwrap().num_rows())
-    .sum();
-assert_eq!(rows, 1);
 ```
 
 ## Data files aim at a size

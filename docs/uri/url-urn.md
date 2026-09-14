@@ -97,7 +97,7 @@ Both narrowed forms are the same canonical value, so conversion either way is fr
 
 ## What the scheme decides
 
-Rust and Python; JavaScript reaches none of this section. The `exists`, `is_dir`, and `is_file` predicates are in all three, under those names.
+Shown in Rust; Python answers `default_port`, `is_local` and `local_mime_type` under those names and reaches `join_path` through `joinpath` with an `os.PathLike`, and JavaScript reaches none of them. The `exists`, `is_dir`, and `is_file` predicates are in all three, under those names.
 
 === "Rust"
 

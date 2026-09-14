@@ -17,6 +17,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | FIX | [Message](fix/message.md) | Binding rows only; the Criterion target carries no `FixMsg` case |
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
+| Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
 | Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
 | Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
 | Holder | [Object stores](holder/backends/object.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
@@ -34,11 +35,6 @@ Results live beside the method they measure. Each page's Performance section nam
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | Enum boundary in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |
-| xxHash | [Handles](xxhash/handles.md) | One containerized x86_64 Linux run (benchmarks): Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 relea... |
-| xxHash | [xxHash](xxhash/index.md) | `rust/benchmarks/xxhash.rs`, `python/benchmarks/digest.py`, and `node/benchmarks/xxhash.js` measure one pro... |
-| xxHash | [Values](xxhash/values.md) | One containerized x86_64 Linux run (Intel Xeon @ 2.10 GHz, 4 cores, 16 GiB; rustc 1.94.1 release with thin... |
-| TxHash | [TxHash](txhash/index.md) | The coupling beside the digest it wraps, the value's projections, and reading an instant out of a value; one containerized x86_64 Linux run |
-| TxHash | [Arrow](txhash/arrow.md) | Coupled columns beside the digest column and instant column they join, and the coupled holder beside a plain one, 65,536 rows |
 
 ## Running every target
 
@@ -46,13 +42,13 @@ Results live beside the method they measure. Each page's Performance section nam
 
     ```bash
     cargo bench --bench types
+    cargo bench --bench arrow
     cargo bench --bench uri
     cargo bench --bench expression
     cargo bench --bench text
     cargo bench --bench charset
     cargo bench --bench coding
-    cargo bench --bench xxhash
-    cargo bench --bench txhash
+    cargo bench --bench hashing
     cargo bench --bench fix
     cargo bench --bench holder --features "parquet object"
     cargo bench --bench media --features "parquet iceberg"
@@ -64,6 +60,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/datatypes.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/types/scalars.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/holder.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/holder/io.py --iterations 10000
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
@@ -91,8 +88,8 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:media
     npm run --prefix node bench:media:text
     npm run --prefix node bench:text
-    npm run --prefix node bench:xxhash
-    npm run --prefix node bench:txhash
+    npm run --prefix node bench:hashing:xxhash
+    npm run --prefix node bench:hashing:txhash
     npm run --prefix node bench:fix
     ```
 
@@ -101,6 +98,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Target | Isolates |
 | --- | --- |
 | `types` | parsing, construction, validation, mutation, cached access, and Arrow schemas |
+| `arrow` | `ArrowValue` construction per shape, the reader funnel to the first batch and to the last, collapsing a stream, casting against the bare call it wraps, and structured text beside the native `Scalar` pair |
 | `holder` | byte streams, listings, buffering, and foreign-filesystem boundaries |
 | `charset` | the borrow an all-ASCII payload answers with, the transcode a mixed one pays for, and the three streaming doors |
 | `coding` | content codings beside their standard-library baselines on the same wire |
@@ -109,8 +107,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `uri` | URI parsing and component access |
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
-| `xxhash` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, and Arrow row digests |
-| `txhash` | the coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
+| `hashing` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, Arrow row digests, the time coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
 
 ## Rules
 

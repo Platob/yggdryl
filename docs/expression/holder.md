@@ -97,35 +97,53 @@
 
 Per-column minimums, maximums, and null counts settle it, in a Parquet footer, an Iceberg manifest, or a Hive path.
 
-Rust and Python; JavaScript is Rust-only here.
+Rust and Python; JavaScript has no `Bounds`.
 
-```rust
-use yggdryl::expression::Bounds;
-use yggdryl::{Expression, Field, Scalar};
+=== "Rust"
 
-let schema: Field = "trades:struct<ccy:utf8,size:bigint>".parse()?;
-let bounds = Bounds::new(Some(1_000))
-    .with_column("ccy", Some(Scalar::from("EUR")), Some(Scalar::from("USD")), Some(0))
-    .with_column(
-        "size",
-        Some(Scalar::from(1_i64)),
-        Some(Scalar::from(99_i64)),
-        Some(4),
-    );
+    ```rust
+    use yggdryl::expression::Bounds;
+    use yggdryl::{Expression, Field, Scalar};
 
-// Provably empty: no row can hold a size above the file's maximum.
-assert!(!"size > 1000".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
-// Not provable either way: the range overlaps, so the file is read.
-assert!("size > 50".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
-// A null test the count settles outright.
-assert!("size is null".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
-```
+    let schema: Field = "trades:struct<ccy:utf8,size:bigint>".parse()?;
+    let bounds = Bounds::new(Some(1_000))
+        .with_column("ccy", Some(Scalar::from("EUR")), Some(Scalar::from("USD")), Some(0))
+        .with_column(
+            "size",
+            Some(Scalar::from(1_i64)),
+            Some(Scalar::from(99_i64)),
+            Some(4),
+        );
+
+    // Provably empty: no row can hold a size above the file's maximum.
+    assert!(!"size > 1000".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
+    // Not provable either way: the range overlaps, so the file is read.
+    assert!("size > 50".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
+    // A null test the count settles outright.
+    assert!("size is null".parse::<Expression>()?.bind(&schema)?.statistics_prune(&bounds));
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Bounds, Expression, Field
+
+    schema = Field("trades", "struct<ccy:utf8,size:bigint>", False)
+    bounds = Bounds(rows=1_000).with_column("ccy", "EUR", "USD", 0).with_column("size", 1, 99, 4)
+
+    # Provably empty: no row can hold a size above the file's maximum.
+    assert not Expression("size > 1000").bind(schema).statistics_prune(bounds)
+    # Not provable either way: the range overlaps, so the file is read.
+    assert Expression("size > 50").bind(schema).statistics_prune(bounds)
+    # A null test the count settles outright.
+    assert Expression("size is null").bind(schema).statistics_prune(bounds)
+    ```
 
 ## Partition split
 
 `partition_split` separates the conjuncts that read only partition columns and holder attributes from the residual over rows.
 
-Rust only.
+Shown in Rust; Python's `Bound.partition_split()` answers the same two expressions as a tuple, and JavaScript has no split.
 
 ```rust
 use yggdryl::{Expression, Field};

@@ -150,65 +150,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
 ## Laziness
 
-=== "Rust"
-
-    ```rust
-    use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder};
-
-    let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-lazy-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-
-    // Constructing touches nothing.
-    let folder = Folder::new(&root)?;
-    let mut leaf = File::new(root.join("nested").join("trades.bin"))?;
-    assert!(!folder.exists());
-    assert!(!leaf.exists());
-
-    // Reading something absent yields nothing - and still creates nothing.
-    assert_eq!(folder.ls(true, false).count(), 0);
-    assert!(leaf.read_all_bytes()?.is_empty());
-    assert_eq!(leaf.size(), 0);
-    assert!(!root.exists());
-
-    // Writing creates the file and every missing parent.
-    leaf.write_all_bytes(b"trade")?;
-    leaf.flush()?;
-    assert!(leaf.exists());
-    assert_eq!(leaf.read_all_bytes()?, b"trade");
-
-    drop(leaf);
-    let _ = std::fs::remove_dir_all(&root);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl.holder import File, Folder
-
-    root = pathlib.Path(tempfile.mkdtemp()) / "lake"
-
-    # Constructing touches nothing.
-    folder = Folder(root)
-    leaf = File(root / "nested" / "trades.bin")
-    assert not leaf.exists()
-    assert not root.exists()
-
-    # Reading something absent yields nothing - and still creates nothing.
-    assert len(list(folder.ls(True))) == 0
-    assert leaf.read_bytes() == b""
-    assert leaf.size == 0
-    assert not root.exists()
-
-    # Writing creates the file and every missing parent.
-    leaf.write_bytes(b"trade")
-    leaf.flush()
-    assert leaf.exists()
-    assert leaf.read_bytes() == b"trade"
-    ```
+Constructing, reading, and listing an absent location create nothing; a write creates the file and every missing parent. [Bytes](../iobase/bytes.md#laziness) shows it on a local `File`, and [Walking the tree](#walking-the-tree) on an absent `Folder`.
 
 ## A write decides an undecided location
 
@@ -281,12 +223,19 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
     ```rust
     use yggdryl::holder::Holder;
     use yggdryl::IOBase;
-    use yggdryl::holder::local::Folder;
+    use yggdryl::holder::local::{File, Folder};
 
     let root = Folder::temporary()?.path()?.join(format!("yggdryl-doc-walk-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
 
+    // Constructing, listing, and reading an absent location create nothing.
     let folder = Folder::new(&root)?;
+    let absent = File::new(root.join("sub").join("inner.bin"))?;
+    assert!(!folder.exists());
+    assert_eq!(folder.ls(true, false).count(), 0);
+    assert!(absent.read_all_bytes()?.is_empty());
+    assert!(!root.exists());
+    drop(absent);
     folder.create()?;
 
     // A child is a handle; writing through it creates the leaf.
@@ -335,7 +284,11 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
     root = pathlib.Path(tempfile.mkdtemp()) / "lake"
 
+    # Constructing, listing, and reading an absent location create nothing.
     folder = Folder(root)
+    assert len(list(folder.ls(True))) == 0
+    assert File(root / "sub" / "inner.bin").read_bytes() == b""
+    assert not root.exists()
     folder.mkdir()
 
     # A child is a handle; writing through it creates the leaf.
@@ -362,7 +315,7 @@ The local file system as three [`IOBase`](../iobase/bytes.md) handles: `Path` a 
 
 ## The mapping
 
-Appends remap a logarithmic number of times, so the mapping outruns the bytes written. `capacity` is Rust only; Python sees the logical size the flush publishes.
+Appends remap a logarithmic number of times, so the mapping outruns the bytes written. Offsets are absolute and a write may start past the end. `capacity` is Rust only; Python sees the logical size the flush publishes.
 
 === "Rust"
 
@@ -373,12 +326,16 @@ Appends remap a logarithmic number of times, so the mapping outruns the bytes wr
     let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-growth-{}.bin", std::process::id()));
 
     let mut file = File::create(&path)?;
-    file.pwrite(0, b"trade")?;
+    file.pwrite(0, b"ab")?;
+    file.pwrite(5, b"z")?;
+
+    // The gap the offset created is zero-filled.
+    assert_eq!(file.read_all_bytes()?, b"ab\0\0\0z");
 
     // Writing past the mapping remaps at a larger capacity instead of failing.
     let bulk = vec![7_u8; 256 * 1024];
     file.append_bytes(&bulk)?;
-    assert_eq!(file.size(), 5 + bulk.len() as u64);
+    assert_eq!(file.size(), 6 + bulk.len() as u64);
     assert!(file.capacity() >= file.size());
 
     // Flushing publishes the logical length, so the file is the bytes, not the mapping.
@@ -400,53 +357,20 @@ Appends remap a logarithmic number of times, so the mapping outruns the bytes wr
     path = pathlib.Path(tempfile.mkdtemp()) / "growth.bin"
 
     leaf = File(path)
-    leaf.pwrite(0, b"trade")
-
-    # Writing past the mapping remaps at a larger capacity instead of failing.
-    bulk = bytes(256 * 1024)
-    leaf.append_bytes(bulk)
-    assert leaf.size == 5 + len(bulk)
-
-    # Flushing publishes the logical length, so the file is the bytes, not the mapping.
-    leaf.flush()
-    assert path.stat().st_size == leaf.size
-    ```
-
-Offsets are absolute and a write may start past the end:
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::IOBase;
-    use yggdryl::holder::local::{File, Folder};
-
-    let path = Folder::temporary()?.path()?.join(format!("yggdryl-doc-gap-{}.bin", std::process::id()));
-
-    let mut file = File::create(&path)?;
-    file.pwrite(0, b"ab")?;
-    file.pwrite(5, b"z")?;
-
-    // The gap the offset created is zero-filled.
-    assert_eq!(file.read_all_bytes()?, b"ab\0\0\0z");
-
-    drop(file);
-    let _ = std::fs::remove_file(&path);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl.holder import File
-
-    leaf = File(pathlib.Path(tempfile.mkdtemp()) / "gap.bin")
     leaf.pwrite(0, b"ab")
     leaf.pwrite(5, b"z")
 
     # The gap the offset created is zero-filled.
     assert leaf.read_bytes() == b"ab\0\0\0z"
+
+    # Writing past the mapping remaps at a larger capacity instead of failing.
+    bulk = bytes(256 * 1024)
+    leaf.append_bytes(bulk)
+    assert leaf.size == 6 + len(bulk)
+
+    # Flushing publishes the logical length, so the file is the bytes, not the mapping.
+    leaf.flush()
+    assert path.stat().st_size == leaf.size
     ```
 
 ## The SIGBUS hazard

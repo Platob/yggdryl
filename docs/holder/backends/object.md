@@ -118,7 +118,8 @@ three role classes, in whichever vocabulary the caller already has.
 === "Python"
 
     ```{ .python .ignore }
-    from yggdryl import IOBase, ObjectFile
+    from yggdryl import IOBase
+    from yggdryl.holder import ObjectFile
 
     # The same class, the same methods: the scheme picks the backend.
     part = IOBase("s3://trades/lake/year=2026/part.parquet")

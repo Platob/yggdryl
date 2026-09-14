@@ -171,24 +171,32 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
 === "Rust"
 
     ```rust
-    use yggdryl::IOBase;
-    use yggdryl::{IOKind};
-    use yggdryl::holder::local;
+    use yggdryl::holder::{local, Buffer};
+    use yggdryl::{IOBase, IOKind};
 
-    let path = local::Folder::temporary()?.path()?.join("yggdryl-docs-io-lazy.csv");
+    // Kinds that need no probe: bytes with no location, and a directory.
+    assert_eq!(Buffer::new().kind(), IOKind::Memory);
+    assert!(IOKind::Memory.is_leaf());
+    let folder = local::Folder::temporary()?;
+    assert_eq!(folder.kind(), IOKind::Directory);
+    assert!(folder.is_container());
+
+    let path = folder.path()?.join("yggdryl-docs-io-lazy.csv");
     let _ = std::fs::remove_file(&path);
 
     // Constructing touches nothing: no file is created, opened, or mapped.
     let mut handle = local::File::new(&path)?;
     assert!(!handle.exists());
 
-    // Reading something absent yields nothing rather than failing.
+    // Reading something absent yields nothing rather than failing, and nothing
+    // there has decided a kind.
     assert_eq!(handle.size(), 0);
     let mut probe = [0_u8; 8];
     assert_eq!(handle.pread(0, &mut probe)?, 0);
     assert_eq!(handle.kind(), IOKind::Unknown);
+    assert!(!handle.kind().is_known());
 
-    // Writing creates the resource, and any parent it needs.
+    // Writing creates the resource, and any parent it needs; the write settles the kind.
     handle.write_all_bytes(b"symbol,price\n")?;
     assert_eq!(handle.kind(), IOKind::File);
     assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
@@ -207,6 +215,9 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     from yggdryl import IOBase
 
     root = pathlib.Path(tempfile.mkdtemp())
+    folder = IOBase(root)
+    assert folder.is_dir()
+    assert not folder.is_file()
 
     # Constructing touches nothing: no file is created, opened, or mapped.
     handle = IOBase(root / "nested" / "lazy.csv")
@@ -216,9 +227,10 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     assert handle.size == 0
     assert handle.read_bytes() == b""
 
-    # Writing creates the resource, and any parent it needs.
+    # Writing creates the resource, and any parent it needs; the write settles the kind.
     handle.write_text("symbol,price\n")
     assert handle.is_file()
+    assert not handle.is_dir()
     assert handle.read_text() == "symbol,price\n"
     ```
 
@@ -232,6 +244,9 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const folder = new IOBase(root)
+    assert.ok(folder.isDir())
+    assert.ok(!folder.isFile())
 
     // Constructing touches nothing: no file is created, opened, or mapped.
     const handle = new IOBase(path.join(root, 'nested', 'lazy.csv'))
@@ -241,9 +256,10 @@ assert buffered.read_text() == '{"symbol": "AAPL"}'
     assert.equal(handle.size, 0)
     assert.equal(handle.readBytes().length, 0)
 
-    // Writing creates the resource, and any parent it needs.
+    // Writing creates the resource, and any parent it needs; the write settles the kind.
     handle.writeText('symbol,price\n')
     assert.ok(handle.isFile())
+    assert.ok(!handle.isDir())
     assert.equal(handle.readText(), 'symbol,price\n')
 
     fs.rmSync(root, { recursive: true, force: true })
@@ -253,69 +269,7 @@ Non-existence is resolved at the operation, so probing a location needs no separ
 
 ## Kinds
 
-=== "Rust"
-
-    ```rust
-    use yggdryl::IOBase;
-    use yggdryl::holder::Buffer;
-    use yggdryl::{IOKind};
-    use yggdryl::holder::local;
-
-    assert_eq!(Buffer::new().kind(), IOKind::Memory);
-    assert!(IOKind::Memory.is_leaf());
-
-    let folder = local::Folder::temporary()?;
-    assert_eq!(folder.kind(), IOKind::Directory);
-    assert!(folder.is_container());
-
-    // Nothing is there, so nothing has decided; a write settles it.
-    let absent = local::File::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-io-absent.bin"))?;
-    assert_eq!(absent.kind(), IOKind::Unknown);
-    assert!(!absent.kind().is_known());
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl import IOBase
-
-    folder = IOBase(pathlib.Path(tempfile.mkdtemp()))
-    assert folder.is_dir()
-    assert not folder.is_file()
-
-    # Nothing is there, so nothing has decided; a write settles it.
-    leaf = folder / "ticks.csv"
-    assert not leaf.exists()
-    leaf.write_text("symbol\n")
-    assert leaf.is_file()
-    assert not leaf.is_dir()
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { IOBase } = require('yggdryl')
-
-    const folder = new IOBase(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')))
-    assert.ok(folder.isDir())
-    assert.ok(!folder.isFile())
-
-    // Nothing is there, so nothing has decided; a write settles it.
-    const leaf = folder.joinpath('ticks.csv')
-    assert.ok(!leaf.exists())
-    leaf.writeText('symbol\n')
-    assert.ok(leaf.isFile())
-    assert.ok(!leaf.isDir())
-
-    fs.rmSync(folder.intoPath(), { recursive: true, force: true })
-    ```
+The [Laziness](#laziness) example walks the kinds a handle answers: `Memory` and `Directory` without a probe, `Unknown` while nothing is there, `File` once a write settles it.
 
 | `IOKind` | Meaning |
 | --- | --- |
@@ -475,7 +429,7 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     ```rust
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::MimeType;
+    use yggdryl::{Codec, MimeType, Url};
 
     // Nothing names an in-memory buffer, so its type comes from its bytes.
     let mut handle = Buffer::from_bytes(br#"{"symbol":"AAPL"}"#.to_vec());
@@ -484,6 +438,11 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     // It is re-derived after the content changes.
     handle.write_all_bytes(b"PAR1payload")?;
     assert_eq!(handle.media_type().base(), &MimeType::PARQUET);
+
+    // A declared type wins, and the codings it carries are what `codec` reports.
+    let named = Buffer::new().with_media_type(Url::from_str("file:///trades.json.gz")?.media_type());
+    assert_eq!(named.media_type().base(), &MimeType::JSON);
+    assert_eq!(named.codec(), Codec::Gzip);
     ```
 
 === "Python"
@@ -515,20 +474,7 @@ A cursor makes a position explicit: `tell` and `seek` move it, reads and writes 
     assert.ok(handle.mediaType.base.equals(MimeType.PARQUET))
     ```
 
-`media_type` answers what the bytes are and which content codings sit on top.
-
-```rust
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-use yggdryl::{Codec, MimeType, Url};
-
-// A declared type wins, and the codings it carries are what `codec` reports.
-let named = Buffer::new().with_media_type(Url::from_str("file:///trades.json.gz")?.media_type());
-assert_eq!(named.media_type().base(), &MimeType::JSON);
-assert_eq!(named.codec(), Codec::Gzip);
-```
-
-`codec` reports the coding the stored bytes carry, so compression is never a separate argument: the last coding in the media type, or the coding a composed handle already applies. `set_media_type` declares what content cannot identify.
+`media_type` answers what the bytes are and which content codings sit on top; the Rust tab shows a declared type winning over content. `codec` reports the coding the stored bytes carry, so compression is never a separate argument: the last coding in the media type, or the coding a composed handle already applies. `set_media_type` declares what content cannot identify.
 
 ## Adding and removing a coding
 
@@ -754,9 +700,12 @@ A handle works without `open`; calling it moves materialization to a known point
     import pathlib
     import tempfile
 
+    import pyarrow as pa
+
     from yggdryl import IOBase
 
-    path = pathlib.Path(tempfile.mkdtemp()) / "trades.csv"
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = root / "trades.csv"
 
     # `with` is the scoped pair: `__enter__` opens and `__exit__` closes.
     with IOBase(path) as handle:
@@ -768,6 +717,22 @@ A handle works without `open`; calling it moves materialization to a known point
     # reader needs; the handle stays usable and simply re-materializes.
     assert path.stat().st_size == 13
     assert IOBase(path).read_text() == "symbol,price\n"
+
+    # Metadata-heavy work belongs inside the scope: the schema probe, the
+    # per-batch reads, and the size checks all reuse what `open` cached, and
+    # `close` releases it at a known point.
+    target = root / "lake" / "trades.parquet"
+    IOBase(target).overwrite_arrow_table(pa.table({"id": [1, 2]}))
+    rows = 0
+    with IOBase(target) as handle:
+        field = handle.read_arrow_field()
+        for batch in handle.read_arrow_reader():
+            rows += batch.num_rows
+    assert rows == 2
+
+    # Outside a scope the same calls still work - each one just fetches fresh,
+    # which is exactly right for a resource another writer may be changing.
+    assert IOBase(target).read_arrow_field() == field
     ```
 
 === "JavaScript"
@@ -803,34 +768,6 @@ A closed handle re-derives metadata on every ask; an open one holds what `open` 
 | [Parquet](../../media/parquet.md) | the footer |
 | [Avro](../../media/avro.md) | header and block metadata |
 | [Text](../../media/text.md) | resolved field, coding plan, dimensions |
-
-Python only.
-
-```python
-import pathlib
-import tempfile
-
-import pyarrow as pa
-
-from yggdryl import IOBase
-
-target = pathlib.Path(tempfile.mkdtemp()) / "lake" / "trades.parquet"
-IOBase(target).overwrite_arrow_table(pa.table({"id": [1, 2], "venue": ["XNAS", "XNYS"]}))
-
-# Metadata-heavy work belongs inside the scope: the schema probe, the
-# per-batch reads, and the size checks all reuse what `open` cached, and
-# `close` releases it at a known point.
-rows = 0
-with IOBase(target) as handle:
-    field = handle.read_arrow_field()
-    for batch in handle.read_arrow_reader():
-        rows += batch.num_rows
-assert rows == 2
-
-# Outside a scope the same calls still work - each one just fetches fresh,
-# which is exactly right for a resource another writer may be changing.
-assert IOBase(target).read_arrow_field() == field
-```
 
 ## Clearing and removing
 

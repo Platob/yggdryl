@@ -72,13 +72,13 @@ than a synthetic field's.
 
 ## Materialization budgets
 
-Totals are checked before allocation and cover validity bitmaps, offsets, union buffers, and values behind dictionary or run-end keys.
+Totals are checked before allocation and cover validity bitmaps, offsets, union buffers, and values behind dictionary or run-end keys. Only what is built is charged: a dense union allocates the selected member, a sparse union every child. Phase reservations end with the phase.
 
 === "Rust"
 
     ```rust
-    use yggdryl::arrow::scalar_array;
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::arrow::{scalar_array, scalar_value};
+    use yggdryl::{DataType, Field, Scalar, UnionMode};
 
     // One logical null, one million and one mandatory physical child slots.
     let items = Field::new(
@@ -101,17 +101,8 @@ Totals are checked before allocation and cover validity bitmaps, offsets, union 
         .to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
-    ```
 
-Only what is built is charged: a dense union allocates the selected member, a sparse union every child. Phase reservations end with the phase.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::arrow::{scalar_array, scalar_value};
-    use yggdryl::{DataType, Field, UnionMode, Scalar};
-
-    // The inactive branch is far past the byte budget, and is never visited.
+    // A dense union's inactive branch is far past the byte budget, and is never visited.
     let dense = DataType::union(
         [
             (0, Field::new("selected", DataType::Int32, false)),

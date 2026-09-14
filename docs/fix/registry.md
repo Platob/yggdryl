@@ -26,7 +26,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 21 definitions from tag 65000: twenty scalar fields and the sorted Map group `altids(65020)`. `new()` registers each in its own category; ordinary size and iteration count only the twenty scalars. A [store](store.md) omits these builtins and cannot override them |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 25 definitions from tag 65001: 24 scalar fields and the sorted Map group `altids(65020)`. `new()` registers each in its own category; ordinary size and iteration count the scalars only. A [store](store.md) omits these builtins and cannot override them |
+| Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated-and-versioned) are typed by, so an empty registry holds 26 scalars; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
 | Crate message | `new()` holds the one message type the crate defines beside them, [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) under the code `UCFG`, because a codec meeting a plugin configuration cannot write the registry it shares; its members are held by value, so the component states the shape of a `UCFG` message without registering the plugin attributes as fields of this dictionary |
 
 ## Use
@@ -280,7 +281,7 @@ The `get_` forms return absence; failing twins return a typed, located error. On
 
 A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `altids` is reached by its canonical name or group counter, never by scalar `field_by_tag(65020)`; its key/value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
 
-Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a negative tag and displays as its decimal digest. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
+Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a tag that is not positive and displays as its decimal digest - the [fold and its halves](index.md#identity-is-a-tag-and-a-name) are the vocabulary's. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 
 === "Rust"
 
@@ -293,12 +294,11 @@ Names and aliases use separate indexes; a stored name is rechecked after hashing
 
     let id = registry.field(35)?.as_fix().id()?.expect("a tagged field");
     assert_eq!(id, FixId::of(35, "msg_type")?);
-    assert_eq!(id, FixId::of(35, "MSGTYPE")?);
-    assert_ne!(id, FixId::of(35, "MsgSeqNum")?);
-    assert_eq!(id.to_string(), id.digest().to_string());
-    assert!(FixId::of(-1, "MsgType").is_err());
+    assert!(FixId::of(0, "MsgType").is_err());
     assert_eq!(registry.field(FixKey::Id(id))?.name(), "MsgType");
     assert_eq!(registry.field_by_id(id)?.name(), "MsgType");
+    // Exact: another name on the held tag is another id, and misses.
+    assert!(registry.get_field_by_id(FixId::of(35, "MsgSeqNum")?).is_none());
     assert!(registry.get_field(id.digest()).is_none(), "a bare integer is a tag");
     ```
 
@@ -318,6 +318,8 @@ Names and aliases use separate indexes; a stored name is rechecked after hashing
     spelled.fix.tag = 35
     assert spelled.fix.id == held
     assert registry.field_by_id(held).name == "MsgType"
+    # Exact: another name on the held tag is another id, and misses.
+    assert registry.get_field_by_id(Field("MsgSeqNum", "utf8", metadata={"fix:tag": "35"}).fix.id) is None
     assert registry.get_field(held) is None, "a bare integer is a tag"
     assert Field("MsgType", "utf8").fix.id is None
     ```
@@ -338,6 +340,10 @@ Names and aliases use separate indexes; a stored name is rechecked after hashing
     spelled.fix.tag = 35
     assert.equal(spelled.fix.id, held)
     assert.equal(registry.fieldById(held).name, 'MsgType')
+    // Exact: another name on the held tag is another id, and misses.
+    const other = Field.from('MsgSeqNum: utf8')
+    other.fix.tag = 35
+    assert.equal(registry.getFieldById(other.fix.id), null)
     assert.equal(registry.getField(held), null, 'a bare integer is a tag')
     assert.equal(Field.from('MsgType: utf8').fix.id, null)
     ```
@@ -387,9 +393,10 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     assert_eq!(registry.field_by_name("VenueSymbol")?.name(), "VenueSymbol", "canonical before alias");
     assert_eq!(registry.dialects(), ["blp", "xnas"]);
 
-    // Tag-major, the tag's holder first, then id.
+    // Tag-major, the tag's holder first, then id; the seeded clocks and the
+    // crate's own fields sit on their own tags around them.
     let names: Vec<&str> = registry.iter().filter(|field| field.as_fix().tag().ok().flatten() < Some(65_000)).map(|field| field.name()).collect();
-    assert_eq!(names, ["Symbol", "VenueSymbol"]);
+    assert_eq!(names, ["sendingtime", "Symbol", "VenueSymbol", "transacttime"]);
     ```
 
 === "Python"
@@ -424,9 +431,10 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     assert registry.field_by_name("venue_symbol").name == "VenueSymbol", "canonical before alias"
     assert registry.dialects() == ["blp", "xnas"]
 
-    # Tag-major, the tag's holder first, then id.
+    # Tag-major, the tag's holder first, then id; the seeded clocks and the
+    # crate's own fields sit on their own tags around them.
     names = [field.name for field in registry if field.fix.tag < 65000]
-    assert names == ["Symbol", "VenueSymbol"]
+    assert names == ["sendingtime", "Symbol", "VenueSymbol", "transacttime"]
     ```
 
 === "JavaScript"
@@ -461,9 +469,10 @@ A name is what identifies a field to a reader, so a new name on a held tag is a 
     assert.equal(registry.fieldByName('venue_symbol').name, 'VenueSymbol', 'canonical before alias')
     assert.deepEqual(registry.dialects(), ['blp', 'xnas'])
 
-    // Tag-major, the tag's holder first, then id.
+    // Tag-major, the tag's holder first, then id; the seeded clocks and the
+    // crate's own fields sit on their own tags around them.
     const names = [...registry].filter(field => field.fix.tag < 65000).map(field => field.name)
-    assert.deepEqual(names, ['Symbol', 'VenueSymbol'])
+    assert.deepEqual(names, ['sendingtime', 'Symbol', 'VenueSymbol', 'transacttime'])
     ```
 
 ### Membership
@@ -675,11 +684,12 @@ A field FIX retired is in the dictionary: the generator writes every tag some FI
 
 A `Version` has numeric major, minor, and patch parts, such as `5.0.2`; an optional extension-pack number belongs to `FixPedigree`. `fix:nulls` holds the field's explicit wire spellings for absence. These metadata documents remain on the field and round-trip through both bindings.
 
-Typed lineage construction and filtered registry reads are Rust only:
+Typed lineage construction and filtered registry reads are Rust only; the example builds one lineage, then reads the committed dictionary's own history the same way:
 
 === "Rust"
 
     ```rust
+    use yggdryl::holder::local::Folder;
     use yggdryl::{DataType, FixLineageEntry, FixPedigree, FixRegistry, Version};
 
     let mut quantity = DataType::Float64.nullable_field("LastQty");
@@ -696,15 +706,6 @@ Typed lineage construction and filtered registry reads are Rust only:
     let registry = FixRegistry::from_fields([quantity])?;
     assert_eq!(registry.field("LastShares")?.name(), "LastQty");
     assert!(registry.get_field_at("2.6".parse()?, 32).is_none());
-    ```
-
-The committed dictionary's own history, read the same way:
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::holder::local::Folder;
-    use yggdryl::{FixPedigree, FixRegistry, Version};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
@@ -998,7 +999,7 @@ Registration updates tag 35's inline vocabulary and, if no message owns that cod
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the twenty crate scalars, `altids` group and `pluginconfig` message. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the 24 crate scalars, the seeded `SendingTime` and `TransactTime`, the `altids` group and the `pluginconfig` message. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

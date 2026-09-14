@@ -137,8 +137,16 @@ Both halves are one bound [expression](../../expression/holder.md): `&holder.par
 
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
         .with_filter_partitions([("year", "2024"), ("month", "01")]);
-    // handle.read_arrow_reader(&options)? now reads only the January
-    // 2024 leaves, and only their matching rows.
+
+    // The pairs are kept as paths spell them; a folder read through these options
+    // lists only the January 2024 leaves, and keeps only their matching rows.
+    assert_eq!(
+        options.filter_partitions(),
+        [
+            ("year".to_owned(), "2024".to_owned()),
+            ("month".to_owned(), "01".to_owned()),
+        ]
+    );
     ```
 
 === "Python"

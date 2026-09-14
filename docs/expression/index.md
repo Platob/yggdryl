@@ -55,6 +55,11 @@ Parse, bind once, ask a row.
         Scalar::from(5_i64),
     ]);
     assert!(bound.matches(&row)?);
+
+    // A null price makes the answer unknown, and unknown does not keep the row.
+    let missing = Scalar::from_sequence([Scalar::from("EUR"), Scalar::Null, Scalar::from(5_i64)]);
+    assert_eq!(bound.eval(&missing)?, Scalar::Null);
+    assert!(!bound.matches(&missing)?);
     ```
 
 === "Python"
@@ -79,6 +84,9 @@ Parse, bind once, ask a row.
     assert bound.matches(["EUR", Decimal("150.00"), 5])
     assert bound.matches({"ccy": "EUR", "price": Decimal("150.00"), "size": 5})
     assert not bound.matches({"ccy": "USD", "price": Decimal("150.00"), "size": 5})
+
+    # A null price makes the answer unknown, and unknown does not keep the row.
+    assert not bound.matches({"ccy": "EUR", "price": None, "size": 5})
     ```
 
 === "JavaScript"
@@ -104,6 +112,9 @@ Parse, bind once, ask a row.
     const price = Scalar.decimal(15000n, 2)
     assert.equal(bound.matches(Scalar.fromJs(['EUR', price, 5])), true)
     assert.equal(bound.matches(Scalar.fromJs(['USD', price, 5])), false)
+
+    // A null price makes the answer unknown, and unknown does not keep the row.
+    assert.equal(bound.matches(Scalar.fromJs(['EUR', null, 5])), false)
     ```
 
 ## Four stages
@@ -152,18 +163,7 @@ for text in [
 ## Null is unknown
 
 `and` is false when any operand is false, and `or` is true when any operand is true, even when another operand is unknown.
-`not unknown` is unknown.
-
-```rust
-use yggdryl::{Expression, Field, Scalar};
-
-let schema: Field = "rows:struct<a:bigint>".parse()?;
-let bound = "a > 1".parse::<Expression>()?.bind(&schema)?;
-
-let missing = Scalar::from_sequence([Scalar::Null]);
-assert_eq!(bound.eval(&missing)?, Scalar::Null); // the answer is unknown
-assert!(!bound.matches(&missing)?); // and unknown does not keep the row
-```
+`not unknown` is unknown. A null operand in a comparison makes the answer unknown: `eval` gives `Scalar::Null` and `matches` gives false. The last rows of [Use](#use) assert both in Rust and `matches` in Python and JavaScript.
 
 ## Edges
 

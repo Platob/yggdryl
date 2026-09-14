@@ -32,7 +32,7 @@ Datatypes, fields, scalar values, and their shared vocabulary live in one type l
 ## Edges
 
 - `cargo bench --bench types -- value` -> three groups carry that name; scope with a function prefix.
-- `Field::validate` and Scalar row validation against a struct root -> Rust only; the bindings validate at every entry point.
+- `Field::validate` and Scalar row validation against a struct root -> Rust and Python (`validate`, `validate_value`, `canonicalize_value`); JavaScript validates at every entry point.
 - `FieldScalar` and the `wkb` reader -> Rust only; a geospatial value crosses a binding as plain WKB bytes.
 - A Python benchmark `--iterations` must be positive; Node benches read `YGGDRYL_BENCH_ITERATIONS`, default 100000.
 

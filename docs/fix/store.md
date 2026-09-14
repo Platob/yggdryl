@@ -14,9 +14,10 @@ A FIX catalog persists through one [`IOBase`](../holder/index.md) folder as thre
 | Identifiers | `fix:identifiers` stays on its component; canonical member names and order resolve through the same owner after references load |
 | Membership | `fix:branches` metadata inside each field and named definition document: the sorted, lowercase, comma-separated names of the dictionaries that contributed it; that document is the only place a dictionary is recorded |
 | Identity | Derived on every read from `fix:tag` and the field's name; no document holds an id |
-| Builtins | The crate listing has twenty scalar fields and the `altids(65020)` Map group; `pluginconfig` is a separate builtin component/message. Every registry constructs them, and persistence omits them rather than storing another owner; a stored document cannot override them |
+| Builtins | The crate listing has 24 scalar fields and the `altids(65020)` Map group; `pluginconfig` is a separate builtin component/message. Every registry constructs them, and persistence omits them rather than storing another owner; a stored document cannot override them |
+| Standard clocks | `SendingTime(52)` and `TransactTime(60)` are ordinary fields: a stored document defining either is loaded first and keeps its metadata, and only a clock the store does not define is seeded afterwards; a registry writes them like any other field in `fields/0.json` |
 | Validation | Category shape, shard arithmetic, tag and name identity, references, identifiers, codes, cycles, and depth are checked before exposing the registry |
-| Missing folder | Loads only the builtins and creates nothing |
+| Missing folder | Loads only the builtins and the seeded standard clocks, and creates nothing |
 | Passed over | A directory inside a category, and a file that is not `<n>.json` under `fields/` or `<name>.json` under a named category; a reader ignores them and a writer leaves the directories alone |
 | Publication | Writes populated documents, then removes every `.json` document it did not write from the categories it holds and every empty category directory; separate file writes are not a directory-wide transaction |
 | Seed | `config/fix`, tracked and written by `write_into`; outside the [default registry](registry.md)'s order |
@@ -216,7 +217,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,285,138 bytes. Loading it adds twenty builtin scalars, the `altids` group and the separate `pluginconfig` component/message, giving 6,261 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,285,138 bytes. Loading it adds the 24 crate scalars, the `altids` group and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,265 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
 
 It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
 
@@ -250,8 +251,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
     // Live counts include the builtins omitted from persistence.
-    assert_eq!(fix_crate_fields()?.len(), 21);
-    assert_eq!(registry.len(), 6_261);
+    assert_eq!(fix_crate_fields()?.len(), 25);
+    assert_eq!(registry.len(), 6_265);
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
     assert_eq!(registry.definitions(FixCategory::Components).count(), 929);
     assert_eq!(registry.msgtypes().count(), 182);
@@ -283,8 +284,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert registry.dialects() == []
     assert all(field.fix.branches == [] for field in registry)
     # Live counts include the builtins omitted from persistence.
-    assert len(fix_crate_fields()) == 21
-    assert len(registry) == 6_261
+    assert len(fix_crate_fields()) == 25
+    assert len(registry) == 6_265
     assert len(list(registry.definitions("groups"))) == 581
     assert len(list(registry.definitions("components"))) == 929
     assert len(list(registry.msgtypes())) == 182
@@ -315,8 +316,8 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert.deepEqual(registry.dialects(), [])
     assert.ok([...registry].every((field) => field.fix.branches.length === 0))
     // Live counts include the builtins omitted from persistence.
-    assert.equal(fix.crateFields().length, 21)
-    assert.equal(registry.size, 6261)
+    assert.equal(fix.crateFields().length, 25)
+    assert.equal(registry.size, 6265)
     assert.equal([...registry.definitions('groups')].length, 581)
     assert.equal([...registry.definitions('components')].length, 929)
     assert.equal([...registry.msgtypes()].length, 182)
@@ -343,7 +344,8 @@ python scripts/generate_fix_dictionary.py --check
 
 ## Edges
 
-- A missing category contributes no persisted definitions; a missing root still answers the builtins and creates nothing.
+- A missing category contributes no persisted definitions; a missing root still answers the builtins and the seeded standard clocks, and creates nothing.
+- A stored `SendingTime(52)` or `TransactTime(60)` is never replaced by the seed, and two stored documents declaring one of them fail the load like any duplicate identity.
 - Two documents declaring one identity - the same tag under the same folded name - or one named declaration twice fail instead of replacing an earlier source record; the same tag under another name is a second field beside the holder, as in memory.
 - Scalar arrays and individual named documents have distinct shapes; loading the wrong shape names the document.
 - Wrong shard, category datatype, counter type, or reference target is refused before a registry is returned.

@@ -73,19 +73,20 @@
     assert.deepEqual(quote.asJs(), { price: 12.5, symbol: 'AAPL' })
     ```
 
-## Typed `Scalar` families
+## Typed `Scalar` variants
 
-Every `Scalar` is hashable and totally ordered; equal numeric or temporal values share one hash across storage widths. Width stays available for datatype and Arrow projection.
+Every width is a direct [`Scalar`](../types/scalar.md) variant, with no family enum between (`Scalar::I32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`I32(7)` equals `U8(7)`). Width stays available for datatype and Arrow projection.
 
-| family | native variants |
+| group | variants |
 | --- | --- |
-| absence and logic | `Null`, `Bool` |
-| integers | `I8`, `I16`, `I32`, `I64`, `I128` and unsigned peers |
+| absence and logic | `Null`, `Boolean` |
+| integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
 | floats | `F16`, `F32`, `F64` |
-| decimals | `D128(coefficient, scale)`, `D256(coefficient, scale)` |
-| text and binary | `String`, `Bytes`, `Geospatial` |
+| decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
+| text and binary | `String`, `Code`, `Enum`, `Bytes`, `Geospatial` |
+| identifiers | `Uuid`, `Version`, `Url` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
-| elapsed time | `Duration32`, `Duration64` |
+| elapsed time | `Duration32`, `Duration64`, `Interval` |
 | containers | `Sequence`, `Mapping`, `Record` |
 
 Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
@@ -138,57 +139,11 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | --- | --- |
 | temporal | a `TimeUnit` and a `Timezone`; `Timezone::NAIVE` is the wall-clock marker, never a nullable field; `DateTime64` is the one datetime |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `as_json_bytes` / `as_json_utf8`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `as_json_bytes` / `as_json_utf8`, `as_decimal`, and the temporal readers `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## Field-directed parsing
 
-Dumps use ordinary format values; exact values without native syntax become scaled-decimal, base64, or ISO strings. A schemaless read returns only what the grammar proves, so pass a `Field` for exact types.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::text::json;
-
-    let amount = Field::new(
-        "amount",
-        DataType::decimal128(8, 2)?,
-        false,
-    );
-    let value = json::from_utf8_with_field(r#""12.50""#, &amount)?;
-
-    assert_eq!(value, Scalar::d128(1_250, 2));
-    ```
-
-=== "Python"
-
-    ```python
-    from decimal import Decimal
-
-    from yggdryl import Field, Scalar
-    from yggdryl.text import json
-
-    amount = Field("amount", "decimal128(8, 2)", nullable=False)
-    value = json.loads('"12.50"', field=amount, cls=Scalar)
-
-    assert value.kind == "d128"
-    assert value.unscaled == 1_250
-    assert json.loads('"12.50"', field=amount) == Decimal("12.50")
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Field, json } = require('yggdryl')
-
-    const amount = new Field('amount', 'decimal128(8, 2)', false)
-    const value = json.loads('"12.50"', { field: amount, scalar: true })
-
-    assert.equal(value.kind, 'd128')
-    assert.equal(value.unscaled, 1250n)
-    assert.equal(value.scale, 2)
-    ```
+Dumps use ordinary format values; exact values without native syntax become scaled-decimal, base64, or ISO strings. A schemaless read returns only what the grammar proves, so pass a `Field` for exact types: [JSON](json.md#natural-values-and-exact-fields) reads `"12.50"` under `decimal128(8, 2)` as `D128(1250, 2)`, a Python `Decimal("12.50")`, and a JavaScript `d128` scalar, and [YAML](yaml.md#natural-values-and-exact-fields) and [TOML](toml.md#natural-values-and-exact-fields) read their own spellings the same way.
 
 `field=` requests strict typing; other Python `cls=` targets are dataclass/object materializers with safe wrapper casts. Arrow columns [cast](../types/cast.md) by the same rules in both directions.
 
@@ -315,7 +270,7 @@ Bindings spell `indent=2` / `{ indent: 2 }`, `None` / `null`, and `"\t"`; the sa
 - Empty or positional rows without a `Field` -> ambiguous; an explicit `Field` is required.
 - Overflow, division by zero, inexact decimal quotient, undefined operand pair -> four separate core errors.
 - `+` on text or containers -> absent; concatenation is not arithmetic.
-- `count`, `unit`, `zone`, `unscaled`, `scale` on an unrelated kind -> `None` / `null`.
+- `count`, `unit`, `zone`, `unscaled`, `scale`, or a Rust `temporal_*` reader on an unrelated kind -> `None` / `null`; an `Interval` answers `temporal_count` with its nanosecond component.
 - Text naming an existing file, given to `from_json_scalar` -> parsed as content, never read.
 - `_with_limits` / `_with_formatting` -> explicit form only; the inferring entry point has neither.
 - An explicit format that contradicts a suffix -> rejected.

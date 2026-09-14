@@ -166,12 +166,11 @@ A code is an identity with a storage, not a string with a charset: a currency is
 
 ## FIX message definitions
 
-FIX tag 35 and the [capture `msgtype` column](../media/text.md#classifying-each-record)
-store complete `utf8` text, including codes such as `P Report Ack` and
-`ConfigurationPlugin`. The [FIX registry](../fix/registry.md) owns `MsgType`:
-an immutable message Struct definition obtained through registry lookup. Its
-wire code stays intact; message definitions have no generic datatype or code
-field helper.
+FIX tag 35 stores complete `utf8` text, including codes such as `P Report Ack`
+and the plugin configuration's `UCFG`. The [FIX registry](../fix/registry.md)
+owns `MsgType`: the registry's immutable message Struct definition, a component
+carrying `fix:msgtype`, obtained through registry lookup. Its wire code stays
+intact; message definitions have no generic datatype or code field helper.
 
 ## Packed integers and the declared vocabulary
 

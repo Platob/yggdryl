@@ -7,8 +7,10 @@ Every storage implementation is reached through the positional `IOBase` contract
 | page | owns |
 | --- | --- |
 | [Bytes](iobase/bytes.md) | `pread`/`pwrite`, streams, cursors |
-| [Records](iobase/records.md) | Arrow batches, pushdown, partitions |
+| [Calls](iobase/calls.md) | the `IOBase` call count every derived operation is held to |
 | [Values](iobase/values.md) | bytes, digests, structured scalars |
+| [Records](iobase/records.md) | Arrow batches, pushdown, write intents |
+| [Partitions](iobase/partitions.md) | globs, Hive partitions, derived partition columns |
 | [Local](backends/local.md) | `Path`, `Folder`, mapped `File` |
 | [Buffer](backends/buffer.md) | in-memory bytes |
 | [Buffered](backends/buffered.md) | the page cache |
@@ -21,7 +23,7 @@ Every storage implementation is reached through the positional `IOBase` contract
 | key | value |
 | --- | --- |
 | Owns | one enum over every `IOBase` implementation |
-| Variants | one in memory, three local, three foreign, three on object stores, four wrapping another `Holder` |
+| Variants | one in memory, three local, three foreign, three on object stores (`object` feature), three inside a ZIP archive, four wrapping another `Holder` |
 | `Holder::local` | `Holder::Path`, the unresolved role |
 | `buffer` / `folder` / `file` | commit to a role |
 | Lazy | construction touches no filesystem; a role resolves only when an operation needs it |
@@ -29,23 +31,32 @@ Every storage implementation is reached through the positional `IOBase` contract
 | `Holder::open` | promotes with `into_media`, then opens; keeps the schema, footer, and dimension caches |
 | Idempotent | `into_text`, `into_coded`, `buffered`, `into_media`, `into_declared_media` never stack |
 | Hierarchy | `parent`, `child_by_path`, `ls` return `Holder` |
-| Python | one class per variant, composed wherever a handle is described |
+| Python | one class per bound variant (the ZIP roles are Rust only), composed wherever a handle is described |
 | JavaScript | one `IOBase` class over the whole enum, promoted by `open` |
 
 ## Use
 
+Construction records a location without probing it, and the enum answers the whole contract, so a caller writes the same calls whatever it holds.
+
 === "Rust"
 
     ```rust
-    use yggdryl::holder::Holder;
     use yggdryl::holder::local::Folder;
+    use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::{IOBase, IOKind};
 
-    // Generic construction records the location without probing its role.
-    let directory = Holder::local(Folder::temporary()?.path()?)?;
-    assert!(matches!(directory, Holder::Path(_)));
+    // Generic construction records the location without probing its role,
+    // whether something is there or not.
+    let root = Folder::temporary()?.path()?;
+    assert!(matches!(Holder::local(&root)?, Holder::Path(_)));
+    assert!(matches!(Holder::local(root.join("yggdryl-generic-doc.bin"))?, Holder::Path(_)));
 
-    let missing = Holder::local(Folder::temporary()?.path()?.join("yggdryl-generic-doc.bin"))?;
-    assert!(matches!(missing, Holder::Path(_)));
+    // A value that could have been any handle. The calls do not change.
+    let mut handle = Holder::buffer(Buffer::new());
+    handle.write_all_bytes(b"AAPL,1\n")?;
+
+    assert_eq!(handle.read_all_bytes()?, b"AAPL,1\n");
+    assert_eq!(handle.kind(), IOKind::Memory);
     ```
 
 === "Python"
@@ -54,7 +65,7 @@ Every storage implementation is reached through the positional `IOBase` contract
     import pathlib
     import tempfile
 
-    from yggdryl.holder import IOBase, Path
+    from yggdryl.holder import Buffer, IOBase, Path
     from yggdryl.media import Text
 
     root = pathlib.Path(tempfile.mkdtemp())
@@ -62,34 +73,10 @@ Every storage implementation is reached through the positional `IOBase` contract
     # The class is read off the name, not the store: neither location exists.
     assert type(IOBase(root / "trades.bin")) is Path
     assert type(IOBase(root / "trades.txt.gz")) is Text
-    ```
-
-The enum answers the whole contract, so a caller writes the same calls whatever it holds.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::holder::Holder;
-    use yggdryl::IOBase;
-    use yggdryl::holder::Buffer;
-
-    // A value that could have been any handle. The calls do not change.
-    let mut handle = Holder::buffer(Buffer::new());
-    handle.write_all_bytes(b"AAPL,1\n")?;
-
-    assert_eq!(handle.read_all_bytes()?, b"AAPL,1\n");
-    assert_eq!(handle.kind(), yggdryl::IOKind::Memory);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.holder import Buffer, IOBase
-
-    handle = IOBase.from_bytes()
-    handle.write_bytes(b"AAPL,1\n")
 
     # The class names the implementation; the contract is the same one.
+    handle = IOBase.from_bytes()
+    handle.write_bytes(b"AAPL,1\n")
     assert type(handle) is Buffer
     assert handle.read_bytes() == b"AAPL,1\n"
     assert handle.kind == "memory"
@@ -102,6 +89,8 @@ The enum answers the whole contract, so a caller writes the same calls whatever 
 | `Buffer` | an in-memory byte array | `holder.Buffer` |
 | `Folder`, `Path`, `File` | a local directory, an undecided local location, a mapped local leaf | `holder.Folder`, `holder.Path`, `holder.File` |
 | `FsFolder`, `FsPath`, `FsFile` | the same three on an Arrow `FileSystem` | `holder.FsFolder`, `holder.FsPath`, `holder.FsFile` |
+| `ObjectFolder`, `ObjectPath`, `ObjectFile` | a prefix or container, an undecided location, one object on an [object store](backends/object.md) | `holder.ObjectFolder`, `holder.ObjectPath`, `holder.ObjectFile` |
+| `ZipNode`, `ZipPath`, `ZipLeaf` | the archive root or a member prefix, an undecided member location, one member of a [ZIP archive](backends/zip.md) | Rust only |
 | `Buffered` | any of the others behind the page cache | `holder.Buffered` |
 | `Coded` | any of the others, presenting the decoded bytes of a content coding | `coding.Identity`, `Gzip`, `Zlib`, `Zstd` |
 | `Text` | any handle retained as plain-text records | `media.Text` |
@@ -227,7 +216,8 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     use yggdryl::{IOKind, MimeType};
     use yggdryl::holder::local;
 
-    let path = local::Folder::temporary()?.path()?.join("yggdryl-docs-io-folder");
+    let temporary = local::Folder::temporary()?.path()?;
+    let path = temporary.join("yggdryl-docs-io-folder");
     let _ = std::fs::remove_dir_all(&path);
     let mut folder = local::Folder::new(&path)?;
 
@@ -245,6 +235,17 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     assert_eq!(folder.media_type().base(), &MimeType::DIRECTORY);
     assert_eq!(folder.ls(false, false).count(), 0);
 
+    // A location that arrived from outside answers by looking at what is there.
+    assert_eq!(local::Path::new(&temporary)?.kind(), IOKind::Directory);
+    let undecided = local::Path::new(temporary.join("yggdryl-docs-io-undecided"))?;
+    assert_eq!(undecided.kind(), IOKind::Unknown);
+    assert!(undecided.read_all_bytes()?.is_empty());
+
+    // A leaf is not a container: it lists nothing and resolves no child.
+    let leaf = local::File::new(temporary.join("yggdryl-docs-io-leaf.arrows"))?;
+    assert_eq!(leaf.ls(true, false).count(), 0);
+    assert!(leaf.child_by_path("nested").is_err());
+
     std::fs::remove_dir_all(&path)?;
     ```
 
@@ -254,9 +255,10 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     import pathlib
     import tempfile
 
-    from yggdryl.holder import Folder
+    from yggdryl.holder import File, Folder, Path
 
-    path = pathlib.Path(tempfile.mkdtemp()) / "yggdryl-docs-io-folder"
+    root = pathlib.Path(tempfile.mkdtemp())
+    path = root / "yggdryl-docs-io-folder"
     folder = Folder(path)
 
     # A container holds no bytes: reads are empty, byte writes are refused.
@@ -274,44 +276,6 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     assert folder.kind == "directory"
     assert str(folder.media_type) == "inode/directory"
     assert list(folder.ls()) == []
-    ```
-
-| trait | declares | pre-implements |
-| --- | --- | --- |
-| `IOFolder` | `folder_url`, `folder_exists`, `create_folder`, `list_folder` | `folder_pread` (nothing), `folder_pwrite` (refuses), `folder_truncate` (creates on `0`, else errors), `folder_media_type` (`inode/directory`), `folder_kind` (`Directory`) |
-| `IOFile` | `file_url`, `file_exists` | `file_ls` (nothing), `file_child_by_path` (refuses), `file_kind` (`File`, `Unknown` when absent) |
-| `IOPath` | `path_url`, `is_folder`, `is_file` | `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), `path_media_type` (container type, or the one the name implies) |
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::IOBase;
-    use yggdryl::{IOKind};
-    use yggdryl::holder::local;
-
-    // A location that arrived from outside answers by looking at what is there.
-    let existing = local::Path::new(local::Folder::temporary()?.path()?)?;
-    assert_eq!(existing.kind(), IOKind::Directory);
-
-    let undecided = local::Path::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-io-undecided"))?;
-    assert_eq!(undecided.kind(), IOKind::Unknown);
-    assert!(undecided.read_all_bytes()?.is_empty());
-
-    // A leaf is not a container: it lists nothing and resolves no child.
-    let leaf = local::File::new(local::Folder::temporary()?.path()?.join("yggdryl-docs-io-leaf.arrows"))?;
-    assert_eq!(leaf.ls(true, false).count(), 0);
-    assert!(leaf.child_by_path("nested").is_err());
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl.holder import File, Path
-
-    root = pathlib.Path(tempfile.mkdtemp())
 
     # A location that arrived from outside answers by looking at what is there.
     assert Path(root).kind == "directory"
@@ -328,6 +292,12 @@ A role is what a location turns out to be. Rust names three traits for it; Pytho
     except ValueError as refused:
         assert "expected a container" in str(refused)
     ```
+
+| trait | declares | pre-implements |
+| --- | --- | --- |
+| `IOFolder` | `folder_url`, `folder_exists`, `create_folder`, `list_folder` | `folder_pread` (nothing), `folder_pwrite` (refuses), `folder_truncate` (creates on `0`, else errors), `folder_media_type` (`inode/directory`), `folder_kind` (`Directory`) |
+| `IOFile` | `file_url`, `file_exists` | `file_ls` (nothing), `file_child_by_path` (refuses), `file_kind` (`File`, `Unknown` when absent) |
+| `IOPath` | `path_url`, `is_folder`, `is_file` | `path_exists`, `path_kind` (`Directory`, `File`, or `Unknown`), `path_media_type` (container type, or the one the name implies) |
 
 ## Delegating to a wrapped handle
 

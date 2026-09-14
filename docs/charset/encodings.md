@@ -33,7 +33,7 @@ Every charset but the UTF-16 pair agrees with US-ASCII on `0x00..=0x7F`, which i
 
 ## Use
 
-The whole repertoire of a single-byte charset round trips, and `scalar_of` and `byte_of` are the two halves of its table.
+The whole repertoire of a single-byte charset round trips, and `scalar_of` and `byte_of` are the two halves of its table. Rust only; the bindings' whole-buffer doors are on [Charset](index.md).
 
 ```rust
 use yggdryl::Charset;

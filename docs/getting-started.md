@@ -34,18 +34,24 @@ On Windows the interpreter is `.venv\Scripts\python`. `maturin develop --release
 
 ## Describe a schema
 
-A non-null struct field is the schema; its children are the columns.
+Metadata belongs to the field and behaves like each language's mapping type; a non-null struct field is the schema, and its children are the columns.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, Field};
 
+    let mut symbol = DataType::utf8().nullable_field("symbol");
+    symbol.insert_metadata("source", "book")?;
+    symbol.set_parquet_field_id(7);
+    assert_eq!(symbol.get_metadata("source"), Some("book"));
+    assert_eq!(symbol.parquet_field_id()?, Some(7));
+
     let schema = Field::new(
         "trade",
         DataType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::utf8().nullable_field("symbol"),
+            symbol,
             DataType::decimal(18, 4)?.required_field("price"),
         ])?,
         false,
@@ -60,12 +66,22 @@ A non-null struct field is the schema; its children are the columns.
     ```python
     from yggdryl import DataType, Field
 
+    symbol = Field("symbol", "utf8", metadata={"source": "book"})
+    # Metadata is a mapping on `field.metadata`; subscripting the field itself
+    # reaches a nested child.
+    symbol.metadata["venue"] = "XPAR"
+    symbol.set_parquet_field_id(7)
+    assert symbol.metadata["source"] == "book"
+    assert "venue" in symbol.metadata
+    assert len(symbol.metadata) == 3
+    assert symbol.parquet_field_id == 7
+
     schema = Field(
         "trade",
         DataType.from_fields(
             [
                 Field("id", "int64", nullable=False),
-                Field("symbol", "utf8"),
+                symbol,
                 Field("price", DataType.decimal(18, 4), nullable=False),
             ]
         ),
@@ -82,11 +98,17 @@ A non-null struct field is the schema; its children are the columns.
     const { DataType, Field } = require('yggdryl')
     const assert = require('node:assert/strict')
 
+    const symbol = new Field('symbol', 'utf8', true, { source: 'book' })
+    symbol.set('venue', 'XPAR')
+    assert.equal(symbol.get('source'), 'book')
+    assert.ok(symbol.has('venue'))
+    assert.equal(symbol.size, 2)
+
     const schema = new Field(
       'trade',
       DataType.fromFields([
         new Field('id', 'int64', false),
-        new Field('symbol', 'utf8'),
+        symbol,
         new Field('price', 'decimal(18,4)', false),
       ]),
       false,
@@ -94,54 +116,6 @@ A non-null struct field is the schema; its children are the columns.
 
     assert.equal(schema.dtype.length, 3)
     assert.equal(String(schema.dtype.getFieldAt(2).dtype), 'decimal64(18,4)')
-    ```
-
-## Attach metadata
-
-Metadata belongs to the field and behaves like each language's mapping type.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field};
-
-    let mut field = Field::new("symbol", DataType::utf8(), true);
-    field.insert_metadata("source", "book")?;
-    field.set_parquet_field_id(7);
-
-    assert_eq!(field.get_metadata("source"), Some("book"));
-    assert_eq!(field.parquet_field_id()?, Some(7));
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import Field
-
-    field = Field("symbol", "utf8", metadata={"source": "book"})
-    # Metadata is a mapping on `field.metadata`; subscripting the field itself
-    # reaches a nested child.
-    field.metadata["venue"] = "XPAR"
-    field.set_parquet_field_id(7)
-
-    assert field.metadata["source"] == "book"
-    assert "venue" in field.metadata
-    assert len(field.metadata) == 3
-    assert field.parquet_field_id == 7
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const { Field } = require('yggdryl')
-    const assert = require('node:assert/strict')
-
-    const field = new Field('symbol', 'utf8', true, { source: 'book' })
-    field.set('venue', 'XPAR')
-
-    assert.equal(field.get('source'), 'book')
-    assert.ok(field.has('venue'))
-    assert.equal(field.size, 2)
     ```
 
 ## Where next
@@ -152,20 +126,16 @@ Metadata belongs to the field and behaves like each language's mapping type.
 | Names, nullability, metadata, casting | [Field](types/field.md), [Cast](types/cast.md) |
 | Bytes and records on any storage | [Holder](holder/index.md) |
 | gzip, zlib, zstd | [Coding](coding/index.md) |
+| Character encodings | [Charset](charset/index.md) |
 | IPC, Parquet, Avro, Iceberg | [Media](media/index.md) |
 | JSON, YAML, TOML | [Text](text/index.md) |
 | Naming a resource | [URI](uri/index.md) |
+| Scalars, schemas, and batch readers at the Arrow boundary | [Arrow](arrow/index.md) |
 | Predicates and pushdown | [Expression](expression/index.md) |
-| Digests | [xxHash](xxhash/index.md) |
-| Time-keyed digests | [TxHash](txhash/index.md) |
+| Digests and time-keyed digests | [Hashing](hashing.md) |
+| FIX messages, registries, and captures | [FIX](fix/index.md) |
 | Language boundaries | [Python](extensions/python.md), [JavaScript](extensions/javascript.md) |
 
 ## Repository checks
 
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --features "parquet iceberg" -- -D warnings
-cargo test --workspace --all-targets --features "parquet iceberg"
-python scripts/check_docs_examples.py
-python -m mkdocs build --strict
-```
+The full pass, per layer and per language, is on [Testing](testing.md); what a change must satisfy before handoff is on [Contributing](contributing.md).

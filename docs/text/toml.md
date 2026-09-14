@@ -22,12 +22,11 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
 === "Rust"
 
     ```rust
-    use yggdryl::{Scalar};
     use yggdryl::text::toml;
+    use yggdryl::{from_toml_scalar, into_toml_scalar, Scalar};
 
-    let value = toml::from_utf8(
-        "title = \"yggdryl\"\ncount = 3\n\n[owner]\nname = \"Ada\"\n"
-    )?;
+    let source = "title = \"yggdryl\"\ncount = 3\n\n[owner]\nname = \"Ada\"\n";
+    let value = toml::from_utf8(source)?;
     let encoded = toml::into_utf8(&value)?;
 
     assert_eq!(
@@ -35,6 +34,10 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
         Some("yggdryl")
     );
     assert_eq!(toml::from_utf8(&encoded)?, value);
+
+    // The crate-root inferring entry points answer the same Record, from text or bytes.
+    assert_eq!(from_toml_scalar(source)?, value);
+    assert_eq!(from_toml_scalar(into_toml_scalar(&value)?.as_bytes())?, value);
     ```
 
 === "Python"
@@ -46,6 +49,7 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
     source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
     natural = toml.loads(source)
     value = toml.loads(source, cls=Scalar)
+    encoded = toml.dumps(value)
 
     assert value.kind == "record"
     assert value.as_py() == natural == {
@@ -53,7 +57,8 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
         "owner": {"name": "Ada"},
         "title": "yggdryl",
     }
-    assert toml.loads(toml.dumps(value)) == natural
+    assert toml.loads(encoded) == natural
+    assert toml.loads(encoded, cls=Scalar) == value
     ```
 
 === "JavaScript"
@@ -72,56 +77,12 @@ Rust returns `Scalar`; bindings redirect native mappings through the same codec.
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
     assert.deepEqual(toml.loads(encoded), natural)
+    assert.ok(toml.loads(encoded, { scalar: true }).equals(value))
     ```
 
 ## Inferring entry point
 
-`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](index.md), answering a `Record`.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{from_toml_scalar, into_toml_scalar, Scalar};
-
-    let value = from_toml_scalar(
-        "title = \"yggdryl\"\ncount = 3\n\n[owner]\nname = \"Ada\"\n"
-    )?;
-    let encoded = into_toml_scalar(&value)?;
-
-    assert_eq!(from_toml_scalar(encoded.as_bytes())?, value);
-    assert_eq!(
-        value.get_key_str("title").and_then(Scalar::as_str),
-        Some("yggdryl")
-    );
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import Scalar
-    from yggdryl.text import toml
-
-    source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
-    value = toml.loads(source, cls=Scalar)
-    encoded = toml.dumps(value)
-
-    assert toml.loads(encoded, cls=Scalar) == value
-    assert value.as_py()["title"] == "yggdryl"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { toml } = require('yggdryl')
-
-    const source = 'title = "yggdryl"\ncount = 3\n\n[owner]\nname = "Ada"\n'
-    const value = toml.loads(source, { scalar: true })
-    const encoded = toml.dumps(value)
-
-    assert.ok(toml.loads(encoded, { scalar: true }).equals(value))
-    assert.equal(value.asJs().title, 'yggdryl')
-    ```
+`from_toml_scalar`, `from_toml_scalar_with_field`, and `into_toml_scalar` are TOML's [inferring entry points](index.md#raw-document-codecs), answering a `Record`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Natural values and exact Fields
 
@@ -310,56 +271,7 @@ Keys are always quoted, so dots, spaces, and syntax-like names round-trip unchan
 
 ## Placeholders
 
-Opt-in, inside quoted strings, substituted after parsing and before Field interpretation; see [Placeholders](placeholders.md).
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::{Format, Loading, Placeholders};
-    use yggdryl::Scalar;
-
-    let loading = Loading::new().with_placeholders(
-        Placeholders::new()
-            .with_variable("HOST", Scalar::from("db.internal"))
-            .with_variable("PORT", Scalar::from(5432_i64)),
-    );
-    let value = yggdryl::text::from_utf8_with(
-        "host = \"{{ HOST }}\"\nport = \"{{ PORT }}\"\n",
-        Format::Toml,
-        &loading,
-    )?;
-
-    assert_eq!(value.get_key_str("host").and_then(Scalar::as_str), Some("db.internal"));
-    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(5432_i64)));
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.text import toml
-
-    document = '[database]\nhost = "{{ HOST }}"\nport = "{{ PORT }}"\n'
-    value = toml.loads(
-        document,
-        placeholders={"HOST": "db.internal", "PORT": 5432},
-    )
-
-    assert value["database"] == {"host": "db.internal", "port": 5432}
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { toml } = require('yggdryl')
-
-    const document = 'host = "{{ HOST }}"\nport = "{{ PORT }}"\n'
-    const value = toml.loads(document, {
-      placeholders: { HOST: 'db.internal', PORT: 5432 },
-    })
-
-    assert.deepEqual(value, { host: 'db.internal', port: 5432 })
-    ```
+Opt-in, inside quoted strings, substituted after parsing and before Field interpretation, at any table depth; each quoted placeholder becomes the variable's own typed value. [Placeholders](placeholders.md) shows a TOML table taking a string and an integer variable.
 
 ## Edges
 

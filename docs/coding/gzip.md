@@ -129,11 +129,12 @@ RFC 1952 gzip as whole buffers, Rust streams, and a transparent `Gzip<H>` handle
 
 ## Streams
 
-Rust only. `finish` writes the trailer.
+Rust only. `finish` writes the trailer, and decoding stops where the reader stops.
 
 ```rust
 use std::io::{Read, Write};
 use yggdryl::coding::gzip;
+use yggdryl::Level;
 
 let mut target = Vec::new();
 let mut encoder = gzip::writer(&mut target);
@@ -143,37 +144,31 @@ encoder.finish()?;
 let mut decoded = Vec::new();
 gzip::reader(target.as_slice()).read_to_end(&mut decoded)?;
 assert_eq!(decoded, b"symbol,price\nAAPL,1\n");
-```
 
-Decoding stops where the reader stops:
-
-```rust
-use std::io::{Read, Write};
-use yggdryl::{Level};
-use yggdryl::coding::gzip;
-
-let mut target = Vec::new();
-let mut encoder = gzip::writer_with_level(&mut target, Level::BEST);
+// `writer_with_level` takes the shared scale; a partial read decodes only its prefix.
+let mut levelled = Vec::new();
+let mut encoder = gzip::writer_with_level(&mut levelled, Level::BEST);
 encoder.write_all(b"symbol,price\nAAPL,1\n")?;
 encoder.finish()?;
 
 let mut head = [0_u8; 6];
-gzip::reader(target.as_slice()).read_exact(&mut head)?;
+gzip::reader(levelled.as_slice()).read_exact(&mut head)?;
 assert_eq!(&head, b"symbol");
 ```
 
 ## A handle that hides the coding
 
-Downstream encodings and codecs never see the coding.
+Downstream encodings and codecs never see the coding. A level set on the handle reaches its encoder; Python passes it to `into_coded`.
 
 === "Rust"
 
     ```rust
     use yggdryl::coding::gzip::{self, Gzip};
-    use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
+    use yggdryl::{IOBase, Level};
 
-    let mut handle = Gzip::new(Buffer::new());
+    let mut handle = Gzip::new(Buffer::new()).with_level(Level::BEST);
+    assert_eq!(handle.level(), Level::BEST);
     handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
     handle.flush()?;
 
@@ -213,82 +208,23 @@ Downstream encodings and codecs never see the coding.
     )
     ```
 
-Rust only. A level set on the handle reaches its encoder; Python passes it to `into_coded`.
-
-```rust
-use yggdryl::coding::gzip::Gzip;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-use yggdryl::Level;
-
-let mut handle = Gzip::new(Buffer::new()).with_level(Level::BEST);
-assert_eq!(handle.level(), Level::BEST);
-
-handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
-handle.flush()?;
-assert_eq!(handle.read_all_bytes()?, b"symbol,price\nAAPL,1\n");
-```
-
 ## A `.gz` name is enough
 
-A compound [filename](../uri/path.md) names the coding.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::coding::Coded;
-    use yggdryl::IOBase;
-    use yggdryl::holder::Buffer;
-    use yggdryl::{MediaType, MimeType};
-
-    // `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
-    let named = MediaType::from_file_name("trades.csv.gz");
-    assert_eq!(named.base(), &MimeType::CSV);
-    assert_eq!(yggdryl::Codec::from_media_type(&named), yggdryl::Codec::Gzip);
-
-    // A handle that declares that media type picks its own coding.
-    let mut handle = Coded::infer(Buffer::new().with_media_type(named));
-    assert_eq!(handle.codec(), yggdryl::Codec::Gzip);
-
-    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
-    handle.flush()?;
-    assert_eq!(yggdryl::coding::gzip::load(&handle.handle().read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl import IOBase
-    from yggdryl.coding import Gzip
-    from yggdryl.media import MediaType
-
-    root = pathlib.Path(tempfile.mkdtemp())
-
-    # `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
-    named = MediaType.from_file_name("trades.csv.gz")
-    assert str(named.base) == "text/csv"
-    assert str(named.encodings[0]) == "application/gzip"
-
-    # Construction composes what the name declares.
-    handle = IOBase(root / "trades.csv.gz")
-    assert isinstance(handle, Gzip)
-    assert handle.codec == "gzip"
-    ```
-
-A coded handle reports the *decoded* media type; the handle underneath keeps the coding.
+A compound [filename](../uri/path.md) names the coding, which [`Coded::infer`](index.md) and Python construction compose. A coded handle reports the *decoded* media type; the handle underneath keeps the coding.
 
 === "Rust"
 
     ```rust
     use yggdryl::coding::gzip::Gzip;
-    use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
-    use yggdryl::{MediaType, MimeType};
+    use yggdryl::{Codec, IOBase, MediaType, MimeType};
 
-    let buffer = Buffer::new().with_media_type(MediaType::from_file_name("trades.csv.gz"));
+    // `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
+    let named = MediaType::from_file_name("trades.csv.gz");
+    assert_eq!(named.base(), &MimeType::CSV);
+    assert_eq!(Codec::from_media_type(&named), Codec::Gzip);
+
+    let buffer = Buffer::new().with_media_type(named);
     assert!(buffer.media_type().is_encoded());
 
     let handle = Gzip::new(buffer);
@@ -302,34 +238,40 @@ A coded handle reports the *decoded* media type; the handle underneath keeps the
     import pathlib
     import tempfile
 
+    from yggdryl import IOBase
+    from yggdryl.coding import Gzip
     from yggdryl.holder import Path
+    from yggdryl.media import MediaType
 
     root = pathlib.Path(tempfile.mkdtemp())
+
+    # `.gz` is the last suffix, so gzip is the outermost coding of a CSV.
+    named = MediaType.from_file_name("trades.csv.gz")
+    assert str(named.base) == "text/csv"
+    assert str(named.encodings[0]) == "application/gzip"
+
+    # Construction composes what the name declares.
+    assert IOBase(root / "trades.csv.gz").codec == "gzip"
 
     stored = Path(root / "trades.csv.gz")
     assert stored.media_type.is_encoded()
 
     handle = stored.into_coded()
+    assert isinstance(handle, Gzip)
     assert str(handle.media_type) == "text/csv"
     assert not handle.media_type.is_encoded()
     ```
 
 ## Failures
 
-Rust only.
+Rust only. A payload that is not gzip is an error; absence is not a failure.
 
 ```rust
-use yggdryl::coding::gzip;
+use yggdryl::coding::gzip::{self, Gzip};
+use yggdryl::holder::Buffer;
+use yggdryl::IOBase;
 
 assert!(gzip::load(b"definitely not a compressed payload").is_err());
-```
-
-Absence is not a failure:
-
-```rust
-use yggdryl::coding::gzip::Gzip;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
 
 let handle = Gzip::new(Buffer::new());
 assert_eq!(handle.size(), 0);

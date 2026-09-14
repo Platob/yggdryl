@@ -340,7 +340,15 @@ let v3 = TableMetadata::new(
 assert_eq!(v3.next_row_id(), Some(0));
 assert!(v3.clone().into_json()?.contains_key("next-row-id"));
 
-// Every version reads back as itself.
+// A fresh table has no current snapshot, and `-1` is the other way a document
+// spells "no current snapshot".
+assert!(v2.current_snapshot().is_none());
+let document = v2.clone().into_json()?.with_key("current-snapshot-id", -1_i64)?;
+let read = TableMetadata::from_json(&document)?;
+assert!(read.current_snapshot_id().is_none());
+assert!(read.current_snapshot().is_none());
+
+// Every version reads back as itself, with no current snapshot yet.
 for original in [v1, v2, v3] {
     let read = TableMetadata::from_json(&original.clone().into_json()?)?;
     assert_eq!(read.format_version(), original.format_version());
@@ -358,31 +366,7 @@ for original in [v1, v2, v3] {
 
 ## Snapshots and the current snapshot
 
-Rust only. The bindings read the current snapshot and the snapshot list off a table, not off a document.
-
-```rust
-use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, TableMetadata};
-use yggdryl::DataType;
-
-let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
-    .required_field("row");
-let metadata = TableMetadata::new(
-    FormatVersion::V2,
-    "file:///lake/trades",
-    schema,
-    PartitionSpec::unpartitioned(),
-)?;
-
-// A table can have snapshots and still have no current one; that is a
-// freshly created table, and a rolled-back one.
-assert!(metadata.current_snapshot().is_none());
-
-// `-1` is the other way a document spells "no current snapshot".
-let document = metadata.into_json()?.with_key("current-snapshot-id", -1_i64)?;
-let read = TableMetadata::from_json(&document)?;
-assert!(read.current_snapshot_id().is_none());
-assert!(read.current_snapshot().is_none());
-```
+A table can have snapshots and still have no current one: a freshly created table, and a rolled-back one. An absent `current-snapshot-id` and `-1` both read as none, as the [metadata example](#table-metadata-v1-through-v3) asserts; Rust only, because the bindings read the current snapshot and the snapshot list off a table, not off a document.
 
 A snapshot is one complete table version: an identifier, its manifests, and a commit summary. Current snapshots use `manifest_list`; a v1 `manifests` list is preserved, exposed as `Snapshot.manifests`, and synthesized into `ManifestFile` rows for the same planner.
 
@@ -543,6 +527,8 @@ Two Avro levels sit between a snapshot and its rows: the manifest list, then eac
 
 Rust only. The bindings build identity specs and preserve every transform name when reading metadata.
 
+A field carries its own Iceberg vocabulary: `field.as_iceberg()` and `as_iceberg_mut()` answer `IcebergField` and `IcebergFieldMut`, typing the `iceberg:` properties `schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `spec_id`, `partition_source_id`, and `transform`. `is_partition` stays on the [`Field`](../../types/field.md), and the view borrows the whole field and dereferences to it.
+
 ```rust
 use yggdryl::media::iceberg::{PartitionSpec, Transform, assign_field_ids};
 use yggdryl::{DataType, Scalar};
@@ -567,6 +553,21 @@ assert_eq!(spec.partition_path(&[Scalar::Null])?, "venue=null");
 let partition = spec.partition_field(&schema)?;
 assert!(partition.fields()[0].is_nullable());
 
+// The tuple describes itself, so the spec reads back off it; the view is the
+// field, so the name and the property come off one value.
+assert_eq!(partition.as_iceberg().spec_id()?, Some(1));
+let venue = partition.get_field_by_path("venue").expect("the partition column");
+assert!(venue.is_partition());
+assert_eq!(venue.as_iceberg().transform()?, Some(Transform::Identity));
+assert_eq!(venue.as_iceberg().get("transform"), Some("identity"));
+assert_eq!(venue.as_iceberg().name(), "venue");
+assert_eq!(PartitionSpec::from_partition_field(&partition)?, spec);
+
+// And a schema that marks its own partition columns needs no column list.
+let marked = spec.mark_partitions(&schema)?;
+assert_eq!(marked.partition_field_names().collect::<Vec<_>>(), ["venue"]);
+assert_eq!(PartitionSpec::from_schema(1, &marked)?, spec);
+
 // Invertibility controls restoration, not write support.
 assert!(Transform::Identity.is_invertible());
 assert!(!Transform::from_str("bucket[16]")?.is_invertible());
@@ -587,41 +588,9 @@ assert!(hashed.require_writable().is_err());
 | Path | `partition_path` shares the renderer of a partitioned folder write, so [`Url::hive_partitions`](../../uri/patterns.md) and [`IOBase::children_where`](../../holder/iobase/partitions.md) walk a table as a lake |
 | Data file | Still stores its partition columns, so a scan needs no restoration step |
 
-### A field carries its own Iceberg vocabulary
+### A null partition value
 
-`field.as_iceberg()` and `as_iceberg_mut()` answer `IcebergField` and `IcebergFieldMut`, typing the `iceberg:` properties `schema_id`, `identifier_field_ids`, `doc`, `initial_default`, `write_default`, `spec_id`, `partition_source_id`, and `transform`. `is_partition` stays on the [`Field`](../../types/field.md), and the view borrows the whole field and dereferences to it.
-
-```rust
-use yggdryl::media::iceberg::{PartitionSpec, Transform, assign_field_ids};
-use yggdryl::DataType;
-
-let mut schema = DataType::from_fields([
-    DataType::Int64.required_field("id"),
-    DataType::utf8().nullable_field("venue"),
-])?
-.required_field("row");
-assign_field_ids(&mut schema, 1)?;
-let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-
-// The tuple describes itself, so the spec reads back off it.
-let partition = spec.partition_field(&schema)?;
-assert_eq!(partition.as_iceberg().spec_id()?, Some(1));
-let venue = partition.get_field_by_path("venue").expect("the partition column");
-assert!(venue.is_partition());
-assert_eq!(venue.as_iceberg().transform()?, Some(Transform::Identity));
-assert_eq!(venue.as_iceberg().get("transform"), Some("identity"));
-
-// The view is the field, so the name and the property come off one value.
-assert_eq!(venue.as_iceberg().name(), "venue");
-assert_eq!(PartitionSpec::from_partition_field(&partition)?, spec);
-
-// And a schema that marks its own partition columns needs no column list.
-let marked = spec.mark_partitions(&schema)?;
-assert_eq!(marked.partition_field_names().collect::<Vec<_>>(), ["venue"]);
-assert_eq!(PartitionSpec::from_schema(1, &marked)?, spec);
-```
-
-A table marks its stored schema on create and on open, so `Table::schema` reports the layout from either end. The mark is core `Field` metadata, not an Iceberg document key, so it survives into Arrow and Parquet.
+A table marks its stored schema on create and on open, so `Table::schema` reports the layout from either end. The mark is core `Field` metadata, not an Iceberg document key, so it survives into Arrow and Parquet. A null partition value spells `null` in the data file's path, and the manifest keeps it null.
 
 === "Rust"
 

@@ -17,7 +17,7 @@
 | Owns | `Codec`, `Level`, `coding::Coded`; the bytes live in [gzip](gzip.md), [zlib](zlib.md), [zstd](zstd.md) |
 | Codings | `Identity`, `Gzip`, `Zlib`, `Deflate`, `Zstd`; four `Coded` variants |
 | Select | `Coded::infer` from the media type; `Coded::wrap` from a `Codec`; `Holder::into_coded` retains either as the handle |
-| Deflate | No framing to detect, so it wraps as the zlib handle |
+| Deflate | No framing to detect, so it wraps as the zlib handle in both languages ([zlib](zlib.md#why-raw-deflate-has-no-handle)) |
 | Level | `with_level`; `Identity` ignores it |
 | Composes | Any [`IOBase`](../holder/index.md), `Holder` or another coded handle; `Coded` is itself an `IOBase` |
 | Seek | None through `Coded`; the decoded value is materialized once and held until `close` |
@@ -90,71 +90,76 @@ A compound [filename](../uri/path.md) declares the coding, so `Coded::infer` - a
 
 ## Wrap and publish
 
-`Coded::wrap` - `into_coded` in Python - names the coding when the handle does not.
+`Coded::wrap` - `into_coded` in Python - names the coding when the handle does not. The wrapper's media type drops the coding; the wrapped handle holds the frame.
 
 === "Rust"
 
     ```rust
-    use yggdryl::coding::Coded;
-    use yggdryl::IOBase;
+    use yggdryl::coding::{gzip, Coded};
     use yggdryl::holder::Buffer;
-    use yggdryl::Level;
+    use yggdryl::{Codec, IOBase, Level, MimeType, Url};
 
-    let mut handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Gzip).with_level(Level::BEST);
-    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
+    let inner = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
+    let mut handle = Coded::wrap(inner, Codec::Gzip).with_level(Level::BEST);
+
+    // The wrapper's bytes are decoded, so its media type has the coding removed.
+    assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
+    assert_eq!(handle.media_type().encoding_len(), 0);
+
+    let payload = "symbol,price\n".repeat(64).into_bytes();
+    handle.write_all_bytes(&payload)?;
+    handle.flush()?;
+
+    // Reads decompress; the wrapped handle only ever holds the encoded form.
+    assert_eq!(handle.read_all_bytes()?, payload);
+    assert!(handle.handle().size() < payload.len() as u64);
 
     // into_handle publishes the pending write, then gives back the compressed bytes.
+    handle.write_all_bytes(b"symbol,price\nAAPL,1\n")?;
     let inner = handle.into_handle()?;
-    assert_eq!(yggdryl::coding::gzip::load(&inner.read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
+    assert_eq!(gzip::load(&inner.read_all_bytes()?)?, b"symbol,price\nAAPL,1\n");
     ```
 
 === "Python"
 
     ```python
+    import pathlib
+    import tempfile
+
     from yggdryl import IOBase
     from yggdryl.coding import gzip
-    from yggdryl.holder import Buffer
+    from yggdryl.holder import Buffer, Path
 
-    # The conversion answers the coded handle and spends the one it took.
-    handle = IOBase.from_bytes(b"").into_coded("gzip", level=9)
-    handle.write_bytes(b"symbol,price\nAAPL,1\n")
+    # `Path` skips the composition, so the coding is the only layer retained.
+    root = pathlib.Path(tempfile.mkdtemp())
+    handle = Path(root / "trades.arrows.gz").into_coded()
 
+    # The handle's bytes are decoded, so its media type has the coding removed.
+    assert str(handle.media_type) == "application/vnd.apache.arrow.stream"
+    assert not handle.media_type.is_encoded()
+
+    payload = b"symbol,price\n" * 64
+    handle.write_bytes(payload)
+    handle.flush()
+
+    # Reads decompress; the stored bytes only ever hold the encoded form.
+    assert handle.read_bytes() == payload
+    assert Path(root / "trades.arrows.gz").size < len(payload)
+
+    # The conversion answers the coded handle and spends the one it took;
     # into_handle publishes the pending write, then gives back the compressed bytes.
-    inner = handle.into_handle()
+    coded = IOBase.from_bytes(b"").into_coded("gzip", level=9)
+    coded.write_bytes(b"symbol,price\nAAPL,1\n")
+    inner = coded.into_handle()
     assert isinstance(inner, Buffer)
     assert gzip.loads(inner.read_bytes()) == b"symbol,price\nAAPL,1\n"
-    ```
-
-## Raw DEFLATE
-
-Four handles serve five codings, in both languages.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::coding::Coded;
-    use yggdryl::holder::Buffer;
-
-    let handle = Coded::wrap(Buffer::new(), yggdryl::Codec::Deflate);
-    assert_eq!(handle.codec(), yggdryl::Codec::Zlib);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import IOBase
-    from yggdryl.coding import Zlib
-
-    handle = IOBase.from_bytes(b"").into_coded("deflate")
-    assert isinstance(handle, Zlib)
-    assert handle.codec == "zlib"
     ```
 
 ## Restart points
 
 A stream that only decodes from its first byte cannot answer a read at an offset without decoding everything before it. Two of these codings can do better, and say so: a raw DEFLATE stream restarts after a full flush, which closes the block, aligns to a byte, and drops the window; a Zstandard stream restarts at every frame. What follows a restart decodes on its own, so a map of restart offsets turns a positional read into a decode of one unit.
 
-Restarting costs compression - each unit starts with no history of the one before it - so a caller restarts on a stride it chose, never per write. The [ZIP backend](../holder/backends/zip.md) is what this exists for: it writes members as units and states the map in their records.
+Restarting costs compression - each unit starts with no history of the one before it - so a caller restarts on a stride it chose, never per write. The [ZIP backend](../holder/backends/zip.md) is what this exists for: it writes members as units and states the map in their records. Rust only.
 
 ```rust
 use yggdryl::{Codec, Level};
@@ -186,60 +191,6 @@ gzip.finish()?;
 ```
 
 The scan answers *candidates*: the pattern a coding restarts after can also occur inside compressed data, so a caller that depends on the answer decodes a probe from each offset before trusting it. The stream's own start is never reported - a decoder may always begin there.
-
-## Decoded media type
-
-The wrapper's media type drops the coding; the wrapped handle holds the frame.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::IOBase;
-    use yggdryl::holder::Buffer;
-    use yggdryl::coding::Coded;
-    use yggdryl::{Codec, Level, MimeType, Url};
-
-    let inner = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
-    let mut handle = Coded::wrap(inner, Codec::Gzip).with_level(Level::BEST);
-
-    // The wrapper's bytes are decoded, so its media type has the coding removed.
-    assert_eq!(handle.media_type().base(), &MimeType::ARROW_STREAM);
-    assert_eq!(handle.media_type().encoding_len(), 0);
-
-    let payload = "symbol,price\n".repeat(64).into_bytes();
-    handle.write_all_bytes(&payload)?;
-    handle.flush()?;
-
-    // Reads decompress; the wrapped handle only ever holds the encoded form.
-    assert_eq!(handle.read_all_bytes()?, payload);
-    assert!(handle.handle().size() < payload.len() as u64);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    from yggdryl.holder import Path
-
-    root = pathlib.Path(tempfile.mkdtemp())
-
-    # `Path` skips the composition, so the coding is the only layer retained.
-    handle = Path(root / "trades.arrows.gz").into_coded()
-
-    # The handle's bytes are decoded, so its media type has the coding removed.
-    assert str(handle.media_type) == "application/vnd.apache.arrow.stream"
-    assert not handle.media_type.is_encoded()
-
-    payload = b"symbol,price\n" * 64
-    handle.write_bytes(payload)
-    handle.flush()
-
-    # Reads decompress; the stored bytes only ever hold the encoded form.
-    assert handle.read_bytes() == payload
-    assert Path(root / "trades.arrows.gz").size < len(payload)
-    ```
 
 ## Edges
 

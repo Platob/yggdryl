@@ -80,8 +80,8 @@
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { BatchReader, DataType, Field } = require('yggdryl')
-    const { tableFromArrays, tableToIPC } = require('apache-arrow')
+    const { BatchReader } = require('yggdryl')
+    const { tableFromArrays } = require('apache-arrow')
 
     const left = BatchReader.from(tableFromArrays({ id: BigInt64Array.from([1n]) }))
     const right = BatchReader.from(tableFromArrays({ id: BigInt64Array.from([2n]) }))
@@ -108,39 +108,24 @@
 ```rust
 use std::sync::Arc;
 
-use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
+use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::ipc::{self, IpcOptions};
-use yggdryl::{DataType, Field};
+use yggdryl::DataType;
 
-let schema = Field::new(
-    "row",
-    DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("symbol"),
-    ])?,
-    false,
-);
-let projected = schema.into_arrow_schema()?;
-
-let batch = |ids: Vec<i64>, symbols: Vec<Option<&str>>| {
-    RecordBatch::try_new(
-        Arc::clone(&projected),
-        vec![
-            Arc::new(Int64Array::from(ids)),
-            Arc::new(StringArray::from(symbols)),
-        ],
-    )
+let projected = DataType::from_fields([DataType::Int64.required_field("id")])?
+    .required_field("row")
+    .into_arrow_schema()?;
+let batch = |ids: Vec<i64>| {
+    RecordBatch::try_new(Arc::clone(&projected), vec![Arc::new(Int64Array::from(ids))])
 };
 
+// Two batches, written as the iterator yields them.
 let mut handle = Buffer::new();
 let options = IpcOptions::new();
 ipc::overwrite_arrow_reader(
     &mut handle,
-    yggdryl::arrow::batch_reader(
-        Arc::clone(&projected),
-        [batch(vec![1, 2], vec![Some("AAPL"), None])?, batch(vec![3], vec![None])?],
-    ),
+    yggdryl::arrow::batch_reader(Arc::clone(&projected), [batch(vec![1, 2])?, batch(vec![3])?]),
     &options,
 )?;
 

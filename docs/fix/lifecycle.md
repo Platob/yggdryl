@@ -1,26 +1,29 @@
 # Lifecycle
 
-A message says what happened; it does not say which order it happened to, beyond the identifiers a venue chose. `FixLifecycle` reads a stream once, in order, and stamps every message with the three identities the stream implies: the instrument, the message itself, and the order chain it belongs to - so a monitor joins an order's whole life on one column rather than rebuilding the chain from `ClOrdID`, `OrigClOrdID` and `OrderID` on its own.
+A message says what happened; it does not say which event it belongs to beyond the identifiers a venue chose. `FixLifecycle` reads a stream once, in arrival order, names the chain each message joins by its `code`, carries the chain's first creation instant and previous message, and lands every message on a deterministic time grid - so a monitor joins an order's whole life on `puuid` and reads one snapshot per bucket rather than rebuilding the chain from `ClOrdID`, `OrigClOrdID` and `OrderID` on its own.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `FixLifecycle`, `FixCodec::lifecycle`, `INSTID_TAG_NAME`, `ID_TAG_NAME`, `PERSISTENTID_TAG_NAME` |
-| Columns | `instid` (65016), `id` (65017), `persistentid` (65018): three of the [crate's own](capture.md#the-crates-own-columns), sixteen bytes each, big-endian |
-| `instid` | the xxh128 digest of the instrument's market, classification, ISIN - else symbol - and currency, upper-cased; null where the message names none of them |
-| `id` | the instant closest to the market impact, in microseconds, then the xxh3 digest of what the message said: every message has one, and ids sort by time |
-| `persistentid` | the instant the chain was created, then the xxh3 digest of its instrument and first identifier; the same on every later message sharing one of the chain's identifiers, null on a message naming no order |
-| Chain | joined on `OrigClOrdID(41)`, `ClOrdID(11)`, `OrderID(37)`, `SecondaryClOrdID(526)`, `SecondaryOrderID(198)`, in that order; every identifier a message carries then reaches the chain it joined |
-| Ends | a terminal [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - filled, done for day, cancelled, rejected, expired - closes the chain and forgets its identifiers |
-| Clock | `TransactTime(60)`, else `SendingTime(52)`, else the row's `timestamp`, else the epoch |
-| Stated | a value the message already carries is never overwritten, so a stamped stream read again is a no-op |
-| Entries | untouched: the wire re-emits byte for byte |
-| Bindings | Rust; Python (`FixLifecycle`, `FixCodec.lifecycle`); JavaScript (`FixLifecycle`, `FixCodec.lifecycle`) |
+| Owns | `FixLifecycle` (`DEFAULT_INTERVAL_NS`, `interval_ns`, `set_interval_ns`, `try_with_interval_ns`, `fill`, `snapshot`, `snapshots`, `alive`, `clear`), `FixCodec::lifecycle` |
+| Columns | the [crate's own](capture.md#the-crates-own-columns) `code` (65024), `updatedat` (65003), `createdat` (65023), `prevtimestamp` (65021), `prevuuid` (65022) and `instuuid` (65016); `puuid` (65018) and `uuid` (65017) are recomputed by the message's identity owner after every stamp |
+| Chain name | a non-empty stated `code` selects its live chain globally; else the first identifier reaching a live chain supplies that chain's code; else the first identifier names a new chain `<scope>/<identifier>`, the scope rendered `-` when absent; no identifier leaves `code` empty and opens no chain |
+| Identifiers | a stated `altids` Map, else the message type's compiled [`fix:identifiers`](registry.md#component-identifiers) selection, in sorted member-name order; each keyed by the effective instrument scope: a stated `instuuid`, else the version-8 UUID of the xxh128 digest of market, CFI, ISIN - else symbol - and currency, else absent |
+| `puuid` | UUIDv8 of XXH3-128 over the exact `code` bytes, so a chain's identity is its name; empty code hashes empty bytes and never opens a chain |
+| Grid | `updatedat` becomes `floor(t / interval) * interval` of the settled event clock, Euclidean and checked; `snapshotat` keeps the real instant; the interval is positive nanoseconds, `DEFAULT_INTERVAL_NS` (one second) unless set, and changes only while no chain is live |
+| Creation | every message joining a live chain carries the `createdat` of that chain's first accepted message |
+| History | `prevtimestamp` and `prevuuid` are the previous accepted message's `updatedat` and `uuid` in the selected chain, null on a first message; a stated non-null value stays |
+| Snapshots | `snapshot` answers the full message only for an off-grid arrival that opens a chain or lands above its live chain's highest consumed bucket; an aligned arrival consumes its bucket silently; `snapshots` filters a stream the same way |
+| Ends | a terminal [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - the crate's `state`, else `OrdStatus(39)`, else `ExecType(150)` - is stamped, then closes the chain and forgets its identifiers |
+| State | live chains only: code, first `createdat`, last `updatedat` and `uuid`, highest bucket, attached identifiers; no pending message, timer or tombstone |
+| Atomic | a refusal - an unrepresentable grid instant, a malformed stated `altids`, `instuuid` or previous value, a code-hash collision, a mistyped stamp target - is located and changes no chain, history, bucket or identifier |
+| Entries | untouched: entries, wire and arrival digest are what arrived |
+| Bindings | Rust; Python `FixLifecycle(registry, *, interval_ns)`, `FixCodec.lifecycle`; JavaScript `new fix.FixLifecycle(registry, { intervalNs })`, `FixCodec.lifecycle` |
 
 ## Use
 
-One order's life, six messages long, on one persistent identity.
+One order's life on one chain: the order, its acknowledgement under the venue's identifier, a replace naming the old client identifier, and the fill under the new one.
 
 === "Rust"
 
@@ -28,91 +31,129 @@ One order's life, six messages long, on one persistent identity.
     use std::sync::Arc;
 
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixLifecycle, FixRegistry, ID_TAG_NAME, INSTID_TAG_NAME, PERSISTENTID_TAG_NAME};
+    use yggdryl::{
+        CODE_TAG_NAME, FixCodec, FixLifecycle, FixMsg, FixRegistry, PREVTIMESTAMP_TAG_NAME,
+        PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, TimeUnit,
+    };
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     let reader = FixCodec::new(Arc::clone(&registry));
-    let mut life = FixLifecycle::new(Arc::clone(&registry));
-
-    // The order, its acknowledgement under the venue's own identifier, a
-    // replace naming the old identifier, and the fill under the new one.
     let lines: [&[u8]; 4] = [
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|60=20260102-10:15:30.000|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:30.250|10=0|",
-        b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|",
-        b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|54=1|38=120|60=20260102-10:15:32.000|10=0|",
+        b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|60=20260102-10:15:33.100|10=0|",
     ];
-    let mut stamped = Vec::new();
+
+    let mut life = FixLifecycle::new(Arc::clone(&registry));
+    assert_eq!(life.interval_ns(), FixLifecycle::DEFAULT_INTERVAL_NS);
+    let mut stamped: Vec<FixMsg> = Vec::new();
     for line in lines {
-        stamped.push(life.fill(reader.parse_line(line)?.next().expect("one frame")?)?);
+        stamped.push(life.fill(reader.parse_fix_line(line)?)?);
     }
 
-    // One chain from the order to the fill, whatever identifier each
-    // message chose, and one instrument.
-    let chain = stamped[0].by_tag(PERSISTENTID_TAG_NAME.0)?;
-    assert!(stamped.iter().all(|held| held.get_by_tag(PERSISTENTID_TAG_NAME.0) == Some(chain)));
-    let instrument = stamped[0].by_tag(INSTID_TAG_NAME.0)?;
-    assert!(stamped.iter().all(|held| held.get_by_tag(INSTID_TAG_NAME.0) == Some(instrument)));
-
-    // Ids sort by the market's own clock.
-    let ids: Vec<&[u8]> = stamped.iter().map(|held| held.by_tag(ID_TAG_NAME.0).unwrap().as_bytes().unwrap()).collect();
-    assert!(ids.windows(2).all(|pair| pair[0] < pair[1]));
-
-    // The fill ended the chain: nothing is alive, and the wire is untouched.
+    // One chain, named by the first identifier under the instrument scope,
+    // whatever identifier each message chose.
+    let code = stamped[0].by_tag(CODE_TAG_NAME.0)?.as_str().expect("a named chain");
+    assert!(code.ends_with("/A1"), "{code}");
+    assert!(stamped.iter().all(|held| held.puuid() == stamped[0].puuid()));
+    // The first creation instant travels with the chain, and each message
+    // names the one before it.
+    let created = stamped[0].by_tag(60)?;
+    assert!(stamped.iter().all(|held| held.createdat() == created));
+    assert!(stamped[0].by_tag(PREVUUID_TAG_NAME.0)?.is_null());
+    assert_eq!(stamped[1].by_tag(PREVUUID_TAG_NAME.0)?, stamped[0].uuid());
+    assert_eq!(stamped[1].by_tag(PREVTIMESTAMP_TAG_NAME.0)?, stamped[0].updatedat());
+    // updatedat lands on the one-second grid; snapshotat keeps the event.
+    assert_eq!(stamped[1].updatedat().temporal_count_at(TimeUnit::Millisecond), Some(1_767_348_930_000));
+    assert_eq!(stamped[1].by_tag(SNAPSHOTAT_TAG_NAME.0)?, stamped[1].by_tag(60)?);
+    // The fill closed the chain, and the wire is untouched.
     assert_eq!(life.alive(), 0);
     assert_eq!(stamped[3].into_bytes(b'|'), lines[3]);
 
-    // Over an iterator, the codec runs one lifecycle for the whole stream.
-    let again: Vec<_> = reader
-        .lifecycle(lines.iter().map(|line| {
-            reader.parse_line(line).unwrap().next().expect("one frame").unwrap()
-        }))
+    // A fresh lifecycle replaying the filled stream answers it unchanged.
+    let mut replay = FixLifecycle::new(Arc::clone(&registry));
+    for held in &stamped {
+        assert_eq!(&replay.fill(held.clone())?, held);
+    }
+
+    // Snapshots: 30.250 opens bucket 30, 30.500 repeats it, 32.000 is aligned
+    // and consumes bucket 32 silently, 33.100 opens bucket 33.
+    let snapshots: Vec<FixMsg> = FixLifecycle::new(Arc::clone(&registry))
+        .snapshots(reader.parse_lines(lines))
         .collect::<yggdryl::Result<_>>()?;
-    assert_eq!(again[3].by_tag(PERSISTENTID_TAG_NAME.0)?, chain);
+    assert_eq!(snapshots.len(), 2);
+    assert_eq!(snapshots[0].updatedat(), stamped[0].updatedat());
+    assert_eq!(snapshots[1].updatedat(), stamped[3].updatedat());
+    let aligned = reader.parse_fix_line(lines[2])?;
+    assert!(FixLifecycle::new(Arc::clone(&registry)).snapshot(aligned)?.is_none());
+
+    // The codec's stream door runs one default-cadence lifecycle.
+    let again: Vec<FixMsg> = reader.lifecycle(reader.parse_lines(lines)).collect::<yggdryl::Result<_>>()?;
+    assert!(again.iter().all(|held| held.puuid() == stamped[0].puuid()));
+    // The interval is positive nanoseconds.
+    assert_eq!(FixLifecycle::new(Arc::clone(&registry)).try_with_interval_ns(2_000_000_000)?.interval_ns(), 2_000_000_000);
+    assert!(FixLifecycle::new(registry).try_with_interval_ns(0).is_err());
     ```
 
 === "Python"
 
     ```python
+    from datetime import datetime, timezone
     from pathlib import Path
+
+    import pytest
 
     from yggdryl.fix import FixCodec, FixLifecycle, FixRegistry
 
-    INSTID, ID, PERSISTENTID = 65016, 65017, 65018
+    PREVTIMESTAMP, PREVUUID, CODE, SNAPSHOTAT = 65021, 65022, 65024, 65025
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry)
-    life = FixLifecycle(registry)
-
-    # The order, its acknowledgement under the venue's own identifier, a
-    # replace naming the old identifier, and the fill under the new one.
     lines = [
-        b"8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|60=20260102-10:15:30.000|10=0|",
-        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:30.250|10=0|",
-        b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|",
-        b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|",
+        b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.250|10=0|",
+        b"8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|",
+        b"8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|54=1|38=120|60=20260102-10:15:32.000|10=0|",
+        b"8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|60=20260102-10:15:33.100|10=0|",
     ]
-    stamped = [life.fill(next(reader.parse_line(line))) for line in lines]
 
-    # One chain from the order to the fill, whatever identifier each
-    # message chose, and one instrument.
-    chain = stamped[0].by_tag(PERSISTENTID)
-    assert all(held.get_by_tag(PERSISTENTID) == chain for held in stamped)
-    instrument = stamped[0].by_tag(INSTID)
-    assert all(held.get_by_tag(INSTID) == instrument for held in stamped)
+    life = FixLifecycle(registry)
+    assert life.interval_ns == FixLifecycle.DEFAULT_INTERVAL_NS == 1_000_000_000
+    stamped = [life.fill(reader.parse_fix_line(line)) for line in lines]
 
-    # Ids sort by the market's own clock.
-    ids = [held.by_tag(ID).as_py() for held in stamped]
-    assert all(earlier < later for earlier, later in zip(ids, ids[1:]))
-
-    # The fill ended the chain: nothing is alive, and the wire is untouched.
+    # One chain, named by the first identifier under the instrument scope,
+    # whatever identifier each message chose.
+    assert stamped[0].by_tag(CODE).as_py().endswith("/A1")
+    assert all(held.puuid() == stamped[0].puuid() for held in stamped)
+    # The first creation instant travels with the chain, and each message
+    # names the one before it.
+    assert all(held.createdat() == stamped[0].by_tag(60) for held in stamped)
+    assert stamped[0].by_tag(PREVUUID).as_py() is None
+    assert stamped[1].by_tag(PREVUUID) == stamped[0].uuid()
+    assert stamped[1].by_tag(PREVTIMESTAMP) == stamped[0].updatedat()
+    # updatedat lands on the one-second grid; snapshotat keeps the event.
+    assert stamped[1].updatedat().as_py() == datetime(2026, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
+    assert stamped[1].by_tag(SNAPSHOTAT) == stamped[1].by_tag(60)
+    # The fill closed the chain, and the wire is untouched.
     assert life.alive() == 0
     assert stamped[3].into_bytes(ord("|")) == lines[3]
 
-    # Over an iterable, the codec runs one lifecycle for the whole stream,
-    # answering it lazily.
-    again = list(reader.lifecycle(next(reader.parse_line(line)) for line in lines))
-    assert again[3].by_tag(PERSISTENTID) == chain
+    # A fresh lifecycle replaying the filled stream answers it unchanged.
+    replay = FixLifecycle(registry)
+    assert [replay.fill(held) for held in stamped] == stamped
+
+    # Snapshots: 30.250 opens bucket 30, 30.500 repeats it, 32.000 is aligned
+    # and consumes bucket 32 silently, 33.100 opens bucket 33.
+    snapshots = list(FixLifecycle(registry).snapshots(reader.parse_lines(lines)))
+    assert [held.updatedat() for held in snapshots] == [stamped[0].updatedat(), stamped[3].updatedat()]
+    assert FixLifecycle(registry).snapshot(reader.parse_fix_line(lines[2])) is None
+
+    # The codec's stream door runs one default-cadence lifecycle.
+    assert all(held.puuid() == stamped[0].puuid() for held in reader.lifecycle(reader.parse_lines(lines)))
+    # The interval is positive nanoseconds.
+    assert FixLifecycle(registry, interval_ns=2_000_000_000).interval_ns == 2_000_000_000
+    with pytest.raises(ValueError):
+        FixLifecycle(registry, interval_ns=0)
     ```
 
 === "JavaScript"
@@ -122,64 +163,106 @@ One order's life, six messages long, on one persistent identity.
     const path = require('node:path')
     const { fix } = require('yggdryl')
 
+    const [PREVTIMESTAMP, PREVUUID, CODE, SNAPSHOTAT] = [65021, 65022, 65024, 65025]
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry)
-    const life = new fix.FixLifecycle(registry)
-
-    // The order, its acknowledgement under the venue's own identifier, a
-    // replace naming the old identifier, and the fill under the new one.
     const lines = [
-      '8=FIX.4.4|35=D|11=A1|55=AAPL|207=XNAS|15=USD|54=1|38=100|60=20260102-10:15:30.000|10=0|',
-      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:30.250|10=0|',
-      '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|207=XNAS|15=USD|54=1|38=120|60=20260102-10:15:32.000|10=0|',
-      '8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|207=XNAS|15=USD|60=20260102-10:15:33.000|10=0|',
-    ]
-    const stamped = lines.map((line) => life.fill(reader.parseLine(Buffer.from(line)).next().value))
+      '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|38=100|60=20260102-10:15:30.250|10=0|',
+      '8=FIX.4.4|35=8|11=A1|37=O1|150=0|39=0|55=AAPL|60=20260102-10:15:30.500|10=0|',
+      '8=FIX.4.4|35=G|41=A1|11=A2|55=AAPL|54=1|38=120|60=20260102-10:15:32.000|10=0|',
+      '8=FIX.4.4|35=8|11=A2|150=F|39=2|14=120|151=0|55=AAPL|60=20260102-10:15:33.100|10=0|',
+    ].map((line) => Buffer.from(line))
 
-    // One chain from the order to the fill, whatever identifier each
-    // message chose, and one instrument.
-    const chain = stamped[0].byTag(65018)
-    assert.ok(stamped.every((held) => held.byTag(65018).equals(chain)))
-    const instrument = stamped[0].byTag(65016)
-    assert.ok(stamped.every((held) => held.byTag(65016).equals(instrument)))
+    const life = new fix.FixLifecycle(registry)
+    assert.equal(life.intervalNs, fix.FixLifecycle.DEFAULT_INTERVAL_NS)
+    assert.equal(life.intervalNs, 1_000_000_000n)
+    const stamped = lines.map((line) => life.fill(reader.parseFixLine(line)))
 
-    // Ids sort by the market's own clock.
-    const ids = stamped.map((held) => Buffer.from(held.byTag(65017).asJs()))
-    assert.ok(ids.every((id, at) => at === 0 || Buffer.compare(ids[at - 1], id) < 0))
-
-    // The fill ended the chain: nothing is alive, and the wire is untouched.
+    // One chain, named by the first identifier under the instrument scope,
+    // whatever identifier each message chose.
+    assert.ok(stamped[0].byTag(CODE).asJs().endsWith('/A1'))
+    assert.ok(stamped.every((held) => held.puuid().equals(stamped[0].puuid())))
+    // The first creation instant travels with the chain, and each message
+    // names the one before it.
+    assert.ok(stamped.every((held) => held.createdat().equals(stamped[0].byTag(60))))
+    assert.equal(stamped[0].byTag(PREVUUID).asJs(), null)
+    assert.ok(stamped[1].byTag(PREVUUID).equals(stamped[0].uuid()))
+    assert.ok(stamped[1].byTag(PREVTIMESTAMP).equals(stamped[0].updatedat()))
+    // updatedat lands on the one-second grid; snapshotat keeps the event.
+    assert.ok(stamped[1].updatedat().equals(stamped[0].updatedat()), 'bucket 10:15:30')
+    assert.ok(stamped[1].byTag(SNAPSHOTAT).equals(stamped[1].byTag(60)))
+    // The fill closed the chain, and the wire is untouched.
     assert.equal(life.alive, 0)
-    assert.equal(stamped[3].intoBytes('|'.charCodeAt(0)).toString(), lines[3])
+    assert.deepEqual(Buffer.from(stamped[3].intoBytes(124)), lines[3])
 
-    // Over any iterable, the codec runs one lifecycle for the whole stream,
-    // answering it lazily.
-    const again = [...reader.lifecycle(lines.map((line) => reader.parseLine(Buffer.from(line)).next().value))]
-    assert.ok(again[3].byTag(65018).equals(chain))
+    // A fresh lifecycle replaying the filled stream answers it unchanged.
+    const replay = new fix.FixLifecycle(registry)
+    assert.ok(stamped.every((held) => replay.fill(held.clone()).equals(held)))
+
+    // Snapshots: 30.250 opens bucket 30, 30.500 repeats it, 32.000 is aligned
+    // and consumes bucket 32 silently, 33.100 opens bucket 33.
+    const snapshots = [...new fix.FixLifecycle(registry).snapshots(reader.parseLines(lines))]
+    assert.equal(snapshots.length, 2)
+    assert.ok(snapshots[0].updatedat().equals(stamped[0].updatedat()))
+    assert.ok(snapshots[1].updatedat().equals(stamped[3].updatedat()))
+    assert.equal(new fix.FixLifecycle(registry).snapshot(reader.parseFixLine(lines[2])), null)
+
+    // The codec's stream door runs one default-cadence lifecycle.
+    assert.ok([...reader.lifecycle(reader.parseLines(lines))].every((held) => held.puuid().equals(stamped[0].puuid())))
+    // The interval is positive nanoseconds.
+    assert.equal(new fix.FixLifecycle(registry, { intervalNs: 2_000_000_000n }).intervalNs, 2_000_000_000n)
+    assert.throws(() => new fix.FixLifecycle(registry, { intervalNs: 0n }))
     ```
 
-## The chain is the identifiers, joined
+## A chain is named by its code
 
-An order is created under one `ClOrdID`, acknowledged under an `OrderID`, replaced under a new `ClOrdID` that names the old one as `OrigClOrdID`, and filled under whichever of them the venue chose to echo. A message joins a chain through any identifier it carries - `OrigClOrdID` first, because a replace or a cancel names the order it acts on there and the new `ClOrdID` it carries is not yet anyone's - and every identifier it carries then reaches that chain, so the replace's new `ClOrdID` joins the order the old one opened. A message carrying an identifier no chain holds opens one, dated by its own impact clock; a message carrying none, a heartbeat or a logon, gets an `id` and no chain.
+A stated non-empty `code` is the chain's name and selects it globally, across instrument scopes. A message stating none joins through its identifiers: the first one - in the sorted member-name order of `altids` - that a live chain already owns under the same instrument scope supplies that chain's code, so the replace's `OrigClOrdID` reaches the order its new `ClOrdID` does not, and every identifier the message carries then attaches to that chain unless another live chain already owns it. A message whose identifiers reach no chain names a new one after its first identifier, `<scope>/<identifier>`; one with neither a code nor an identifier - a heartbeat, a logon - keeps an empty code, still gets its `uuid` and a `puuid` over empty bytes, and opens nothing.
 
-Two tags spelling one identifier are one key: an order acknowledged under the client's own identifier joins nothing to itself.
+Two explicit codes never merge and never steal each other's identifiers, and a generated code whose hash meets a live chain of another name is a located `$.puuid` refusal. These deterministic hashes are not collision-free; they are what makes two reads of one capture agree without a wall clock.
+
+## A chain carries its creation and its history
+
+The first accepted message of a live chain fixes its `createdat`: first by arrival, not the minimum or the grid, and a later statement does not replace it. Every later message selecting the chain - late, aligned, suppressed or terminal - carries it. `prevtimestamp` and `prevuuid` are the previous accepted message's `updatedat` and `uuid`, filled independently where null and kept where stated; they follow every accepted message, so a previous UUID may name a message the snapshot stream filtered out. A late arrival moves history backward without lowering the chain's highest bucket.
+
+## Snapshots are a grid, not a timer
+
+`updatedat` is truncated to `floor(t / interval) * interval` of the settled event clock and exact boundaries open their bucket; `snapshotat` keeps the real instant, so truncation can put `updatedat` before `createdat`. `fill` answers every message; `snapshot` answers the same transition's message only when it arrived off-grid and opened its chain or landed in a bucket above the chain's highest consumed one, and `None` otherwise - an aligned arrival consumes its bucket without emitting, and an unnamed message never emits. `snapshots` owns a configured lifecycle over a stream of `Result` messages and drops only those successful `None` answers; nothing is pending, no timer fires and no bucket is backfilled.
+
+The interval is settled before the stream: `set_interval_ns` refuses zero, a negative value, or a change while a chain is live, and repeating the current interval is a no-op. `clear` forgets chains and keeps the interval.
 
 ## A chain ends when its state does
 
-The state a message reports - the crate's own `state`, else `OrdStatus`, else `ExecType` - ranks its lifecycle, and a rank past the live ones closes the chain: its identifiers are forgotten, so a venue reusing a `ClOrdID` tomorrow opens a new chain rather than joining yesterday's. What is held is therefore the orders still alive, `alive()` says how many, and `clear()` forgets them all, as a new session or a new day would. A closed chain's slot is reused, so the state stays the size of the busiest moment rather than the whole capture.
-
-## The impact clock
-
-`TransactTime(60)` is when the venue says it happened; `SendingTime(52)` when the message left; the row's own `timestamp` when the capture saw it. The first stated is the instant an `id` and a `persistentid` open with, in microseconds, so a consumer ordering by id orders by the market's own clock where one was stated, and two reads of one capture agree on every identity, because nothing here reads a wall clock.
+A terminal state - filled, done for day, cancelled, rejected, expired - is stamped with the chain's creation and history, then closes the chain and forgets its identifiers, suppressed or not, so a venue reusing a `ClOrdID` tomorrow opens a new chain. Reopening a code keeps its `puuid` and starts a fresh incarnation, which may emit again in the same bucket. What is held is therefore the live chains; `alive()` counts them and `clear()` forgets them, as a new session or a new day would.
 
 ## In a batch read
 
-The lifecycle is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` runs one `FixLifecycle` over the whole read, so the `persistentid` a row carries depends on the rows before it - which is what a chain is. Nothing stamps unasked, for the reason nothing enriches unasked: a stamped value is indistinguishable from a stated one. The example [there](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) lands one order's life in a batch on one chain.
+The lifecycle is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a stage is a call: `codec.arrow_reader(schema, codec.lifecycle(codec.messages(reader)))` fills a whole read, and `codec.arrow_reader(schema, life.snapshots(codec.messages(reader)))` lands only its snapshots. `lifecycle` takes owned messages or their `Result`s and `snapshots` takes a stream of `Result`s (Python and JavaScript accept any iterable of messages); both yield a source or transition error as an item without advancing state, and fuse only exhaustion. Nothing stamps unasked, for the reason nothing enriches unasked: a stamped value is indistinguishable from a stated one.
 
 ## Edges
 
-- A message stating its own `instid`, `id` or `persistentid` keeps it; a terminal message still closes the chain its identifiers reach, so a stamped stream read again ends where the first read ended.
-- The same line at the same instant is the same `persistentid` and the same `id`: the identities are digests, not sequence numbers, and never depend on when the pass ran.
-- An ISIN outranks a symbol in the instrument's identity, and case does not tell two instruments apart; another market does.
-- A bridge row names the same facts under its own keys - `#ISINCODE`, `#LASTMKT`, `#CURRENCY`, `CLORDID` - and reaches the same identities.
-- A state a venue spells outside the vocabulary is not a state and ends nothing.
-- A registry without the crate's three columns - none this crate builds - stamps nothing and passes the message through.
+- The same line at the same instant is the same `code` and `puuid`: the identities are digests of settled values, never sequence numbers, and a fresh or cleared lifecycle replaying a raw or an already-filled stream answers the same messages.
+- Feeding an earlier message into an advanced lifecycle is a new arrival, not a rewind.
+- An ISIN outranks a symbol in the instrument scope, and case does not tell two instruments apart; another market does. A bridge row naming the same facts under its own keys reaches the same scope.
+- A stated `altids` is authoritative, an empty one included; its keys must be unique and ascending and its values text or null, else a located refusal. A null or empty identifier contributes nothing; text is neither trimmed nor case-folded.
+- A state a venue spells outside the vocabulary is not a state and ends nothing. A terminal message opening no live chain keeps its own `createdat`, may emit its off-grid snapshot, and leaves no chain behind.
+- A stated `uuid` or `puuid` must match what the finalized message computes; `code` is what a caller states to name a chain.
+
+## Commands
+
+=== "Rust"
+
+    ```bash
+    cargo test -p yggdryl --test fix lifecycle
+    ```
+
+=== "Python"
+
+    ```bash
+    python/.venv/bin/python -m pytest python/tests/fix -k lifecycle
+    ```
+
+=== "JavaScript"
+
+    ```bash
+    node --test "node/tests/fix/*.test.js"
+    ```

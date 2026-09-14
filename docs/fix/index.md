@@ -17,7 +17,7 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | [Message](message.md) | `FixMsg`: root Struct plus row and registry, accessors, `set`/`remove` writing the row, `from_row` reading a fixed row back, JSON, and what restating a message at the dictionary's newest version decides |
 | [Arrow](arrow.md) | `FixCodec::parse_text_arrow_reader`, `enrich_messages_arrow_reader`, `messages`, `arrow_reader`, `write_arrow_reader`: a capture already in Arrow, streamed through a dictionary and back to the wire, batched by raw bytes |
 | [Capture](capture.md) | `FixCodec` and its `parse_*` readers, `fix_schema`, `FixMsg::into_row`, `enrich_message` and the one enriching pass behind it: a day of session log as one table |
-| [Lifecycle](lifecycle.md) | `FixLifecycle`, `FixCodec::lifecycle`: the instrument, the message and the order chain, stamped across a stream |
+| [Lifecycle](lifecycle.md) | `FixLifecycle`, `FixCodec::lifecycle`: chains named by `code`, their creation and history, and grid snapshots across a stream |
 | [CLI](cli.md) | `ygg`: dictionary CRUD, `.cfb` ingest, schema dump, quality and drift, from a terminal |
 
 ## Contract
@@ -26,13 +26,13 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
 | --- | --- |
 | Owns | `FixField` / `FixFieldMut` (`as_fix()` / `as_fix_mut()`), `FixId`; no second field class |
 | Keys | `fix:tag`, `fix:tags`, `fix:aliases`, `fix:branches`, `fix:identifiers`; name, datatype, `display` and `description` stay the field's own |
-| Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a negative tag; `Copy`, four bytes, its own hash key |
+| Identity | A field is its tag and its name, and nothing else. `FixId` is one `i32`: the signed XXH32 of the tag's four little-endian bytes followed by the folded name; `FixId::of(tag, name)` builds it and refuses a tag that is not positive; `Copy`, four bytes, its own hash key |
 | Spelling | Rendered as its decimal digest wherever it crosses a boundary - `FixKey::Id`, `FixMsg::get_by_id`, Python `int`, JavaScript `number`, a row column; `FixId::from_digest` reads that integer back; a bare integer anywhere else (`FixKey::from(i32)`, `registry.field(55)`, `msg.get(55)`) is a tag |
 | Fold | ASCII case, `_`, `-` and space are not part of the name, so `Msg_Type`, `msgtype` and `MsgType` under tag 35 are one id, the one every name lookup already answers |
 | Derived | Computed on every read from `fix:tag` and the field's name, never stored (no `fix:id` key), so a rename is never stale; `None` without a tag; read-only in every binding |
 | Membership | `fix:branches` lists the dictionaries that contributed a field: each name non-empty and without a comma, folded to ASCII lowercase, deduplicated under the fold, kept sorted and comma-joined, so registries built from the same dictionaries in any order hash alike; empty input removes the key |
 | Dialect | The name `from_cfb_file(handle, Some("cme"))` stamps on every field, group, component and message the file produces, standard tags included; `FixRegistry::dialects()` lists the distinct names; provenance a caller filters on, never consulted by a lookup, and never part of the identity |
-| Tag range | Any non-negative tag holds an identity; nothing gates a tag on its dictionary. `set_tag`, `set_tags` and `set_counter` refuse only a negative tag, naming their key. Derived definition tags take `FixId::DEFINITION_TAG_MIN..FixId::DEFINITION_TAG_MAX`, `[100000, 1100000)` |
+| Tag range | Any positive tag holds an identity; nothing gates a tag on its dictionary. `set_tag`, `set_tags` and `set_counter` refuse zero and negative tags, naming their key: tag 0 marks only an [unresolved arrival entry](capture.md#nothing-is-lost-at-the-end), never a definition. Derived definition tags take `FixId::DEFINITION_TAG_MIN..FixId::DEFINITION_TAG_MAX`, `[100000, 1100000)` |
 | Order | Tag-major, the tag's holder first, then id: `FixFieldIter`, `next_field_after`, the bindings' iteration and the store all follow it, so the bare tag comes back to the field that held it across a round trip |
 | List properties | Comma-separated text; `aliases()`, `branches()` and `identifiers()` lazy slices, `tags()` a parsed `Vec`; empty list removes the key |
 | Identifiers | A component declares its own direct scalar members through `fix:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
@@ -68,8 +68,10 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
     let error = field.as_fix_mut().set_tags(&[152, 152]).unwrap_err();
     assert!(error.to_string().contains("fix:tags"), "{error}");
     assert!(!field.has_metadata("fix:tags"));
-    let error = field.as_fix_mut().set_tag(-1).unwrap_err();
-    assert!(error.to_string().contains("fix:tag"), "{error}");
+    for tag in [0, -1] {
+        let error = field.as_fix_mut().set_tag(tag).unwrap_err();
+        assert!(error.to_string().contains("fix:tag"), "{error}");
+    }
     assert_eq!(field.as_fix().tag()?, Some(38));
     ```
 
@@ -101,8 +103,9 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
     with pytest.raises(ValueError, match="fix:tags"):
         field.fix.tags = [152, 152]
     assert "fix:tags" not in field.metadata
-    with pytest.raises(ValueError, match="fix:tag"):
-        field.fix.tag = -1
+    for tag in (0, -1):
+        with pytest.raises(ValueError, match="fix:tag"):
+            field.fix.tag = tag
     assert field.fix.tag == 38
 
     # A bool is never a tag, and one outside i32 is never narrowed.
@@ -146,9 +149,11 @@ The dictionary is also open in the browser: [explore](explorer.md) it, [decode](
       field.fix.tags = [152, 152]
     }, /fix:tags/)
     assert.equal(field.has('fix:tags'), false)
-    assert.throws(() => {
-      field.fix.tag = -1
-    }, /fix:tag/)
+    for (const tag of [0, -1]) {
+      assert.throws(() => {
+        field.fix.tag = tag
+      }, /fix:tag/)
+    }
     assert.equal(field.fix.tag, 38)
 
     // A tag crosses as a number and is never narrowed, and the vocabulary is
@@ -172,8 +177,8 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | Property | Key | Type | Meaning |
 | --- | --- | --- | --- |
 | `branches` | `fix:branches` | sorted lowercase name list | the dictionaries that contributed this field; absent for a field the specification alone defines |
-| `tag` | `fix:tag` | `i32` | canonical tag, never negative |
-| `tags` | `fix:tags` | ordered `i32` list | alternate tags, highest priority first |
+| `tag` | `fix:tag` | `i32` | canonical tag, always positive |
+| `tags` | `fix:tags` | ordered positive `i32` list | alternate tags, highest priority first |
 | `aliases` | `fix:aliases` | ordered name list | alternate names, highest priority first |
 | `identifiers` | `fix:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
@@ -189,12 +194,12 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 
 ## Identity is a tag and a name
 
-A tag is what identifies a field on the wire and a name is what identifies it to a reader, so the identity is both: `FixId::of(tag, name)` digests the tag's four little-endian bytes and the folded name into one signed 32-bit integer. Nothing writes it; every read derives it from `fix:tag` and the field's current name, so a retag or a rename is another identity and a spelling under the fold is the same one. Membership is provenance kept beside it and is no half of it.
+A tag is what identifies a field on the wire and a name is what identifies it to a reader, so the identity is both: `FixId::of(tag, name)` digests the tag's four little-endian bytes and the folded name into one signed 32-bit integer. Nothing writes it; every read derives it from `fix:tag` and the field's current name, so a retag or a rename is another identity and a spelling under the fold is the same one. Membership is provenance kept beside it and is no half of it. How a registry answers an id, and why a bare integer there is a tag, is [one namespace](registry.md#one-namespace).
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixId, FixRegistry};
+    use yggdryl::{DataType, FixId};
 
     let mut trade = DataType::utf8().nullable_field("TradeID");
     // No membership means the specification alone, and there is no
@@ -222,9 +227,10 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     // Both halves count: another tag or another name is another identity.
     assert_ne!(FixId::of(36, "MsgType")?, msgtype);
     assert_ne!(FixId::of(35, "MsgSeqNum")?, msgtype);
-    // The tag half is never negative; any non-negative tag holds an identity.
+    // The tag half is positive: 0 marks an unresolved arrival, never a field.
     assert!(FixId::of(-1, "MsgType").is_err());
-    assert!(FixId::of(0, "").is_ok());
+    assert!(FixId::of(0, "").is_err());
+    assert!(FixId::of(1, "").is_ok());
     assert!(FixId::of(i32::MAX, "MsgType").is_ok());
 
     // Membership is provenance and no half of the identity: folded to
@@ -245,14 +251,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     assert_eq!(trade.as_fix().id()?, Some(id));
     trade.set_name("TradeReportID");
     assert_eq!(trade.as_fix().id()?, Some(FixId::of(5001, "TradeReportID")?));
-
-    // The registry answers an id exactly, and a bare integer is a tag.
-    let registry = FixRegistry::from_fields([trade.clone()])?;
-    let id = trade.as_fix().id()?.unwrap();
-    assert_eq!(registry.field_by_id(id)?, &trade);
-    assert_eq!(registry.field(5001)?, &trade);
-    assert_eq!(registry.field_by_tag(5001)?.as_fix().id()?, Some(id));
-    assert!(registry.get_field_by_id(FixId::of(5001, "TradeID")?).is_none());
+    assert_ne!(trade.as_fix().id()?, Some(id));
     ```
 
 === "Python"
@@ -261,7 +260,6 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     import pytest
 
     from yggdryl import Field
-    from yggdryl.fix import FixRegistry
 
     trade = Field("TradeID", "utf8")
     # No membership means the specification alone, and there is no identity
@@ -301,18 +299,18 @@ A tag is what identifies a field on the wire and a name is what identifies it to
         trade.fix.branches = ["c,me"]
     assert trade.fix.branches == ["blp", "cme", "globex"]
 
-    # The registry answers an id exactly, and a bare integer is a tag.
-    registry = FixRegistry.from_fields([trade])
-    assert registry.field_by_id(held).name == "TradeID"
-    assert registry.field(5001).fix.id == held
-    assert registry.get_field_by_id(Field("TradeRef", "utf8", metadata={"fix:tag": "5001"}).fix.id) is None
+    # A rename under the fold is the same identity; another name is another.
+    trade.set_name("Trade_ID")
+    assert trade.fix.id == held
+    trade.set_name("TradeReportID")
+    assert trade.fix.id != held
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, fix } = require('yggdryl')
+    const { Field } = require('yggdryl')
 
     const trade = Field.from('TradeID: utf8')
     // No membership means the specification alone, and there is no identity
@@ -357,11 +355,11 @@ A tag is what identifies a field on the wire and a name is what identifies it to
     }, /fix:branches/)
     assert.deepEqual(trade.fix.branches, ['blp', 'cme', 'globex'])
 
-    // The registry answers an id exactly, and a bare integer is a tag.
-    const registry = fix.FixRegistry.fromFields([trade])
-    assert.equal(registry.fieldById(held).name, 'TradeID')
-    assert.equal(registry.field(5001).fix.id, held)
-    assert.equal(registry.getFieldById(idOf('TradeRef', 5001)), null)
+    // A rename under the fold is the same identity; another name is another.
+    trade.setName('Trade_ID')
+    assert.equal(trade.fix.id, held)
+    trade.setName('TradeReportID')
+    assert.notEqual(trade.fix.id, held)
     ```
 
 ## Nesting needs no second type
@@ -439,12 +437,12 @@ names are folded; `display` keeps the specification's spelling.
 
 ## Edges
 
-- Empty element, duplicate (aliases ASCII-folded), alias with a comma, or negative tag -> refused naming `fix:tags` / `fix:aliases` / `fix:tag`; field unchanged.
+- Empty element, duplicate (aliases ASCII-folded), alias with a comma, or a zero or negative tag -> refused naming `fix:tags` / `fix:aliases` / `fix:tag`; field unchanged.
 - An identifier spelling that is empty, contains a comma, names no member, names a nested member, is ambiguous, or repeats a selected member -> a located `fix:identifiers` refusal; the whole field stays unchanged. Empty input removes the declaration.
 - Folding is ASCII only: `Größe` and `GRÖSSE` are two names.
-- A tag is decimal `0` to `i32::MAX`; readers refuse stored `+35`, `-35`, `3x`.
+- A tag is decimal `1` to `i32::MAX`; readers refuse stored `0`, `+35`, `-35`, `3x`.
 - Python `tag = True` -> `TypeError`; `2**31` -> `OverflowError`. JavaScript `2 ** 31` -> "signed 32-bit integer"; `field.iceberg.tag` -> `TypeError`.
-- Any non-negative tag holds an identity, whatever dictionary spoke it; the only tag refusal is a negative one, from `set_tag`, `set_tags`, `set_counter` or `FixId::of`, naming `fix:tag` / `fix:tags` / `fix:counter`.
+- Any positive tag holds an identity, whatever dictionary spoke it; the only tag refusal is a zero or negative one, from `set_tag`, `set_tags`, `set_counter` or `FixId::of`, naming `fix:tag` / `fix:tags` / `fix:counter`. Tag 0 appears only on an arrival entry no dictionary resolved.
 - The id is read, never assigned: Python `trade.fix.id = 7` -> `AttributeError`; the JavaScript property has no setter; there is no `fix:id` key and no id key spelling in the CLI.
 - A membership name that is empty or carries a comma -> refused naming `fix:branches`; field unchanged. Names fold to ASCII lowercase on the way in and `has_branch` folds its argument the same way; a number is never a name (`TypeError` in Python, a `String` conversion failure in JavaScript).
 - `FixKey::Id` is the one spelling of an id in Rust; a bare `i32` is a tag through `FixKey::from`, `registry.field(55)` and `msg.get(55)`. Python `field_by_id(int)` / `get_by_id(int)` and JavaScript `fieldById(number)` / `getById(number)` are exact: no alias, alternate tag or fold is consulted on the way.

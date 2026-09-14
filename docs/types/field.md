@@ -15,7 +15,7 @@
 | Identity | equality, ordering, hashing include metadata and dictionary state |
 | Serialization | one `Field` ⇄ `Scalar` mapping under JSON, YAML, TOML |
 | Rendering | `Display` compact, round-trips; `{:#}` / `pretty()` readable |
-| JavaScript | subscripts, YAML/TOML, `pretty` are Rust first; `toJSON` exists |
+| JavaScript | children through `field`, `getField`, `setField`, `removeField` rather than subscripts; JSON only, no YAML, TOML or `pretty` |
 
 ## Use
 
@@ -98,6 +98,8 @@ A table's columns are the children of a struct field with `nullable` false, the 
 === "Python"
 
     ```python
+    import pytest
+
     from yggdryl import DataType, Field, types
 
     schema = Field(
@@ -109,12 +111,19 @@ A table's columns are the children of a struct field with `nullable` false, the 
         nullable=False,
     )
 
+    schema.validate_struct_root()
+    assert schema.index_of("symbol") == 1
     children = schema.dtype
-    assert len(children) == 2
-    assert "symbol" in children
+    assert len(children) == 2 and "symbol" in children
     assert children["id"].nullable is False
     assert children[1].name == "symbol"
     assert [child.name for child in children] == ["id", "symbol"]
+
+    # A nullable root is not a schema, but it is still a struct column.
+    nullable = Field("trade", children)
+    nullable.require_struct()
+    with pytest.raises(ValueError):
+        nullable.validate_struct_root()
     ```
 
 === "JavaScript"
@@ -154,8 +163,6 @@ Each lookup exists by position, by path, or either:
 
 `unnest_fields` flattens struct nesting to dotted leaf paths; `explode_fields` swaps each collection child for what it holds.
 
-Rust only.
-
 === "Rust"
 
     ```rust
@@ -183,6 +190,41 @@ Rust only.
     assert_eq!(exploded[2].dtype(), &DataType::Float64);
     ```
 
+=== "Python"
+
+    ```python
+    from yggdryl import DataType
+
+    row = DataType("struct<id:int64 not null,line:struct<px:float64 not null>,levels:list<float64>>")
+
+    leaves = row.unnest_fields()
+    assert [leaf.name for leaf in leaves] == ["id", "line.px", "levels"]
+    assert leaves[1].nullable
+    assert row.get_field_by_path("line.px") is not None
+
+    exploded = row.explode_fields()
+    assert exploded[2].name == "levels"
+    assert exploded[2].dtype == DataType("float64")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    const row = DataType.from('struct<id:int64 not null,line:struct<px:float64 not null>,levels:list<float64>>')
+
+    const leaves = row.unnestFields()
+    assert.deepEqual(leaves.map((leaf) => leaf.name), ['id', 'line.px', 'levels'])
+    assert.equal(leaves[1].nullable, true)
+    assert.notEqual(row.getFieldByPath('line.px'), null)
+
+    const exploded = row.explodeFields()
+    assert.equal(exploded[2].name, 'levels')
+    assert.ok(exploded[2].dtype.equals(DataType.from('float64')))
+    ```
+
 ## Merging two schemas
 
 `merge_with` is the crate's only promotion table, shared by expression typing and value inference. Rules, in order:
@@ -194,9 +236,7 @@ Rust only.
 5. text wins next; two strings meet parameter by parameter - the wider offsets, the variable layout over a fixed one, UTF-8 over two different charsets, no bound over a bound when widening, and the narrower layout, repertoire and bound when narrowing. A registered code is the `fixed_ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
 6. numbers meet by width, temporals by unit; widening keeps the widest decimal backing either side declared.
 
-Anything left is refused.
-
-Rust only.
+Anything left is refused. Every rule answers in Python and JavaScript too; the parameter-by-parameter cases are shown once, in Rust.
 
 === "Rust"
 
@@ -273,6 +313,58 @@ Rust only.
     let field = a.merge_with(&b, true)?;
     assert_eq!(field.dtype(), &DataType::Int64);
     assert!(field.is_nullable());
+    assert!(DataType::Boolean.merge_with(&DataType::Int64, true).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    import pytest
+
+    from yggdryl import DataType, Field
+
+    left = DataType("struct<id:int32 not null,venue:utf8 not null>")
+    right = DataType("struct<id:int64 not null,price:float64 not null>")
+    merged = left.merge_with(right)
+
+    assert merged["id"].dtype == DataType("int64")
+    assert merged["venue"].nullable and merged["price"].nullable
+    assert [child.name for child in merged] == ["id", "venue", "price"]
+
+    assert DataType("int32").merge_with("int64", upscale=False) == DataType("int32")
+    assert DataType("utf8").merge_with("binary") == DataType("binary")
+    assert DataType("int64").merge_with("utf8") == DataType("utf8")
+
+    field = Field("price", "int32", nullable=False).merge_with(Field("price", "int64"))
+    assert field.dtype == DataType("int64")
+    assert field.nullable
+    with pytest.raises(ValueError):
+        DataType("boolean").merge_with("int64")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Field } = require('yggdryl')
+
+    const left = DataType.from('struct<id:int32 not null,venue:utf8 not null>')
+    const right = DataType.from('struct<id:int64 not null,price:float64 not null>')
+    const merged = left.mergeWith(right)
+
+    assert.ok(merged.getField('id').dtype.equals(DataType.from('int64')))
+    assert.equal(merged.getField('venue').nullable, true)
+    assert.equal(merged.getField('price').nullable, true)
+    assert.deepEqual(merged.keys(), ['id', 'venue', 'price'])
+
+    assert.ok(DataType.from('int32').mergeWith('int64', false).equals(DataType.from('int32')))
+    assert.ok(DataType.from('utf8').mergeWith('binary').equals(DataType.from('binary')))
+    assert.ok(DataType.from('int64').mergeWith('utf8').equals(DataType.from('utf8')))
+
+    const field = new Field('price', 'int32', false).mergeWith(new Field('price', 'int64', true))
+    assert.ok(field.dtype.equals(DataType.from('int64')))
+    assert.equal(field.nullable, true)
+    assert.throws(() => DataType.from('boolean').mergeWith('int64'))
     ```
 
 ## Item access reaches a child, never metadata
@@ -357,9 +449,34 @@ Subscripting a `Field` or a `DataType` reaches a child: a `str` is a name, an `i
 
 === "JavaScript"
 
-    !!! note "Rust first"
-        The JavaScript binding reaches children through `dtype` with `at`, `getByName`, and
-        `keys`; the shared subscript vocabulary lands with the rest of the lifecycle surface.
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Field } = require('yggdryl')
+
+    const order = new Field(
+      'order',
+      DataType.fromFields([
+        new Field('id', 'int64', false),
+        new Field('line', DataType.fromFields([new Field('price', 'float64', false)]), false),
+      ]),
+      false,
+      { owner: 'trading' },
+    )
+
+    // JavaScript has no subscripts: the same lookups are named calls.
+    assert.equal(order.field('id').dtype.toString(), 'int64')
+    assert.equal(order.getFieldAt(-1).name, 'line')
+    assert.equal(order.field('line').field('price').dtype.toString(), 'float64')
+
+    order.setField('venue', new Field('venue', 'utf8'))
+    assert.equal(order.fieldLen, 3)
+    order.setField(0, new Field('id', 'utf8', false))
+    assert.equal(order.field('id').dtype.toString(), 'utf8')
+    assert.equal(order.removeField('venue').name, 'venue')
+
+    assert.equal(order.get('owner'), 'trading')
+    assert.equal(order.getField('owner'), null)
+    ```
 
 | | path (`str`) | position (`int`) |
 | --- | --- | --- |
@@ -523,7 +640,7 @@ Python spells the class accessor `into_field` because a `@scalar` class converts
 
 A `Field` states more about a batch than its shape. A
 [`partition:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
-column is *derived* from another; a [`digest:`](../xxhash/values.md) role says a column *holds*
+column is *derived* from another; a [`digest:`](../hashing.md) role says a column *holds*
 the row's hash. `apply_arrow_batch` is the one entry point that asks every declaring protocol,
 in the order their answers depend on: `cast` reconciles the batch to this root, `partition`
 computes the derived columns, and `digest` fills the holders last, over the rows as they
@@ -657,8 +774,8 @@ protocol is done, so a required column its protocol did not write is still refus
     assert stream.read_all().num_rows == 1
     ```
 
-    !!! note "Rust-only"
-        JavaScript has no counterpart yet; a batch crosses it as copied IPC.
+    !!! note "Rust and Python only"
+        JavaScript binds no `applyArrowBatch` on a `Field`; a batch crosses it as copied IPC.
 
 ## Serializing a schema
 
@@ -704,9 +821,10 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
 === "JavaScript"
 
-    !!! note "Rust first"
-        The YAML and TOML pair lands in the JavaScript binding once the core surface settles;
-        `toJSON` is already there.
+    !!! note "Rust and Python only"
+        JavaScript has no YAML or TOML writer; it reads and writes the same model as JSON
+        through `toJSON`, `toJSONBytes`, `Field.fromJSON`, and `Field.fromJSONBytes`
+        ([Strings & bytes](text.md#serialized-shape) round-trips one).
 
 ## A readable rendering
 
@@ -771,8 +889,8 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 
 === "JavaScript"
 
-    !!! note "Rust first"
-        `pretty` lands in the JavaScript binding once the core surface settles.
+    !!! note "Rust and Python only"
+        JavaScript has no `pretty`; `toString` is the compact form that round-trips.
 
 ## Comparing two fields
 

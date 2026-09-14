@@ -8,9 +8,10 @@
 | --- | --- |
 | Owns | `IORecordOptions`, `RecordOptions`, each encoding's options struct |
 | Root parts | `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), `dtype` (none), `metadata` (empty) |
-| Shared fields | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, `filter_partitions` |
+| Shared fields | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, `filter_partitions` |
 | Identity | `Clone`, `Eq`, `Ord`, `Hash` include the variant; `stable_hash()` is run-stable over that variant's full configuration |
 | `batch_row_size` | rows per batch; [`pstream_bytes`](../holder/iobase/bytes.md) `batch_size` counts bytes |
+| `batch_byte_size` | Arrow in-memory bytes per batch, whichever of it and `batch_row_size` binds first; a target rather than a ceiling, and a non-zero bound yields at least one row; Rust only |
 | `commit_row_size` | unset publishes once; `N` publishes `N`-row prefixes plus the remainder |
 | Derivation | `for_media_type` reads the base type only |
 | Bindings | `RecordOptions` in Python and JavaScript; encoding structs stay in Rust |
@@ -65,7 +66,13 @@ The media type names the encoding, so no format argument is passed.
 
     # A setting one encoding has reads as None on an encoding that has none.
     assert options.max_row_group_size == 1_048_576
-    assert RecordOptions("trades.arrows").max_row_group_size is None
+    stream = RecordOptions("trades.arrows")
+    assert str(stream.mime_type) == "application/vnd.apache.arrow.stream"
+    assert stream.max_row_group_size is None
+
+    # `level` is shared, and applies where the handle declares a content coding.
+    stream.level = 9
+    assert stream.level == 9
     ```
 
 === "JavaScript"
@@ -89,7 +96,17 @@ The media type names the encoding, so no format argument is passed.
 
     // A setting one encoding has reads as null on an encoding that has none.
     assert.equal(options.maxRowGroupSize, 1_048_576)
-    assert.equal(RecordOptions.from('trades.arrows').maxRowGroupSize, null)
+    const stream = RecordOptions.from('trades.arrows')
+    assert.equal(stream.mimeType.toString(), 'application/vnd.apache.arrow.stream')
+    assert.equal(stream.maxRowGroupSize, null)
+
+    // `level` is shared, and applies where the handle declares a content coding.
+    stream.level = 9
+    assert.equal(stream.level, 9)
+
+    // `with*` returns a new value rather than changing the one it was built from.
+    assert.equal(options.withSafe(true).safe, true)
+    assert.equal(options.safe, false)
     ```
 
 ## Declared root
@@ -218,7 +235,7 @@ The media type names the encoding, so no format argument is passed.
 
 A field shapes rows by applying, not by casting: a declaration is the cast *and* the `partition:` and `digest:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection in between only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
 
-Rust and Python; JavaScript is Rust-only here.
+Rust; Python binds the same `RecordOptions.apply_arrow_batch` / `apply_arrow_reader`, and JavaScript binds neither.
 
 ```rust
 use arrow_array::RecordBatch;
@@ -251,25 +268,32 @@ Rust only.
 ```rust
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::media::ipc::IpcOptions;
-use yggdryl::MimeType;
+use yggdryl::{Level, MimeType};
 
-let options: RecordOptions = IpcOptions::new()
+let mut ipc = IpcOptions::new()
     .with_name("trade")
     .with_safe(false)
-    .with_commit_row_size(10_000)
-    .into();
+    .with_level(Level::BEST);
+// The fields are public, so a setting can also be written directly.
+ipc.commit_row_size = Some(10_000);
+ipc.batch_byte_size = Some(1 << 20);
+assert_eq!(ipc.level(), Level::BEST);
 
+// It converts into the enum every encoding's settings share.
+let options: RecordOptions = ipc.into();
 assert_eq!(options.mime_type(), MimeType::ARROW_STREAM);
 assert_eq!(options.name(), "trade");
 assert!(!options.safe());
+assert_eq!(options.level(), Level::BEST);
 assert_eq!(options.commit_row_size(), Some(10_000));
+assert_eq!(options.batch_byte_size(), Some(1 << 20));
 ```
 
 ## Requiring a datatype
 
 `require_field` is what a write calls, and a datatype is the one part with no default.
 
-Rust and Python; JavaScript is Rust-only here.
+Rust; Python binds the same `RecordOptions.require_field`, and JavaScript does not.
 
 ```rust
 use yggdryl::media::{IORecordOptions, RecordOptions};

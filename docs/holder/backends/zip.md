@@ -87,7 +87,7 @@ Listing reads no member byte: the archive's directory is already the index, so o
 
 ## A member is addressed by a fragment
 
-The member path is the URL fragment, so one location carries both facts - which archive, and which member of it - and the archive's own name never becomes a directory that happens to end in `.zip`.
+The member path is the URL fragment, so one location carries both facts - which archive, and which member of it - and the archive's own name never becomes a directory that happens to end in `.zip`. Hive partitions read from both halves, so a lake can partition the archives and partition again inside one.
 
 ```rust
 use yggdryl::holder::{Holder, zip};
@@ -103,9 +103,20 @@ assert_eq!(
 
 // The representation comes from the member's own name, not from `day.zip`.
 assert_eq!(*root.child_by_path("logs/app.log.gz")?.media_type().base(), yggdryl::MimeType::PLAIN_TEXT);
+
+// Partitions spelled by the archive's location, then by the member's path.
+let partitioned = zip::mount(Holder::file("/lake/region=eu/day.zip")?);
+assert_eq!(
+    partitioned.child_by_path("year=2024/month=01/part-0.parquet")?.partitions(),
+    vec![
+        ("region".to_owned(), "eu".to_owned()),
+        ("year".to_owned(), "2024".to_owned()),
+        ("month".to_owned(), "01".to_owned()),
+    ],
+);
 ```
 
-That makes the location a round trip: what a member reports is what reopens it.
+Because one URL carries both the archive and the member, the location is a round trip: what a member reports is what reopens it.
 
 ```rust
 use yggdryl::holder::{Holder, zip};
@@ -124,25 +135,6 @@ let archive = zip::from_url(&yggdryl::Url::from_path(&path)?)?;
 assert!(archive.is_container());
 
 let _ = std::fs::remove_file(&path);
-```
-
-Hive partitions read from both halves, so a lake can partition the archives and partition again inside one.
-
-```rust
-use yggdryl::holder::{Holder, zip};
-use yggdryl::IOBase;
-
-let root = zip::mount(Holder::file("/lake/region=eu/day.zip")?);
-let member = root.child_by_path("year=2024/month=01/part-0.parquet")?;
-
-assert_eq!(
-    member.partitions(),
-    vec![
-        ("region".to_owned(), "eu".to_owned()),
-        ("year".to_owned(), "2024".to_owned()),
-        ("month".to_owned(), "01".to_owned()),
-    ],
-);
 ```
 
 ## Reading a member costs what its coding costs
@@ -168,9 +160,11 @@ assert!(member.read_range_bytes(9_999, 16)?.is_empty());
 
 A **compressed** member has no decoded seek. What it has instead is a map: a compressed member is written as units a stated stride apart, and its record says where each begins, so a positional read decodes from the point at or before the offset and discards the rest of that one unit through a bounded scratch buffer. What a read decodes is therefore bounded by the stride, not by the offset - which is what makes a scan of a member linear where decoding from the first byte every time made it quadratic.
 
+A member **another writer** compressed carries no map, which reads honestly as an empty one: every positional read of it decodes from the member's first byte. A stride of zero writes such a solid member, which is what the second archive below holds.
+
 ```rust
 use yggdryl::holder::{Buffer, Holder, zip::Archive};
-use yggdryl::IOBase;
+use yggdryl::{Codec, IOBase};
 
 let payload: Vec<u8> = b"symbol,price\nAAPL,187.23\n".repeat(2_048);
 let root = Archive::new(Holder::buffer(Buffer::new()))
@@ -193,35 +187,32 @@ member.open()?;
 assert!(member.opened());
 assert_eq!(member.read_range_bytes(0, 4)?, payload[0..4]);
 member.close()?;
-```
 
-The map rides the central directory, so it is bounded rather than allowed to grow: a member of any size states at most 2048 points, and a larger one widens its stride instead. A stride of zero writes solid members, which are smaller and readable only from their first byte.
-
-A map states bytes. Another tool that rewrote a member while keeping the record's extra fields would leave one that lies, so a point is proven against the coding's own evidence - the empty stored block a DEFLATE full flush ends with, the magic a Zstandard frame begins with - before it is used, and a map that fails the proof is dropped rather than believed. That is one eight-byte read per member, however many seeks follow.
-
-A member **another writer** compressed carries no map, which reads honestly as an empty one: every positional read of it decodes from the member's first byte, exactly as before. `IOBase::open` is the answer for many reads of one such member.
-
-```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
-use yggdryl::{Codec, IOBase};
-
-// A solid member is what a writer that states no points produces.
-let payload = b"symbol,price\nAAPL,187.23\n".repeat(512);
-let root = Archive::new(Holder::buffer(Buffer::new()))
+// A solid member is what a writer that states no points produces: an empty map,
+// read from the member's first byte.
+let solid = Archive::new(Holder::buffer(Buffer::new()))
     .with_restart_stride(0)
     .mount();
-root.archive().write_member_with("blob.bin", &payload, Codec::Deflate)?;
-root.archive().flush()?;
+solid.archive().write_member_with("blob.bin", &payload, Codec::Deflate)?;
+solid.archive().flush()?;
 
-let entry = root.archive().get_entry("blob.bin")?.expect("the member");
+let entry = solid.archive().get_entry("blob.bin")?.expect("the member");
 assert!(entry.restarts().is_empty());
 assert_eq!(entry.restarts().before(10_000), (0, 0));
-assert_eq!(root.as_leaf("blob.bin")?.read_range_bytes(10_000, 8)?, payload[10_000..10_008]);
+assert_eq!(solid.as_leaf("blob.bin")?.read_range_bytes(10_000, 8)?, payload[10_000..10_008]);
 ```
+
+The map rides the central directory, so it is bounded rather than allowed to grow: a member of any size states at most 2048 points, and a larger one widens its stride instead. Solid members are smaller and readable only from their first byte; `IOBase::open` is the answer for many reads of one.
+
+A map states bytes. Another tool that rewrote a member while keeping the record's extra fields would leave one that lies, so a point is proven against the coding's own evidence - the empty stored block a DEFLATE full flush ends with, the magic a Zstandard frame begins with - before it is used, and a map that fails the proof is dropped rather than believed. That is one eight-byte read per member, however many seeks follow.
 
 ## Writing a member streams it in
 
 There is one member writer and it streams: the source is read a batch at a time, encoded into one window, and the window written out when it fills. Nothing holds a member whole, so a member larger than memory costs a window rather than its own size.
+
+The sizes and the digest are only known when the last byte is encoded, so a member that outgrows its first window has its header written with room reserved for them and settled afterwards. That is one extra write, and none at all for a member whose whole encoded form fit the window.
+
+A ZIP member is still one compressed unit, so a *positional* write materializes the decoded member, applies the write, and republishes it whole on `flush` - the same shape a [content coding](../../coding/index.md) has. A whole write does not: it never decodes the member it replaces.
 
 ```rust
 use yggdryl::holder::{Buffer, Holder, zip::Archive};
@@ -235,17 +226,8 @@ root.archive().flush()?;
 assert_eq!(entry.size(), 102_400);
 assert!(entry.compressed_size() < entry.size());
 assert_eq!(root.as_leaf("trades.csv")?.read_range_bytes(0, 6)?, b"symbol");
-```
 
-The sizes and the digest are only known when the last byte is encoded, so a member that outgrows its first window has its header written with room reserved for them and settled afterwards. That is one extra write, and none at all for a member whose whole encoded form fit the window.
-
-A ZIP member is still one compressed unit, so a *positional* write materializes the decoded member, applies the write, and republishes it whole on `flush` - the same shape a [content coding](../../coding/index.md) has. A whole write does not: it never decodes the member it replaces.
-
-```rust
-use yggdryl::holder::{Buffer, Holder, zip::Archive};
-use yggdryl::IOBase;
-
-let root = Archive::new(Holder::buffer(Buffer::new())).mount();
+// A positional write republishes the member whole on its flush.
 let mut member = root.as_leaf("notes.txt")?;
 
 member.write_all_bytes(b"symbol,price")?;

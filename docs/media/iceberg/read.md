@@ -142,62 +142,7 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
 
 ## Planning a scan from the metadata
 
-Rust only; [Filtered reads and filtered writes](#filtered-reads-and-filtered-writes) asserts the same counts from Python and JavaScript.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
-    use yggdryl::holder::local::Folder;
-    use yggdryl::{arrow, DataType};
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use std::sync::Arc;
-
-    let mut schema = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("venue"),
-    ])?
-    .required_field("row");
-    assign_field_ids(&mut schema, 1)?;
-
-    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-plan");
-    let _ = std::fs::remove_dir_all(&path);
-    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
-    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
-
-    // One commit per venue, so the manifest list has three rows to prune.
-    for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON")] {
-        let batch = RecordBatch::try_new(
-            schema.clone().into_arrow_schema()?,
-            vec![
-                Arc::new(Int64Array::from(vec![id])),
-                Arc::new(StringArray::from(vec![Some(venue)])),
-            ],
-        )?;
-        table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
-    }
-
-    // Nothing is listed: the snapshot names the manifest list, whose per-partition
-    // summaries exclude two manifests before either Avro file is opened.
-    let plan = table.plan(&[("venue", "XNYS")])?;
-    assert_eq!(plan.tasks.len(), 1);
-    assert_eq!(plan.record_count()?, 1);
-    assert_eq!(plan.manifests_read, 1);
-    assert_eq!(plan.manifests_skipped(), 2);
-
-    // A filter on a column the spec does not partition on prunes on the file's
-    // own statistics instead, and then filters the rows the survivors hold.
-    let bounded = table.plan(&[("id", "3")])?;
-    assert_eq!(bounded.tasks.len(), 1);
-    assert_eq!(bounded.files_skipped(), 2);
-
-    let rows: usize = table
-        .scan_where(&[("id", "3")], None)?
-        .map(|batch| batch.unwrap().num_rows())
-        .sum();
-    assert_eq!(rows, 1);
-    ```
+A plan is decided from metadata before any data file opens. [Filtered reads and filtered writes](#filtered-reads-and-filtered-writes) plans a table of three venues and asserts it in every language: a partition filter excludes two manifests unopened, and a filter on a column the spec does not partition prunes two files on their own statistics, then filters the rows the survivor holds.
 
 Every level prunes:
 
@@ -425,7 +370,14 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
 
     // A filter on a column the spec does not partition on prunes on the file's
     // own recorded bounds instead, then filters the rows the survivors hold.
-    assert_eq!(table.plan(&[("id", "3")])?.files_skipped(), 2);
+    let bounded = table.plan(&[("id", "3")])?;
+    assert_eq!(bounded.tasks.len(), 1);
+    assert_eq!(bounded.files_skipped(), 2);
+    let matched: usize = table
+        .scan_where(&[("id", "3")], None)?
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .sum::<Result<usize, _>>()?;
+    assert_eq!(matched, 1);
 
     // A filtered overwrite replaces the files the filter selects and carries
     // every other file into the new snapshot at its own path, statistics and all.

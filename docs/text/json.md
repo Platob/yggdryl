@@ -23,19 +23,22 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 === "Rust"
 
     ```rust
-    use yggdryl::{Scalar};
     use yggdryl::text::json;
+    use yggdryl::{from_json_scalar, into_json_scalar, Scalar};
 
     let value = json::from_utf8(r#"{"symbol":"AAPL","quantity":100}"#)?;
+    let encoded = json::into_utf8(&value)?;
 
     assert_eq!(
         value.get_key_str("symbol").and_then(Scalar::as_str),
         Some("AAPL")
     );
-    assert_eq!(
-        json::into_utf8(&value)?,
-        r#"{"quantity":100,"symbol":"AAPL"}"#
-    );
+    assert_eq!(encoded, r#"{"quantity":100,"symbol":"AAPL"}"#);
+
+    // The crate-root inferring entry points answer the same value, from text or bytes.
+    assert_eq!(from_json_scalar(r#"{"symbol":"AAPL","quantity":100}"#)?, value);
+    assert_eq!(into_json_scalar(&value)?, encoded);
+    assert_eq!(from_json_scalar(encoded.as_bytes())?, value);
     ```
 
 === "Python"
@@ -46,10 +49,12 @@ Loads return only types the JSON grammar proves; dumps interoperate.
 
     natural = json.loads('{"symbol":"AAPL","quantity":100}')
     value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
+    encoded = json.dumps(value)
 
     assert value.kind == "record"
     assert value.as_py() == natural == {"quantity": 100, "symbol": "AAPL"}
-    assert json.dumps(value) == b'{"quantity":100,"symbol":"AAPL"}'
+    assert encoded == b'{"quantity":100,"symbol":"AAPL"}'
+    assert json.loads(encoded, cls=Scalar) == value
     ```
 
 === "JavaScript"
@@ -66,50 +71,14 @@ Loads return only types the JSON grammar proves; dumps interoperate.
     assert.equal(value.kind, 'record')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
+    assert.equal(encoded.toString(), '{"quantity":100,"symbol":"AAPL"}')
     assert.deepEqual(json.loads(encoded), natural)
+    assert.ok(json.loads(encoded, { scalar: true }).equals(value))
     ```
 
 ## Inferring entry point
 
-`from_json_scalar`, `from_json_scalar_with_field`, and `into_json_scalar` are the [inferring entry points](index.md) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{from_json_scalar, into_json_scalar};
-
-    let value = from_json_scalar(r#"{"symbol":"AAPL","quantity":100}"#)?;
-    let encoded = into_json_scalar(&value)?;
-
-    assert_eq!(encoded, r#"{"quantity":100,"symbol":"AAPL"}"#);
-    assert_eq!(from_json_scalar(encoded.as_bytes())?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import Scalar
-    from yggdryl.text import json
-
-    value = json.loads('{"symbol":"AAPL","quantity":100}', cls=Scalar)
-    encoded = json.dumps(value)
-
-    assert encoded == b'{"quantity":100,"symbol":"AAPL"}'
-    assert json.loads(encoded, cls=Scalar) == value
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { json } = require('yggdryl')
-
-    const value = json.loads('{"symbol":"AAPL","quantity":100}', { scalar: true })
-    const encoded = json.dumps(value)
-
-    assert.equal(encoded.toString(), '{"quantity":100,"symbol":"AAPL"}')
-    assert.ok(json.loads(encoded, { scalar: true }).equals(value))
-    ```
+`from_json_scalar`, `from_json_scalar_with_field`, and `into_json_scalar` are the [inferring entry points](index.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Natural values and exact Fields
 
@@ -123,7 +92,7 @@ Other native values use interoperable spellings, without a private marker envelo
 | non-finite float | error |
 | Mapping with non-string keys | error |
 
-A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to recover exact types.
+A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to recover exact types. A [string](../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
 
 === "Rust"
 
@@ -132,46 +101,7 @@ A schemaless reader sees strings; pass a native [`Field`](../types/field.md) to 
     use yggdryl::text::json;
 
     let amount = Field::new("amount", DataType::decimal128(8, 2)?, false);
-    let decoded = json::from_utf8_with_field(r#""12.50""#, &amount)?;
-
-    assert_eq!(decoded, Scalar::d128(1_250, 2));
-    ```
-
-=== "Python"
-
-    ```python
-    from decimal import Decimal
-
-    from yggdryl import Field
-    from yggdryl.text import json
-
-    amount = Field("amount", "decimal128(8, 2)", nullable=False)
-
-    assert json.loads('"12.50"', field=amount) == Decimal("12.50")
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Field, json } = require('yggdryl')
-
-    const amount = new Field('amount', 'decimal128(8, 2)', false)
-    const decoded = json.loads('"12.50"', { field: amount })
-
-    assert.equal(decoded.kind, 'd128')
-    assert.equal(decoded.unscaled, 1250n)
-    ```
-
-A Struct Field yields one ordered row `Sequence` in Rust, a dictionary or object elsewhere; Python `cls=SomeDataclass` materializes it.
-
-A [string](../types/text.md) Field puts its layout, charset and width on the value it reads and checks its bound, naming the bytes it counted; a byte Field reads base64 and holds the payload to its width or maximum the same way.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{DataType, Field, Scalar};
-    use yggdryl::text::json;
+    assert_eq!(json::from_utf8_with_field(r#""12.50""#, &amount)?, Scalar::d128(1_250, 2));
 
     let symbol = Field::new("symbol", DataType::fixed_ascii(4)?, false);
     let held = json::from_utf8_with_field(r#""AAPL""#, &symbol)?;
@@ -188,8 +118,16 @@ A [string](../types/text.md) Field puts its layout, charset and width on the val
 === "Python"
 
     ```python
+    from decimal import Decimal
+
     from yggdryl import DataType, Field, Scalar
     from yggdryl.text import json
+
+    amount = Field("amount", "decimal128(8, 2)", nullable=False)
+    exact = json.loads('"12.50"', field=amount, cls=Scalar)
+    assert exact.kind == "d128"
+    assert exact.unscaled == 1_250
+    assert json.loads('"12.50"', field=amount) == Decimal("12.50")
 
     symbol = Field("symbol", "fixed_ascii(4)", nullable=False)
     held = json.loads('"AAPL"', field=symbol, cls=Scalar)
@@ -214,6 +152,12 @@ A [string](../types/text.md) Field puts its layout, charset and width on the val
     const assert = require('node:assert/strict')
     const { DataType, Field, json } = require('yggdryl')
 
+    const amount = new Field('amount', 'decimal128(8, 2)', false)
+    const decoded = json.loads('"12.50"', { field: amount })
+    assert.equal(decoded.kind, 'd128')
+    assert.equal(decoded.unscaled, 1250n)
+    assert.equal(decoded.scale, 2)
+
     const symbol = new Field('symbol', 'fixed_ascii(4)', false)
     const held = json.loads('"AAPL"', { field: symbol, scalar: true })
 
@@ -228,6 +172,8 @@ A [string](../types/text.md) Field puts its layout, charset and width on the val
     const key = new Field('key', 'fixed_size_binary(2)', false)
     assert.deepEqual(json.loads('"AP8="', { field: key }), Buffer.from([0, 255]))
     ```
+
+A Struct Field yields one ordered row `Sequence` in Rust, a dictionary or object elsewhere; Python `cls=SomeDataclass` materializes it.
 
 ## Documents and streams
 
@@ -276,47 +222,7 @@ Reader iterators yield one `Result<Scalar>` at a time and writers stream to `Wri
 
 ## Formatting
 
-Rust `Formatting::indented(n)` adds layout and `Formatting::compact()` removes it; neither changes the parsed value.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::Formatting;
-    use yggdryl::{Scalar};
-    use yggdryl::text::json;
-
-    let value = Scalar::from_record([("id", Scalar::from(1_i64))])?;
-    let pretty =
-        json::into_utf8_with_formatting(&value, Formatting::indented(2))?;
-
-    assert_eq!(pretty, "{\n  \"id\": 1\n}");
-    assert_eq!(json::from_utf8(&pretty)?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.text import json
-
-    pretty = json.dumps({"child": {"id": 1}}, indent=2)
-    compact = json.dumps({"child": {"id": 1}}, indent=None)
-
-    assert b'\n  "child"' in pretty
-    assert compact == b'{"child":{"id":1}}'
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { json } = require('yggdryl')
-
-    const pretty = json.dumps({ child: { id: 1 } }, { indent: 2 })
-    const compact = json.dumps({ child: { id: 1 } }, { indent: null })
-
-    assert.ok(pretty.includes(Buffer.from('\n  "child"')))
-    assert.deepEqual(compact, Buffer.from('{"child":{"id":1}}'))
-    ```
+Rust `Formatting::indented(n)` adds layout and `Formatting::compact()` removes it; neither changes the parsed value. JSON is compact by default, and `indent=n` / `{ indent: n }` indents each nesting level by `n` spaces; the [structured-text Formatting](index.md#formatting) example pins JSON's exact pretty bytes in all three languages and its compact bytes in Python and JavaScript.
 
 ## `IOBase` and content coding
 

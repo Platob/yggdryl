@@ -21,8 +21,7 @@ values cross the JavaScript boundary.
 | `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text/index.md) |
 | `avro` | [Avro](../media/avro.md) |
 | `gzip`, `zlib`, `zstd` | [coding](../coding/index.md) |
-| `xxhash`, `Digest` | [xxhash](../xxhash/index.md) |
-| `txhash`, `TxHash`, `TxHasher` | [txhash](../txhash/index.md) |
+| `hashing` (`hashing.xxhash`, `hashing.txhash`), `Digest`, `TxHash`, `TxHasher` | [hashing](../hashing.md) and this page |
 
 ## Use
 
@@ -124,11 +123,18 @@ A native `Field` or a field expression is accepted too.
 ## Scalars cross as their natural shape
 
 A JavaScript value becomes the nearest native scalar, and comes back as the
-nearest JavaScript value to that.
+nearest JavaScript value to that. Reconstructing a lost shape takes your own
+code.
 
 ```javascript
 const { yaml } = require('yggdryl')
 const assert = require('node:assert/strict')
+
+class Order {
+  constructor(id) {
+    this.id = id
+  }
+}
 
 const decoded = yaml.loads(yaml.dumps({
   venues: new Set(['XPAR', 'XNAS']),
@@ -137,6 +143,7 @@ const decoded = yaml.loads(yaml.dumps({
   match: /a\/b/giu,
   raw: Buffer.from([0, 255]),
   id: 2n ** 100n,
+  order: new Order(7),
 }))
 
 assert.deepEqual(decoded.venues, ['XPAR', 'XNAS'])        // a Set is a list
@@ -145,6 +152,11 @@ assert.equal(decoded.source, 'https://example.com/feed')  // a URL is its href
 assert.equal(decoded.match, '/a\\/b/giu')                 // a RegExp is its literal
 assert.deepEqual(decoded.raw, Buffer.from([0, 255]))
 assert.equal(decoded.id, 2n ** 100n)
+assert.deepEqual(decoded.order, { id: 7 })                // an instance is its fields
+
+const order = Object.assign(new Order(0), decoded.order)
+assert.ok(order instanceof Order)
+assert.deepEqual(new Set(decoded.venues), new Set(['XPAR', 'XNAS']))
 ```
 
 | You write | It is stored as | It reads back as |
@@ -165,26 +177,6 @@ assert.equal(decoded.id, 2n ** 100n)
 | `DataType`, `Field` | core structural mapping | plain object |
 | `Uri`, `Url`, `Urn` | canonical string | `string` |
 | `Scalar` | itself | `Date` when one holds it exactly, otherwise `Scalar` |
-
-Reconstructing a lost shape takes your own code.
-
-```javascript
-const { yaml } = require('yggdryl')
-const assert = require('node:assert/strict')
-
-class Order {
-  constructor(id) {
-    this.id = id
-  }
-}
-
-const decoded = yaml.loads(yaml.dumps({ order: new Order(7), venues: new Set(['XPAR']) }))
-assert.deepEqual(decoded, { order: { id: 7 }, venues: ['XPAR'] })
-
-const order = Object.assign(new Order(0), decoded.order)
-assert.ok(order instanceof Order)
-assert.deepEqual(new Set(decoded.venues), new Set(['XPAR']))
-```
 
 No name in a document makes this binding look up a class or run a constructor.
 `Date`, `Buffer`, and `Map` are read off the intrinsic prototypes.
@@ -426,9 +418,9 @@ assert.equal(schema.withoutPartitionFields().dtype.length, 1)
 
 ## Row digest fields
 
-A Struct field's direct children define a row digest. Explicit `component`
-roles select the exact set, otherwise every child except a `holder`
-contributes, both in declaration order.
+A Struct field's direct children define a row digest: every child except a
+`holder`, in declaration order. A holder narrows that on itself with
+`digest:sources`, so the fields it reads stay unmarked.
 
 ```javascript
 const { DataType, Field } = require('yggdryl')
@@ -646,6 +638,7 @@ Records are pulled in chunks of
 `options.batchRowSize` rows, 1,024 when unset.
 
 ```javascript
+const assert = require('node:assert/strict')
 const { Field, IOBase, MimeType, fields } = require('yggdryl')
 
 class Trade {
@@ -667,6 +660,8 @@ handle.mediaType = MimeType.ARROW_STREAM
 handle.overwriteRecords(new Trade({ id: 1n, venue: 'XNAS' }))
 handle.appendRecords([new Trade({ id: 2n, venue: 'XNYS' })])
 const typed = [...handle.readRecords(Trade)]
+assert.ok(typed.every((row) => row instanceof Trade))
+assert.deepEqual(typed.map((row) => row.venue), ['XNAS', 'XNYS'])
 ```
 
 An unbounded async write spools bounded IPC chunks to one private temporary
@@ -711,66 +706,42 @@ fs.rmSync(path.dirname(root), { recursive: true, force: true })
 `Compaction` are the classes; `assignFieldIds`, `canPromote`, `schemaFromJson`,
 and `schemaIntoJson` are the functions.
 
-## An Iceberg table end to end
-
 A warehouse is one `iceberg.Catalog` over a folder, and a dotted name is all a
-writer needs. Every rows argument is widened by `BatchReader.from`, so an Arrow
-JS table appends directly.
-
-```javascript
-const assert = require('node:assert/strict')
-const fs = require('node:fs')
-const os = require('node:os')
-const path = require('node:path')
-const arrow = require('apache-arrow')
-const { iceberg } = require('yggdryl')
-
-const warehouse = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-doc-'))
-const catalog = new iceberg.Catalog(warehouse)
-
-// Rows and a dotted name are enough: the first append creates the table.
-const rows = (ids, venues) =>
-  new arrow.Table({
-    id: arrow.vectorFromArray(ids, new arrow.Int64()),
-    venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
-  })
-const table = catalog.append('nyc.trades', rows([1n, 2n], ['XNAS', 'XNYS']))
-const past = table.currentSnapshot.snapshotId
-table.append(rows([3n], ['XASE']))
-assert.deepEqual(catalog.namespace('nyc').tables.names(), ['trades'])
-assert.equal(table.scan().intoTable().numRows, 3)
-
-// A column change is a chain recorded on the update, committed once.
-table.updateSchema().addColumn('', 'price: float64').commit()
-assert.equal(table.scan().intoTable().getChild('price').get(0), null)
-
-// Undersized files rewrite as one replace commit that reports itself.
-const compaction = table.compact()
-assert.equal(compaction.filesBefore, 2)
-assert.equal(compaction.filesAfter, 1)
-assert.equal(table.scan().intoTable().numRows, 3)
-
-// And nothing rewrote history: the first snapshot reads as it was written.
-assert.deepEqual(
-  table.scanAt(past).intoTable().getChild('id').toArray(),
-  BigInt64Array.from([1n, 2n]),
-)
-
-fs.rmSync(warehouse, { recursive: true, force: true })
-```
-
-The [iceberg](../media/iceberg/index.md) pages show each step in Rust and
-[Python](python.md).
+writer needs: the first append creates the table. Every rows argument is widened
+by `BatchReader.from`, so an Arrow JS table appends directly, and a schema change
+is a chain recorded on `updateSchema()` and committed once by `commit()`. The
+[catalog](../media/iceberg/catalog.md), [write](../media/iceberg/write.md),
+[schema](../media/iceberg/schema.md), and [read](../media/iceberg/read.md) pages
+show each step - compaction and `scanAt` included - beside its Rust and Python
+form.
 
 ## Digests
 
-`xxhash` carries the four one-shot functions, the four resumable states, and
-`Digest`; `IOBase.readDigest` and `Scalar.digest` reach the same native path.
-XXH32 answers a `number`, the wider algorithms `bigint`.
+`hashing` is the one owner of both digest families, a frozen namespace holding
+`hashing.xxhash` and `hashing.txhash` ([hashing](../hashing.md)); `Digest`,
+`TxHash`, and `TxHasher` are also top-level classes. `hashing.xxhash` carries
+the four one-shot functions, the four resumable states, and `Digest`;
+`IOBase.readDigest` and `Scalar.digest` reach the same native path. XXH32
+answers a `number`, the wider algorithms `bigint`. Every immutable wrapper here
+follows the same convention: `equals`, `compare`, `stableHash`, `clone`,
+`toString`, and `toJSON`. A `Buffer` or `Uint8Array` is hashed in place, an
+`ArrayBuffer` is narrowed to a `Buffer` window, and a `string` is encoded as
+UTF-8.
+
+Each resumable state also exposes `applyArrowBatch(root, batch, force = false)`.
+The root Field's digest metadata selects the row values, and the state supplies
+its algorithm, seed, and secret.
+
+`hashing.txhash` couples an instant with that digest. Every `unix` argument is
+a `bigint`, an integer `number`, a `Date`, timestamp text, or a `Scalar`; the
+coupled columns stay Rust and Python only. `TxHash.intoUuid()` answers the lossy
+UUIDv8 projection of a value with a 64-bit digest as a `uuid` `Scalar`, and
+throws for another digest width or an instant past signed 64-bit nanoseconds.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Scalar, xxhash } = require('yggdryl')
+const { Scalar, TxHash, hashing } = require('yggdryl')
+const { txhash, xxhash } = hashing
 
 const payload = Buffer.from('abc')
 assert.equal(xxhash.xxh32(payload), 0x32d153ff)
@@ -781,30 +752,15 @@ const digest = xxhash.digest(payload, 'xxh3-64')
 assert.equal(digest.toString(), 'xxh3-64:78af5f94892f3950')
 assert.ok(xxhash.Digest.from(digest.toString()).equals(digest))
 assert.equal(Scalar.fromJs('AAPL').digest().value(), Scalar.fromJs('AAPL').stableHash())
-```
-
-Every immutable wrapper here follows the same convention: `equals`, `compare`,
-`stableHash`, `clone`, `toString`, and `toJSON`. A `Buffer` or `Uint8Array` is
-hashed in place, an `ArrayBuffer` is narrowed to a `Buffer` window, and a
-`string` is encoded as UTF-8.
-
-Each resumable state also exposes `applyArrowBatch(root, batch, force = false)`.
-The root Field's digest metadata selects the row values, and the state supplies
-its algorithm, seed, and secret.
-
-`txhash` couples an instant with that digest. Every `unix` argument is a
-`bigint`, an integer `number`, a `Date`, timestamp text, or a `Scalar`; the
-coupled columns stay Rust and Python only ([txhash](../txhash/index.md)).
-
-```javascript
-const assert = require('node:assert/strict')
-const { TxHash, txhash, xxhash } = require('yggdryl')
 
 const value = txhash.txh3('abc', new Date('2023-11-14T22:13:20Z'))
 assert.equal(value.unix, 1_700_000_000_000_000n)
 assert.equal(value.digest.value(), xxhash.xxh3('abc'))
 assert.equal(Buffer.from(value.bytes()).readBigInt64BE(0), value.unix)
 assert.ok(TxHash.from(value.toString()).equals(value))
+assert.strictEqual(txhash.TxHash, TxHash)
+// The instant restated to nanoseconds, then the digest's low 58 bits.
+assert.equal(value.intoUuid().asJs(), '97979cfe-362a-8000-80af-5f94892f3950')
 ```
 
 ## FIX is a namespace
@@ -812,23 +768,24 @@ assert.ok(TxHash.from(value.toString()).equals(value))
 `fix.FixRegistry`, `fix.FixMsg`, `fix.MsgType`, `fix.FixCodec`,
 `fix.FixMessages`, `fix.FixLifecycle`, `fix.Plugin`, `fix.Plugins`,
 `fix.schema()`, `fix.schemaCarrying()`, `fix.schemaTags()`, `fix.crateFields()`,
-`fix.pluginFields()`, `fix.globalRegistry()` and `fix.installGlobalRegistry()`
-are the whole surface: the registry, message definitions, codec, messages and
-lazy iterators. The namespace holds no constant: a dictionary is one namespace
-of tags and names, an identity is the number `field.fix.id` derives from both,
-and a dictionary's membership is `fix:branches` on the field it contributed
-to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
-`id`, `tag`, `tags`, `aliases`, `branches`, `nulls`, `directions`, `identifiers`,
-`description`, and the definition metadata `counter`, `component` and
-`msgtype`; `codes` has no accessor pair in JavaScript - `codeName(value)` and
-`codeValue(text)` read the inline enumeration, which is written as the raw
-`fix:codes` metadata.
+`fix.pluginFields()`, `fix.pluginMessage()`, `fix.globalRegistry()` and
+`fix.installGlobalRegistry()` are the whole surface: the registry, message
+definitions, codec, messages and lazy iterators. The namespace holds no
+constant: a dictionary is one namespace of tags and names, an identity is the
+number `field.fix.id` derives from both, and a dictionary's membership is
+`fix:branches` on the field it contributed to. The `fix:` vocabulary is typed
+accessor pairs on the `field.fix` view: `id`, `tag`, `tags`, `aliases`,
+`branches`, `nulls`, `directions`, `identifiers`, `description`, and the
+definition metadata `counter`, `component` and `msgtype`; `tag`, `tags` and
+`counter` take positive tags only, and `codes` has no accessor pair in
+JavaScript - `codeName(value)` and `codeValue(text)` read the inline
+enumeration, which is written as the raw `fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
 | tag key | a `number`, coerced once and checked exactly |
 | identifier | a `number`: the signed 32-bit digest of a tag and a name, what `field.fix.id` answers; `fieldById`, `getFieldById`, `removeById`, `message.byId` and `getById` take it exactly - no fold, no tiering - and a fractional or out-of-`i32` number is refused rather than narrowed. A bare number anywhere else is a tag, never an identifier |
-| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
+| `FixMsg.arrivals()` | `[tag, key, value]` tuples, flattened pre-order, so a group's members follow the counter pair heading them; a key no field resolves, named or numeric, carries tag 0 with its raw key |
 | name or path key | a `string`, folded once - ASCII case, `_`, `-` and space dropped; a bare string is a name, never an identifier |
 | membership | `field.fix.branches` is a `string[]`, sorted and lowercase, `[]` where `fix:branches` is absent; assigning an array replaces the list, folded and deduplicated, and `[]` removes the property; `addBranch(name)` is idempotent under the fold and `hasBranch(name)` folds the same way; a name that is empty or carries a comma is refused. `registry.dialects()` lists the distinct names any field or definition carries. Membership is provenance a caller filters on; no lookup consults it |
 | identifier declaration | `field.fix.identifiers` answers `string[]` and accepts an array only, not an arbitrary iterable; the core resolves selectors to direct scalar member names in component order, with no nested-group flattening; `[]` removes the property, and a refusal leaves the field unchanged |
@@ -839,18 +796,19 @@ to. The `fix:` vocabulary is typed accessor pairs on the `field.fix` view:
 | `fromCfbFile(location, dialect?)` | answers `[registry, roots]`; `dialect` stamps every field, group, component and message the file produces on its `fix:branches`, standard tags included, and with none named nothing is stamped; the root element's version is read past |
 | `message.at`, `message.byId` | the failing halves; `value` holds the whole message value |
 | `fromHandle`, `writeInto` | an `IOBase`, a `Url`, or the string naming one |
-| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive` is a read-only number |
+| `FixCodec.lifecycle`, `FixLifecycle` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec and `snapshots(messages)`, one at a time for `fill(message)`, and a `FixMsg` or `null` for `snapshot(message)`, which answers only a chain's first off-grid arrival in a new bucket; `new FixLifecycle(registry?, { intervalNs })` sets the grid, `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) by default, read back as the `bigint` `intervalNs`; `setIntervalNs` repeating it is a no-op, while a nonpositive interval or a change while a chain is live throws and changes nothing; `FixLifecycle.alive` is a read-only number and `clear()` forgets every chain |
 | iteration | registry tag-major, the tag's holder first, then by identifier; message in the root's declared order |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix.crateFields()` answers 21 definitions: 20 scalar fields plus the `altids` Map group; `registry.size` and registry iteration count scalar fields only, while `definitions('groups')` includes `altids` |
+| crate inventory | `fix.crateFields()` answers 25 definitions: 24 scalar fields on tags 65001-65019 and 65021-65025, plus the `altids` Map group at 65020; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 26; `registry.size` and registry iteration count scalar fields only, while `definitions('groups')` includes `altids` |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; `asField()` answers an independent mutable `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until enrichment needs UTF-8 |
-| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parsePluginLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`, and `defaultSendingTime` (a `Scalar`, a `Date`, or `null`, read back as a nanosecond UTC `Scalar` or `null`), the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parsePluginLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
-| `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries; `FixMsg.fromRow(schema, row, registry)` reads a fixed row back, entries included |
+| `FixMsg` | `new FixMsg(field, value, registry)` appends each settled field the root lacks - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `uuid()` and `puuid()` answer those settled `Scalar` values |
+| `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field throws and changes nothing; `FixMsg.fromRow(schema, row, registry)` reads a fixed row carrying the settled fields back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| Plugin | `Plugin.fromJsonBytes` / `fromJsonScalar` return lazy `Plugins`; each selection converts to one flat message with `intoFixmsg` |
+| Plugin | `Plugin.fromJsonBytes` / `fromJsonScalar` return lazy `Plugins`, the latter reading an array or object document; each selection converts to one flat message with `intoFixmsg`; `parsePluginLine` answers one message per configuration a response named, and none for an error-only answer or a body that is not a Jolokia answer |
 
 `altids` uses ordinary `Map` input and answers a `Map` through `Scalar.asJs()`, with no FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
@@ -959,23 +917,34 @@ assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
 assert.equal(venue.remove('TradeID').name, 'TradeID')
-// Symbol remains beside the crate's scalar fields; altids is a group.
-assert.equal(venue.size, 1 + fix.crateFields().filter(field => field.fix.counter === null).length)
+// Symbol remains beside what every registry holds: the crate's 24 scalar
+// fields and the seeded SendingTime and TransactTime; altids is a group.
+assert.equal(new fix.FixRegistry().size, 26)
+assert.equal(venue.size, 27)
 assert.deepEqual(venue.dialects(), [])
 
-// Both collections are lazy native iterators the loader gives the protocol.
+// Both collections are lazy native iterators the loader gives the protocol,
+// and the message root gained the settled fields every message holds.
 assert.equal([...registry].length, registry.size)
-assert.deepEqual([...message].map(([name]) => name), ['symbol'])
+assert.deepEqual(
+  [...message].map(([name]) => name),
+  ['symbol', 'updatedat', 'createdat', 'uuid', 'puuid', 'code', 'snapshotat', 'sendingtime'],
+)
 assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
 assert.equal(message.byId(symbolId).asJs(), 'AAPL')
 assert.equal(message.getById(vendorId), null)
 
-// Generic intake is lazy even when the source yields one message.
+// Generic intake is lazy even when the source yields one message, and an
+// undated one takes the codec's default SendingTime rather than the clock.
 const wire = Buffer.from('8=FIX.4.4|35=D|55=AAPL|10=0|')
-const messages = new fix.FixCodec(registry).parseLine(wire)
+const codec = new fix.FixCodec(registry, { defaultSendingTime: new Date('2026-09-14T00:00:00Z') })
+const messages = codec.parseLine(wire)
 const parsed = messages.next().value
 assert.equal(messages.next().done, true)
 assert.deepEqual(parsed.intoBytes('|'.charCodeAt(0)), wire)
+assert.ok(parsed.updatedat().equals(codec.defaultSendingTime))
+assert.ok(parsed.createdat().equals(parsed.updatedat()))
+assert.throws(() => parsed.remove('uuid'), /mandatory/)
 // A message root the codec builds is not a dictionary member.
 assert.deepEqual(parsed.field.fix.branches, [])
 const tableField = fix.schema(registry)
@@ -989,8 +958,7 @@ codec compiles the rules of the registry it is built over, once.
 
 ```javascript
 const assert = require('node:assert/strict')
-const path = require('node:path')
-const { fix } = require('yggdryl')
+const { Field, fix } = require('yggdryl')
 
 const read = (codec, line) => codec.parseLine(Buffer.from(line)).next().value
 // Without the property, the crate's defaults read the spelled verbs.
@@ -1001,7 +969,10 @@ assert.equal(read(plain, 'sending >> 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), '
 // a copy, so the edit is written back with `update`, and before the codec is
 // built: the codec compiles what its registry states, and a stated table
 // replaces the defaults whole.
-const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+const registry = new fix.FixRegistry()
+const declared = Field.from('MsgDirection: utf8')
+declared.fix.tag = 385
+registry.insert(declared)
 const direction = registry.fieldByTag(385)
 assert.deepEqual(direction.fix.directions, [])
 direction.fix.directions = [
@@ -1031,63 +1002,14 @@ and validates a plain object. Resolution and merging are the core's, on the
 [fix](../fix/index.md) pages.
 
 Bulk configuration responses stream one flat message per configuration a
-response named, and none for a response that named none - so an error-only
-answer and a request with no value are silent. Each message retains the
-ObjectName the read named it by, on `SessionInterface`; what the Jolokia
-exchange wrapped it in reaches no column, and the plugin's fields are directly
-addressable on the message. The bridge's fields are members of
-the `plugin` dictionary and resolve in the one namespace like any other; the
-document's `State` and `Version` attributes are held under `PluginState` and
-`PluginVersion`, because every registry already holds the crate's own `state`
-and `version`, and the arrival record keeps the document's spelling.
-
-```javascript
-const assert = require('node:assert/strict')
-const { fix } = require('yggdryl')
-
-const registry = new fix.FixRegistry()
-registry.withPluginFields()
-// The bridge's fields are members of the `plugin` dictionary; no codec pin
-// names one, since the dictionary is one namespace.
-assert.deepEqual(registry.dialects(), ['plugin'])
-assert.deepEqual(registry.fieldByName('SessionInterface').fix.branches, ['plugin'])
-assert.equal(registry.fieldByName('SessionInterface').fix.tag, 20010)
-assert.equal(registry.fieldByName('PluginState').fix.tag, 20019)
-assert.equal(registry.fieldByName('PluginVersion').fix.tag, 20021)
-// 20001 to 20004 held the Jolokia envelope and are retired, not reused.
-for (const retired of [20001, 20002, 20003, 20004]) {
-  assert.equal(registry.getFieldByTag(retired), null)
-}
-const codec = new fix.FixCodec(registry)
-const plugins = 'com.ullink.ulbridge.sessioninterfaces.plugins'
-const document = [
-  { request: { type: 'read', mbean: `${plugins}:name=Orders,plugin-type=FIX,type=Plugin` },
-    status: 200, value: { Name: 'Orders', State: 'Running', Version: '1.2' } },
-  { request: { type: 'read', mbean: `${plugins}:name=Prices,plugin-type=FIX,type=Plugin` },
-    status: 200, value: { Name: 'Prices' } },
-  // An error-only answer names no configuration and states no message.
-  { request: { type: 'read', mbean: `${plugins}:name=Gone,plugin-type=FIX,type=Plugin` },
-    status: 404, error: 'missing' },
-]
-const messages = codec.parsePluginLine(Buffer.from(JSON.stringify(document)))
-assert.ok(messages instanceof fix.FixMessages)
-const [orders, prices] = [...messages]
-assert.deepEqual([orders, prices].map(message => message.byName('Name').asJs()), ['Orders', 'Prices'])
-// The document's `State` and `Version` attributes are held under the bridge's
-// own names; the arrival entry keeps the document's spelling.
-assert.equal(orders.byName('PluginState').asJs(), 'Running')
-assert.equal(orders.byName('PluginVersion').asJs(), '1.2')
-assert.deepEqual(
-  orders.arrivals().filter(([tag]) => tag === 20019 || tag === 20021),
-  [[20019, 'State', 'Running'], [20021, 'Version', '1.2']],
-)
-assert.equal(messages.next().done, true)
-const selected = fix.Plugin.fromJsonScalar(document).next().value
-assert.equal(selected.intoFixmsg(codec).byName('Name').asJs(), 'Orders')
-// A body that is not a Jolokia answer names no configuration, and answering
-// none is what it answers: reading is not refusing.
-assert.equal(codec.parsePluginLine(Buffer.from('{"a":1}')).next().done, true)
-```
+response named, each retaining the ObjectName it was read by on
+`SessionInterface` (20010) and nothing of the Jolokia exchange around it.
+`withPluginFields()` puts the bridge's fields in the one namespace as members
+of the `plugin` dictionary, holding the document's `State` and `Version` as
+`PluginState` (20019) and `PluginVersion` (20021), because every registry
+already holds the crate's own `state` and `version`, while the arrival record
+keeps the document's spelling; 20001 to 20004 are retired, not reused.
+[Capture](../fix/capture.md) owns that round trip in all three languages.
 
 ## Edges
 
@@ -1110,8 +1032,8 @@ assert.equal(codec.parsePluginLine(Buffer.from('{"a":1}')).next().done, true)
   unchanged, and copies Arrow batches as IPC in both directions.
 - A signed digest holder -> high-bit results read as a negative `number` or
   `bigint`, with the complete digest bits retained.
-- `field.digest` `role` -> only `'holder'` or `'component'`; `identity` and
-  `partition` take arbitrary inert string metadata.
+- `field.digest` `role` -> only `'holder'`; `identity` and `partition` take
+  arbitrary inert string metadata.
 - `DataType.fromRegex` -> named-capture inference, decided by the core.
 - `gzip`, `zlib`, `zstd` -> `loads`/`dumps` over `Buffer`, plus
   `loadsRaw`/`dumpsRaw` on `zlib`, reading and writing what `node:zlib` does.
@@ -1194,6 +1116,10 @@ assert.equal(codec.parsePluginLine(Buffer.from('{"a":1}')).next().done, true)
   `scanAt` takes a `bigint` or an exact `number`.
 - A fractional tag or one outside `i32` -> throws; a `bigint`, object, or `null`
   key -> `TypeError`.
+- `field.fix.tag`, `tags`, `counter` -> positive tags only; 0 throws, because
+  tag 0 marks an unresolved arrival and names no field.
+- `TextLine`'s Arrow converters (`into_arrow_batch`, `into_arrow_reader`,
+  `from_arrow_batch`, `from_arrow_reader`) -> Rust-only.
 - The `fix:` vocabulary read or written on another protocol's view ->
   `TypeError` naming that view's scheme.
 - `field.fix.id` -> a `number` in strict code and sloppy code alike; the
@@ -1241,7 +1167,7 @@ assert.throws(() => DataType.from('decimal(0,0)'), /precision/)
     node --test "node/tests/text/*.test.js"
     node --test "node/tests/uri/*.test.js"
     node --test "node/tests/expression/*.test.js"
-    node --test "node/tests/xxhash/*.test.js"
+    node --test "node/tests/hashing/*/*.test.js"
     node --test "node/tests/fix/*.test.js"
     npm run --prefix node typecheck
     python scripts/check_docs_examples.py --lang javascript
@@ -1259,7 +1185,8 @@ assert.throws(() => DataType.from('decimal(0,0)'), /precision/)
     npm run --prefix node bench:media
     npm run --prefix node bench:media:text -- --records 5000 --iterations 3
     npm run --prefix node bench:text
-    npm run --prefix node bench:xxhash
+    npm run --prefix node bench:hashing:xxhash
+    npm run --prefix node bench:hashing:txhash
     npm run --prefix node bench:fix
     ```
 

@@ -15,7 +15,7 @@ Field metadata the library reads: reserved keys, `scheme:name` properties behind
 | `scheme:name` | protocol property, prefix canonicalized to a known [`Scheme`](scalar.md) |
 | `iceberg:table_name` | catalog coordinates are protocol properties, never straight keys |
 | `digest:role` | `holder`; anything else refused |
-| `digest:time`, `digest:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([TxHash](../txhash/arrow.md#coupled-holders)) |
+| `digest:time`, `digest:unit` | a holder's coupled instant: one field path, and `s` / `ms` / `us` / `ns` canonicalized; the storage must be a coupled `fixed_size_binary` ([Hashing](../hashing.md)) |
 | `python:module`, `python:qualname` | the declaring Python class, as dotted names Python itself could have written; `<locals>` is the one non-identifier segment a qualified name may carry |
 | `python:kind` | `field`, `dataclass`, `typed_dict`, `named_tuple`, `enum`, `newtype`, `type_alias`, or `class`; anything else refused |
 | view | borrow of the one metadata map, cache-aware writes |
@@ -107,10 +107,14 @@ The view remembers the scheme; the caller writes the bare name.
         The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
         `IdentityField`, and seventeen others) are Rust-only. Python reads the generic property
         mapping through `field.iceberg`, and the validated HTTP values stay attributes on the
-        field. `field.partition` and [`field.python`](../extensions/python.md#the-declaring-class)
-        are the exceptions: `sources`, `transform` and
-        [`apply_arrow_batch`](../holder/iobase/partitions.md#derived-partition-columns) on one,
-        `class_metadata` and its three parts on the other, each answered only by its own view.
+        field. `field.fix`, `field.digest`, `field.partition` and
+        [`field.python`](../extensions/python.md#the-declaring-class) are the exceptions: `id`,
+        `tag`, `tags`, `aliases`, `branches`, `identifiers`, `description`, `nulls`, `directions`
+        and the catalog references on the first; `is_holder`, `algorithm`, `sources`, `time`,
+        `unit`, `is_coupled` and `apply_arrow_batch` on the second; `sources`, `transform` and
+        [`apply_arrow_batch`](../holder/iobase/partitions.md#derived-partition-columns) on the
+        third; `class_metadata` and its three parts on the fourth, each answered only by its own
+        view.
 
 === "JavaScript"
 
@@ -150,7 +154,9 @@ The view remembers the scheme; the caller writes the bare name.
         The per-protocol view types (`HttpField`, `IcebergField`, `FixField`, `DigestField`,
         `IdentityField`, `PartitionField`, `PythonField`, and fifteen others) are Rust-only, and
         so are the partition and Python-class vocabularies Python binds. JavaScript reads the
-        generic property `Map` through `field.iceberg` and `field.python`, and the validated HTTP
+        generic property `Map` through `field.iceberg` and `field.python`; `field.fix` is the
+        exception, answering `id`, `tag`, `tags`, `aliases`, `branches`, `identifiers`,
+        `description`, `nulls`, `directions`, `addBranch` and `hasBranch`, and the validated HTTP
         values stay accessors on the field.
 
 ## Reserved keys
@@ -284,8 +290,8 @@ depend on.
 | --- | --- |
 | `HttpField`, `HttpFieldMut` | `content_type`, `content_length`, `mime_type`, `media_type`, `location` |
 | [`IcebergField`, `IcebergFieldMut`](../media/iceberg/schema.md) | `doc`, `schema_id`, `spec_id`, `transform` |
-| [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag`, `tags`, `aliases`, `branches`, `description` |
-| [`DigestField`, `DigestFieldMut`](../xxhash/values.md#filling-digest-holders) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; [`time`, `unit`, `is_coupled`](../txhash/arrow.md#coupled-holders) and their setters |
+| [`FixField`, `FixFieldMut`](../fix/index.md) | `id` (derived from the tag and the name, never stored), `tag` and `tags` (positive only), `aliases`, `branches`, `identifiers` (a component's direct scalar members), `description` |
+| [`DigestField`, `DigestFieldMut`](../hashing.md) | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch`, and their setters; `time`, `unit`, `is_coupled` and their setters |
 | `IdentityField` | no typed vocabulary: arbitrary inert text under `identity:` |
 | [`PartitionField`, `PartitionFieldMut`](../holder/iobase/partitions.md#derived-partition-columns) | `sources`, `transform`, `expression`, `apply_arrow_batch`, and the two setters |
 | [`PythonField`, `PythonFieldMut`](../extensions/python.md#the-declaring-class) | `class`, `module`, `qualname`, `class_name`, `kind`, `import_path`, and their setters |
@@ -381,14 +387,14 @@ holder, in declaration order.
 | `DigestField` | `is_holder`, `algorithm`, `sources`, `apply_arrow_batch` |
 | `DigestFieldMut` | `set_holder`, `set_algorithm`, `remove_algorithm`, `set_sources`, `remove_sources`, `remove_role` |
 | `digest:sources` | holder-local ordered JSON array; `["*"]` and absence both select every non-holder, `[]` selects nothing, `"*"` may not travel beside a path |
-| `digest:algorithm` | optional canonical [`DigestAlgorithm`](../xxhash/index.md); its width must match the storage |
+| `digest:algorithm` | optional canonical [`DigestAlgorithm`](../hashing.md); its width must match the storage |
 | Widths | XXH32: `int32`, `uint32`; XXH64 and XXH3-64: `int64`, `uint64`; XXH3-128: `fixed_size_binary(16)` |
 | Signed storage | the same digest bits, never a checked numeric conversion |
 
 Typed setters require `holder`, validate the width, and fail atomically; generic metadata writes
 canonicalize the algorithm token and the path JSON. Arrow row hashing reads the same contract in
-[`row_digests`](../xxhash/values.md), and path resolution, nested-holder reuse, algorithm fallback,
-and batch filling live with [xxHash](../xxhash/index.md).
+`row_digests`, and path resolution, nested-holder reuse, algorithm fallback, and batch filling
+live with [Hashing](../hashing.md).
 
 ## Partition columns
 

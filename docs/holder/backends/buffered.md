@@ -65,22 +65,7 @@ A page cache over any [`IOBase`](../iobase/bytes.md) handle, with the value's fi
 
 ## Pages
 
-A miss fetches one aligned page and copies the range out; a hit copies from the held page.
-
-```rust
-use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-
-let handle = Buffer::from_bytes(vec![4_u8; 4_096]).buffered(BufferedOptions::default());
-
-// The first read fetches the page holding the range; the second is memory.
-assert_eq!(handle.read_range_bytes(0, 8)?, [4_u8; 8]);
-assert_eq!(handle.read_range_bytes(2_000, 8)?, [4_u8; 8]);
-assert_eq!(handle.cached_pages(), 1);
-```
-
-A read crossing pages copies each page straight into the caller's buffer.
+A miss fetches one aligned page and copies the range out; a hit copies from the held page. A read crossing pages copies each page straight into the caller's buffer.
 
 ```rust
 use yggdryl::holder::buffered::{Buffered, BufferedOptions};
@@ -96,6 +81,10 @@ assert_eq!(handle.read_range_bytes(300, 4)?.len(), 4);
 assert_eq!(handle.cached_pages(), 1);
 assert_eq!(handle.cached_bytes(), 256);
 assert!(handle.has_cached_page(1));
+
+// A read inside that page is a hit: memory, and no second page.
+assert_eq!(handle.read_range_bytes(500, 8)?, [7_u8; 8]);
+assert_eq!(handle.cached_pages(), 1);
 
 // A read spanning pages assembles from each of them, caching all it crossed.
 assert_eq!(handle.read_range_bytes(100, 600)?.len(), 600);
@@ -137,7 +126,7 @@ assert_eq!(grown.max_bytes(), 16_384);
 
 ## Both ends are pinned
 
-Both ends carry discovery: magic bytes at the head, a Parquet footer or Arrow IPC schema at the tail.
+Both ends carry discovery: magic bytes at the head, a Parquet footer or Arrow IPC schema at the tail. Pinned pages count toward the budget, hence the two-page clamp. A moved end releases the old last page; the new one is pinned when next cached, which the Rust tab also shows.
 
 === "Rust"
 
@@ -166,6 +155,23 @@ Both ends carry discovery: magic bytes at the head, a Parquet footer or Arrow IP
     assert!(handle.has_cached_page(0));
     assert!(handle.has_cached_page(15));
     assert!(!handle.has_cached_page(7));
+
+    // Four pages of value under the same budget: page 3 ends it, so it holds a pin.
+    let mut handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 4 * 64]), options);
+    assert_eq!(handle.read_all_bytes()?.len(), 4 * 64);
+    assert!(handle.has_cached_page(3));
+
+    // A write doubling the value moves the end; page 3 is ordinary again, and a
+    // scan under budget pressure now evicts it while page 0 stays.
+    handle.pwrite(8 * 64 - 1, b"z")?;
+    for page in 4..8 {
+        handle.read_range_bytes(page * 64, 8)?;
+    }
+    handle.read_range_bytes(5 * 64, 8)?;
+    handle.read_range_bytes(6 * 64, 8)?;
+    assert!(handle.has_cached_page(0));
+    assert!(handle.has_cached_page(7));
+    assert!(!handle.has_cached_page(3));
     ```
 
 === "Python"
@@ -191,60 +197,9 @@ Both ends carry discovery: magic bytes at the head, a Parquet footer or Arrow IP
     assert not handle.has_cached_page(7)
     ```
 
-Pinned pages count toward the budget, hence the two-page clamp. A moved end releases the old last page; the new one is pinned when next cached.
-
-```rust
-use yggdryl::holder::buffered::{Buffered, BufferedOptions};
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-
-let options = BufferedOptions::default()
-    .with_page_size(64)
-    .with_max_bytes(4 * 64);
-let mut handle = Buffered::new(Buffer::from_bytes(vec![1_u8; 4 * 64]), options);
-
-// Page 3 ends the value, so it holds a pin.
-assert_eq!(handle.read_all_bytes()?.len(), 4 * 64);
-assert!(handle.has_cached_page(3));
-
-// A write doubling the value moves the end; page 3 is ordinary again, and a
-// scan under budget pressure now evicts it while page 0 stays.
-handle.pwrite(8 * 64 - 1, b"z")?;
-for page in 4..8 {
-    handle.read_range_bytes(page * 64, 8)?;
-}
-handle.read_range_bytes(5 * 64, 8)?;
-handle.read_range_bytes(6 * 64, 8)?;
-assert!(handle.has_cached_page(0));
-assert!(handle.has_cached_page(7));
-assert!(!handle.has_cached_page(3));
-```
-
 ## Writes are never stale
 
-```rust
-use yggdryl::holder::buffered::BufferedOptions;
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-
-let mut handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
-    .buffered(BufferedOptions::default());
-assert_eq!(handle.read_all_bytes()?.len(), 20);
-
-// A write goes straight to the wrapped handle and folds into the pages it
-// overlapped, so the read after it can never see the bytes it replaced.
-handle.pwrite(13, b"MSFT")?;
-assert_eq!(handle.read_range_bytes(13, 4)?, b"MSFT");
-assert_eq!(handle.handle().as_slice()[13..17], *b"MSFT");
-
-// Truncating drops every page a resize could have changed, both ways.
-handle.truncate(13)?;
-assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
-handle.truncate(15)?;
-assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
-```
-
-`clear` and `remove` drop the cache before delegating, so no page outlives a failed removal. `close` flushes, drops every page, and leaves a working handle.
+A write goes straight to the wrapped handle and folds into the pages it overlapped, and `truncate` drops every page a resize could have changed. `clear` and `remove` drop the cache before delegating, so no page outlives a failed removal. `close` flushes, drops every page, and leaves a working handle.
 
 === "Rust"
 
@@ -253,13 +208,26 @@ assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
     use yggdryl::IOBase;
     use yggdryl::holder::Buffer;
 
-    let mut handle = Buffer::from_bytes(vec![3_u8; 4_096]).buffered(BufferedOptions::default());
-    assert_eq!(handle.read_all_bytes()?.len(), 4_096);
+    let mut handle = Buffer::from_bytes(b"symbol,price\nAAPL,1\n".to_vec())
+        .buffered(BufferedOptions::default());
+    assert_eq!(handle.read_all_bytes()?.len(), 20);
     assert_eq!(handle.cached_pages(), 1);
 
+    // The read after a write can never see the bytes it replaced.
+    handle.pwrite(13, b"MSFT")?;
+    assert_eq!(handle.read_range_bytes(13, 4)?, b"MSFT");
+    assert_eq!(handle.handle().as_slice()[13..17], *b"MSFT");
+
+    // Truncating drops every page a resize could have changed, both ways.
+    handle.truncate(13)?;
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\n");
+    handle.truncate(15)?;
+    assert_eq!(handle.read_all_bytes()?, b"symbol,price\n\0\0");
+
+    // Closing drops every page and leaves a working handle.
     handle.close()?;
     assert_eq!(handle.cached_pages(), 0);
-    assert_eq!(handle.read_range_bytes(0, 4)?, [3, 3, 3, 3]);
+    assert_eq!(handle.read_range_bytes(0, 4)?, b"symb");
     ```
 
 === "Python"

@@ -20,6 +20,8 @@ Jinja-style `{{ }}` substitution in string values of a parsed YAML or TOML docum
 
 ## Use
 
+A quoted placeholder becomes the variable's own typed value, a default fills a name the mapping lacks, and a TOML table substitutes at any depth.
+
 === "Rust"
 
     ```rust
@@ -27,41 +29,63 @@ Jinja-style `{{ }}` substitution in string values of a parsed YAML or TOML docum
     use yggdryl::Scalar;
 
     let loading = Loading::new().with_placeholders(
-        Placeholders::new().with_variable("HOST", Scalar::from("db.internal")),
+        Placeholders::new()
+            .with_variable("HOST", Scalar::from("db.internal"))
+            .with_variable("PORT", Scalar::from(5432_i64)),
     );
+
     let value = yggdryl::text::from_utf8_with(
-        "host: \"{{ HOST }}\"\nport: \"{{ PORT | default(8080) }}\"\n",
+        "host: \"{{ HOST }}\"\nport: \"{{ PORT }}\"\ntimeout: \"{{ TIMEOUT | default(30) }}\"\n",
         Format::Yaml,
         &loading,
     )?;
-
     assert_eq!(value.get_key_str("host").and_then(Scalar::as_str), Some("db.internal"));
-    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080_i64)));
+    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(5432_i64)));
+    assert_eq!(value.get_key_str("timeout"), Some(&Scalar::from(30_i64)));
+
+    let table = yggdryl::text::from_utf8_with(
+        "[database]\nhost = \"{{ HOST }}\"\nport = \"{{ PORT }}\"\n",
+        Format::Toml,
+        &loading,
+    )?;
+    let database = table.get_key_str("database").expect("the database table");
+    assert_eq!(database.get_key_str("host").and_then(Scalar::as_str), Some("db.internal"));
+    assert_eq!(database.get_key_str("port"), Some(&Scalar::from(5432_i64)));
     ```
 
 === "Python"
 
     ```python
-    from yggdryl.text import yaml
+    from yggdryl.text import toml, yaml
 
-    document = 'host: "{{ HOST }}"\nport: "{{ PORT | default(8080) }}"\n'
-    value = yaml.loads(document, placeholders={"HOST": "db.internal"})
+    placeholders = {"HOST": "db.internal", "PORT": 5432}
 
-    assert value == {"host": "db.internal", "port": 8080}
+    document = 'host: "{{ HOST }}"\nport: "{{ PORT }}"\ntimeout: "{{ TIMEOUT | default(30) }}"\n'
+    value = yaml.loads(document, placeholders=placeholders)
+    assert value == {"host": "db.internal", "port": 5432, "timeout": 30}
+
+    # Unquoted braces are YAML flow-mapping syntax, parsed before substitution runs.
+    assert isinstance(yaml.loads("port: {{ PORT }}\n", placeholders=placeholders)["port"], dict)
+
+    document = '[database]\nhost = "{{ HOST }}"\nport = "{{ PORT }}"\n'
+    table = toml.loads(document, placeholders=placeholders)
+    assert table["database"] == {"host": "db.internal", "port": 5432}
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
+    const { toml, yaml } = require('yggdryl')
 
-    const document = 'host: "{{ HOST }}"\nport: "{{ PORT | default(8080) }}"\n'
-    const value = yaml.loads(document, {
-      placeholders: { HOST: 'db.internal' },
-    })
+    const placeholders = { HOST: 'db.internal', PORT: 5432 }
 
-    assert.deepEqual(value, { host: 'db.internal', port: 8080 })
+    const document = 'host: "{{ HOST }}"\nport: "{{ PORT }}"\ntimeout: "{{ TIMEOUT | default(30) }}"\n'
+    const value = yaml.loads(document, { placeholders })
+    assert.deepEqual(value, { host: 'db.internal', port: 5432, timeout: 30 })
+
+    const table = toml.loads('[database]\nhost = "{{ HOST }}"\nport = "{{ PORT }}"\n', { placeholders })
+    assert.deepEqual(table.database, { host: 'db.internal', port: 5432 })
     ```
 
 ## Edges

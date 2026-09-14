@@ -18,6 +18,9 @@ and their wire order.
 
 The specialized numeric-frame reader returns one message. Generic captured-line
 and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-parse-surface).
+The frame states its `SendingTime`, so reading the emitted bytes again settles
+the [same clocks](capture.md#every-message-is-dated-and-versioned) and answers an
+equal message.
 
 === "Rust"
 
@@ -28,7 +31,7 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?));
-    let frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|";
+    let frame = b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|55=AAPL|54=1|38=100|10=000|";
     let message = codec.parse_fix_line(frame)?;
     let emitted = message.into_bytes(b'|');
     assert_eq!(emitted, frame);
@@ -42,7 +45,7 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
     from yggdryl.fix import FixCodec, FixRegistry
 
     codec = FixCodec(FixRegistry.from_handle(Path("config/fix").resolve()))
-    frame = b"8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|"
+    frame = b"8=FIX.4.4|35=D|52=20260102-10:15:30.000|55=AAPL|54=1|38=100|10=000|"
     message = codec.parse_fix_line(frame)
     emitted = message.into_bytes(ord("|"))
     assert emitted == frame
@@ -57,7 +60,7 @@ and bulk readers return [message iterators](capture.md#a-reader-is-the-whole-par
     const { fix } = require('yggdryl')
 
     const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config/fix')))
-    const frame = Buffer.from('8=FIX.4.4|35=D|55=AAPL|54=1|38=100|10=000|')
+    const frame = Buffer.from('8=FIX.4.4|35=D|52=20260102-10:15:30.000|55=AAPL|54=1|38=100|10=000|')
     const message = codec.parseFixLine(frame)
     const emitted = Buffer.from(message.intoBytes(124))
     assert.deepEqual(emitted, frame)
@@ -78,6 +81,8 @@ This section renders `assets/fix.json` and needs JavaScript.
 - `BodyLength` and `CheckSum` retain the values that arrived; emission does not
   repair an invalid frame.
 - Enum display names in a typed row do not replace the original wire codes.
+- Settled values the codec supplied - a default `SendingTime`, `updatedat`, `uuid` and the rest - are row values, never entries, so they are never emitted.
+- An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)
   writes each row's `nofixentries` back as one line, with the codec's separator.

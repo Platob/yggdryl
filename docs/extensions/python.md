@@ -23,8 +23,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `json`, `toml`, `yaml` | [Structured text](../text/index.md) and the format pages |
 | `avro` | [Apache Avro](../media/avro.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
-| `xxhash` | [xxHash](../xxhash/index.md) |
-| `txhash` | [TxHash](../txhash/index.md) |
+| `hashing`: `hashing.xxhash`, `hashing.txhash` | [Hashing](../hashing.md) and this page |
 | `refresh_logging` | this page |
 | the `ygg` command, installed on PATH by the wheel | [CLI](../fix/cli.md) |
 
@@ -239,6 +238,7 @@ Pass a `Field` when strings or numbers need an exact decimal, binary, or tempora
 ```python
 import numpy as np
 import pyarrow as pa
+import pytest
 
 from yggdryl import ArrowValue
 from yggdryl.arrow import SHAPES
@@ -246,6 +246,7 @@ from yggdryl.arrow import SHAPES
 assert SHAPES == ("scalar", "array", "batch", "stream")
 
 table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
+root = "row: struct<symbol: utf8 not null, size: int64 not null> not null"
 
 # A held batch knows its length; a table crosses over the C stream, and a
 # stream states its schema before its first batch and nothing else.
@@ -266,6 +267,25 @@ assert ArrowValue.from_py(records).column_size == 2
 prices = ArrowValue.from_py(pa.array([1, 2, 3]), "price: float64 not null")
 assert prices.shape == "array"
 assert prices.into_arrow_array().type == pa.float64()
+
+# The Field is what puts the names back on a canonical positional row.
+named = ArrowValue.from_py(table.to_batches()[0], root)
+assert named.as_py() == [
+    {"symbol": "AAPL", "size": 100},
+    {"symbol": "MSFT", "size": 250},
+]
+assert named.into_pandas().shape == (2, 2)
+assert named.into_arrow_batch().num_rows == 2
+assert not named.is_consumed
+
+# A canonical row is positional, which is what the native model speaks.
+assert named.cast(root).into_scalar().as_py() == [["AAPL", 100], ["MSFT", 250]]
+
+# Only the stream is spent by reading it.
+assert streamed.into_arrow_table().num_rows == 2
+assert streamed.is_consumed
+with pytest.raises(ValueError, match="crosses once"):
+    streamed.into_arrow_reader()
 ```
 
 | Property | Answers |
@@ -293,35 +313,6 @@ assert prices.into_arrow_array().type == pa.float64()
 Only a stream is one-shot. A scalar, a column, and a table share their Arrow buffers back and stay readable; a stream has nothing to share until it is drained, so reading a consumed one is a `ValueError`.
 
 Exports use the core's recursive C-schema exporter and Arrow C Data arrays; a reader caches its exact schema once and pulls batches lazily, sharing buffers while retaining nested Map flags, dictionary and extension metadata, and zero-column row counts ([exact Map schemas](../arrow/values.md#exact-map-schemas)). Incoming C Stream producers remain accepted; an outgoing reader fuses after an error and preserves the native error category as `pyarrow.ArrowNotImplementedError`, `ArrowMemoryError`, `ArrowIOError`, or `ArrowInvalid`.
-
-```python
-import pyarrow as pa
-import pytest
-
-from yggdryl import ArrowValue
-
-table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
-root = "row: struct<symbol: utf8 not null, size: int64 not null> not null"
-
-# The Field is what puts the names back on a canonical positional row.
-held = ArrowValue.from_py(table.to_batches()[0], root)
-assert held.as_py() == [
-    {"symbol": "AAPL", "size": 100},
-    {"symbol": "MSFT", "size": 250},
-]
-assert held.into_pandas().shape == (2, 2)
-assert held.into_arrow_batch().num_rows == 2
-assert not held.is_consumed
-
-# A canonical row is positional, which is what the native model speaks.
-assert held.cast(root).into_scalar().as_py() == [["AAPL", 100], ["MSFT", 250]]
-
-streamed = ArrowValue.from_py(table)
-assert streamed.into_arrow_table().num_rows == 2
-assert streamed.is_consumed
-with pytest.raises(ValueError, match="crosses once"):
-    streamed.into_arrow_reader()
-```
 
 ## Python value protocols
 
@@ -622,9 +613,11 @@ assert local.class_name == "Row"
 assert not local.is_importable
 ```
 
-Assigning the value writes all three properties in one validated overlay; assigning `None` removes them. `properties` is the same three entries as a mapping, which is what lets one `Field` construction carry the declaration.
+Assigning the value writes all three properties in one validated overlay; assigning `None` removes them. `properties` is the same three entries as a mapping, which is what lets one `Field` construction carry the declaration. A value Python itself could not have written is refused where it is written, not where it is read.
 
 ```python
+import pytest
+
 from yggdryl import DataType, Field, PythonMetadata
 
 declared = PythonMetadata("trading.book", "Quote", "field")
@@ -649,28 +642,14 @@ assert quote.python.module == "trading.book"
 
 quote.python.class_metadata = None
 assert not quote.python
-```
 
-A value Python itself could not have written is refused where it is written, not where it is read.
-
-```python
-from yggdryl import Field, PythonMetadata
-
+# A name Python could not have written is refused, and the generic mapping
+# path runs the same validator.
 for module, qualname in [("trading.", "Quote"), ("trading", ""), ("class", "Quote")]:
-    try:
+    with pytest.raises(ValueError, match="python:"):
         PythonMetadata(module, qualname)
-    except ValueError as error:
-        assert "python:" in str(error)
-    else:
-        raise AssertionError("a name Python could not have written must be refused")
-
-# The generic mapping path runs the same validator.
-try:
+with pytest.raises(ValueError, match="python:kind"):
     Field("quote", "int64", metadata={"python:kind": "record"})
-except ValueError as error:
-    assert "python:kind" in str(error)
-else:
-    raise AssertionError("an unknown class kind must be refused")
 ```
 
 `into_dataclass` reads the same declaration: the class name and module it materializes come from `python:qualname` and `python:module` unless the caller names them, and the field's own name is the last fallback.
@@ -711,13 +690,8 @@ except ValueError as error:
     assert "at most 4 bytes" in str(error)
 else:
     raise AssertionError("a value wider than the width must be reported")
-```
 
-Sixteen bytes need the whole 128-bit integer, which Python holds natively.
-
-```python
-from yggdryl.enums import fixed_ascii
-
+# Sixteen bytes need the whole 128-bit integer, which Python holds natively.
 class Isin(fixed_ascii(16)):
     APPLE = "US0378331005"
 
@@ -725,9 +699,11 @@ assert int(Isin.APPLE) == 0x55533033373833333130303500000000
 assert Isin.APPLE.into_str() == "US0378331005"
 ```
 
-A class declares itself onto a field under the reserved `field:enum` key, so the declaration crosses Arrow, a file, and the other binding.
+A class declares itself onto a field under the reserved `field:enum` key, so the declaration crosses Arrow, a file, and the other binding. A value read back that the class did not declare registers once, announced on the `yggdryl.enums.string` logger at `INFO`.
 
 ```python
+import logging
+
 from yggdryl import StringEnum, Field
 from yggdryl.enums import AsciiCode, fixed_ascii
 
@@ -747,19 +723,8 @@ assert recovered.__name__ == "Side"
 assert [(member.name, int(member)) for member in recovered] == [
     (member.name, int(member)) for member in Side
 ]
-```
 
-A value read back that the class did not declare registers once, announced on the `yggdryl.enums.string` logger at `INFO`.
-
-```python
-import logging
-
-from yggdryl.enums import fixed_ascii
-
-class Side(fixed_ascii(4)):
-    BUY = "B"
-    SELL = "S"
-
+# An undeclared value registers once, and says so.
 records: list[logging.LogRecord] = []
 handler = logging.Handler()
 handler.emit = records.append  # type: ignore[method-assign]
@@ -796,10 +761,10 @@ assert f"{MIC.XPAR} settles {Currency.EUR}" == "XPAR settles EUR"
 assert MIC.from_str("XLON").into_str() == "XLON"
 ```
 
-A `@scalar` attribute typed with one of these, or any `AsciiCode` subclass, carries that class's members as the field's declaration.
+A `@scalar` attribute typed with one of these, or any `AsciiCode` subclass, carries that class's members as the field's declaration. `yggdryl.types` names the same four codes as factories, for a field built without a class.
 
 ```python
-from yggdryl import scalar
+from yggdryl import DataType, scalar, types
 from yggdryl.enums import Currency, MIC
 
 @scalar
@@ -811,12 +776,6 @@ venue, settlement = Fill.into_field()
 assert (venue.dtype.id, settlement.dtype.id) == ("mic", "currency")
 assert settlement.string_enum.name == "Currency"
 assert settlement.string_enum.get("USD") == "USD"
-```
-
-`yggdryl.types` names the same four codes as factories, for a field built without a class.
-
-```python
-from yggdryl import DataType, types
 
 assert types.mic("venue").dtype == DataType("mic")
 assert types.currency("ccy", nullable=False).dtype == DataType("currency")
@@ -915,7 +874,7 @@ A location's name declares a content coding and a record implementation, and con
 | `IOBase.from_bytes(b"...")` | `Buffer` |
 | `IOBase.from_fs(fs, "k.txt.gz")` | `Text` over `Gzip` over `FsPath` |
 
-The classes live in [`yggdryl.holder`](../holder/index.md), [`yggdryl.coding`](../coding/index.md), and [`yggdryl.media`](../media/index.md), and every one of them is an `IOBase` subclass that adds no state. `type(handle)` names the outermost layer, `repr(handle)` the whole composition, and `into_handle()` descends one layer.
+The classes live in [`yggdryl.holder`](../holder/index.md), [`yggdryl.coding`](../coding/index.md), and [`yggdryl.media`](../media/index.md), and every one of them is an `IOBase` subclass that adds no state. `type(handle)` names the outermost layer, `repr(handle)` the whole composition, and `into_handle()` descends one layer. `buffered`, `into_text`, and `into_coded` compose the same layers explicitly. Each answers the wrapper it built and spends the handle it took, because a wrapper owns the handle it wraps and a Python object cannot change class.
 
 ```python
 import pathlib
@@ -924,8 +883,8 @@ import tempfile
 import pytest
 
 from yggdryl import IOBase
-from yggdryl.coding import Coded, Gzip
-from yggdryl.holder import Path
+from yggdryl.coding import Coded, Gzip, Zstd
+from yggdryl.holder import Buffered, Folder, Path
 from yggdryl.media import Media, Text
 
 root = pathlib.Path(tempfile.mkdtemp())
@@ -953,22 +912,8 @@ with pytest.raises(ValueError, match="consumed by a conversion"):
 # `Path`, `File`, `FsPath`, and `FsFile` commit to a byte role and skip the
 # composition, which is how a coded name's stored bytes are addressed.
 assert Path(root / "trades.txt.gz").read_bytes()[:2] == bytes.fromhex("1f8b")
-```
 
-`buffered`, `into_text`, and `into_coded` compose the same layers explicitly. Each answers the wrapper it built and spends the handle it took, because a wrapper owns the handle it wraps and a Python object cannot change class.
-
-```python
-import pathlib
-import tempfile
-
-import pytest
-
-from yggdryl import IOBase
-from yggdryl.coding import Zstd
-from yggdryl.holder import Buffered, Folder
-
-root = pathlib.Path(tempfile.mkdtemp())
-
+# The explicit spellings compose the same layers and spend what they wrap.
 cached = IOBase(root / "quotes.bin").buffered(page_size=4096)
 assert type(cached) is Buffered
 coded = cached.into_handle().into_coded("zstd")
@@ -1197,52 +1142,9 @@ The suffix says whether the call takes exactly one frame.
 | `append_pandas(frames)` / `append_polars(frames)` | `append_pandas_frame(frame)` / `append_polars_frame(frame)` |
 | `merge_pandas(frames)` / `merge_polars(frames)` | `merge_pandas_frame(frame)` / `merge_polars_frame(frame)` |
 
-## An Iceberg table end to end
+## Iceberg tables
 
-`yggdryl.media.iceberg` carries the catalog, the table, the schema-evolution builder, and compaction. PyArrow is the rows boundary both ways, and every read returns a `pyarrow.RecordBatchReader`.
-
-```python
-import pathlib
-import shutil
-import tempfile
-
-import pyarrow as pa
-
-from yggdryl.media.iceberg import Catalog
-
-warehouse = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-doc-")) / "warehouse"
-catalog = Catalog(warehouse)
-
-# Rows and a dotted name are enough: the first append creates the table.
-columns = pa.schema([
-    pa.field("id", pa.int64(), nullable=False),
-    pa.field("venue", pa.string()),
-])
-table = catalog.append(
-    "nyc.trades", pa.table({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=columns)
-)
-past = table.current_snapshot.snapshot_id
-table.append(pa.table({"id": [3], "venue": [None]}, schema=columns))
-assert list(catalog.namespace("nyc").tables) == ["trades"]
-assert table.scan().read_all().num_rows == 3
-
-# A column change is recorded on the update and committed once, on exit.
-with table.update_schema() as update:
-    update.add_column("", "price: float64")
-assert table.scan().read_all().column("price").to_pylist() == [None, None, None]
-
-# Undersized files rewrite as one replace commit that reports itself.
-compaction = table.compact()
-assert (compaction.files_before, compaction.files_after) == (2, 1)
-assert table.scan().read_all().num_rows == 3
-
-# And nothing rewrote history: the first snapshot reads as it was written.
-assert table.scan_at(past).read_all().column("id").to_pylist() == [1, 2]
-
-shutil.rmtree(warehouse.parent)
-```
-
-[Iceberg](../media/iceberg/index.md) shows each of these steps beside its Rust and JavaScript form.
+`yggdryl.media.iceberg` carries the catalog, the table, the schema-evolution builder, and compaction. PyArrow is the rows boundary both ways: a write takes anything exporting an Arrow C stream, and every scan, time travel, and inspection returns a `pyarrow.RecordBatchReader`. A schema change is a context manager, `with table.update_schema() as update:`, committed once on exit. The [catalog](../media/iceberg/catalog.md), [write](../media/iceberg/write.md), [schema](../media/iceberg/schema.md), and [read](../media/iceberg/read.md) pages show each step - the first append under a dotted name creating the table, compaction, `scan_at` - beside its Rust and JavaScript form.
 
 ## Reading a class back
 
@@ -1269,10 +1171,15 @@ A dataclass used as a dictionary *key* reads back as the tuple of its entries, b
 
 ## Digests
 
-`yggdryl.xxhash` carries the four one-shot functions, the four resumable states, and `Digest`. `IOBase.read_digest` and `Scalar.digest` reach the same native path, and a one-shot answers a plain `int` at its native width.
+`yggdryl.hashing` is the one owner of both digest families ([Hashing](../hashing.md)). `yggdryl.hashing.xxhash` carries the four one-shot functions, the four resumable states, and `Digest`. `IOBase.read_digest` and `Scalar.digest` reach the same native path, and a one-shot answers a plain `int` at its native width. A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window. Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
+
+`yggdryl.hashing.txhash` couples an instant with that digest. Every `unix` argument is an `int`, a `datetime`, a `date`, timestamp text, or a `Scalar`, and the column functions take and answer `pyarrow` arrays. `TxHash.into_uuid()` answers the lossy UUIDv8 projection of a value with a 64-bit digest as a `uuid` `Scalar`, and raises `ValueError` for another digest width or an instant past signed 64-bit nanoseconds.
 
 ```python
-from yggdryl import Scalar, xxhash
+import datetime as dt
+
+from yggdryl import Scalar
+from yggdryl.hashing import txhash, xxhash
 
 assert xxhash.xxh3(b"abc") == 0x78AF5F94892F3950
 assert xxhash.xxh3("abc") == xxhash.xxh3(memoryview(b"abc"))
@@ -1281,24 +1188,14 @@ digest = xxhash.digest(b"abc", "xxh3-64")
 assert str(digest) == "xxh3-64:78af5f94892f3950"
 assert xxhash.Digest(str(digest)) == digest
 assert int(Scalar.from_py("AAPL").digest()) == Scalar.from_py("AAPL").stable_hash()
-```
-
-A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window ([xxHash](../xxhash/index.md)).
-
-Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
-
-`yggdryl.txhash` couples an instant with that digest. Every `unix` argument is an `int`, a `datetime`, a `date`, timestamp text, or a `Scalar`, and the column functions take and answer `pyarrow` arrays ([TxHash](../txhash/index.md)).
-
-```python
-import datetime as dt
-
-from yggdryl import txhash, xxhash
 
 value = txhash.txh3(b"abc", dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc))
 assert value.unix == 1_700_000_000_000_000
 assert int(value.digest) == xxhash.xxh3(b"abc")
 assert bytes(value)[:8] == value.unix.to_bytes(8, "big", signed=True)
 assert txhash.TxHash(str(value)) == value
+# The instant restated to nanoseconds, then the digest's low 58 bits.
+assert value.into_uuid().as_py() == "97979cfe-362a-8000-80af-5f94892f3950"
 ```
 
 ## Watching what the core does
@@ -1360,7 +1257,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 
 ## FIX registry at the boundary
 
-`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `Plugin`, `Plugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_plugin_fields()`, `global_registry()`, `install_global_registry()`, and `PLUGIN_DIALECT` (`"plugin"`, the membership every field a plugin dictionary defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `identifiers`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
+`yggdryl.fix` carries `FixRegistry`, `FixMsg`, `FixMessages`, `MsgType`, `FixCodec`, `FixLifecycle`, `Plugin`, `Plugins`, `fix_schema()`, `fix_schema_carrying()`, `fix_schema_tags()`, `fix_crate_fields()`, `fix_cfb_fields()`, `fix_plugin_fields()`, `fix_plugin_message()`, `global_registry()`, `install_global_registry()`, `PLUGINCONFIG_CODE_NAME`, and `PLUGIN_DIALECT` (`"plugin"`, the membership every field a plugin dictionary defines carries). The `fix:` vocabulary is typed properties on the `field.fix` view: `id`, `tag`, `tags`, `branches`, `aliases`, `nulls`, `directions`, `identifiers`, `description`, and the definition metadata `counter`, `component` and `msgtype`; `tag`, `tags` and `counter` take positive tags only, and `codes` has no typed property in Python and is read and written as the raw `fix:codes` metadata.
 
 | Crossing | Rule |
 | --- | --- |
@@ -1371,25 +1268,26 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | direction rules | `field.fix.directions` is the `list[FixDirection]` a tag-385 field carries as `fix:directions`, each a TypedDict `{"code": str, "patterns": list[str]}` - one record per code of the set, the patterns decoded, `[]` when the property is absent - assignable from any iterable of such mappings, an empty one removing the property; a pattern the regex crate refuses, an empty pattern, a record stating no pattern, a code outside the field's set, or a code named twice under any spelling is a `ValueError` that leaves the field unchanged; a codec compiles the field's rules once when it is built, and where the property is absent the crate's defaults read the verbs |
 | lookups | `field_by_tag`, `field_by_name` and `field_by_path` take one argument each; a held tag under another name is a second field beside the holder, reached by its name or its id while the bare tag keeps answering the holder, and iteration is tag-major with the holder first |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix_crate_fields()` answers 21 definitions: 20 scalar fields plus the `altids` Map group; `len(registry)` and registry iteration count scalar fields only, while `definitions("groups")` includes `altids` |
+| crate inventory | `fix_crate_fields()` answers 25 definitions: 24 scalar fields on tags 65001-65019 and 65021-65025, plus the `altids` Map group at 65020; `FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so it holds 26 scalar fields; `len(registry)` and registry iteration count scalar fields only, while `definitions("groups")` includes `altids` |
 | CRUD | `create_definition`, `definition`, `update_definition`, `remove_definition`; `definitions` iterates one category lazily |
 | locations | `from_handle` and `write_into` take an `IOBase`, `Url`, `str`, or `PathLike`; a store is `fields/<shard>.json` beside `components/` and `groups/`, one file per name, with membership inside each field's metadata |
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | ingest | `from_cfb_file(location, dialect=None)` and `add_cfb_file(location, dialect=None)` stamp every field, group, component and message the file produces with the dialect, `add_cfb_file` taking the file's stem when none is given; the root element's version is read past, so `FixCodec(version=...)` dates a capture |
-| `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them |
-| `FixMsg` | equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and `FixMsg.from_row(schema, row, registry=None)` reads a fixed row back, entries included |
+| `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them; a key no field resolves, named or numeric, carries tag 0 with its raw key |
+| `FixMsg` | `FixMsg(field, value, registry=None)` appends each settled field the root lacks - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `uuid()` and `puuid()` answer those settled `Scalar` values; equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field is a `ValueError` that changes nothing; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row carrying the settled fields back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; `field` answers a read-only `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifier_values(message)` | takes a `FixMsg` and answers `list[tuple[Field, Scalar]]` in declaration order, omitting absent or null values; each field is a read-only declaration clone, each scalar retains its native datatype and width, and binary values remain bytes until enrichment needs UTF-8 |
-| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect: the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_plugin_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
+| `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect; `default_sending_time` (a `Scalar`, a `datetime`, or `None`, read back as a nanosecond UTC `Scalar` or `None`) is the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_plugin_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parse_text_arrow_reader`, `enrich_messages_arrow_reader` and `arrow_reader(schema, messages)` take and answer a `pyarrow.RecordBatchReader`; incoming readers cross C Stream, outgoing readers use the shared lazy [Arrow export](#arrow-values); `write_arrow_reader(reader, sink)` writes lines into a binary file-like and answers their count |
-| `FixCodec.lifecycle`, `FixLifecycle.fill` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec, one at a time for the lifecycle; `FixLifecycle.alive()` counts the chains no terminal state has closed, and the lifecycle is mutable, so unhashable |
+| `FixCodec.lifecycle`, `FixLifecycle` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec and `snapshots(messages)`, one at a time for `fill(message)`, and `FixMsg` or `None` for `snapshot(message)`, which answers only a chain's first off-grid arrival in a new bucket; `FixLifecycle(registry=None, *, interval_ns=FixLifecycle.DEFAULT_INTERVAL_NS)` sets the grid, one second by default, read back as `interval_ns`; `set_interval_ns` repeating it is a no-op, while a nonpositive interval or a change while a chain is live is a `ValueError` that changes nothing; `alive()` counts the chains no terminal state has closed, `clear()` forgets them, and the lifecycle is mutable, so unhashable |
 | output | `FixMsg.into_row(field)` projects a table row; `into_bytes(separator=1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
-| Plugin | `Plugin.from_json_bytes` / `from_json_scalar` return lazy `Plugins`; each selection converts to one flat message with `into_fixmsg` |
+| Plugin | `Plugin.from_json_bytes` / `from_json_scalar` return lazy `Plugins`, the latter reading a `list` or `dict` document; each selection converts to one flat message with `into_fixmsg`; `parse_plugin_line` answers one message per configuration a response named, and none for an error-only answer or a body that is not a Jolokia answer |
 
 [FIX](../fix/index.md) owns resolution, folding, merging, sharding and validation.
 
 ```python
 import copy
+import datetime as dt
 import pathlib
 import pickle
 
@@ -1475,21 +1373,32 @@ message = FixMsg(root, {"symbol": "AAPL"}, registry)
 with pytest.raises(ValueError, match="shared with a message"):
     registry.remove(55)
 
-# The message is a value: it hashes, copies and pickles, registry included.
+# The root gained the settled fields every message holds, after its own.
+assert [name for name, _ in message] == [
+    "symbol", "updatedat", "createdat", "uuid", "puuid", "code", "snapshotat", "sendingtime",
+]
+
+# The message is a value: it hashes, copies and pickles, registry included,
+# and its settled clocks and identities rebuild it equal.
 assert copy.deepcopy(message) == message
 assert pickle.loads(pickle.dumps(message)) == message
 assert pickle.loads(pickle.dumps(message)).registry == registry
-assert hash(message) == hash(FixMsg(root, message.value, registry))
+assert hash(message) == hash(FixMsg(message.field, message.value, registry))
 assert message.by_id(symbol.fix.id).as_py() == "AAPL"
 assert message.get_by_id(vendor.fix.id) is None
 assert message.lift_source("symbol") == 55
 
-# Generic intake is lazy even when the source yields one message.
+# Generic intake is lazy even when the source yields one message, and an
+# undated one takes the codec's default SendingTime rather than the clock.
 wire = b"8=FIX.4.4|35=D|55=AAPL|10=0|"
-messages = FixCodec(registry).parse_line(wire)
+codec = FixCodec(registry, default_sending_time=dt.datetime(2026, 9, 14, tzinfo=dt.timezone.utc))
+messages = codec.parse_line(wire)
 parsed = next(messages)
 assert next(messages, None) is None
 assert parsed.into_bytes(ord("|")) == wire
+assert parsed.updatedat() == parsed.createdat() == codec.default_sending_time
+with pytest.raises(ValueError, match="mandatory"):
+    parsed.remove("uuid")
 table_field = fix_schema(registry)
 assert len(parsed.into_row(table_field)) == len(table_field.dtype)
 ```
@@ -1535,47 +1444,7 @@ assert "fix:directions" not in direction.metadata
 
 A `dict` is the Python spelling of a named row under a Struct field, while a Map field such as `altids` keeps the ordinary mapping input; neither needs a FIX-specific value bridge. [FIX](../fix/index.md) owns identifier selection and enrichment, including invalid UTF-8 refusals carrying the member path and byte offset unchanged through the binding.
 
-Bulk configuration responses stream one flat message per configuration a
-response named, and none for a response that named none - so an error-only
-answer and a request with no value are silent. Each message retains the
-ObjectName the read named it by, on `SessionInterface`; what the Jolokia
-exchange wrapped it in reaches no column. The fields are directly addressable
-on the message.
-
-```python
-import json
-
-from yggdryl.fix import PLUGIN_DIALECT, FixCodec, FixMessages, FixRegistry, Plugin, fix_plugin_fields
-
-registry = FixRegistry()
-registry.with_plugin_fields()
-assert PLUGIN_DIALECT == "plugin" and registry.dialects() == ["plugin"]
-assert all(field.fix.has_branch("plugin") for field in fix_plugin_fields())
-assert [registry[tag].name for tag in (20019, 20021)] == ["PluginState", "PluginVersion"]
-# 20001 to 20004 held the Jolokia envelope and are retired, not reused.
-assert all(registry.get_field_by_tag(tag) is None for tag in (20001, 20002, 20003, 20004))
-assert registry[20010].name == "SessionInterface"
-codec = FixCodec(registry)
-plugins = "com.ullink.ulbridge.sessioninterfaces.plugins"
-document = [
-    {"request": {"type": "read", "mbean": f"{plugins}:name=Orders,plugin-type=FIX,type=Plugin"},
-     "status": 200, "value": {"Name": "Orders"}},
-    {"request": {"type": "read", "mbean": f"{plugins}:name=Prices,plugin-type=FIX,type=Plugin"},
-     "status": 200, "value": {"Name": "Prices"}},
-    # An error-only answer names no configuration and states no message.
-    {"request": {"type": "read", "mbean": f"{plugins}:name=Gone,plugin-type=FIX,type=Plugin"},
-     "status": 404, "error": "missing"},
-]
-messages = codec.parse_plugin_line(json.dumps(document).encode())
-assert isinstance(messages, FixMessages)
-assert [message.by_name("Name").as_py() for message in messages] == ["Orders", "Prices"]
-assert next(messages, None) is None
-selected = next(Plugin.from_json_scalar(document))
-assert selected.into_fixmsg(codec).by_name("Name").as_py() == "Orders"
-# A body that is not a Jolokia answer names no configuration, and answering
-# none is what it answers: reading is not refusing.
-assert list(codec.parse_plugin_line(b'{"a":1}')) == []
-```
+Bulk configuration responses stream one flat message per configuration a response named, each retaining the ObjectName it was read by on `SessionInterface` (20010) and nothing of the Jolokia exchange around it. `with_plugin_fields()` puts the bridge's fields in the one namespace as members of `PLUGIN_DIALECT`, holding the document's `State` and `Version` as `PluginState` (20019) and `PluginVersion` (20021), because every registry already holds the crate's own `state` and `version`, while the arrival entry keeps the document's spelling; 20001 to 20004 are retired, not reused. [Capture](../fix/capture.md) owns that round trip in all three languages.
 
 ## Edges
 
@@ -1640,7 +1509,8 @@ assert list(codec.parse_plugin_line(b'{"a":1}')) == []
 - a registry linked by a `FixMsg`, `MsgType`, live iterator or process default -> mutations raise `ValueError`; copy the registry for independent edits.
 - `remove(key)` -> reads an `int` as a tag, so it reaches the tag's holder; `remove_by_id` is how a field sharing its tag with the holder leaves on its own.
 - `msg.by_id` / `msg.get_by_id` -> take the `int` a field's `fix.id` answers and match it exactly, no alias, alternate tag or fold consulted; `msg.lift_source(facet)` answers the `int` tag a facet was read from.
-- `field.fix.tag` -> assignable to any non-negative tag; the id follows it, since nothing gates a tag on the dictionary that speaks it.
+- `field.fix.tag`, `tags`, `counter` -> positive `i32` tags only; 0 is a `ValueError`, because tag 0 marks an unresolved arrival and names no field. The id follows the tag, since nothing gates a tag on the dictionary that speaks it.
+- `TextLine`'s Arrow converters (`into_arrow_batch`, `into_arrow_reader`, `from_arrow_batch`, `from_arrow_reader`) -> Rust-only.
 - iterating a `FixMsg` -> `(name, Scalar)` pairs in the root's declared order; `value` answers a `Scalar`, `field` a `Field`.
 - a native `Scalar` or a sequence in the root's own order -> crosses untouched, at every depth, including a repeating group's occurrence.
 - every other native refusal -> the idiomatic Python exception with the Rust message, path or byte offset included.
@@ -1676,8 +1546,7 @@ else:
     python/.venv/bin/python -m pytest python/tests/text
     python/.venv/bin/python -m pytest python/tests/uri
     python/.venv/bin/python -m pytest python/tests/expression
-    python/.venv/bin/python -m pytest python/tests/xxhash
-    python/.venv/bin/python -m pytest python/tests/txhash
+    python/.venv/bin/python -m pytest python/tests/hashing
     python/.venv/bin/python -m pytest python/tests/arrow
     python/.venv/bin/python -m pytest python/tests/fix
     python scripts/check_docs_examples.py --lang python

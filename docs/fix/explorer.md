@@ -18,22 +18,22 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,261 |
+| Scalar fields | 6,241 | 6,265 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 929 |
 | Messages, a subset of components | 181 | 182 |
 
-The live additions are twenty scalar fields, the `altids` group and the `pluginconfig` message component. The native fixed capture schema has 106 columns.
+The live additions are the crate's 24 scalar fields, the `altids` group and the `pluginconfig` message component; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 109 columns.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FixCategory, FixId, FixRegistry, TIMESTAMP_TAG_NAME};
+    use yggdryl::{DataType, FixCategory, FixId, FixRegistry, UPDATEDAT_TAG_NAME};
     use yggdryl::holder::local::Folder;
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = FixRegistry::from_handle(&Folder::new(root)?)?;
-    assert_eq!(registry.len(), 6_261);
+    assert_eq!(registry.len(), 6_265);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.definition(FixCategory::Groups, "parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -45,13 +45,13 @@ The live additions are twenty scalar fields, the `altids` group and the `pluginc
     assert!(matches!(altids.dtype(), DataType::Map(map) if map.keys_sorted()));
     assert!(registry.get_field_by_tag(65_020).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
-    // The crate's own columns are fields from tag 65000, held by every registry;
+    // The crate's own columns are fields from tag 65001, held by every registry;
     // an identity is the tag and the name together.
-    let (tag, name) = TIMESTAMP_TAG_NAME;
-    let timestamp = registry.field_by_id(FixId::of(tag, name)?)?;
-    assert_eq!(timestamp.name(), "timestamp");
-    assert_eq!(timestamp.display(), Some("Timestamp"));
-    assert_eq!(timestamp.as_fix().id()?, Some(FixId::of(65_003, "Timestamp")?));
+    let (tag, name) = UPDATEDAT_TAG_NAME;
+    let updatedat = registry.field_by_id(FixId::of(tag, name)?)?;
+    assert_eq!(updatedat.name(), "updatedat");
+    assert_eq!(updatedat.display(), Some("UpdatedAt"));
+    assert_eq!(updatedat.as_fix().id()?, Some(FixId::of(65_003, "UpdatedAt")?));
     ```
 
 === "Python"
@@ -61,7 +61,7 @@ The live additions are twenty scalar fields, the `altids` group and the `pluginc
     from yggdryl.fix import FixRegistry
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    assert len(registry) == 6_261
+    assert len(registry) == 6_265
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.definition("groups", "parties")
     assert parties.fix.counter == 453
@@ -72,12 +72,12 @@ The live additions are twenty scalar fields, the `altids` group and the `pluginc
     assert altids.into_arrow().type.keys_sorted
     assert registry.get_field_by_tag(65_020) is None
     assert registry.msgtype("D").value == "D"
-    # The crate's own columns are fields from tag 65000, held by every registry;
+    # The crate's own columns are fields from tag 65001, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
-    timestamp = registry.field_by_tag(65_003)
-    assert timestamp.name == "timestamp"
-    assert timestamp.display == "Timestamp"
-    assert registry.field_by_id(timestamp.fix.id) == timestamp
+    updatedat = registry.field_by_tag(65_003)
+    assert updatedat.name == "updatedat"
+    assert updatedat.display == "UpdatedAt"
+    assert registry.field_by_id(updatedat.fix.id) == updatedat
     ```
 
 === "JavaScript"
@@ -88,7 +88,7 @@ The live additions are twenty scalar fields, the `altids` group and the `pluginc
     const { fix } = require('yggdryl')
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    assert.equal(registry.size, 6_261)
+    assert.equal(registry.size, 6_265)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.definition('groups', 'parties')
     assert.equal(parties.fix.counter, 453)
@@ -100,12 +100,12 @@ The live additions are twenty scalar fields, the `altids` group and the `pluginc
     assert.match(altids.dtype.toString(), /keys_sorted=true/)
     assert.equal(registry.getFieldByTag(65020), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
-    // The crate's own columns are fields from tag 65000, held by every registry;
+    // The crate's own columns are fields from tag 65001, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.
-    const timestamp = registry.fieldByTag(65_003)
-    assert.equal(timestamp.name, 'timestamp')
-    assert.equal(timestamp.display, 'Timestamp')
-    assert.ok(registry.fieldById(timestamp.fix.id).equals(timestamp))
+    const updatedat = registry.fieldByTag(65_003)
+    assert.equal(updatedat.name, 'updatedat')
+    assert.equal(updatedat.display, 'UpdatedAt')
+    assert.ok(registry.fieldById(updatedat.fix.id).equals(updatedat))
     ```
 
 ## What the registry holds
@@ -126,7 +126,7 @@ Codes and `fix:identifiers` appear inside their owning field's detail panel. Lis
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 106 fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
+The [Capture](capture.md#find-a-column) page searches the 109 fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
 
 ## Where it came from
 

@@ -138,6 +138,7 @@ Bare spellings fill the defaults [Parquet](../media/parquet.md) and [Iceberg](..
 ## The WKB reader
 
 Rust only. Display, the [text cast](cast.md), and Parquet and Iceberg statistics share this decoder.
+`Geometry::from_slice` reads the seven simple-feature shapes in either byte order, with ISO (Z, M, ZM add 1000, 2000, 3000) or EWKB type codes. `bounding_box` folds min/max in one pass; `into_wkt` prints the shortest round-trip decimal.
 
 ```rust
 use yggdryl::types::geospatial::wkb::{self, Geometry};
@@ -157,15 +158,9 @@ assert_eq!(wkb::into_wkt(&point)?, "POINT (10 20)");
 assert_eq!(wkb::geometry_type_ids(&point)?, [1]);
 let bounds = wkb::bounding_box(&point)?;
 assert_eq!((bounds.xmin, bounds.xmax, bounds.ymin, bounds.ymax), (10.0, 10.0, 20.0, 20.0));
-```
-
-`Geometry::from_slice` reads the seven simple-feature shapes in either byte order, with ISO (Z, M, ZM add 1000, 2000, 3000) or EWKB type codes. `bounding_box` folds min/max in one pass; `into_wkt` prints the shortest round-trip decimal.
-
-```rust
-use yggdryl::types::geospatial::wkb;
 
 // Truncated input: the error names the byte position.
-let error = wkb::bounding_box(&[1, 1, 0, 0, 0]).unwrap_err();
+let error = wkb::bounding_box(&point[..5]).unwrap_err();
 assert!(error.to_string().contains("byte 5"), "{error}");
 ```
 

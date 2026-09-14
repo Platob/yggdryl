@@ -15,7 +15,8 @@ per row, and converts into the text variant of [`RecordOptions`](options.md).
 | `linesep` | exact terminator; unset accepts LF, CRLF, or CR and writes LF |
 | `start_rownum` / `startRownum` | optional signed 64-bit first row number; unset omits the column |
 | `parse_mtime` / `parseMtime` | emit `mtime`, filled by the row header's `mtime` capture or by the handle's own modification time; default `true` |
-| `parse_mimetype` | classify each record and add the `mimetype` column, off by default |
+| `parse_mimetype` | classify each record and add the `mimetype` column, off by default; Rust only |
+| `dedup_adjacent` | drop a record whose body repeats the previous row's, holding one previous digest and never a set; off by default because it gives up row-in / row-out alignment; Rust only |
 | `rename_columns` / `renameColumns` | emitted name for a column, keyed by its default name; a key naming no column is refused |
 | `lift_names` / `liftNames` | entry paths lifted into columns of their own, each named by its `as` alias where it writes one; unset lifts nothing beyond the row header's captures |
 | `autotype` | infer capture datatypes from regex syntax before reading; default `true` |
@@ -180,7 +181,7 @@ through it, so a caller reading lines and a caller reading batches read one
 decode rather than two.
 
 A line is a struct, not a map: `index`, `url`, `timestamp`, `bodytype`, `body`,
-`direction`, `dropped_byte_size`, `decoded_byte_size`, the row header's
+`dropped_byte_size`, `decoded_byte_size`, the row header's
 `captures` in the order the expression declares them, and the `entries` it
 carries. Each field already holds what its column holds, so building a batch
 reads the struct rather than re-deriving a datatype per value.
@@ -243,6 +244,7 @@ count that will not fit is refused by name rather than truncated.
 === "JavaScript"
 
     ```javascript
+    const assert = require('node:assert/strict')
     const { IOBase, TextOptions } = require('yggdryl')
 
     const capture = IOBase.fromBytes(Buffer.from('8=FIX|55=AAPL\n35=D|55=MSFT\n'))
@@ -253,7 +255,7 @@ count that will not fit is refused by name rather than truncated.
     for (const line of capture.readTextLines(options)) {
       read.push([Number(line.index), line.getEntryByPath('55').value])
     }
-    console.assert(JSON.stringify(read) === JSON.stringify([[0, 'AAPL'], [1, 'MSFT']]))
+    assert.deepEqual(read, [[0, 'AAPL'], [1, 'MSFT']])
     ```
 
 ### A line is text
@@ -290,7 +292,7 @@ the header sees the declared text, and a class that must match `ü` is spelled
 in characters.
 
 The decode comes last. Everything the reader does before the line exists - the
-row-header match, `lstrip` / `rstrip`, the direction, `max_record_byte_size`,
+row-header match, `lstrip` / `rstrip`, `max_record_byte_size`,
 `dropped_byte_size`, adjacent deduplication - is a fact of the bytes as read,
 in bytes as read, and where nothing is declared the bytes as read are the
 wire: the byte limit bounds the wire, not the decode, so a body of N wire
@@ -365,7 +367,7 @@ located resource's media type already carries. The reader reads
 the declaration once, where it builds its transport, and lays a transcribing
 stream decoder over the coding chain - coding first, charset second, the order
 the [structured plan](../text/index.md) composes in - so the line splitter,
-the row header, `lstrip` / `rstrip`, the direction, adjacent deduplication and
+the row header, `lstrip` / `rstrip`, adjacent deduplication and
 the entries all read the declared text, and every line is text as read. UTF-8
 and US-ASCII are never wrapped: the line layer already reads both by [the rule
 for a stray byte](#a-line-is-text), so under either the transport is exactly
@@ -624,20 +626,99 @@ answer own their bytes.
 
 ## Reading Arrow back into lines
 
-`from_arrow_batch` and `from_arrow_reader` are the reverse direction, so a text
-read can round-trip through Arrow and come back as lines.
+`into_arrow_batch` / `into_arrow_reader` build batches from lines and
+`from_arrow_batch` / `from_arrow_reader` read them back, so a text read
+round-trips through Arrow as lines. All four are Rust only: Python and
+JavaScript bind none of them.
 
 Column names are matched exactly first, then ignoring case, then against the
-spellings each column is commonly written under — `payload`, `message`, `line`,
-`text`, `content` and `raw` all reach `body`; `source`, `uri`, `path`, `file`
-and `location` all reach `url`; `timestamp`, `time`, `ts`, `written_at` and
-`event_time` all reach `mtime`. Intake is where flexibility belongs: a batch
+spellings each column is commonly written under, keyed by its default name so a
+renamed column still finds them. Intake is where flexibility belongs: a batch
 another producer wrote names its columns the way that producer named them.
-Meaning stays exact — a matched column is read at the datatype its own column
-declares, and nothing guesses what a value means, only what a column is called.
+Meaning stays exact: nothing guesses what a value means, only what a column is
+called.
 
-A column the batch does not carry leaves that field at its default rather than
-failing, because absence is not a failure on the read path anywhere else here.
+| column | also found as |
+| --- | --- |
+| `url` | `source`, `uri`, `path`, `file`, `location` |
+| `rownum` | `row_number`, `rownumber`, `line_number`, `lineno`, `row` |
+| `mtime` | `timestamp`, `time`, `ts`, `written_at`, `event_time` |
+| `mimetype` | `bodytype`, `content_type`, `contenttype`, `media_type` |
+| `body` | `payload`, `message`, `line`, `text`, `content`, `raw` |
+| `dropped_byte_size` | `dropped`, `dropped_bytes`, `truncated_bytes` |
+
+- The column plan is resolved once, at intake: a matched column whose Arrow
+  datatype is not the one the options plan for it is refused there, at
+  `$.<column>`, before any row. A column the batch does not carry leaves its
+  field at the default, because absence is not a failure on the read path.
+- `from_arrow_reader` holds one batch and one row cursor and decodes a row only
+  when it is pulled. A batch whose schema differs from the reader's declared
+  schema, a source error, or any row refusal is answered once and fuses the
+  iterator. `from_arrow_batch` reads its one bounded batch into a `Vec`.
+- A persisted `rownum` is `start_rownum` plus the line's index; reading
+  subtracts the same configured start and refuses a row number before it.
+  Without a `rownum` column the index is the row's stream ordinal, continuous
+  across batches, so physical gaps the read dropped are not recovered.
+- A null cell stays absent. A malformed present value - a `rownum` before the
+  start, a `dropped_byte_size` that is not a nonnegative `u64`, a `mimetype`
+  that does not parse, a null in the required `body` - is refused rather than
+  read as zero or dropped.
+- Every row refusal is located by the stream ordinal and the column,
+  `$[3].mimetype`, never by a row number an earlier column of the same row
+  restored.
+- A capture keeps its declared index even where the batch carries no column
+  for an earlier one. A typed capture renders through the canonical scalar
+  text, so its original spelling is not kept: `0007` read as `int64` comes
+  back `7`.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, RecordBatch, StringArray};
+use yggdryl::arrow::batch_reader;
+use yggdryl::media::text::{
+    TextBytes, TextLine, TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch,
+};
+
+let mut options = TextOptions::new().try_with_rowheader(r"^(?<level>[A-Z]+) (?<id>\d+) ")?;
+options.start_rownum = Some(10);
+let line = TextLine::from_bytes(2, TextBytes::from_bytes("first")?)?
+    .with_captures(vec![None, Some(TextBytes::from_bytes("0007")?)])?;
+let batch = into_arrow_batch([line], &options)?;
+
+// The stored rownum is 12, and reading subtracts the start again; the `id`
+// capture is int64, so it comes back canonical, still at index 1.
+let lines = from_arrow_batch(&batch, &options)?;
+assert_eq!(lines[0].index(), 2);
+assert_eq!((lines[0].capture(0), lines[0].capture(1)), (None, Some("7")));
+
+// Under a later start the stored row would precede it: refused, located by
+// stream ordinal and column.
+options.start_rownum = Some(13);
+let error = from_arrow_batch(&batch, &options).unwrap_err().to_string();
+assert!(error.contains("$[0].rownum"), "{error}");
+
+// No rownum column: indices are stream ordinals across batches, and a batch
+// with another schema refuses once and fuses the stream.
+let bodies = |name: &str, values: Vec<&'static str>| {
+    RecordBatch::try_from_iter([(name, Arc::new(StringArray::from(values)) as ArrayRef)])
+};
+let first = bodies("body", vec!["one", "two"])?;
+let batches = batch_reader(
+    first.schema(),
+    [first, bodies("body", vec!["three"])?, bodies("payload", vec!["four"])?],
+);
+let mut read = from_arrow_reader(batches, &TextOptions::new())?;
+let indices = read
+    .by_ref()
+    .take(3)
+    .map(|line| line.map(|line| line.index()))
+    .collect::<Result<Vec<_>, _>>()?;
+assert_eq!(indices, [0, 1, 2]);
+let error = read.next().unwrap().unwrap_err().to_string();
+assert!(error.contains("$[3]"), "{error}");
+assert!(read.next().is_none());
+```
 
 ## Framing
 

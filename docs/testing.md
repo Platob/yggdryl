@@ -59,8 +59,7 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     cargo test --features "parquet iceberg" -p yggdryl --lib media::
     cargo test --features "parquet iceberg" -p yggdryl --lib text::
     cargo test --features "parquet iceberg" -p yggdryl --lib expression::
-    cargo test --features "parquet iceberg" -p yggdryl --lib xxhash::
-    cargo test --features "parquet iceberg" -p yggdryl --lib txhash::
+    cargo test --features "parquet iceberg" -p yggdryl --lib hashing::
     ```
 
 === "Python"
@@ -72,10 +71,11 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     python/.venv/bin/python -m pytest python/tests/charset
     python/.venv/bin/python -m pytest python/tests/media
     python/.venv/bin/python -m pytest python/tests/text
+    python/.venv/bin/python -m pytest python/tests/uri
+    python/.venv/bin/python -m pytest python/tests/arrow
     python/.venv/bin/python -m pytest python/tests/expression
     python/.venv/bin/python -m pytest python/tests/fix
-    python/.venv/bin/python -m pytest python/tests/xxhash
-    python/.venv/bin/python -m pytest python/tests/txhash
+    python/.venv/bin/python -m pytest python/tests/hashing
     ```
 
 === "JavaScript"
@@ -83,12 +83,12 @@ Integration targets are one file per layer under `rust/tests/`; unit tests sit b
     ```bash
     node --test "node/tests/types/*.test.js"
     node --test "node/tests/holder/*.test.js"
+    node --test "node/tests/charset/*.test.js"
     node --test "node/tests/media/*.test.js"
     node --test "node/tests/text/*.test.js"
     node --test "node/tests/uri/*.test.js"
     node --test "node/tests/expression/*.test.js"
-    node --test "node/tests/xxhash/*.test.js"
-    node --test "node/tests/txhash/*.test.js"
+    node --test "node/tests/hashing/*/*.test.js"
     node --test "node/tests/fix/*.test.js"
     ```
 

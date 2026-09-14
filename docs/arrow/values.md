@@ -110,6 +110,7 @@ A held container keeps the length it knows; a stream keeps its laziness.
 
 Python reads `PyArrow`, pandas, polars, NumPy, and any Arrow C data or stream
 exporter through one call, and the declared `Field` casts the result in Rust.
+A held shape shares its buffers back, so it stays readable; a stream crosses once.
 
 === "Python"
 
@@ -132,21 +133,11 @@ exporter through one call, and the declared `Field` casts the result in Rust.
     # The declared Field is applied by the core's one recursive cast.
     prices = ArrowValue.from_py(pa.array([1, 2, 3]), "price: float64 not null")
     assert prices.into_arrow_array().type == pa.float64()
-    ```
 
-A held shape shares its buffers back, so it stays readable; a stream crosses once.
-
-=== "Python"
-
-    ```python
-    import pyarrow as pa
-    from yggdryl import ArrowValue
-
-    table = pa.table({"size": [100, 250]})
-
+    # A held shape stays readable; a stream is one-shot.
     held = ArrowValue.from_py(table.to_batches()[0])
     assert held.into_arrow_batch().num_rows == 2
-    assert held.into_pandas().shape == (2, 1)
+    assert held.into_pandas().shape == (2, 2)
     assert not held.is_consumed
 
     streamed = ArrowValue.from_py(table)

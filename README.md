@@ -32,7 +32,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Record encodings and tables | [media](docs/media/index.md) |
 | Structured text | [text](docs/text/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
-| Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [xxhash](docs/xxhash/index.md), [txhash](docs/txhash/index.md), [fix](docs/fix/index.md) |
+| Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [fix](docs/fix/index.md) |
 | Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
@@ -57,7 +57,7 @@ rust/                    The core crate
   src/charset/           UTF-8, UTF-16, ASCII, ISO 8859, Windows and DOS pages
   src/media/             IPC, Parquet, Avro, text records, and Iceberg
   src/text/              JSON, YAML, TOML, limits, and inference
-  src/{uri,arrow,expression,xxhash,txhash,fix}/
+  src/{uri,arrow,expression,hashing,fix}/
                          The remaining core layers
   tests/                 Edge tests, categorized like the source
   benchmarks/            Criterion targets, categorized like the source

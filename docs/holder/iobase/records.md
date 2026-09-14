@@ -440,6 +440,12 @@ The options field selects and casts in one pass; columns it omits are never read
     // The resource is unchanged: it still holds all three.
     assert_eq!(handle.read_arrow_field(&plain)?.field_len(), 3);
 
+    // `select_by_names` narrows by name instead, in the order the names are given.
+    let selecting = plain.clone().with_select_by_names(["symbol"]);
+    let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
+    assert_eq!(first.num_columns(), 1);
+    assert_eq!(first.schema().field(0).name(), "symbol");
+
     // A column it does not hold cannot be projected out of it, so the encoding
     // reads everything and the cast supplies that column as nulls.
     let invented = DataType::from_fields([
@@ -494,6 +500,11 @@ The options field selects and casts in one pass; columns it omits are never read
     ])
     widened = handle.read_arrow_reader(options=options)
     assert widened.schema.names == ["id", "nowhere"]
+
+    # `select_by_names` narrows by name instead, in the order the names are given.
+    selecting = handle.record_options()
+    selecting.select_by_names = ["symbol"]
+    assert handle.read_arrow_reader(options=selecting).read_all().column_names == ["symbol"]
     ```
 
 === "JavaScript"
@@ -533,6 +544,10 @@ The options field selects and casts in one pass; columns it omits are never read
     )
     const widened = handle.readArrowReader(options.withField(invented))
     assert.equal(widened.field.dtype.length, 2)
+
+    // `selectByNames` narrows by name instead, in the order the names are given.
+    const selected = handle.readArrowReader(options.withSelectByNames(['symbol'])).intoTable()
+    assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
 [Parquet](../../media/parquet.md) skips the column chunk bytes; [Arrow IPC](../../media/ipc.md) skips decode and allocation but still reads the message body.
@@ -558,7 +573,7 @@ The options field selects and casts in one pass; columns it omits are never read
     let arrow_schema = schema.into_arrow_schema()?;
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
-        vec![Arc::new(Int64Array::from_iter_values(0..1_000))],
+        vec![Arc::new(Int64Array::from_iter_values(0..20))],
     )?;
 
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
@@ -598,7 +613,7 @@ The options field selects and casts in one pass; columns it omits are never read
 
     handle = IOBase.from_bytes()
     handle.media_type = "application/vnd.apache.arrow.stream"
-    handle.overwrite_arrow_table(pa.table({"id": list(range(1_000))}))
+    handle.overwrite_arrow_table(pa.table({"id": list(range(20))}))
 
     # Ten result rows, exactly: the batch the bound lands inside is sliced.
     ten = handle.record_options()
@@ -636,7 +651,7 @@ The options field selects and casts in one pass; columns it omits are never read
 
     const table = new arrow.Table({
       id: arrow.vectorFromArray(
-        Array.from({ length: 1000 }, (_, index) => BigInt(index)),
+        Array.from({ length: 20 }, (_, index) => BigInt(index)),
         new arrow.Int64(),
       ),
     })
@@ -802,87 +817,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 
 ### Selecting columns
 
-`select_by_names` narrows both directions: a read yields the named columns in that order, a write keeps only those incoming columns.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::media::IORecordOptions;
-    use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::Buffer;
-    use yggdryl::{arrow, DataType, MimeType};
-
-    use arrow_array::{Int64Array, RecordBatch, StringArray};
-    use std::sync::Arc;
-    let schema = DataType::from_fields([
-        DataType::Int64.required_field("id"),
-        DataType::utf8().nullable_field("symbol"),
-    ])?
-    .required_field("row");
-    let batch = RecordBatch::try_new(
-        schema.into_arrow_schema()?,
-        vec![
-            Arc::new(Int64Array::from(vec![1_i64, 2])),
-            Arc::new(StringArray::from(vec![Some("AAPL"), Some("MSFT")])),
-        ],
-    )?;
-
-    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    let options = handle.record_options()?;
-    handle.overwrite_arrow_reader(arrow::batch_reader(batch.schema(), [batch]), &options)?;
-
-    // A read narrowed to one column yields one column.
-    let selecting = options.with_select_by_names(["symbol"]);
-    let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
-    assert_eq!(first.num_columns(), 1);
-    assert_eq!(first.schema().field(0).name(), "symbol");
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "orders.arrows")
-    handle.overwrite_arrow_table(pa.table({"id": [1, 2], "symbol": ["AAPL", "MSFT"]}))
-
-    # Record settings live on the one options object shared by every operation.
-    options = handle.record_options()
-    options.select_by_names = ["symbol"]
-    narrowed = handle.read_arrow_reader(options=options).read_all()
-    assert narrowed.column_names == ["symbol"]
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const handle = new IOBase(path.join(root, 'orders.arrows'))
-    handle.overwriteArrowTable(
-      new arrow.Table({
-        id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
-        symbol: arrow.vectorFromArray(['AAPL', 'MSFT'], new arrow.Utf8()),
-      }),
-    )
-
-    const narrowed = handle.recordOptions().withSelectByNames(['symbol'])
-    const table = handle.readArrowReader(narrowed).intoTable()
-    assert.deepEqual(table.schema.fields.map((field) => field.name), ['symbol'])
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
+`select_by_names` narrows both directions: a read yields the named columns in that order, a write keeps only those incoming columns. It lives on the one options object shared by every operation; the [Column pushdown](#column-pushdown) example reads one column by name in all three languages.
 
 ## Text records
 

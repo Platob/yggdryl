@@ -72,7 +72,7 @@ The inferring `read_range` and `append` entry points sit on the [Python](../../e
 
 ## Digests
 
-Both answer a [`Digest`](../../xxhash/index.md) rather than the bytes, and every backend and every wrapper inherits them. [Handles](../../xxhash/handles.md) carries `Hashed<H>` and the Rust-only pass-through pair.
+Both answer a `Digest` rather than the bytes, and every backend and every wrapper inherits them. [Hashing](../../hashing.md) owns the digest values and carries `Hashed<H>` and the Rust-only pass-through pair.
 
 === "Rust"
 
@@ -102,7 +102,8 @@ Both answer a [`Digest`](../../xxhash/index.md) rather than the bytes, and every
 === "Python"
 
     ```python
-    from yggdryl import IOBase, xxhash
+    from yggdryl import IOBase
+    from yggdryl.hashing import xxhash
 
     handle = IOBase.from_bytes()
     handle.write_bytes(b"symbol,price\nAAPL,1\n")
@@ -116,8 +117,9 @@ Both answer a [`Digest`](../../xxhash/index.md) rather than the bytes, and every
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { IOBase, xxhash } = require('yggdryl')
+    const { IOBase, hashing } = require('yggdryl')
 
+    const { xxhash } = hashing
     const handle = IOBase.fromBytes()
     const payload = Buffer.from('symbol,price\nAAPL,1\n')
     handle.writeBytes(payload)

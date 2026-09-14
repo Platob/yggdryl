@@ -24,16 +24,22 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 === "Rust"
 
     ```rust
-    use yggdryl::{Scalar};
     use yggdryl::text::yaml;
+    use yggdryl::{from_yaml_scalar, into_yaml_scalar, Scalar};
 
     let value = yaml::from_utf8("symbol: AAPL\nquantity: 2\n")?;
+    let encoded = yaml::into_utf8(&value)?;
 
     assert_eq!(
         value.get_key_str("symbol").and_then(Scalar::as_str),
         Some("AAPL")
     );
-    assert_eq!(yaml::into_utf8(&value)?, "quantity: 2\nsymbol: AAPL\n");
+    assert_eq!(encoded, "quantity: 2\nsymbol: AAPL\n");
+
+    // The crate-root inferring entry points answer the same value, from text or bytes.
+    assert_eq!(from_yaml_scalar("symbol: AAPL\nquantity: 2\n")?, value);
+    assert_eq!(into_yaml_scalar(&value)?, encoded);
+    assert_eq!(from_yaml_scalar(encoded.as_bytes())?, value);
     ```
 
 === "Python"
@@ -44,10 +50,12 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
 
     natural = yaml.loads("symbol: AAPL\nquantity: 2\n")
     value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
+    encoded = yaml.dumps(value)
 
     assert value.kind == "record"
     assert value.as_py() == natural == {"quantity": 2, "symbol": "AAPL"}
-    assert yaml.dumps(value) == b"quantity: 2\nsymbol: AAPL\n"
+    assert encoded == b"quantity: 2\nsymbol: AAPL\n"
+    assert yaml.loads(encoded, cls=Scalar) == value
     ```
 
 === "JavaScript"
@@ -64,50 +72,14 @@ Rust returns the shared `Scalar`; Python and JavaScript project it into native o
     assert.equal(value.kind, 'record')
     assert.deepEqual(value.asJs(), natural)
     assert.ok(Buffer.isBuffer(encoded))
+    assert.equal(encoded.toString(), 'quantity: 2\nsymbol: AAPL\n')
     assert.deepEqual(yaml.loads(encoded), natural)
+    assert.ok(yaml.loads(encoded, { scalar: true }).equals(value))
     ```
 
 ## One inferring entry point
 
-`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are YAML's crate-root [inferring entry points](index.md) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::{from_yaml_scalar, into_yaml_scalar};
-
-    let value = from_yaml_scalar("symbol: AAPL\nquantity: 2\n")?;
-    let encoded = into_yaml_scalar(&value)?;
-
-    assert_eq!(encoded, "quantity: 2\nsymbol: AAPL\n");
-    assert_eq!(from_yaml_scalar(encoded.as_bytes())?, value);
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl import Scalar
-    from yggdryl.text import yaml
-
-    value = yaml.loads("symbol: AAPL\nquantity: 2\n", cls=Scalar)
-    encoded = yaml.dumps(value)
-
-    assert encoded == b"quantity: 2\nsymbol: AAPL\n"
-    assert yaml.loads(encoded, cls=Scalar) == value
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const value = yaml.loads('symbol: AAPL\nquantity: 2\n', { scalar: true })
-    const encoded = yaml.dumps(value)
-
-    assert.equal(encoded.toString(), 'quantity: 2\nsymbol: AAPL\n')
-    assert.ok(yaml.loads(encoded, { scalar: true }).equals(value))
-    ```
+`yggdryl::from_yaml_scalar`, `from_yaml_scalar_with_field`, and `into_yaml_scalar` are YAML's crate-root [inferring entry points](index.md#raw-document-codecs) over `from_bytes`, `from_bytes_with_field`, and `into_utf8`; the [Use](#use) example shows them answering what the explicit form answers. The bindings' `loads` and `dumps` are that entry.
 
 ## Natural values and exact Fields
 
@@ -255,49 +227,7 @@ Layout changes bytes, never meaning; the writer quotes scalars whose plain spell
 
 ## Placeholders
 
-Substitution is opt-in, runs after parsing, and touches string values only, never keys or structure. Quote placeholders, since unquoted braces are YAML flow-mapping syntax.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::text::{Format, Loading, Placeholders};
-    use yggdryl::Scalar;
-
-    let loading = Loading::new().with_placeholders(
-        Placeholders::new().with_variable("PORT", Scalar::from(8080_i64)),
-    );
-    let value = yggdryl::text::from_utf8_with(
-        "port: \"{{ PORT }}\"\n",
-        Format::Yaml,
-        &loading,
-    )?;
-
-    assert_eq!(value.get_key_str("port"), Some(&Scalar::from(8080_i64)));
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.text import yaml
-
-    options = {"placeholders": {"PORT": 8080}}
-
-    assert yaml.loads('port: "{{ PORT }}"\n', **options) == {"port": 8080}
-    assert isinstance(yaml.loads("port: {{ PORT }}\n", **options)["port"], dict)
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { yaml } = require('yggdryl')
-
-    const options = { placeholders: { PORT: 8080 } }
-
-    assert.deepEqual(yaml.loads('port: "{{ PORT }}"\n', options), { port: 8080 })
-    ```
-
-Syntax, security, and measured overhead live on [Placeholders](placeholders.md).
+Substitution is opt-in, runs after parsing, and touches string values only, never keys or structure; a quoted `"{{ PORT }}"` becomes the variable's own typed value. Quote placeholders, since unquoted braces are YAML flow-mapping syntax: `port: {{ PORT }}` parses as a mapping before substitution runs. The YAML example, syntax, security, and measured overhead live on [Placeholders](placeholders.md).
 
 ## Edges
 

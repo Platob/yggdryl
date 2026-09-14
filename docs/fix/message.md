@@ -10,7 +10,8 @@
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Writes | `set`, `set_many`, `with_value` and `remove` [change the row](#written-into-the-row) and never the entries; a key resolves as a lookup does, a value types through the registry's field, and a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only; Python and JavaScript expose `set` and `remove` |
 | Validates | the row through `Field::scalar`, so a `Scalar::Record` input becomes that sequence |
-| Borrows | `registry()`, `as_field()`, `as_value()` |
+| Settled | every message holds non-null `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime(52)`, appended where the root lacks them and [dated once at construction](capture.md#every-message-is-dated-and-versioned); a write recomputes `uuid` and `puuid`, a stated one must match, and a mandatory field refuses a null or a removal |
+| Borrows | `registry()`, `as_field()`, `as_value()`, and `updatedat()`, `createdat()`, `uuid()`, `puuid()` without a lookup |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
 | Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
@@ -57,10 +58,14 @@
         ])),
         ("9999", Scalar::from("custom")),
     ])?;
-    let msg = FixMsg::with_registry(Arc::clone(&registry), root.clone(), value)?;
+    let msg = FixMsg::with_registry(Arc::clone(&registry), root, value)?;
 
-    // The record became the ordered row the root declares.
-    assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(5));
+    // The record became the ordered row the root declares, with the seven
+    // settled values appended behind the five it stated.
+    assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(12));
+    assert_eq!(msg.as_field().fields()[5].name(), "updatedat");
+    assert_eq!(msg.updatedat(), msg.by_tag(52)?, "an undated message is dated once");
+    assert_eq!(msg.puuid(), msg.by_name("puuid")?);
     assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
     assert_eq!(msg.by_name("ticker")?, &Scalar::from("AAPL"));
     assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, &Scalar::from("BROKER"));
@@ -75,7 +80,9 @@
     assert!(msg.get_by_id(yggdryl::FixId::of(38, "Quantity")?).is_none(), "another name is another field");
     assert!(msg.get_by_id(yggdryl::FixId::of(5001, "OrderQty")?).is_none(), "another tag is another field");
 
-    // Schema and value serialize through the paths every field and value share.
+    // Schema and value serialize through the paths every field and value
+    // share, and the settled values come back as they were.
+    let root = msg.as_field().clone();
     let schema = root.clone().into_json()?;
     assert!(schema.contains("\"fix:tag\":\"55\""), "{schema}");
     let text = into_json_scalar(msg.as_value())?;
@@ -127,8 +134,11 @@
         registry,
     )
 
-    # The mapping became the ordered row the root declares.
-    assert len(message) == 5
+    # The mapping became the ordered row the root declares, with the seven
+    # settled values appended behind the five it stated.
+    assert len(message) == 12
+    assert message.updatedat() == message.by_tag(52), "an undated message is dated once"
+    assert message.puuid() == message.by_name("puuid")
     assert message.by_tag(38).as_py() == 100
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
@@ -136,7 +146,10 @@
     assert message[55] == message.get_by_tag(55)
     with pytest.raises(KeyError):
         message.by_path("Parties.PartyID")  # a group member needs its index
-    assert [name for name, _ in message] == ["OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999"]
+    assert [name for name, _ in message] == [
+        "OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999",
+        "updatedat", "createdat", "uuid", "puuid", "code", "snapshotat", "sendingtime",
+    ]
 
     # An identifier is the tag and the name together, under the one fold, and exact.
     folded = Field("order_qty", "int64")
@@ -151,9 +164,9 @@
     assert message.get_by_id(retagged.fix.id) is None, "another tag is another field"
 
     # The schema serializes through the path every field already has, and the
-    # value the message holds names the same row.
-    assert '"fix:tag":"55"' in root.into_json()
-    assert FixMsg(root, message.value, registry) == message
+    # value the message holds names the same row, settled values included.
+    assert '"fix:tag":"55"' in message.field.into_json()
+    assert FixMsg(message.field, message.value, registry) == message
     ```
 
 === "JavaScript"
@@ -197,8 +210,12 @@
       registry,
     )
 
-    // The plain object became the ordered row the root declares.
+    // The plain object became the ordered row the root declares, with the
+    // seven settled values appended behind the five it stated.
     assert.equal(message.value.kind, 'sequence')
+    assert.equal(message.size, 12)
+    assert.ok(message.updatedat().equals(message.byTag(52)), 'an undated message is dated once')
+    assert.ok(message.puuid().equals(message.byName('puuid')))
     assert.equal(message.byTag(38).asJs(), 100)
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
@@ -207,7 +224,10 @@
     assert.throws(() => message.at('Parties.PartyID'), /a fix value/)
     assert.deepEqual(
       [...message].map(([name]) => name),
-      ['OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999'],
+      [
+        'OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999',
+        'updatedat', 'createdat', 'uuid', 'puuid', 'code', 'snapshotat', 'sendingtime',
+      ],
     )
 
     // An identifier is the tag and the name together, under the one fold, and exact.
@@ -222,11 +242,12 @@
     retagged.fix.tag = 5001
     assert.equal(message.getById(retagged.fix.id), null, 'another tag is another field')
 
-    // Schema and value serialize through the paths every field and value share.
+    // Schema and value serialize through the paths every field and value
+    // share, and the settled values come back as they were.
     const document = message.toJSON()
     assert.equal(document.field.dtype.fields[1].metadata['fix:tag'], '55')
     assert.deepEqual(document.value[1], 'AAPL')
-    assert.ok(new fix.FixMsg(root, message.value, registry).equals(message))
+    assert.ok(new fix.FixMsg(message.field, message.value, registry).equals(message))
     ```
 
 ## One namespace
@@ -250,10 +271,22 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 | `get_by_name` / `by_name` | folds through the registry to the canonical spelling, then matches a root child exactly |
 | `get_by_path` / `by_path` | the whole string as a name, then segment by segment: into a Struct child by name, into a List entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects |
+| `updatedat` / `createdat` / `uuid` / `puuid` | the settled values the message holds directly, borrowed without a registry lookup, a metadata read or a child scan; methods in Python and JavaScript |
+
+## Clocks and identity
+
+A message's clocks are settled once, when it is first built - `SendingTime`, then `snapshotat`, `updatedat` and `createdat`, as the [capture](capture.md#every-message-is-dated-and-versioned) reads them - and never read from a wall clock again. Its two identities are derived from the settled row, never stored beside it:
+
+| identity | recipe |
+| --- | --- |
+| `puuid` | UUIDv8 of the unseeded XXH3-128 of the exact `code` bytes alone; an empty code hashes empty bytes, and whitespace is a real name |
+| `uuid` | the row's named cells sorted by exact field-name bytes - `uuid`, `updatedat`, `createdat` and `nofixentries` left out, every other cell in, `code`, `puuid`, `snapshotat`, `SendingTime` and carried capture context included - fed through the canonical scalar record framing into an unseeded XXH64, then packed with `updatedat`'s signed nanoseconds by [`TxHash::into_uuid`](../hashing.md) |
+
+An omitted cell differs from a null one and an empty value from a null, while root column order does not matter; so a projection that pads, renames or regroups columns may move `uuid`, and unchanged named content keeps it. Every write, enrichment and projection recomputes both before publishing; a stated `uuid` or `puuid` is an assertion that must match the complete candidate. These hashes are non-cryptographic fingerprints, and `digest` - the arrival record's - is a separate contract.
 
 ## Written into the row
 
-A message is read once and then written to: enrichment fills what it implied, the lifecycle stamps what the stream implied, a restatement rewrites a retired spelling. All of them go through one door. `set` writes one value into the row, typed by the field the key reaches; `set_many` lands several with one rebuild, which is what a stream stamping three identities on every message wants; `with_value` is the consuming twin; `remove` takes a child out and answers what it held. Every one of them is row-only: the entries are what arrived, so `into_bytes` still re-emits the bytes this message arrived as, byte for byte, and `digest` still answers the arrival record's.
+A message is read once and then written to: enrichment fills what it implied, the lifecycle stamps what the stream implied, a restatement rewrites a retired spelling. All of them go through one door. `set` writes one value into the row, typed by the field the key reaches; `set_many` lands several with one rebuild, which is what a stream stamping a chain's code, clocks and history on every message wants; `with_value` is the consuming twin; `remove` takes a child out and answers what it held, and refuses a mandatory one. Every one of them is row-only: the entries are what arrived, so `into_bytes` still re-emits the bytes this message arrived as, byte for byte, and `digest` still answers the arrival record's. Each recomputes the [identities](#clocks-and-identity) before publishing, so a content write moves `uuid` while `puuid` stays.
 
 | Key | Reaches |
 | --- | --- |
@@ -271,7 +304,7 @@ A written child keeps its position, so every reader already holding the row addr
     use std::sync::Arc;
 
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixRegistry, Scalar};
+    use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -281,6 +314,7 @@ A written child keeps its position, so every reader already holding the row addr
     let mut message = reader.parse_fix_line(line)?;
     let children = message.as_field().fields().len();
     let at = message.as_field().index_of("symbol").expect("the symbol child");
+    let (uuid, puuid) = (message.uuid().clone(), message.puuid().clone());
 
     // Appended under the dictionary's field, typed by it, reached by tag or name.
     message.set(34, Scalar::from(7_i32))?;
@@ -292,6 +326,9 @@ A written child keeps its position, so every reader already holding the row addr
     message.set("Symbol", Scalar::from("MSFT"))?;
     assert_eq!(message.as_field().index_of("symbol"), Some(at));
     assert_eq!(message.by_tag(55)?.as_str(), Some("MSFT"));
+    // The content identity moved with the content; the chain's is `code`'s alone.
+    assert_ne!(message.uuid(), &uuid);
+    assert_eq!(message.puuid(), &puuid);
 
     // A tag no dictionary explains is kept under its decimal spelling.
     message.set(7777, Scalar::from("custom"))?;
@@ -301,15 +338,31 @@ A written child keeps its position, so every reader already holding the row addr
     assert!(message.set("nosuchfield", Scalar::from("x")).is_err());
     assert_eq!(message.as_field().fields().len(), children + 2);
 
-    // Removed, and the value answered; the other tags still reach their children.
-    assert_eq!(message.remove(54).as_ref().and_then(Scalar::as_str), Some("1"));
+    // Removed, and the value answered; a mandatory field refuses removal and
+    // a null; the other tags still reach their children.
+    assert_eq!(message.remove(54)?.as_ref().and_then(Scalar::as_str), Some("1"));
     assert_eq!(message.get_by_tag(54), None);
-    assert_eq!(message.remove("nosuchfield"), None);
+    assert_eq!(message.remove("nosuchfield")?, None);
+    assert!(message.remove("updatedat").is_err());
+    assert!(message.set("updatedat", Scalar::Null).is_err());
     assert_eq!(message.by_tag(11)?.as_str(), Some("A1"));
 
     // Only the row changed: the wire comes back byte for byte.
     assert_eq!(message.into_bytes(b'|'), line);
     assert_eq!(message.entries(), reader.parse_fix_line(line)?.entries());
+
+    // The written message is a fixed row, and the row a message again: the
+    // root is the schema, reached the same way, re-emitting the same wire.
+    let schema = fix_schema(&registry, "fix")?;
+    let row = message.into_row(&schema)?;
+    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
+    assert_eq!(held.as_field(), &schema);
+    assert_eq!(held.by_tag(55)?, message.by_tag(55)?);
+    assert_eq!(held.version(), message.version());
+    assert_eq!(held.entries(), message.entries());
+    assert_eq!(held.digest(), message.digest());
+    assert_eq!(held.into_bytes(b'|'), line);
+    assert_eq!(held.into_row(&schema)?, row);
     ```
 
 === "Python"
@@ -319,7 +372,7 @@ A written child keeps its position, so every reader already holding the row addr
 
     import pytest
 
-    from yggdryl.fix import FixCodec, FixRegistry
+    from yggdryl.fix import FixCodec, FixMsg, FixRegistry, fix_schema
 
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry)
@@ -328,6 +381,7 @@ A written child keeps its position, so every reader already holding the row addr
     message = reader.parse_fix_line(line)
     children = len(message)
     names = [name for name, _ in message]
+    uuid, puuid = message.uuid(), message.puuid()
 
     # Appended under the dictionary's field, typed by it, reached by tag or name.
     message.set(34, 7)
@@ -339,6 +393,9 @@ A written child keeps its position, so every reader already holding the row addr
     message.set("Symbol", "MSFT")
     assert [name for name, _ in message].index("symbol") == names.index("symbol")
     assert message.by_tag(55).as_py() == "MSFT"
+    # The content identity moved with the content; the chain's is `code`'s alone.
+    assert message.uuid() != uuid
+    assert message.puuid() == puuid
 
     # A tag no dictionary explains is kept under its decimal spelling.
     message.set(7777, "custom")
@@ -349,15 +406,32 @@ A written child keeps its position, so every reader already holding the row addr
         message.set("nosuchfield", "x")
     assert len(message) == children + 2
 
-    # Removed, and the value answered; the other tags still reach their children.
+    # Removed, and the value answered; a mandatory field refuses removal and
+    # a null; the other tags still reach their children.
     assert message.remove(54).as_py() == "1"
     assert message.get_by_tag(54) is None
     assert message.remove("nosuchfield") is None
+    with pytest.raises(ValueError):
+        message.remove("updatedat")
+    with pytest.raises((TypeError, ValueError)):
+        message.set("updatedat", None)
     assert message.by_tag(11).as_py() == "A1"
 
     # Only the row changed: the wire comes back byte for byte.
     assert message.into_bytes(ord("|")) == line
     assert message.entries() == reader.parse_fix_line(line).entries()
+
+    # The written message is a fixed row, and the row a message again: the
+    # root is the schema, reached the same way, re-emitting the same wire.
+    schema = fix_schema(registry, "fix")
+    row = message.into_row(schema)
+    held = FixMsg.from_row(schema, row, registry)
+    assert held.field == schema
+    assert held.by_tag(55) == message.by_tag(55)
+    assert held.entries() == message.entries()
+    assert held.digest() == message.digest()
+    assert held.into_bytes(ord("|")) == line
+    assert held.into_row(schema) == row
     ```
 
 === "JavaScript"
@@ -374,6 +448,7 @@ A written child keeps its position, so every reader already holding the row addr
     const message = reader.parseFixLine(Buffer.from(line))
     const children = message.size
     const names = [...message].map(([name]) => name)
+    const [uuid, puuid] = [message.uuid(), message.puuid()]
 
     // Appended under the dictionary's field, typed by it, reached by tag or name.
     message.set(34, 7)
@@ -385,6 +460,9 @@ A written child keeps its position, so every reader already holding the row addr
     message.set('Symbol', 'MSFT')
     assert.equal([...message].map(([name]) => name).indexOf('symbol'), names.indexOf('symbol'))
     assert.equal(message.byTag(55).asJs(), 'MSFT')
+    // The content identity moved with the content; the chain's is `code`'s alone.
+    assert.ok(!message.uuid().equals(uuid))
+    assert.ok(message.puuid().equals(puuid))
 
     // A tag no dictionary explains is kept under its decimal spelling.
     message.set(7777, 'custom')
@@ -394,99 +472,33 @@ A written child keeps its position, so every reader already holding the row addr
     assert.throws(() => message.set('nosuchfield', 'x'))
     assert.equal(message.size, children + 2)
 
-    // Removed, and the value answered; the other tags still reach their children.
+    // Removed, and the value answered; a mandatory field refuses removal and
+    // a null; the other tags still reach their children.
     assert.equal(message.remove(54).asJs(), '1')
     assert.equal(message.getByTag(54), null)
     assert.equal(message.remove('nosuchfield'), null)
+    assert.throws(() => message.remove('updatedat'))
+    assert.throws(() => message.set('updatedat', null))
     assert.equal(message.byTag(11).asJs(), 'A1')
 
     // Only the row changed: the wire comes back byte for byte.
     assert.equal(Buffer.from(message.intoBytes(124)).toString(), line)
+
+    // The written message is a fixed row, and the row a message again: the
+    // root is the schema, reached the same way, re-emitting the same wire.
+    const schema = fix.schema(registry, 'fix')
+    const row = message.intoRow(schema)
+    const held = fix.FixMsg.fromRow(schema, row, registry)
+    assert.ok(held.field.equals(schema))
+    assert.ok(held.byTag(55).equals(message.byTag(55)))
+    assert.deepEqual(held.digest(), message.digest())
+    assert.equal(Buffer.from(held.intoBytes(124)).toString(), line)
+    assert.ok(held.intoRow(schema).equals(row))
     ```
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the bytes the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
-
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
-    let reader = FixCodec::new(Arc::clone(&registry));
-    let schema = fix_schema(&registry, "fix")?;
-
-    let line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|";
-    let order = reader.parse_fix_line(line)?;
-    let row = order.into_row(&schema)?;
-
-    let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row)?;
-    // The root is the schema; the message is the same, reached the same way.
-    assert_eq!(held.as_field(), &schema);
-    assert_eq!(held.by_tag(55)?, order.by_tag(55)?);
-    assert_eq!(held.version(), order.version());
-    assert_eq!(held.entries(), order.entries());
-    assert_eq!(held.digest(), order.digest());
-    assert_eq!(held.into_bytes(b'|'), line);
-    // And the row it came from is the row it makes.
-    assert_eq!(held.into_row(&schema)?, row);
-    ```
-
-=== "Python"
-
-    ```python
-    from pathlib import Path
-
-    from yggdryl.fix import FixCodec, FixMsg, FixRegistry, fix_schema
-
-    registry = FixRegistry.from_handle(Path("config/fix").resolve())
-    reader = FixCodec(registry)
-    schema = fix_schema(registry, "fix")
-
-    line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|"
-    order = reader.parse_fix_line(line)
-    row = order.into_row(schema)
-
-    held = FixMsg.from_row(schema, row, registry)
-    # The root is the schema; the message is the same, reached the same way.
-    assert held.field == schema
-    assert held.by_tag(55) == order.by_tag(55)
-    assert held.entries() == order.entries()
-    assert held.digest() == order.digest()
-    assert held.into_bytes(ord("|")) == line
-    # And the row it came from is the row it makes.
-    assert held.into_row(schema) == row
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const path = require('node:path')
-    const { fix } = require('yggdryl')
-
-    const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
-    const reader = new fix.FixCodec(registry)
-    const schema = fix.schema(registry, 'fix')
-
-    const line = '8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|9999=x|10=0|'
-    const order = reader.parseFixLine(Buffer.from(line))
-    const row = order.intoRow(schema)
-
-    const held = fix.FixMsg.fromRow(schema, row, registry)
-    // The root is the schema; the message is the same, reached the same way.
-    assert.ok(held.field.equals(schema))
-    assert.ok(held.byTag(55).equals(order.byTag(55)))
-    assert.deepEqual(held.digest(), order.digest())
-    assert.equal(Buffer.from(held.intoBytes(124)).toString(), line)
-    // And the row it came from is the row it makes.
-    assert.ok(held.intoRow(schema).equals(row))
-    ```
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The row must carry the seven settled values - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - each non-null in its exact layout, and its `uuid` and `puuid` must be the ones its content computes; nothing is defaulted and no clock is read back from a UUID. The entries are rebuilt from the `nofixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the bytes the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. The [example above](#written-into-the-row) ends with that round trip.
 
 ## Restated at the dictionary's newest version
 
@@ -670,12 +682,13 @@ A value written into a target is re-typed for the target's field through the cod
 - `get_by_tag(9999)`, an unknown tag -> the root child named `9999` exactly, never `09999`; the miss allocates nothing.
 - A tag two fields hold under different names (`OrderQty` and `Quantity`, both 38) -> `by_id` tells them apart, each id reaching its own child; a bare tag reaches one child, the one named by the registry's first holder where the row itself does not carry the tag.
 - `by_id` with another name or another tag than the field's -> a miss, because an identifier names the pair exactly and never folds a tag onto a name it does not carry.
-- `FixId::of(-1, ..)` -> refused, because no FIX field has a negative tag; a message root the codec builds carries no `fix:branches`, because a message is not a dictionary member.
+- `FixId::of(0, ..)` or `FixId::of(-1, ..)` -> refused, because a definition's tag is positive and 0 marks only an unresolved arrival entry; a message root the codec builds carries no `fix:branches`, because a message is not a dictionary member.
 - `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the occurrence (`Parties[0].PartyID`), which is the spelling the registry takes too.
 - `set` with a name nothing reaches -> a typed absence naming the key, and the message unchanged; with a value the field refuses -> the value contract's refusal, and the message unchanged; `set_many` refuses all of its writes on the first refusal.
-- `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing.
+- `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing. Either on one of the seven settled fields -> refused, the message unchanged; a `uuid` or `puuid` written by hand that the row does not compute -> refused.
+- `FixMsg::new` / `with_registry` on a root lacking a settled field -> the registry's definition appended and dated as intake dates it, with one UTC-now read where no `SendingTime` is stated; a duplicate holder of one settled role, or one declared in another layout, -> a located refusal.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.
-- `from_row` on a row whose entries column holds something that is not an arrival entry, or a leaf the JSON reader cannot decode -> refused; on a schema without the column -> a message with no entries and an empty wire.
+- `from_row` on a row whose entries column holds something that is not an arrival entry - a folded entry without its four members, a negative tag, a key or value that is not text, children that are neither a sequence nor binary - or a leaf the JSON reader cannot decode -> refused at the arrival path; a null tag reads as 0; on a schema without the column -> a message with no entries and an empty wire; on a row missing a settled field or holding a tampered identity -> a located refusal.
 - A message whose registry dates no field -> every restatement rule still applies, nothing is stamped, and `version()` still reads `BeginString(8)`.
 - Two children reaching one field, both stated and different (`lastqty` `50` beside `LastShares` `100`) -> both kept as they arrived; equal once re-typed, or one null -> one child.
 - A child named by a tag's digits (`"32"`) that the registry knows -> re-expressed under the registry's field like any other; one it does not know (`"9999"`) -> kept exactly, name, datatype and value.

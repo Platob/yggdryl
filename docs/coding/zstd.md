@@ -20,7 +20,7 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
 
 ## Use
 
-`load` and `dump` hold both sides in memory; the bindings spell them `loads`/`dumps`.
+`load` and `dump` hold both sides in memory; the bindings spell them `loads`/`dumps`. Gain starts where the payload repeats; below that, framing grows the output.
 
 === "Rust"
 
@@ -29,35 +29,6 @@ RFC 8878 Zstandard as whole buffers, Rust streams, and a transparent `Zstd<H>` h
 
     let frame = zstd::dump(b"symbol,price\nAAPL,1\n")?;
     assert_eq!(zstd::load(&frame)?, b"symbol,price\nAAPL,1\n");
-    ```
-
-=== "Python"
-
-    ```python
-    from yggdryl.coding import zstd
-
-    frame = zstd.dumps(b"symbol,price\nAAPL,1\n")
-    assert zstd.loads(frame) == b"symbol,price\nAAPL,1\n"
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { zstd } = require('yggdryl')
-
-    const frame = zstd.dumps(Buffer.from('symbol,price\nAAPL,1\n'))
-    assert.deepEqual(zstd.loads(frame), Buffer.from('symbol,price\nAAPL,1\n'))
-    ```
-
-## Frames
-
-Gain starts where the payload repeats; below that, framing grows the output.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::coding::zstd;
 
     // Repetition is what zstd removes.
     let payload = "AAPL,1\n".repeat(64);
@@ -78,6 +49,9 @@ Gain starts where the payload repeats; below that, framing grows the output.
 
     from yggdryl.coding import zstd
 
+    frame = zstd.dumps(b"symbol,price\nAAPL,1\n")
+    assert zstd.loads(frame) == b"symbol,price\nAAPL,1\n"
+
     # Repetition is what zstd removes.
     payload = b"AAPL,1\n" * 64
     frame = zstd.dumps(payload)
@@ -96,6 +70,9 @@ Gain starts where the payload repeats; below that, framing grows the output.
     ```javascript
     const assert = require('node:assert/strict')
     const { zstd } = require('yggdryl')
+
+    const line = Buffer.from('symbol,price\nAAPL,1\n')
+    assert.deepEqual(zstd.loads(zstd.dumps(line)), line)
 
     // Repetition is what zstd removes.
     const payload = Buffer.from('AAPL,1\n'.repeat(64))
@@ -131,11 +108,12 @@ assert_eq!(decoded, payload.as_bytes());
 
 ## Levels
 
-Rust only. The shared scale rounds `level * 19 / 9` up onto zstd 1 to 19.
+Rust only. The shared scale rounds `level * 19 / 9` up onto zstd 1 to 19, and the streaming form takes a level the same way.
 
 ```rust
-use yggdryl::{Level};
+use std::io::Write;
 use yggdryl::coding::zstd;
+use yggdryl::Level;
 
 let payload = "AAPL,1\n".repeat(64);
 
@@ -147,16 +125,6 @@ for level in [Level::NONE, Level::FAST, Level::DEFAULT, Level::BEST] {
 // The scale is 0 to 9, and anything above it clamps.
 assert_eq!(Level::DEFAULT.get(), 6);
 assert_eq!(Level::new(12), Level::BEST);
-```
-
-The streaming form takes a level the same way.
-
-```rust
-use std::io::Write;
-use yggdryl::{Level};
-use yggdryl::coding::zstd;
-
-let payload = "AAPL,1\n".repeat(64);
 
 let mut encoded = Vec::new();
 let mut encoder = zstd::writer_with_level(&mut encoded, Level::BEST);
@@ -232,24 +200,17 @@ Anything that takes a handle sees decoded bytes; the handle underneath keeps the
     )
     ```
 
-The [stream benchmark](../holder/iobase/bytes.md) records first-chunk, full-drain, and whole-value costs beside gzip and zlib. Rust only from here: a handle over nothing decodes to nothing.
+The [stream benchmark](../holder/iobase/bytes.md) records first-chunk, full-drain, and whole-value costs beside gzip and zlib. Rust only from here: a handle over nothing decodes to nothing, and a level set on the handle reaches its encoder.
 
 ```rust
-use yggdryl::IOBase;
+use yggdryl::coding::zstd::{self, Zstd};
 use yggdryl::holder::Buffer;
-use yggdryl::coding::zstd::Zstd;
+use yggdryl::{IOBase, Level};
 
 // Wrapping touches nothing, and a handle with no bytes decodes to nothing.
-let handle = Zstd::new(Buffer::new());
-assert!(handle.read_all_bytes()?.is_empty());
-assert_eq!(handle.size(), 0);
-```
-
-```rust
-use yggdryl::IOBase;
-use yggdryl::holder::Buffer;
-use yggdryl::coding::zstd::{self, Zstd};
-use yggdryl::Level;
+let empty = Zstd::new(Buffer::new());
+assert!(empty.read_all_bytes()?.is_empty());
+assert_eq!(empty.size(), 0);
 
 let payload = "AAPL,1\n".repeat(64);
 

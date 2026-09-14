@@ -212,7 +212,7 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
 
 ## Reading and writing are both readers
 
-`ipc::read_batch_reader` returns [`arrow::BatchReader`](../arrow/readers.md), an iterator whose schema is known before the first batch. Batches come back as written, block boundaries included.
+`ipc::read_batch_reader` returns [`arrow::BatchReader`](../arrow/readers.md), an iterator whose schema is known before the first batch. Batches come back as written, block boundaries included, and `ipc::overwrite_arrow_reader` encodes each batch as it pulls it, so a lazy reader is never materialized.
 
 === "Rust"
 
@@ -228,35 +228,34 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
     let arrow_schema = schema.into_arrow_schema()?;
-    let batches = (0..3)
-        .map(|start| {
-            RecordBatch::try_new(
-                arrow_schema.clone(),
-                vec![Arc::new(Int64Array::from(vec![start, start + 1]))],
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
 
     let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
     let options = IpcOptions::new();
 
-    // `batch_reader` turns whatever is already in hand - a Vec, an array, an
-    // iterator - into the one shape a write takes.
-    ipc::overwrite_arrow_reader(
-        &mut handle,
-        arrow::batch_reader(arrow_schema, batches),
-        &options,
-    )?;
+    // Nothing is materialized: each batch is built as the writer asks for it, and
+    // `batch_reader` turns whatever is in hand - a Vec, an array, an iterator -
+    // into the one shape a write takes.
+    let produced = (0..3).map({
+        let arrow_schema = Arc::clone(&arrow_schema);
+        move |start| {
+            RecordBatch::try_new(
+                Arc::clone(&arrow_schema),
+                vec![Arc::new(Int64Array::from(vec![start * 2, start * 2 + 1]))],
+            )
+            .expect("batch")
+        }
+    });
+    ipc::overwrite_arrow_reader(&mut handle, arrow::batch_reader(arrow_schema, produced), &options)?;
 
     let reader = ipc::read_batch_reader(&handle, None, &options)?;
     // The schema is known before a single batch is decoded.
     assert_eq!(reader.schema().fields().len(), 1);
 
-    let mut rows = 0;
-    for batch in reader {
-        rows += batch?.num_rows();
-    }
-    assert_eq!(rows, 6);
+    // Three batches of two rows each, as they were written.
+    let rows = reader
+        .map(|batch| batch.map(|batch| batch.num_rows()))
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(rows, [2, 2, 2]);
     ```
 
 === "Python"
@@ -270,22 +269,22 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
     from yggdryl import IOBase
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    batches = [
-        pa.record_batch({"id": [start, start + 1]}, schema=schema)
-        for start in range(0, 6, 2)
-    ]
-
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
 
-    # The primitive write consumes exactly one RecordBatchReader.
-    handle.overwrite_arrow_reader(pa.RecordBatchReader.from_batches(schema, batches))
+    # The primitive write consumes exactly one RecordBatchReader, and nothing is
+    # materialized: each batch is built as the writer asks for it.
+    produced = (
+        pa.record_batch({"id": [start, start + 1]}, schema=schema)
+        for start in range(0, 6, 2)
+    )
+    handle.overwrite_arrow_reader(pa.RecordBatchReader.from_batches(schema, produced))
 
     reader = handle.read_arrow_reader()
     # The schema is known before a single batch is decoded.
     assert reader.schema.names == ["id"]
 
-    rows = sum(batch.num_rows for batch in reader)
-    assert rows == 6
+    # Three batches of two rows each, as they were written.
+    assert [batch.num_rows for batch in reader] == [2, 2, 2]
     ```
 
 === "JavaScript"
@@ -307,101 +306,16 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
 
     // An Arrow JS Table, one RecordBatch, an array of them, or Arrow IPC bytes:
     // `BatchReader.from` turns whatever is in hand into the shape a write takes.
+    // Apache Arrow JS owns the encoding of what a caller already holds, so the
+    // batches cross the boundary once, as one Arrow IPC stream.
     handle.overwriteArrowReader(BatchReader.from(batches))
 
     const reader = handle.readArrowReader()
     // The schema is known before a single batch is decoded.
     assert.deepEqual([...reader.field.dtype].map((child) => child.name), ['id'])
 
-    let rows = 0
-    for (const batch of reader) rows += batch.numRows
-    assert.equal(rows, 6)
-    ```
-
-`ipc::overwrite_arrow_reader` encodes each batch as it pulls it, so a lazy reader is never materialized.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::arrow;
-    use yggdryl::IOMedia;
-    use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::{self, IpcOptions};
-    use yggdryl::{DataType, MimeType};
-
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.into_arrow_schema()?;
-
-    let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-
-    // Nothing is materialized: each batch is built as the writer asks for it.
-    let produced = (0..4).map({
-        let arrow_schema = arrow_schema.clone();
-        move |start| {
-            RecordBatch::try_new(
-                arrow_schema.clone(),
-                vec![Arc::new(Int64Array::from(vec![start]))],
-            )
-            .expect("batch")
-        }
-    });
-    ipc::overwrite_arrow_reader(
-        &mut handle,
-        arrow::batch_reader(arrow_schema, produced),
-        &IpcOptions::new(),
-    )?;
-
-    assert_eq!(
-        ipc::read_batch_reader(&handle, None, &IpcOptions::new())?.count(),
-        4
-    );
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-
-    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
-
-    # Nothing is materialized: each batch is built as the writer asks for it.
-    produced = (
-        pa.record_batch({"id": [start]}, schema=schema) for start in range(4)
-    )
-    handle.overwrite_arrow_reader(pa.RecordBatchReader.from_batches(schema, produced))
-
-    assert sum(1 for _ in handle.read_arrow_reader()) == 4
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const arrow = require('apache-arrow')
-    const { BatchReader, IOBase, MimeType } = require('yggdryl')
-
-    const handle = IOBase.fromBytes()
-    handle.mediaType = MimeType.ARROW_STREAM
-
-    // Apache Arrow JS owns the encoding of what a caller already holds, so the
-    // four batches cross the boundary once, as one Arrow IPC stream.
-    const produced = [0, 1, 2, 3].map(
-      (start) =>
-        new arrow.Table({ id: arrow.vectorFromArray([BigInt(start)], new arrow.Int64()) })
-          .batches[0],
-    )
-    handle.overwriteArrowReader(BatchReader.from(produced))
-
-    assert.equal([...handle.readArrowReader()].length, 4)
+    // Three batches of two rows each, as they were written.
+    assert.deepEqual([...reader].map((batch) => batch.numRows), [2, 2, 2])
     ```
 
 ## Column pushdown
@@ -650,6 +564,8 @@ Arrow names the columns and not the record, so the root name is the one thing in
 
 ## Content coding comes from the name
 
+The encoding applies the content coding the name declares on write and strips it on read: `trades.arrows.gz` round-trips through [gzip](../coding/gzip.md), `trades.arrows.zst` through [zstd](../coding/zstd.md), with identical calls, and `level` is the one compression setting.
+
 === "Rust"
 
     ```rust
@@ -657,112 +573,6 @@ Arrow names the columns and not the record, so the root name is the one thing in
 
     use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::arrow;
-    use yggdryl::IOMedia;
-    use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::Ipc;
-    use yggdryl::{DataType, Url};
-
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.clone().into_arrow_schema()?;
-
-    let mut sizes = Vec::new();
-    for name in ["trades.arrows", "trades.arrows.gz", "trades.arrows.zst"] {
-        let url = Url::from_str(&format!("file:///{name}"))?;
-        let handle = Buffer::new().with_media_type(url.media_type());
-        let mut media = Ipc::new(handle).with_field(schema.clone());
-
-        let batch = RecordBatch::try_new(
-            arrow_schema.clone(),
-            vec![Arc::new(Int64Array::from(vec![1, 2]))],
-        )?;
-        let options = media.record_options()?;
-        media.overwrite_arrow_reader(
-            arrow::batch_reader(arrow_schema.clone(), [batch]),
-            &options,
-        )?;
-
-        // Identical calls on both sides, whatever the coding is.
-        assert_eq!(media.read_arrow_reader(&options)?.count(), 1, "{name}");
-        sizes.push(media.handle().as_slice().to_vec());
-    }
-
-    // The bytes underneath are framed by the coding the name declared.
-    assert_eq!(&sizes[1][..2], &[0x1F, 0x8B]);
-    assert_eq!(&sizes[2][..4], &[0x28, 0xB5, 0x2F, 0xFD]);
-    assert_ne!(sizes[0], sizes[1]);
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-    from yggdryl.holder import Path
-
-    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    root = pathlib.Path(tempfile.mkdtemp())
-
-    stored = []
-    for name in ("trades.arrows", "trades.arrows.gz", "trades.arrows.zst"):
-        handle = IOBase(root / name)
-        handle.overwrite_arrow_batch(pa.record_batch({"id": [1, 2]}, schema=schema))
-
-        # Identical calls on both sides, whatever the coding is.
-        assert handle.read_arrow_reader().read_all().num_rows == 2, name
-        # The handle presents the decoded stream, so its bytes are the stream.
-        assert handle.read_bytes()[:4] == bytes.fromhex("ffffffff"), name
-        # Path addresses the stored bytes instead, coding and all.
-        stored.append(Path(root / name).read_bytes())
-
-    # The bytes underneath are framed by the coding the name declared.
-    assert stored[1][:2] == bytes.fromhex("1f8b")
-    assert stored[2][:4] == bytes.fromhex("28b52ffd")
-    assert stored[0] != stored[1]
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
-
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const written = []
-    for (const name of ['trades.arrows', 'trades.arrows.gz', 'trades.arrows.zst']) {
-      const handle = new IOBase(path.join(root, name))
-      handle.overwriteArrowTable(
-        new arrow.Table({ id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()) }),
-      )
-
-      // Identical calls on both sides, whatever the coding is.
-      assert.equal(handle.readArrowReader().intoTable().numRows, 2, name)
-      written.push(handle.readBytes())
-    }
-
-    // The bytes underneath are framed by the coding the name declared.
-    assert.deepEqual([...written[1].subarray(0, 2)], [0x1f, 0x8b])
-    assert.deepEqual([...written[2].subarray(0, 4)], [0x28, 0xb5, 0x2f, 0xfd])
-    assert.notDeepEqual(written[0], written[1])
-
-    fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-`codec` names the content coding the stored bytes carry; the encoding applies it on write and strips it on read. `trades.arrows.gz` round-trips through [gzip](../coding/gzip.md), `trades.arrows.zst` through [zstd](../coding/zstd.md), with identical calls.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch};
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
     use yggdryl::media::ipc::Ipc;
@@ -775,20 +585,29 @@ Arrow names the columns and not the record, so the root name is the one thing in
         vec![Arc::new(Int64Array::from((0..512).collect::<Vec<i64>>()))],
     )?;
 
-    let handle = Buffer::new().with_media_type(Url::from_str("file:///trades.arrows.gz")?.media_type());
-    let mut media = Ipc::new(handle)
-        .with_field(schema.clone())
-        .with_level(Level::BEST);
-    let options = media.record_options()?;
+    let mut stored = Vec::new();
+    for name in ["trades.arrows", "trades.arrows.gz", "trades.arrows.zst"] {
+        let url = Url::from_str(&format!("file:///{name}"))?;
+        // A handle whose name declares no coding ignores the level.
+        let mut media = Ipc::new(Buffer::new().with_media_type(url.media_type()))
+            .with_field(schema.clone())
+            .with_level(Level::BEST);
+        let options = media.record_options()?;
+        media.overwrite_arrow_reader(
+            arrow::batch_reader(Arc::clone(&arrow_schema), [batch.clone()]),
+            &options,
+        )?;
 
-    media.overwrite_arrow_reader(
-        yggdryl::arrow::batch_reader(arrow_schema, [batch]),
-        &options,
-    )?;
-    assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
-    // Still a gzip member, and smaller than the stream it encodes.
-    assert_eq!(&media.handle().as_slice()[..2], &[0x1F, 0x8B]);
-    assert!(media.handle().size() < 512 * 8);
+        // Identical calls on both sides, whatever the coding is.
+        assert_eq!(media.read_arrow_reader(&options)?.count(), 1, "{name}");
+        stored.push(media.handle().as_slice().to_vec());
+    }
+
+    // The bytes underneath are framed by the coding the name declared, and
+    // each coded member is smaller than the stream it encodes.
+    assert_eq!(&stored[1][..2], &[0x1F, 0x8B]);
+    assert_eq!(&stored[2][..4], &[0x28, 0xB5, 0x2F, 0xFD]);
+    assert!(stored[1].len() < stored[0].len() && stored[2].len() < stored[0].len());
     ```
 
 === "Python"
@@ -803,20 +622,29 @@ Arrow names the columns and not the record, so the root name is the one thing in
     from yggdryl.holder import Path
 
     schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    batch = pa.record_batch({"id": list(range(512))}, schema=schema)
     root = pathlib.Path(tempfile.mkdtemp())
-    handle = IOBase(root / "trades.arrows.gz")
 
-    options = handle.record_options()
-    options.level = 9
-    handle.overwrite_arrow_batch(
-        pa.record_batch({"id": list(range(512))}, schema=schema), options=options
-    )
+    stored = []
+    for name in ("trades.arrows", "trades.arrows.gz", "trades.arrows.zst"):
+        handle = IOBase(root / name)
+        # A handle whose name declares no coding ignores the level.
+        options = handle.record_options()
+        options.level = 9
+        handle.overwrite_arrow_batch(batch, options=options)
 
-    assert handle.read_arrow_reader().read_all().num_rows == 512
-    # Still a gzip member, and smaller than the stream it encodes.
-    stored = Path(root / "trades.arrows.gz")
-    assert stored.read_bytes()[:2] == bytes.fromhex("1f8b")
-    assert stored.size < handle.size
+        # Identical calls on both sides, whatever the coding is.
+        assert handle.read_arrow_reader().read_all().num_rows == 512, name
+        # The handle presents the decoded stream, so its bytes are the stream.
+        assert handle.read_bytes()[:4] == bytes.fromhex("ffffffff"), name
+        # Path addresses the stored bytes instead, coding and all.
+        stored.append(Path(root / name).read_bytes())
+
+    # The bytes underneath are framed by the coding the name declared, and
+    # each coded member is smaller than the stream it encodes.
+    assert stored[1][:2] == bytes.fromhex("1f8b")
+    assert stored[2][:4] == bytes.fromhex("28b52ffd")
+    assert len(stored[1]) < len(stored[0]) and len(stored[2]) < len(stored[0])
     ```
 
 === "JavaScript"
@@ -830,107 +658,37 @@ Arrow names the columns and not the record, so the root name is the one thing in
     const { IOBase } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
-    const handle = new IOBase(path.join(root, 'trades.arrows.gz'))
-
     const ids = Array.from({ length: 512 }, (_, index) => BigInt(index))
-    handle.overwriteArrowTable(
-      new arrow.Table({ id: arrow.vectorFromArray(ids, new arrow.Int64()) }),
-      handle.recordOptions().withLevel(9),
-    )
+    const written = []
+    for (const name of ['trades.arrows', 'trades.arrows.gz', 'trades.arrows.zst']) {
+      const handle = new IOBase(path.join(root, name))
+      // A handle whose name declares no coding ignores the level.
+      handle.overwriteArrowTable(
+        new arrow.Table({ id: arrow.vectorFromArray(ids, new arrow.Int64()) }),
+        handle.recordOptions().withLevel(9),
+      )
 
-    assert.equal(handle.readArrowReader().intoTable().numRows, 512)
-    // Still a gzip member, and smaller than the stream it encodes.
-    assert.deepEqual([...handle.readBytes().subarray(0, 2)], [0x1f, 0x8b])
-    assert.ok(handle.size < 512 * 8)
+      // Identical calls on both sides, whatever the coding is.
+      assert.equal(handle.readArrowReader().intoTable().numRows, 512, name)
+      written.push(handle.readBytes())
+    }
+
+    // The bytes underneath are framed by the coding the name declared, and
+    // each coded member is smaller than the stream it encodes.
+    assert.deepEqual([...written[1].subarray(0, 2)], [0x1f, 0x8b])
+    assert.deepEqual([...written[2].subarray(0, 4)], [0x28, 0xb5, 0x2f, 0xfd])
+    assert.ok(written[1].length < written[0].length && written[2].length < written[0].length)
 
     fs.rmSync(root, { recursive: true, force: true })
     ```
 
 ## Options
 
-=== "Rust"
-
-    ```rust
-    use yggdryl::media::{IORecordOptions, RecordOptions, DEFAULT_ROOT_NAME};
-    use yggdryl::media::ipc::IpcOptions;
-    use yggdryl::{DataType, Level, MimeType};
-
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-
-    let options = IpcOptions::new()
-        .with_field(schema.clone())
-        .with_level(Level::BEST);
-
-    assert_eq!(options.field(), Some(schema.clone()));
-    assert_eq!(options.name(), DEFAULT_ROOT_NAME);
-    assert_eq!(options.dtype(), Some(schema.dtype()));
-    assert_eq!(options.level(), Level::BEST);
-
-    // The fields are public, so a setting can also be written directly.
-    let mut direct = IpcOptions::new();
-    direct.batch_row_size = Some(1024);
-    assert_eq!(direct.batch_row_size(), Some(1024));
-
-    // It converts into the enum every encoding's settings share.
-    let erased: RecordOptions = options.into();
-    assert_eq!(erased.mime_type(), MimeType::ARROW_STREAM);
-    ```
-
-=== "Python"
-
-    ```python
-    import pyarrow as pa
-
-    from yggdryl import RecordOptions
-
-    schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-
-    # The media type names the encoding, so there is no format argument.
-    options = RecordOptions("trades.arrows")
-    options.field = schema
-    options.level = 9
-
-    assert options.field is not None
-    assert options.name == "row"
-    assert options.level == 9
-
-    options.batch_row_size = 1024
-    assert options.batch_row_size == 1024
-
-    assert str(options.mime_type) == "application/vnd.apache.arrow.stream"
-    # A setting another encoding has is absent rather than invented here.
-    assert options.max_row_group_size is None
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Field, RecordOptions, fields } = require('yggdryl')
-
-    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
-
-    // The media type names the encoding, so there is no format argument.
-    const options = new RecordOptions('trades.arrows')
-    options.field = schema
-    options.level = 9
-
-    assert.ok(options.field.equals(schema))
-    assert.equal(options.name, 'row')
-    assert.equal(options.level, 9)
-
-    options.batchRowSize = 1024
-    assert.equal(options.batchRowSize, 1024)
-
-    assert.equal(options.mimeType.toString(), 'application/vnd.apache.arrow.stream')
-    // `with*` returns a new value rather than changing the one it was built from.
-    assert.equal(options.withSafe(true).safe, true)
-    assert.equal(options.safe, false)
-    ```
-
-`IpcOptions` holds the shared record settings as public fields: `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, and `filter_partitions`. The `ipc::*` functions handle only the encoding seam; the [`IOMedia`](../holder/iobase/records.md) path adds casting, re-chunking, selection, limits, partition filters, commit cadence, and write intent.
+IPC adds no setting of its own. `IpcOptions` holds the shared record settings as public fields - `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, and `filter_partitions` - and converts into [`RecordOptions`](options.md#use), whose page demonstrates the settings each binding carries (`batch_byte_size` is Rust only). The `ipc::*` functions handle only the encoding seam; the [`IOMedia`](../holder/iobase/records.md) path adds casting, re-chunking, selection, limits, partition filters, commit cadence, and write intent.
 
 ## Absence
+
+A location that holds nothing yields nothing, the laziness rule [Bytes](../holder/iobase/bytes.md) sets. Anything that is not a stream fails on the spot.
 
 === "Rust"
 
@@ -939,7 +697,7 @@ Arrow names the columns and not the record, so the root name is the one thing in
     use yggdryl::arrow;
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::Ipc;
+    use yggdryl::media::ipc::{self, Ipc, IpcOptions};
     use yggdryl::DataType;
 
     let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
@@ -972,6 +730,11 @@ Arrow names the columns and not the record, so the root name is the one thing in
     assert!(!written.handle().is_empty());
     assert_eq!(written.read_arrow_reader(&options)?.count(), 0);
     assert_eq!(written.read_arrow_field(&options)?, schema);
+
+    // Bytes that are not a stream fail at once.
+    let garbage = Buffer::from_bytes(b"definitely not an Arrow IPC stream".to_vec());
+    assert!(ipc::read_field(&garbage, &IpcOptions::new()).is_err());
+    assert!(ipc::read_batch_reader(&garbage, None, &IpcOptions::new()).is_err());
     ```
 
 === "Python"
@@ -981,6 +744,7 @@ Arrow names the columns and not the record, so the root name is the one thing in
     import tempfile
 
     import pyarrow as pa
+    import pytest
 
     from yggdryl import IOBase
 
@@ -998,6 +762,14 @@ Arrow names the columns and not the record, so the root name is the one thing in
     assert written.size > 0
     assert written.read_arrow_reader().read_all().num_rows == 0
     assert written.read_arrow_field().name == "row"
+
+    # Bytes that are not a stream fail at once.
+    garbage = IOBase.from_bytes(b"definitely not an Arrow IPC stream")
+    garbage.media_type = "application/vnd.apache.arrow.stream"
+    with pytest.raises(ValueError):
+        garbage.read_arrow_field()
+    with pytest.raises(ValueError):
+        garbage.read_arrow_reader()
     ```
 
 === "JavaScript"
@@ -1008,7 +780,7 @@ Arrow names the columns and not the record, so the root name is the one thing in
     const os = require('node:os')
     const path = require('node:path')
     const arrow = require('apache-arrow')
-    const { IOBase } = require('yggdryl')
+    const { IOBase, MimeType } = require('yggdryl')
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
 
@@ -1025,49 +797,13 @@ Arrow names the columns and not the record, so the root name is the one thing in
     assert.equal(written.readArrowReader().intoTable().numRows, 0)
     assert.equal(written.readArrowField().name, 'row')
 
+    // Bytes that are not a stream fail at once.
+    const garbage = IOBase.fromBytes(Buffer.from('definitely not an Arrow IPC stream'))
+    garbage.mediaType = MimeType.ARROW_STREAM
+    assert.throws(() => garbage.readArrowField(), /Arrow/)
+    assert.throws(() => garbage.readArrowReader(), /Arrow/)
+
     fs.rmSync(root, { recursive: true, force: true })
-    ```
-
-A location that holds nothing yields nothing, the laziness rule [Bytes](../holder/iobase/bytes.md) sets. Anything that is not a stream fails on the spot.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::holder::Buffer;
-    use yggdryl::media::ipc::{self, IpcOptions};
-
-    let handle = Buffer::from_bytes(b"definitely not an Arrow IPC stream".to_vec());
-    assert!(ipc::read_field(&handle, &IpcOptions::new()).is_err());
-    assert!(ipc::read_batch_reader(&handle, None, &IpcOptions::new()).is_err());
-    ```
-
-=== "Python"
-
-    ```python
-    import pytest
-
-    from yggdryl import IOBase
-
-    handle = IOBase.from_bytes(b"definitely not an Arrow IPC stream")
-    handle.media_type = "application/vnd.apache.arrow.stream"
-
-    with pytest.raises(ValueError):
-        handle.read_arrow_field()
-    with pytest.raises(ValueError):
-        handle.read_arrow_reader()
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { IOBase, MimeType } = require('yggdryl')
-
-    const handle = IOBase.fromBytes(Buffer.from('definitely not an Arrow IPC stream'))
-    handle.mediaType = MimeType.ARROW_STREAM
-
-    assert.throws(() => handle.readArrowField(), /Arrow/)
-    assert.throws(() => handle.readArrowReader(), /Arrow/)
     ```
 
 [Parquet](parquet.md) has the same `read_field`, `read_batch_reader`, and `overwrite_arrow_reader` shape behind the non-default `parquet` feature.

@@ -18,7 +18,7 @@ The [field](field.md) is the cast target: rows, arrays, and record batches are r
 | Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip` |
-| Bindings | `Scalar` rows Rust only; [Python](../extensions/python.md), [JavaScript](../extensions/javascript.md) cast Arrow data and pass both answers explicitly |
+| Bindings | `Scalar` rows in Rust and [Python](../extensions/python.md); Python and [JavaScript](../extensions/javascript.md) cast Arrow data and pass both answers explicitly |
 
 ## Use
 
@@ -194,8 +194,6 @@ what an absent value means.
 
 ## Row values
 
-Rust only.
-
 `validate_value` checks a [`Scalar`](scalar.md) row is representable; `canonicalize_value` rewrites it exactly.
 
 Canonicalization decides before it builds, so a row already in its declared representation
@@ -212,52 +210,79 @@ Any value that prints a spelling enters a text column as that spelling, a geomet
 Any value that carries bytes enters a byte column as that payload; a fixed string carries the
 width it declares and pads to it on the way out, because that is what the fixed column stores.
 
-```rust
-use yggdryl::{DataType, Scalar};
+=== "Rust"
 
-let money: DataType = "decimal128(10, 2)".parse()?;
-assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
-// A digit the declared scale cannot state is a value change, so it is refused.
-assert!(money.scalar("1.005").is_err());
+    ```rust
+    use yggdryl::{DataType, Scalar};
 
-assert_eq!(DataType::Date32.scalar("1970-01-02")?, Scalar::date32(1));
-assert_eq!(DataType::utf8().scalar(7_i64)?, Scalar::from("7"));
-assert_eq!(DataType::binary().scalar("hi")?, Scalar::from(b"hi".to_vec()));
+    let money: DataType = "decimal128(10, 2)".parse()?;
+    assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
+    // A digit the declared scale cannot state is a value change, so it is refused.
+    assert!(money.scalar("1.005").is_err());
 
-// A record is a map keyed by name, so a map column reads one.
-let prices: DataType = "map<utf8, int32>".parse()?;
-assert_eq!(
-    prices.scalar(Scalar::from_record([("a", Scalar::from(1_i32))])?)?,
-    Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))])?
-);
-```
+    assert_eq!(DataType::Date32.scalar("1970-01-02")?, Scalar::date32(1));
+    assert_eq!(DataType::utf8().scalar(7_i64)?, Scalar::from("7"));
+    assert_eq!(DataType::binary().scalar("hi")?, Scalar::from(b"hi".to_vec()));
 
-```rust
-use yggdryl::{DataType, Field, Scalar};
+    // A record is a map keyed by name, so a map column reads one.
+    let prices: DataType = "map<utf8, int32>".parse()?;
+    assert_eq!(
+        prices.scalar(Scalar::from_record([("a", Scalar::from(1_i32))])?)?,
+        Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))])?
+    );
 
-let schema = DataType::from_fields([
-    DataType::Int64.required_field("id"),
-    DataType::Float32.nullable_field("price"),
-])?
-.required_field("trade");
+    let schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Float32.nullable_field("price"),
+    ])?
+    .required_field("trade");
 
-// A row is one ordered sequence with one value per struct child.
-let row = Scalar::from_sequence([Scalar::from(7u64), Scalar::from(0.1f64)]);
-schema.validate_value(&row)?;
+    // A row is one ordered sequence with one value per struct child.
+    let row = Scalar::from_sequence([Scalar::from(7u64), Scalar::from(0.1f64)]);
+    schema.validate_value(&row)?;
 
-// Canonicalizing narrows every value into the representation the root declares.
-let canonical = schema.canonicalize_value(row)?;
-assert_eq!(canonical.get(0), Some(&Scalar::from(7_i64)));
-assert_eq!(
-    canonical.get(1).and_then(Scalar::as_f64),
-    Some(f64::from(0.1f32))
-);
+    // Canonicalizing narrows every value into the representation the root declares.
+    let canonical = schema.canonicalize_value(row)?;
+    assert!(matches!(canonical.get(0), Some(Scalar::I64(_))));
+    assert_eq!(
+        canonical.get(1).and_then(Scalar::as_f64),
+        Some(f64::from(0.1f32))
+    );
 
-// A value that does not fit names the path walked to reach it.
-let wrong = Scalar::from_sequence([Scalar::from("seven"), Scalar::Null]);
-let message = schema.validate_value(&wrong).unwrap_err().to_string();
-assert!(message.contains("$.trade.id"), "{message}");
-```
+    // A value that does not fit names the path walked to reach it.
+    let wrong = Scalar::from_sequence([Scalar::from("seven"), Scalar::Null]);
+    let message = schema.validate_value(&wrong).unwrap_err().to_string();
+    assert!(message.contains("$.trade.id"), "{message}");
+    ```
+
+=== "Python"
+
+    ```python
+    import decimal
+
+    import pytest
+
+    from yggdryl import Field
+
+    price = Field("price", "decimal128(18,4)")
+    assert price.scalar(decimal.Decimal("1.5")).as_py() == decimal.Decimal("1.5000")
+    with pytest.raises(ValueError, match="n"):
+        Field("n", "int64", nullable=False).scalar(None)
+
+    root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
+    row = root.canonicalize_value([1, "AAPL"])
+    assert row.kind == "sequence"
+    assert row.as_py() == [1, "AAPL"]
+    root.validate_value(row)
+    with pytest.raises(ValueError):
+        root.canonicalize_value([1])
+    ```
+
+=== "JavaScript"
+
+    !!! note "Rust and Python only"
+        JavaScript binds no `scalar`, `validate_value` or `canonicalize_value`; a value enters
+        under a field through a codec's `field` option or an Arrow cast.
 
 ## Record batches
 

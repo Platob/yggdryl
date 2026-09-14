@@ -76,77 +76,43 @@ choice when the handle is built, so `type(handle)` names it; JavaScript has one
 
 ## Shared IOMedia calls
 
-Choosing the encoding is the only thing that changes.
+Choosing the encoding is the only thing that changes, and the handle owns the content coding: the same calls, different bytes underneath. Rust only; Python and JavaScript make the same calls on the handle itself, as on [Arrow IPC](ipc.md#use).
 
-=== "Rust"
+```rust
+use std::sync::Arc;
 
-    ```rust
-    use std::sync::Arc;
+use arrow_array::{Int64Array, RecordBatch};
+use yggdryl::arrow;
+use yggdryl::holder::Holder;
+use yggdryl::media::Media;
+use yggdryl::{IOBase, IOMedia};
+use yggdryl::holder::Buffer;
+use yggdryl::{DataType, Url};
 
-    use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::arrow;
-    use yggdryl::holder::Holder;
-    use yggdryl::media::Media;
-    use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, Url};
+let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
+let arrow_schema = schema.clone().into_arrow_schema()?;
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.clone().into_arrow_schema()?;
+// A Media is also the bytes it encodes: an Arrow IPC stream opens with its
+// continuation marker, and the same stream behind gzip framing with gzip's.
+for (name, magic) in [
+    ("trades.arrows", &[0xFF_u8, 0xFF, 0xFF, 0xFF][..]),
+    ("trades.arrows.gz", &[0x1F, 0x8B][..]),
+] {
     let batch = RecordBatch::try_new(
         Arc::clone(&arrow_schema),
         vec![Arc::new(Int64Array::from(vec![1, 2]))],
     )?;
-
-    let url = Url::from_str("file:///trades.arrows")?;
+    let url = Url::from_str(&format!("file:///{name}"))?;
     let handle = Holder::buffer(Buffer::new().with_media_type(url.media_type()));
     let mut media = Media::open(handle)?.with_field(schema.clone());
     let options = media.record_options()?;
 
-    media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
-    assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
-    assert_eq!(media.read_arrow_field(&options)?, schema);
-
-    // A Media is also the bytes it encodes: an Arrow IPC stream opens with its
-    // continuation marker.
-    assert_eq!(media.read_range_bytes(0, 4)?, [0xFF, 0xFF, 0xFF, 0xFF]);
-    ```
-
-## Content coding
-
-The handle owns the coding: the same calls, different bytes underneath.
-
-=== "Rust"
-
-    ```rust
-    use std::sync::Arc;
-
-    use arrow_array::{Int64Array, RecordBatch};
-    use yggdryl::arrow;
-    use yggdryl::holder::Holder;
-    use yggdryl::media::Media;
-    use yggdryl::{IOBase, IOMedia};
-    use yggdryl::holder::Buffer;
-    use yggdryl::{DataType, Url};
-
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let arrow_schema = schema.clone().into_arrow_schema()?;
-    let batch = RecordBatch::try_new(
-        Arc::clone(&arrow_schema),
-        vec![Arc::new(Int64Array::from(vec![9]))],
-    )?;
-
-    let url = Url::from_str("file:///trades.arrows.gz")?;
-    let handle = Holder::buffer(Buffer::new().with_media_type(url.media_type()));
-    let mut media = Media::open(handle)?.with_field(schema.clone());
-    let options = media.record_options()?;
-
-    media.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
-    assert_eq!(media.read_arrow_reader(&options)?.count(), 1);
-
-    // Still an Arrow IPC stream, now behind gzip framing.
-    assert_eq!(media.read_range_bytes(0, 2)?, [0x1F, 0x8B]);
-    ```
+    media.overwrite_arrow_reader(arrow::batch_reader(Arc::clone(&arrow_schema), [batch]), &options)?;
+    assert_eq!(media.read_arrow_reader(&options)?.count(), 1, "{name}");
+    assert_eq!(media.read_arrow_field(&options)?, schema, "{name}");
+    assert_eq!(media.read_range_bytes(0, magic.len())?, magic, "{name}");
+}
+```
 
 ## The handle underneath
 
@@ -192,22 +158,20 @@ consumes the media and answers it.
 
 ## Unimplemented encodings
 
-The error names the media type found and the ones that would have worked.
+The error names the media type found and the ones that would have worked. Rust only; a Python name with no implementation composes nothing (see [Edges](#edges)).
 
-=== "Rust"
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::media::Media;
+use yggdryl::holder::Buffer;
+use yggdryl::Url;
 
-    ```rust
-    use yggdryl::holder::Holder;
-    use yggdryl::media::Media;
-    use yggdryl::holder::Buffer;
-    use yggdryl::Url;
+let url = Url::from_str("file:///trades.csv")?;
+let handle = Holder::buffer(Buffer::new().with_media_type(url.media_type()));
 
-    let url = Url::from_str("file:///trades.csv")?;
-    let handle = Holder::buffer(Buffer::new().with_media_type(url.media_type()));
-
-    let message = Media::open(handle).unwrap_err().to_string();
-    assert!(message.contains("text/csv"), "{message}");
-    ```
+let message = Media::open(handle).unwrap_err().to_string();
+assert!(message.contains("text/csv"), "{message}");
+```
 
 ## Edges
 

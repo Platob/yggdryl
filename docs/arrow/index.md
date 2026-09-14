@@ -27,48 +27,7 @@
 
 ## Use
 
-=== "Rust"
-
-    ```rust
-    use arrow_array::Array;
-    use yggdryl::arrow::scalar_value;
-    use yggdryl::{DataType, Field};
-
-    let field = Field::new("symbol", DataType::utf8(), false);
-    let array = field.default_arrow_array()?;
-
-    // A scalar is one Arrow row; the exact Field beside it says what it means.
-    assert_eq!(array.len(), 1);
-    assert_eq!(scalar_value(&field, array.as_ref())?.as_str(), Some(""));
-    ```
-
-=== "Python"
-
-    ```python
-    import pyarrow as pa
-    from yggdryl import Field
-
-    field = Field("symbol", "utf8", nullable=False)
-    scalar = field.default_arrow_scalar()
-
-    assert isinstance(scalar, pa.Scalar)
-    assert scalar.type == pa.string()
-    assert scalar.as_py() == ""
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const { Field } = require('yggdryl')
-
-    const field = new Field('symbol', 'utf8', false)
-    assert.equal(field.defaultArrowScalar(), '')
-    ```
-
-## Nullability picks the default
-
-Only the `Field` method can return a logical null.
+Nullability picks the default, and only the `Field` method can return a logical null.
 
 === "Rust"
 
@@ -76,6 +35,12 @@ Only the `Field` method can return a logical null.
     use arrow_array::Array;
     use yggdryl::arrow::scalar_value;
     use yggdryl::{DataType, Field, Scalar};
+
+    // A scalar is one Arrow row; the exact Field beside it says what it means.
+    let field = Field::new("symbol", DataType::utf8(), false);
+    let array = field.default_arrow_array()?;
+    assert_eq!(array.len(), 1);
+    assert_eq!(scalar_value(&field, array.as_ref())?.as_str(), Some(""));
 
     // A bare DataType projects through its own datatype default planner.
     let array = DataType::Int64.default_arrow_array()?;
@@ -96,7 +61,13 @@ Only the `Field` method can return a logical null.
 === "Python"
 
     ```python
+    import pyarrow as pa
     from yggdryl import DataType, Field
+
+    scalar = Field("symbol", "utf8", nullable=False).default_arrow_scalar()
+    assert isinstance(scalar, pa.Scalar)
+    assert scalar.type == pa.string()
+    assert scalar.as_py() == ""
 
     assert DataType("int64").default_arrow_scalar().as_py() == 0
 
@@ -119,6 +90,7 @@ Only the `Field` method can return a logical null.
     const assert = require('node:assert/strict')
     const { DataType, Field } = require('yggdryl')
 
+    assert.equal(new Field('symbol', 'utf8', false).defaultArrowScalar(), '')
     assert.equal(new DataType('int64').defaultArrowScalar(), 0n)
 
     // A field is nullable unless you say otherwise, and its default is null.

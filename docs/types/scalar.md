@@ -1,6 +1,6 @@
 # Scalar
 
-`Scalar` is the one value every layer speaks; the vocabulary, families, and `FieldScalar` sit beside it.
+`Scalar` is the one value every layer speaks; the shared vocabulary and `FieldScalar` sit beside it.
 
 ## Contract
 
@@ -13,7 +13,9 @@
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
-| Views | `as_integer`, `as_float`, `as_decimal`, `as_temporal`; total equality, ordering, hash |
+| Widths | one flat enum: every width is its own variant (`Scalar::I32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
+| Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
+| Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
 | Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
 
 ## Use
@@ -85,9 +87,10 @@ One spelling per member at every boundary.
     assert.equal(value.asJs(), 'append')
     ```
 
-## Scalar families
+## Widths and readers
 
-Units pick date and time widths, duration the narrowest fitting count, decimal the coefficient; datetime stays 64-bit.
+Every width is a `Scalar` variant: units pick the date and time width, a duration takes the narrowest width holding its count, a decimal a 128-bit coefficient unless it needs 256, and a datetime stays 64-bit.
+The readers answer across widths and `None` for another kind; an interval's `temporal_count` is its nanosecond component, and its three components are matched as `Scalar::Interval` directly.
 Rust only.
 
 ```rust
@@ -98,20 +101,34 @@ let time = Scalar::from_time(1, TimeUnit::Nanosecond, Timezone::NAIVE)?;
 let duration = Scalar::from_duration(i64::from(i32::MAX) + 1, TimeUnit::Second, Timezone::NAIVE)?;
 let decimal = Scalar::from_decimal(I256::from_i128(1_250), 2);
 
-assert_eq!(date.as_date().unwrap().bit_width(), 32);
-assert_eq!(time.as_time().unwrap().bit_width(), 64);
-assert_eq!(duration.as_duration().unwrap().bit_width(), 64);
-assert_eq!(time.as_temporal().unwrap().family(), TemporalFamily::Time);
+// The variant is the width, and `kind()` names it.
+assert!(matches!(date, Scalar::Date32(_)));
+assert_eq!(time.kind(), "time64");
+assert!(matches!(duration, Scalar::Duration64(_)));
+
+assert_eq!(time.temporal_family(), Some(TemporalFamily::Time));
+assert_eq!(time.temporal_unit(), Some(TimeUnit::Nanosecond));
+assert_eq!(date.temporal_timezone(), Some(Timezone::NAIVE));
+assert_eq!(duration.temporal_count(), Some(i64::from(i32::MAX) + 1));
+assert_eq!(decimal.temporal_family(), None);
+
+// Numbers read across widths, and one number at two widths is one value.
 assert_eq!(decimal.as_decimal(), Some((I256::from_i128(1_250), 2)));
+assert_eq!(decimal, Scalar::d256(I256::from_i128(125), 1));
+assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
+assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
 
 ## FieldScalar
 
 One `Field` and the value its own contract answered, held together. The field is
 borrowed, so a reader downstream takes the name, the datatype and the value from
-one place and nothing copies the schema per value. Rust only.
+one place and nothing copies the schema per value. `UncheckedFieldScalar` is the
+same pairing before that proof: it holds whatever it was given and casts on
+read, and `checked` is where it becomes a `FieldScalar`. Rust only.
 
 ```rust
+use yggdryl::types::UncheckedFieldScalar;
 use yggdryl::{DataType, Field, FieldScalar, Scalar};
 
 let price = Field::new("price", DataType::Int32, false);
@@ -119,7 +136,7 @@ let held = FieldScalar::new(&price, 7_i64)?;
 assert_eq!(held.name(), "price");
 assert_eq!(held.dtype(), &DataType::Int32);
 // The value was narrowed to the width the field declares.
-assert_eq!(held.value(), &Scalar::from(7_i32));
+assert!(matches!(held.value(), Scalar::I32(_)));
 assert_eq!(held.as_i64(), Some(7));
 
 // Nullability is the field's rule, so a required column refuses a null.
@@ -132,20 +149,11 @@ assert_eq!(FieldScalar::parse_str(&price, "42")?.as_i64(), Some(42));
 // for it, so inferring one copies nothing.
 let inferred = FieldScalar::infer(Scalar::from(7_i64))?;
 assert_eq!(inferred.dtype(), &DataType::Int64);
-```
 
-`UncheckedFieldScalar` is the same pairing before that proof: it holds whatever
-it was given and casts on read, and `checked` is where it becomes a
-`FieldScalar`.
-
-```rust
-use yggdryl::types::UncheckedFieldScalar;
-use yggdryl::{DataType, Field};
-
-let quantity = Field::new("quantity", DataType::Int64, false);
-let raw = UncheckedFieldScalar::from_str(&quantity, "42");
+// Unchecked, the text is held as given and read on demand.
+let raw = UncheckedFieldScalar::from_str(&price, "42");
 assert_eq!(raw.as_i64(), Some(42));
-assert_eq!(raw.checked()?.value(), &yggdryl::Scalar::from(42_i64));
+assert!(matches!(raw.checked()?.value(), Scalar::I32(_)));
 ```
 
 ## Inferred fields

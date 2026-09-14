@@ -523,7 +523,7 @@ Parquet's own settings and the shared ones are flat fields of one value.
 | `max_row_group_size` | row bound that decides how many row groups the file gets |
 | `key_value_metadata` | footer entries next to the ones the writer adds itself |
 | `level` | nothing; Parquet has no outer coding to apply it to |
-| shared | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `merge_by_names`, `select_by_names`, `filter_partitions` |
+| shared | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `merge_by_names`, `select_by_names`, `filter_partitions` |
 | `Parquet::with_options` | replaces the whole set |
 | `with_field`, `with_name` | reach through to the declared root; `name` roots a declared field and one recovered from the footer alike |
 

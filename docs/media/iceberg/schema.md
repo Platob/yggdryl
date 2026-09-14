@@ -84,7 +84,9 @@ Add a column, then read the earlier file back with the new column null.
     schema = columns
 
     root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
+    # A plain PyArrow schema carries no ids; creating the table numbers it.
     table = Table.create(root, schema)
+    assert [child.parquet_field_id for child in table.schema.dtype] == [1]
     table.append(pa.record_batch({"id": [1]}, schema=columns))
 
     # Add a column. Numbering continues above `last-column-id`, so the new column
@@ -115,7 +117,9 @@ Add a column, then read the earlier file back with the new column null.
     const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
     const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
 
+    // A plain schema carries no ids; creating the table numbers it.
     const table = iceberg.Table.create(root, schema)
+    assert.equal(table.schema.dtype.getFieldAt(0).parquetFieldId, 1)
     table.append(new arrow.Table({ id: arrow.vectorFromArray([1n], new arrow.Int64()) }))
 
     // Add a column. Numbering continues above `last-column-id`, so the new column
@@ -137,12 +141,12 @@ Add a column, then read the earlier file back with the new column null.
 
 ## Field ids
 
-`assign_field_ids` numbers depth first from `start`, keeps any id already present, and returns the first id it did not use.
+`assign_field_ids` numbers depth first from `start`, keeps any id already present, and returns the first id it did not use. A schema document from an unnumbered tree is refused, while creating a table numbers first, as [Use](#use) asserts.
 
 === "Rust"
 
     ```rust
-    use yggdryl::media::iceberg::{assign_field_ids, last_column_id};
+    use yggdryl::media::iceberg::{assign_field_ids, last_column_id, schema_into_json};
     use yggdryl::DataType;
 
     let leg = DataType::from_fields([DataType::decimal(18, 4)?.required_field("price")])?;
@@ -151,6 +155,10 @@ Add a column, then read the earlier file back with the new column null.
         leg.nullable_field("leg"),
     ])?
     .required_field("row");
+
+    // An unnumbered tree is no schema document, and the refusal names the fix.
+    let message = schema_into_json(&schema).unwrap_err().to_string();
+    assert!(message.contains("assign_field_ids"), "{message}");
 
     // Depth first from `start`; the return value is the first id it did not use.
     assert_eq!(assign_field_ids(&mut schema, 1)?, 4);
@@ -217,58 +225,6 @@ Add a column, then read the earlier file back with the new column null.
 
     // A field that already carries an id keeps it, so a second pass changes nothing.
     assert.equal(iceberg.assignFieldIds(schema, 100).dtype.getFieldAt(0).parquetFieldId, 1)
-    ```
-
-A schema document from an unnumbered tree is refused, while creating a table numbers first.
-
-=== "Rust"
-
-    ```rust
-    use yggdryl::media::iceberg::schema_into_json;
-    use yggdryl::DataType;
-
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?
-        .required_field("row");
-
-    let message = schema_into_json(&schema).unwrap_err().to_string();
-    assert!(message.contains("assign_field_ids"));
-    ```
-
-=== "Python"
-
-    ```python
-    import pathlib
-    import tempfile
-
-    import pyarrow as pa
-
-    from yggdryl import IOBase
-    from yggdryl.media.iceberg import Table
-
-    # A plain PyArrow schema carries no ids; creating the table numbers it.
-    columns = pa.schema([pa.field("id", pa.int64(), nullable=False)])
-    table = Table.create(IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades"), columns)
-
-    assert [child.parquet_field_id for child in table.schema.dtype] == [1]
-    ```
-
-=== "JavaScript"
-
-    ```javascript
-    const assert = require('node:assert/strict')
-    const fs = require('node:fs')
-    const os = require('node:os')
-    const path = require('node:path')
-    const { Field, fields, iceberg } = require('yggdryl')
-
-    // A plain schema carries no ids; creating the table numbers it.
-    const unnumbered = fields.struct('row', [Field.from('id: int64')], { nullable: false })
-    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
-
-    const table = iceberg.Table.create(root, unnumbered)
-    assert.equal(table.schema.dtype.getFieldAt(0).parquetFieldId, 1)
-
-    fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
 ## Evolving a schema
@@ -518,11 +474,11 @@ Documents pass through the core [JSON](../../text/json.md) codec as [`Scalar`](.
 
 ## Primitive types
 
-Rust only.
+`PrimitiveType` is the whole Iceberg type vocabulary, parsed from the spelling in table metadata JSON. `into_dtype` is total; `from_dtype` names the datatype it refuses instead of widening it, and `iceberg` is a [compatibility target](../../types/datatype.md) like `spark` and `polars`, so lossless widenings live in one walker. Rust only.
 
 ```rust
 use yggdryl::media::iceberg::PrimitiveType;
-use yggdryl::{DataType, TimeUnit, Timezone};
+use yggdryl::{DataType, Scheme, TimeUnit, Timezone};
 
 // Every Iceberg primitive name has exactly one physical datatype.
 assert_eq!(PrimitiveType::from_str("long")?.into_dtype()?, DataType::Int64);
@@ -552,35 +508,6 @@ assert_eq!(PrimitiveType::from_str("unknown")?.into_dtype()?, DataType::Null);
 
 // A name round trips through `Display`.
 assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
-```
-
-`PrimitiveType` is the whole Iceberg type vocabulary, parsed from the spelling in table metadata JSON.
-
-| Iceberg | `DataType` | Version |
-| --- | --- | --- |
-| `boolean` | `Boolean` | v1 |
-| `int` | `Int32` | v1 |
-| `long` | `Int64` | v1 |
-| `float` | `Float32` | v1 |
-| `double` | `Float64` | v1 |
-| `decimal(p, s)` | `Decimal128 { precision: p, scale: s }` | v1 |
-| `date` | `Date32` | v1 |
-| `time` | `Time64(Microsecond)` | v1 |
-| `timestamp` | `DateTime64 { unit: Microsecond, timezone: NAIVE }` | v1 |
-| `timestamptz` | `DateTime64 { unit: Microsecond, timezone: UTC }` | v1 |
-| `timestamp_ns` | `DateTime64 { unit: Nanosecond, timezone: NAIVE }` | v3 |
-| `timestamptz_ns` | `DateTime64 { unit: Nanosecond, timezone: UTC }` | v3 |
-| `string` | `utf8()` | v1 |
-| `uuid` | `Uuid` | v1 |
-| `fixed[n]` | `fixed_size_binary(n)` | v1 |
-| `binary` | `binary()` | v1 |
-| `unknown` | `Null` | v3 |
-
-`into_dtype` is total; `from_dtype` names the datatype it refuses instead of widening it.
-
-```rust
-use yggdryl::media::iceberg::PrimitiveType;
-use yggdryl::DataType;
 
 // The layouts that differ only in physical storage collapse onto one name.
 // Iceberg's string is UTF-8, so every string on text storage - UTF-8 or
@@ -615,20 +542,34 @@ assert_eq!(
     PrimitiveType::from_dtype(&PrimitiveType::Uuid.into_dtype()?)?.to_string(),
     "uuid"
 );
-```
 
-`iceberg` is a [compatibility target](../../types/datatype.md) like `spark` and `polars`, so lossless widenings live in one walker.
-
-```rust
-use yggdryl::media::iceberg::PrimitiveType;
-use yggdryl::{DataType, Scheme};
-
-// The narrow integers widen; the refusals stay refusals.
+// Through the compatibility walker the narrow integers widen; the refusals
+// stay refusals.
 let widened = DataType::Int8.into_scheme_compat(&Scheme::ICEBERG)?;
 assert_eq!(widened, DataType::Int32);
 assert_eq!(PrimitiveType::from_dtype(&widened)?.to_string(), "int");
-assert!(DataType::Interval(yggdryl::TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEBERG).is_err());
+assert!(DataType::Interval(TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEBERG).is_err());
 ```
+
+| Iceberg | `DataType` | Version |
+| --- | --- | --- |
+| `boolean` | `Boolean` | v1 |
+| `int` | `Int32` | v1 |
+| `long` | `Int64` | v1 |
+| `float` | `Float32` | v1 |
+| `double` | `Float64` | v1 |
+| `decimal(p, s)` | `Decimal128 { precision: p, scale: s }` | v1 |
+| `date` | `Date32` | v1 |
+| `time` | `Time64(Microsecond)` | v1 |
+| `timestamp` | `DateTime64 { unit: Microsecond, timezone: NAIVE }` | v1 |
+| `timestamptz` | `DateTime64 { unit: Microsecond, timezone: UTC }` | v1 |
+| `timestamp_ns` | `DateTime64 { unit: Nanosecond, timezone: NAIVE }` | v3 |
+| `timestamptz_ns` | `DateTime64 { unit: Nanosecond, timezone: UTC }` | v3 |
+| `string` | `utf8()` | v1 |
+| `uuid` | `Uuid` | v1 |
+| `fixed[n]` | `fixed_size_binary(n)` | v1 |
+| `binary` | `binary()` | v1 |
+| `unknown` | `Null` | v3 |
 
 ## Nested types
 
