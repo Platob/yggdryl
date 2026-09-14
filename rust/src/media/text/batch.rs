@@ -113,8 +113,8 @@ fn value_of(
 ) -> Result<Scalar> {
     Ok(match source {
         TextSource::Url => line
-            .url()
-            .map_or(Scalar::Null, |url| Scalar::Url(Arc::new(url.clone()))),
+            .shared_url()
+            .map_or(Scalar::Null, |url| Scalar::Url(Arc::clone(url))),
         TextSource::Rownum => super::arrow::physical_rownum(options.start_rownum, line.index())?
             .map_or(Scalar::Null, Scalar::from),
         // The line counts in 128 bits and the column holds 64, so this is
@@ -164,9 +164,12 @@ fn capture_value(
     let Some(text) = line.capture(index) else {
         return Ok(Scalar::Null);
     };
-    let name = options.capture_names().nth(index).unwrap_or_default();
-    super::arrow::parse_capture(text, dtype, options.timezone())
-        .map_err(|reason| super::arrow::row_error(line.index(), None, line.url(), name, reason))
+    super::arrow::parse_capture(text, dtype, options.timezone()).map_err(|reason| {
+        // The column's name is walked to only where the error is built: the
+        // path that parses is every row of every read, and it needs no name.
+        let name = options.capture_names().nth(index).unwrap_or_default();
+        super::arrow::row_error(line.index(), None, line.url(), name, reason)
+    })
 }
 
 /// The other spellings a column is commonly written under.

@@ -47,6 +47,8 @@
 //! all silence. The cost of silence is a null column; the cost of a guess is
 //! a wrong number nobody can tell from a sent one.
 
+use smol_str::SmolStr;
+
 use crate::Scalar;
 use crate::types::{Code, Isin, State, StringEnum};
 
@@ -1006,11 +1008,15 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // below reads by tag, and a child stored under an alias with no tag is
     // invisible until it has been canonicalized (decision 20).
     let msg = super::latest::restate(msg)?;
-    let msgtype = msg
-        .get_by_tag(35)
-        .and_then(Scalar::as_str)
-        .unwrap_or_default()
-        .to_owned();
+    // Held compactly rather than as a `String`: a message type is one to
+    // three characters, which stays inside the value, so reading it costs
+    // the row nothing on the heap. It is copied out at all because the rules
+    // below write to the message it was read from.
+    let msgtype = SmolStr::new(
+        msg.get_by_tag(35)
+            .and_then(Scalar::as_str)
+            .unwrap_or_default(),
+    );
 
     let mut held = msg;
     for rule in RULES {

@@ -96,6 +96,18 @@ impl TextLine {
         self.url.as_deref()
     }
 
+    /// The object this line was read from, as the handle every line shares.
+    ///
+    /// [`url`](Self::url) is what a reader comparing or rendering one wants.
+    /// A column that *holds* the URL wants this: a URL is several small
+    /// strings, and a whole read answers one, so the column takes a
+    /// reference count of the handle the read already built rather than
+    /// rebuilding the strings once per row.
+    #[must_use]
+    pub const fn shared_url(&self) -> Option<&Arc<Url>> {
+        self.url.as_ref()
+    }
+
     /// Set or clear the object this line was read from.
     pub fn set_url(&mut self, url: Option<Arc<Url>>) {
         self.url = url;

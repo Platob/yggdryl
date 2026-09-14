@@ -251,7 +251,13 @@ impl TryFrom<&[u8]> for TextBytes {
 impl TryFrom<Vec<u8>> for TextBytes {
     type Error = Error;
 
+    /// The vector becomes the page rather than being copied into one: an
+    /// owner handed over is already a page's worth of bytes, and
+    /// [`TextBytes::from_bytes`]'s copy is there for a borrow that is not.
     fn try_from(bytes: Vec<u8>) -> Result<Self> {
-        Self::from_bytes(bytes)
+        if bytes.is_empty() {
+            return Ok(Self::new());
+        }
+        Self::from_whole_page(Arc::new(bytes))
     }
 }

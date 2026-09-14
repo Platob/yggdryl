@@ -528,14 +528,16 @@ impl Read for NonemptyDecodedReader<'_> {
 /// One parsed physical line with still-textual named captures.
 struct RawRow {
     index: u64,
-    /// The retained body, owned once and shared from there.
+    /// The retained body, as the range of the page it was read into.
     ///
-    /// A sized owner rather than `Arc<[u8]>`: the conversion from `Vec` to a
-    /// shared slice reallocates and copies every byte, and wrapping the vector
-    /// instead is free.
-    body: Arc<Vec<u8>>,
+    /// Ordinarily that page is the splitter's own window, shared with every
+    /// other line cut from it, so a line costs one reference count rather
+    /// than a copy of its bytes. A record that had to be assembled - one
+    /// spanning two windows, one joining several physical lines - carries a
+    /// page of its own instead.
+    body: TextBytes,
     dropped_byte_size: Option<u64>,
-    captures: Vec<Option<Vec<u8>>>,
+    captures: Vec<Option<TextBytes>>,
 }
 
 /// Physical lines or framed records parsed against one precomputed schema.
@@ -557,17 +559,135 @@ struct RawRows<R> {
     previous: Option<u128>,
 }
 
+/// The bytes of one line as they are held while it is being cut.
+///
+/// A line that arrived whole inside one window is a range of that window,
+/// and the window is the page it stays a range of: the splitter seals it
+/// before handing any of it out, so every cut below - the header off the
+/// front, the strips off both edges, the byte limit off the tail - moves an
+/// offset and copies nothing. A line becomes a vector of its own only where
+/// it cannot be a range: one that spanned two windows, and one a header
+/// matched in the middle of, where the bytes on either side are not
+/// contiguous once the match is gone.
+enum Held {
+    Span {
+        page: Arc<Vec<u8>>,
+        range: Range<usize>,
+    },
+    Owned(Vec<u8>),
+}
+
+impl Held {
+    /// The empty line, retaining no page.
+    const fn new() -> Self {
+        Self::Owned(Vec::new())
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Span { page, range } => &page[range.clone()],
+            Self::Owned(bytes) => bytes,
+        }
+    }
+
+    fn len(&self) -> usize {
+        match self {
+            Self::Span { range, .. } => range.end - range.start,
+            Self::Owned(bytes) => bytes.len(),
+        }
+    }
+
+    /// Keep only `start..end` of what this holds.
+    fn narrow(&mut self, start: usize, end: usize) {
+        match self {
+            Self::Span { range, .. } => {
+                range.end = range.start + end;
+                range.start += start;
+            }
+            Self::Owned(bytes) => {
+                if start > 0 {
+                    bytes.copy_within(start..end, 0);
+                }
+                bytes.truncate(end - start);
+            }
+        }
+    }
+
+    /// Keep only the first `len` bytes.
+    fn truncate(&mut self, len: usize) {
+        if len < self.len() {
+            self.narrow(0, len);
+        }
+    }
+
+    /// Remove `range` from what this holds.
+    ///
+    /// A match at either edge is still a range of the page; one in the
+    /// middle leaves two runs that are not contiguous, and the line takes a
+    /// vector of its own for them.
+    fn remove(&mut self, range: Range<usize>) {
+        let len = self.len();
+        if range.start == 0 {
+            self.narrow(range.end, len);
+            return;
+        }
+        if range.end == len {
+            self.truncate(range.start);
+            return;
+        }
+        let mut bytes = self.as_bytes().to_vec();
+        bytes.drain(range);
+        *self = Self::Owned(bytes);
+    }
+
+    /// Append `bytes`, taking a vector of this line's own to hold them.
+    fn push(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Owned(held) => held.extend_from_slice(bytes),
+            Self::Span { .. } => {
+                let mut held = Vec::with_capacity(self.len() + bytes.len());
+                held.extend_from_slice(self.as_bytes());
+                held.extend_from_slice(bytes);
+                *self = Self::Owned(held);
+            }
+        }
+    }
+
+    /// One byte appended, for the terminator a framed record joins on.
+    fn push_byte(&mut self, byte: u8) {
+        self.push(&[byte]);
+    }
+
+    /// `range` of what this holds, as a range of the same page.
+    fn slice(&self, range: Range<usize>) -> Result<TextBytes> {
+        match self {
+            Self::Span { page, range: held } => {
+                TextBytes::from_page(page, held.start + range.start, held.start + range.end)
+            }
+            Self::Owned(bytes) => TextBytes::from_bytes(&bytes[range]),
+        }
+    }
+
+    /// What this holds, as the page a line is made on.
+    fn into_text_bytes(self) -> Result<TextBytes> {
+        match self {
+            Self::Span { page, range } => TextBytes::from_page(&page, range.start, range.end),
+            Self::Owned(bytes) => TextBytes::try_from(bytes),
+        }
+    }
+}
+
 /// One physical line after header removal and edge stripping.
 struct ParsedLine {
     index: u64,
     body: Body,
-    captures: Vec<Option<Vec<u8>>>,
+    captures: Vec<Option<TextBytes>>,
     matched: bool,
 }
 
 /// One physical line, possibly reduced after its header DFA proves no match.
 struct PhysicalLine {
-    bytes: Vec<u8>,
+    bytes: Held,
     decoded_size: u64,
     header: ScannedHeader,
 }
@@ -581,28 +701,28 @@ enum ScannedHeader {
     /// The header was removed while its match prefix was still retained.
     Matched {
         removed_size: u64,
-        captures: Vec<Option<Vec<u8>>>,
+        captures: Vec<Option<TextBytes>>,
     },
 }
 
-/// One complete row-header match and its raw capture bytes.
+/// One complete row-header match and its capture ranges within the scan.
 struct HeaderMatch {
     range: Range<usize>,
-    captures: Vec<Option<Vec<u8>>>,
+    captures: Vec<Option<Range<usize>>>,
 }
 
 /// A bounded retained prefix plus its complete decoded byte length.
 struct Body {
-    bytes: Vec<u8>,
+    bytes: Held,
     decoded_size: u64,
 }
 
 /// One logical record retained across physical input and Arrow batch pulls.
 struct RawRecord {
     index: u64,
-    body: Vec<u8>,
+    body: Held,
     decoded_size: u64,
-    captures: Vec<Option<Vec<u8>>>,
+    captures: Vec<Option<TextBytes>>,
 }
 
 fn header_dfa(source: &str) -> Option<DFA<Vec<u32>>> {
@@ -634,9 +754,20 @@ fn header_match(options: &TextOptions, bytes: &[u8], capture_values: bool) -> Op
         let Some(value) = found.get(capture_index) else {
             continue;
         };
-        *target = Some(value.as_bytes().to_vec());
+        // The range, not the bytes: a capture is a run of the line it was
+        // matched in, and the line is a range of a page, so the caller cuts
+        // it out of that page rather than copying it out of the match.
+        *target = Some(value.start()..value.end());
     }
     Some(HeaderMatch { range, captures })
+}
+
+/// The bytes each capture range names, as ranges of the page `held` is on.
+fn captured(held: &Held, captures: Vec<Option<Range<usize>>>) -> Result<Vec<Option<TextBytes>>> {
+    captures
+        .into_iter()
+        .map(|range| range.map(|range| held.slice(range)).transpose())
+        .collect()
 }
 
 impl<R: Read> RawRows<R> {
@@ -682,17 +813,15 @@ impl<R: Read> RawRows<R> {
             decoded_size,
             header,
         } = line;
-        let (body, captures, matched, body_decoded_size) = match header {
-            ScannedHeader::Nonmatching => (
-                bytes,
-                if capture_values {
-                    vec![None; options.capture_names().len()]
-                } else {
-                    Vec::new()
-                },
-                false,
-                decoded_size,
-            ),
+        let absent = || {
+            if capture_values {
+                vec![None; options.capture_names().len()]
+            } else {
+                Vec::new()
+            }
+        };
+        let (captures, matched, body_decoded_size) = match header {
+            ScannedHeader::Nonmatching => (absent(), false, decoded_size),
             ScannedHeader::Matched {
                 removed_size,
                 captures,
@@ -706,16 +835,20 @@ impl<R: Read> RawRows<R> {
                                 "row-header match exceeds the decoded physical line",
                             ),
                         })?;
-                (bytes, captures, true, body_decoded_size)
+                (captures, true, body_decoded_size)
             }
             ScannedHeader::Unresolved => {
-                if let Some(found) = header_match(options, &bytes, capture_values) {
+                if let Some(found) = header_match(options, bytes.as_bytes(), capture_values) {
                     let removed_size =
                         u64::try_from(found.range.len()).map_err(|_| Error::InvalidRecord {
                             path: format_smolstr!("$[{index}].body"),
                             reason: SmolStr::new_static("row-header match exceeds u64::MAX bytes"),
                         })?;
-                    bytes.drain(found.range);
+                    // The captures are cut before the match is removed: they
+                    // are ranges of the line as it was matched, and removing
+                    // the header moves what those ranges are measured from.
+                    let captures = captured(&bytes, found.captures)?;
+                    bytes.remove(found.range);
                     let body_decoded_size =
                         decoded_size.checked_sub(removed_size).ok_or_else(|| {
                             Error::InvalidRecord {
@@ -725,21 +858,13 @@ impl<R: Read> RawRows<R> {
                                 ),
                             }
                         })?;
-                    (bytes, found.captures, true, body_decoded_size)
+                    (captures, true, body_decoded_size)
                 } else {
-                    (
-                        bytes,
-                        if capture_values {
-                            vec![None; options.capture_names().len()]
-                        } else {
-                            Vec::new()
-                        },
-                        false,
-                        decoded_size,
-                    )
+                    (absent(), false, decoded_size)
                 }
             }
         };
+        let body = &mut bytes;
 
         let mut start = 0;
         let mut end = body.len();
@@ -748,7 +873,7 @@ impl<R: Read> RawRows<R> {
         // expression nobody can read.
         for lstrip in options.lstrip_regexes() {
             if let Some(found) = lstrip
-                .find(&body[start..end])
+                .find(&body.as_bytes()[start..end])
                 .filter(|found| found.start() == 0)
             {
                 start += found.end();
@@ -756,7 +881,7 @@ impl<R: Read> RawRows<R> {
         }
         for rstrip in options.rstrip_regexes() {
             if let Some(found) = rstrip
-                .find_iter(&body[start..end])
+                .find_iter(&body.as_bytes()[start..end])
                 .filter(|found| found.end() == end - start)
                 .last()
             {
@@ -776,10 +901,14 @@ impl<R: Read> RawRows<R> {
                 .unwrap_or(usize::MAX)
                 .min(end - start)
         });
+        // The strips and the limit move the line's ends and nothing else:
+        // where it is a range of the splitter's page they are two offsets,
+        // and where it is a vector of its own they are moved within it.
+        body.narrow(start, start + retained);
         Ok(ParsedLine {
             index,
             body: Body {
-                bytes: body[start..start + retained].to_vec(),
+                bytes,
                 decoded_size,
             },
             captures,
@@ -788,7 +917,10 @@ impl<R: Read> RawRows<R> {
     }
 
     fn next_line(&mut self) -> Option<Result<ParsedLine>> {
-        let options = Arc::clone(&self.options);
+        // Borrowed, not cloned: the splitter, the automaton and the cursor
+        // are fields of their own, so reading the configuration beside them
+        // costs nothing where a shared handle would cost two atomics a line.
+        let options: &TextOptions = &self.options;
         let index = self.index;
         let can_drain = options.max_record_byte_size().is_some() && !options.rewrites_body();
         let mut header = if can_drain && options.rowheader_regex().is_none() {
@@ -808,7 +940,11 @@ impl<R: Read> RawRows<R> {
             .max_record_byte_size()
             .and_then(|size| usize::try_from(size).ok())
             .unwrap_or(usize::MAX);
-        let mut bytes = Vec::new();
+        // A line opens as the range of the window the splitter cut it from
+        // and stays one unless it has to leave: `Held` takes a vector of its
+        // own where a second window or a header in the middle forces one.
+        let mut bytes = Held::new();
+        let mut opened = false;
         let mut decoded_size = 0_u64;
         loop {
             let part = match self.lines.next_part(options.linesep())? {
@@ -818,7 +954,7 @@ impl<R: Read> RawRows<R> {
                     return Some(Err(error));
                 }
             };
-            let part_size = u64::try_from(part.bytes.len()).unwrap_or(u64::MAX);
+            let part_size = u64::try_from(part.len()).unwrap_or(u64::MAX);
             decoded_size = match decoded_size.checked_add(part_size) {
                 Some(size) => size,
                 None => {
@@ -831,14 +967,31 @@ impl<R: Read> RawRows<R> {
                     }));
                 }
             };
+            let ends = part.end;
             if !matches!(header, ScannedHeader::Unresolved) {
-                let available = retained.saturating_sub(bytes.len()).min(part.bytes.len());
-                bytes.extend_from_slice(&part.bytes[..available]);
+                let available = retained.saturating_sub(bytes.len()).min(part.len());
+                let range = part.range.start..part.range.start + available;
+                if opened {
+                    bytes.push(&self.lines.window()[range]);
+                } else {
+                    bytes = Held::Span {
+                        page: Arc::clone(self.lines.page()),
+                        range,
+                    };
+                }
             } else {
                 let part_start = bytes.len();
-                bytes.extend_from_slice(part.bytes);
+                if opened {
+                    bytes.push(&self.lines.window()[part.range.clone()]);
+                } else {
+                    bytes = Held::Span {
+                        page: Arc::clone(self.lines.page()),
+                        range: part.range.clone(),
+                    };
+                }
                 if let (Some(dfa), Some(mut current)) = (&self.header_dfa, state) {
-                    for (offset, &byte) in part.bytes.iter().enumerate() {
+                    let window = self.lines.window();
+                    for (offset, &byte) in window[part.range].iter().enumerate() {
                         current = dfa.next_state(current, byte);
                         if dfa.is_match_state(current) {
                             dfa_matched = true;
@@ -847,9 +1000,11 @@ impl<R: Read> RawRows<R> {
                         if dfa.is_dead_state(current) {
                             let scan_end = part_start + offset + 1;
                             if dfa_matched {
-                                if let Some(found) =
-                                    header_match(&options, &bytes[..scan_end], self.capture_values)
-                                {
+                                if let Some(found) = header_match(
+                                    options,
+                                    &bytes.as_bytes()[..scan_end],
+                                    self.capture_values,
+                                ) {
                                     let removed_size = match u64::try_from(found.range.len()) {
                                         Ok(size) => size,
                                         Err(_) => {
@@ -862,11 +1017,20 @@ impl<R: Read> RawRows<R> {
                                             }));
                                         }
                                     };
-                                    bytes.drain(found.range);
+                                    // Cut before the removal moves what the
+                                    // capture ranges are measured from.
+                                    let captures = match captured(&bytes, found.captures) {
+                                        Ok(captures) => captures,
+                                        Err(error) => {
+                                            self.done = true;
+                                            return Some(Err(error));
+                                        }
+                                    };
+                                    bytes.remove(found.range);
                                     bytes.truncate(retained);
                                     header = ScannedHeader::Matched {
                                         removed_size,
-                                        captures: found.captures,
+                                        captures,
                                     };
                                 }
                             } else {
@@ -886,7 +1050,8 @@ impl<R: Read> RawRows<R> {
                     }
                 }
             }
-            if part.end {
+            opened = true;
+            if ends {
                 break;
             }
         }
@@ -903,7 +1068,7 @@ impl<R: Read> RawRows<R> {
             }));
         };
         self.index = next_index;
-        Some(Self::parse_line(&options, line, index, self.capture_values))
+        Some(Self::parse_line(options, line, index, self.capture_values))
     }
 
     fn next_framed(&mut self) -> Option<Result<RawRow>> {
@@ -913,13 +1078,13 @@ impl<R: Read> RawRows<R> {
                 Some(Err(error)) => return Some(Err(error)),
                 None => {
                     self.done = true;
-                    return self.active.take().map(RawRecord::finish).map(Ok);
+                    return self.active.take().map(RawRecord::finish);
                 }
             };
             if line.matched {
                 let next = RawRecord::new(line, self.options.max_record_byte_size());
                 if let Some(record) = self.active.replace(next) {
-                    return Some(Ok(record.finish()));
+                    return Some(record.finish());
                 }
                 continue;
             }
@@ -956,15 +1121,22 @@ impl RawRecord {
     fn new(line: ParsedLine, limit: Option<u64>) -> Self {
         let ParsedLine {
             index,
-            body,
+            body:
+                Body {
+                    mut bytes,
+                    decoded_size,
+                },
             captures,
             ..
         } = line;
-        let retained = retained_size(limit, 0, body.bytes.len());
+        // The record opens on the line exactly as the line holds it: one
+        // that stays a single physical line never appends, so it stays a
+        // range of the splitter's page and a limit only moves its end.
+        bytes.truncate(retained_size(limit, 0, bytes.len()));
         Self {
             index,
-            body: body.bytes[..retained].to_vec(),
-            decoded_size: body.decoded_size,
+            body: bytes,
+            decoded_size,
             captures,
         }
     }
@@ -980,25 +1152,25 @@ impl RawRecord {
             })?;
         let separator = retained_size(limit, self.body.len(), 1);
         if separator == 1 {
-            self.body.push(b'\n');
+            self.body.push_byte(b'\n');
         }
         let retained = retained_size(limit, self.body.len(), body.bytes.len());
-        self.body.extend_from_slice(&body.bytes[..retained]);
+        self.body.push(&body.bytes.as_bytes()[..retained]);
         Ok(())
     }
 
-    fn finish(self) -> RawRow {
+    fn finish(self) -> Result<RawRow> {
         let retained = u64::try_from(self.body.len()).unwrap_or(u64::MAX);
         let dropped_byte_size = self
             .decoded_size
             .checked_sub(retained)
             .filter(|size| *size > 0);
-        RawRow {
+        Ok(RawRow {
             index: self.index,
-            body: Arc::new(self.body),
+            body: self.body.into_text_bytes()?,
             dropped_byte_size,
             captures: self.captures,
-        }
+        })
     }
 }
 
@@ -1022,7 +1194,7 @@ impl<R: Read> Iterator for RawRows<R> {
                 self.next_framed()
             } else {
                 self.next_line().map(|line| {
-                    line.map(|line| {
+                    line.and_then(|line| {
                         RawRecord::new(line, self.options.max_record_byte_size()).finish()
                     })
                 })
@@ -1034,7 +1206,7 @@ impl<R: Read> Iterator for RawRows<R> {
             let Ok(row) = row else {
                 return Some(row);
             };
-            let digest = crate::hashing::xxhash::xxh128(&row.body);
+            let digest = crate::hashing::xxhash::xxh128(row.body.as_bytes());
             if self.previous == Some(digest) {
                 continue;
             }
@@ -1081,8 +1253,7 @@ impl TextLines {
         // where they are not UTF-8 - and everything after this reads text.
         // Everything before it read the bytes as they were, and the counts it
         // took are counts of those bytes.
-        let body = TextBytes::from_whole_page(row.body)?;
-        let mut line = TextLine::from_bytes(index, body)?;
+        let mut line = TextLine::from_bytes(index, row.body)?;
         line.set_url(self.url.clone());
         line.set_dropped_byte_size(row.dropped_byte_size);
 
@@ -1095,14 +1266,7 @@ impl TextLines {
             line.set_entries(entries);
         }
 
-        let mut captures = Vec::with_capacity(row.captures.len());
-        for value in row.captures {
-            captures.push(match value {
-                Some(bytes) => Some(TextBytes::from_whole_page(Arc::new(bytes))?),
-                None => None,
-            });
-        }
-        line.set_captures(captures)?;
+        line.set_captures(row.captures)?;
         match self.timestamp_capture {
             Some(at) => {
                 let stamp = self.row_timestamp(line.capture(at), index)?;

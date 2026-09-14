@@ -6,6 +6,7 @@
 //! work and read ambiguously the moment both exist. Here, **`linesep`
 //! terminates records** and `separator` will one day delimit fields within one.
 
+use memchr::memmem::Finder;
 use smol_str::format_smolstr;
 use std::sync::Arc;
 
@@ -233,9 +234,13 @@ impl Break {
 /// not, a `\r` as the very last byte is *ambiguous* - the next byte, not yet
 /// read, may be the `\n` that makes it a `\r\n` - so no break is reported and
 /// the caller refills.
+/// `finder` is the searcher [`Lines`](super::reader::Lines) built once for a
+/// pinned multi-byte terminator, because building one is a prefilter over the
+/// needle and this runs once per line.
 pub(crate) fn next_break(
     window: &[u8],
     linesep: Option<&LineSep>,
+    finder: Option<&Finder<'static>>,
     complete: bool,
 ) -> Option<Break> {
     let Some(linesep) = linesep else {
@@ -247,10 +252,20 @@ pub(crate) fn next_break(
         return find_byte(window, *byte).map(|at| Break { at, width: 1 });
     }
     // Only a multi-byte pinned terminator needs a general search.
-    find_slice(window, needle).map(|at| Break {
+    find_slice(window, needle, finder).map(|at| Break {
         at,
         width: needle.len(),
     })
+}
+
+/// The searcher a pinned multi-byte terminator is scanned with.
+///
+/// Built from the terminator once per read rather than once per line:
+/// `memmem::find` compiles a prefilter over its needle on every call, and
+/// the needle here is fixed configuration for the whole object.
+pub(crate) fn finder_for(linesep: Option<&LineSep>) -> Option<Finder<'static>> {
+    let needle = linesep.map(LineSep::as_bytes)?;
+    (needle.len() > 1).then(|| Finder::new(needle).into_owned())
 }
 
 /// The flexible scan: `\n`, `\r\n`, or a lone `\r`, whichever comes next.
@@ -284,6 +299,9 @@ fn find_either(window: &[u8], first: u8, second: u8) -> Option<usize> {
 }
 
 /// The first offset of `needle` in `window`, for a multi-byte terminator.
-fn find_slice(window: &[u8], needle: &[u8]) -> Option<usize> {
-    memchr::memmem::find(window, needle)
+fn find_slice(window: &[u8], needle: &[u8], finder: Option<&Finder<'static>>) -> Option<usize> {
+    match finder {
+        Some(finder) => finder.find(window),
+        None => memchr::memmem::find(window, needle),
+    }
 }

@@ -618,7 +618,7 @@ fn a_line_of_several_frames_costs_its_messages_and_nothing_per_line() {
     // Settle the shared schema/registry plan before counting the repeated path.
     // Cold plan construction belongs to the boundary, not to each frame.
     black_box(read(1));
-    let each = 33;
+    let each = 32;
     for frames in [4, 8, 16] {
         assert_eq!(read(frames), each * frames, "{frames} frames");
     }
@@ -1926,10 +1926,18 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// strings fit inline even in the typed row; the separate wide-value test
 /// pins the one allocation each long row value needs and none for its entry.
 ///
+/// A frame that marked no key judges none - which every wire frame is - so
+/// the reading takes each key as it stands. That drops two things the judged
+/// reading paid for: the vector of the row's whole width built only to hand
+/// each key straight back, and the growth of the pairs vector, which a
+/// `filter_map` gave no width to reserve from and now reserves exactly once.
+/// The first is one per message at every width; the second is the doublings
+/// a width needs, which is why sixty-four pairs save more than four do.
+///
 /// A caller who decoded the line already owns that page, and
 /// [`FIX_TEXT_LINE_COSTS`] is the same three widths through the door that
 /// takes it: two fewer at each, which is the page and nothing else.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 33), (16, 49), (64, 99)];
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 32), (16, 46), (64, 94)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -1979,9 +1987,10 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 ///
 /// Three pair counts and two widths, because one of each could tell neither a
 /// per-message cost from a per-pair one nor a cost that scales with a value
-/// from one that does not.
+/// from one that does not. The narrow column of this table is
+/// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (33, 36)), (16, (49, 64)), (64, (99, 162))];
+    [(4, (32, 35)), (16, (46, 61)), (64, (94, 157))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -2114,7 +2123,7 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// is one page however many pairs the line carries, so the slope is unchanged
 /// and only the constant moves. Three widths again, so that the claim is the
 /// constant and not a number that happens to be smaller.
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 47), (64, 97)];
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 30), (16, 44), (64, 92)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -2249,23 +2258,32 @@ fn text_lines_cost(source: &Buffer, rows: usize) -> usize {
 /// reader's: the reader's own cost is what is left, and that is linear.
 const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 
-/// What the read itself costs past the copy: eight once, and four a line.
+/// What the read itself costs past the copy: nine, and nothing a line.
 ///
-/// Six of the eight are built before a byte is read - the cursor over the
+/// Seven of the nine are built before a byte is read - the cursor over the
 /// owned handle and the transport boxed around it, the options and the
-/// location each shared once, and the splitter's window - and two on the
-/// first pull, where the transport opens: the fetch buffer and the box the
-/// coding chain ends in. The four a line are the line's own vector as the
-/// splitter assembles it from the window it lends, the retained body cut
-/// from that, the record's copy of the body, and the shared box around it;
-/// a capture would be one more each, and this read declares none. The page
-/// the line is made on is the record's box, so the line adds nothing of its
-/// own, and the pull that finds the end adds nothing either. With the copy,
-/// the assertion below counts 95 for 16 rows and 4 130 for 1 024 - after the
-/// two the buffer's first `url` costs, which [`text_lines_cost`] asks for
-/// before the counter is armed and which are not in either number.
-const TEXT_LINES_ONCE: usize = 8;
-const TEXT_LINES_EACH: usize = 4;
+/// location each shared once, and the splitter's window as a vector and as
+/// the shared box that seals it - and two on the first pull, where the
+/// transport opens: the fetch buffer and the box the coding chain ends in.
+///
+/// Nothing a line, because a line is not a thing that is built: the window
+/// is the page, and a line is the range of it the splitter cut, so the
+/// header off its front, the strips off its edges and the byte limit off
+/// its tail move two offsets and copy nothing. With the copy, the assertion
+/// below counts 32 for 16 rows and the same 9 over the copy for 1 024 -
+/// after the two the buffer's first `url` costs, which [`text_lines_cost`]
+/// asks for before the counter is armed and which are in neither number.
+const TEXT_LINES_ONCE: usize = 9;
+
+/// What a reader that keeps its lines pays on top: two per window it had to
+/// leave behind.
+///
+/// A window a line is a range of cannot be written over, so the refill that
+/// finds one takes a fresh window - one vector and one shared box - and
+/// moves the open tail into it. That is the whole price of retention, and it
+/// is per window of the object rather than per line of it: a caller holding
+/// a million lines of a megabyte holds sixteen pages, not a million.
+const TEXT_LINES_RETAINED_PER_WINDOW: usize = 2;
 
 /// What a declared `windows-1252` read costs over the UTF-8 read of the same
 /// lines: the transport, and nothing a line.
@@ -2278,7 +2296,7 @@ const TEXT_LINES_EACH: usize = 4;
 const DECLARED_COSTS: [(usize, usize); 2] = [(16, 3), (1_024, 4)];
 
 #[test]
-fn reading_text_lines_costs_a_constant_and_four_a_line() {
+fn reading_text_lines_costs_a_constant_and_nothing_a_line() {
     for (rows, copy) in OWNED_COPY_COSTS {
         let text = bridge_lines(rows);
         let source = Buffer::from_bytes(text.into_bytes())
@@ -2291,8 +2309,57 @@ fn reading_text_lines_costs_a_constant_and_four_a_line() {
         assert_eq!(staged, copy, "the owned copy of {rows} rows");
         assert_eq!(
             text_lines_cost(&source, rows),
-            copy + TEXT_LINES_ONCE + TEXT_LINES_EACH * rows,
+            copy + TEXT_LINES_ONCE,
             "reading {rows} UTF-8 rows"
+        );
+    }
+}
+
+#[test]
+fn keeping_every_line_costs_its_windows_and_not_its_lines() {
+    // The other half of the claim above. A reader that drops each line lets
+    // the splitter write its window over again, so the count is flat; one
+    // that keeps them cannot, and what it pays is a window at a time.
+    for rows in [16_usize, 1_024] {
+        let text = bridge_lines(rows);
+        let windows = text.len().div_ceil(yggdryl::DEFAULT_STREAM_BATCH_SIZE);
+        let source = Buffer::from_bytes(text.into_bytes())
+            .with_media_type(MediaType::from_str("text/plain").expect("a media type"));
+        // The handle's own first read, as [`text_lines_cost`] takes it.
+        black_box(yggdryl::IOBase::url(&source));
+        let options = TextOptions::new();
+        let (allocations, held) = counted(|| {
+            // Sized up front, so the only vector growing here is the
+            // splitter's own and the count is the reader's alone.
+            let mut held = Vec::with_capacity(rows);
+            for line in read_text_lines(black_box(&source), black_box(&options)).expect("a reader")
+            {
+                held.push(line.expect("a line"));
+            }
+            held
+        });
+        assert_eq!(held.len(), rows, "every line was read");
+        assert_eq!(
+            allocations,
+            OWNED_COPY_COSTS
+                .iter()
+                .find(|(at, _)| *at == rows)
+                .map_or(0, |(_, copy)| *copy)
+                + TEXT_LINES_ONCE
+                + 1
+                + TEXT_LINES_RETAINED_PER_WINDOW * windows,
+            "keeping {rows} rows across {windows} windows"
+        );
+        // Every body is still a range of a page, and the pages are the
+        // windows: far fewer than the lines that name them.
+        let pages = held
+            .iter()
+            .filter_map(|line| line.body_bytes().page().map(Arc::as_ptr))
+            .collect::<std::collections::HashSet<_>>();
+        assert!(
+            pages.len() <= windows,
+            "{rows} rows named {} pages across {windows} windows",
+            pages.len()
         );
     }
 }
