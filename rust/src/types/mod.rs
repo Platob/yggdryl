@@ -72,7 +72,7 @@ pub(crate) use string::{
     TIMEINFORCE_WIDTH, code_refusal, code_text,
 };
 pub(crate) use string::{
-    ascii_bytes, ascii_padded, ascii_text, code_cell_text, code_for_extension, trim_padding,
+    ascii_bytes, ascii_text, code_cell_text, code_for_extension, trim_padding,
 };
 pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;
@@ -81,7 +81,9 @@ pub use typed::{
 };
 pub use url::*;
 pub use uuid::*;
-pub(crate) use uuid::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
+pub(crate) use uuid::{
+    UUID_EXTENSION_NAME, UUID_TEXT_LEN, uuid_bytes, uuid_parse, uuid_rendered, uuid_text,
+};
 pub(crate) use value::{dtype_scalar, rooted_at_field};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;

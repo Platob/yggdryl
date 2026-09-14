@@ -125,7 +125,10 @@ impl Uuid {
 
 impl fmt::Display for Uuid {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&types::uuid_text(&self.0.to_be_bytes()))
+        // The rendering is a fixed 36 bytes, so it is written on the stack
+        // and never allocates.
+        let mut slot = [0_u8; types::UUID_TEXT_LEN];
+        formatter.write_str(types::uuid_rendered(&self.0.to_be_bytes(), &mut slot))
     }
 }
 

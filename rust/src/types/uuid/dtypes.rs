@@ -30,6 +30,9 @@ pub(crate) const UUID_BYTES: usize = 16;
 /// Where the canonical rendering puts its hyphens, in nibbles.
 const GROUPS: [usize; 5] = [8, 4, 4, 4, 12];
 
+/// The length of the canonical rendering: 32 digits and four hyphens.
+pub(crate) const UUID_TEXT_LEN: usize = UUID_BYTES * 2 + GROUPS.len() - 1;
+
 impl DataType {
     /// Creates the UUID type.
     ///
@@ -174,13 +177,31 @@ pub(crate) fn uuid_parse(value: &[u8]) -> Result<[u8; UUID_BYTES]> {
 }
 
 /// The canonical 36-character lowercase rendering of one identifier.
+///
+/// The rendering is wider than a compact string holds inline, so the one
+/// allocation is the returned value's own: [`uuid_rendered`] writes the
+/// characters into the caller's stack slot and this copies them in once.
 pub(crate) fn uuid_text(stored: &[u8; UUID_BYTES]) -> SmolStr {
+    let mut slot = [0_u8; UUID_TEXT_LEN];
+    SmolStr::new(uuid_rendered(stored, &mut slot))
+}
+
+/// Writes the canonical rendering into `slot` and borrows it back.
+///
+/// The one renderer: every spelling of an identifier this crate emits - a
+/// value's `Display`, a scalar's text, an Arrow column's cells - goes through
+/// it, so no arm allocates a `String` it is about to copy out of again.
+pub(crate) fn uuid_rendered<'a>(
+    stored: &[u8; UUID_BYTES],
+    slot: &'a mut [u8; UUID_TEXT_LEN],
+) -> &'a str {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut text = String::with_capacity(36);
+    let mut written = 0;
     let mut digit = 0;
     for (index, width) in GROUPS.iter().enumerate() {
         if index > 0 {
-            text.push('-');
+            slot[written] = b'-';
+            written += 1;
         }
         for _ in 0..*width {
             let byte = stored[digit / 2];
@@ -189,11 +210,13 @@ pub(crate) fn uuid_text(stored: &[u8; UUID_BYTES]) -> SmolStr {
             } else {
                 byte & 0x0F
             };
-            text.push(char::from(HEX[usize::from(nibble)]));
+            slot[written] = HEX[usize::from(nibble)];
+            written += 1;
             digit += 1;
         }
     }
-    SmolStr::new(text)
+    // Every byte written is one of `HEX` or a hyphen, so the slot is ASCII.
+    std::str::from_utf8(slot).unwrap_or_default()
 }
 
 const fn hex_nibble(byte: u8) -> Option<u8> {

@@ -96,10 +96,12 @@ impl DataType {
 
     /// The parameters a string datatype declares, `None` for every other.
     ///
-    /// The registered codes are deliberately not here. A currency is three
-    /// ASCII bytes the way a UUID is sixteen binary ones - an identity with a
-    /// storage, not a string with a charset - and answering for it would
-    /// invite a cast that reads it as text.
+    /// The registered codes are deliberately not here. A currency is an
+    /// identity over ISO 4217 the way a URL is one over RFC 3986 - both store
+    /// as text, and neither is a string with a charset - so a code answers
+    /// [`DataType::code_width`] and [`DataType::is_code`] instead, and its
+    /// Arrow extension name is what keeps a column of one from importing as
+    /// the plain text beside it.
     ///
     /// ```
     /// use yggdryl::types::StringLayout;
@@ -147,8 +149,10 @@ impl DataType {
     /// The fixed byte width of one value, when this datatype has one.
     ///
     /// [`crate::DataTypeId::fixed_byte_width`] answers for every
-    /// parameter-free variant - the numbers, the codes, a UUID; this adds the
-    /// two whose width is a parameter: a fixed string and fixed bytes.
+    /// parameter-free variant - the numbers, a UUID; this adds the two whose
+    /// width is a parameter: a fixed string and fixed bytes. A registered
+    /// code's width is a maximum over the text it stores rather than a
+    /// layout, so it answers [`DataType::code_width`] instead.
     ///
     /// ```
     /// use yggdryl::DataType;
@@ -156,8 +160,9 @@ impl DataType {
     /// # fn main() -> yggdryl::Result<()> {
     /// assert_eq!(DataType::fixed_ascii(4)?.fixed_byte_width(), Some(4));
     /// assert_eq!(DataType::fixed_size_binary(16)?.fixed_byte_width(), Some(16));
-    /// assert_eq!(DataType::Currency.fixed_byte_width(), Some(3));
     /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
+    /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
+    /// assert_eq!(DataType::Currency.code_width(), Some(3));
     /// # Ok(())
     /// # }
     /// ```

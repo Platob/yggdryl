@@ -160,7 +160,10 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
         assert_eq!(name.parse::<DataType>().unwrap(), *dtype);
         assert_eq!(dtype.to_string(), *name);
         assert_eq!(dtype.name(), *name);
-        assert_eq!(dtype.fixed_byte_width(), Some(*width));
+        // The width bounds the value; it is not a layout, so a code names
+        // no fixed width.
+        assert_eq!(dtype.code_width(), Some(*width));
+        assert_eq!(dtype.fixed_byte_width(), None);
         assert_eq!(dtype.kind(), DataTypeKind::Code);
         assert!(dtype.is_code());
         assert!(!dtype.is_string());
@@ -168,15 +171,15 @@ fn a_registered_code_is_its_own_datatype_over_its_standard_width() {
     }
     assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
     assert_ne!(DataType::Currency, DataType::fixed_ascii(3).unwrap());
-    // ISO 10962 is six characters, and `cfi` stores exactly those six.
-    assert_eq!(DataType::Cfi.fixed_byte_width(), Some(6));
+    // ISO 10962 is six characters, and `cfi` holds at most those six.
+    assert_eq!(DataType::Cfi.code_width(), Some(6));
     // A width of six bytes is spellable, and it is still not a CFI code.
     assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
     assert!(!DataType::fixed_ascii(6).unwrap().is_code());
     // ISO 6166 is twelve characters closed by a check digit, and `isin`
     // stores exactly those twelve.
     assert_eq!("isin".parse::<DataType>().unwrap(), DataType::Isin);
-    assert_eq!(DataType::Isin.fixed_byte_width(), Some(12));
+    assert_eq!(DataType::Isin.code_width(), Some(12));
     assert_ne!(DataType::Isin, DataType::fixed_ascii(12).unwrap());
 
     // A code name is a grammar keyword like every other, so the parser
@@ -238,13 +241,13 @@ fn a_code_packs_and_merges_by_the_ascii_rules() {
         DataType::Currency
             .merge_with(&DataType::fixed_ascii(3).unwrap(), true)
             .unwrap(),
-        DataType::fixed_ascii(3).unwrap()
+        DataType::from_str("ascii(3)").unwrap()
     );
     assert_eq!(
         DataType::Currency
             .merge_with(&DataType::Country, true)
             .unwrap(),
-        DataType::fixed_ascii(3).unwrap()
+        DataType::from_str("ascii(3)").unwrap()
     );
     assert_eq!(
         DataType::Currency

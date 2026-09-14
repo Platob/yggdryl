@@ -724,7 +724,9 @@ pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
             Ok(Str::from(format_smolstr!("{}", number.leaf_display()?)))
         }
         Scalar::Boolean(flag) => Ok(Str::from(format_smolstr!("{flag}"))),
-        Scalar::Uuid(uuid) => Ok(Str::from(format_smolstr!("{uuid}"))),
+        // The renderer answers the compact string directly: going through
+        // `Display` would write the same 36 bytes into a second buffer.
+        Scalar::Uuid(uuid) => Ok(Str::from(crate::types::uuid_text(&uuid.into_bytes()))),
         Scalar::Version(version) => Ok(Str::from(format_smolstr!("{version}"))),
         Scalar::Url(url) => Ok(Str::from(format_smolstr!("{url}"))),
         // An interval has no classic spelling, so a temporal answers for the

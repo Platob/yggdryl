@@ -11,7 +11,7 @@ use crate::types::string::is_text_storage;
 use crate::types::{
     Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Code,
     ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringParameters,
-    TIMEINFORCE_WIDTH, ascii_bytes, ascii_padded, code_cell_text, uuid_bytes, uuid_parse,
+    TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -388,60 +388,60 @@ pub(crate) fn value_from_array(
                 .map_err(crate::arrow::Error::from)?,
         )),
         DataType::String(parameters) => string_value(*parameters, array, index)?,
-        // A code reads back trimmed, at the width its own type fixes: the
-        // padding is the layout, not the text.
+        // A code reads back as the text its column holds, checked once more
+        // at the width its own standard fixes.
         DataType::Country => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Country(crate::types::Country::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Currency => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Currency(crate::types::Currency::new(
-                code_cell_text(dtype, fixed.value(index))?,
+                code_cell_text(dtype, text.value(index).as_bytes())?,
             )?))
         }
         DataType::Mic => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Mic(crate::types::Mic::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Cfi => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Cfi(crate::types::Cfi::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Isin => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Isin(crate::types::Isin::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Side => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Side(crate::types::Side::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::State => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::State(crate::types::State::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::TimeInForce => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::TimeInForce(crate::types::TimeInForce::new(
-                code_cell_text(dtype, fixed.value(index))?,
+                code_cell_text(dtype, text.value(index).as_bytes())?,
             )?))
         }
         DataType::List(child) => {
@@ -1370,29 +1370,20 @@ fn uuid_array(values: &[&Scalar]) -> Result<ArrayRef> {
     )?))
 }
 
-/// Build the padded fixed-width storage of a registered code column.
+/// Build the text storage of a registered code column.
 ///
-/// The slot is a compile-time length, so the per-row padding is a
-/// fixed-size copy.
+/// A value never outgrows `WIDTH`, which is a compile-time length, so the
+/// payload is bounded before a byte of it is copied.
 fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Result<ArrayRef> {
-    let mut bytes = vec![0_u8; values.len() * WIDTH];
-    let mut validity = Vec::with_capacity(values.len());
-    for (index, value) in values.iter().enumerate() {
+    let mut builder = StringBuilder::with_capacity(values.len(), values.len() * WIDTH);
+    for value in values {
         match ascii_bytes(value) {
-            Some(raw) => {
-                let text = code_cell_text(dtype, raw)?;
-                ascii_padded(&mut bytes[index * WIDTH..][..WIDTH], text);
-                validity.push(true);
-            }
-            None if matches!(value, Scalar::Null) => validity.push(false),
+            Some(raw) => builder.append_value(code_cell_text(dtype, raw)?),
+            None if matches!(value, Scalar::Null) => builder.append_null(),
             None => return Err(invalid_value_kind("ASCII text", value)),
         }
     }
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        WIDTH as i32,
-        Buffer::from(bytes),
-        nulls(validity),
-    )?))
+    Ok(Arc::new(builder.finish()))
 }
 
 /// Build the storage of one string column, in the charset it declares.

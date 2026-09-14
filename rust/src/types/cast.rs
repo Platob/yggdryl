@@ -51,7 +51,7 @@ use crate::types::string::{is_text_storage, needs_extension};
 use crate::types::temporal::casts::{
     holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };
-use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
+use crate::types::uuid::casts::ingest_uuid_array;
 use crate::types::version::casts::{ingest_version_array, is_text_layout};
 use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
@@ -329,7 +329,6 @@ enum ArrayCastKind {
     /// UUID rule and stored as its sixteen bytes.
     UuidIngest,
     /// A recognized UUID source rendering as its hyphenated spelling.
-    UuidText,
     /// Text entering a version is parsed and rewritten to its canonical text.
     VersionIngest,
     UrlIngest,
@@ -630,9 +629,11 @@ impl ArrayCastPlan {
                     });
                 }
             }
-            // A code takes fixed binary directly and everything the kernel
-            // renders as text through one Utf8 temporary, at the width its
-            // own type fixes; the rule is checked per value either way.
+            // A code takes binary directly and everything the kernel renders
+            // as text through one Utf8 temporary, at the width its own
+            // standard fixes; the rule is checked per value either way, and
+            // a column that already holds what the code promises is shared
+            // rather than copied.
             (code, source) if code.is_code() => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
@@ -681,13 +682,6 @@ impl ArrayCastPlan {
             (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
             },
-            (DataType::String(parameters), ArrowDataType::FixedSizeBinary(16))
-                if is_text_storage(*parameters)
-                    && !parameters.is_bounded()
-                    && matches!(source_extension, Some(RecognizedExtension::Uuid)) =>
-            {
-                ArrayCastKind::UuidText
-            }
             (DataType::String(parameters), source)
                 if is_text_storage(*parameters)
                     && !parameters.is_bounded()
@@ -696,12 +690,13 @@ impl ArrayCastPlan {
                 ArrayCastKind::TemporalText
             }
             // A string reads its values, never its buffers: a recognized
-            // string or code source is read under what it declares, bare text
-            // as text, and bare bytes as bytes already in the target's
-            // charset. Plain UTF-8 from bare storage declares nothing to
-            // check, so it stays with Arrow's own kernel below; an encoded
-            // source is decoded first, by the arms below, so the reading
-            // sees the column the encoding was hiding.
+            // string, code or UUID source is read under what it declares -
+            // a UUID spelling its sixteen bytes as the identifier they name -
+            // bare text as text, and bare bytes as bytes already in the
+            // target's charset. Plain UTF-8 from bare storage declares
+            // nothing to check, so it stays with Arrow's own kernel below; an
+            // encoded source is decoded first, by the arms below, so the
+            // reading sees the column the encoding was hiding.
             (DataType::String(parameters), source)
                 if !matches!(
                     source,
@@ -709,7 +704,11 @@ impl ArrayCastPlan {
                 ) && (needs_extension(*parameters)
                     || matches!(
                         source_extension,
-                        Some(RecognizedExtension::String(_) | RecognizedExtension::Code(_))
+                        Some(
+                            RecognizedExtension::String(_)
+                                | RecognizedExtension::Code(_)
+                                | RecognizedExtension::Uuid
+                        )
                     )) =>
             {
                 if !(matches!(
@@ -734,6 +733,7 @@ impl ArrayCastPlan {
                             StringSource::String(*parameters)
                         }
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
+                        Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
                     },
                 }
@@ -1155,9 +1155,6 @@ impl ArrayCastPlan {
                 exposure,
                 budget,
             )?,
-            ArrayCastKind::UuidText => {
-                render_uuid_text(&array, &self.expected, &self.field, exposure, budget)?
-            }
             ArrayCastKind::VersionIngest => {
                 ingest_version_array(&array, &self.field, exposure, budget)?
             }
