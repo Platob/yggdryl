@@ -509,6 +509,22 @@ fn the_typed_field_and_scalar_aliases_name_their_code() {
             .is_err()
     );
     assert!(FieldScalar::new(venue.as_field(), "XPARIS").is_err());
+
+    // A typed field hands back the exact array its code stores as, which is
+    // text: the marker names the array type at compile time, so a storage
+    // change that the marker did not follow is a downcast failure here.
+    let cells = ccy
+        .cast_arrow_array(
+            text(&["USD", "EUR"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+    assert_eq!(cells.value(0), "USD");
+    assert_eq!(cells.value(1), "EUR");
+    let one = venue
+        .cast_arrow_scalar(text(&["XPAR"]), ArrowCastOptions::new().with_safe(false))
+        .unwrap();
+    assert_eq!(one.into_inner().value(0), "XPAR");
 }
 
 #[test]
@@ -719,4 +735,93 @@ fn the_state_and_time_in_force_codes_are_ordinary_datatypes_everywhere_else() {
             .is_err()
     );
     assert!(DataType::TimeInForce.scalar(Scalar::from("0")).is_ok());
+}
+
+/// Every string and byte datatype a code column reaches, and what it reads
+/// back as.
+///
+/// A code is ASCII text bounded by its standard's width, and that reading has
+/// to survive every layout, charset and bound the string family offers and
+/// every framing the byte family does - a code stores as text now, so both
+/// families are one cast away in each direction.
+#[test]
+fn a_code_column_reads_into_every_string_and_byte_datatype() {
+    let strict = || ArrowCastOptions::new().with_safe(false);
+    let ccy = Field::new("v", DataType::Currency, false);
+    let stored = ccy.cast_arrow_array(text(&["USD"]), strict()).unwrap();
+    // The column carries `yggdryl.currency`, which is what a reading reads it
+    // under.
+    let batch = RecordBatch::try_new(
+        root([ccy.clone()]).into_arrow_schema().unwrap(),
+        vec![Arc::clone(&stored)],
+    )
+    .unwrap();
+    let into = |target: DataType| -> ArrayRef {
+        Arc::clone(
+            root([Field::new("v", target, false)])
+                .cast_arrow_batch(batch.clone(), strict())
+                .unwrap()
+                .column(0),
+        )
+    };
+
+    for spelling in [
+        "utf8",
+        "large_utf8",
+        "utf8_view",
+        "ascii",
+        "utf8(3)",
+        "large_ascii",
+        "fixed_ascii(3)",
+        "string(windows-1252)",
+        "binary",
+        "large_binary",
+        "binary_view",
+        "fixed_size_binary(3)",
+        "binary(3)",
+    ] {
+        let read = into(DataType::from_str(spelling).unwrap());
+        let back = ccy
+            .cast_arrow_array(read, strict())
+            .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
+        assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
+    }
+
+    // A width the value does not fill is a different payload either way, and
+    // each refusal names both sides rather than leaving Arrow's builder to
+    // complain about a slice length.
+    for (spelling, expected) in [
+        ("fixed_size_binary(8)", "exactly 8 bytes"),
+        ("binary(2)", "at most 2 bytes"),
+        ("utf8(2)", "at most 2"),
+    ] {
+        let refused = root([Field::new(
+            "v",
+            DataType::from_str(spelling).unwrap(),
+            false,
+        )])
+        .cast_arrow_batch(batch.clone(), strict())
+        .unwrap_err()
+        .to_string();
+        assert!(refused.contains(expected), "{spelling}: {refused}");
+        assert!(refused.contains("row 0"), "{spelling}: {refused}");
+    }
+
+    // And the same readings hold one value at a time: a code spells its text,
+    // and that text's bytes are its payload.
+    let value = DataType::Currency.scalar(Scalar::from("USD")).unwrap();
+    assert_eq!(
+        DataType::utf8().scalar(value.clone()).unwrap().as_str(),
+        Some("USD")
+    );
+    assert_eq!(
+        DataType::binary().scalar(value.clone()).unwrap().as_bytes(),
+        Some(b"USD".as_slice())
+    );
+    assert_eq!(
+        DataType::Currency
+            .scalar(Scalar::from(b"USD".to_vec()))
+            .unwrap(),
+        value
+    );
 }

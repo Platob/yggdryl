@@ -424,7 +424,10 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Code(held) => Some(held.storage().clone()),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
-        Scalar::Uuid(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Uuid(held) => {
+            let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
+            Some(SmolStr::new(held.render(&mut slot)))
+        }
         Scalar::Enum(held) => Some(SmolStr::new_static(held.as_str())),
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.

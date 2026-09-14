@@ -320,17 +320,18 @@ enum ArrayCastKind {
     /// into the target's own layout. An unbounded layout declares nothing
     /// Arrow does not, so it stays with the kernel.
     BytesIngest,
-    /// Values entering a registered code: the string rule at the width the
-    /// code fixes, which is a constant, so the validation and the padding
-    /// run monomorphized per code rather than reading a width out of the
-    /// datatype on every row.
+    /// Values entering a registered code: the string rule at the width its
+    /// standard fixes, which is a constant, so the validation runs
+    /// monomorphized per code rather than reading a width out of the datatype
+    /// on every row, and a column that already holds what the code promises
+    /// is shared rather than copied.
     CodeIngest,
     /// Values entering a UUID: every exposed value is validated under the one
     /// UUID rule and stored as its sixteen bytes.
     UuidIngest,
-    /// A recognized UUID source rendering as its hyphenated spelling.
     /// Text entering a version is parsed and rewritten to its canonical text.
     VersionIngest,
+    /// Text entering a URL is parsed and rewritten to its canonical text.
     UrlIngest,
     /// Text entering a decimal: every exposed value is read at the declared
     /// scale, and a digit that scale cannot state stays refused rather than
@@ -500,6 +501,8 @@ impl ArrayCastPlan {
                         Some(RecognizedExtension::String(source)) if source == field.dtype()
                     )
             }
+            // A fixed width is not re-read: the storage Arrow declares is the
+            // width, so a column already in it holds nothing to check.
             DataType::Bytes(parameters) => {
                 crate::types::bytes::needs_extension(*parameters)
                     && !matches!(
@@ -660,11 +663,12 @@ impl ArrayCastPlan {
             {
                 ArrayCastKind::GeospatialWkt
             }
-            // A UUID takes its sixteen bytes directly and every text spelling
+            // A UUID takes its sixteen bytes directly, a slot of any other
+            // width as the spelling that slot holds, and every text spelling
             // through one Utf8 temporary; the one UUID rule runs per value
-            // either way.
+            // whichever it was.
             (DataType::Uuid, source) => {
-                if matches!(source, ArrowDataType::FixedSizeBinary(16))
+                if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
                     ArrayCastKind::UuidIngest
@@ -738,11 +742,32 @@ impl ArrayCastPlan {
                     },
                 }
             }
+            // Two fixed byte widths are the same refusal a fixed-size list
+            // pair gets: the payload a row holds is not the payload the target
+            // declares, so it is a value change rather than a framing change,
+            // and Arrow's own message names neither datatype.
+            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
+                if parameters
+                    .fixed()
+                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
+            {
+                return Err(Error::Unsupported {
+                    kind: dtype.name(),
+                    reason: format!(
+                        "a fixed binary of {source_width} bytes holds a different payload than \
+                         {dtype}, so it is a value change rather than a framing change"
+                    ),
+                });
+            }
             // A bounded byte layout reads its cells for the same reason: the
-            // maximum is the one thing about bytes Arrow cannot check. An
-            // encoded source is decoded first, by the arms below.
+            // width a value must fit is a rule about values, and Arrow's own
+            // builder refuses a cell that misses it without naming the column
+            // or the row. A maximum is the one thing about bytes Arrow cannot
+            // check at all; a fixed width it checks, but only with a message
+            // that names neither side. An encoded source is decoded first, by
+            // the arms below.
             (DataType::Bytes(parameters), source)
-                if crate::types::bytes::needs_extension(*parameters)
+                if parameters.is_bounded()
                     && !matches!(
                         source,
                         ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
@@ -1005,23 +1030,6 @@ impl ArrayCastPlan {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
                     reason: "a wrapper/layout change around Struct values is not supported because positional Arrow casting would bypass case-insensitive name reconciliation".to_owned(),
-                });
-            }
-            // Two fixed byte widths are the same refusal a fixed-size list
-            // pair gets: the payload a row holds is not the payload the target
-            // declares, so it is a value change rather than a framing change,
-            // and Arrow's own message names neither datatype.
-            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
-                if parameters
-                    .fixed()
-                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
-            {
-                return Err(Error::Unsupported {
-                    kind: dtype.name(),
-                    reason: format!(
-                        "a fixed binary of {source_width} bytes holds a different payload than \
-                         {dtype}, so it is a value change rather than a framing change"
-                    ),
                 });
             }
             // Anything Arrow's own kernel can cast, it casts - including the

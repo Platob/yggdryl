@@ -764,7 +764,10 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Code(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
-        Scalar::Uuid(value) => write_scalar_string(writer, &value.to_string())?,
+        Scalar::Uuid(value) => {
+            let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
+            write_scalar_string(writer, value.render(&mut slot))?;
+        }
         Scalar::Enum(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Bytes(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.

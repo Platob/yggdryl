@@ -17,8 +17,11 @@ use arrow_schema::DataType as ArrowDataType;
 /// Validates every exposed, non-null value entering a UUID and stores it as
 /// its sixteen bytes.
 ///
-/// Sixteen-byte storage is the same array once validated; anything else first
-/// renders as Utf8 through Arrow's kernel, exactly as an ASCII width does.
+/// Sixteen-byte storage is the same array once validated. Any other fixed
+/// width is a slot holding one of the two text spellings, so the padding is
+/// taken off and the spelling read; variable bytes are read as they are; and
+/// anything else first renders as Utf8 through Arrow's kernel, exactly as an
+/// ASCII width does.
 pub(crate) fn ingest_uuid_array(
     array: &ArrayRef,
     expected: &ArrowDataType,
@@ -30,14 +33,24 @@ pub(crate) fn ingest_uuid_array(
     if !matches!(expected, ArrowDataType::FixedSizeBinary(16)) {
         return Err(internal_target_error("uuid"));
     }
-    if let ArrowDataType::FixedSizeBinary(16) = array.data_type() {
+    if let ArrowDataType::FixedSizeBinary(width) = array.data_type() {
         let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
-        for index in 0..source.len() {
-            if is_exposed(exposure, index) && source.is_valid(index) {
-                uuid_cell(field, index, source.value(index))?;
+        if *width == 16 {
+            for index in 0..source.len() {
+                if is_exposed(exposure, index) && source.is_valid(index) {
+                    uuid_cell(field, index, source.value(index))?;
+                }
             }
+            return Ok(Arc::clone(array));
         }
-        return Ok(Arc::clone(array));
+        // Sixteen bytes are an identifier, in which every byte carries
+        // identity and a trailing NUL is one of them. Any other width is a
+        // text slot, so its trailing NUL is the slot's padding.
+        return uuid_storage(field, source.len(), exposure, budget, |index| {
+            source
+                .is_valid(index)
+                .then(|| crate::types::trim_padding(source.value(index)))
+        });
     }
     if let Some(bytes) = variable_binary_source(array, field, exposure, budget)? {
         let source = downcast::<BinaryArray>(bytes.as_ref())?;
