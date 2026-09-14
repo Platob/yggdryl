@@ -65,7 +65,7 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
     folder.append_arrow_reader(rows(vec![3], vec!["XLON"]), &options)?;
 
     // A match key upserts: `2` is stored and updates, `9` is new and appends.
-    let merging = options.clone().with_merge_by_names(["id"]);
+    let merging = options.clone().with_merge_by("id")?;
     folder.merge_arrow_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
 
     let total: usize = folder
@@ -111,7 +111,7 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
 
     # A match key upserts: `2` is stored and updates, `9` is new and appends.
     merging = folder.record_options()
-    merging.merge_by_names = ["id"]
+    merging.merge_by = ["id"]
     folder.merge_arrow_batch(rows([2, 9], ["XNYS", "XLON"]), options=merging)
 
     assert folder.read_arrow_reader(options=options).read_all().num_rows == 4
@@ -154,7 +154,7 @@ The folder *is* the table, so the shared [record surface](../../holder/iobase/re
     // A match key upserts: `2` is stored and updates, `9` is new and appends.
     folder.mergeArrowReader(
       rows([2n, 9n], ['XNYS', 'XLON']),
-      options.withMergeByNames(['id']),
+      options.withMergeBy(['id']),
     )
 
     assert.equal(folder.readArrowReader(options).intoTable().numRows, 4)
@@ -244,14 +244,14 @@ let partition_rows: usize = partition
     .sum();
 assert_eq!(partition_rows, 1);
 
-let merging = options.clone().with_merge_by_names(["id"]);
+let merging = options.clone().with_merge_by("id")?;
 table.merge_arrow_reader(rows(vec![2, 9], vec!["XNYS", "XLON"]), &merging)?;
 assert_eq!(table.metadata().snapshots().len(), 2);
 assert_eq!(table.current_snapshot().unwrap().operation(), "overwrite");
 
 // A partition filter is answered by the scan plan, so the other partitions'
 // files are never opened.
-let filtered = options.clone().with_filter_partitions([("venue", "XNYS")]);
+let filtered = options.clone().with_filter("venue = 'XNYS'")?;
 let matching: usize = table
     .read_arrow_reader(&filtered)?
     .map(|batch| batch.unwrap().num_rows())
@@ -891,14 +891,14 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 
 ## Edges
 
-- `merge_arrow_reader` without match keys -> refused; a merge requires `merge_by_names`.
+- `merge_arrow_reader` without match keys -> refused; a merge requires `merge_by`.
 - A partition filter naming an undeclared column, on a `Table` handle -> error.
 - The same filter on a folder of leaves -> ignored, because its batches do not carry that column.
 - A stray file nobody committed, or a file an overwrite replaced -> never read.
 - `record_options` / `read_arrow_field` on a table -> answered from the metadata before any data file exists; the schema keeps its field identifiers.
 - `IOBase::kind` on a `Table` -> [`IOKind::Table`](../../holder/index.md), not the root folder's `Directory`; `is_tabular` is true without touching storage.
 - A write through a `Table` value -> one commit; `current_snapshot` and `version` stay current without reopening.
-- `filter_partitions` on a `Table` -> prunes data files through the scan plan, not rows after decoding.
+- A `filter` on a `Table` -> prunes data files through the scan plan, not rows after decoding.
 - `compact()` -> touches only partition groups holding at least two files with one under the target.
 - Every file `compact()` does not touch -> carried into the new snapshot untouched; the prior snapshot still time-travels.
 - `compact()` with nothing to do -> no-op that commits nothing; all three numbers are zero.

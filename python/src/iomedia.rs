@@ -51,13 +51,13 @@ use pyo3::types::{
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::{ArrowCast, Field as CoreField, Level, Metadata};
+use yggdryl::{ArrowCast, Field as CoreField, Level};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
-use crate::expression::PyExpression;
-use crate::types::datatype::{
-    PyDataType, arrow_array_to_pyarrow_with_type, core_dtype_from_value, core_field_to_pyarrow,
+use crate::expression::{
+    PyFilter, PyPlan, PySelector, filter_from_value, plan_from_value, selector_from_value,
 };
+use crate::types::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
 use crate::types::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
 use crate::types::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
@@ -1116,26 +1116,6 @@ fn set_batch_row_size_option(
     Ok(())
 }
 
-/// Read root metadata out of a mapping, an iterable of pairs, or nothing.
-///
-/// `None` and an empty collection both spell the empty snapshot, which is how
-/// the core clears metadata.
-fn metadata_from_value(value: Option<&Bound<'_, PyAny>>) -> PyResult<Metadata> {
-    match value {
-        Some(value) => Metadata::from_entries(string_pairs_from_value(value)?).map_err(value_error),
-        None => Ok(Metadata::new()),
-    }
-}
-
-/// Snapshot metadata into a plain `dict`, the shape `key_value_metadata` uses.
-fn metadata_into_dict<'py>(py: Python<'py>, metadata: &Metadata) -> PyResult<Bound<'py, PyDict>> {
-    let pairs = PyDict::new(py);
-    for (key, value) in metadata {
-        pairs.set_item(key, value)?;
-    }
-    Ok(pairs)
-}
-
 /// Copy one Python byte-buffer value without accepting an integer sequence as
 /// an accidental synchronization marker.
 fn bytes_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
@@ -1230,19 +1210,18 @@ impl PyRecordOptions {
         state.set_item("media_type", self.inner.mime_type().as_str())?;
         state.set_item("name", self.inner.name())?;
         state.set_item(
-            "dtype",
-            self.inner.dtype().cloned().map(PyDataType::from_inner),
+            "field",
+            self.inner.declared().cloned().map(PyField::from_inner),
         )?;
-        state.set_item("metadata", metadata_into_dict(py, self.inner.metadata())?)?;
         state.set_item("safe", self.inner.safe())?;
         state.set_item("batch_row_size", self.inner.batch_row_size())?;
         state.set_item("commit_row_size", self.inner.commit_row_size())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
         state.set_item("level", self.inner.level().get())?;
-        state.set_item("merge_by_names", self.inner.merge_by_names().to_vec())?;
-        state.set_item("select_by_names", self.inner.select_by_names().to_vec())?;
-        state.set_item("filter_partitions", self.inner.filter_partitions().to_vec())?;
+        state.set_item("merge_by", self.inner.merge_by().to_string())?;
+        state.set_item("selector", self.inner.selector().to_string())?;
+        state.set_item("filter", self.inner.filter().to_string())?;
         if let RecordOptions::Text(options) = &self.inner {
             state.set_item("framing", options.framing())?;
             state.set_item("leading_fragment", options.leading_fragment().as_str())?;
@@ -1321,10 +1300,10 @@ impl PyRecordOptions {
 
         let name = required_record_pickle_item(state, "name")?.extract::<String>()?;
         options.set_name(&name)?;
-        let dtype = required_record_pickle_item(state, "dtype")?;
-        options.set_dtype((!dtype.is_none()).then_some(&dtype))?;
-        let metadata = required_record_pickle_item(state, "metadata")?;
-        options.set_metadata(Some(&metadata))?;
+        let field = required_record_pickle_item(state, "field")?;
+        if !field.is_none() {
+            options.set_field(Some(&field))?;
+        }
         options.set_safe(required_record_pickle_item(state, "safe")?.extract()?)?;
         options
             .set_batch_row_size(required_record_pickle_item(state, "batch_row_size")?.extract()?)?;
@@ -1335,14 +1314,9 @@ impl PyRecordOptions {
         options
             .set_max_byte_size(required_record_pickle_item(state, "max_byte_size")?.extract()?)?;
         options.set_level(required_record_pickle_item(state, "level")?.extract()?)?;
-        options
-            .set_merge_by_names(required_record_pickle_item(state, "merge_by_names")?.extract()?)?;
-        options.set_select_by_names(
-            required_record_pickle_item(state, "select_by_names")?.extract()?,
-        )?;
-        options.set_filter_partitions(
-            required_record_pickle_item(state, "filter_partitions")?.extract()?,
-        )?;
+        options.set_merge_by(&required_record_pickle_item(state, "merge_by")?)?;
+        options.set_selector(&required_record_pickle_item(state, "selector")?)?;
+        options.set_filter(&required_record_pickle_item(state, "filter")?)?;
 
         if let RecordOptions::Text(text) = &mut options.inner {
             text.set_framing(required_record_pickle_item(state, "framing")?.extract()?);
@@ -1439,53 +1413,26 @@ impl PyRecordOptions {
         Ok(())
     }
 
-    /// The declared root datatype, or `None` when the shape is inferred.
+    /// The declared root Field - the `create` section of the plan - or
+    /// `None` when the shape is inferred from the rows.
     ///
-    /// The setter takes a `DataType`, a datatype expression, or anything else
-    /// that names a datatype; `None` clears the declaration.
-    #[getter]
-    fn dtype(&self) -> Option<PyDataType> {
-        self.inner.dtype().cloned().map(PyDataType::from_inner)
-    }
-
-    #[setter]
-    fn set_dtype(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.require_mutable()?;
-        let dtype = value.map(core_dtype_from_value).transpose()?;
-        self.inner.set_dtype(dtype);
-        Ok(())
-    }
-
-    /// The root metadata, as a snapshot; empty unless declared.
-    ///
-    /// The setter takes a mapping or an iterable of `(key, value)` string
-    /// pairs, `Field.metadata` included; `None` or nothing clears it.
-    #[getter]
-    fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        metadata_into_dict(py, self.inner.metadata())
-    }
-
-    #[setter]
-    fn set_metadata(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_metadata(metadata_from_value(value)?);
-        Ok(())
-    }
-
-    /// The declared canonical root Field, built from `name`, `dtype`, and
-    /// `metadata`; `None` until a datatype is declared.
-    ///
-    /// The setter takes any root spelling and declares its three parts.
+    /// The setter takes any root spelling: a `Field`, its text, or a
+    /// `pyarrow.Schema`, which takes the declared name; `None` clears it.
     #[getter]
     fn field(&self) -> Option<PyField> {
         self.inner.field().map(PyField::from_inner)
     }
 
     #[setter]
-    fn set_field(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set_field(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         self.require_mutable()?;
-        let field = core_root_field_from_value(value, self.inner.name())?;
-        self.inner.set_field(field);
+        match value {
+            Some(value) if !value.is_none() => {
+                let field = core_root_field_from_value(value, self.inner.name())?;
+                self.inner.set_field(field);
+            }
+            _ => self.inner.set_declared(None),
+        }
         Ok(())
     }
 
@@ -1588,44 +1535,80 @@ impl PyRecordOptions {
         Ok(())
     }
 
-    /// The column names a write matches rows on; empty means overwrite.
+    /// The keys a write matches stored rows on - the plan's `upsert by`;
+    /// `select *` (empty) means overwrite or append.
+    ///
+    /// The setter takes a `Selector`, the text of one, or the key column
+    /// names.
     #[getter]
-    fn merge_by_names(&self) -> Vec<String> {
-        self.inner.merge_by_names().to_vec()
+    fn merge_by(&self) -> PySelector {
+        PySelector::from_core(self.inner.merge_by().clone())
     }
 
     #[setter]
-    fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) -> PyResult<()> {
+    fn set_merge_by(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_merge_by_names(merge_by_names);
+        self.inner.set_merge_by(selector_from_value(value)?);
         Ok(())
     }
 
-    /// The column names a read or write is narrowed to; empty selects all.
+    /// The `select` section a read or write is shaped by; `select *` keeps
+    /// every column.
+    ///
+    /// The setter takes a `Selector`, the text of one, a `Term`, or the
+    /// column names.
     #[getter]
-    fn select_by_names(&self) -> Vec<String> {
-        self.inner.select_by_names().to_vec()
+    fn selector(&self) -> PySelector {
+        PySelector::from_core(self.inner.selector().clone())
     }
 
     #[setter]
-    fn set_select_by_names(&mut self, select_by_names: Vec<String>) -> PyResult<()> {
+    fn set_selector(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_select_by_names(select_by_names);
+        self.inner.set_selector(selector_from_value(value)?);
         Ok(())
     }
 
-    /// The partition equalities a read is pruned and filtered by; empty
-    /// keeps every row. Values are spelled as partition paths spell them.
+    /// The `where` section a read is pruned and filtered by; always true
+    /// keeps every row.
+    ///
+    /// The setter takes a `Filter`, a `Term`, or the text of a predicate.
     #[getter]
-    fn filter_partitions(&self) -> Vec<(String, String)> {
-        self.inner.filter_partitions().to_vec()
+    fn filter(&self) -> PyFilter {
+        PyFilter::from_core(self.inner.filter().clone())
     }
 
     #[setter]
-    fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) -> PyResult<()> {
+    fn set_filter(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_filter_partitions(filter_partitions);
+        self.inner.set_filter(filter_from_value(value)?);
         Ok(())
+    }
+
+    /// The whole plan these options run: `create` from the declared field,
+    /// `upsert by` from the merge keys, `select`, `where`, and `limit` from
+    /// `max_row_size`.
+    ///
+    /// The setter splits a `Plan`, its text, a clause, or a `Field` back into
+    /// those sections, replacing every one of them.
+    #[getter]
+    fn plan(&self) -> PyPlan {
+        PyPlan::from_core(self.inner.plan())
+    }
+
+    #[setter]
+    fn set_plan(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_plan(plan_from_value(value)?)
+            .map_err(value_error)
+    }
+
+    /// The partition equalities the filter pins, `(column, value)` pairs
+    /// spelled as partition paths spell them; what prunes a listing before
+    /// anything is opened.
+    fn partition_pairs(&self) -> Vec<(String, String)> {
+        self.inner.partition_pairs()
     }
 
     /// The timezone applied while autotyping offset-free timestamps.
@@ -1728,15 +1711,15 @@ impl PyRecordOptions {
 
     /// Shape one `PyArrow` `RecordBatch` through these options.
     ///
-    /// The three layers run in order: the declared field says what the rows
-    /// are meant to be, `select_by_names` narrows and orders the columns, and
-    /// `existing` - a stored root - completes the result against what the
+    /// The layers run in order: the declared field says what the rows are
+    /// meant to be, the `where` and `select` sections keep and shape them,
+    /// and `existing` - a stored root - completes the result against what the
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
     ///
     /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `partition:` and `digest:` columns it derives, so a
-    /// declared derived column arrives written. The selection in between only
+    /// cast *and* the `transform:` and `digest:` columns it derives, so a
+    /// declared derived column arrives written. The selection after it only
     /// narrows, because deriving there would restore what it was asked to
     /// drop.
     #[pyo3(signature = (batch, existing = None))]
@@ -1788,27 +1771,6 @@ impl PyRecordOptions {
         let reader = batch_reader_from_arrow_reader(reader)?;
         let limited = self.inner.limit_arrow_reader(reader).map_err(value_error)?;
         batch_reader_to_pyarrow(py, limited)
-    }
-
-    /// The expression `filter_partitions` spells about a path.
-    ///
-    /// This is what prunes a listing before anything is opened, because it
-    /// reads the partition values a location's own path carries.
-    #[getter]
-    fn partition_filter(&self) -> PyExpression {
-        PyExpression::from_core(self.inner.partition_filter())
-    }
-
-    /// The row-side counterpart, read through a schema's own datatypes.
-    ///
-    /// The same pairs become typed comparisons - `("price", "20")` is an
-    /// integer comparison on an `int32` column - so a residual filter runs
-    /// against rows rather than against text.
-    fn partition_predicate(&self, field: &Bound<'_, PyAny>) -> PyResult<PyExpression> {
-        let field = core_field_from_value(field)?;
-        Ok(PyExpression::from_core(
-            self.inner.partition_predicate(&field),
-        ))
     }
 
     /// The declared field, or a `ValueError` naming the builders that set one.
@@ -1957,40 +1919,20 @@ impl PyTextOptions {
     }
 
     #[getter]
-    fn dtype(&self) -> Option<PyDataType> {
-        self.inner.dtype().cloned().map(PyDataType::from_inner)
-    }
-
-    #[setter]
-    fn set_dtype(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner
-            .set_dtype(value.map(core_dtype_from_value).transpose()?);
-        Ok(())
-    }
-
-    #[getter]
-    fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        metadata_into_dict(py, self.inner.metadata())
-    }
-
-    #[setter]
-    fn set_metadata(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        self.require_mutable()?;
-        self.inner.set_metadata(metadata_from_value(value)?);
-        Ok(())
-    }
-
-    #[getter]
     fn field(&self) -> Option<PyField> {
         self.inner.field().map(PyField::from_inner)
     }
 
     #[setter]
-    fn set_field(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set_field(&mut self, value: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
         self.require_mutable()?;
-        let field = core_root_field_from_value(value, self.inner.name())?;
-        self.inner.set_field(field);
+        match value {
+            Some(value) if !value.is_none() => {
+                let field = core_root_field_from_value(value, self.inner.name())?;
+                self.inner.set_field(field);
+            }
+            _ => self.inner.set_declared(None),
+        }
         Ok(())
     }
 
@@ -2075,40 +2017,80 @@ impl PyTextOptions {
         Ok(())
     }
 
+    /// The keys a write matches stored rows on - the plan's `upsert by`;
+    /// `select *` (empty) means overwrite or append.
+    ///
+    /// The setter takes a `Selector`, the text of one, or the key column
+    /// names.
     #[getter]
-    fn merge_by_names(&self) -> Vec<String> {
-        self.inner.merge_by_names().to_vec()
+    fn merge_by(&self) -> PySelector {
+        PySelector::from_core(self.inner.merge_by().clone())
     }
 
     #[setter]
-    fn set_merge_by_names(&mut self, names: Vec<String>) -> PyResult<()> {
+    fn set_merge_by(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_merge_by_names(names);
+        self.inner.set_merge_by(selector_from_value(value)?);
         Ok(())
     }
 
+    /// The `select` section a read or write is shaped by; `select *` keeps
+    /// every column.
+    ///
+    /// The setter takes a `Selector`, the text of one, a `Term`, or the
+    /// column names.
     #[getter]
-    fn select_by_names(&self) -> Vec<String> {
-        self.inner.select_by_names().to_vec()
+    fn selector(&self) -> PySelector {
+        PySelector::from_core(self.inner.selector().clone())
     }
 
     #[setter]
-    fn set_select_by_names(&mut self, names: Vec<String>) -> PyResult<()> {
+    fn set_selector(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_select_by_names(names);
+        self.inner.set_selector(selector_from_value(value)?);
         Ok(())
     }
 
+    /// The `where` section a read is pruned and filtered by; always true
+    /// keeps every row.
+    ///
+    /// The setter takes a `Filter`, a `Term`, or the text of a predicate.
     #[getter]
-    fn filter_partitions(&self) -> Vec<(String, String)> {
-        self.inner.filter_partitions().to_vec()
+    fn filter(&self) -> PyFilter {
+        PyFilter::from_core(self.inner.filter().clone())
     }
 
     #[setter]
-    fn set_filter_partitions(&mut self, partitions: Vec<(String, String)>) -> PyResult<()> {
+    fn set_filter(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_filter_partitions(partitions);
+        self.inner.set_filter(filter_from_value(value)?);
         Ok(())
+    }
+
+    /// The whole plan these options run: `create` from the declared field,
+    /// `upsert by` from the merge keys, `select`, `where`, and `limit` from
+    /// `max_row_size`.
+    ///
+    /// The setter splits a `Plan`, its text, a clause, or a `Field` back into
+    /// those sections, replacing every one of them.
+    #[getter]
+    fn plan(&self) -> PyPlan {
+        PyPlan::from_core(self.inner.plan())
+    }
+
+    #[setter]
+    fn set_plan(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_plan(plan_from_value(value)?)
+            .map_err(value_error)
+    }
+
+    /// The partition equalities the filter pins, `(column, value)` pairs
+    /// spelled as partition paths spell them; what prunes a listing before
+    /// anything is opened.
+    fn partition_pairs(&self) -> Vec<(String, String)> {
+        self.inner.partition_pairs()
     }
 
     /// Whether physical lines are framed into logical records.
@@ -2262,15 +2244,15 @@ impl PyTextOptions {
 
     /// Shape one `PyArrow` `RecordBatch` through these options.
     ///
-    /// The three layers run in order: the declared field says what the rows
-    /// are meant to be, `select_by_names` narrows and orders the columns, and
-    /// `existing` - a stored root - completes the result against what the
+    /// The layers run in order: the declared field says what the rows are
+    /// meant to be, the `where` and `select` sections keep and shape them,
+    /// and `existing` - a stored root - completes the result against what the
     /// resource already holds. A layer whose target already matches costs
     /// nothing.
     ///
     /// A field shapes rows by applying, not by casting: a declaration is a
-    /// cast *and* the `partition:` and `digest:` columns it derives, so a
-    /// declared derived column arrives written. The selection in between only
+    /// cast *and* the `transform:` and `digest:` columns it derives, so a
+    /// declared derived column arrives written. The selection after it only
     /// narrows, because deriving there would restore what it was asked to
     /// drop.
     #[pyo3(signature = (batch, existing = None))]
@@ -2322,27 +2304,6 @@ impl PyTextOptions {
         let reader = batch_reader_from_arrow_reader(reader)?;
         let limited = self.inner.limit_arrow_reader(reader).map_err(value_error)?;
         batch_reader_to_pyarrow(py, limited)
-    }
-
-    /// The expression `filter_partitions` spells about a path.
-    ///
-    /// This is what prunes a listing before anything is opened, because it
-    /// reads the partition values a location's own path carries.
-    #[getter]
-    fn partition_filter(&self) -> PyExpression {
-        PyExpression::from_core(self.inner.partition_filter())
-    }
-
-    /// The row-side counterpart, read through a schema's own datatypes.
-    ///
-    /// The same pairs become typed comparisons - `("price", "20")` is an
-    /// integer comparison on an `int32` column - so a residual filter runs
-    /// against rows rather than against text.
-    fn partition_predicate(&self, field: &Bound<'_, PyAny>) -> PyResult<PyExpression> {
-        let field = core_field_from_value(field)?;
-        Ok(PyExpression::from_core(
-            self.inner.partition_predicate(&field),
-        ))
     }
 
     /// The declared field, or a `ValueError` naming the builders that set one.

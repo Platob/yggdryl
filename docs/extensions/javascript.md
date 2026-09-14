@@ -11,7 +11,7 @@ values cross the JavaScript boundary.
 | `Field`, `fields` | [field](../types/field.md) |
 | `StringEnum`, `StringParameters`, `BytesParameters` | [strings & bytes](../types/text.md), [codes](../types/codes.md), and this page |
 | `Version` | [numeric versions](../types/text.md#versions) and this page |
-| `Expression`, `Bound`, `Statement`, `BoundStatement` | [expression](../expression/index.md) |
+| `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `Records` | [expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [uri](../uri/index.md) |
 | `IOBase` | [holder](../holder/index.md) |
 | `BatchReader`, `RecordOptions` | [records](../holder/iobase/records.md), [options](../media/options.md) |
@@ -270,14 +270,14 @@ so `Scalar` exposes checked `add`, `subtract`, `multiply`, `divide`,
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Expression, Scalar } = require('yggdryl')
+const { Scalar, Term } = require('yggdryl')
 
 const half = Scalar.decimal(1n).divide(Scalar.decimal(2n))
 assert.ok(half.equals(Scalar.decimal(5n, 1)))
 assert.equal(half.clone().compare(half), 0)
 assert.equal(typeof half.stableHash(), 'bigint')
 
-const size = Expression.column('size').add(1)
+const size = Term.column('size').add(1)
 assert.equal(size.toString(), 'size + 1')
 assert.ok(size.clone().equals(size))
 
@@ -288,7 +288,7 @@ assert.throws(
 )
 ```
 
-`Expression` exposes the same names except `absolute`, as lazy tree builders. A
+`Term` exposes the same names except `absolute`, as lazy tree builders. A
 string operand is parsed as expression text, any other value as a literal.
 
 ## fromJs and asJs
@@ -622,7 +622,7 @@ handle.mediaType = MimeType.ARROW_STREAM
 handle.overwriteArrowTable(first)
 handle.appendArrowReader(BatchReader.from(extra))
 
-const merging = handle.recordOptions().withMergeByNames(['id'])
+const merging = handle.recordOptions().withMergeBy(['id'])
 handle.mergeArrowTable(later, merging)
 assert.equal(handle.readArrowReader().intoTable().numRows, 4)
 
@@ -1060,8 +1060,9 @@ keeps the document's spelling; 20001 to 20004 are retired, not reused.
   overflow, division by zero, and inexact decimal division -> `RangeError`
   `ERR_YGGDRYL_ARITHMETIC_OVERFLOW`, `ERR_YGGDRYL_DIVISION_BY_ZERO`,
   `ERR_YGGDRYL_INEXACT_ARITHMETIC`.
-- `Scalar`, `Expression`, `Statement`, `avro.Schema`, and the `iceberg` result
-  values -> complete identity; readers, iterators, and handles -> none.
+- `Scalar`, `Term`, `Filter`, `Selector`, `Plan`, `Expression`, `avro.Schema`,
+  and the `iceberg` result values -> complete identity; readers, iterators,
+  records, and handles -> none.
 - `compare` -> the core total order; equal values share one deterministic
   `stableHash()` `bigint`, and `===` stays reference identity.
 - `Scalar` equality, order, and hashing -> normalize equivalent decimal and
@@ -1085,7 +1086,7 @@ keeps the document's spelling; 20001 to 20004 are retired, not reused.
   `Number.MAX_SAFE_INTEGER`.
 - A setting one encoding has -> `null` on the others; `isIo()` without either
   surface -> `false`.
-- `mergeByNames` -> rejected by overwrite and append, required non-empty by
+- `mergeBy` -> rejected by overwrite and append, required non-empty by
   merge, before anything is consumed.
 - A reader method -> only a native `BatchReader`; `BatchReader.from(value)`
   converts anything else.

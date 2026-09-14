@@ -1034,8 +1034,8 @@ function installRecords({
   if (merge) {
     Object.defineProperty(Table.prototype, 'merge', {
       configurable: true,
-      value(batches, mergeByNames, safe, options) {
-        return merge.call(this, icebergBatchReader(this, batches), mergeByNames, safe, options)
+      value(batches, mergeBy, safe, options) {
+        return merge.call(this, icebergBatchReader(this, batches), mergeBy, safe, options)
       },
     })
   }
@@ -1044,12 +1044,12 @@ function installRecords({
   if (mergeWhere) {
     Object.defineProperty(Table.prototype, 'mergeWhere', {
       configurable: true,
-      value(filters, batches, mergeByNames, safe, options) {
+      value(filters, batches, mergeBy, safe, options) {
         return mergeWhere.call(
           this,
           filters,
           icebergBatchReader(this, batches),
-          mergeByNames,
+          mergeBy,
           safe,
           options,
         )

@@ -707,13 +707,18 @@ impl<'input> Parser<'input> {
             }
             plan = plan.order_by(keys);
         }
-        if self.eat_word("limit") {
-            any = true;
-            plan = plan.limit(Some(self.count()?));
-        }
-        if self.eat_word("offset") {
-            any = true;
-            plan = plan.offset(Some(self.count()?));
+        // `limit` and `offset` are read in either order, since engines
+        // differ on which comes first; the canonical text puts `limit` first.
+        loop {
+            if plan.row_limit().is_none() && self.eat_word("limit") {
+                any = true;
+                plan = plan.limit(Some(self.count()?));
+            } else if plan.row_offset().is_none() && self.eat_word("offset") {
+                any = true;
+                plan = plan.offset(Some(self.count()?));
+            } else {
+                break;
+            }
         }
         if !any {
             return Err(super::unknown_clause(self.input[start..].trim()));

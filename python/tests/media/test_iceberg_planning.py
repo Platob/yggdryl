@@ -388,11 +388,13 @@ class TestMerging:
         assert filled.version == before
         assert filled.scan().read_all().num_rows == 6
 
-    def test_one_string_is_not_an_iterable_of_match_keys(self, filled: Table) -> None:
-        # "id" is four characters, and reading it as four column names would
-        # silently merge on nothing the caller meant.
-        with pytest.raises(TypeError, match="not one string"):
-            filled.merge(_row(100, "XNAS"), "id")
+    def test_one_string_is_the_selector_text(self, filled: Table) -> None:
+        # "id" is selector text, so one string names one match key rather
+        # than reading as the characters it is made of.
+        before = filled.version
+        filled.merge(_row(100, "XNAS"), "id")
+        assert filled.version == before + 1
+        assert filled.scan().read_all().num_rows == 7
 
     def test_a_value_the_column_cannot_read_is_refused_under_a_strict_cast(
         self, filled: Table

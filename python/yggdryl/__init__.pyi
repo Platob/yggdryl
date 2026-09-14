@@ -10,9 +10,13 @@ from ._native import (
 from .expression import (
     Bound as Bound,
     Bounds as Bounds,
-    BoundStatement as BoundStatement,
+    BoundSelector as BoundSelector,
     Expression as Expression,
-    Statement as Statement,
+    Filter as Filter,
+    Plan as Plan,
+    Records as Records,
+    Selector as Selector,
+    Term as Term,
 )
 from .holder import IOBase as IOBase
 from .media import (

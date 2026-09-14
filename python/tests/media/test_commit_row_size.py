@@ -43,7 +43,7 @@ def write_options(handle: IOBase, intent: str, commit_rows: int | None) -> Any:
     options = handle.record_options()
     options.commit_row_size = commit_rows
     if intent == "merge":
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
     return options
 
 
@@ -119,7 +119,7 @@ def test_a_limited_merge_is_rejected_before_every_input_is_inspected(
     source = Untouched()
     Untouched.touches = 0
 
-    with pytest.raises(ValueError, match="max_row_size.*merge_by_names"):
+    with pytest.raises(ValueError, match="max_row_size.*merge_by"):
         getattr(handle, f"merge_{shape}")(source, options=options)
 
     assert Untouched.touches == 0

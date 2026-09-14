@@ -12,7 +12,7 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `Version` | [Numeric versions](../types/text.md#versions) and this page |
 | `fix`, including registry-owned `MsgType` | [FIX registry](../fix/registry.md) |
 | `ArrowValue`, `arrow.SHAPES` | this page and [Values](../arrow/values.md) |
-| `Expression`, `Bound`, `Statement`, `BoundStatement` | [Expression](../expression/index.md) |
+| `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `Records`, `Bounds` | [Expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [URI](../uri/index.md) |
 | `IOBase`, and the role classes in `yggdryl.holder`, `yggdryl.coding`, `yggdryl.media` | this page and [Holder](../holder/index.md) |
 | `RecordOptions` | [RecordOptions](../media/options.md), [Arrow IPC](../media/ipc.md), [Parquet](../media/parquet.md) |
@@ -318,21 +318,21 @@ Exports use the core's recursive C-schema exporter and Arrow C Data arrays; a re
 
 Wrappers fall into three identity classes, and an immutable one compares, orders, hashes, copies, and pickles by its complete native identity. `stable_hash()` is the deterministic native `u64`, which `hash()` remaps to `Py_hash_t` without changing equal-value agreement.
 
-- immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Digest`, `Expression`, `Statement`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
+- immutable: `DataType`, `MimeType`, `Timezone`, `Scalar`, `Digest`, `Term`, `Filter`, `Selector`, `Plan`, `Expression`, Avro schemas and containers, the frozen Iceberg `Compaction`, `PartitionField`, `PartitionSpec`, `Snapshot`, `ManifestFile`, `DataFile`, `ScanPlan`.
 - mutable until built-in `hash()` locks the instance: `Field`, `MediaType`, `Uri`, `Url`, `Urn`, `RecordOptions`, `IcebergOptions`.
-- unhashable: `IOBase`, cursors, listings, iterators, catalog, table and namespace views, schema updates, bound expressions and statements, Avro blocks, metadata views.
+- unhashable: `IOBase`, cursors, listings, iterators, catalog, table and namespace views, schema updates, bound terms and selectors, records, Avro blocks, metadata views.
 
 ```python
 import copy
 import pickle
 
-from yggdryl import Expression, IOBase, Uri, Scalar
+from yggdryl import IOBase, Term, Uri, Scalar
 
 value = Scalar.from_py({"id": 1})
 assert {value: "row"}[copy.copy(value)] == "row"
 assert pickle.loads(pickle.dumps(value)) == value
 assert Scalar.from_py(12).divide(3).as_py() == 4
-assert isinstance((Expression("price") + 2) * 3, Expression)
+assert isinstance((Term("price") + 2) * 3, Term)
 
 location = Uri("https://example.com/data.json")
 hash(location)
@@ -353,7 +353,7 @@ else:
     raise AssertionError("a live handle has no value hash")
 ```
 
-`Expression` keeps expression parsing for strings, while other Python operands become native literal `Scalar` nodes, including in reflected operators.
+`Term` keeps expression parsing for strings, while other Python operands become native literal `Scalar` nodes, including in reflected operators.
 
 ## What a Python value loses
 
@@ -455,7 +455,7 @@ assert not field.iceberg
 
 Every well-known [protocol](../types/protocol.md) is an attribute, including `digest`, `identity`, `partition` and `python`, and `field.protocol(name)` takes one known only at runtime. `identity` holds arbitrary inert strings, while `digest["role"]` accepts only `"holder"`.
 
-`partition` and `python` are the views with a typed vocabulary of their own here: `sources` names the field paths a column derives from and `transform` names the [expression](../expression/grammar.md) function that produces it, both answered only by `field.partition`, while [`field.python`](#the-declaring-class) answers the declaring class. `apply_arrow_batch` is answered by `field.partition` and `field.digest` alike - it is the one verb both declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
+`partition` and `python` are the views with a typed vocabulary of their own here: `sources` names the field paths a column derives from, `transform` names the [expression](../expression/grammar.md) function that produces it and `term` is the term they compile to, all answered only by `field.partition`, while [`field.python`](#the-declaring-class) answers the declaring class; `field.transform` is the generic view of a column computed by any `transform:expression`. `apply_arrow_batch` is answered by `field.transform`, `field.partition` and `field.digest` alike - it is the one verb the declaring protocols share - and [`field.apply_arrow_batch`](../types/field.md#applying-a-schemas-declarations) runs every step over one batch.
 
 ```python
 import pyarrow as pa
@@ -983,7 +983,7 @@ write_polars(frames, mode, *, options=None)
 write_polars_frame(frame, mode, *, options=None)
 ```
 
-`mode` is `"overwrite"`, `"append"`, or `"merge"`, required and never inferred from `merge_by_names`. Row iterables stay streaming, grouped into at most `options.batch_row_size` rows.
+`mode` is `"overwrite"`, `"append"`, or `"merge"`, required and never inferred from `merge_by`. Row iterables stay streaming, grouped into at most `options.batch_row_size` rows.
 
 ```python
 import pathlib
@@ -1007,7 +1007,7 @@ handle.overwrite_arrow_batch(first)
 handle.append_arrow_table(more)
 
 merge = handle.record_options()
-merge.merge_by_names = ["id"]
+merge.merge_by = ["id"]
 updated = pa.RecordBatchReader.from_batches(
     schema,
     [pa.record_batch({"id": [2, 4], "venue": ["XPAR", None]}, schema=schema)],
@@ -1024,7 +1024,7 @@ selected.field = pa.schema([pa.field("id", pa.int64(), nullable=False)])
 assert handle.read_arrow_reader(options=selected).schema.names == ["id"]
 ```
 
-The selected method is authoritative, and `merge_by_names` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence for every representation above, including pandas and polars, and defaults to `None`: one publication after successful end of input.
+The selected method is authoritative, and `merge_by` only supplies identity to a `merge_*` call. `options.commit_row_size` is the publication cadence for every representation above, including pandas and polars, and defaults to `None`: one publication after successful end of input.
 
 ```python
 import pathlib

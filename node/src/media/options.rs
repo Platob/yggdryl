@@ -10,15 +10,17 @@ use napi_derive::napi;
 use yggdryl::media::{
     DEFAULT_RECORD_BATCH_ROW_SIZE, IORecordOptions, RecordOptions as CoreRecordOptions,
 };
-use yggdryl::{IOMode, Level, Metadata};
+use yggdryl::{IOMode, Level};
 
 use crate::enums::{
     JsMimeType, MediaTypeInput, MimeTypeInput, media_type_from_input, mime_type_from_input,
 };
 use crate::exact_u8;
+use crate::expression::{
+    JsFilter, JsPlan, JsSelector, filter_from_input, plan_from_input, selector_from_input,
+};
 use crate::napi_error;
-use crate::types::datatype::{DataTypeInput, JsDataType, dtype_from_input};
-use crate::types::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
+use crate::types::field::{JsField, MetadataEntry};
 use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// The settings one record read or write takes.
@@ -88,8 +90,8 @@ impl JsRecordOptions {
         JsMimeType::from_core(self.inner.mime_type())
     }
 
-    /// The declared root Field, built from `name`, `dtype`, and `metadata`;
-    /// `null` until a datatype is declared.
+    /// The declared root Field - the `create` section of the plan - or
+    /// `null` when the shape is inferred from the rows.
     #[napi(getter)]
     pub fn field(&self) -> Option<JsField> {
         self.inner.field().map(JsField::from_core)
@@ -109,11 +111,14 @@ impl JsRecordOptions {
         u32::try_from(DEFAULT_RECORD_BATCH_ROW_SIZE).map_err(napi_error)
     }
 
-    /// Declare the root Field: its name, datatype, and metadata become the
-    /// three declared parts; nullability and dictionary options are dropped.
+    /// Declare the root Field, or clear it with `null`; the stored root is
+    /// always required, whatever nullability the value carried.
     #[napi(setter)]
-    pub fn set_field(&mut self, field: &JsField) {
-        self.inner.set_field(field.inner.clone());
+    pub fn set_field(&mut self, field: Option<&JsField>) {
+        match field {
+            Some(field) => self.inner.set_field(field.inner.clone()),
+            None => self.inner.set_declared(None),
+        }
     }
 
     /// The root Field name, declared or given to an inferred schema.
@@ -126,42 +131,6 @@ impl JsRecordOptions {
     #[napi(setter)]
     pub fn set_name(&mut self, name: String) {
         self.inner.set_name(name.into());
-    }
-
-    /// The declared root datatype; `null` when the shape is inferred.
-    #[napi(getter)]
-    pub fn dtype(&self) -> Option<JsDataType> {
-        self.inner.dtype().cloned().map(JsDataType::from_core)
-    }
-
-    /// Declare the root datatype from a `DataType` or a type expression;
-    /// `null` clears it.
-    #[napi(setter)]
-    pub fn set_dtype(&mut self, dtype: Option<DataTypeInput<'_>>) -> Result<()> {
-        let dtype = dtype.map(dtype_from_input).transpose()?;
-        self.inner.set_dtype(dtype);
-        Ok(())
-    }
-
-    /// The root metadata entries in lexical key order; empty unless declared.
-    #[napi(getter)]
-    pub fn metadata(&self) -> Vec<MetadataEntry> {
-        self.inner
-            .metadata()
-            .iter()
-            .map(|(key, value)| MetadataEntry {
-                key: key.to_owned(),
-                value: value.to_owned(),
-            })
-            .collect()
-    }
-
-    /// Declare the root metadata from entries or a plain object; empty clears.
-    #[napi(setter)]
-    pub fn set_metadata(&mut self, values: MetadataInput) -> Result<()> {
-        let metadata = Metadata::from_entries(metadata_pairs(values)).map_err(napi_error)?;
-        self.inner.set_metadata(metadata);
-        Ok(())
     }
 
     /// Whether a cast may null a value it cannot convert.
@@ -287,41 +256,116 @@ impl JsRecordOptions {
         Ok(())
     }
 
-    /// The column names a write matches rows on; empty means overwrite.
+    /// The keys a write matches stored rows on - the plan's `upsert by`;
+    /// `select *` (empty) means overwrite or append.
     #[napi(getter)]
-    pub fn merge_by_names(&self) -> Vec<String> {
-        self.inner.merge_by_names().to_vec()
+    pub fn merge_by(&self) -> JsSelector {
+        JsSelector::from_core(self.inner.merge_by().clone())
     }
 
-    /// Set the column names a write matches rows on.
+    /// Set the keys a write matches stored rows on: a `Selector`, the text
+    /// of one, or the key column names.
     #[napi(setter)]
-    pub fn set_merge_by_names(&mut self, merge_by_names: Vec<String>) {
-        self.inner.set_merge_by_names(merge_by_names);
+    pub fn set_merge_by(
+        &mut self,
+        merge_by: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<()> {
+        self.inner.set_merge_by(selector_from_input(merge_by)?);
+        Ok(())
     }
 
-    /// The column names a read or write is narrowed to; empty selects all.
+    /// The `select` section a read or write is shaped by; `select *` keeps
+    /// every column.
     #[napi(getter)]
-    pub fn select_by_names(&self) -> Vec<String> {
-        self.inner.select_by_names().to_vec()
+    pub fn selector(&self) -> JsSelector {
+        JsSelector::from_core(self.inner.selector().clone())
     }
 
-    /// Set the column names a read or write is narrowed to.
+    /// Set the `select` section: a `Selector`, the text of one, a `Term`, or
+    /// the column names.
     #[napi(setter)]
-    pub fn set_select_by_names(&mut self, select_by_names: Vec<String>) {
-        self.inner.set_select_by_names(select_by_names);
+    pub fn set_selector(
+        &mut self,
+        selector: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<()> {
+        self.inner.set_selector(selector_from_input(selector)?);
+        Ok(())
     }
 
-    /// The partition equalities a read is pruned and filtered by; empty
-    /// keeps every row. Values are spelled as partition paths spell them.
+    /// The `where` section a read is pruned and filtered by; always true
+    /// keeps every row.
     #[napi(getter)]
-    pub fn filter_partitions(&self) -> Vec<(String, String)> {
-        self.inner.filter_partitions().to_vec()
+    pub fn filter(&self) -> JsFilter {
+        JsFilter::from_core(self.inner.filter().clone())
     }
 
-    /// Set the partition equalities a read is pruned and filtered by.
+    /// Set the `where` section: a `Filter`, a `Term`, or the text of a
+    /// predicate.
     #[napi(setter)]
-    pub fn set_filter_partitions(&mut self, filter_partitions: Vec<(String, String)>) {
-        self.inner.set_filter_partitions(filter_partitions);
+    pub fn set_filter(
+        &mut self,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+        >,
+    ) -> Result<()> {
+        self.inner.set_filter(filter_from_input(filter)?);
+        Ok(())
+    }
+
+    /// The whole plan these options run: `create` from the declared field,
+    /// `upsert by` from the merge keys, `select`, `where`, and `limit` from
+    /// `maxRowSize`.
+    #[napi(getter)]
+    pub fn plan(&self) -> JsPlan {
+        JsPlan::from_core(self.inner.plan())
+    }
+
+    /// Split a `Plan`, its text, a clause, or a `Field` back into the
+    /// sections, replacing every one of them.
+    #[napi(setter)]
+    pub fn set_plan(
+        &mut self,
+        plan: napi::bindgen_prelude::Either5<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            String,
+        >,
+    ) -> Result<()> {
+        self.inner
+            .set_plan(plan_from_input(plan)?)
+            .map_err(napi_error)
+    }
+
+    /// The partition equalities the filter pins, `[column, value]` pairs
+    /// spelled as partition paths spell them; what prunes a listing before
+    /// anything is opened.
+    #[napi]
+    pub fn partition_pairs(&self) -> Vec<(String, String)> {
+        self.inner.partition_pairs()
     }
 
     /// The timezone applied while autotyping offset-free timestamps.
@@ -462,7 +506,7 @@ impl JsRecordOptions {
     #[napi]
     pub fn with_field(&self, field: &JsField) -> Self {
         let mut options = self.clone();
-        options.set_field(field);
+        options.set_field(Some(field));
         options
     }
 
@@ -472,22 +516,6 @@ impl JsRecordOptions {
         let mut options = self.clone();
         options.set_name(name);
         options
-    }
-
-    /// Return these options with a declared root datatype.
-    #[napi]
-    pub fn with_dtype(&self, dtype: DataTypeInput<'_>) -> Result<Self> {
-        let mut options = self.clone();
-        options.set_dtype(Some(dtype))?;
-        Ok(options)
-    }
-
-    /// Return these options with declared root metadata.
-    #[napi]
-    pub fn with_metadata(&self, values: MetadataInput) -> Result<Self> {
-        let mut options = self.clone();
-        options.set_metadata(values)?;
-        Ok(options)
     }
 
     /// Return these options with a different cast strictness.
@@ -538,28 +566,78 @@ impl JsRecordOptions {
         Ok(options)
     }
 
-    /// Return these options with a match key for a write.
+    /// Return these options with the keys a write matches stored rows on.
     #[napi]
-    pub fn with_merge_by_names(&self, merge_by_names: Vec<String>) -> Self {
+    pub fn with_merge_by(
+        &self,
+        merge_by: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_merge_by_names(merge_by_names);
-        options
+        options.set_merge_by(merge_by)?;
+        Ok(options)
     }
 
-    /// Return these options narrowed to the named columns, on reads and writes.
+    /// Return these options shaped by a `select` section, on reads and writes.
     #[napi]
-    pub fn with_select_by_names(&self, select_by_names: Vec<String>) -> Self {
+    pub fn with_selector(
+        &self,
+        selector: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_select_by_names(select_by_names);
-        options
+        options.set_selector(selector)?;
+        Ok(options)
     }
 
-    /// Return these options pruned and filtered to the named partitions.
+    /// Return these options pruned and filtered by a `where` section.
     #[napi]
-    pub fn with_filter_partitions(&self, filter_partitions: Vec<(String, String)>) -> Self {
+    pub fn with_filter(
+        &self,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+        >,
+    ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_filter_partitions(filter_partitions);
-        options
+        options.set_filter(filter)?;
+        Ok(options)
+    }
+
+    /// Return these options with every section a plan spells.
+    #[napi]
+    pub fn with_plan(
+        &self,
+        plan: napi::bindgen_prelude::Either5<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            String,
+        >,
+    ) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_plan(plan)?;
+        Ok(options)
     }
 
     /// Return whether the encoding variant and every current setting are equal.

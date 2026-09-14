@@ -1235,11 +1235,12 @@ impl PyTable {
 
     /// Read the rows matching one predicate as a `pyarrow.RecordBatchReader`.
     ///
-    /// `filter` is an `Expression` or the text of one, which parses. It is the
-    /// whole expression language rather than equality pairs: ranges, null
-    /// tests, `in` lists, nested paths, and `&holder.*` questions about the
-    /// files themselves. Planning prunes with the metadata chain, and only the
-    /// conjuncts it could not settle are tested against the rows.
+    /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+    /// parses. It is the whole expression language rather than equality
+    /// pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
+    /// questions about the files themselves. Planning prunes with the
+    /// metadata chain, and only the conjuncts it could not settle are tested
+    /// against the rows.
     #[pyo3(signature = (filter, schema = None))]
     fn scan_matching<'py>(
         &self,
@@ -1247,7 +1248,7 @@ impl PyTable {
         filter: &Bound<'_, PyAny>,
         schema: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let filter = crate::expression::expression_from_value(filter)?;
+        let filter = crate::expression::filter_from_value(filter)?;
         let field = schema
             .map(|schema| core_root_field_from_value(schema, DEFAULT_ROOT_NAME))
             .transpose()?;
@@ -1268,7 +1269,7 @@ impl PyTable {
         py: Python<'py>,
         filter: &Bound<'_, PyAny>,
     ) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
-        let filter = crate::expression::expression_from_value(filter)?;
+        let filter = crate::expression::filter_from_value(filter)?;
         let plan = self.inner.plan_matching(filter).map_err(value_error)?;
         let answer = pyo3::types::PyDict::new(py);
         answer.set_item("tasks", plan.tasks.len())?;
@@ -1341,7 +1342,8 @@ impl PyTable {
         })
     }
 
-    /// Merge `batches` into the stored rows, matching on `merge_by_names`.
+    /// Merge `batches` into the stored rows, matching on `merge_by`: a
+    /// `Selector`, the text of one, or the key column names.
     ///
     /// An incoming row replaces the stored row whose match-key columns equal
     /// its own and is inserted when there is none, so this is the upsert. Only
@@ -1354,48 +1356,48 @@ impl PyTable {
     /// `safe` is the cast strictness the incoming batches are held to: the
     /// default refuses a value the table's column cannot hold rather than
     /// storing a silently wrapped one.
-    #[pyo3(signature = (batches, merge_by_names, *, safe = true, options = None))]
+    #[pyo3(signature = (batches, merge_by, *, safe = true, options = None))]
     fn merge(
         &mut self,
         batches: &Bound<'_, PyAny>,
-        merge_by_names: &Bound<'_, PyAny>,
+        merge_by: &Bound<'_, PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
-        let names = crate::enums::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table
-                .commit_merge(batches, &names, safe)
+                .commit_merge(batches, &keys, safe)
                 .map_err(value_error)
         })
     }
 
     /// Merge `batches` into the rows `filters` selects, matching on
-    /// `merge_by_names`.
+    /// `merge_by`.
     ///
     /// The filters narrow which stored files the merge may touch at all, and
     /// the key bounds narrow that further, so an upsert into one partition
     /// reads one partition. Everything else - the match rule, `safe`, the
     /// refusal to rebase after a lost commit - is exactly
     /// [`merge`](Self::merge).
-    #[pyo3(signature = (filters, batches, merge_by_names, *, safe = true, options = None))]
+    #[pyo3(signature = (filters, batches, merge_by, *, safe = true, options = None))]
     fn merge_where(
         &mut self,
         filters: Option<&Bound<'_, PyAny>>,
         batches: &Bound<'_, PyAny>,
-        merge_by_names: &Bound<'_, PyAny>,
+        merge_by: &Bound<'_, PyAny>,
         safe: bool,
         options: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<()> {
         let resolved = iceberg_call_options(options)?;
         let pairs = filter_pairs_from_value(filters)?;
-        let names = crate::enums::strings_from_iterable(merge_by_names, "merge_by_names")?;
+        let keys = crate::expression::selector_from_value(merge_by)?;
         let batches = iceberg_batch_reader(Some(&self.inner), batches)?;
         with_call_options(&mut self.inner, resolved, |table| {
             table
-                .commit_merge_where(&borrowed_pairs(&pairs), batches, &names, safe)
+                .commit_merge_where(&borrowed_pairs(&pairs), batches, &keys, safe)
                 .map_err(value_error)
         })
     }

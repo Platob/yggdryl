@@ -596,7 +596,7 @@ def test_declared_text_field_uses_the_shared_projection_and_cast(
     options = text_options()
     options.rowheader = ROWHEADER
     options.lstrip = [r"^\s+"]
-    options.dtype = "struct<body: binary not null, id: int64>"
+    options.field = Field("row", "struct<body: binary not null, id: int64>", nullable=False)
 
     field = source.read_arrow_field(options=options)
     assert field.dtype == DataType("struct<body: binary not null, id: int64>")

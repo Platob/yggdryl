@@ -264,9 +264,9 @@ pub trait IORecordOptions: Sized {
     /// The plan these properties are the sections of.
     ///
     /// The declared field is its `create` section, the filter its `where`,
-    /// the selector its `select`, the merge key its `upsert by (...)`. This
-    /// is what an options value spells as one expression, and what
-    /// [`with_plan`](Self::with_plan) reads back.
+    /// the selector its `select`, the merge key its `upsert by (...)`, and
+    /// the row bound its `limit`. This is what an options value spells as
+    /// one expression, and what [`with_plan`](Self::with_plan) reads back.
     fn plan(&self) -> Plan {
         let mut plan = match self.field() {
             Some(field) => Plan::from_field(&field),
@@ -275,7 +275,7 @@ pub trait IORecordOptions: Sized {
         plan.set_filter(self.filter().clone());
         plan.set_selector(self.selector().clone());
         plan.set_merge_by(self.merge_by().clone());
-        plan
+        plan.limit(self.max_row_size().map(|rows| rows as u64))
     }
 
     /// Set every property from the sections of one plan.

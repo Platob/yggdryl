@@ -410,11 +410,15 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::avro::PyAvroContainer>()?;
     module.add_class::<media::avro::PyAvroBlock>()?;
     module.add_class::<media::avro::PyAvroBlockIterator>()?;
-    module.add_class::<expression::PyExpression>()?;
+    module.add_class::<expression::PyTerm>()?;
     text_line::register(module)?;
     module.add_class::<expression::PyBound>()?;
-    module.add_class::<expression::PyStatement>()?;
-    module.add_class::<expression::PyBoundStatement>()?;
+    module.add_class::<expression::PyFilter>()?;
+    module.add_class::<expression::PySelector>()?;
+    module.add_class::<expression::PyBoundSelector>()?;
+    module.add_class::<expression::PyPlan>()?;
+    module.add_class::<expression::PyExpression>()?;
+    module.add_class::<expression::PyRecords>()?;
     module.add_class::<expression::PyBounds>()?;
     module.add_function(pyo3::wrap_pyfunction!(
         expression::expression_needs_quoting,

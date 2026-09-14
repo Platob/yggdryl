@@ -369,7 +369,7 @@ test('I/O capability and logical dimensions come from core media metadata', (t) 
   // A narrowed and limited read never changes whole-media dimensions.
   const narrowed = handle
     .recordOptions()
-    .withSelectByNames(['id'])
+    .withSelector(['id'])
     .withMaxRowSize(1)
   const selected = handle.readArrowReader(narrowed).intoTable()
   assert.equal(selected.numRows, 1)

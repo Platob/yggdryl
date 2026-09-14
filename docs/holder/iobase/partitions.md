@@ -6,11 +6,11 @@ This page owns globbing and Hive partitions over a folder: lazy listings, prunin
 
 | Item | Rule |
 | --- | --- |
-| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, `filter_partitions`, partition columns in folder records, the `partition:` derivation vocabulary |
+| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, the partition equalities a `filter` pins, partition columns in folder records, the `partition:` derivation vocabulary |
 | Listing | Lazy until the first `next`; items are `Result`; fused after the first failure; deterministic order |
 | Pattern location | `kind` is `IOKind::Directory` before any backend call; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
 | `children_where` | Leaves only, carrying every pair; what a folder-addressed record method resolves through; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
-| `filter_partitions` | `(column, value)` pairs as paths spell them; a pruned leaf is never listed or decoded, a carried column is filtered row by row, same answer either way |
+| `filter` | the options' `where` section; the equalities it pins (`partition_pairs`) are spelled as paths spell them, a pruned leaf is never listed or decoded, a carried column is filtered row by row, the rest of the predicate runs over the rows |
 | Layout authority | Leaves spelling `column=value`, else partition-marked schema fields, else one leaf named after the encoding |
 | Restored values | Declared type with a schema; text without |
 | Derived values | `partition:transform` over `partition:sources`; `apply_arrow_batch` adds a declared column the rows do not carry |
@@ -136,12 +136,13 @@ Both halves are one bound [expression](../../expression/holder.md): `&holder.par
     use yggdryl::MimeType;
 
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
-        .with_filter_partitions([("year", "2024"), ("month", "01")]);
+        .with_filter("year = '2024' and month = '01' and id > 5")?;
 
-    // The pairs are kept as paths spell them; a folder read through these options
-    // lists only the January 2024 leaves, and keeps only their matching rows.
+    // The equalities the filter pins are read as paths spell them; a folder read
+    // through these options lists only the January 2024 leaves, and keeps only
+    // their rows the rest of the predicate answers true for.
     assert_eq!(
-        options.filter_partitions(),
+        options.partition_pairs(),
         [
             ("year".to_owned(), "2024".to_owned()),
             ("month".to_owned(), "01".to_owned()),
@@ -169,7 +170,7 @@ Both halves are one bound [expression](../../expression/holder.md): `&holder.par
 
     lake = IOBase(root)
     options = lake.record_options()
-    options.filter_partitions = [("year", "2024"), ("month", "01")]
+    options.filter = "year = '2024' and month = '01'"
     reader = lake.read_arrow_reader(options=options)
     assert reader.read_all().num_rows == 2
     ```
@@ -436,10 +437,10 @@ column that is absent, or present holding nothing but nulls, is filled.
         &Int32Array::from(vec![2024, 2025]) as &dyn arrow_array::Array,
     );
 
-    // The declaration is one expression, which is also what a predicate over
-    // the same value binds against.
+    // The declaration is one term, which is also what a predicate over the
+    // same value binds against.
     assert_eq!(
-        root.field_at(1)?.as_partition().expression()?.map(|read| read.to_string()),
+        root.field_at(1)?.as_partition().term()?.map(|read| read.to_string()),
         Some("year(event)".to_owned()),
     );
     ```
@@ -476,7 +477,7 @@ column that is absent, or present holding nothing but nulls, is filled.
 - A range, null test, or `in` list -> `children_matching`, which takes the whole [expression](../../expression/holder.md) language.
 - `len(list(listing))` in Python -> pays for the whole walk.
 - A pair on an `int32` column -> an integer comparison, the text read through the column's datatype.
-- `("price", "null")` in `filter_partitions` -> `price is null`, not text.
+- `price is null` in the `filter` -> the pair `("price", "null")`, the way a path spells a null partition.
 - A declared schema contradicting the stored layout -> refused, naming both.
 - A column the data already carries -> left alone; the mismatch stays visible.
 - A derived column holding nothing but nulls -> filled; a null-filled placeholder was never written.

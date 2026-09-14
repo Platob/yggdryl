@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import pyarrow as pa
 
-from yggdryl import Expression, Field, Scalar, Url
+from yggdryl import Field, Scalar, Term, Url
 from yggdryl.media.iceberg import IcebergOptions, PartitionSpec, ScanPlan
 
 
@@ -36,7 +36,7 @@ NATIVE_DECIMAL = Scalar.decimal("1234567890123456789012345678901234567890", 6)
 NATIVE_INTEGER = Scalar.from_py(84)
 NATIVE_DIVISOR = Scalar.from_py(2)
 NATIVE_ENUM = Scalar.from_enum("io_mode", "append")
-PRICE_EXPRESSION = Expression.column("price")
+PRICE_EXPRESSION = Term.column("price")
 ARROW_SCALAR = pa.scalar(12.5, pa.float32())
 NATIVE_SCALAR = Scalar.from_arrow_scalar(ARROW_SCALAR)
 ARROW_ARRAY = pa.array(range(4096), type=pa.int32())

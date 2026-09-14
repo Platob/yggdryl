@@ -1,29 +1,43 @@
 # Grammar
 
-The language the [expression layer](index.md) parses: one statement grammar, one closed function set, two parse limits.
+The language the [expression layer](index.md) parses: one plan grammar over one term grammar, one closed function set, two parse limits.
 
 ## Contract
 
 | Key | Value |
 | --- | --- |
-| Owns | the statement and expression grammar, the function set, the parse limits |
-| Types | `Expression` is name-based and serializable, `Bound` is schema-resolved and is not; partially bound is unrepresentable |
-| Bindings | one expression binds against a data schema, a partition schema, and a listing |
+| Owns | the plan, clause and term grammars, the function set, the parse limits |
+| Types | `Term`, `Filter`, `Selector`, `Plan` and `Expression` are name-based and serializable; `Bound` and `BoundSelector` are schema-resolved and are not; partially bound is unrepresentable |
+| Bindings | one term binds against a data schema, a partition schema, and a listing |
 | Logic | Kleene three-valued, and a filter keeps a row only when the answer is exactly true |
-| Functions | 18, closed, no registry |
-| Nesting | the schema grammar's hard limit |
+| Functions | 19, closed, no registry |
+| Nesting | the schema grammar's hard limit, for terms and for plans in `from (...)` |
 | Nodes | at most 100,000, checked once before any walk |
 | Comment | `--` to end of line |
+| Reference | the DuckDB SQL and Python expression API for spellings and aliases; where DuckDB and the best-effort rule disagree, this grammar follows the [rule](index.md#best-effort-then-a-named-refusal) |
 | Evaluation | [Evaluate](evaluate.md) |
 | `&holder.*` | [Holder attributes](holder.md) |
 
 ## Use
 
-Every statement parses to this shape.
+Every expression parses to this shape.
 
 ```text
-statement   := "select" projections ["where" expr] ["order" "by" orders] ["limit" n]
-projections := "*" | (expr ["as" identifier]) ("," ...)*
+expression  := plan (";" plan)*
+plan        := [create] [write] ["select" selector] ["from" source] ["where" expr]
+               ["order" "by" orders] ["limit" n] ["offset" n]      -- limit and offset in either order
+create      := "create" ["table" | "view"] [target] "(" selector ")" ["with" properties]
+write       := verb [target] ["by" | "on" "(" selector ")"]        -- keys only after upsert
+verb        := "insert" ["into"] | "insert" "overwrite" ["into"] | "append" ["into" | "to"]
+             | "overwrite" ["into"] | "replace" ["into"] | "upsert" ["into"] | "merge" ["into"]
+             | "delete" ["from"]
+target      := location ["with" properties]
+location    := "'url'" | part ("." part)*
+part        := identifier | "\"quoted\"" | "`quoted`" | "[bracketed]" | number
+properties  := "(" name "=" "'value'" ("," ...)* ")"
+source      := target | "(" plan ")"
+selector    := "*" [("exclude" | "except") "(" identifier,* ")"] | projection ("," projection)*
+projection  := expr ["as" identifier] [datatype ["null" | "not null"]] ["with" properties]
 orders      := (expr ["asc" | "desc"] ["nulls" ("first" | "last")]) ("," ...)*
 
 expr        := disjunction
@@ -34,13 +48,15 @@ predicate   := additive [ comparison | "is" .. | "in" .. | "between" .. | "like"
 additive    := product (("+" | "-") product)*
 product     := unary (("*" | "/" | "%") unary)*
 unary       := "-" unary | accessor
-accessor    := atom ("." identifier | "[" key "]")*
-atom        := literal | "(" expr ")" | column | "&holder." selector | ":" parameter
+accessor    := atom ("." identifier | "[" key "]" | "[" [n] ":" [n] "]")*
+atom        := literal | "(" expr ")" | column | "&holder." attribute | ":" parameter
              | "cast" "(" expr "as" datatype ")" | "try_cast" "(" .. ")"
              | "case" ("when" expr "then" expr)+ ["else" expr] "end"
              | function "(" expr,* ")" | "[" expr,* "]" | "{" expr ":" expr,* "}"
              | "struct" "(" expr "as" identifier,* ")" | datatype ("'text'" | "null")
 ```
+
+A lone `select ...` is a `Selector` and a lone `where ...` a `Filter`; either keyword is optional when the text is read as that clause alone. `Plan::from_str` reads one plan, `Expression::from_str` one plan or a `;` sequence.
 
 ## Spellings
 
@@ -52,7 +68,7 @@ atom        := literal | "(" expr ")" | column | "&holder." selector | ":" param
 | membership | `x in (a, b)`, `x not in (a, b)` |
 | range | `x between low and high`, `x not between low and high` |
 | pattern | `x like 'a%'`, `x ilike 'A%'`, `x like 'a!%' escape '!'`, `x glob '**/*.parquet'` |
-| path | `a.b`, `a[0]`, `a[-1]`, `a['key']` |
+| path | `a.b`, `a[0]`, `a[-1]`, `a['key']`, `a[1:3]`, `a[:-1]` |
 | identifier | `name`, `"odd name"`, `` `odd name` `` |
 | literal | `1`, `1.5`, `'text'`, `true`, `null`, `decimal128(9,2) '1.50'`, `date32 '2024-01-01'`, `utf8 null` |
 | constructor | `[1, 2]` a list, `{'k': 1}` a map, `struct(1 as a)` a struct |
@@ -60,6 +76,11 @@ atom        := literal | "(" expr ")" | column | "&holder." selector | ":" param
 | conversion | `cast(x as int32)`, `try_cast(x as int32)` |
 | attribute | `&holder.size`, `&holder.partition['year']` |
 | parameter | `:since` |
+| projection | `price`, `price as amount`, `price as amount decimal(9,2) not null`, `id int64 with (comment = 'key')` |
+| exclusion | `* exclude (secret)`, `* except (secret)` |
+| write verb | `insert into`, `insert overwrite`, `upsert into ... by (...)`, `delete from`; aliases `append to`, `overwrite`, `replace into`, `merge into ... on (...)` |
+| location | `'file:///lake/trades.parquet'`, `catalog.schema.table`, `catalog."odd schema".[odd.table]` |
+| target properties | `t with (media_type = 'text/csv', batch_row_size = '1024')` |
 | comment | `-- to end of line` |
 
 ## Functions
@@ -67,79 +88,86 @@ atom        := literal | "(" expr ")" | column | "&holder." selector | ":" param
 The set is closed, because an open registry cannot promise that the three evaluators agree about a function none of them knows.
 
 `lower`, `upper`, `length`, `substring`, `trim`, `starts_with`, `ends_with`, `contains`, `concat`,
-`year`, `month`, `day`, `hour`, `truncate`, `coalesce`, `if_null`, `size`, `get`.
+`year`, `month`, `day`, `hour`, `truncate`, `coalesce`, `if_null`, `size`, `get`, `slice`.
 
 ## Decisions
 
-Settled against Iceberg's bound/unbound split, Substrait's reference model, Arrow and DataFusion coercion, and the SQL that DuckDB, Spark, Calcite, and Polars ship.
+Settled against Iceberg's bound/unbound split, Substrait's reference model, Arrow and DataFusion coercion, and the SQL that DuckDB, Spark, Calcite, and Polars ship. DuckDB is the reference for what a spelling should mean when engines differ, because its Arrow-based model is the closest to this one; its `ColumnExpression`, `StarExpression(exclude=...)`, `alias`, `cast`, `isin`, `between`, `isnull`, `when/otherwise`, `asc/desc` and `nulls_first` have the same names here.
 
 ### Accepted
 
 | Rule | Behaviour |
 | --- | --- |
 | `is distinct from` | two-valued, the operator that answers about a null |
-| indices | 0-based, and negative from the end |
+| indices | 0-based, and negative from the end; a slice is `[start:end)` with either bound optional |
 | `substring` | 1-based, window `[start, start + length)` intersected with the characters that exist, a negative start counting back from the end |
 | text order | code point, no collation, so every statistics bound stays valid |
 | names | ASCII case-insensitive, and a genuine collision is an error |
 | floats | IEEE 754 totalOrder, so `nan` equals `nan` and sorts above everything and `-0.0` sorts below `+0.0` |
 | decimals | never implicitly a float, an explicit cast is required |
 | division | at least six fractional places, so `1.00 / 3.00` stays a division |
+| constants | coerce into the other operand's type when the text reads as one; two columns with no common type compare as text |
 | null against failure | a null operand produces null, while overflow, division by zero, an inexact quotient, and an undefined operand pair stay distinct core errors |
+| verbs | every alias prints its canonical verb; `merge into ... on (...)` is `upsert into ... by (...)` |
+| `limit` and `offset` | read in either order, printed `limit` first |
+| a write with no target | writes to the handle the plan is given to |
 
 ### Refused
 
 | Refused | Because |
 | --- | --- |
-| subqueries, joins, aggregates, windows | each needs a second relation |
+| subqueries in `where`, joins, aggregates, windows | each needs a second relation; a plan's `from (plan)` is the one nesting there is |
 | regular expressions (`~`, `rlike`, `similar to`) | a regex engine is a dependency this workspace does not add |
 | `element_at` | engines disagree about 0-based or 1-based, so the operation is spelled `get` |
-| implicit string-to-number coercion | a direction that depends on syntactic position generates bugs |
 | a per-row `like` pattern | a different operation, and it makes the vectorized tier slower than the scalar one |
-| `[ident]` bracket-quoted identifiers | the brackets are already list construction and list indexing |
 | `\|\|` as `or`, `&&` as `and` | one operator, one meaning |
 | a session timezone | meaning would depend on who evaluates it |
 | calendar units in `truncate` | a month is not a fixed length, read one with `year()` or `month()` |
+| `select` keywords inside a projection list | a projection is an expression; `select` opens the clause once |
 
 ### Reserved
 
 Parsed as an error today, with the syntax kept free for a non-breaking addition.
 
-- slices `[a:b]`, integer division `//`
+- integer division `//`
 - `date_diff`, `concat_ws`, `strip_prefix`, `strip_suffix`
 - the JSON operators `->` and `->>`
 - hexadecimal and digit-separator literals, grapheme-aware length
+- `group by`, `having`, `join`, `union`
 - Parquet row-group pruning through the same `Bounds` the other three containers use
 
 ## Edges
 
-- Nesting past the limit -> refused at parse, never a crash.
+- Nesting past the limit -> refused at parse, never a crash; a plan nested in `from (...)` counts against the same limit.
 - More than 100,000 nodes -> refused, because depth alone does not bound work.
-- `'2' > 1` -> a bind error naming the cast that would fix it.
+- `'2' > 1` -> the text reads as the number it names, `2 > 1`; text that reads as no number compares as text.
 - An index past the end, or a missing map key -> null.
 - A struct child reached by a missing name -> a bind error.
 - One column named twice under case-insensitive resolution -> an ambiguity error.
 - A failed `cast` -> an error, where `try_cast` -> null.
 - A quotient still inexact at the declared scale -> the core inexact-arithmetic error.
 - A `like` pattern that changes per row -> refused at bind.
+- A section word as a bare location (`from where`) -> refused naming the location it expected; quote it.
+- `[unclosed` in a location -> refused naming the `]` it expected.
 
 ## Commands
 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_parse_failure_names_where_it_stopped expression::tests::nesting_past_the_limit_is_refused_not_crashed expression::tests::quoted_names_survive_every_encapsulator expression::tests::a_pattern_that_changes_per_row_is_refused_at_bind expression::tests::a_pattern_with_no_wildcard_becomes_an_equality expression::tests::substring_takes_the_window_the_standard_names expression::tests::a_column_named_twice_in_two_cases_is_ambiguous expression::tests::an_exact_quotient_keeps_room_to_be_a_quotient expression::tests::scalar_casts_return_the_exact_target_leaf expression::tests::scalar_arithmetic_propagates_checked_failures expression::tests::two_operands_with_no_common_type_are_refused expression::tests::a_struct_expression_produces_and_reprints_a_row_sequence
+    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::a_parse_failure_names_where_it_stopped expression::tests::nesting_past_the_limit_is_refused_not_crashed expression::tests::quoted_names_survive_every_encapsulator expression::tests::a_pattern_that_changes_per_row_is_refused_at_bind expression::tests::a_pattern_with_no_wildcard_becomes_an_equality expression::tests::substring_takes_the_window_the_standard_names expression::tests::a_column_named_twice_in_two_cases_is_ambiguous expression::tests::an_exact_quotient_keeps_room_to_be_a_quotient expression::tests::scalar_casts_return_the_exact_target_leaf expression::tests::scalar_arithmetic_propagates_checked_failures expression::tests::operands_meet_in_the_column_type_or_as_text expression::tests::a_struct_term_produces_and_reprints_a_row_sequence
+    cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::plan::tests::every_verb_and_its_aliases_print_one_way expression::plan::tests::a_location_keeps_its_parts_whatever_quotes_them expression::plan::tests::a_sequence_is_plans_separated_by_semicolons
     cargo bench -p yggdryl --bench expression -- expression_parse
     ```
 
 === "Python"
 
     ```bash
-    python/.venv/bin/python -m pytest python/tests/expression -k "never_taken or operators_build or arithmetic_builders"
+    python/.venv/bin/python -m pytest python/tests/expression -k "never_taken or operators_build or arithmetic_builders or whichever_clause"
     ```
 
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="never taken|either spelling|arithmetic builders" node/tests/expression
+    node --test --test-name-pattern="never taken|either spelling|arithmetic builders|whichever clause" node/tests/expression
     ```

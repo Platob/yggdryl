@@ -56,7 +56,7 @@ function optionsForIntent(handle, intent, cadence = null) {
     .withField(handle.readArrowField())
     .withBatchRowSize(2)
   if (cadence !== null) options = options.withCommitRowSize(cadence)
-  if (intent === 'merge') options = options.withMergeByNames(['id'])
+  if (intent === 'merge') options = options.withMergeBy(['id'])
   return options
 }
 
@@ -92,7 +92,7 @@ test('reader, table, and record-batch entry points preserve explicit intent', (t
     handle[`append${suffix}`](sourceFor(suffix, table([3n], ['XLON'])))
     handle[`merge${suffix}`](
       sourceFor(suffix, table([2n, 4n], ['XPAR', 'XTKS'])),
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     const stored = rowsOf(handle)
@@ -123,7 +123,7 @@ test('generic write entry points dispatch every representation by mode', (t) => 
     handle[`write${suffix}`](
       committedSourceFor(suffix, [2n, 4n], ['XPAR', 'XTKS']),
       'merge',
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     assert.deepEqual(
@@ -218,12 +218,12 @@ test('commit cadence has parity across every synchronous representation and inte
   }
 })
 
-test('write intent is authoritative and mergeByNames only supplies keys', (t) => {
+test('write intent is authoritative and mergeBy only supplies keys', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const handle = new IOBase(path.join(root, 'intent.arrows'))
   handle.overwriteArrowTable(table())
-  const keyed = handle.recordOptions().withMergeByNames(['id'])
+  const keyed = handle.recordOptions().withMergeBy(['id'])
 
   assert.throws(
     () => handle.overwriteArrowTable(table(), keyed),
@@ -235,7 +235,7 @@ test('write intent is authoritative and mergeByNames only supplies keys', (t) =>
   )
   assert.throws(
     () => handle.mergeArrowTable(table()),
-    /merge.*(key|mergeByNames|merge_by_names)/i,
+    /merge.*(key|mergeBy|merge_by)/i,
   )
   assert.equal(rowsOf(handle).numRows, 2)
 })
@@ -246,12 +246,12 @@ test('invalid intent does not convert or consume any adapter input', (t) => {
   const handle = new IOBase(path.join(root, 'preflight.arrows'))
   handle.overwriteArrowTable(table())
   const plain = handle.recordOptions()
-  const keyed = plain.withMergeByNames(['id'])
+  const keyed = plain.withMergeBy(['id'])
 
   for (const [intent, options, message] of [
     ['overwrite', keyed, /overwrite.*merge|merge.*overwrite/i],
     ['append', keyed, /append.*merge|merge.*append/i],
-    ['merge', plain, /merge.*(key|mergeByNames|merge_by_names)/i],
+    ['merge', plain, /merge.*(key|mergeBy|merge_by)/i],
   ]) {
     const reader = BatchReader.from(table())
     assert.throws(() => handle[`${intent}ArrowReader`](reader, options), message)
@@ -302,7 +302,7 @@ test('zero write limits never inspect any representation source', (t) => {
         const handle = new IOBase(path.join(root, `${bound}-${suffix}-${intent}.arrows`))
         let options = handle.recordOptions().withField(declared)
         options[bound] = 0
-        if (intent === 'merge') options = options.withMergeByNames(['id'])
+        if (intent === 'merge') options = options.withMergeBy(['id'])
 
         let inspected = 0
         let source
@@ -321,7 +321,7 @@ test('zero write limits never inspect any representation source', (t) => {
 
         const write = () => handle[`${intent}${suffix}`](source, options)
         if (intent === 'merge') {
-          assert.throws(write, /max_(row|byte)_size.*merge_by_names|merge_by_names.*max_/i)
+          assert.throws(write, /max_(row|byte)_size.*merge_by|merge_by.*max_/i)
         } else {
           assert.equal(write(), undefined)
         }
@@ -389,7 +389,7 @@ test('plain records infer a field and support all three intents', (t) => {
       { id: 2n, venue: 'XPAR' },
       { id: 4n, venue: 'XTKS' },
     ],
-    handle.recordOptions().withMergeByNames(['id']),
+    handle.recordOptions().withMergeBy(['id']),
   )
 
   const stored = rowsOf(handle)
@@ -705,7 +705,7 @@ test('async record spools are removed on success, source failure, and invalid in
   await assert.rejects(
     handle.mergeRecords(
       valid(),
-      options.withMergeByNames(['missing']),
+      options.withMergeBy(['missing']),
     ),
     /missing/,
   )
@@ -720,7 +720,7 @@ test('async record spools are removed on success, source failure, and invalid in
     },
   }
   assert.throws(
-    () => handle.overwriteRecords(invalid, options.withMergeByNames(['id'])),
+    () => handle.overwriteRecords(invalid, options.withMergeBy(['id'])),
     /overwrite.*merge|merge.*overwrite/i,
   )
   assert.equal(pulls, 0)

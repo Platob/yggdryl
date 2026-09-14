@@ -164,6 +164,11 @@ impl JsBatchReader {
     ///
     /// A reader is a stream, so a second consumer gets the error rather than an
     /// empty stream that looks like a resource holding no rows.
+    /// The root name the schema crosses under.
+    pub(crate) fn root_name(&self) -> &str {
+        &self.root_name
+    }
+
     pub(crate) fn take(&mut self) -> Result<BatchReader> {
         let reader = self.inner.take().ok_or_else(consumed)?;
         self.taken = true;

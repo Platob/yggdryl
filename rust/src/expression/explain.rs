@@ -344,6 +344,9 @@ fn node_tree(node: &Node, schema: &Field) -> Tree {
 
 impl Projection {
     fn tree(&self) -> Tree {
+        if self.is_column() {
+            return self.term().tree();
+        }
         let mut label = self.name().to_string();
         if let Some(dtype) = self.dtype() {
             let _ = write!(label, " : {dtype}");
@@ -426,10 +429,13 @@ impl Filter {
 impl Write {
     fn tree(&self) -> Tree {
         let mut children = Vec::new();
-        if let Some(target) = self.target() {
-            children.push(Tree::leaf(format!("into {}", target.location())));
-            children.extend(properties(target));
-        }
+        let label = match self.target() {
+            Some(target) => {
+                children.extend(properties(target));
+                format!("{} {}", self.verb(), target.location())
+            }
+            None => self.verb().word().to_owned(),
+        };
         if !self.merge_by().is_empty() {
             children.push(Tree::node(
                 "by",
@@ -440,7 +446,7 @@ impl Write {
                     .collect(),
             ));
         }
-        Tree::node(self.verb().to_string(), children)
+        Tree::node(label, children)
     }
 }
 
@@ -459,12 +465,15 @@ impl Plan {
         let mut children = Vec::new();
         if let Some(schema) = self.schema() {
             let mut declared = Vec::new();
-            if let Some(target) = self.create_target() {
-                declared.push(Tree::leaf(format!("into {}", target.location())));
-                declared.extend(properties(target));
-            }
+            let label = match self.create_target() {
+                Some(target) => {
+                    declared.extend(properties(target));
+                    format!("create {}", target.location())
+                }
+                None => "create".to_owned(),
+            };
             declared.extend(schema.projections().iter().map(Projection::tree));
-            children.push(Tree::node("create", declared));
+            children.push(Tree::node(label, declared));
         }
         if let Some(write) = self.write_section() {
             children.push(write.tree());

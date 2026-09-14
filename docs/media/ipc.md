@@ -8,7 +8,7 @@
 | --- | --- |
 | Owns | `ipc::read_field`, `ipc::read_batch_reader`, `ipc::overwrite_arrow_reader`, `Ipc<H>`, `IpcOptions` |
 | Handle surface | `overwrite_*`, `append_*`, keyed `merge_*`, `read_arrow_reader`, `read_arrow_field` from [`IOMedia`](../holder/iobase/records.md) |
-| Merge | `merge_by_names` supplies identity only; the method name carries intent, never the key |
+| Merge | `merge_by` supplies identity only; the method name carries intent, never the key |
 | Schema | self-describing; `dtype` set skips the handle; root name defaults to `DEFAULT_ROOT_NAME` (`"row"`) |
 | Pushdown | `field`, a non-null struct root naming a subset, projects at decode; keeps stored order and types, never casts |
 | Coding | the content coding the name declares (`.gz`, `.zst`); `level` is the only compression setting |
@@ -69,7 +69,7 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
             Arc::clone(&schema),
             [batch(vec![2, 4], vec![Some("XPAR"), None])?],
         ),
-        &options.clone().with_merge_by_names(["id"]),
+        &options.clone().with_merge_by("id")?,
     )?;
 
     let rows = handle
@@ -103,7 +103,7 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
     handle.append_arrow_batch(batch([3], ["XLON"]))
 
     merging = handle.record_options()
-    merging.merge_by_names = ["id"]
+    merging.merge_by = ["id"]
     handle.merge_arrow_batch(batch([2, 4], ["XPAR", None]), options=merging)
 
     assert handle.read_arrow_field().name == "row"
@@ -132,7 +132,7 @@ Append retains stored rows; keyed merge updates matching `id` values and inserts
     handle.appendArrowTable(rows([3], ['XLON']))
     handle.mergeArrowTable(
       rows([2, 4], ['XPAR', null]),
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     assert.equal(handle.readArrowField().name, 'row')
@@ -684,7 +684,7 @@ The encoding applies the content coding the name declares on write and strips it
 
 ## Options
 
-IPC adds no setting of its own. `IpcOptions` holds the shared record settings as public fields - `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, and `filter_partitions` - and converts into [`RecordOptions`](options.md#use), whose page demonstrates the settings each binding carries (`batch_byte_size` is Rust only). The `ipc::*` functions handle only the encoding seam; the [`IOMedia`](../holder/iobase/records.md) path adds casting, re-chunking, selection, limits, partition filters, commit cadence, and write intent.
+IPC adds no setting of its own. `IpcOptions` holds the shared record settings as public fields - `name`, `field`, `filter`, `selector`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, and `level` - and converts into [`RecordOptions`](options.md#use), whose page demonstrates the settings each binding carries (`batch_byte_size` is Rust only). The `ipc::*` functions handle only the encoding seam; the [`IOMedia`](../holder/iobase/records.md) path adds casting, re-chunking, the plan's `where` and `select`, limits, commit cadence, and write intent.
 
 ## Absence
 
@@ -810,7 +810,7 @@ A location that holds nothing yields nothing, the laziness rule [Bytes](../holde
 
 ## Edges
 
-- `merge_by_names` on an overwrite or append -> the key never selects merge; intent stays with the method name.
+- `merge_by` on an overwrite or append -> the key never selects merge; intent stays with the method name.
 - `append_*` or keyed `merge_*` -> published through `ipc::overwrite_arrow_reader`, the one complete-stream encoder.
 - `field` naming every stored column, or one the stream lacks -> reads everything; a projection only drops columns.
 - projected read -> the returned reader reports the projected schema; Arrow's own `StreamReader` would report the whole stream's.

@@ -62,7 +62,7 @@ Read, overwrite, append, and keyed merge follow the [canonical record signatures
     )?;
     handle.merge_arrow_reader(
         yggdryl::arrow::batch_reader(Arc::clone(&schema), [batch(vec![2, 4], vec![Some("XPAR"), None])?]),
-        &options.clone().with_merge_by_names(["id"]),
+        &options.clone().with_merge_by("id")?,
     )?;
 
     let rows = handle
@@ -95,7 +95,7 @@ Read, overwrite, append, and keyed merge follow the [canonical record signatures
     handle.append_arrow_batch(batch([3], ["XLON"]))
 
     merging = handle.record_options()
-    merging.merge_by_names = ["id"]
+    merging.merge_by = ["id"]
     handle.merge_arrow_batch(batch([2, 4], ["XPAR", None]), options=merging)
 
     assert handle.read_arrow_reader().read_all().num_rows == 4
@@ -122,7 +122,7 @@ Read, overwrite, append, and keyed merge follow the [canonical record signatures
     handle.appendArrowTable(rows([3], ['XLON']))
     handle.mergeArrowTable(
       rows([2, 4], ['XPAR', null]),
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     assert.equal(handle.readArrowReader().intoTable().numRows, 4)
@@ -870,7 +870,7 @@ Input bytes bound the container and each decompressed block, depth bounds schema
 
 ## Edges
 
-- `merge_by_names` -> upsert: rows matching the key are updated, misses are inserted.
+- `merge_by` -> upsert: rows matching the key are updated, misses are inserted.
 - `trades.avro.gz` -> refused rather than double-compressed: Avro compresses inside its blocks, like [Parquet](parquet.md) and unlike [IPC](ipc.md).
 - A union wider than `null` plus one branch, a recursive schema, or an unspellable datatype -> refused by name on the record surface.
 - A string in a charset other than UTF-8 or US-ASCII -> refused by name; `fixed_ascii(n)` writes `string` with its padding trimmed, `binary(n)` writes `bytes` with the maximum dropped.

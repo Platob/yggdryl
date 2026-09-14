@@ -4,14 +4,16 @@ use napi::bindgen_prelude::{BigInt, Buffer, Either, Error, Result, Uint8Array};
 use napi_derive::napi;
 use yggdryl::media::IORecordOptions;
 use yggdryl::media::text::{LeadingFragment, TextOptions as CoreTextOptions};
-use yggdryl::{Level, Metadata, MimeType};
+use yggdryl::{Level, MimeType};
 
 use crate::enums::JsMimeType;
 use crate::exact_u8;
+use crate::expression::{
+    JsFilter, JsPlan, JsSelector, filter_from_input, plan_from_input, selector_from_input,
+};
 use crate::media::options::JsRecordOptions;
 use crate::napi_error;
-use crate::types::datatype::{DataTypeInput, JsDataType, dtype_from_input};
-use crate::types::field::{JsField, MetadataEntry, MetadataInput, metadata_pairs};
+use crate::types::field::JsField;
 use crate::types::timezone::{JsTimezone, TimezoneInput, timezone_from_input};
 
 /// Flat settings for physical-line or framed `text/plain` records.
@@ -64,10 +66,13 @@ impl JsTextOptions {
         self.inner.field().map(JsField::from_core)
     }
 
-    /// Replace the declared root field.
+    /// Replace the declared root field, or clear it with `null`.
     #[napi(setter)]
-    pub fn set_field(&mut self, field: &JsField) {
-        self.inner.set_field(field.inner.clone());
+    pub fn set_field(&mut self, field: Option<&JsField>) {
+        match field {
+            Some(field) => self.inner.set_field(field.inner.clone()),
+            None => self.inner.set_declared(None),
+        }
     }
 
     /// Return the inferred or declared root name.
@@ -80,41 +85,6 @@ impl JsTextOptions {
     #[napi(setter)]
     pub fn set_name(&mut self, name: String) {
         self.inner.set_name(name.into());
-    }
-
-    /// Return the declared root datatype, if any.
-    #[napi(getter)]
-    pub fn dtype(&self) -> Option<JsDataType> {
-        self.inner.dtype().cloned().map(JsDataType::from_core)
-    }
-
-    /// Replace or clear the declared root datatype.
-    #[napi(setter)]
-    pub fn set_dtype(&mut self, dtype: Option<DataTypeInput<'_>>) -> Result<()> {
-        self.inner
-            .set_dtype(dtype.map(dtype_from_input).transpose()?);
-        Ok(())
-    }
-
-    /// Return root metadata entries in key order.
-    #[napi(getter)]
-    pub fn metadata(&self) -> Vec<MetadataEntry> {
-        self.inner
-            .metadata()
-            .iter()
-            .map(|(key, value)| MetadataEntry {
-                key: key.to_owned(),
-                value: value.to_owned(),
-            })
-            .collect()
-    }
-
-    /// Replace root metadata.
-    #[napi(setter)]
-    pub fn set_metadata(&mut self, values: MetadataInput) -> Result<()> {
-        self.inner
-            .set_metadata(Metadata::from_entries(metadata_pairs(values)).map_err(napi_error)?);
-        Ok(())
     }
 
     /// Return whether casts may null incompatible values.
@@ -224,40 +194,110 @@ impl JsTextOptions {
         Ok(())
     }
 
-    /// Return write match-key column names.
+    /// The keys a write matches stored rows on; empty means overwrite or
+    /// append.
     #[napi(getter)]
-    pub fn merge_by_names(&self) -> Vec<String> {
-        self.inner.merge_by_names().to_vec()
+    pub fn merge_by(&self) -> JsSelector {
+        JsSelector::from_core(self.inner.merge_by().clone())
     }
 
-    /// Replace write match-key column names.
+    /// Set the keys a write matches stored rows on: a `Selector`, the text
+    /// of one, or the key column names.
     #[napi(setter)]
-    pub fn set_merge_by_names(&mut self, names: Vec<String>) {
-        self.inner.set_merge_by_names(names);
+    pub fn set_merge_by(
+        &mut self,
+        merge_by: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<()> {
+        self.inner.set_merge_by(selector_from_input(merge_by)?);
+        Ok(())
     }
 
-    /// Return selected column names.
+    /// The `select` section a read or write is shaped by.
     #[napi(getter)]
-    pub fn select_by_names(&self) -> Vec<String> {
-        self.inner.select_by_names().to_vec()
+    pub fn selector(&self) -> JsSelector {
+        JsSelector::from_core(self.inner.selector().clone())
     }
 
-    /// Replace selected column names.
+    /// Set the `select` section: a `Selector`, the text of one, a `Term`, or
+    /// the column names.
     #[napi(setter)]
-    pub fn set_select_by_names(&mut self, names: Vec<String>) {
-        self.inner.set_select_by_names(names);
+    pub fn set_selector(
+        &mut self,
+        selector: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<()> {
+        self.inner.set_selector(selector_from_input(selector)?);
+        Ok(())
     }
 
-    /// Return partition filters.
+    /// The `where` section a read is pruned and filtered by.
     #[napi(getter)]
-    pub fn filter_partitions(&self) -> Vec<(String, String)> {
-        self.inner.filter_partitions().to_vec()
+    pub fn filter(&self) -> JsFilter {
+        JsFilter::from_core(self.inner.filter().clone())
     }
 
-    /// Replace partition filters.
+    /// Set the `where` section: a `Filter`, a `Term`, or the text of a
+    /// predicate.
     #[napi(setter)]
-    pub fn set_filter_partitions(&mut self, partitions: Vec<(String, String)>) {
-        self.inner.set_filter_partitions(partitions);
+    pub fn set_filter(
+        &mut self,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+        >,
+    ) -> Result<()> {
+        self.inner.set_filter(filter_from_input(filter)?);
+        Ok(())
+    }
+
+    /// The whole plan these options run, section by section.
+    #[napi(getter)]
+    pub fn plan(&self) -> JsPlan {
+        JsPlan::from_core(self.inner.plan())
+    }
+
+    /// Split a `Plan`, its text, a clause, or a `Field` back into the
+    /// sections, replacing every one of them.
+    #[napi(setter)]
+    pub fn set_plan(
+        &mut self,
+        plan: napi::bindgen_prelude::Either5<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            String,
+        >,
+    ) -> Result<()> {
+        self.inner
+            .set_plan(plan_from_input(plan)?)
+            .map_err(napi_error)
+    }
+
+    /// The partition equalities the filter pins, `[column, value]` pairs.
+    #[napi]
+    pub fn partition_pairs(&self) -> Vec<(String, String)> {
+        self.inner.partition_pairs()
     }
 
     /// The first emitted row number, or `null` when the column is omitted.
@@ -489,7 +529,7 @@ impl JsTextOptions {
     #[napi]
     pub fn with_field(&self, field: &JsField) -> Self {
         let mut options = self.clone();
-        options.set_field(field);
+        options.set_field(Some(field));
         options
     }
 
@@ -499,22 +539,6 @@ impl JsTextOptions {
         let mut options = self.clone();
         options.set_name(name);
         options
-    }
-
-    /// Return a copy with a declared root datatype.
-    #[napi]
-    pub fn with_dtype(&self, dtype: DataTypeInput<'_>) -> Result<Self> {
-        let mut options = self.clone();
-        options.set_dtype(Some(dtype))?;
-        Ok(options)
-    }
-
-    /// Return a copy with declared root metadata.
-    #[napi]
-    pub fn with_metadata(&self, values: MetadataInput) -> Result<Self> {
-        let mut options = self.clone();
-        options.set_metadata(values)?;
-        Ok(options)
     }
 
     /// Return a copy with different cast strictness.
@@ -565,28 +589,78 @@ impl JsTextOptions {
         Ok(options)
     }
 
-    /// Return a copy with write match-key columns.
+    /// Return a copy with the keys a write matches stored rows on.
     #[napi]
-    pub fn with_merge_by_names(&self, names: Vec<String>) -> Self {
+    pub fn with_merge_by(
+        &self,
+        merge_by: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_merge_by_names(names);
-        options
+        options.set_merge_by(merge_by)?;
+        Ok(options)
     }
 
-    /// Return a copy with selected columns.
+    /// Return a copy shaped by a `select` section.
     #[napi]
-    pub fn with_select_by_names(&self, names: Vec<String>) -> Self {
+    pub fn with_selector(
+        &self,
+        selector: napi::bindgen_prelude::Either4<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+            Vec<
+                napi::bindgen_prelude::Either<
+                    napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+                    String,
+                >,
+            >,
+        >,
+    ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_select_by_names(names);
-        options
+        options.set_selector(selector)?;
+        Ok(options)
     }
 
-    /// Return a copy with partition filters.
+    /// Return a copy pruned and filtered by a `where` section.
     #[napi]
-    pub fn with_filter_partitions(&self, partitions: Vec<(String, String)>) -> Self {
+    pub fn with_filter(
+        &self,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
+            String,
+        >,
+    ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_filter_partitions(partitions);
-        options
+        options.set_filter(filter)?;
+        Ok(options)
+    }
+
+    /// Return a copy with every section a plan spells.
+    #[napi]
+    pub fn with_plan(
+        &self,
+        plan: napi::bindgen_prelude::Either5<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsPlan>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::types::field::JsField>,
+            String,
+        >,
+    ) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_plan(plan)?;
+        Ok(options)
     }
 
     /// Return whether every setting is equal.

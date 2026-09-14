@@ -8,7 +8,7 @@ import decimal
 import pyarrow as pa
 import pytest
 
-from yggdryl import Field, RecordOptions, TextOptions
+from yggdryl import Field, RecordOptions, Selector, TextOptions
 from yggdryl.enums import LEADING_FRAGMENTS
 from yggdryl.media import (
     AVRO_MAX_SCHEMA_DEPTH,
@@ -80,30 +80,30 @@ def test_a_reader_is_widened_and_narrowed_without_being_drained() -> None:
     assert list(narrowed)[0].schema.names == ["id"]
 
 
-def test_a_partition_column_names_the_expression_it_derives_with() -> None:
+def test_a_partition_column_names_the_term_it_derives_with() -> None:
     column = Field("year", "int32")
-    assert column.partition.expression is None
+    assert column.partition.term is None
 
     column.partition.sources = ["event"]
     column.partition.transform = "year"
-    expression = column.partition.expression
-    assert expression is not None
-    assert str(expression) == "year(event)"
+    term = column.partition.term
+    assert term is not None
+    assert str(term) == "year(event)"
 
     # The identity is a source with no transform.
     identity = Field("symbol", "utf8")
     identity.partition.sources = ["ticker"]
-    assert str(identity.partition.expression) == "ticker"
+    assert str(identity.partition.term) == "ticker"
 
     # The vocabulary belongs to the partition view alone.
     with pytest.raises(TypeError):
-        Field("id", "int64").fix.expression
+        Field("id", "int64").fix.term
 
 
 def test_options_shape_a_batch_and_a_reader_the_same_way() -> None:
     options = RecordOptions("application/vnd.apache.arrow.stream")
     options.field = ROOT
-    options.select_by_names = ["id"]
+    options.selector = ["id"]
 
     source = pa.record_batch(
         {"id": pa.array([1], pa.int32()), "year": pa.array([2024], pa.int32())}
@@ -145,26 +145,29 @@ def test_a_limit_is_the_last_transform_and_stops_pulling() -> None:
     assert sum(batch.num_rows for batch in plain.limit_arrow_reader(reader)) == 6
 
 
-def test_filter_partitions_read_as_a_path_query_and_as_a_row_predicate() -> None:
+def test_a_filter_is_the_partition_pairs_it_pins_and_the_plan_it_belongs_to() -> None:
     options = RecordOptions("application/vnd.apache.arrow.stream")
-    options.filter_partitions = [("year", "2024")]
+    options.filter = "year = '2024' and month = 1 and id > 5"
 
-    # The path form prunes a listing before anything is opened.
-    assert "year" in str(options.partition_filter)
-    assert "2024" in str(options.partition_filter)
+    # The equalities the filter pins are what prune a listing before anything
+    # is opened, spelled as partition paths spell them.
+    assert options.partition_pairs() == [("year", "2024"), ("month", "1")]
+    assert str(options.filter) == "year = '2024' and month = 1 and id > 5"
 
-    # The row form reads the same pair through the schema's own datatypes.
-    predicate = options.partition_predicate(ROOT)
-    assert "int32" in str(predicate)
-
-
-def test_text_options_name_the_columns_a_rowheader_captures() -> None:
-    options = TextOptions()
-    assert options.capture_names == ()
-
-    options.rowheader = r"^(?<stamp>\S+) (?<level>\w+) "
-    assert options.capture_names == ("stamp", "level")
-
-    # The captures are the fields between `url`/`rownum` and `body`.
-    assert options.field is None
-    assert options.write_batch_row_size is None
+    # The sections are one plan, and a plan splits back into them.
+    options.field = ROOT
+    options.selector = "id"
+    options.merge_by = ["id"]
+    options.max_row_size = 10
+    plan = options.plan
+    assert plan.verb == "upsert into"
+    assert plan.selector == Selector("id")
+    assert plan.limit == 10
+    assert plan.field() == ROOT
+    fresh = RecordOptions("application/vnd.apache.arrow.stream")
+    fresh.plan = str(plan)
+    assert fresh.field == ROOT
+    assert fresh.filter == options.filter
+    assert fresh.merge_by.names == ["id"]
+    assert fresh.max_row_size == 10
+    assert fresh == options

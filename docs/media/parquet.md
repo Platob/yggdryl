@@ -8,7 +8,7 @@ Read and write Apache Parquet over any handle; the footer's contents and the sta
 | --- | --- |
 | Owns | `yggdryl::media::parquet`: `ParquetOptions` and the free seams `read_arrow_schema`, `read_field`, `read_batch_reader`, `overwrite_arrow_reader`, `read_statistics`, taking the handle and a `&ParquetOptions` explicitly (Rust only) |
 | Feature flag | `parquet`, non-default; without it the module is absent and [`RecordOptions::for_mime_type`](options.md) reports `application/vnd.apache.parquet` as not implemented |
-| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../holder/iobase/records.md); the media type selects Parquet, `merge_by_names` supplies row-identity keys only |
+| Writes | `overwrite_arrow_reader`, `append_arrow_reader`, `merge_arrow_reader` under the [canonical signatures](../holder/iobase/records.md); the media type selects Parquet, `merge_by` supplies row-identity keys only |
 | Reads | `read_arrow_reader` returns an [`arrow::BatchReader`](../arrow/readers.md), `read_arrow_field` the canonical non-null struct root [`Field`](../types/field.md); `read_arrow_schema` and `read_statistics` are Parquet-specific |
 | Pushdown | the read `field` is a `ProjectionMask` over root columns; excluded chunks are never located, decompressed, or decoded |
 | Options | `compression` (default Zstandard, default level), `max_row_group_size` (default 1,048,576), `key_value_metadata`, plus the shared [`IORecordOptions`](options.md) fields; `level` does nothing |
@@ -71,7 +71,7 @@ The handle's media type selects Parquet, so the three write intents take no form
             Arc::clone(&schema),
             [batch(vec![2, 4], vec![Some("NVDA"), None])?],
         ),
-        &options.clone().with_merge_by_names(["id"]),
+        &options.clone().with_merge_by("id")?,
     )?;
 
     let rows = handle
@@ -106,7 +106,7 @@ The handle's media type selects Parquet, so the three write intents take no form
         handle.append_arrow_batch(batch([3], ["GOOG"]))
 
         merging = handle.record_options()
-        merging.merge_by_names = ["id"]
+        merging.merge_by = ["id"]
         handle.merge_arrow_batch(
             batch([2, 4], ["NVDA", None]), options=merging
         )
@@ -137,7 +137,7 @@ The handle's media type selects Parquet, so the three write intents take no form
     handle.appendArrowTable(rows([3], ['GOOG']))
     handle.mergeArrowTable(
       rows([2, 4], ['NVDA', null]),
-      handle.recordOptions().withMergeByNames(['id']),
+      handle.recordOptions().withMergeBy(['id']),
     )
 
     assert.equal(handle.readArrowReader().intoTable().numRows, 4)
@@ -523,7 +523,7 @@ Parquet's own settings and the shared ones are flat fields of one value.
 | `max_row_group_size` | row bound that decides how many row groups the file gets |
 | `key_value_metadata` | footer entries next to the ones the writer adds itself |
 | `level` | nothing; Parquet has no outer coding to apply it to |
-| shared | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `merge_by_names`, `select_by_names`, `filter_partitions` |
+| shared | `name`, `field`, `filter`, `selector`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size` |
 | `Parquet::with_options` | replaces the whole set |
 | `with_field`, `with_name` | reach through to the declared root; `name` roots a declared field and one recovered from the footer alike |
 
@@ -754,7 +754,7 @@ A coding around the whole file moves the footer out of reach, so the media type 
 
 ## Edges
 
-- keyed `merge_arrow_reader` -> upsert: rows matching `merge_by_names` are updated, misses are inserted.
+- keyed `merge_arrow_reader` -> upsert: rows matching `merge_by` are updated, misses are inserted.
 - `trades.parquet.gz`, or any non-identity coding -> refused on reads and writes with `parquet compresses`, naming `ParquetOptions::compression`.
 - other encodings, such as [Arrow IPC](ipc.md), take a coded name through the handle's [coding](../coding/index.md); Parquet alone refuses one.
 - `level` -> ignored; `compression` decides how the file compresses.

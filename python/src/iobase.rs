@@ -1176,14 +1176,15 @@ impl PyIOBase {
     /// than guessed at - this may keep a file the rows later discard and can
     /// never discard one they would have kept.
     ///
-    /// `filter` is an `Expression` or the text of one, which parses.
+    /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+    /// parses.
     #[pyo3(signature = (filter, include_private = false))]
     fn children_matching(
         &self,
         filter: &Bound<'_, PyAny>,
         include_private: bool,
     ) -> PyResult<PyIOBaseIterator> {
-        let filter = crate::expression::expression_from_value(filter)?;
+        let filter = crate::expression::filter_from_value(filter)?;
         Ok(PyIOBaseIterator {
             entries: self
                 .inner()?

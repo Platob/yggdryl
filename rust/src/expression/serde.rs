@@ -29,7 +29,7 @@
 //! A literal carries its own datatype, so a decimal stays a decimal across the
 //! wire exactly as it does across the text form.
 
-use super::{Expression, Filter, Selector, Term};
+use super::{Expression, Filter, Plan, Selector, Term};
 use crate::{Error, Result};
 
 impl Term {
@@ -115,6 +115,29 @@ impl Expression {
     }
 
     /// Consume this expression and write it as a structural JSON document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the document cannot be produced.
+    pub fn into_json(self) -> Result<String> {
+        serde_json::to_string(&self).map_err(Error::from)
+    }
+}
+
+impl Plan {
+    /// Read a plan from its structural JSON document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the document is not a valid plan, or a term in
+    /// it is past the depth or node budget.
+    pub fn from_json(input: &str) -> Result<Self> {
+        let plan: Self = serde_json::from_str(input).map_err(Error::from)?;
+        plan.check_budget()?;
+        Ok(plan)
+    }
+
+    /// Consume this plan and write it as a structural JSON document.
     ///
     /// # Errors
     ///

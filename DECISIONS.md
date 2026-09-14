@@ -2541,3 +2541,69 @@ until the Rust story, Python and Node were complete.
   the surviving example rather than disappearing.
 - `scripts/check_docs_examples.py` counts per language are reported before
   and after in the commit, as counts, not timings; Gate 4 runs whole.
+
+## 31. One term tree, two clauses, one plan, and a best-effort rule
+
+The expression layer is rebuilt around one vocabulary in every language:
+`Term` is the tree, `Filter` is a `where` clause over it, `Selector` is a
+`select` clause that is also the one owner of a schema declaration, `Plan` is
+the sections of one read or write, and `Expression` is whichever of those a
+piece of text is - a clause, a plan, or a `;`-separated sequence. `Statement`,
+`BoundStatement`, `Order`, `Direction`, `NullsOrder`, the `ApplyExpression`
+traits and the holder `Selector` enum (now `Attribute`) are gone.
+
+- A projection carries a term, an alias, an optional declared datatype with
+  `null`/`not null`, and `with (...)` metadata, so a `Selector` is a `create
+  table` column list. `Selector::from_field` is lossless and `into_field` writes
+  the selector back as each column's `transform:expression`; a `Field` is a plan
+  holder, `Plan::from_field` is its `create` section, and a partition
+  declaration is a transform of one source read through the feature-free
+  `types/protocol/partition.rs`.
+- Every application lives in `expression/`: `apply_field`, `apply_scalar`,
+  `apply_arrow_reader` as the primary streamed path with `apply_arrow_batch`
+  derived from it (one batch is a one-batch reader, and a batch returned
+  unchanged is the caller's own), `apply_arrow_array`, and `apply_records` over
+  native rows bound once against a declared schema or the first record's own.
+  `explain` draws every layer as a UTF-8 tree; a bound tree adds datatype,
+  nullability and cost.
+- A plan spells `create [target] (schema) [with (...)]`, a write verb with an
+  optional target and `by (keys)`, `select`, `from target | (plan)`, `where`,
+  `order by`, `limit` and `offset`. `insert into`, `insert overwrite`, `upsert
+  into ... by` and `delete from` are the four verbs; `append to`, `overwrite`,
+  `replace into` and `merge into ... on` read as them and print canonically.
+  A location is a quoted URL or a catalog path whose parts may be quoted with
+  `"`, backticks or `[...]`; a target carries `with (...)` properties, and
+  `Holder::from_url(url, properties)` is the one builder every target and every
+  `IOBase`/`IOMedia` from a URL goes through. `Plan::execute` reads the source
+  with the read sections pushed into the media, orders and slices what comes
+  back, and writes where the plan says; a plan with no source starts from the
+  empty stream, so `create` alone writes a schema and `delete` reads its target.
+- Record options are the split sections of that plan, stored apart for
+  isolation - `field`, `filter`, `selector`, `merge_by`, `name`, the row bounds
+  - with `plan()`/`set_plan` composing and splitting; `dtype`, `metadata`,
+  `select_by_names`, `merge_by_names`, `filter_partitions`, `partition_filter`
+  and `partition_predicate` are gone, and a media reads `partition_pairs`,
+  `apply_columns` and `apply_arrow_expressions` instead.
+- Simplification is exact under three-valued logic and reaches a fixed point:
+  `a = 1 or a = 2` is `a in (1, 2)`, a self alias is dropped, a same-type cast
+  is skipped; binding settles constant subtrees and orders `and` cheapest-first.
+- The best-effort rule, now an AGENTS.md invariant: a constant coerces into the
+  operand it meets (text parsed as the column's own type), operands with no
+  common type compare as text, a declared column casts safely unless it is `not
+  null`, a missing store reads as the empty stream, and an error names what
+  could not be done. DuckDB's SQL and Python expression API are the reference
+  for spellings and aliases; the crate's abstractions carry the behaviour.
+- Bindings: Python `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`,
+  `Plan`, `Expression`, `Records`, `Bounds`, with `field`/`filter`/`selector`/
+  `merge_by`/`plan`/`partition_pairs` on the options and `merge_by` on the
+  Iceberg table; JavaScript the same classes in camelCase, the loader widening
+  `bind` parameters, the three Arrow holders, and `applyRecords` rows, and
+  `Records` iterating as JavaScript does.
+
+Pins: the corpus round trip of every term, clause, plan and sequence spelling;
+the two tiers agreeing on every operator; every simplification answering what
+the original answered; a declared `not null` column refused by name; a field
+round-tripping through a selector; a plan creating, inserting, upserting,
+deleting and reading one store; the sliced reader crossing batch boundaries as
+views; a holder built from a URL with properties; the split option sections
+composing into one plan and back.

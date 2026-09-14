@@ -872,17 +872,19 @@ impl JsIOBase {
     /// than guessed at - this may keep a file the rows later discard and can
     /// never discard one they would have kept.
     ///
-    /// `filter` is an `Expression` or the text of one, which parses.
+    /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+    /// parses.
     #[napi]
     pub fn children_matching(
         &self,
-        filter: napi::bindgen_prelude::Either<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsExpression>,
+        filter: napi::bindgen_prelude::Either3<
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
+            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
             String,
         >,
         include_private: Option<bool>,
     ) -> Result<JsListing> {
-        let filter = crate::expression::expression_from_input(filter)?;
+        let filter = crate::expression::filter_from_input(filter)?;
         Ok(JsListing {
             inner: self
                 .inner
@@ -1653,7 +1655,7 @@ impl JsIOBase {
             .map_err(napi_error)
     }
 
-    /// Merge every incoming row by `options.mergeByNames`.
+    /// Merge every incoming row by `options.mergeBy`.
     ///
     /// A non-empty match key is required. The core keeps the incoming reader
     /// streaming, applies `options.field` once, and publishes through the

@@ -204,7 +204,7 @@ class TestExplicitIntent:
     @staticmethod
     def merge_options(handle: IOBase) -> Any:
         options = handle.record_options()
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
         return options
 
     def test_arrow_reader_triplet(self, tmp_path: pathlib.Path) -> None:
@@ -284,7 +284,7 @@ class TestExplicitIntent:
 
         handle = IOBase(tmp_path / f"{method}.parquet")
         options = handle.record_options()
-        options.merge_by_names = keys
+        options.merge_by = keys
         source = Untouched()
 
         with pytest.raises(ValueError, match=message):
@@ -298,7 +298,7 @@ class TestGenericIOMode:
     @staticmethod
     def merge_options(handle: IOBase) -> Any:
         options = handle.record_options()
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
         return options
 
     @pytest.mark.parametrize(
@@ -367,7 +367,7 @@ class TestGenericIOMode:
 
         handle = IOBase(tmp_path / f"invalid-{mode}.parquet")
         options = handle.record_options()
-        options.merge_by_names = keys
+        options.merge_by = keys
         source = Untouched()
 
         with pytest.raises((TypeError, ValueError), match=message):
@@ -385,7 +385,7 @@ class TestGenericIOMode:
         handle = IOBase(tmp_path / f"cross-{intent}.parquet")
         options = handle.record_options()
         if intent == "merge":
-            options.merge_by_names = ["id"]
+            options.merge_by = ["id"]
 
         with pytest.raises(TypeError, match="Arrow C stream reader"):
             getattr(handle, f"{intent}_arrow_reader")(table, options=options)
@@ -418,7 +418,7 @@ class TestGenericIOMode:
 
         handle = IOBase(tmp_path / f"{method}.parquet")
         options = handle.record_options()
-        options.merge_by_names = keys
+        options.merge_by = keys
         source = Untouched()
 
         with pytest.raises(ValueError, match=message):
@@ -499,7 +499,7 @@ class TestDataclassRecords:
         handle.overwrite_records([Trade(1, "XNAS")])
         handle.append_records([Trade(2, "XNYS")])
         options = handle.record_options()
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
         handle.merge_records([Trade(2, "XLON"), Trade(3, "XPAR")], options=options)
 
         assert list(handle.read_records(Trade)) == [
@@ -563,7 +563,7 @@ class TestPandas:
             second = pandas.DataFrame({"id": [2], "venue": ["XNYS"]})
             merged = pandas.DataFrame({"id": [2, 3], "venue": ["XLON", "XPAR"]})
             options = handle.record_options()
-            options.merge_by_names = ["id"]
+            options.merge_by = ["id"]
             if plural:
                 handle.overwrite_pandas([first])
                 handle.append_pandas([second])
@@ -591,7 +591,7 @@ class TestPandas:
         write(source([1], ["XNAS"]), "overwrite")
         write(source([2], ["XNYS"]), "append")
         options = handle.record_options()
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
         write(
             source([2, 3], ["XLON", "XPAR"]),
             "merge",
@@ -670,7 +670,7 @@ class TestPolars:
             second = polars.DataFrame({"id": [2], "venue": ["XNYS"]})
             merged = polars.DataFrame({"id": [2, 3], "venue": ["XLON", "XPAR"]})
             options = handle.record_options()
-            options.merge_by_names = ["id"]
+            options.merge_by = ["id"]
             if plural:
                 handle.overwrite_polars([first])
                 handle.append_polars([second])
@@ -698,7 +698,7 @@ class TestPolars:
         write(source([1], ["XNAS"]), "overwrite")
         write(source([2], ["XNYS"]), "append")
         options = handle.record_options()
-        options.merge_by_names = ["id"]
+        options.merge_by = ["id"]
         write(
             source([2, 3], ["XLON", "XPAR"]),
             "merge",

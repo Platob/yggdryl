@@ -7,8 +7,10 @@
 | key | value |
 | --- | --- |
 | Owns | `IORecordOptions`, `RecordOptions`, each encoding's options struct |
-| Root parts | `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), `dtype` (none), `metadata` (empty) |
-| Shared fields | `name`, `dtype`, `metadata`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level`, `merge_by_names`, `select_by_names`, `filter_partitions` |
+| Sections | the split sections of one [plan](../expression/plans.md), stored apart: `field` (the `create` section; none = inferred), `filter` (`where`; always true), `selector` (`select`; `*`), `merge_by` (`upsert by`; empty), `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), and `max_row_size` (`limit`) |
+| Plan | `plan()` composes the sections into one `Plan`; `set_plan` / `with_plan` split a `Plan`, a clause, a `Field`, or text back into them |
+| Shared fields | `name`, `field`, `filter`, `selector`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level` |
+| Pruning | `partition_pairs()` reads the equalities the filter pins, as partition paths spell them; a media prunes by them and lets the rest of the predicate run over the rows |
 | Identity | `Clone`, `Eq`, `Ord`, `Hash` include the variant; `stable_hash()` is run-stable over that variant's full configuration |
 | `batch_row_size` | rows per batch; [`pstream_bytes`](../holder/iobase/bytes.md) `batch_size` counts bytes |
 | `batch_byte_size` | Arrow in-memory bytes per batch, whichever of it and `batch_row_size` binds first; a target rather than a ceiling, and a non-zero bound yields at least one row; Rust only |
@@ -35,8 +37,8 @@ The media type names the encoding, so no format argument is passed.
     assert_eq!(options.mime_type(), MimeType::PARQUET);
     assert_eq!(options.field(), Some(schema.clone()));
     assert_eq!(options.name(), "row");
-    assert_eq!(options.dtype(), Some(schema.dtype()));
-    assert!(options.metadata().is_empty());
+    assert!(options.selector().is_all());
+    assert!(options.filter().is_always_true());
     assert_eq!(options.batch_row_size(), Some(1024));
     assert_eq!(options.stable_hash(), options.clone().stable_hash());
     ```
@@ -58,9 +60,9 @@ The media type names the encoding, so no format argument is passed.
 
     assert str(options.mime_type) == "application/vnd.apache.parquet"
     assert options.name == "row"
-    assert [child.name for child in options.dtype] == ["id"]
-    assert options.metadata == {}
-    assert options.field is not None
+    assert [child.name for child in options.field.dtype] == ["id"]
+    assert options.selector.is_all
+    assert options.filter.is_always_true
     assert options.batch_row_size == 1024
     assert options.commit_row_size == 10_000
 
@@ -89,9 +91,9 @@ The media type names the encoding, so no format argument is passed.
 
     assert.equal(String(options.mimeType), 'application/vnd.apache.parquet')
     assert.equal(options.name, 'row')
-    assert.ok(options.dtype.equals(schema.dtype))
-    assert.deepEqual(options.metadata, [])
     assert.ok(options.field.equals(schema))
+    assert.ok(options.selector.isAll)
+    assert.ok(options.filter.isAlwaysTrue)
     assert.equal(options.batchRowSize, 1024)
 
     // A setting one encoding has reads as null on an encoding that has none.
@@ -109,131 +111,136 @@ The media type names the encoding, so no format argument is passed.
     assert.equal(options.safe, false)
     ```
 
-## Declared root
+## The sections of one plan
 
-`field()` builds the non-null Struct root on every ask, so no part is ever stale against it.
+`plan()` spells the options as one [plan](../expression/plans.md), and `set_plan` reads one back into the sections.
 
 === "Rust"
 
     ```rust
     use yggdryl::media::{IORecordOptions, RecordOptions};
-    use yggdryl::{DataType, Metadata, MimeType};
+    use yggdryl::{DataType, MimeType};
 
-    let schema = DataType::from_fields([DataType::Int64.required_field("id")])?.required_field("row");
-    let mut options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(schema.clone());
-
-    // One stored form: declaring only the datatype is the same declaration.
-    let by_dtype = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_dtype(schema.dtype().clone());
-    assert_eq!(options, by_dtype);
-    assert_eq!(options.stable_hash(), by_dtype.stable_hash());
-
-    options.set_name("trade".into());
-    assert_eq!(options.field().unwrap().name(), "trade");
-    assert_eq!(options.field().unwrap().dtype(), schema.dtype());
-
-    options.set_metadata(Metadata::from_entries([("source", "exchange")])?);
-    assert_eq!(options.field().unwrap().get_metadata("source"), Some("exchange"));
-
-    let widened = DataType::from_fields([
+    let schema = DataType::from_fields([
         DataType::Int64.required_field("id"),
         DataType::utf8().nullable_field("venue"),
-    ])?;
-    options.set_dtype(Some(widened.clone()));
-    let built = options.field().unwrap();
-    assert_eq!(built.name(), "trade");
-    assert_eq!(built.dtype(), &widened);
-    assert_eq!(built.get_metadata("source"), Some("exchange"));
-    assert!(!built.is_nullable());
+    ])?
+    .required_field("trade");
+    let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
+        .with_field(schema.clone())
+        .with_filter("venue = 'XNAS' and id > 5")?
+        .with_selector("id")?
+        .with_merge_by("id")?
+        .with_max_row_size(10);
 
-    // Taking the field clears the datatype and metadata; the name stays.
-    assert_eq!(options.take_field(), Some(built));
-    assert!(options.field().is_none());
-    assert_eq!(options.name(), "trade");
+    // One plan: create, upsert by, select, where, limit.
+    let plan = options.plan();
+    assert_eq!(
+        plan.to_string(),
+        "create trade (id int64 not null, venue utf8 null) upsert by (id) select id \
+         where venue = 'XNAS' and id > 5 limit 10",
+    );
+    assert_eq!(plan.field()?, Some(schema.clone()));
+
+    // The equalities the filter pins are what prune a listing before anything is opened.
+    assert_eq!(options.partition_pairs(), [("venue".to_owned(), "XNAS".to_owned())]);
+
+    // The same plan splits back into the same sections.
+    let read_back = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_plan(plan.to_string())?;
+    assert_eq!(read_back, options);
+    assert_eq!(read_back.field(), Some(schema));
+    assert_eq!(read_back.max_row_size(), Some(10));
+
+    // A renamed root is the same declaration under another name.
+    let mut renamed = options.clone();
+    renamed.set_name("row".into());
+    assert_eq!(renamed.field().unwrap().name(), "row");
     ```
 
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field, RecordOptions
+    from yggdryl import Field, RecordOptions, Selector
 
-    schema = Field("row", DataType.from_fields([Field("id", "int64", nullable=False)]), nullable=False)
+    schema = Field("trade", "struct<id: int64 not null, venue: utf8>", nullable=False)
     options = RecordOptions("trades.arrows")
     options.field = schema
+    options.filter = "venue = 'XNAS' and id > 5"
+    options.selector = ["id"]
+    options.merge_by = ["id"]
+    options.max_row_size = 10
 
-    # One stored form: declaring only the datatype is the same declaration.
-    by_dtype = RecordOptions("trades.arrows")
-    by_dtype.dtype = schema.dtype
-    assert options == by_dtype
-    assert options.stable_hash() == by_dtype.stable_hash()
+    # One plan: create, upsert by, select, where, limit.
+    plan = options.plan
+    assert str(plan) == (
+        "create trade (id int64 not null, venue utf8 null) upsert by (id) select id "
+        "where venue = 'XNAS' and id > 5 limit 10"
+    )
+    assert plan.field() == schema
+    assert plan.merge_by == Selector("id")
 
-    options.name = "trade"
-    assert options.field.name == "trade"
-    assert options.field.dtype == schema.dtype
+    # The equalities the filter pins are what prune a listing before anything is opened.
+    assert options.partition_pairs() == [("venue", "XNAS")]
 
-    options.metadata = {"source": "exchange"}
-    assert options.field.metadata["source"] == "exchange"
+    # The same plan splits back into the same sections.
+    read_back = RecordOptions("trades.arrows")
+    read_back.plan = str(plan)
+    assert read_back == options
+    assert read_back.field == schema
+    assert read_back.max_row_size == 10
 
-    # The setter takes a datatype expression as readily as a DataType.
-    options.dtype = "struct<id: int64, venue: utf8>"
-    built = options.field
-    assert built.name == "trade"
-    assert [child.name for child in built.dtype] == ["id", "venue"]
-    assert built.metadata["source"] == "exchange"
-    assert not built.nullable
-
-    # None clears a part; the name stays.
-    options.dtype = None
-    options.metadata = None
+    # A renamed root is the same declaration under another name; None clears it.
+    options.name = "row"
+    assert options.field.name == "row"
+    options.field = None
     assert options.field is None
-    assert options.metadata == {}
-    assert options.name == "trade"
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, RecordOptions, fields } = require('yggdryl')
+    const { Field, RecordOptions } = require('yggdryl')
 
-    const schema = fields.struct('row', [Field.from('id: int64')], { nullable: false })
+    const schema = Field.from('trade: struct<id: int64 not null, venue: utf8> not null')
     const options = new RecordOptions('trades.arrows')
-    options.field = schema
+      .withField(schema)
+      .withFilter("venue = 'XNAS' and id > 5")
+      .withSelector(['id'])
+      .withMergeBy(['id'])
+      .withMaxRowSize(10)
 
-    // One stored form: declaring only the datatype is the same declaration.
-    const byDtype = new RecordOptions('trades.arrows').withDtype(schema.dtype)
-    assert.ok(options.equals(byDtype))
-    assert.equal(options.stableHash(), byDtype.stableHash())
+    // One plan: create, upsert by, select, where, limit.
+    const plan = options.plan
+    assert.equal(
+      plan.toString(),
+      'create trade (id int64 not null, venue utf8 null) upsert by (id) select id ' +
+        "where venue = 'XNAS' and id > 5 limit 10",
+    )
+    assert.ok(plan.field().equals(schema))
+    assert.ok(plan.mergeBy.equals('id'))
 
-    options.name = 'trade'
-    assert.equal(options.field.name, 'trade')
-    assert.ok(options.field.dtype.equals(schema.dtype))
+    // The equalities the filter pins are what prune a listing before anything is opened.
+    assert.deepEqual(options.partitionPairs(), [['venue', 'XNAS']])
 
-    // Entries, a plain object, or a Map declare the metadata alike.
-    options.metadata = { source: 'exchange' }
-    assert.deepEqual(options.metadata, [{ key: 'source', value: 'exchange' }])
-    assert.equal(options.field.get('source'), 'exchange')
+    // The same plan splits back into the same sections.
+    const readBack = new RecordOptions('trades.arrows').withPlan(plan.toString())
+    assert.ok(readBack.equals(options))
+    assert.ok(readBack.field.equals(schema))
+    assert.equal(readBack.maxRowSize, 10)
 
-    // The setter takes a datatype expression as readily as a DataType.
-    options.dtype = 'struct<id: int64, venue: utf8>'
-    const built = options.field
-    assert.equal(built.name, 'trade')
-    assert.deepEqual([...built.dtype].map((child) => child.name), ['id', 'venue'])
-    assert.equal(built.get('source'), 'exchange')
-    assert.equal(built.nullable, false)
-
-    // null clears a part; the name stays.
-    options.dtype = null
-    options.metadata = []
+    // A renamed root is the same declaration under another name; null clears it.
+    options.name = 'row'
+    assert.equal(options.field.name, 'row')
+    options.field = null
     assert.equal(options.field, null)
-    assert.deepEqual(options.metadata, [])
-    assert.equal(options.name, 'trade')
     ```
 
 ## Shaping
 
-`apply_arrow_batch` and `apply_arrow_reader` [apply](../types/field.md#applying-a-schemas-declarations) the declared schema, then narrow by `select_by_names`, then apply the optional `existing` root.
+`apply_arrow_batch` and `apply_arrow_reader` [apply](../types/field.md#applying-a-schemas-declarations) the declared schema, then run the `where` and `select` sections, then apply the optional `existing` root.
 
-A field shapes rows by applying, not by casting: a declaration is the cast *and* the `partition:` and `digest:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection in between only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
+A field shapes rows by applying, not by casting: a declaration is the cast *and* the `transform:` and `digest:` columns it derives, so a declared derived column arrives written rather than arriving as the default nothing filled. The selection after it only narrows, because deriving there would restore the columns it was asked to drop. A root declaring no derivation applies as the cast alone, at the safety `safe` names; the `existing` completion is always safe.
 
 Rust; Python binds the same `RecordOptions.apply_arrow_batch` / `apply_arrow_reader`, and JavaScript binds neither.
 
@@ -250,7 +257,7 @@ let declared = DataType::from_fields([
 
 let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
     .with_field(declared.clone())
-    .with_select_by_names(["price"]);
+    .with_selector("price")?;
 
 // One call is the whole pipeline: the declared apply, then the selection.
 // Passing a stored root as the second argument adds the completion layer.
@@ -304,16 +311,17 @@ assert!(options.field().is_none());
 
 let message = options.require_field().unwrap_err().to_string();
 assert!(message.contains("with_field"), "{message}");
-assert!(message.contains("with_dtype"), "{message}");
 ```
 
 ## Edges
 
-- No `dtype` -> `field()` is nothing, the shape is inferred, and `require_field` errors naming `with_field` and `with_dtype`.
-- `metadata` without a `dtype` -> never reaches a read or write.
-- `set_field` / `with_field` -> nullability and dictionary options dropped.
-- `take_field` -> clears `dtype` and `metadata`, keeps `name`.
-- `with_field(f)` for `f` named `"row"` with no metadata -> equal, and hash-equal, to `with_dtype(f.dtype().clone())`.
+- No `field` -> the shape is inferred, `plan()` has no `create` section, and `require_field` errors naming `with_field`.
+- `set_field` / `with_field` -> nullability and dictionary options dropped; `set_name` renames the declared field in place.
+- `take_field` -> clears the declaration, keeps `name`.
+- `with_plan(f)` for a `Field` `f` -> equal, and hash-equal, to `with_field(f)`.
+- `set_plan` -> replaces every section the plan spells and clears the ones it does not; a `limit` sets `max_row_size`, and the plan's targets and source are not read, because the handle these options are given to is both.
+- `merge_by` naming a column twice -> refused naming it; `max_row_size` with `merge_by` -> refused naming both.
+- `selector` naming a column the stored root lacks -> the encoding reads everything and the cast supplies it as nulls.
 - `existing` root -> the cast is always safe; an unconvertible value becomes null.
 - Every read and write path -> routes through `apply_arrow_batch` / `apply_arrow_reader`, so declaration, derivation, selection, and stored shape agree.
 - Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet.md).

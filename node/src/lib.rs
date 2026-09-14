@@ -40,7 +40,9 @@ use yggdryl::OwnedDifferences;
 
 pub use enums::{JsMediaType, JsMimeType};
 pub use expression::{
-    BoundStatementOrder, JsBound, JsBoundStatement, JsExpression, JsStatement, StatementOrder,
+    ExpressionVocabularies, JsBound, JsBoundSelector, JsExpression, JsFilter, JsPlan, JsRecords,
+    JsSelector, JsTerm, PartitionSplit, PlanOrder, expression_needs_quoting,
+    expression_vocabularies,
 };
 pub use fix::{
     FixCodecOptions, JsFixCodec, JsFixDefinitionIterator, JsFixFieldIterator, JsFixMessages,

@@ -673,6 +673,12 @@ impl Plan {
         self
     }
 
+    /// Return a deterministic hash of the canonical plan text.
+    #[must_use]
+    pub fn stable_hash(&self) -> u64 {
+        crate::hashing::stable_hash_display(self)
+    }
+
     /// The `create` target, when the plan names one.
     #[must_use]
     pub const fn create_target(&self) -> Option<&Target> {
@@ -865,14 +871,27 @@ impl Plan {
         }
     }
 
-    /// Drop the sections that shape a read, keeping the schema and the write.
+    /// Drop the sections that shape a read, keeping the schema, the write and
+    /// the source.
     pub fn clear_read_sections(&mut self) {
         self.selector = Selector::all();
         self.filter = Filter::always_true();
         self.order_by.clear();
         self.limit = None;
         self.offset = None;
-        self.from = None;
+    }
+
+    /// Return whether every column the `order by` keys read is one of
+    /// `names`, so the keys can be evaluated over rows of those columns.
+    #[cfg(feature = "arrow")]
+    fn ordering_reads_only<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> bool {
+        let names: Vec<&str> = names.into_iter().collect();
+        self.order_by.iter().all(|key| {
+            key.term
+                .columns()
+                .iter()
+                .all(|column| names.iter().any(|name| name.eq_ignore_ascii_case(column)))
+        })
     }
 
     /// The struct root the `create` section declares, when every column it
@@ -1109,7 +1128,12 @@ impl fmt::Display for Plan {
             space(formatter)?;
             write!(formatter, "{write}")?;
         }
-        if !self.selector.is_all() || (self.write.is_none() && self.schema.is_none()) {
+        // `select *` is spelled when the plan reads and nothing else says
+        // so: a plan with a write or a schema, or a bare `where`, leaves the
+        // identity projection implicit.
+        if !self.selector.is_all()
+            || (self.write.is_none() && self.schema.is_none() && self.filter.is_always_true())
+        {
             space(formatter)?;
             write!(formatter, "select {}", self.selector)?;
         }
@@ -1375,6 +1399,8 @@ mod arrow {
                     // Ordering cannot be pushed down, and a limit after an
                     // ordering counts sorted rows, so both stay here when the
                     // plan orders; otherwise the media applies the limit too.
+                    // A projection the keys do not survive stays here as well,
+                    // so `select name ... order by id` still orders by `id`.
                     let mut pushed = self.read_sections();
                     let mut rest = Self::new();
                     if !self.order_by.is_empty() {
@@ -1384,6 +1410,18 @@ mod arrow {
                         rest.order_by.clone_from(&self.order_by);
                         rest.limit = self.limit;
                         rest.offset = self.offset;
+                        let published: Vec<smol_str::SmolStr> = self
+                            .selector
+                            .projections()
+                            .iter()
+                            .map(crate::expression::Projection::name)
+                            .collect();
+                        if !self.selector.is_all()
+                            && !self.ordering_reads_only(published.iter().map(|name| name.as_str()))
+                        {
+                            pushed.selector = super::Selector::all();
+                            rest.selector = self.selector.clone();
+                        }
                     }
                     let mut options = target.record_options(&holder)?;
                     options.set_plan(pushed)?;
@@ -1422,17 +1460,39 @@ mod arrow {
         /// Returns an error when a section does not bind against the stream,
         /// or the target cannot be held or written.
         pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            if self
+                .write
+                .as_ref()
+                .is_some_and(|write| write.verb == Verb::Delete)
+            {
+                // A delete's `where` names the stored rows to remove; the
+                // stream it is given carries nothing to shape.
+                return self.write_arrow_reader(reader);
+            }
             let shaped = self.read_sections().shape_arrow_reader(reader)?;
             self.write_arrow_reader(shaped)
         }
 
-        /// Run the read sections over a stream, in order: `where`, `select`,
-        /// `order by`, `offset`, `limit`.
+        /// Run the read sections over a stream, in order: `where`, `order by`,
+        /// `select`, `offset`, `limit`.
+        ///
+        /// The keys order the rows `where` keeps, so a key can name a column
+        /// the projection drops; a key that names what the projection
+        /// publishes - an alias - orders after it instead.
         pub(crate) fn shape_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
-            let mut reader = self
-                .selector
-                .apply_arrow_reader(self.filter.apply_arrow_reader(reader)?)?;
-            if !self.order_by.is_empty() {
+            let mut reader = self.filter.apply_arrow_reader(reader)?;
+            let mut ordered = self.order_by.is_empty();
+            if !ordered {
+                let input = reader.schema();
+                if self
+                    .ordering_reads_only(input.fields().iter().map(|field| field.name().as_str()))
+                {
+                    reader = self.sorted_arrow_reader(reader)?;
+                    ordered = true;
+                }
+            }
+            reader = self.selector.apply_arrow_reader(reader)?;
+            if !ordered {
                 reader = self.sorted_arrow_reader(reader)?;
             }
             if self.offset.is_some() || self.limit.is_some() {
@@ -1469,18 +1529,13 @@ mod arrow {
             let Some(target) = self.write_target() else {
                 if let Some(schema) = &self.schema {
                     // A `create` with no target declares; the stream is cast to
-                    // what it declares and handed on.
+                    // what it declares, under the selector's rule for a
+                    // declared column, and handed on.
                     let field = schema.declared_field(
                         Some(&root).filter(|root| root.field_len() > 0),
                         self.root_name(),
                     )?;
-                    return field.apply_arrow_reader(
-                        reader,
-                        true,
-                        true,
-                        true,
-                        crate::types::cast::ArrowCastOptions::new(),
-                    );
+                    return super::Selector::from_field(&field).apply_arrow_reader(reader);
                 }
                 return Ok(reader);
             };
@@ -1549,3 +1604,6 @@ mod arrow {
         Ok(crate::arrow::batch_reader(schema, empty))
     }
 }
+
+#[cfg(test)]
+mod tests;

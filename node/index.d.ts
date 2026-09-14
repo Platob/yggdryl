@@ -75,19 +75,26 @@ export declare class BatchReader {
 }
 export type JsBatchReader = BatchReader
 
-/** One expression resolved against one schema, ready to answer. */
+/** One term resolved against one schema, ready to answer. */
 export declare class Bound {
-  /** The expression as it stands after substitution, folding, and ordering. */
-  get expression(): Expression
-  /** The output field this expression produces. */
+  /** The term as it stands after substitution, folding, and ordering. */
+  get term(): Term
+  /** The output field this term produces. */
   get field(): JsField
-  /** Return whether this expression answers a boolean. */
+  /** The struct root this term was bound against. */
+  get schema(): JsField
+  /** Return whether this term answers a boolean. */
   get isPredicate(): boolean
-  /** The schema column names this expression reads, in index order. */
+  /** The schema column names this term reads, in index order. */
   get columns(): Array<string>
-  /** Return whether answering this expression requires reading rows. */
+  /**
+   * The schema column indices this term reads, ascending: what a reader
+   * decodes and nothing else.
+   */
+  get columnIndices(): Array<number>
+  /** Return whether answering this term requires reading rows. */
   get readsRows(): boolean
-  /** Evaluate this expression for one row of column values, in schema order. */
+  /** Evaluate this term for one row of column values, in schema order. */
   eval(row: JsScalar): JsScalar
   /**
    * Answer this predicate for one row, reading unknown as "no".
@@ -96,29 +103,47 @@ export declare class Bound {
    * comparison against it.
    */
   matches(row: JsScalar): boolean
-  /** The canonical text of the expression this resolved. */
+  /**
+   * Split this predicate into the part a partition layout answers and the
+   * rest.
+   */
+  partitionSplit(): PartitionSplit
+  /**
+   * The plan this term runs, drawn one node per line with its datatype
+   * and cost.
+   */
+  explain(): string
+  /** The canonical text of the term this resolved. */
   toString(): string
 }
 export type JsBound = Bound
 
-/** A statement resolved against one schema, ready for batch execution. */
-export declare class BoundStatement {
-  /** The struct root the statement reads. */
+/** A selector resolved against one schema, ready for batches. */
+export declare class BoundSelector {
+  /** The struct root the selector reads. */
   get schema(): JsField
-  /** The struct root the statement publishes. */
+  /** The struct root the selector publishes. */
   get output(): JsField
-  /** The bound projections, in output order. Empty means every column. */
+  /** The bound projections, in output order; empty for `select *`. */
   get projections(): Array<Bound>
-  /** The bound predicate, when the statement had one. */
-  get predicate(): Bound | null
-  /** The bound ordering keys, in priority order. */
-  get ordering(): Array<BoundStatementOrder>
-  /** The row limit, when the statement had one. */
-  get limit(): number | null
-  /** Return whether this statement selects every input column unchanged. */
+  /** Whether this selector publishes every input column unchanged. */
   get isAll(): boolean
+  /**
+   * Whether applying this selector changes nothing, so a batch is handed
+   * back as it is.
+   */
+  get isIdentity(): boolean
+  /**
+   * The row this selector publishes from one row of column values, in
+   * schema order.
+   */
+  applyRow(row: JsScalar): JsScalar
+  /** The bound plan, drawn one node per line with datatypes and costs. */
+  explain(): string
+  /** The struct root this selector publishes, as text. */
+  toString(): string
 }
-export type JsBoundStatement = BoundStatement
+export type JsBoundSelector = BoundSelector
 
 /**
  * A lazy iterator of bounded byte arrays.
@@ -607,66 +632,76 @@ export declare class Digest {
 }
 export type JsDigest = Digest
 
-/** One recursive, typed filter and projection tree. */
+/**
+ * A clause, a plan, or a sequence of plans: whatever one piece of
+ * expression text is.
+ */
 export declare class Expression {
-  /** Parse one expression from its canonical text, or clone one. */
-  constructor(value: Expression | string)
+  /**
+   * Read one expression from its text, a clause, a plan, or another
+   * expression.
+   */
+  constructor(value: Expression | Plan | Selector | Filter | string)
   /** Parse one expression from its canonical text. */
   static parse(text: string): Expression
   /** Read one expression from its structural JSON document. */
   static fromJson(document: string): Expression
-  /** Name one top-level column. */
-  static column(name: string): Expression
+  /** The `select` expression of one selector. */
+  static select(selector: Selector | Term | string | Array<Term | string>): Expression
+  /** The `where` expression of one filter. */
+  static filter(filter: Filter | Term | string): Expression
+  /** The expression of one plan: a lone clause collapses into it. */
+  static plan(plan: Plan | Selector | Filter | JsField | string): Expression
+  /** The sequence of expressions, applied in order; one is itself. */
+  static sequence(steps: Array<Expression | Plan | Selector | Filter | string>): Expression
   /**
-   * Hold one constant.
-   *
-   * The constant is a `Scalar`, which is the JavaScript spelling of the
-   * values JavaScript itself has none of - an exact decimal, a date, a
-   * timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
-   * one out of an ordinary JavaScript value.
+   * Which kind this expression is: `select`, `where`, `plan`, or
+   * `sequence`.
    */
-  static literal(value: JsScalar): Expression
-  /** Name one holder attribute, such as `size`, or `partition` with a column. */
-  static attribute(name: string, key?: string | undefined | null): Expression
-  /** Name one late-bound value. */
-  static parameter(name: string): Expression
-  /** The expression that is true for every row. */
-  static alwaysTrue(): Expression
-  /** The expression that is true for no row. */
-  static alwaysFalse(): Expression
+  get kind(): 'select' | 'where' | 'plan' | 'sequence'
+  /** Whether this is a `select` clause. */
+  get isSelector(): boolean
+  /** Whether this is a `where` clause. */
+  get isFilter(): boolean
+  /** Whether this is a plan with more than one section. */
+  get isPlan(): boolean
+  /** Whether this is a sequence of expressions. */
+  get isSequence(): boolean
+  /** Whether applying this expression changes nothing. */
+  get isIdentity(): boolean
+  /** The selector, when this is a `select` clause. */
+  asSelector(): Selector | null
+  /** The filter, when this is a `where` clause. */
+  asFilter(): Filter | null
+  /** The plan, when this is one. */
+  asPlan(): Plan | null
+  /** The steps of a sequence; any other expression is its own one step. */
+  get steps(): Array<Expression>
   /** Every top-level column this expression reads, in first-seen order. */
   get columns(): Array<string>
   /** Every holder attribute this expression reads, in first-seen order. */
   get attributes(): Array<string>
   /** Every parameter this expression names, in first-seen order. */
   get parameters(): Array<string>
-  /** The top-level `and` operands, flattened. */
-  conjuncts(): Array<Expression>
-  /** How deep this expression nests, counting itself as one level. */
-  get depth(): number
-  /** Build `this and other`. */
-  and(other: Expression | string): Expression
-  /** Build `this or other`. */
-  or(other: Expression | string): Expression
-  /** Build `not this`. */
-  not(): Expression
-  /** Build `-this`, folding a numeric literal in the native core. */
-  negate(): Expression
+  /** This expression with every clause simplified. */
+  simplify(): Expression
+  /** Refuse an expression past the depth or node limit, before a walk. */
+  checkBudget(): void
+  /** The struct root this expression publishes from `root`. */
+  applyField(root: JsField): JsField
+  /** The tree of this expression, its clause, plan or sequence at the root. */
+  explain(): string
   /** Write this expression as a structural JSON document. */
   intoJson(): string
-  /** Resolve this expression against a struct root schema. */
-  bind(schema: JsField): JsBound
-  /** The output field this expression produces against a schema. */
-  field(schema: JsField): JsField
   /** The canonical text, which re-parses to this expression. */
   toString(): string
-  /** Return whether two expressions are the same tree. */
-  equals(other: Expression | string): boolean
-  /** Compare two expression trees by the core's total structural order. */
-  compare(other: Expression | string): number
+  /** Return whether two expressions are the same. */
+  equals(other: Expression | Plan | Selector | Filter | string): boolean
+  /** Compare two expressions by the core's total structural order. */
+  compare(other: Expression | Plan | Selector | Filter | string): number
   /** Return deterministic hash bits for the canonical expression text. */
   stableHash(): bigint
-  /** Make a cheap native clone of this immutable expression tree. */
+  /** Make a cheap native clone of this immutable expression. */
   clone(): Expression
 }
 export type JsExpression = Expression
@@ -1025,6 +1060,8 @@ export declare class Field {
   get identity(): JsProtocolField
   /** The live generic partition-field property view. */
   get partition(): JsProtocolField
+  /** The live generic transform-field property view. */
+  get transform(): JsProtocolField
   /** The live Amazon S3 property view. */
   get s3(): JsProtocolField
   /** The live Google Cloud Storage property view. */
@@ -1150,6 +1187,73 @@ export declare class FieldPath {
   equals(other: FieldPath): boolean
 }
 export type JsFieldPath = FieldPath
+
+/** A `where` clause: one predicate over rows. */
+export declare class Filter {
+  /**
+   * Read one filter from a predicate's text, a `Term`, or another filter;
+   * the `where` keyword is optional.
+   */
+  constructor(value: Filter | Term | string)
+  /** Parse one filter from its canonical text. */
+  static parse(text: string): Filter
+  /** Read one filter from its structural JSON document. */
+  static fromJson(document: string): Filter
+  /** The filter that keeps every row. */
+  static alwaysTrue(): Filter
+  /** The filter that keeps no row. */
+  static alwaysFalse(): Filter
+  /** Conjoin many filters into one; empty keeps every row. */
+  static all(operands: Array<Filter | Term | string>): Filter
+  /** Disjoin many filters into one; empty keeps no row. */
+  static any(operands: Array<Filter | Term | string>): Filter
+  /** The predicate this filter keeps rows by. */
+  get term(): Term
+  /** Whether this filter keeps every row. */
+  get isAlwaysTrue(): boolean
+  /** Whether this filter keeps no row. */
+  get isAlwaysFalse(): boolean
+  /** Whether this filter reads any holder attribute. */
+  get hasAttributes(): boolean
+  /** Every top-level column this filter reads, in first-seen order. */
+  get columns(): Array<string>
+  /** Every holder attribute this filter reads, in first-seen order. */
+  get attributes(): Array<string>
+  /** Every parameter this filter names, in first-seen order. */
+  get parameters(): Array<string>
+  /** The top-level `and` operands, each its own filter. */
+  conjuncts(): Array<Filter>
+  /** This filter with the same answer and fewer nodes. */
+  simplify(): Filter
+  /** Refuse a filter past the depth or node limit, before a walk. */
+  checkBudget(): void
+  /** Build `this and other`. */
+  and(other: Filter | Term | string): Filter
+  /** Build `this or other`. */
+  or(other: Filter | Term | string): Filter
+  /** Build `not this`. */
+  not(): Filter
+  /**
+   * The struct root the kept rows have: the schema itself, once the
+   * predicate types against it.
+   */
+  applyField(root: JsField): JsField
+  /** The tree of this filter, drawn one node per line. */
+  explain(): string
+  /** Write this filter as a structural JSON document. */
+  intoJson(): string
+  /** The canonical text, which re-parses to this filter. */
+  toString(): string
+  /** Return whether two filters are the same predicate. */
+  equals(other: Filter | Term | string): boolean
+  /** Compare two filters by the core's total structural order. */
+  compare(other: Filter | Term | string): number
+  /** Return deterministic hash bits for the canonical filter text. */
+  stableHash(): bigint
+  /** Make a cheap native clone of this immutable filter. */
+  clone(): Filter
+}
+export type JsFilter = Filter
 
 /**
  * One dictionary, reading captured lines into messages, with the Arrow twins.
@@ -2303,9 +2407,10 @@ export declare class IOBase {
    * than guessed at - this may keep a file the rows later discard and can
    * never discard one they would have kept.
    *
-   * `filter` is an `Expression` or the text of one, which parses.
+   * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+   * parses.
    */
-  childrenMatching(filter: Expression | string, includePrivate?: boolean | undefined | null): JsListing
+  childrenMatching(filter: Filter | Term | string, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Iterate the leaves beneath this one carrying every given partition.
    *
@@ -2540,7 +2645,7 @@ export declare class IOBase {
    */
   appendArrowReader(batches: JsBatchReader, options?: JsRecordOptions | undefined | null): void
   /**
-   * Merge every incoming row by `options.mergeByNames`.
+   * Merge every incoming row by `options.mergeBy`.
    *
    * A non-empty match key is required. The core keeps the incoming reader
    * streaming, applies `options.field` once, and publishes through the
@@ -3020,6 +3125,143 @@ export declare class PartitionSpec {
 }
 export type JsPartitionSpec = PartitionSpec
 
+/**
+ * The sections of one read or write: what it creates, writes, selects,
+ * reads from, keeps, orders, and how many rows.
+ */
+export declare class Plan {
+  /**
+   * Read one plan from its text, a clause, a `Field` (the `create`
+   * section it declares), or another plan; nothing is the empty plan.
+   */
+  constructor(value?: Plan | Selector | Filter | JsField | string | undefined | null)
+  /** Parse one plan from its canonical text. */
+  static parse(text: string): Plan
+  /** Read one plan from its structural JSON document. */
+  static fromJson(document: string): Plan
+  /** The plan a struct root is: a `create` section declaring it. */
+  static fromField(field: JsField): Plan
+  /** The `create` section's target, spelled as the grammar spells it. */
+  get createTarget(): string | null
+  /** The `create` section's schema, when the plan has one. */
+  get schema(): Selector | null
+  /** The name of the struct root this plan declares or reads. */
+  get rootName(): string
+  /** The metadata the `create` section declares on the root, `with (...)`. */
+  get rootMetadata(): Array<MetadataEntry>
+  /**
+   * The write verb - `insert into`, `insert overwrite`, `upsert into`,
+   * `delete from` - or `null` for a read.
+   */
+  get verb(): string | null
+  /** The write section's target, when the write names one. */
+  get writeTarget(): string | null
+  /** The keys an upsert matches stored rows on; empty otherwise. */
+  get mergeBy(): Selector
+  /** The `select` section; `select *` when absent. */
+  get selector(): Selector
+  /** The `from` section, spelled as the grammar spells it, or `null`. */
+  get source(): string | null
+  /** The plan the `from` section reads, when it is one in parentheses. */
+  get sourcePlan(): Plan | null
+  /** The `where` section; always true when absent. */
+  get filter(): Filter
+  /** The `order by` keys, in priority order. */
+  get ordering(): Array<PlanOrder>
+  /** The row limit, when the plan has one. */
+  get limit(): number | null
+  /** The rows skipped before the first kept, when the plan has an offset. */
+  get offset(): number | null
+  /** Whether the plan has no section at all. */
+  get isEmpty(): boolean
+  /**
+   * Whether applying the plan changes nothing: no write, no schema, and
+   * read sections that keep every row and column.
+   */
+  get isIdentity(): boolean
+  /**
+   * This plan with a `create` section: the schema it declares, and a
+   * target's text or `null` for the handle the plan is given to.
+   */
+  withCreate(schema: Selector | Term | string | Array<Term | string>, target?: string | undefined | null): Plan
+  /**
+   * This plan with a write section: a verb in any spelling the grammar
+   * reads, a target's text or `null` for the handle the plan is given
+   * to, and the keys an upsert matches on.
+   */
+  withWrite(verb: string, target?: string | undefined | null, mergeBy?: Selector | Term | string | Array<Term | string> | undefined | null): Plan
+  /** This plan with a `select` section, replacing any it carries. */
+  withSelect(selector: Selector | Term | string | Array<Term | string>): Plan
+  /** This plan reading from a target's text or from another plan. */
+  withSource(source: Plan | string): Plan
+  /** This plan with a `where` section, replacing any it carries. */
+  withFilter(filter: Filter | Term | string): Plan
+  /**
+   * This plan with an `order by`, replacing any it carries; each key is
+   * spelled as the grammar spells it, `"size desc nulls first"`.
+   */
+  withOrdering(keys: Array<string>): Plan
+  /** This plan with a row limit; `null` lifts it. */
+  withLimit(limit?: number | undefined | null): Plan
+  /** This plan skipping `offset` rows before the first kept; `null` lifts it. */
+  withOffset(offset?: number | undefined | null): Plan
+  /**
+   * This plan matching stored rows on these keys, which makes it an
+   * upsert when it has no write section.
+   */
+  withMergeBy(mergeBy: Selector | Term | string | Array<Term | string>): Plan
+  /** The struct root the `create` section declares, or `null`. */
+  field(): JsField | null
+  /** The struct root this plan publishes from `root`. */
+  fieldFrom(root: JsField): JsField
+  /** Every top-level column this plan reads, in first-seen order. */
+  get columns(): Array<string>
+  /** The stored columns a read has to decode, or `null` for all of them. */
+  get readColumns(): Array<string> | null
+  /** Every holder attribute this plan reads, in first-seen order. */
+  get attributes(): Array<string>
+  /** Every parameter this plan names, in first-seen order. */
+  get parameters(): Array<string>
+  /**
+   * The sections that shape a read - `select`, `where`, `order by`,
+   * `limit`, `offset` - as a plan of their own.
+   */
+  readSections(): Plan
+  /** This plan with every section simplified. */
+  simplify(): Plan
+  /** Refuse a plan past the depth or node limit, before a walk. */
+  checkBudget(): void
+  /**
+   * This plan as an expression: a lone `select` is a `Selector`, a lone
+   * `where` a `Filter`, anything else the plan itself.
+   */
+  intoExpression(): JsExpression
+  /**
+   * Run this plan from its own `from` source.
+   *
+   * A target source is read through its holder with the read sections
+   * pushed down; a nested plan runs first; no source is the empty stream.
+   * A plan with a `create` or write section writes and yields the empty
+   * stream under the schema it wrote.
+   */
+  execute(): JsBatchReader
+  /** The tree of this plan, one branch per section in the order they run. */
+  explain(): string
+  /** Write this plan as a structural JSON document. */
+  intoJson(): string
+  /** The canonical text, which re-parses to this plan. */
+  toString(): string
+  /** Return whether two plans describe the same operation. */
+  equals(other: Plan | Selector | Filter | JsField | string): boolean
+  /** Compare two plans by the core's total structural order. */
+  compare(other: Plan | Selector | Filter | JsField | string): number
+  /** Return deterministic hash bits for the canonical plan text. */
+  stableHash(): bigint
+  /** Make a cheap native clone of this immutable plan. */
+  clone(): Plan
+}
+export type JsPlan = Plan
+
 /** One configuration: the `ObjectName` naming it and the attributes it states. */
 export declare class Plugin {
   /**
@@ -3320,30 +3562,19 @@ export declare class RecordOptions {
   /** The MIME type of the encoding these options describe. */
   get mimeType(): MimeType
   /**
-   * The declared root Field, built from `name`, `dtype`, and `metadata`;
-   * `null` until a datatype is declared.
+   * The declared root Field - the `create` section of the plan - or
+   * `null` when the shape is inferred from the rows.
    */
   get field(): JsField | null
   /**
-   * Declare the root Field: its name, datatype, and metadata become the
-   * three declared parts; nullability and dictionary options are dropped.
+   * Declare the root Field, or clear it with `null`; the stored root is
+   * always required, whatever nullability the value carried.
    */
-  set field(field: JsField)
+  set field(field: JsField | undefined | null)
   /** The root Field name, declared or given to an inferred schema. */
   get name(): string
   /** Set the root Field name. */
   set name(name: string)
-  /** The declared root datatype; `null` when the shape is inferred. */
-  get dtype(): JsDataType | null
-  /**
-   * Declare the root datatype from a `DataType` or a type expression;
-   * `null` clears it.
-   */
-  set dtype(dtype: DataTypeInput | undefined | null)
-  /** The root metadata entries in lexical key order; empty unless declared. */
-  get metadata(): Array<MetadataEntry>
-  /** Declare the root metadata from entries or a plain object; empty clears. */
-  set metadata(values: MetadataInput)
   /** Whether a cast may null a value it cannot convert. */
   get safe(): boolean
   /** Set whether a cast may null a value it cannot convert. */
@@ -3390,21 +3621,53 @@ export declare class RecordOptions {
   get level(): number
   /** Set the compression level on the shared 0-to-9 scale. */
   set level(level: number)
-  /** The column names a write matches rows on; empty means overwrite. */
-  get mergeByNames(): Array<string>
-  /** Set the column names a write matches rows on. */
-  set mergeByNames(mergeByNames: Array<string>)
-  /** The column names a read or write is narrowed to; empty selects all. */
-  get selectByNames(): Array<string>
-  /** Set the column names a read or write is narrowed to. */
-  set selectByNames(selectByNames: Array<string>)
   /**
-   * The partition equalities a read is pruned and filtered by; empty
-   * keeps every row. Values are spelled as partition paths spell them.
+   * The keys a write matches stored rows on - the plan's `upsert by`;
+   * `select *` (empty) means overwrite or append.
    */
-  get filterPartitions(): Array<[string, string]>
-  /** Set the partition equalities a read is pruned and filtered by. */
-  set filterPartitions(filterPartitions: Array<[string, string]>)
+  get mergeBy(): Selector
+  /**
+   * Set the keys a write matches stored rows on: a `Selector`, the text
+   * of one, or the key column names.
+   */
+  set mergeBy(mergeBy: Selector | Term | string | Array<Term | string>)
+  /**
+   * The `select` section a read or write is shaped by; `select *` keeps
+   * every column.
+   */
+  get selector(): Selector
+  /**
+   * Set the `select` section: a `Selector`, the text of one, a `Term`, or
+   * the column names.
+   */
+  set selector(selector: Selector | Term | string | Array<Term | string>)
+  /**
+   * The `where` section a read is pruned and filtered by; always true
+   * keeps every row.
+   */
+  get filter(): Filter
+  /**
+   * Set the `where` section: a `Filter`, a `Term`, or the text of a
+   * predicate.
+   */
+  set filter(filter: Filter | Term | string)
+  /**
+   * The whole plan these options run: `create` from the declared field,
+   * `upsert by` from the merge keys, `select`, `where`, and `limit` from
+   * `maxRowSize`.
+   */
+  get plan(): Plan
+  /**
+   * Split a `Plan`, its text, a clause, or a `Field` back into the
+   * sections, replacing every one of them.
+   */
+  set plan(plan: Plan | Selector | Filter | JsField | string)
+  /**
+   * The partition equalities the filter pins, `[column, value]` pairs
+   * spelled as partition paths spell them; what prunes a listing before
+   * anything is opened.
+   */
+  partitionPairs(): Array<[string, string]>
   /** The timezone applied while autotyping offset-free timestamps. */
   get timezone(): JsTimezone | null
   /** Set or clear the timezone for autotyped timestamps. */
@@ -3447,10 +3710,6 @@ export declare class RecordOptions {
   withField(field: JsField): RecordOptions
   /** Return these options with a different root Field name. */
   withName(name: string): RecordOptions
-  /** Return these options with a declared root datatype. */
-  withDtype(dtype: DataTypeInput): RecordOptions
-  /** Return these options with declared root metadata. */
-  withMetadata(values: MetadataInput): RecordOptions
   /** Return these options with a different cast strictness. */
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
@@ -3463,12 +3722,14 @@ export declare class RecordOptions {
   withCommitRowSize(commitRowSize: number): RecordOptions
   /** Return these options with a different compression level. */
   withLevel(level: number): RecordOptions
-  /** Return these options with a match key for a write. */
-  withMergeByNames(mergeByNames: Array<string>): RecordOptions
-  /** Return these options narrowed to the named columns, on reads and writes. */
-  withSelectByNames(selectByNames: Array<string>): RecordOptions
-  /** Return these options pruned and filtered to the named partitions. */
-  withFilterPartitions(filterPartitions: Array<[string, string]>): RecordOptions
+  /** Return these options with the keys a write matches stored rows on. */
+  withMergeBy(mergeBy: Selector | Term | string | Array<Term | string>): RecordOptions
+  /** Return these options shaped by a `select` section, on reads and writes. */
+  withSelector(selector: Selector | Term | string | Array<Term | string>): RecordOptions
+  /** Return these options pruned and filtered by a `where` section. */
+  withFilter(filter: Filter | Term | string): RecordOptions
+  /** Return these options with every section a plan spells. */
+  withPlan(plan: Plan | Selector | Filter | JsField | string): RecordOptions
   /** Return whether the encoding variant and every current setting are equal. */
   equals(other: RecordOptions): boolean
   /** Compare the complete options through the core's total order. */
@@ -3484,6 +3745,22 @@ export declare class RecordOptions {
   toString(): string
 }
 export type JsRecordOptions = RecordOptions
+
+/**
+ * Native rows streaming out of an expression, each a `Scalar` sequence in
+ * the order of `field`.
+ */
+export declare class Records {
+  /** The struct root every row is shaped under. */
+  get field(): JsField
+  /** The remaining rows as a native batch reader, batched lazily. */
+  intoArrowReader(): JsBatchReader
+  /** The records a native batch reader holds, one row at a time. */
+  static fromArrowReader(reader: JsBatchReader): Records
+  /** The struct root the rows are shaped under, as text. */
+  toString(): string
+}
+export type JsRecords = Records
 
 /**
  * One native codec value: the pivot every JavaScript value crosses.
@@ -3684,6 +3961,79 @@ export declare class SchemaUpdate {
 }
 export type JsSchemaUpdate = SchemaUpdate
 
+/** A `select` clause: the columns published, computed, declared or excluded. */
+export declare class Selector {
+  /**
+   * Read one selector from a projection list's text, a `Term`, another
+   * selector, or projection texts; the `select` keyword is optional.
+   */
+  constructor(value: Selector | Term | string | Array<Term | string>)
+  /** Parse one selector from its canonical text. */
+  static parse(text: string): Selector
+  /** Read one selector from its structural JSON document. */
+  static fromJson(document: string): Selector
+  /** `select *`: every column, unchanged. */
+  static all(): Selector
+  /** `select * exclude (...)`: every column but the named ones. */
+  static allExcept(names: Array<string>): Selector
+  /** The named columns, in that order, unchanged. */
+  static fromColumns(names: Array<string>): Selector
+  /**
+   * The selector a struct root declares: one column per child, with its
+   * datatype, nullability, metadata, and any `transform:` it carries.
+   */
+  static fromField(field: JsField): Selector
+  /** Each projection, as its canonical text. */
+  get projections(): Array<string>
+  /** The names this selector publishes, in output order; empty for `*`. */
+  get names(): Array<string>
+  /** The column names `select * exclude (...)` drops. */
+  get excluded(): Array<string>
+  /** Whether this is `select *` with nothing excluded. */
+  get isAll(): boolean
+  /** Whether every projection is a bare column. */
+  get isColumns(): boolean
+  /** How many projections this selector holds. */
+  get length(): number
+  /** Every top-level column this selector reads, in first-seen order. */
+  get columns(): Array<string>
+  /** Every holder attribute this selector reads, in first-seen order. */
+  get attributes(): Array<string>
+  /** Every parameter this selector names, in first-seen order. */
+  get parameters(): Array<string>
+  /** This selector with one more projection, a term or its text. */
+  withProjection(projection: Term | string): Selector
+  /** This selector without the projections that are these bare columns. */
+  withoutColumns(names: Array<string>): Selector
+  /** This selector with every term simplified and every self alias dropped. */
+  simplify(): Selector
+  /** Refuse a selector past the depth or node limit, before a walk. */
+  checkBudget(): void
+  /** The struct root this selector publishes from `root`. */
+  applyField(root: JsField): JsField
+  /**
+   * The struct root this selector publishes from `root`, carrying the
+   * selector itself as each column's `transform:` declaration, so
+   * `Selector.fromField` of the answer is this selector again.
+   */
+  intoField(root: JsField): JsField
+  /** The tree of this selector, one branch per projection. */
+  explain(): string
+  /** Write this selector as a structural JSON document. */
+  intoJson(): string
+  /** The canonical text, which re-parses to this selector. */
+  toString(): string
+  /** Return whether two selectors publish the same columns. */
+  equals(other: Selector | Term | string | Array<Term | string>): boolean
+  /** Compare two selectors by the core's total structural order. */
+  compare(other: Selector | Term | string | Array<Term | string>): number
+  /** Return deterministic hash bits for the canonical selector text. */
+  stableHash(): bigint
+  /** Make a cheap native clone of this immutable selector. */
+  clone(): Selector
+}
+export type JsSelector = Selector
+
 /** One committed version of a table's contents. */
 export declare class Snapshot {
   /** Identifier of this snapshot, unique within the table. */
@@ -3752,37 +4102,6 @@ export declare class SnapshotRef {
   clone(): SnapshotRef
 }
 export type JsSnapshotRef = SnapshotRef
-
-/** A projection list, a predicate, an ordering, and a limit. */
-export declare class Statement {
-  /** Parse one statement from canonical text, or cheaply clone one. */
-  constructor(value: Statement | string)
-  /** Read one statement from its structural JSON document. */
-  static fromJson(document: string): Statement
-  /** The names this statement publishes, in output order. Empty means `*`. */
-  get projections(): Array<string>
-  /** The predicate, when the statement had a `where`. */
-  get predicate(): Expression | null
-  /** The ordering keys, in priority order. */
-  get ordering(): Array<StatementOrder>
-  /** The row limit, when the statement had one. */
-  get limit(): number | null
-  /** Return whether this statement selects every input column unchanged. */
-  get isAll(): boolean
-  /** Write this statement as a structural JSON document. */
-  intoJson(): string
-  /** The canonical text, which re-parses to this statement. */
-  toString(): string
-  /** Return whether two statements describe the same operation. */
-  equals(other: Statement | string): boolean
-  /** Compare two statements by the core's total structural order. */
-  compare(other: Statement | string): number
-  /** Return deterministic hash bits for the canonical statement text. */
-  stableHash(): bigint
-  /** Make a cheap native clone of this immutable statement. */
-  clone(): Statement
-}
-export type JsStatement = Statement
 
 /**
  * The enum a string field's values name: one value per member name.
@@ -3918,15 +4237,16 @@ export declare class Table {
   /**
    * Read the rows matching one predicate as a `BatchReader`.
    *
-   * `filter` is an `Expression` or the text of one, which parses. It is the
-   * whole expression language rather than equality pairs: ranges, null
-   * tests, `in` lists, nested paths, and `&holder.*` questions about the
-   * files themselves. Planning prunes with the metadata chain, and only the
-   * conjuncts it could not settle are tested against the rows.
+   * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
+   * parses. It is the whole expression language rather than equality
+   * pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
+   * questions about the files themselves. Planning prunes with the
+   * metadata chain, and only the conjuncts it could not settle are tested
+   * against the rows.
    */
-  scanMatching(filter: Expression | string, field?: JsField | undefined | null): BatchReader
+  scanMatching(filter: Filter | Term | string, field?: JsField | undefined | null): BatchReader
   /** Report what one predicate lets the scan leave alone. */
-  planMatching(filter: Expression | string): ScanPlanCounts
+  planMatching(filter: Filter | Term | string): ScanPlanCounts
   /**
    * Read the rows matching `filters`, keeping the columns `field` names.
    *
@@ -3999,29 +4319,30 @@ export declare class Table {
    */
   overwriteWhere(filters: ScanFilters | undefined | null, batches: BatchReader, options?: IcebergOptions | undefined | null): void
   /**
-   * Merge `batches` into the stored rows, matching on `mergeByNames`.
+   * Merge `batches` into the stored rows, matching on `mergeBy`: a
+   * `Selector`, the text of one, or the key column names.
    *
    * A row whose key is already stored updates it and a row whose key is not
    * appends. Only the files whose recorded bounds could hold an incoming key
    * are read and rewritten - the rest are carried into the new snapshot
    * untouched - so an upsert costs the files it can actually change. A
-   * non-empty `mergeByNames` is required because nothing else identifies a
+   * non-empty `mergeBy` is required because nothing else identifies a
    * row.
    *
    * `safe` decides what a cast that cannot convert a value does: the
    * default nulls it, and `false` throws instead. `options` configures this
    * one write, exactly as on [`append`](Self::append).
    */
-  merge(batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  merge(batches: BatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /**
-   * Merge `batches` into the rows `filters` selects, on `mergeByNames`.
+   * Merge `batches` into the rows `filters` selects, on `mergeBy`.
    *
    * [`merge`](Self::merge) narrowed to a part of the table first: the
    * filters decide which files are candidates at all, and the match-key
    * statistics then decide which of those are actually read. `options`
    * configures this one write, exactly as on [`append`](Self::append).
    */
-  mergeWhere(filters: ScanFilters | undefined | null, batches: BatchReader, mergeByNames: Array<string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
+  mergeWhere(filters: ScanFilters | undefined | null, batches: BatchReader, mergeBy: Selector | Term | string | Array<Term | string>, safe?: boolean | undefined | null, options?: IcebergOptions | undefined | null): void
   /** Add a schema, make it current, and write a new metadata document. */
   evolveSchema(schema: JsField): number
   /**
@@ -4228,6 +4549,146 @@ export declare class Tables {
 }
 export type JsTables = Tables
 
+/** One recursive, typed tree: a column, a constant, a comparison, a function. */
+export declare class Term {
+  /** Parse one term from its canonical text, or clone one. */
+  constructor(value: Term | string)
+  /** Parse one term from its canonical text. */
+  static parse(text: string): Term
+  /** Read one term from its structural JSON document. */
+  static fromJson(document: string): Term
+  /** Name one top-level column. */
+  static column(name: string): Term
+  /**
+   * Hold one constant.
+   *
+   * The constant is a `Scalar`, which is the JavaScript spelling of the
+   * values JavaScript itself has none of - an exact decimal, a date, a
+   * timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
+   * one out of an ordinary JavaScript value.
+   */
+  static literal(value: JsScalar): Term
+  /** Hold a constant in an explicitly named datatype, checked against it. */
+  static typedLiteral(dtype: DataTypeInput, value: JsScalar): Term
+  /** Name one holder attribute, such as `size`, or `partition` with a column. */
+  static attribute(name: string, key?: string | undefined | null): Term
+  /** Name one late-bound value. */
+  static parameter(name: string): Term
+  /** The term that is true for every row. */
+  static alwaysTrue(): Term
+  /** The term that is true for no row. */
+  static alwaysFalse(): Term
+  /** Conjoin many terms into one flattened node; empty is true. */
+  static all(operands: Array<Term | string>): Term
+  /** Disjoin many terms into one flattened node; empty is false. */
+  static any(operands: Array<Term | string>): Term
+  /** Call one function of the closed scalar set over terms or their text. */
+  static call(name: string, arguments: Array<Term | string>): Term
+  /** Every top-level column this term reads, in first-seen order. */
+  get columns(): Array<string>
+  /** Every holder attribute this term reads, in first-seen order. */
+  get attributes(): Array<string>
+  /** Every parameter this term names, in first-seen order. */
+  get parameters(): Array<string>
+  /** The top-level `and` operands, flattened. */
+  conjuncts(): Array<Term>
+  /** How deep this term nests, counting itself as one level. */
+  get depth(): number
+  /** The number of nodes this term holds. */
+  get nodeCount(): number
+  /** Whether this node is a constant. */
+  get isLiteral(): boolean
+  /** The column name this node reads directly, or `null`. */
+  get asColumn(): string | null
+  /** Whether this node is the constant true; an empty `all` counts. */
+  get isAlwaysTrue(): boolean
+  /** Whether this node is the constant false; an empty `any` counts. */
+  get isAlwaysFalse(): boolean
+  /** Whether this term reads any holder attribute. */
+  get hasAttributes(): boolean
+  /** Refuse a term past the depth or node limit, before a walk. */
+  checkBudget(): void
+  /** This term with the same answer and fewer nodes. */
+  simplify(): Term
+  /** The tree of this term, drawn one node per line. */
+  explain(): string
+  /** Build `this and other`. */
+  and(other: Term | string): Term
+  /** Build `this or other`. */
+  or(other: Term | string): Term
+  /** Build `not this`. */
+  not(): Term
+  /**
+   * Compare this term with another under a named comparison.
+   *
+   * The vocabulary is the grammar's own - `=`, `<>`, `<`, `<=`, `>`, `>=`,
+   * `is distinct from`, `is not distinct from`.
+   */
+  comparison(comparison: string, other: Term | string): Term
+  /** `this = other`. */
+  eq(other: Term | string): Term
+  /** `this <> other`. */
+  ne(other: Term | string): Term
+  /** `this < other`. */
+  lt(other: Term | string): Term
+  /** `this <= other`. */
+  le(other: Term | string): Term
+  /** `this > other`. */
+  gt(other: Term | string): Term
+  /** `this >= other`. */
+  ge(other: Term | string): Term
+  /** `this in (...)`, over the terms or texts given. */
+  isIn(values: Array<Term | string>): Term
+  /** `this between low and high`, inclusive at both ends. */
+  between(low: Term | string, high: Term | string): Term
+  /** `this is null`, which answers true or false and never unknown. */
+  isNull(): Term
+  /** `this is not null`. */
+  isNotNull(): Term
+  /** `this like pattern`, with SQL's `%` and `_` wildcards. */
+  like(pattern: Term | string): Term
+  /** `this ilike pattern`, folding ASCII case. */
+  ilike(pattern: Term | string): Term
+  /** `this glob pattern`, under the `.gitignore` path rule. */
+  glob(pattern: Term | string): Term
+  /** Cast this term to a datatype, refusing what it cannot hold. */
+  cast(dtype: DataTypeInput): Term
+  /** Cast this term to a datatype, nulling what it cannot hold. */
+  tryCast(dtype: DataTypeInput): Term
+  /** Read a struct child by name, resolved case-insensitively. */
+  child(name: string): Term
+  /**
+   * Read a list element by position, counting back from the end when
+   * negative.
+   */
+  at(index: number): Term
+  /**
+   * Read a run of list elements, `start` inclusive and `end` exclusive;
+   * either bound counts back from the end when negative, and an absent
+   * one is the list's own edge.
+   */
+  slice(start?: number | undefined | null, end?: number | undefined | null): Term
+  /** Read a map value by key. */
+  key(key: JsScalar): Term
+  /** Build `-this`, folding a numeric literal in the native core. */
+  negate(): Term
+  /** Write this term as a structural JSON document. */
+  intoJson(): string
+  /** The output field this term produces against a schema. */
+  field(schema: JsField): JsField
+  /** The canonical text, which re-parses to this term. */
+  toString(): string
+  /** Return whether two terms are the same tree. */
+  equals(other: Term | string): boolean
+  /** Compare two terms by the core's total structural order. */
+  compare(other: Term | string): number
+  /** Return deterministic hash bits for the canonical term text. */
+  stableHash(): bigint
+  /** Make a cheap native clone of this immutable tree. */
+  clone(): Term
+}
+export type JsTerm = Term
+
 /** The ordered entries one line or one nested payload declared. */
 export declare class TextEntries {
   get length(): number
@@ -4356,20 +4817,12 @@ export declare class TextOptions {
   get mimeType(): MimeType
   /** Return the declared root field, if any. */
   get field(): JsField | null
-  /** Replace the declared root field. */
-  set field(field: JsField)
+  /** Replace the declared root field, or clear it with `null`. */
+  set field(field: JsField | undefined | null)
   /** Return the inferred or declared root name. */
   get name(): string
   /** Replace the root name. */
   set name(name: string)
-  /** Return the declared root datatype, if any. */
-  get dtype(): JsDataType | null
-  /** Replace or clear the declared root datatype. */
-  set dtype(dtype: DataTypeInput | undefined | null)
-  /** Return root metadata entries in key order. */
-  get metadata(): Array<MetadataEntry>
-  /** Replace root metadata. */
-  set metadata(values: MetadataInput)
   /** Return whether casts may null incompatible values. */
   get safe(): boolean
   /** Set whether casts may null incompatible values. */
@@ -4394,18 +4847,39 @@ export declare class TextOptions {
   get level(): number
   /** Set the outer content-coding level. */
   set level(level: number)
-  /** Return write match-key column names. */
-  get mergeByNames(): Array<string>
-  /** Replace write match-key column names. */
-  set mergeByNames(names: Array<string>)
-  /** Return selected column names. */
-  get selectByNames(): Array<string>
-  /** Replace selected column names. */
-  set selectByNames(names: Array<string>)
-  /** Return partition filters. */
-  get filterPartitions(): Array<[string, string]>
-  /** Replace partition filters. */
-  set filterPartitions(partitions: Array<[string, string]>)
+  /**
+   * The keys a write matches stored rows on; empty means overwrite or
+   * append.
+   */
+  get mergeBy(): Selector
+  /**
+   * Set the keys a write matches stored rows on: a `Selector`, the text
+   * of one, or the key column names.
+   */
+  set mergeBy(mergeBy: Selector | Term | string | Array<Term | string>)
+  /** The `select` section a read or write is shaped by. */
+  get selector(): Selector
+  /**
+   * Set the `select` section: a `Selector`, the text of one, a `Term`, or
+   * the column names.
+   */
+  set selector(selector: Selector | Term | string | Array<Term | string>)
+  /** The `where` section a read is pruned and filtered by. */
+  get filter(): Filter
+  /**
+   * Set the `where` section: a `Filter`, a `Term`, or the text of a
+   * predicate.
+   */
+  set filter(filter: Filter | Term | string)
+  /** The whole plan these options run, section by section. */
+  get plan(): Plan
+  /**
+   * Split a `Plan`, its text, a clause, or a `Field` back into the
+   * sections, replacing every one of them.
+   */
+  set plan(plan: Plan | Selector | Filter | JsField | string)
+  /** The partition equalities the filter pins, `[column, value]` pairs. */
+  partitionPairs(): Array<[string, string]>
   /** The first emitted row number, or `null` when the column is omitted. */
   get startRownum(): bigint | null
   /** Set or clear the exact signed 64-bit starting row number. */
@@ -4488,10 +4962,6 @@ export declare class TextOptions {
   withField(field: JsField): TextOptions
   /** Return a copy with a different root name. */
   withName(name: string): TextOptions
-  /** Return a copy with a declared root datatype. */
-  withDtype(dtype: DataTypeInput): TextOptions
-  /** Return a copy with declared root metadata. */
-  withMetadata(values: MetadataInput): TextOptions
   /** Return a copy with different cast strictness. */
   withSafe(safe: boolean): TextOptions
   /** Return a copy with a row-per-batch bound. */
@@ -4504,12 +4974,14 @@ export declare class TextOptions {
   withMaxByteSize(bytes: number): TextOptions
   /** Return a copy with a different content-coding level. */
   withLevel(level: number): TextOptions
-  /** Return a copy with write match-key columns. */
-  withMergeByNames(names: Array<string>): TextOptions
-  /** Return a copy with selected columns. */
-  withSelectByNames(names: Array<string>): TextOptions
-  /** Return a copy with partition filters. */
-  withFilterPartitions(partitions: Array<[string, string]>): TextOptions
+  /** Return a copy with the keys a write matches stored rows on. */
+  withMergeBy(mergeBy: Selector | Term | string | Array<Term | string>): TextOptions
+  /** Return a copy shaped by a `select` section. */
+  withSelector(selector: Selector | Term | string | Array<Term | string>): TextOptions
+  /** Return a copy pruned and filtered by a `where` section. */
+  withFilter(filter: Filter | Term | string): TextOptions
+  /** Return a copy with every section a plan spells. */
+  withPlan(plan: Plan | Selector | Filter | JsField | string): TextOptions
   /** Return whether every setting is equal. */
   equals(other: TextOptions): boolean
   /** Compare every setting through the core total order. */
@@ -5204,16 +5676,6 @@ export interface AvroDecodeLimitsInput {
   maxNodes?: number
 }
 
-/** One schema-resolved ordering key exposed for inspection. */
-export interface BoundStatementOrder {
-  /** The resolved expression sorted by. */
-  expression: JsBound
-  /** `ascending` or `descending`. */
-  direction: 'ascending' | 'descending'
-  /** `first`, `last`, or `null` when the statement left the default implicit. */
-  nulls?: 'first' | 'last' | null
-}
-
 /** What a byte datatype declares: its layout and its bound. */
 export interface BytesParameters {
   /**
@@ -5268,6 +5730,24 @@ export interface CodecLimitsInput {
 
 /** Parse a format alias and return its stable native spelling. */
 export declare function codecNormalizeFormat(format: string): string
+
+/** Return whether an identifier has to be quoted to survive the grammar. */
+export declare function expressionNeedsQuoting(name: string): boolean
+
+/** The grammar's own vocabularies, as the canonical spellings they cross as. */
+export declare function expressionVocabularies(): ExpressionVocabularies
+
+/** The grammar's own vocabularies, as the canonical spellings they cross as. */
+export interface ExpressionVocabularies {
+  /** Every comparison the grammar knows, e.g. `=`, `is distinct from`. */
+  comparisons: Array<string>
+  /** Every function the closed scalar set knows, e.g. `year`, `truncate`. */
+  functions: Array<string>
+  /** Every holder attribute `&holder.<name>` can name, e.g. `size`. */
+  holderAttributes: Array<string>
+  /** Every write verb a plan spells canonically, e.g. `upsert into`. */
+  verbs: Array<string>
+}
 
 /** One per-column bound a manifest records, as its encoded bytes. */
 export interface FieldBound {
@@ -5474,6 +5954,24 @@ export interface PartitionEntry {
   value: string
 }
 
+/** The two halves of a predicate a partition layout splits it into. */
+export interface PartitionSplit {
+  /** The conjuncts a partition path answers. */
+  answerable: JsFilter
+  /** The conjuncts the rows have to answer. */
+  remaining: JsFilter
+}
+
+/** One `order by` key exposed for inspection. */
+export interface PlanOrder {
+  /** The term ordered by. */
+  term: Term
+  /** `asc` or `desc`. */
+  direction: 'asc' | 'desc'
+  /** `first` or `last`: where nulls go. */
+  nulls: 'first' | 'last'
+}
+
 /** What one predicate let a scan leave alone. */
 export interface ScanPlanCounts {
   /** Data files the scan will open. */
@@ -5486,16 +5984,6 @@ export interface ScanPlanCounts {
   manifestsSkipped: number
   /** Rows the planned files hold, as the manifests counted them. */
   recordCount: number
-}
-
-/** One unbound ordering key exposed for inspection. */
-export interface StatementOrder {
-  /** The expression sorted by. */
-  expression: JsExpression
-  /** `ascending` or `descending`. */
-  direction: 'ascending' | 'descending'
-  /** `first`, `last`, or `null` when the statement left the default implicit. */
-  nulls?: 'first' | 'last' | null
 }
 
 /**

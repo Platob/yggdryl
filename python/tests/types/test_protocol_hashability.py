@@ -13,12 +13,15 @@ from yggdryl import (
     DataType,
     Expression,
     Field,
+    Filter,
     IOBase,
     MediaType,
     MimeType,
+    Plan,
     PythonMetadata,
     RecordOptions,
-    Statement,
+    Selector,
+    Term,
     TextOptions,
     Timezone,
     Uri,
@@ -42,8 +45,11 @@ def test_canonical_values_remain_hashable_by_native_identity() -> None:
         MimeType.JSON,
         Timezone.UTC,
         Scalar.from_py({"id": 1}),
-        Expression("id + 1"),
-        Statement("select id"),
+        Term("id + 1"),
+        Filter("id > 1"),
+        Selector("id, id + 1 as next"),
+        Plan("select id from t"),
+        Expression("select id; where id > 1"),
         PartitionSpec.unpartitioned(),
         PythonMetadata("trading.book", "Quote", "dataclass"),
     ]
@@ -90,17 +96,16 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
     [
         ("trades.arrows", "field", Field("row", DataType.from_fields([]), False)),
         ("trades.arrows", "name", "records"),
-        ("trades.arrows", "dtype", "struct<id: int64>"),
-        ("trades.arrows", "metadata", {"owner": "tests"}),
         ("trades.arrows", "safe", True),
         ("trades.arrows", "batch_row_size", 32),
         ("trades.arrows", "commit_row_size", 64),
         ("trades.arrows", "max_row_size", 128),
         ("trades.arrows", "max_byte_size", 4096),
         ("trades.arrows", "level", 6),
-        ("trades.arrows", "merge_by_names", ["id"]),
-        ("trades.arrows", "select_by_names", ["id"]),
-        ("trades.arrows", "filter_partitions", [("venue", "XNAS")]),
+        ("trades.arrows", "merge_by", ["id"]),
+        ("trades.arrows", "selector", ["id"]),
+        ("trades.arrows", "filter", "venue = 'XNAS'"),
+        ("trades.arrows", "plan", "select id where id > 1"),
         ("events.txt", "timezone", "+02:00"),
         ("trades.avro", "block_codec", "null"),
         ("trades.avro", "sync_marker", b"0123456789abcdef"),
@@ -135,16 +140,15 @@ def test_record_options_value_protocols_preserve_each_variant(
         nullable=False,
     )
     options.name = "records"
-    options.metadata = {"owner": "tests"}
     options.safe = True
     options.batch_row_size = 32
     options.commit_row_size = 64
     options.max_row_size = 128
     options.max_byte_size = 4096
     options.level = 6
-    options.merge_by_names = ["id"]
-    options.select_by_names = ["id"]
-    options.filter_partitions = [("venue", "XNAS")]
+    options.merge_by = ["id"]
+    options.selector = ["id"]
+    options.filter = "venue = 'XNAS'"
     if options.mime_type == MimeType.PLAIN_TEXT:
         options.timezone = "+02:00"
     if options.block_codec is not None:
@@ -197,17 +201,20 @@ def test_record_options_value_protocols_preserve_each_variant(
 
 def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
     options = TextOptions()
-    options.name = "records"
-    options.dtype = "struct<body: binary not null>"
-    options.metadata = {"owner": "tests"}
+    options.field = Field(
+        "records",
+        "struct<body: binary not null>",
+        nullable=False,
+        metadata={"owner": "tests"},
+    )
     options.safe = True
     options.batch_row_size = 32
     options.commit_row_size = 64
     options.max_row_size = 128
     options.max_byte_size = 4096
     options.level = 6
-    options.select_by_names = ["body"]
-    options.filter_partitions = [("venue", "XNAS")]
+    options.selector = ["body"]
+    options.filter = "venue = 'XNAS'"
     options.framing = True
     options.leading_fragment = "error"
     options.max_record_byte_size = 2048
@@ -220,7 +227,12 @@ def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
 
     represented = eval(
         repr(options),
-        {"DataType": DataType, "TextOptions": TextOptions, "Timezone": Timezone},
+        {
+            "DataType": DataType,
+            "Field": Field,
+            "TextOptions": TextOptions,
+            "Timezone": Timezone,
+        },
     )
     for rebuilt in (
         represented,

@@ -584,13 +584,13 @@ impl PyField {
 
     /// Applies this schema's metadata-declared columns to one `RecordBatch`.
     ///
-    /// `cast` reconciles the batch to this root first, `partition` computes
-    /// every column a `partition:transform` over `partition:sources`
-    /// declares, and `digest` fills every holder last, over the rows as they
-    /// finally stand. Each protocol walks the declared Structs beneath this
+    /// `cast` reconciles the batch to this root first, `transform` computes
+    /// every column a `transform:expression` or a `partition:transform` over
+    /// `partition:sources` declares, and `digest` fills every holder last,
+    /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
     /// root and leaves a column holding anything but its canonical default
     /// alone, so applying twice writes nothing the first pass already did.
-    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -599,7 +599,7 @@ impl PyField {
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         safe: bool,
         nullability: &str,
@@ -609,7 +609,7 @@ impl PyField {
         let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
         let applied = self
             .inner
-            .apply_arrow_batch(&batch, digest, partition, cast, options)
+            .apply_arrow_batch(&batch, digest, transform, cast, options)
             .map_err(value_error)?;
         batch_to_pyarrow(py, applied)
     }
@@ -619,7 +619,7 @@ impl PyField {
     /// The declarations name every column they add, so the applied shape is a
     /// property of two schemas: nothing is decoded, and a declaration that
     /// cannot be satisfied fails here rather than on the first batch.
-    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -628,7 +628,7 @@ impl PyField {
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         safe: bool,
         nullability: &str,
@@ -638,7 +638,7 @@ impl PyField {
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
         let applied = self
             .inner
-            .apply_arrow_schema(schema, digest, partition, cast, options)
+            .apply_arrow_schema(schema, digest, transform, cast, options)
             .map_err(value_error)?;
         arrow_schema_to_pyarrow(py, &applied)
     }
@@ -647,7 +647,7 @@ impl PyField {
     ///
     /// The applied schema is derived once, so the returned reader answers it
     /// before the first batch is pulled and can be handed straight to a write.
-    #[pyo3(signature = (value, *, digest=true, partition=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -656,7 +656,7 @@ impl PyField {
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
         digest: bool,
-        partition: bool,
+        transform: bool,
         cast: bool,
         safe: bool,
         nullability: &str,
@@ -666,7 +666,7 @@ impl PyField {
         let reader = batch_reader_from_arrow_reader(value)?;
         let applied = self
             .inner
-            .apply_arrow_reader(reader, digest, partition, cast, options)
+            .apply_arrow_reader(reader, digest, transform, cast, options)
             .map_err(value_error)?;
         batch_reader_to_pyarrow(py, applied)
     }
@@ -1798,6 +1798,12 @@ impl PyField {
     #[getter]
     fn partition(slf: Py<Self>) -> PyProtocolField {
         PyProtocolField::new(slf, CoreScheme::PARTITION)
+    }
+
+    /// Returns the live generic transform-field property view.
+    #[getter]
+    fn transform(slf: Py<Self>) -> PyProtocolField {
+        PyProtocolField::new(slf, CoreScheme::TRANSFORM)
     }
 
     /// Returns the live Amazon S3 property view.
@@ -3220,22 +3226,22 @@ impl PyProtocolField {
             .map(|transform| transform.as_str().to_owned()))
     }
 
-    /// The expression this partition column derives its value with.
+    /// The term this partition column derives its value with.
     ///
     /// The declared `transform` is compiled over the field paths in
     /// `sources`, so `year(event)` is what the column actually computes. A
     /// column that declares neither answers `None`; a transform with no
     /// sources, or more sources than the transform reads, is a `ValueError`.
     #[getter]
-    fn expression(&self, py: Python<'_>) -> PyResult<Option<crate::expression::PyExpression>> {
-        self.require_partition("expression")?;
+    fn term(&self, py: Python<'_>) -> PyResult<Option<crate::expression::PyTerm>> {
+        self.require_partition("term")?;
         let field = self.borrow_field(py)?;
         Ok(field
             .inner
             .as_partition()
-            .expression()
+            .term()
             .map_err(value_error)?
-            .map(crate::expression::PyExpression::from_core))
+            .map(crate::expression::PyTerm::from_core))
     }
 
     #[setter]
@@ -3275,13 +3281,17 @@ impl PyProtocolField {
     ) -> PyResult<Bound<'py, PyAny>> {
         let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
         let field = self.borrow_field(py)?;
-        let applied = if self.scheme == CoreScheme::PARTITION {
-            field.inner.as_partition().apply_arrow_batch(&batch)
+        let applied = if self.scheme == CoreScheme::PARTITION
+            || self.scheme == CoreScheme::TRANSFORM
+        {
+            // A partition declaration is a transform: both views compute the
+            // columns their `transform` derives.
+            field.inner.as_transform().apply_arrow_batch(&batch)
         } else if self.scheme == CoreScheme::DIGEST {
             field.inner.as_digest().apply_arrow_batch(&batch)
         } else {
             return Err(PyTypeError::new_err(format!(
-                "apply_arrow_batch is a partition or digest operation, and this is a {} view",
+                "apply_arrow_batch is a transform, partition or digest operation, and this is a {} view",
                 self.scheme.as_str()
             )));
         };
