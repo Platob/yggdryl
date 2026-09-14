@@ -731,5 +731,5 @@ test('readRecords accepts one options value, not two', () => {
   const handle = IOBase.fromBytes()
   handle.mediaType = 'application/vnd.apache.arrow.stream'
   const options = handle.recordOptions()
-  assert.throws(() => handle.readRecords(options, options), /one options value/)
+  assert.throws(() => handle.readRecords(options, options), /plain object/)
 })

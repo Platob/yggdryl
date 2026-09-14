@@ -398,8 +398,11 @@ impl PyTextLine {
 
     /// The object this line was read from.
     #[getter]
-    fn url(&self) -> Option<crate::uri::PyUrl> {
-        self.inner.url().cloned().map(crate::uri::PyUrl::from_core)
+    fn sourceurl(&self) -> Option<crate::uri::PyUrl> {
+        self.inner
+            .sourceurl()
+            .cloned()
+            .map(crate::uri::PyUrl::from_core)
     }
 
     /// When the record was written, in nanoseconds UTC.

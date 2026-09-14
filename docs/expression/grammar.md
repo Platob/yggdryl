@@ -10,7 +10,7 @@ The language the [expression layer](index.md) parses: one plan grammar over one 
 | Types | `Term`, `Filter`, `Selector`, `Plan` and `Expression` are name-based and serializable; `Bound` and `BoundSelector` are schema-resolved and are not; partially bound is unrepresentable |
 | Bindings | one term binds against a data schema, a partition schema, and a listing |
 | Logic | Kleene three-valued, and a filter keeps a row only when the answer is exactly true |
-| Functions | 19, closed, no registry |
+| Functions | 19, closed; a registered user function is spelled `namespace.name(...)` and is not in the grammar ([Functions](functions.md)) |
 | Nesting | the schema grammar's hard limit, for terms and for plans in `from (...)` |
 | Nodes | at most 100,000, checked once before any walk |
 | Comment | `--` to end of line |
@@ -52,7 +52,8 @@ accessor    := atom ("." identifier | "[" key "]" | "[" [n] ":" [n] "]")*
 atom        := literal | "(" expr ")" | column | "&holder." attribute | ":" parameter
              | "cast" "(" expr "as" datatype ")" | "try_cast" "(" .. ")"
              | "case" ("when" expr "then" expr)+ ["else" expr] "end"
-             | function "(" expr,* ")" | "[" expr,* "]" | "{" expr ":" expr,* "}"
+             | function "(" expr,* ")" | identifier "." identifier "(" expr,* ")"
+             | "[" expr,* "]" | "{" expr ":" expr,* "}"
              | "struct" "(" expr "as" identifier,* ")" | datatype ("'text'" | "null")
 ```
 
@@ -89,6 +90,8 @@ The set is closed, because an open registry cannot promise that the three evalua
 
 `lower`, `upper`, `length`, `substring`, `trim`, `starts_with`, `ends_with`, `contains`, `concat`,
 `year`, `month`, `day`, `hour`, `truncate`, `coalesce`, `if_null`, `size`, `get`, `slice`.
+
+A qualified name - `py.double(size)` - is a [user-defined function](functions.md): registered with a signature outside the grammar, typed and called by the two row evaluators through it, and unknown to the statistics evaluator, which is what keeps the promise above.
 
 ## Decisions
 

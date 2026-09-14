@@ -309,7 +309,7 @@ pub(crate) fn prepare_arrow_write_onto(
     let mut delegated = options.clone();
     let declared = delegated.take_field();
     delegated.set_filter(crate::Filter::always_true());
-    delegated.set_selector(crate::Selector::all());
+    delegated.set_select(crate::Selector::all());
     delegated.set_max_row_size(None);
     delegated.set_max_byte_size(None);
     delegated.set_commit_row_size(None);
@@ -440,7 +440,7 @@ impl ArrowWriteSession {
         let mut delegated = options.clone();
         let declared = delegated.take_field();
         delegated.set_filter(crate::Filter::always_true());
-        delegated.set_selector(crate::Selector::all());
+        delegated.set_select(crate::Selector::all());
         delegated.set_max_row_size(None);
         delegated.set_max_byte_size(None);
         delegated.set_commit_row_size(None);

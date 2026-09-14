@@ -264,7 +264,7 @@ coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
 coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
 coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)
 coupled_hashed: txhash.TxHash = coupled_hasher.digest(b"AAPL", 1_700_000_000)
-coupled_scalar_hashed: txhash.TxHash = coupled_hasher.digest_scalar(Scalar.from_py("AAPL"), 1)
+coupled_scalar_hashed: txhash.TxHash = coupled_hasher.digest_scalar(Scalar.from_("AAPL"), 1)
 coupled_unix_of: int = coupled_hasher.unix_of("2023-11-14T22:13:20Z")
 coupled_rows: pa.Array = txhash.row_txhashes(source_batch, pa.array([1], pa.int64()))
 coupled_split: tuple[pa.Array, pa.Array] = txhash.decompose(coupled_rows)
@@ -355,9 +355,9 @@ native_decimal = Scalar.decimal("1234567890123456789012345678901234567890", 2)
 native_enum = Scalar.from_enum("io_mode", "append")
 native_scalar_id: str = native_instant.id
 native_scalar_family: str = native_instant.family
-native_scalar_field: Field = Scalar.from_py(1).into_field()
-native_array_field: Field = Scalar.from_py([1]).into_array_field()
-native_struct_field: Field = Scalar.from_py([{"id": 1}]).into_struct_field()
+native_scalar_field: Field = Scalar.from_(1).into_field()
+native_array_field: Field = Scalar.from_([1]).into_array_field()
+native_struct_field: Field = Scalar.from_([{"id": 1}]).into_struct_field()
 temporal_count: int | None = native_instant.count
 temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone
@@ -904,7 +904,7 @@ assert iceberg_reread
 
 # Record configuration crosses through the one options object.
 selected_options: RecordOptions = record_handle.record_options()
-selected_options.selector = ["id"]
+selected_options.select = ["id"]
 selected_options.batch_row_size = 1024
 selected_reader: pa.RecordBatchReader = record_handle.read_arrow_reader(
     options=selected_options

@@ -265,18 +265,19 @@ pub trait IOMedia: Send {
         options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
     }
 
-    /// Read this resource's rows as one [`ArrowValue`](crate::ArrowValue).
+    /// Read this resource's rows as one [`ArrowScalar`](crate::ArrowScalar).
     ///
     /// This is the Arrow-shaped sibling of
     /// [`read_scalar`](crate::IOBase::read_scalar), and the one entry point
     /// that does not need the caller to know first what the resource is. A
     /// record encoding - Arrow IPC, Parquet, Avro, plain text - answers the
     /// stream [`read_arrow_reader`](Self::read_arrow_reader) already
-    /// produces; a structured text document - JSON, JSON Lines, YAML, TOML -
-    /// answers the batch its rows parse into, because a document has no frame
-    /// to read a prefix of.
+    /// produces under `options`; a structured text document - JSON, JSON
+    /// Lines, YAML, TOML - answers the batch its rows parse into, because a
+    /// document has no frame to read a prefix of, and reads only the
+    /// declared field off the options.
     ///
-    /// `field` declares the root the rows land under. Without one, a record
+    /// `options` absent is the handle's own encoding read whole: a record
     /// encoding answers its stored schema and a document names the root its
     /// own contents prove.
     ///
@@ -288,7 +289,7 @@ pub trait IOMedia: Send {
     ///     .with_media_type(Url::from_str("file:///trades.jsonl")?.media_type());
     /// handle.write_all_bytes(b"{\"symbol\": \"AAPL\", \"size\": 100}\n")?;
     ///
-    /// let value = handle.read_arrow_value(None)?;
+    /// let value = handle.read_arrow(None)?;
     /// assert_eq!(value.shape(), ArrowShape::Batch);
     /// assert_eq!(value.row_size(), Some(1));
     /// # Ok(())
@@ -301,31 +302,34 @@ pub trait IOMedia: Send {
     /// error naming the media type when it is neither a record encoding this
     /// build implements nor a structured text format.
     #[cfg(feature = "arrow")]
-    fn read_arrow_value(&self, field: Option<&crate::Field>) -> Result<crate::arrow::ArrowValue> {
+    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::arrow::ArrowScalar> {
         use crate::media::IORecordOptions;
 
         let handle = self.as_io_base();
         if crate::text::Structured::for_media_type(handle.media_type()).is_ok() {
-            return crate::media::structured::read_arrow_value(handle, field);
+            let field = options.and_then(IORecordOptions::field);
+            return crate::media::structured::read_arrow(handle, field.as_ref());
         }
-        let mut options = RecordOptions::for_media_type(handle.media_type())?;
-        if let Some(field) = field {
-            options.set_field(field.clone());
-        }
-        Ok(crate::arrow::ArrowValue::from_reader(
-            self.read_arrow_reader(&options)?,
-        )?)
+        let reader = match options {
+            Some(options) => self.read_arrow_reader(options)?,
+            None => self.read_arrow_reader(&RecordOptions::for_media_type(handle.media_type())?)?,
+        };
+        Ok(crate::arrow::ArrowScalar::from_reader(reader)?)
     }
 
-    /// Write one [`ArrowValue`](crate::ArrowValue) as this resource's rows.
+    /// Write one [`ArrowScalar`](crate::ArrowScalar) as this resource's rows.
     ///
     /// The Arrow-shaped sibling of
-    /// [`write_scalar`](crate::IOBase::write_scalar). A record encoding takes
-    /// the value's stream through the same publication path every record
-    /// write uses, so every [`IOMode`](crate::IOMode) applies. A structured
-    /// text document is one frame around every row it holds, so it is
-    /// replaced whole and only [`IOMode::Overwrite`](crate::IOMode::Overwrite)
-    /// applies.
+    /// [`write_scalar`](crate::IOBase::write_scalar), and the generic write:
+    /// whatever shape the value holds is redirected to the primitive that
+    /// takes it as it stands - a stream to
+    /// [`write_arrow_reader`](Self::write_arrow_reader) without collecting
+    /// it, a held table to [`write_arrow_batch`](Self::write_arrow_batch)
+    /// without wrapping it, and a pinned row or a column as the one batch its
+    /// rows form - so every [`IOMode`](crate::IOMode) and every option
+    /// applies. A structured text document is one frame around every row it
+    /// holds, so it is replaced whole and only
+    /// [`IOMode::Overwrite`](crate::IOMode::Overwrite) applies.
     ///
     /// # Errors
     ///
@@ -334,10 +338,11 @@ pub trait IOMedia: Send {
     /// when a structured text document is asked for anything but an
     /// overwrite.
     #[cfg(feature = "arrow")]
-    fn write_arrow_value(
+    fn write_arrow(
         &mut self,
-        value: crate::arrow::ArrowValue,
+        value: crate::arrow::ArrowScalar,
         mode: crate::IOMode,
+        options: Option<&RecordOptions>,
     ) -> Result<()> {
         if crate::text::Structured::for_media_type(self.as_io_base().media_type()).is_ok() {
             if mode != crate::IOMode::Overwrite {
@@ -349,14 +354,24 @@ pub trait IOMedia: Send {
                     ),
                 });
             }
-            return crate::media::structured::write_arrow_value(
+            return crate::media::structured::write_arrow(
                 self.as_io_base_mut(),
                 value,
                 crate::text::Formatting::default(),
             );
         }
-        let options = RecordOptions::for_media_type(self.as_io_base().media_type())?;
-        self.write_arrow_reader(value.into_reader()?, mode, &options)
+        let own;
+        let options = match options {
+            Some(options) => options,
+            None => {
+                own = RecordOptions::for_media_type(self.as_io_base().media_type())?;
+                &own
+            }
+        };
+        if value.is_stream() {
+            return self.write_arrow_reader(value.into_reader()?, mode, options);
+        }
+        self.write_arrow_batch(value.into_batch()?, mode, options)
     }
 
     /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).
@@ -813,7 +828,7 @@ fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
 
     let mut options = media.record_options()?;
     options.set_filter(crate::Filter::always_true());
-    options.set_selector(crate::Selector::all());
+    options.set_select(crate::Selector::all());
     options.set_max_row_size(None);
     options.set_max_byte_size(None);
     Ok(options)

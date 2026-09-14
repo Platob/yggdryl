@@ -132,13 +132,13 @@ package crosses into Apache Arrow JS through copied IPC, because Arrow JS does
 not expose a C Data consumer.
 
 A caller who does not know which of Arrow's four shapes they are holding reaches
-for `ArrowValue` instead. It regroups a pinned one-row array, a column, a held
+for `ArrowScalar` instead. It regroups a pinned one-row array, a column, a held
 table, and a one-shot stream behind one value carrying the exact `Field` that
-types it, and `IOMedia::read_arrow_value`/`write_arrow_value` read and write it
+types it, and `IOMedia::read_arrow`/`write_arrow` read and write it
 whatever the handle holds - a record encoding as a batch stream, a JSON, JSON
 Lines, YAML, or TOML document as the batch its rows parse into. In Python it is
 also the one entry point every columnar runtime crosses:
-`yggdryl.ArrowValue.from_py` takes a `pyarrow` container, a pandas or polars
+`yggdryl.ArrowScalar.from_py` takes a `pyarrow` container, a pandas or polars
 frame or series, a NumPy array, or anything exporting the Arrow C data or
 stream protocol, and the declared `Field` casts it in Rust. The
 [values page](docs/arrow/values.md) has the shapes and their edges.

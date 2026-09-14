@@ -72,7 +72,7 @@ def main() -> int:
 
     aware = dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=dt.timezone.utc)
     hasher = txhash.TxHasher(seed=7)
-    row = Scalar.from_py([1_234_567, "XNAS", 150.25, "AAPL"])
+    row = Scalar.from_([1_234_567, "XNAS", 150.25, "AAPL"])
     _measure("txh3 240 B (datetime instant)", lambda: txhash.txh3(PAYLOAD[:240], aware), 240, arguments.min_time, arguments.repeat)
     _measure("hasher.digest 240 B", lambda: hasher.digest(PAYLOAD[:240], INSTANT), 240, arguments.min_time, arguments.repeat)
     _measure("hasher.digest_scalar (four-column row)", lambda: hasher.digest_scalar(row, INSTANT), 1, arguments.min_time, arguments.repeat)

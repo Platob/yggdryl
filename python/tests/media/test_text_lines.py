@@ -101,7 +101,7 @@ def test_text_options_are_flat_validated_values() -> None:
             constructor(incomplete)
 
     with pytest.raises(
-        ValueError, match="distinct from url, rownum, body, and dropped_byte_size"
+        ValueError, match="distinct from sourceurl, rownum, body, and dropped_byte_size"
     ):
         options.rowheader = r"(?<body>.+)"
     with pytest.raises(ValueError, match="expected one of keep, drop, error"):
@@ -149,10 +149,10 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
 
     reader = source.read_arrow_reader(options=options)
     assert isinstance(reader, pa.RecordBatchReader)
-    assert reader.schema.names == ["url", "rownum", "mtime", "body", "level", "id"]
+    assert reader.schema.names == ["sourceurl", "rownum", "mtime", "body", "level", "id"]
     # A location is its own datatype over Utf8 storage, and it is nullable
     # because a handle that is nowhere has none to state.
-    url_field = reader.schema.field("url")
+    url_field = reader.schema.field("sourceurl")
     assert url_field.type == pa.string()
     assert url_field.nullable is True
     assert url_field.metadata[b"ARROW:extension:name"] == b"yggdryl.url"
@@ -172,11 +172,11 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     # A located handle states the canonical URL of where it holds the bytes.
     located = str(source.url)
     assert located.startswith("file:///") and located.endswith("app.log")
-    assert table.column("url").to_pylist() == [located] * 3
+    assert table.column("sourceurl").to_pylist() == [located] * 3
 
     assert list(source.read_records(options=options)) == [
         {
-            "url": table.column("url")[0].as_py(),
+            "sourceurl": table.column("sourceurl")[0].as_py(),
             "rownum": 10,
             "mtime": MTIME,
             "body": "first",
@@ -184,7 +184,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "id": 7,
         },
         {
-            "url": table.column("url")[1].as_py(),
+            "sourceurl": table.column("sourceurl")[1].as_py(),
             "rownum": 11,
             "mtime": MTIME,
             "body": "second",
@@ -192,7 +192,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "id": 9,
         },
         {
-            "url": table.column("url")[2].as_py(),
+            "sourceurl": table.column("sourceurl")[2].as_py(),
             "rownum": 12,
             "mtime": MTIME,
             "body": "plain",
@@ -274,7 +274,7 @@ def test_capture_types_come_from_regex_before_any_row_is_read(
     table = handle(tmp_path, b"1\nword\n", "broad.txt").read_arrow_reader(
         options=broad
     ).read_all()
-    assert table.schema.names == ["url", "mtime", "body", "value"]
+    assert table.schema.names == ["sourceurl", "mtime", "body", "value"]
     assert table.column("value").to_pylist() == ["1", "word"]
 
 
@@ -307,7 +307,7 @@ def test_mtime_dates_each_record_from_the_handle_that_holds_it(
 
     # On by default, and pinned between the row number and the body.
     reader = source.read_arrow_reader(options=options)
-    assert reader.schema.names == ["url", "rownum", "mtime", "body", "level", "id"]
+    assert reader.schema.names == ["sourceurl", "rownum", "mtime", "body", "level", "id"]
     assert reader.schema.field("mtime") == pa.field(
         "mtime", pa.timestamp("ns", "UTC"), nullable=True
     )
@@ -323,11 +323,11 @@ def test_mtime_dates_each_record_from_the_handle_that_holds_it(
     # A buffer was never written anywhere, so it has no such time to answer.
     buffered = IOBase.from_bytes(b"[INFO] id=7 first\n[WARN] id=9 second\n")
     table = buffered.read_arrow_reader(options=options).read_all()
-    assert table.schema.names == ["url", "rownum", "mtime", "body", "level", "id"]
+    assert table.schema.names == ["sourceurl", "rownum", "mtime", "body", "level", "id"]
     assert table.column("mtime").to_pylist() == [None, None]
     # It is still somewhere - in memory - and that location is what it states.
     assert str(buffered.url).startswith("mem://")
-    assert table.column("url").to_pylist() == [str(buffered.url)] * 2
+    assert table.column("sourceurl").to_pylist() == [str(buffered.url)] * 2
     assert [row["mtime"] for row in buffered.read_records(options=options)] == [
         None,
         None,
@@ -336,7 +336,7 @@ def test_mtime_dates_each_record_from_the_handle_that_holds_it(
     # Off, the column is gone and the rest of the field keeps its order.
     options.parse_mtime = False
     assert source.read_arrow_reader(options=options).schema.names == [
-        "url",
+        "sourceurl",
         "rownum",
         "body",
         "level",
@@ -359,7 +359,7 @@ def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> No
     # of trailing beside it, and the line the header missed falls back to the
     # handle's own modification time.
     reader = source.read_arrow_reader(options=options)
-    assert reader.schema.names == ["url", "mtime", "body"]
+    assert reader.schema.names == ["sourceurl", "mtime", "body"]
     assert reader.schema.field("mtime").type == pa.timestamp("ns", "UTC")
     assert reader.read_all().column("mtime").to_pylist() == [captured, MTIME]
 
@@ -367,7 +367,7 @@ def test_an_mtime_capture_owns_the_column_it_names(tmp_path: pathlib.Path) -> No
     # resolution its own syntax declares, and is null wherever the header missed.
     options.parse_mtime = False
     reader = source.read_arrow_reader(options=options)
-    assert reader.schema.names == ["url", "body", "mtime"]
+    assert reader.schema.names == ["sourceurl", "body", "mtime"]
     assert reader.schema.field("mtime").type == pa.timestamp("s", "UTC")
     assert reader.read_all().column("mtime").to_pylist() == [captured, None]
 
@@ -469,7 +469,7 @@ def test_framing_normalizes_terminators_and_reports_record_caps(
         options.max_record_byte_size = limit
         reader = source.read_arrow_reader(options=options)
         assert reader.schema.names == [
-            "url",
+            "sourceurl",
             "rownum",
             "mtime",
             "body",
@@ -505,7 +505,7 @@ def test_compressed_logs_stream_their_records_without_naming_the_coding(
     ):
         source = handle(tmp_path, encoded, name)
         reader = source.read_arrow_reader(options=options)
-        assert reader.schema.names == ["url", "mtime", "body", "kind"]
+        assert reader.schema.names == ["sourceurl", "mtime", "body", "kind"]
 
         # The coding decodes as the batches are pulled, one record at a time.
         batches = list(reader)
@@ -535,7 +535,7 @@ def test_an_empty_or_absent_compressed_log_keeps_its_schema(
         ("absent.log.zst", IOBase(tmp_path / "absent.log.zst")),
     ):
         reader = source.read_arrow_reader(options=options)
-        assert reader.schema.names == ["url", "mtime", "body", "kind"], name
+        assert reader.schema.names == ["sourceurl", "mtime", "body", "kind"], name
         assert reader.read_all().num_rows == 0, name
         assert source.row_size == 0, name
 
@@ -560,12 +560,12 @@ def test_folders_decode_each_leaf_and_restart_row_numbers(tmp_path: pathlib.Path
     assert [row["mtime"] for row in rows] == [MTIME, MTIME]
     assert [row["body"] for row in rows] == ["from a", "from b"]
     assert [row["id"] for row in rows] == [1, 2]
-    assert [pathlib.PurePosixPath(row["url"]).name for row in rows] == [
+    assert [pathlib.PurePosixPath(row["sourceurl"]).name for row in rows] == [
         "a.log",
         "b.log.gz",
     ]
     # Each leaf states the canonical `file:` URL of where it was read from.
-    assert [row["url"] for row in rows] == [
+    assert [row["sourceurl"] for row in rows] == [
         (root / "a.log").as_uri(),
         (root / "b.log.gz").as_uri(),
     ]
@@ -578,14 +578,14 @@ def test_absence_and_zero_row_bounds_keep_the_regex_derived_schema(
     options.rowheader = ROWHEADER
     reader = IOBase(tmp_path / "missing.log").read_arrow_reader(options=options)
 
-    assert reader.schema.names == ["url", "mtime", "body", "level", "id"]
+    assert reader.schema.names == ["sourceurl", "mtime", "body", "level", "id"]
     assert reader.schema.field("level").type == pa.string()
     assert reader.schema.field("id").type == pa.int64()
     assert reader.read_all().num_rows == 0
 
     options.max_row_size = 0
     reader = handle(tmp_path, b"[INFO] id=1 hidden\n").read_arrow_reader(options=options)
-    assert reader.schema.names == ["url", "mtime", "body", "level", "id"]
+    assert reader.schema.names == ["sourceurl", "mtime", "body", "level", "id"]
     assert reader.read_all().num_rows == 0
 
 
@@ -630,3 +630,44 @@ def test_a_nanosecond_modification_time_reaches_a_record_floored(
         MTIME,
         MTIME,
     ]
+
+
+def test_a_text_read_is_shaped_by_select_and_where_given_as_properties(tmp_path) -> None:
+    from yggdryl.expression import user_defined_function
+
+    source = handle(tmp_path, b"[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n")
+
+    @user_defined_function(namespace="log")
+    def shout(text: str) -> str:
+        return text.upper()
+
+    # The properties beside `options` are set on the handle's own text
+    # options: the row header's captures are columns the select reads, a
+    # cast and an alias shape them, and a where over an alias runs after.
+    table = source.read_arrow_reader(
+        rowheader=ROWHEADER,
+        start_rownum=1,
+        select="sourceurl, cast(rownum as int32) as n, trim(body) as line, log.shout(trim(body)) as loud, level, id * 10 as tenfold",
+        filter="n > 1 and line like '%d' and level is not null",
+    ).read_all()
+    assert table.schema.names == ["sourceurl", "n", "line", "loud", "level", "tenfold"]
+    assert table.schema.field("n").type == pa.int32()
+    assert table.column("line").to_pylist() == ["second", "third"]
+    assert table.column("loud").to_pylist() == ["SECOND", "THIRD"]
+    assert table.column("tenfold").to_pylist() == [90, 110]
+    assert table.column("sourceurl").to_pylist() == [str(source.url)] * 2
+
+    # An Ellipsis property is skipped, and the same read spelled as a plan
+    # and as given options with one property on top agree.
+    options = source.record_options()
+    options.rowheader = ROWHEADER
+    options.start_rownum = 1
+    same = source.read_arrow_reader(
+        options=options, select="body as line", filter=..., start_rownum=...
+    ).read_all()
+    assert same.column("line").to_pylist() == [" first", " second", " third", "plain"]
+    assert (
+        next(source.read_records(options=options, select=["level"], filter="level = 'INFO'"))["level"]
+        == "INFO"
+    )
+    shout.unregister()

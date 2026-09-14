@@ -178,6 +178,23 @@ impl Term {
         Ok(Self::Literal(Literal::new(dtype, value)?))
     }
 
+    /// Read a term from the scalar that spells one.
+    ///
+    /// Text parses through the term grammar, so `"price"` is a column and
+    /// `"'EUR'"` a literal; every other scalar is the literal it is. This is
+    /// the reading every binding's inputs cross through, so a Python or
+    /// JavaScript value and its text mean the same thing.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that is not a term.
+    pub fn from_scalar(value: &Scalar) -> Result<Self> {
+        match value.as_str() {
+            Some(text) => text.parse(),
+            None => Ok(Self::literal(value.clone())),
+        }
+    }
+
     /// Name a top-level column.
     #[must_use]
     pub fn column(name: impl Into<SmolStr>) -> Self {
@@ -852,7 +869,7 @@ impl Term {
             ),
             Self::Negate(inner) => Self::Negate(Box::new(inner.map(replace)?)),
             Self::Function(function, arguments) => {
-                Self::Function(*function, map_slice(arguments, replace)?)
+                Self::Function(function.clone(), map_slice(arguments, replace)?)
             }
             Self::Cast(inner, dtype, safety) => {
                 Self::Cast(Box::new(inner.map(replace)?), dtype.clone(), *safety)
@@ -964,9 +981,10 @@ impl Term {
                 Box::new(right.simplify()),
             ),
             Self::Negate(inner) => Self::Negate(Box::new(inner.simplify())),
-            Self::Function(function, arguments) => {
-                Self::Function(*function, arguments.iter().map(Self::simplify).collect())
-            }
+            Self::Function(function, arguments) => Self::Function(
+                function.clone(),
+                arguments.iter().map(Self::simplify).collect(),
+            ),
             Self::Cast(inner, dtype, safety) => {
                 Self::Cast(Box::new(inner.simplify()), dtype.clone(), *safety)
             }

@@ -54,9 +54,7 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{ArrowCast, Field as CoreField, Level};
 
 use crate::enums::{PyMimeType, core_media_type_from_value};
-use crate::expression::{
-    PyFilter, PyPlan, PySelector, filter_from_value, plan_from_value, selector_from_value,
-};
+use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
 use crate::types::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
 use crate::types::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
 use crate::types::timezone::{PyTimezone, core_timezone_from_value};
@@ -1220,7 +1218,7 @@ impl PyRecordOptions {
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
         state.set_item("level", self.inner.level().get())?;
         state.set_item("merge_by", self.inner.merge_by().to_string())?;
-        state.set_item("selector", self.inner.selector().to_string())?;
+        state.set_item("select", self.inner.select().to_string())?;
         state.set_item("filter", self.inner.filter().to_string())?;
         if let RecordOptions::Text(options) = &self.inner {
             state.set_item("framing", options.framing())?;
@@ -1315,7 +1313,7 @@ impl PyRecordOptions {
             .set_max_byte_size(required_record_pickle_item(state, "max_byte_size")?.extract()?)?;
         options.set_level(required_record_pickle_item(state, "level")?.extract()?)?;
         options.set_merge_by(&required_record_pickle_item(state, "merge_by")?)?;
-        options.set_selector(&required_record_pickle_item(state, "selector")?)?;
+        options.set_select(&required_record_pickle_item(state, "select")?)?;
         options.set_filter(&required_record_pickle_item(state, "filter")?)?;
 
         if let RecordOptions::Text(text) = &mut options.inner {
@@ -1548,8 +1546,9 @@ impl PyRecordOptions {
     #[setter]
     fn set_merge_by(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_merge_by(selector_from_value(value)?);
-        Ok(())
+        self.inner
+            .set_merge_by_scalar(&crate::types::scalar::from_py(value)?)
+            .map_err(value_error)
     }
 
     /// The `select` section a read or write is shaped by; `select *` keeps
@@ -1558,15 +1557,16 @@ impl PyRecordOptions {
     /// The setter takes a `Selector`, the text of one, a `Term`, or the
     /// column names.
     #[getter]
-    fn selector(&self) -> PySelector {
-        PySelector::from_core(self.inner.selector().clone())
+    fn select(&self) -> PySelector {
+        PySelector::from_core(self.inner.select().clone())
     }
 
     #[setter]
-    fn set_selector(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set_select(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_selector(selector_from_value(value)?);
-        Ok(())
+        self.inner
+            .set_select_scalar(&crate::types::scalar::from_py(value)?)
+            .map_err(value_error)
     }
 
     /// The `where` section a read is pruned and filtered by; always true
@@ -1581,8 +1581,9 @@ impl PyRecordOptions {
     #[setter]
     fn set_filter(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_filter(filter_from_value(value)?);
-        Ok(())
+        self.inner
+            .set_filter_scalar(&crate::types::scalar::from_py(value)?)
+            .map_err(value_error)
     }
 
     /// The whole plan these options run: `create` from the declared field,
@@ -2030,8 +2031,9 @@ impl PyTextOptions {
     #[setter]
     fn set_merge_by(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_merge_by(selector_from_value(value)?);
-        Ok(())
+        self.inner
+            .set_merge_by_scalar(&crate::types::scalar::from_py(value)?)
+            .map_err(value_error)
     }
 
     /// The `select` section a read or write is shaped by; `select *` keeps
@@ -2040,15 +2042,16 @@ impl PyTextOptions {
     /// The setter takes a `Selector`, the text of one, a `Term`, or the
     /// column names.
     #[getter]
-    fn selector(&self) -> PySelector {
-        PySelector::from_core(self.inner.selector().clone())
+    fn select(&self) -> PySelector {
+        PySelector::from_core(self.inner.select().clone())
     }
 
     #[setter]
-    fn set_selector(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+    fn set_select(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_selector(selector_from_value(value)?);
-        Ok(())
+        self.inner
+            .set_select_scalar(&crate::types::scalar::from_py(value)?)
+            .map_err(value_error)
     }
 
     /// The `where` section a read is pruned and filtered by; always true
@@ -2063,8 +2066,9 @@ impl PyTextOptions {
     #[setter]
     fn set_filter(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.require_mutable()?;
-        self.inner.set_filter(filter_from_value(value)?);
-        Ok(())
+        self.inner
+            .set_filter_scalar(&crate::types::scalar::from_py(value)?)
+            .map_err(value_error)
     }
 
     /// The whole plan these options run: `create` from the declared field,

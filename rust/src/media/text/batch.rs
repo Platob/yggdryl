@@ -113,7 +113,7 @@ fn value_of(
 ) -> Result<Scalar> {
     Ok(match source {
         TextSource::Url => line
-            .url()
+            .sourceurl()
             .map_or(Scalar::Null, |url| Scalar::Url(Arc::new(url.clone()))),
         TextSource::Rownum => super::arrow::physical_rownum(options.start_rownum, line.index())?
             .map_or(Scalar::Null, Scalar::from),
@@ -126,7 +126,7 @@ fn value_of(
                     super::arrow::row_error(
                         line.index(),
                         None,
-                        line.url(),
+                        line.sourceurl(),
                         super::options::MTIME_COLUMN,
                         smol_str::format_smolstr!(
                             "expected a nanosecond count a 64-bit column can hold, got {count}"
@@ -165,8 +165,9 @@ fn capture_value(
         return Ok(Scalar::Null);
     };
     let name = options.capture_names().nth(index).unwrap_or_default();
-    super::arrow::parse_capture(text, dtype, options.timezone())
-        .map_err(|reason| super::arrow::row_error(line.index(), None, line.url(), name, reason))
+    super::arrow::parse_capture(text, dtype, options.timezone()).map_err(|reason| {
+        super::arrow::row_error(line.index(), None, line.sourceurl(), name, reason)
+    })
 }
 
 /// The other spellings a column is commonly written under.
@@ -177,7 +178,10 @@ fn capture_value(
 /// Meaning stays exact - a matched column is read at the plan's own datatype,
 /// and nothing here guesses what a value means, only what a column is called.
 const ALIASES: [(&str, &[&str]); 6] = [
-    ("url", &["source", "uri", "path", "file", "location"]),
+    (
+        "sourceurl",
+        &["url", "source", "uri", "path", "file", "location"],
+    ),
     (
         "rownum",
         &["row_number", "rownumber", "line_number", "lineno", "row"],
@@ -203,7 +207,7 @@ const ALIASES: [(&str, &[&str]); 6] = [
 /// The name a fixed column carries before any rename.
 const fn default_name_of(source: &TextSource) -> Option<&'static str> {
     Some(match source {
-        TextSource::Url => "url",
+        TextSource::Url => "sourceurl",
         TextSource::Rownum => "rownum",
         TextSource::Timestamp => "mtime",
         TextSource::BodyType => "mimetype",
@@ -408,7 +412,7 @@ fn line_of(
                     super::arrow::row_error(
                         ordinal,
                         None,
-                        line.url(),
+                        line.sourceurl(),
                         &column.name,
                         smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
                     )
@@ -417,7 +421,7 @@ fn line_of(
             super::arrow::row_error(
                 ordinal,
                 None,
-                line.url(),
+                line.sourceurl(),
                 &column.name,
                 smol_str::format_smolstr!("{}", crate::text::elide_display(&error)),
             )
@@ -469,7 +473,8 @@ fn apply(
     }
     // Located by the stream ordinal `line_of` reports, never by a restored
     // row number an earlier column of this same row may already have set.
-    let refused = |reason| super::arrow::row_error(ordinal, None, line.url(), &column.name, reason);
+    let refused =
+        |reason| super::arrow::row_error(ordinal, None, line.sourceurl(), &column.name, reason);
     let text = |value| {
         read_bytes(value).map_err(|error| {
             refused(smol_str::format_smolstr!(
@@ -481,7 +486,7 @@ fn apply(
     match &column.source {
         TextSource::Url => {
             if let Scalar::Url(url) = value {
-                line.set_url(Some(Arc::clone(url)));
+                line.set_sourceurl(Some(Arc::clone(url)));
             }
         }
         TextSource::Rownum => {

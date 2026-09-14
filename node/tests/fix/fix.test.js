@@ -1809,7 +1809,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   }
   assert.ok(message.updatedat().equals(message.getByTag(65003)))
   assert.ok(message.updatedat().equals(SENDING))
-  assert.ok(message.unixPartition(3600).equals(Scalar.fromJs(1_704_189_600n)))
+  assert.ok(message.unixPartition(3600).equals(Scalar.from(1_704_189_600n)))
   assert.equal(native.at(schema.indexOf('uuid')).id, 'uuid')
   // The row's uuid names the row's own content: padding and derived columns
   // may move it (decision 26), the row read back verifies it, and projection
@@ -2102,7 +2102,7 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.puuid().equals(message.byTag(65018)))
   assert.equal(message.uuid().id, 'uuid')
   assert.equal(message.puuid().id, 'uuid')
-  assert.ok(message.unixPartition(3600).equals(Scalar.fromJs(1706788800n)))
+  assert.ok(message.unixPartition(3600).equals(Scalar.from(1706788800n)))
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.
   const schema = fix.schema(registry, 'FixMessage')

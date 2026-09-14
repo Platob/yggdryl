@@ -19,7 +19,7 @@ pub(crate) mod rows;
 mod scalars;
 pub(crate) mod value;
 
-pub use scalars::{ArrowShape, ArrowValue};
+pub use scalars::{ArrowScalar, ArrowShape};
 
 /// Arrow Schema metadata carrying dictionary IDs across the C Data Interface.
 ///

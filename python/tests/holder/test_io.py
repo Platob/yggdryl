@@ -493,7 +493,7 @@ class TestScans:
         )
 
         selected = handle.record_options()
-        selected.selector = ["id"]
+        selected.select = ["id"]
         assert handle.scan_arrow(options=selected).to_table().schema.names == ["id"]
         filtered = handle.record_options()
         filtered.filter = "venue = 'XNAS'"
@@ -502,7 +502,7 @@ class TestScans:
         )
         # The same refusal the eager read gives, rather than every column.
         absent = handle.record_options()
-        absent.selector = ["absent"]
+        absent.select = ["absent"]
         with pytest.raises(ValueError, match="absent"):
             handle.scan_arrow(options=absent).to_table()
 

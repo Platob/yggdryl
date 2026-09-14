@@ -11,12 +11,12 @@ One Arrow batch read and three explicit write intents on every handle.
 | Intents | `overwrite`, `append`, `merge`; `write_*` takes an `IOMode`; no default mode, no untyped Rust `write` |
 | Order | input, mode when present, options; Rust requires `&RecordOptions`, bindings default one |
 | Merge keys | `merge_by`, a `Selector` of key columns, gives identity only; merge requires it, overwrite and append refuse it |
-| Shaping | field, `filter`, `selector`, completion cast, then `max_row_size` / `max_byte_size` - the split sections of one [plan](../../expression/plans.md) |
+| Shaping | field, `filter`, `select`, completion cast, then `max_row_size` / `max_byte_size` - the split sections of one [plan](../../expression/plans.md) |
 | Commits | `commit_row_size` unset: once at end; `N`: every `N` rows plus remainder; `0`: rejected |
 | Lazy | reads stream batches; append chains stored then incoming; merge indexes only the stored side |
 | Feature flag | `arrow` (default): IPC, Avro, text; `parquet`: Parquet; a missing encoding is named in the error |
 | Settings | one [RecordOptions](../../media/options.md) object, the only settings argument; Python keyword-only `options=`, JavaScript trailing `options?` |
-| Shape-free | `read_arrow_value` / `write_arrow_value` answer an [ArrowValue](../../arrow/values.md) whatever the handle holds, structured text documents included |
+| Shape-free | `read_arrow` / `write_arrow` answer an [ArrowScalar](../../arrow/values.md) whatever the handle holds, structured text documents included |
 
 ## Use
 
@@ -440,8 +440,8 @@ The options field selects and casts in one pass; columns it omits are never read
     // The resource is unchanged: it still holds all three.
     assert_eq!(handle.read_arrow_field(&plain)?.field_len(), 3);
 
-    // `selector` narrows by name instead, in the order the names are given.
-    let selecting = plain.clone().with_selector("symbol")?;
+    // `select` narrows by name instead, in the order the names are given.
+    let selecting = plain.clone().with_select("symbol")?;
     let first = handle.read_arrow_reader(&selecting)?.next().unwrap()?;
     assert_eq!(first.num_columns(), 1);
     assert_eq!(first.schema().field(0).name(), "symbol");
@@ -501,9 +501,9 @@ The options field selects and casts in one pass; columns it omits are never read
     widened = handle.read_arrow_reader(options=options)
     assert widened.schema.names == ["id", "nowhere"]
 
-    # `selector` narrows by name instead, in the order the names are given.
+    # `select` narrows by name instead, in the order the names are given.
     selecting = handle.record_options()
-    selecting.selector = ["symbol"]
+    selecting.select = ["symbol"]
     assert handle.read_arrow_reader(options=selecting).read_all().column_names == ["symbol"]
     ```
 
@@ -545,8 +545,8 @@ The options field selects and casts in one pass; columns it omits are never read
     const widened = handle.readArrowReader(options.withField(invented))
     assert.equal(widened.field.dtype.length, 2)
 
-    // `selector` narrows by name instead, in the order the names are given.
-    const selected = handle.readArrowReader(options.withSelector(['symbol'])).intoTable()
+    // `select` narrows by name instead, in the order the names are given.
+    const selected = handle.readArrowReader(options.withSelect(['symbol'])).intoTable()
     assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
@@ -817,7 +817,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 
 ### Selecting columns
 
-`selector` narrows both directions: a read yields the named columns in that order, a write keeps only those incoming columns. It is the `select` section of the options' [plan](../../expression/plans.md), and takes a `Selector`, its text, or the column names; the [Column pushdown](#column-pushdown) example reads one column by name in all three languages, and a computed projection (`price * 2 as doubled`) reads the same way.
+`select` narrows both directions: a read yields the named columns in that order, a write keeps only those incoming columns. It is the `select` section of the options' [plan](../../expression/plans.md), and takes a `Selector`, its text, or the column names; the [Column pushdown](#column-pushdown) example reads one column by name in all three languages, and a computed projection (`price * 2 as doubled`) reads the same way.
 
 ## Text records
 
@@ -830,7 +830,9 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 - row bound -> exact, sliced as a view; non-zero `max_byte_size` -> at least one row; both -> first to bind wins.
 - limit with `merge_by` -> refused naming both; a limited write truncates and never pulls the rest.
 - overwrite onto a stored field -> rows cast to it; clear the handle to change it.
-- `selector` naming a missing column -> error listing what is there; ASCII case-insensitive; `select *` selects all.
+- `select` naming a missing column -> error listing what is there; ASCII case-insensitive; `select *` selects all.
+- a `where` naming a column only the `select` publishes (an alias) -> runs after the projection, as DuckDB lets a `where` read an alias; every other `where` runs first, where it prunes.
+- properties beside `options` (`read_arrow_reader(select="id")`, `readArrowReader({ select: 'id' })`, `readArrowReader(options, { select: 'id' })`) -> set on a copy by their own setters; `...` and `undefined` are skipped, `None` and `null` clear; a property no options have -> the setter's own refusal.
 - no declared field -> stored shape, no cast; `read_arrow_field` answers the batches' non-null struct root.
 - a declared column the resource lacks -> the encoding reads everything and the cast fills it with nulls, reordering and converting the rest.
 - a wrong input shape for a shape-named adapter -> rejected before it crosses into the core.

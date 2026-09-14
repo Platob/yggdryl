@@ -132,7 +132,7 @@ fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
         .unwrap()
         .with_field(declared)
-        .with_selector("PRICE, symbol")
+        .with_select("PRICE, symbol")
         .unwrap();
 
     let shaped = options.apply_arrow_batch(batch, Some(&stored)).unwrap();
@@ -150,7 +150,7 @@ fn options_cast_is_declared_schema_then_selection_then_stored_completion() {
     // A name the rows do not have is an error, not a null column.
     let missing = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
         .unwrap()
-        .with_selector("absent")
+        .with_select("absent")
         .unwrap();
     let empty = RecordBatch::new_empty(Arc::new(Schema::new(vec![ArrowField::new(
         "id",

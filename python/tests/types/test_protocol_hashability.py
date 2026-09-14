@@ -44,7 +44,7 @@ def test_canonical_values_remain_hashable_by_native_identity() -> None:
         DataType("int64"),
         MimeType.JSON,
         Timezone.UTC,
-        Scalar.from_py({"id": 1}),
+        Scalar.from_({"id": 1}),
         Term("id + 1"),
         Filter("id > 1"),
         Selector("id, id + 1 as next"),
@@ -103,7 +103,7 @@ def test_mutable_identity_wrappers_hash_lock_instead_of_becoming_unhashable() ->
         ("trades.arrows", "max_byte_size", 4096),
         ("trades.arrows", "level", 6),
         ("trades.arrows", "merge_by", ["id"]),
-        ("trades.arrows", "selector", ["id"]),
+        ("trades.arrows", "select", ["id"]),
         ("trades.arrows", "filter", "venue = 'XNAS'"),
         ("trades.arrows", "plan", "select id where id > 1"),
         ("events.txt", "timezone", "+02:00"),
@@ -147,7 +147,7 @@ def test_record_options_value_protocols_preserve_each_variant(
     options.max_byte_size = 4096
     options.level = 6
     options.merge_by = ["id"]
-    options.selector = ["id"]
+    options.select = ["id"]
     options.filter = "venue = 'XNAS'"
     if options.mime_type == MimeType.PLAIN_TEXT:
         options.timezone = "+02:00"
@@ -213,7 +213,7 @@ def test_text_options_value_protocols_preserve_the_flat_configuration() -> None:
     options.max_row_size = 128
     options.max_byte_size = 4096
     options.level = 6
-    options.selector = ["body"]
+    options.select = ["body"]
     options.filter = "venue = 'XNAS'"
     options.framing = True
     options.leading_fragment = "error"
@@ -268,8 +268,8 @@ def test_operational_handles_views_and_iterators_are_explicitly_unhashable(
         handle.cursor(),
         handle.pstream_bytes(batch_size=2),
         IOBase(tmp_path).iterdir(),
-        iter(Scalar.from_py([1, 2])),
-        Scalar.from_py({"id": 1}).items(),
+        iter(Scalar.from_([1, 2])),
+        Scalar.from_({"id": 1}).items(),
         iter(field.dtype),
         field.dtype.show_diffs(DataType.from_fields([])),
         iter(MediaType.from_parts(MimeType.JSON, [MimeType.GZIP])),

@@ -182,17 +182,17 @@ test('an unknown algorithm names the accepted vocabulary', () => {
 })
 
 test('a value digests its canonical bytes', () => {
-  const value = Scalar.fromJs('AAPL')
+  const value = Scalar.from('AAPL')
   assert.ok(value.digest().equals(value.digest('xxh3-64')))
   assert.equal(value.digest().value(), value.stableHash())
   // Equal values answer equal digests across widths.
   assert.ok(Scalar.decimal(100n, 2).digest().equals(Scalar.decimal(1n, 0).digest()))
   // And values that differ stay apart across variant boundaries.
-  assert.ok(!Scalar.fromJs('1').digest().equals(Scalar.fromJs(Buffer.from('1')).digest()))
+  assert.ok(!Scalar.from('1').digest().equals(Scalar.from(Buffer.from('1')).digest()))
 })
 
 test('a state feeds a value like the value digests itself', () => {
-  const value = Scalar.fromJs({ symbol: 'AAPL', quantity: 100n })
+  const value = Scalar.from({ symbol: 'AAPL', quantity: 100n })
   const state = new xxhash.Xxh3()
   state.writeScalar(value)
   assert.ok(state.asDigest().equals(value.digest('xxh3-64')))
@@ -236,7 +236,7 @@ test('streaming states fill default digest holders without changing themselves',
     ])
     const actual = filled.getChild('row_digest').get(0)
     const expectedState = fresh()
-    expectedState.writeScalar(Scalar.fromJs(['AAPL']))
+    expectedState.writeScalar(Scalar.from(['AAPL']))
     const expected = expectedState.asDigest()
     if (algorithm === 'xxh32') {
       assert.equal(actual, expected.value(), algorithm)
@@ -276,13 +276,13 @@ test('batch filling preserves populated holders and resolves holder algorithms',
   const filled = new xxhash.Xxh3().applyArrowBatch(root, source)
   assert.equal(
     filled.getChild('row_digest').get(0),
-    Scalar.fromJs(['AAPL']).digest().value(),
+    Scalar.from(['AAPL']).digest().value(),
   )
   assert.equal(filled.getChild('row_digest').get(1), 123n)
   const forced = new xxhash.Xxh3().applyArrowBatch(root, source, true)
   assert.equal(
     forced.getChild('row_digest').get(1),
-    Scalar.fromJs(['MSFT']).digest().value(),
+    Scalar.from(['MSFT']).digest().value(),
   )
 
   // The receiver is preferred when its width fits. Otherwise the holder type
@@ -290,7 +290,7 @@ test('batch filling preserves populated holders and resolves holder algorithms',
   const auto = new xxhash.Xxh32().applyArrowBatch(root, source, true)
   assert.equal(
     auto.getChild('row_digest').get(1),
-    Scalar.fromJs(['MSFT']).digest('xxh3-64').value(),
+    Scalar.from(['MSFT']).digest('xxh3-64').value(),
   )
 
   const mismatchedHolder = new Field('row_digest', 'uint64', false, {
@@ -332,11 +332,11 @@ test('signed holders retain the complete digest bits', () => {
   const filled = new xxhash.Xxh3().applyArrowBatch(root, source)
   const expected32 = ['AAPL', '8'].map((value) => Number(BigInt.asIntN(
     32,
-    BigInt(Scalar.fromJs([value]).digest('xxh32').value()),
+    BigInt(Scalar.from([value]).digest('xxh32').value()),
   )))
   const expected64 = ['AAPL', '8'].map((value) => BigInt.asIntN(
     64,
-    Scalar.fromJs([value]).digest('xxh3-64').value(),
+    Scalar.from([value]).digest('xxh3-64').value(),
   ))
 
   assert.deepEqual([...filled.getChild('signed32')], expected32)

@@ -103,7 +103,7 @@ def test_a_partition_column_names_the_term_it_derives_with() -> None:
 def test_options_shape_a_batch_and_a_reader_the_same_way() -> None:
     options = RecordOptions("application/vnd.apache.arrow.stream")
     options.field = ROOT
-    options.selector = ["id"]
+    options.select = ["id"]
 
     source = pa.record_batch(
         {"id": pa.array([1], pa.int32()), "year": pa.array([2024], pa.int32())}
@@ -156,7 +156,7 @@ def test_a_filter_is_the_partition_pairs_it_pins_and_the_plan_it_belongs_to() ->
 
     # The sections are one plan, and a plan splits back into them.
     options.field = ROOT
-    options.selector = "id"
+    options.select = "id"
     options.merge_by = ["id"]
     options.max_row_size = 10
     plan = options.plan

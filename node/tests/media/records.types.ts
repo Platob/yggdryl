@@ -31,7 +31,7 @@ const optionsHash: bigint = options.stableHash()
 const mime: MimeType = options.mimeType
 const declared: Field | null = options.field
 const name: string = options.name
-const selector: Selector = options.selector
+const selector: Selector = options.select
 const filter: Filter = options.filter
 const mergeBy: Selector = options.mergeBy
 const plan: Plan = options.plan
@@ -47,15 +47,15 @@ const syncMarker: Buffer | null = options.syncMarker
 options.name = 'trade'
 options.field = Field.from('row: struct<id: int64> not null')
 options.field = null
-options.selector = 'id'
-options.selector = ['id']
-options.selector = new Selector('id')
+options.select = 'id'
+options.select = ['id']
+options.select = new Selector('id')
 options.filter = 'id > 1'
 options.filter = new Filter('id > 1')
 options.mergeBy = ['id']
 options.plan = 'select id where id > 1'
 options.plan = new Plan('select id')
-const withSelector: RecordOptions = options.withSelector(['id'])
+const withSelect: RecordOptions = options.withSelect(['id'])
 const withFilter: RecordOptions = options.withFilter('id > 1')
 const withPlan: RecordOptions = options.withPlan('select id')
 options.safe = true
@@ -78,7 +78,7 @@ const avroCopy: RecordOptions = avroOptions
 const chained: RecordOptions = options
   .withField(Field.from('row: struct<id: int64> not null'))
   .withName('trade')
-  .withSelector(['id'])
+  .withSelect(['id'])
   .withFilter('id > 1')
   .withMergeBy(['id'])
   .withPlan('select id')

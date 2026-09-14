@@ -17,14 +17,14 @@ def main():
         parser.error("--iterations must be positive")
     value = Version(5, 0, 300)
     earlier = Version(5, 0, 10)
-    scalar = Scalar.from_py(value)
+    scalar = Scalar.from_(value)
     for label, operation in [
         ("version/native parts", lambda: Version(5, 0, 300)),
         ("version/native parser", lambda: Version.from_str("5.0.300")),
         ("version/patch accessor", lambda: value.patch),
         ("version/numeric comparison", lambda: earlier < value),
         ("version/native stable hash", value.stable_hash),
-        ("version/into Scalar", lambda: Scalar.from_py(value)),
+        ("version/into Scalar", lambda: Scalar.from_(value)),
         ("version/Scalar into Python", scalar.as_py),
     ]:
         samples = timeit.repeat(operation, number=count, repeat=5)

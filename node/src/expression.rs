@@ -395,12 +395,7 @@ impl JsTerm {
         name: String,
         arguments: Vec<Either<ClassInstance<'_, JsTerm>, String>>,
     ) -> Result<Self> {
-        let function = CoreFunction::from_name(&name).ok_or_else(|| {
-            Error::from_reason(format!(
-                "unknown function {name:?}; expected one of {}",
-                CoreFunction::vocabulary()
-            ))
-        })?;
+        let function = CoreFunction::resolve(&name).map_err(napi_error)?;
         let arguments = arguments
             .into_iter()
             .map(term_from_input)

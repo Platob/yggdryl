@@ -95,7 +95,7 @@ Compose without going back through text, then bind once.
     assert.deepEqual(late.parameters, ['floor'])
     const bound = late.bind(schema, { floor: 10 })
     assert.equal(bound.term.toString(), 'size >= 10')
-    assert.equal(bound.matches(Scalar.fromJs([null, null, 11])), true)
+    assert.equal(bound.matches(Scalar.from([null, null, 11])), true)
 
     // Simplification keeps the answer and drops nodes.
     assert.equal(new Term('a = 1 or a = 2').simplify().toString(), 'a in (1, 2)')

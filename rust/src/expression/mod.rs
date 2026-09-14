@@ -66,6 +66,7 @@ mod serde;
 mod term;
 mod transform;
 mod typing;
+mod user;
 
 #[cfg(feature = "arrow")]
 mod arrow;
@@ -88,7 +89,14 @@ pub use pushdown::{Bounds, ColumnBounds, Residual};
 pub use records::Records;
 pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{IntoTerm, Term, col, lit};
-pub(crate) use transform::{TRANSFORM_EXPRESSION_KEY, canonicalize_transform_expression};
+pub(crate) use transform::{
+    TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS, TRANSFORM_SOURCES_KEY,
+    canonicalize_transform_expression, canonicalize_transform_function,
+};
+pub use user::{
+    FunctionSignature, UserFunction, UserRef, lookup_function, register_function,
+    registered_functions, unregister_function,
+};
 
 /// How deep a term may nest before the parser and every walk refuse.
 ///
@@ -317,23 +325,19 @@ impl Safety {
     }
 }
 
-/// The closed set of scalar functions this grammar spells.
+/// The closed set of scalar functions this grammar spells, and the one door
+/// out of it.
 ///
 /// Closed deliberately: an open registry is a plugin system, and a plugin
 /// system cannot promise that the scalar evaluator, the vectorized evaluator,
 /// and the statistics evaluator agree about a function none of them knows. A
-/// name outside this set is a parse error listing the vocabulary it is not in.
+/// bare name outside this set is a parse error listing the vocabulary it is
+/// not in. A *qualified* name - `namespace.name(...)` - is a
+/// [user-defined function](user): registered with a signature rather than
+/// known to the grammar, typed and called by the two row evaluators through
+/// that signature, and opaque to the statistics evaluator.
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    ::serde::Serialize,
-    ::serde::Deserialize,
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -388,6 +392,8 @@ pub enum Function {
     /// [`FieldSegment::Range`], 0-based and half-open, a null bound meaning
     /// the list's own end.
     Slice,
+    /// A registered [user-defined function](user), by qualified name.
+    User(UserRef),
 }
 
 impl Function {
@@ -416,8 +422,9 @@ impl Function {
 
     /// The canonical lowercase name of this function.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
+            Self::User(reference) => reference.as_str(),
             Self::Lower => "lower",
             Self::Upper => "upper",
             Self::Length => "length",
@@ -474,8 +481,13 @@ impl Function {
 
     /// The inclusive argument-count range this function accepts.
     #[must_use]
-    pub const fn arity(self) -> (usize, usize) {
+    pub fn arity(&self) -> (usize, usize) {
         match self {
+            // A user function's arity is its registered signature's; one not
+            // registered is refused where it is typed, so nothing is bounded
+            // here.
+            Self::User(reference) => lookup_function(reference)
+                .map_or((0, usize::MAX), |function| function.signature().arity()),
             // The two variadics are the ones every dialect spells variadically.
             Self::Coalesce | Self::Concat => (1, usize::MAX),
             Self::Substring | Self::Slice => (2, 3),
@@ -491,7 +503,7 @@ impl Function {
 
     /// Return whether this function reads a calendar field off a temporal.
     #[must_use]
-    pub const fn is_calendar(self) -> bool {
+    pub fn is_calendar(&self) -> bool {
         matches!(self, Self::Year | Self::Month | Self::Day | Self::Hour)
     }
 
@@ -581,6 +593,42 @@ impl Expression {
     /// One expression is itself; none is the empty sequence, which changes
     /// nothing.
     #[must_use]
+    /// Read an expression from the scalar that spells one.
+    ///
+    /// Text parses as whichever clause, plan or sequence it is; a sequence
+    /// is one step per item; a boolean is the constant filter; null is the
+    /// identity, `select *`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that does not parse, and an error
+    /// naming the scalar for any other shape.
+    pub fn from_scalar(value: &crate::Scalar) -> Result<Self> {
+        if let Some(text) = value.as_str() {
+            return text.parse();
+        }
+        if value.is_null() {
+            return Ok(Self::Selector(Selector::all()));
+        }
+        if matches!(value, crate::Scalar::Boolean(_)) {
+            return Filter::from_scalar(value).map(Self::Filter);
+        }
+        if let Some(items) = value.as_sequence() {
+            let steps = items
+                .iter()
+                .map(Self::from_scalar)
+                .collect::<Result<Vec<_>>>()?;
+            return Ok(Self::sequence(steps));
+        }
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                "the text of an expression, a sequence of steps, a boolean, or null",
+                format_args!("{value:?}"),
+            ),
+        })
+    }
+
     pub fn sequence(steps: impl IntoIterator<Item = Self>) -> Self {
         let mut steps: Vec<Self> = steps.into_iter().collect();
         if steps.len() == 1 {
@@ -758,14 +806,57 @@ impl Expression {
     /// Returns an error when the expression does not bind against the root.
     pub fn apply_field(&self, root: &Field) -> Result<Field> {
         match self {
-            Self::Selector(selector) => selector.apply_field(root),
-            Self::Filter(filter) => filter.apply_field(root),
             Self::Plan(plan) => plan.field_from(root),
-            Self::Sequence(steps) => steps
-                .iter()
-                .try_fold(root.clone(), |root, step| step.apply_field(&root)),
+            Self::Selector(_) | Self::Filter(_) | Self::Sequence(_) => root
+                .clone()
+                .try_with_dtype(self.apply_datatype(root.dtype())?),
         }
     }
+
+    /// The struct datatype this expression leaves a stream at, from the
+    /// struct `dtype`: the question [`apply_field`](Self::apply_field) and
+    /// every reader's declared shape are answered by.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the expression does not bind against the
+    /// datatype.
+    pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType> {
+        match self {
+            Self::Selector(selector) => selector.apply_datatype(dtype),
+            Self::Filter(filter) => filter.apply_datatype(dtype),
+            Self::Plan(plan) => plan.apply_datatype(dtype),
+            Self::Sequence(steps) => steps
+                .iter()
+                .try_fold(dtype.clone(), |dtype, step| step.apply_datatype(&dtype)),
+        }
+    }
+}
+
+/// Whether the `where` clause reads a name only the `select` clause
+/// publishes - an alias, which DuckDB lets a `where` read - so it has to run
+/// after the projection rather than before it.
+///
+/// `input` names the columns the rows carry before the projection. A filter
+/// over stored columns runs first, which is what lets it prune; a filter that
+/// names an alias runs over the published rows, because that is the only
+/// place the alias exists.
+pub(crate) fn filter_after_select<'a>(
+    filter: &Filter,
+    select: &Selector,
+    input: impl IntoIterator<Item = &'a str>,
+) -> bool {
+    if filter.is_always_true() || select.is_all() {
+        return false;
+    }
+    let input: Vec<&str> = input.into_iter().collect();
+    let published = select.names();
+    filter.columns().iter().any(|column| {
+        !input.iter().any(|held| held.eq_ignore_ascii_case(column))
+            && published
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(column))
+    })
 }
 
 impl From<Selector> for Expression {

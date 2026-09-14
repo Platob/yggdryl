@@ -1768,7 +1768,7 @@ mod records {
             )
             .unwrap();
         media.options_mut().set_max_row_size(Some(1));
-        media.options_mut().set_selector("id".parse().unwrap());
+        media.options_mut().set_select("id".parse().unwrap());
         media
             .options_mut()
             .set_filter("id = '999'".parse().unwrap());

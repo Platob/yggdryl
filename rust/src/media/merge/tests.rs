@@ -538,7 +538,7 @@ fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
 
     // Selecting one column yields exactly that column; the name matches the
     // way every cast matches, ASCII case-insensitively.
-    let selecting = options.clone().with_selector("SYMBOL").unwrap();
+    let selecting = options.clone().with_select("SYMBOL").unwrap();
     let mut symbols = Vec::new();
     for batch in handle.read_arrow_reader(&selecting).unwrap() {
         let batch = batch.unwrap();
@@ -556,7 +556,7 @@ fn a_selection_narrows_a_read_to_the_named_columns_in_their_order() {
 
     // The selection also orders: naming both columns reversed yields them
     // reversed, which a plain read never does.
-    let reversed = options.with_selector("symbol, id").unwrap();
+    let reversed = options.with_select("symbol, id").unwrap();
     let first = handle
         .read_arrow_reader(&reversed)
         .unwrap()
@@ -577,11 +577,7 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
     let mut handle = handle("orders.arrows");
     // Writing with a selection keeps only the named columns of the incoming
     // rows: the payload column never lands, so it reads back absent.
-    let narrowing = handle
-        .record_options()
-        .unwrap()
-        .with_selector("id")
-        .unwrap();
+    let narrowing = handle.record_options().unwrap().with_select("id").unwrap();
     handle
         .overwrite_arrow_reader(
             reader(vec![rows(vec![7, 8], vec![Some("AAPL"), Some("MSFT")])]),
@@ -600,7 +596,7 @@ fn a_selection_narrows_a_write_and_a_missing_name_is_an_error() {
     assert_eq!(batch.schema().field(0).name(), "id");
 
     // A name the rows do not have is an error naming what is there.
-    let missing = plain.with_selector("absent").unwrap();
+    let missing = plain.with_select("absent").unwrap();
     let error = handle
         .read_arrow_reader(&missing)
         .err()

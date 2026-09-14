@@ -403,7 +403,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<types::parameters::PyBytesParameters>()?;
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
-    module.add_class::<crate::arrow::PyArrowValue>()?;
+    module.add_class::<crate::arrow::PyArrowScalar>()?;
     module.add_class::<types::scalar::PyScalarIterator>()?;
     module.add_class::<types::scalar::PyScalarEntryIterator>()?;
     module.add_class::<media::avro::PyAvroSchema>()?;
@@ -466,6 +466,19 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     media::handles::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
     module.add_function(wrap_pyfunction!(crate::arrow::arrow_shapes, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        crate::expression::register_user_function,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        crate::expression::unregister_user_function,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(crate::expression::user_functions, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        crate::expression::user_function_signature,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;
     module.add_class::<crate::iobase::PyByteIterator>()?;

@@ -181,7 +181,7 @@ const {
   Version,
 } = binding
 
-// The pivot keeps its private conversion handles inside this loader: `fromJs`
+// The pivot keeps its private conversion handles inside this loader: `from`
 // needs the intrinsic tables assembled below and `asJs` needs the transport
 // reader, and neither of those belongs on the published class.
 const nativeScalarFromJs = NativeScalar._fromJsNative.bind(NativeScalar)
@@ -829,7 +829,7 @@ function fillingArguments(options) {
   return [
     placeholders === undefined || placeholders === null
       ? null
-      : Scalar.fromJs(placeholders),
+      : Scalar.from(placeholders),
     environment === undefined ? null : environment,
   ]
 }
@@ -1100,9 +1100,9 @@ function fromTransport(value) {
   return result
 }
 
-// The conversion pair every codec entry point crosses. `dumps` is `fromJs`
+// The conversion pair every codec entry point crosses. `dumps` is `from`
 // with bytes on the far side and `loads` is `asJs`; they run this exact code.
-Object.defineProperty(Scalar, 'fromJs', {
+Object.defineProperty(Scalar, 'from', {
   value(value, options) {
     options = checkedOptions(options)
     return nativeScalarFromJs(
@@ -1128,7 +1128,7 @@ Object.defineProperties(
               ? other
               : typeof other === 'string'
                 ? new NativeTerm(other)
-                : NativeTerm.literal(Scalar.fromJs(other))
+                : NativeTerm.literal(Scalar.from(other))
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1149,7 +1149,7 @@ Object.defineProperty(Scalar.prototype, 'asJs', {
 Object.defineProperty(PartitionSpec, 'fromJSON', {
   configurable: true,
   value(value) {
-    return nativePartitionSpecFromValue(Scalar.fromJs(value))
+    return nativePartitionSpecFromValue(Scalar.from(value))
   },
 })
 
@@ -1213,7 +1213,7 @@ Object.defineProperties(Scalar.prototype, {
             return Reflect.apply(native, this, [])
           }
           const operand =
-            other instanceof NativeScalar ? other : Scalar.fromJs(other)
+            other instanceof NativeScalar ? other : Scalar.from(other)
           return Reflect.apply(native, this, [operand])
         },
       },
@@ -1239,7 +1239,7 @@ Object.defineProperties(Scalar.prototype, {
       if (this.kind === 'record' && typeof key !== 'string') {
         throw new TypeError('record field names must be strings')
       }
-      const nativeKey = key instanceof Scalar ? key : Scalar.fromJs(key)
+      const nativeKey = key instanceof Scalar ? key : Scalar.from(key)
       return Reflect.apply(nativeScalarGet, this, [nativeKey])
     },
   },
@@ -1255,8 +1255,8 @@ Object.defineProperties(Scalar.prototype, {
       if (this.kind === 'record' && typeof key !== 'string') {
         throw new TypeError('record field names must be strings')
       }
-      const nativeKey = key instanceof Scalar ? key : Scalar.fromJs(key)
-      const nativeItem = value instanceof Scalar ? value : Scalar.fromJs(value)
+      const nativeKey = key instanceof Scalar ? key : Scalar.from(key)
+      const nativeItem = value instanceof Scalar ? value : Scalar.from(value)
       return Reflect.apply(nativeScalarSet, this, [nativeKey, nativeItem])
     },
   },
@@ -1266,7 +1266,7 @@ Object.defineProperties(Scalar.prototype, {
       if (typeof key !== 'string') {
         throw new TypeError('remove requires a string key')
       }
-      return Reflect.apply(nativeScalarRemove, this, [Scalar.fromJs(key)])
+      return Reflect.apply(nativeScalarRemove, this, [Scalar.from(key)])
     },
   },
   intoArrowScalar: {
@@ -1381,7 +1381,7 @@ function avroSchemaFrom(value, clone = false, options) {
   ) {
     return nativeAvroSchemaFromBytes(toBytes(value), limits)
   }
-  return nativeAvroSchemaFromValue(Scalar.fromJs(value), limits)
+  return nativeAvroSchemaFromValue(Scalar.from(value), limits)
 }
 
 function avroBytes(value, label) {
@@ -1418,7 +1418,7 @@ Object.defineProperties(AvroSchema.prototype, {
   intoSingleObject: {
     value(value) {
       return Reflect.apply(nativeAvroIntoSingleObject, this, [
-        Scalar.fromJs(value),
+        Scalar.from(value),
       ])
     },
   },
@@ -1520,7 +1520,7 @@ function avroLoads(input, options) {
     // Scalar shape. A primitive schema is therefore `"long"`, not the JSON
     // source text `'"long"'`; keep it on the native-Scalar path so those two
     // intentionally distinct inputs cannot be confused.
-    schema: nativeAvroSchemaFromValue(Scalar.fromJs(decoded.schema)),
+    schema: nativeAvroSchemaFromValue(Scalar.from(decoded.schema)),
   }
 }
 
@@ -1536,7 +1536,7 @@ function avroBlocks(input, options) {
 function avroDumps(rows, schema, metadata) {
   return nativeAvroDumps(
     avroSchemaFrom(schema),
-    Scalar.fromJs(avroRows(rows)),
+    Scalar.from(avroRows(rows)),
     avroMetadata(metadata),
   )
 }
@@ -2643,7 +2643,7 @@ Object.defineProperties(IOBase.prototype, {
     value(value) {
       return nativeIOWriteValue.call(
         this,
-        value instanceof Scalar ? value : Scalar.fromJs(value),
+        value instanceof Scalar ? value : Scalar.from(value),
       )
     },
   },
@@ -2836,7 +2836,7 @@ function suppliedParameters(parameters) {
     ? undefined
     : parameters instanceof Scalar
       ? parameters
-      : Scalar.fromJs(parameters)
+      : Scalar.from(parameters)
 }
 
 for (const Clause of [NativeTerm, NativeFilter, NativeSelector]) {
@@ -2906,7 +2906,7 @@ function defineArrowAppliers(Owner, label, { records = true } = {}) {
     properties.applyRecords = {
       configurable: true,
       value(rows, schema) {
-        const held = rows instanceof Scalar ? rows : Scalar.fromJs(Array.from(rows))
+        const held = rows instanceof Scalar ? rows : Scalar.from(Array.from(rows))
         const root = schema === undefined || schema === null ? undefined : intoField(schema)
         return nativeRecords.call(this, held, root)
       },
@@ -3148,11 +3148,11 @@ const iceberg = Object.freeze({
   assignFieldIds: binding.icebergAssignFieldIdsNative,
   canPromote: binding.icebergCanPromoteNative,
   // A metadata document is whatever the JSON facade decoded, so a plain object
-  // crosses through the one conversion `Scalar.fromJs` already owns.
+  // crosses through the one conversion `Scalar.from` already owns.
   schemaFromJson(name, document) {
     return nativeSchemaFromJson(
       name,
-      document instanceof Scalar ? document : Scalar.fromJs(document),
+      document instanceof Scalar ? document : Scalar.from(document),
     )
   },
   schemaIntoJson: binding.icebergSchemaIntoJsonNative,
@@ -3391,11 +3391,11 @@ for (const collection of [iceberg.Namespaces, iceberg.Tables]) {
 // dictionary, the message it types and the process default are one name rather
 // than four top-level classes.
 //
-// A message value is whatever `Scalar.fromJs` reads, and that conversion lives
+// A message value is whatever `Scalar.from` reads, and that conversion lives
 // in this loader, so the public constructor is the one widening gate and hands
 // the native class the value it already understands.
 const NativeFixMsg = binding.FixMsg
-const asScalar = (value) => (value instanceof Scalar ? value : Scalar.fromJs(value))
+const asScalar = (value) => (value instanceof Scalar ? value : Scalar.from(value))
 function FixMsg(field, value, registry) {
   if (new.target === undefined) {
     throw new TypeError(
@@ -3411,7 +3411,7 @@ Object.defineProperty(FixMsg.prototype, 'constructor', {
   writable: true,
 })
 // A row read back and a value written cross the same gate the constructor
-// does: whatever `Scalar.fromJs` reads, and the core alone types it.
+// does: whatever `Scalar.from` reads, and the core alone types it.
 FixMsg.fromRow = function fromRow(schema, row, registry) {
   return NativeFixMsg.fromRow(schema, asScalar(row), registry)
 }
@@ -3427,7 +3427,7 @@ function Plugin(mbean, attributes) {
   }
   return new NativePlugin(
     mbean,
-    attributes instanceof Scalar ? attributes : Scalar.fromJs(attributes),
+    attributes instanceof Scalar ? attributes : Scalar.from(attributes),
   )
 }
 Plugin.prototype = NativePlugin.prototype
@@ -3441,7 +3441,7 @@ Plugin.fromJsonBytes = function fromJsonBytes(body) {
 }
 Plugin.fromJsonScalar = function fromJsonScalar(document) {
   return NativePlugin.fromJsonScalar(
-    document instanceof Scalar ? document : Scalar.fromJs(document),
+    document instanceof Scalar ? document : Scalar.from(document),
   )
 }
 Plugin.fromFixmsg = function fromFixmsg(message) {

@@ -723,7 +723,7 @@ impl Binder<'_> {
                 let cost = lowered.iter().map(|node| node.cost).sum::<u32>() + 1;
                 Node {
                     field,
-                    kind: Kind::Function(*function, lowered),
+                    kind: Kind::Function(function.clone(), lowered),
                     cost,
                 }
             }
@@ -1117,7 +1117,7 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         }
         Kind::Negate(inner) => Term::Negate(Box::new(rebuild(inner))),
         Kind::Function(function, arguments) => {
-            Term::Function(*function, arguments.iter().map(rebuild).collect())
+            Term::Function(function.clone(), arguments.iter().map(rebuild).collect())
         }
         Kind::Cast(inner, safety) => Term::Cast(
             Box::new(rebuild(inner)),

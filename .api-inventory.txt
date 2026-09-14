@@ -23,12 +23,12 @@ pub const IPC_DICTIONARY_IDS_KEY: &str = "yggdryl:ipc:dictionary-ids";
 
 ### yggdryl::arrow::scalars  [rust\src\arrow\scalars.rs]
 pub enum ArrowShape
-  pub const ALL: [Self; 4]
+  pub const ALL: [Self; 4] = [Self::Scalar, Self::Array, Self::Batch, Self::Stream]
   pub const fn as_str(self) -> &'static str
   pub const fn is_tabular(self) -> bool
   pub const fn is_streamed(self) -> bool
   pub fn from_str(value: &str) -> crate::Result<Self>
-pub struct ArrowValue
+  pub struct ArrowScalar
   pub fn from_scalar_array(field: Field, array: ArrayRef) -> Result<Self>
   pub fn from_array(field: Field, array: ArrayRef) -> Result<Self>
   pub fn from_batch(batch: RecordBatch) -> Result<Self>
@@ -305,26 +305,25 @@ pub enum EdgeAlgorithm
 pub enum Error
   pub type Result<T> = std::result::Result<T, Error>;
 
-### yggdryl::expression::apply  [rust\src\expression\apply.rs]
-pub trait ApplyExpression
-  pub trait ApplyExpressionStream
-
 ### yggdryl::expression::arrow  [rust\src\expression\arrow.rs]
 pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef>
-  pub fn evaluate_with(&self, batch: &RecordBatch, holder: Option<&dyn Attributes>) -> Result<ArrayRef>
+  pub fn evaluate_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<ArrayRef>
   pub fn filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray>
-  pub fn filter_mask_with(&self, batch: &RecordBatch, holder: Option<&dyn Attributes>) -> Result<BooleanArray>
+  pub fn filter_mask_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<BooleanArray>
   pub fn filter(&self, batch: &RecordBatch) -> Result<RecordBatch>
-  pub fn filter_with(&self, batch: &RecordBatch, holder: Option<&dyn Attributes>) -> Result<RecordBatch>
+  pub fn filter_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<RecordBatch>
   pub fn filter_reader(self, inner: BatchReader) -> BatchReader
-  pub fn project(&self, batch: &RecordBatch) -> Result<RecordBatch>
-  pub fn sort(&self, batch: &RecordBatch) -> Result<RecordBatch>
-  pub fn project_reader(self, inner: BatchReader) -> Result<BatchReader>
+  pub fn apply_arrow_reader(&self, reader: BatchReader) -> crate::Result<BatchReader>
+  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> crate::Result<RecordBatch>
+  pub fn apply_arrow_array(&self, array: &ArrayRef) -> crate::Result<ArrayRef>
+  pub fn apply_arrow_reader(&self, reader: BatchReader) -> crate::Result<BatchReader>
+  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> crate::Result<RecordBatch>
+  pub fn apply_arrow_array(&self, array: &ArrayRef) -> crate::Result<ArrayRef>
 
 ### yggdryl::expression::bind  [rust\src\expression\bind.rs]
 pub struct Bound
   pub const fn schema(&self) -> &Field
-  pub const fn expression(&self) -> &Expression
+  pub const fn term(&self) -> &Term
   pub const fn field(&self) -> &Field
   pub fn is_predicate(&self) -> bool
   pub fn column_indices(&self) -> Vec<usize>
@@ -334,42 +333,18 @@ pub struct Bound
   pub fn eval_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<Scalar>
   pub fn matches(&self, row: &Scalar) -> Result<bool>
   pub fn matches_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<bool>
+  pub fn settle_holder(&self, holder: &dyn Attributes) -> Result<Scalar>
   pub fn matches_holder(&self, holder: &dyn Attributes) -> Result<bool>
-  pub struct BoundStatement
-  pub const fn schema(&self) -> &Field
-  pub const fn output(&self) -> &Field
-  pub fn projections(&self) -> &[Bound]
-  pub const fn predicate(&self) -> Option<&Bound>
-  pub fn ordering(&self) -> &[(Bound, Direction, Option<NullsOrder>)]
-  pub const fn limit(&self) -> Option<u64>
-  pub fn is_all(&self) -> bool
   pub fn bind(&self, schema: &Field) -> Result<Bound>
   pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound>
-  pub fn bind(&self, schema: &Field) -> Result<BoundStatement>
-  pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<BoundStatement>
+  pub fn bind(&self, schema: &Field) -> Result<Bound>
+  pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound>
 
 ### yggdryl::expression  [rust\src\expression\mod.rs]
-pub use apply::{ApplyExpression, ApplyExpressionStream};
-  pub use bind::{Bound, BoundStatement};
-  pub use literal::Literal;
-  pub use parser::{Direction, NullsOrder, Order, Projection, Statement, needs_quoting};
-  pub use pushdown::{Bounds, ColumnBounds, Residual};
-  pub use selector::{Attributes, Cost, Handle, Selector, read_handle};
-  pub const RECURSION_LIMIT: usize
-  pub const NODE_LIMIT: usize
-  pub enum Segment
-  pub fn field(name: impl Into<SmolStr>) -> Self
-  pub const fn index(position: i64) -> Self
-  pub fn key(value: Scalar) -> Result<Self>
-  pub struct Literal
-  pub fn new(dtype: DataType, value: impl Into<Scalar>) -> Result<Self>
-  pub fn infer(value: Scalar) -> Result<Self>
-  pub const fn null() -> Self
-  pub const fn dtype(&self) -> &DataType
-  pub const fn value(&self) -> &Scalar
-  pub const fn is_null(&self) -> bool
-  pub fn into_parts(self) -> (DataType, Scalar)
+pub const RECURSION_LIMIT: usize = 32
+  pub const NODE_LIMIT: usize = 100_000
   pub enum Comparison
+  pub const ALL: [Self; 8] = [ Self::Eq, Self::NotEq, Self::Lt, Self::LtEq, Self::Gt, Self::GtEq, Self::IsDistinctFrom, Self::IsNotDistinctFrom, ]
   pub const fn as_str(self) -> &'static str
   pub const fn is_two_valued(self) -> bool
   pub const fn flipped(self) -> Self
@@ -381,99 +356,40 @@ pub use apply::{ApplyExpression, ApplyExpressionStream};
   pub const fn is_safe(self) -> bool
   pub const fn as_str(self) -> &'static str
   pub enum Function
-  pub const ALL: [Self; 18]
-  pub const fn as_str(self) -> &'static str
+  pub const ALL: [Self; 19] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day,
+  pub fn as_str(&self) -> &str
   pub fn from_name(name: &str) -> Option<Self>
-  pub const fn arity(self) -> (usize, usize)
-  pub const fn is_calendar(self) -> bool
+  pub fn arity(&self) -> (usize, usize)
+  pub fn is_calendar(&self) -> bool
   pub fn vocabulary() -> String
   pub enum Expression
-  pub fn always_true() -> Self
-  pub fn always_false() -> Self
-  pub fn literal(value: impl Into<Scalar>) -> Self
-  pub fn typed_literal(dtype: DataType, value: Scalar) -> Result<Self>
-  pub fn column(name: impl Into<SmolStr>) -> Self
-  pub const fn attribute(selector: Selector) -> Self
-  pub fn parameter(name: impl Into<SmolStr>) -> Self
-  pub fn path(self, segments: impl IntoIterator<Item = Segment>) -> Self
-  pub fn child(self, name: impl Into<SmolStr>) -> Self
-  pub fn at(self, index: i64) -> Self
-  pub fn all(operands: impl IntoIterator<Item = Self>) -> Self
-  pub fn any(operands: impl IntoIterator<Item = Self>) -> Self
-  pub fn and(self, other: Self) -> Self
-  pub fn or(self, other: Self) -> Self
-  pub fn not(self) -> Self
-  pub fn compare(self, comparison: Comparison, other: Self) -> Self
-  pub fn eq(self, other: Self) -> Self
-  pub fn ne(self, other: Self) -> Self
-  pub fn lt(self, other: Self) -> Self
-  pub fn le(self, other: Self) -> Self
-  pub fn gt(self, other: Self) -> Self
-  pub fn ge(self, other: Self) -> Self
-  pub fn is_in(self, list: impl IntoIterator<Item = Self>) -> Self
-  pub fn between(self, low: Self, high: Self) -> Self
-  pub fn is_null(self) -> Self
-  pub fn is_not_null(self) -> Self
-  pub fn like(self, pattern: Self) -> Self
-  pub fn ilike(self, pattern: Self) -> Self
-  pub fn glob(self, pattern: Self) -> Self
-  pub fn arithmetic(self, operator: Operator, other: Self) -> Self
-  pub fn neg(self) -> Self
-  pub fn call(function: Function, arguments: impl IntoIterator<Item = Self>) -> Self
-  pub fn cast(self, dtype: DataType) -> Self
-  pub fn try_cast(self, dtype: DataType) -> Self
-  pub fn case(branches: impl IntoIterator<Item = (Self, Self)>, otherwise: Option<Self>) -> Self
-  pub const fn is_literal(&self) -> bool
-  pub const fn as_literal(&self) -> Option<&Literal>
-  pub fn as_column(&self) -> Option<&str>
-  pub fn is_always_true(&self) -> bool
-  pub fn is_always_false(&self) -> bool
-  pub fn depth(&self) -> usize
-  pub fn node_count(&self) -> usize
-  pub fn check_budget(&self) -> Result<()>
+  pub fn select(selector: impl IntoSelector) -> Result<Self>
+  pub fn filter(filter: impl IntoFilter) -> Result<Self>
+  pub fn plan(plan: impl IntoPlan) -> Result<Self>
+  pub fn from_scalar(value: &crate::Scalar) -> Result<Self>
+  pub fn sequence(steps: impl IntoIterator<Item = Self>) -> Self
+  pub fn stable_hash(&self) -> u64
+  pub const fn is_selector(&self) -> bool
+  pub const fn is_filter(&self) -> bool
+  pub const fn is_plan(&self) -> bool
+  pub const fn is_sequence(&self) -> bool
+  pub const fn as_selector(&self) -> Option<&Selector>
+  pub const fn as_filter(&self) -> Option<&Filter>
+  pub const fn as_plan(&self) -> Option<&Plan>
+  pub fn steps(&self) -> &[Self]
   pub fn columns(&self) -> Vec<String>
-  pub fn attributes(&self) -> Vec<Selector>
+  pub fn attributes(&self) -> Vec<Attribute>
   pub fn parameters(&self) -> Vec<String>
-  pub fn has_attributes(&self) -> bool
-  pub fn conjuncts(&self) -> Vec<Self>
+  pub fn is_identity(&self) -> bool
+  pub fn simplify(&self) -> Self
+  pub fn check_budget(&self) -> Result<()>
+  pub fn apply_field(&self, root: &Field) -> Result<Field>
+  pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
   pub trait IntoExpression
-  pub fn partition_equals(column: &str, value: &str, dtype: &DataType) -> Self
-  pub fn holder_partition_equals(column: &str, value: &str) -> Self
-  pub fn all_partitions_equal<C: AsRef<str>, V: AsRef<str>>(schema: &Field, pairs: impl IntoIterator<Item = (C, V)>) -> Self
-  pub fn all_holder_partitions_equal<C: AsRef<str>, V: AsRef<str>>(pairs: impl IntoIterator<Item = (C, V)>) -> Self
-  pub fn holder_carries_partition(column: &str, value: &str) -> Self
-  pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>(pairs: impl IntoIterator<Item = (C, V)>) -> Self
-  pub fn col(name: impl Into<SmolStr>) -> Expression
-  pub fn lit(value: impl Into<Scalar>) -> Expression
+  fn into_expression(self) -> Result<Expression>
 
 ### yggdryl::expression::parser  [rust\src\expression\parser.rs]
-pub enum Direction
-  pub enum NullsOrder
-  pub struct Order
-  pub const fn new(expression: Expression) -> Self
-  pub const fn with_direction(self, direction: Direction) -> Self
-  pub const fn with_nulls(self, nulls: NullsOrder) -> Self
-  pub const fn expression(&self) -> &Expression
-  pub const fn direction(&self) -> Direction
-  pub const fn nulls(&self) -> Option<NullsOrder>
-  pub struct Projection
-  pub const fn new(expression: Expression) -> Self
-  pub fn aliased(expression: Expression, alias: impl Into<SmolStr>) -> Self
-  pub const fn expression(&self) -> &Expression
-  pub fn alias(&self) -> Option<&str>
-  pub fn name(&self) -> SmolStr
-  pub struct Statement
-  pub const fn all() -> Self
-  pub fn select(projections: impl IntoIterator<Item = Projection>) -> Self
-  pub fn with_predicate(self, predicate: Expression) -> Self
-  pub fn with_ordering(self, ordering: impl IntoIterator<Item = Order>) -> Self
-  pub const fn with_limit(self, limit: u64) -> Self
-  pub fn projections(&self) -> &[Projection]
-  pub const fn predicate(&self) -> Option<&Expression>
-  pub fn ordering(&self) -> &[Order]
-  pub const fn limit(&self) -> Option<u64>
-  pub fn is_all(&self) -> bool
-  pub fn needs_quoting(name: &str) -> bool
+pub fn needs_quoting(name: &str) -> bool
 
 ### yggdryl::expression::pushdown  [rust\src\expression\pushdown.rs]
 pub struct ColumnBounds
@@ -482,17 +398,17 @@ pub struct ColumnBounds
   pub const fn nulls(&self) -> Option<u64>
   pub struct Bounds
   pub const fn new(rows: Option<u64>) -> Self
-  pub fn with_column(self, name: impl Into<SmolStr>, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>) -> Self
+  pub fn with_column( mut self, name: impl Into<SmolStr>, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>, ) -> Self
   pub fn from_partitions(schema: &Field, partitions: &[(String, String)]) -> Self
-  pub fn with_attribute(self, selector: Selector, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>) -> Self
-  pub fn from_url(url: &Url) -> Self
-  pub fn with(self, other: Self) -> Self
+  pub fn with_attribute( mut self, attribute: Attribute, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>, ) -> Self
+  pub fn from_url(url: &crate::Url) -> Self
+  pub fn with(mut self, other: Self) -> Self
   pub const fn row_count(&self) -> Option<u64>
-  pub fn attribute(&self, selector: &Selector) -> Option<&ColumnBounds>
+  pub fn attribute(&self, attribute: &Attribute) -> Option<&ColumnBounds>
   pub fn column(&self, name: &str) -> Option<&ColumnBounds>
   pub struct Residual
-  pub const fn answerable(&self) -> &Expression
-  pub const fn remaining(&self) -> &Expression
+  pub const fn answerable(&self) -> &Filter
+  pub const fn remaining(&self) -> &Filter
   pub fn is_complete(&self) -> bool
   pub fn is_empty(&self) -> bool
   pub fn statistics_prune(&self, bounds: &Bounds) -> bool
@@ -500,23 +416,77 @@ pub struct ColumnBounds
   pub fn partition_split(&self) -> Residual
 
 ### yggdryl::expression::selector  [rust\src\expression\selector.rs]
-pub enum Cost
-  pub const fn as_str(self) -> &'static str
-  pub enum Selector
-  pub const ALL: [Self; 13]
-  pub fn as_str(&self) -> &str
-  pub fn from_name(name: &str) -> Option<Self>
-  pub fn vocabulary() -> String
-  pub const fn cost(&self) -> Cost
-  pub fn dtype(&self) -> DataType
-  pub fn field(&self) -> Field
-  pub fn read_url(&self, url: &Url) -> Scalar
-  pub trait Attributes
-  pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H);
-  pub fn read_handle<H: IOBase + ?Sized>(handle: &H, selector: &Selector) -> Result<Scalar>
+pub struct Projection
+  pub fn new(term: Term) -> Self
+  pub fn aliased(term: Term, alias: impl Into<SmolStr>) -> Self
+  pub fn column(name: impl Into<SmolStr>) -> Self
+  pub fn with_alias(mut self, alias: impl Into<SmolStr>) -> Self
+  pub fn with_dtype(mut self, dtype: DataType) -> Self
+  pub const fn with_nullable(mut self, nullable: bool) -> Self
+  pub fn with_metadata(mut self, metadata: Metadata) -> Self
+  pub const fn term(&self) -> &Term
+  pub const fn metadata(&self) -> &Metadata
+  pub fn alias(&self) -> Option<&str>
+  pub const fn dtype(&self) -> Option<&DataType>
+  pub const fn nullable(&self) -> Option<bool>
+  pub fn name(&self) -> SmolStr
+  pub fn is_column(&self) -> bool
+  pub fn field(&self, schema: &Field) -> Result<Field>
+  pub fn simplify(&self) -> Self
+  pub struct Selector
+  pub fn all() -> Self
+  pub fn new(projections: impl IntoIterator<Item = Projection>) -> Self
+  pub fn all_except<I, S>(names: I) -> Self where
+  pub fn excluded(&self) -> &[SmolStr]
+  pub fn from_scalar(value: &Scalar) -> Result<Self>
+  pub fn from_columns<I, S>(names: I) -> Self where
+  pub fn stable_hash(&self) -> u64
+  pub fn projections(&self) -> &[Projection]
+  pub fn is_all(&self) -> bool
+  pub fn is_empty(&self) -> bool
+  pub fn len(&self) -> usize
+  pub fn names(&self) -> Vec<SmolStr>
+  pub fn with_projection(&self, projection: Projection) -> Self
+  pub fn without_columns(&self, names: &[&str]) -> Self
+  pub fn columns(&self) -> Vec<String>
+  pub fn attributes(&self) -> Vec<Attribute>
+  pub fn parameters(&self) -> Vec<String>
+  pub fn is_columns(&self) -> bool
+  pub fn simplify(&self) -> Self
+  pub fn check_budget(&self) -> Result<()>
+  pub fn apply_datatype(&self, dtype: &DataType) -> Result<DataType>
+  pub fn apply_field(&self, root: &Field) -> Result<Field>
+  pub fn apply_scalar(&self, root: &Field, row: &Scalar) -> Result<Scalar>
+  pub fn bind(&self, schema: &Field) -> Result<BoundSelector>
+  pub fn bind_with( &self, schema: &Field, parameters: &[(&str, Scalar)], ) -> Result<BoundSelector>
+  pub fn from_field(field: &Field) -> Self
+  pub fn declared_field(&self, root: Option<&Field>, name: &str) -> Result<Field>
+  pub fn into_field(&self, root: &Field) -> Result<Field>
+  pub trait IntoSelector
+  fn into_selector(self) -> Result<Selector>
+  pub struct BoundSelector
+  pub const fn schema(&self) -> &Field
+  pub const fn output(&self) -> &Field
+  pub fn projections(&self) -> &[Bound]
+  pub fn is_all(&self) -> bool
+  pub fn is_identity(&self) -> bool
+  pub fn apply_scalar(&self, row: &Scalar) -> Result<Scalar>
+  pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>
+  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
+  pub fn apply_arrow_array(&self, array: &ArrayRef) -> Result<ArrayRef>
+  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
+  pub fn apply_arrow_array(&self, array: &ArrayRef) -> Result<ArrayRef>
+  pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>
+  pub fn from_scalar(value: &Scalar) -> Result<Self>
 
 ### yggdryl::expression::serde  [rust\src\expression\serde.rs]
 pub fn from_json(input: &str) -> Result<Self>
+  pub fn into_json(self) -> Result<String>
+  pub fn from_json(input: &str) -> Result<Self>
+  pub fn into_json(self) -> Result<String>
+  pub fn from_json(input: &str) -> Result<Self>
+  pub fn into_json(self) -> Result<String>
+  pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
   pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
@@ -849,26 +819,15 @@ pub struct FixAnomalies<'msg>
   impl FusedIterator for FixAnomalies<'_>
 
 ### yggdryl::fix::plugin  [rust\src\fix\plugin.rs]
-pub struct Plugin  (re-exported at the crate root beside Plugins and fix_plugin_fields)
-  pub fn stable_hash(&self) -> u64
-  pub fn new(mbean: Option<&str>, attributes: Scalar) -> Self
-  pub fn from_json_bytes(body: &[u8]) -> Plugins  (a body that is not a Jolokia answer names no configuration and answers none; decision 17)
-  pub fn from_json_scalar(document: &Scalar) -> Plugins
-  pub fn from_fixmsg(message: &FixMsg) -> Result<Plugin>
-  pub fn into_fixmsg(&self, codec: &FixCodec) -> Result<FixMsg>
-  pub fn mbean(&self) -> Option<&str>
-  pub fn mbean_type(&self) -> Option<&str>
-  pub fn plugin_type(&self) -> Option<&str>
-  pub fn name(&self) -> Option<&str>
-  pub fn version(&self) -> Option<&str>
-  pub fn category(&self) -> Option<&str>
-  pub fn state(&self) -> Option<&str>
-  pub fn get(&self, attribute: &str) -> Option<&Scalar>
-  pub const fn as_attributes(&self) -> &Scalar
-  pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)>
-  impl Clone, Debug, PartialEq, Eq, Hash for Plugin
-  pub struct Plugins
-  impl Iterator for Plugins  (Item = Plugin; also FusedIterator; lazy over shared Scalar)
+pub const PLUGIN_DIALECT: &str = "plugin";  (the membership every field here carries in `fix:branches`)
+pub const PLUGIN_TAG_MIN: i32 = 20_001;  (the floor of the range this dictionary claims; 20001-20004 held the retired envelope, so the smallest tag defined is SessionInterface at 20010)
+pub const PLUGINCONFIG_CODE_NAME: (&str, &str) = ("UCFG", "pluginconfig");  (the message type a plugin configuration is: the wire code beside the name the crate registered it under. FIX reserves every code opening with `U` to the user, so this one collides with no dictionary's own and needs none edited to be read; decision 19)
+pub fn fix_plugin_fields() -> Result<&'static [Field]>
+pub fn fix_plugin_message() -> Result<&'static Field>  (the `pluginconfig` component: FIX's MsgType beside the plugin attributes and the BeginString, SenderCompID and TargetCompID a configuration also states, which is the whole of one. `FixRegistry::new` registers it as it registers the crate's own fields, so every registry types a `UCFG` message; the members are held by value, so registering it declares no attribute as a field of the dictionary - that is what `with_plugin_fields` is for; decision 19)
+impl FixRegistry
+  pub fn with_plugin_fields(mut self) -> Result<Self>
+impl FixCodec
+  pub fn parse_plugin_line(&self, body: &[u8]) -> FixMessages  (one message per configuration the answer named, none where it named none; a body that is not a Jolokia answer refuses nothing; decision 17)
 
 ### yggdryl::FixCategory  [rust\src\fix_category.rs]
 pub enum FixCategory { Fields, Components, Groups }  (a message is a component carrying fix:msgtype; decision 13)
@@ -1380,14 +1339,16 @@ pub enum Holder
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn local(path: impl AsRef<std::path::Path>) -> Result<Self>
+  pub fn from_url<K, V>(url: &Url, properties: impl IntoIterator<Item = (K, V)>) -> Result<Self> where
+  pub fn zip(handle: Self) -> Self
   pub fn buffered(self, options: BufferedOptions) -> Self
   pub fn into_media(self) -> Self
   pub fn into_declared_media(self) -> Self
+  pub fn open(&mut self) -> Result<()>
   pub fn into_text(self) -> Self
   pub fn into_text_with(self, options: crate::media::text::TextOptions) -> Self
   pub fn into_coded(self) -> Self
   pub fn into_coded_with(self, codec: crate::Codec, level: crate::Level) -> Self
-  pub fn open(&mut self) -> Result<()>
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
@@ -1456,8 +1417,8 @@ pub trait IOMedia: Send
   fn read_parquet_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics>
   fn read_arrow_field(&self, options: &RecordOptions) -> Result<Field>
   fn read_arrow_reader(&self, options: &RecordOptions) -> Result<BatchReader>
-  fn read_arrow_value(&self, field: Option<&crate::Field>) -> Result<crate::arrow::ArrowValue>
-  fn write_arrow_value(&mut self, value: crate::arrow::ArrowValue, mode: crate::IOMode) -> Result<()>
+  fn read_arrow(&self, field: Option<&crate::Field>) -> Result<crate::arrow::ArrowScalar>
+  fn write_arrow(&mut self, value: crate::arrow::ArrowScalar, mode: crate::IOMode) -> Result<()>
   fn write_arrow_reader(&mut self, batches: BatchReader, mode: IOMode, options: &RecordOptions) -> Result<()>
   fn overwrite_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
   fn append_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()>
@@ -1917,38 +1878,91 @@ pub enum Media
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
 ### yggdryl::media::options  [rust\src\media\options.rs]
-pub const DEFAULT_RECORD_BATCH_SIZE: usize = 65_536;
+pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub trait IORecordOptions: Sized
-  fn field(&self) -> Option<&Field>
+  fn declared(&self) -> Option<&Field>
+  fn set_declared(&mut self, field: Option<Field>)
+  fn field(&self) -> Option<Field>
   fn set_field(&mut self, field: Field)
+  fn name(&self) -> &str
+  fn set_name(&mut self, name: SmolStr)
   fn take_field(&mut self) -> Option<Field>
+  fn safe(&self) -> bool
+  fn set_safe(&mut self, safe: bool)
+  fn batch_row_size(&self) -> Option<usize>
+  fn set_batch_row_size(&mut self, batch_row_size: Option<usize>)
+  fn batch_byte_size(&self) -> Option<u64>
+  fn set_batch_byte_size(&mut self, batch_byte_size: Option<u64>)
+  fn write_batch_row_size(&self) -> Option<usize>
+  fn max_row_size(&self) -> Option<u64>
+  fn set_max_row_size(&mut self, max_row_size: Option<u64>)
+  fn max_byte_size(&self) -> Option<u64>
+  fn set_max_byte_size(&mut self, max_byte_size: Option<u64>)
   fn commit_row_size(&self) -> Option<usize>
   fn set_commit_row_size(&mut self, commit_row_size: Option<usize>)
+  fn level(&self) -> Level
+  fn set_level(&mut self, level: Level)
+  fn merge_by(&self) -> &Selector
+  fn set_merge_by(&mut self, merge_by: Selector)
+  fn filter(&self) -> &Filter
+  fn set_filter(&mut self, filter: Filter)
+  fn select(&self) -> &Selector
+  fn set_select(&mut self, select: Selector)
+  fn plan(&self) -> Plan
+  fn set_plan(&mut self, plan: Plan) -> Result<()>
+  fn partition_pairs(&self) -> Vec<(String, String)>
+  fn apply_columns(&self) -> Option<Vec<String>>
+  fn apply_arrow_expressions( &self, reader: crate::arrow::BatchReader, ) -> Result<crate::arrow::BatchReader>
+  fn partition_filter(&self) -> Filter
+  fn require_field(&self) -> Result<Field>
   fn with_field(mut self, field: Field) -> Self
+  fn with_name(mut self, name: impl Into<SmolStr>) -> Self
+  fn with_dtype(mut self, dtype: DataType) -> Self
+  fn with_plan(mut self, plan: impl IntoPlan) -> Result<Self>
+  fn with_filter(mut self, filter: impl IntoFilter) -> Result<Self>
+  fn set_filter_scalar(&mut self, filter: &Scalar) -> Result<()>
+  fn with_filter_scalar(mut self, filter: &Scalar) -> Result<Self>
+  fn set_select_scalar(&mut self, select: &Scalar) -> Result<()>
+  fn with_select_scalar(mut self, select: &Scalar) -> Result<Self>
+  fn set_merge_by_scalar(&mut self, merge_by: &Scalar) -> Result<()>
+  fn with_merge_by_scalar(mut self, merge_by: &Scalar) -> Result<Self>
+  fn set_plan_scalar(&mut self, plan: &Scalar) -> Result<()>
+  fn with_plan_scalar(mut self, plan: &Scalar) -> Result<Self>
+  fn with_select(mut self, select: impl IntoSelector) -> Result<Self>
+  fn with_safe(mut self, safe: bool) -> Self
+  fn with_batch_byte_size(mut self, batch_byte_size: u64) -> Self
+  fn with_batch_row_size(mut self, batch_row_size: usize) -> Self
+  fn with_max_row_size(mut self, max_row_size: u64) -> Self
+  fn with_max_byte_size(mut self, max_byte_size: u64) -> Self
   fn with_commit_row_size(mut self, commit_row_size: usize) -> Self
+  fn with_level(mut self, level: Level) -> Self
+  fn with_merge_by(mut self, merge_by: impl IntoSelector) -> Result<Self>
+  fn require_merge_by(&self) -> Result<()>
+  fn apply_arrow_batch( &self, batch: arrow_array::RecordBatch, existing: Option<&Field>, ) -> Result<arrow_array::RecordBatch>
+  fn apply_arrow_reader( &self, reader: crate::arrow::BatchReader, existing: Option<&Field>, ) -> Result<crate::arrow::BatchReader>
+  fn limit_arrow_reader( &self, reader: crate::arrow::BatchReader, ) -> Result<crate::arrow::BatchReader>
+  fn require_write_limits(&self) -> Result<()>
+  fn write_limit_is_zero(&self) -> bool
   pub enum RecordOptions
   pub fn stable_hash(&self) -> u64
+  pub const fn timezone(&self) -> Option<&crate::Timezone>
+  pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()>
   pub fn avro_block_codec(&self) -> Option<&str>
   pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()>
   pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]>
   pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()>
+  pub fn parquet_compression_name(&self) -> Option<String>
+  pub fn set_parquet_compression_name(&mut self, compression: &str) -> Result<()>
+  pub const fn parquet_max_row_group_size(&self) -> Option<usize>
+  pub fn set_parquet_max_row_group_size(&mut self, rows: usize) -> Result<()>
+  pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]>
+  pub fn set_parquet_key_value_metadata( &mut self, metadata: Vec<(String, String)>, ) -> Result<()>
+  pub fn push_parquet_key_value( &mut self, key: impl Into<String>, value: impl Into<String>, ) -> Result<()>
   pub fn require_write_mode(&self, mode: IOMode) -> Result<()>
   pub fn require_commit_row_size(&self) -> Result<Option<usize>>
   pub fn for_media_type(media_type: &MediaType) -> Result<Self>
   pub fn for_mime_type(base: &MimeType) -> Result<Self>
   pub const fn mime_type(&self) -> MimeType
-  pub fn header(&self) -> Option<&str>
-  pub fn set_header(&mut self, header: Option<&str>) -> Result<()>
-  pub fn lstrip(&self) -> Option<&str>
-  pub fn set_lstrip(&mut self, lstrip: Option<&str>) -> Result<()>
-  pub fn rstrip(&self) -> Option<&str>
-  pub fn set_rstrip(&mut self, rstrip: Option<&str>) -> Result<()>
-  pub const fn linesep(&self) -> Option<&crate::text::LineSep>
-  pub fn set_linesep(&mut self, linesep: Option<crate::text::LineSep>) -> Result<()>
-  pub const fn autotype(&self) -> Option<bool>
-  pub fn set_autotype(&mut self, autotype: bool) -> Result<()>
-  pub const fn timezone(&self) -> Option<&crate::Timezone>
-  pub fn set_timezone(&mut self, timezone: Option<crate::Timezone>) -> Result<()>
 
 ### yggdryl::media::parquet::metadata  [rust\src\media\parquet\metadata.rs]
 pub struct ColumnStatistics
@@ -1983,30 +1997,23 @@ pub struct ParquetOptions
   pub fn read_geospatial_statistics(&self, column: &str) -> Result<GeospatialStatistics>
 
 ### yggdryl::media::partition  [rust\src\media\partition.rs]
-pub const NULL_PARTITION: &str = "null";
-  pub fn partition_text(value: &Scalar) -> Result<SmolStr>
+pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr>
   pub fn with_partitions( batch: &RecordBatch, partitions: &[(String, String)], field: Option<&Field>, ) -> Result<RecordBatch>
   pub fn without_partitions( batch: &RecordBatch, partitions: &[(String, String)], ) -> Result<RecordBatch>
   pub fn partitioned_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, field: Option<Field>, ) -> Result<crate::arrow::BatchReader>
   pub fn narrowed_reader( inner: crate::arrow::BatchReader, partitions: Vec<(String, String)>, schema: Arc<Schema>, ) -> crate::arrow::BatchReader
-  impl PartitionField<'field>
-  pub fn sources(&self) -> Result<Option<Vec<String>>>
-  pub fn transform(&self) -> Result<Option<Function>>
-  pub fn expression(&self) -> Result<Option<Expression>>
-  pub fn declares_derivation(&self) -> bool
-  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
-  impl PartitionFieldMut<'_>
-  pub fn set_sources<I, P>(&mut self, sources: I) -> Result<()> where I: IntoIterator<Item = P>, P: AsRef<str>,
-  pub fn set_transform(&mut self, transform: Function) -> Result<()>
 
 ### yggdryl::expression::path  [rust\src\expression\path.rs]
 pub enum FieldSegment
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
+  pub const fn range(start: Option<i64>, end: Option<i64>) -> Self
   pub fn key(value: Scalar) -> Result<Self>
   pub fn as_name(&self) -> Option<&str>
   pub const fn as_index(&self) -> Option<i64>
-pub struct FieldPath
+  pub fn apply_field(&self, field: &Field) -> Result<Field>
+  pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Scalar
+  pub struct FieldPath
   pub fn root() -> Self
   pub fn new(segments: impl IntoIterator<Item = FieldSegment>) -> Self
   pub fn from_str(value: &str) -> Result<Self>
@@ -2018,11 +2025,13 @@ pub struct FieldPath
   pub fn last(&self) -> Option<&FieldSegment>
   pub fn parent(&self) -> Option<Self>
   pub fn join(&self, segment: FieldSegment) -> Self
-  pub fn as_name(&self) -> Option<&str>
   pub fn alias(&self) -> Option<&str>
   pub fn set_alias(&mut self, alias: Option<&str>) -> Result<()>
-  pub fn try_with_alias(self, alias: &str) -> Result<Self>
+  pub fn try_with_alias(mut self, alias: &str) -> Result<Self>
   pub fn column_name(&self) -> Option<&str>
+  pub fn as_name(&self) -> Option<&str>
+  pub fn apply_field(&self, root: &Field) -> Result<Field>
+  pub fn apply_scalar(&self, root: &Field, value: &Scalar) -> Result<Scalar>
   pub fn stable_hash(&self) -> u64
 
 ### yggdryl::media::text::bytes  [rust\src\media\text\bytes.rs]
@@ -2073,20 +2082,18 @@ pub struct TextEntries
 
 ### yggdryl::media::text::line  [rust\src\media\text\line.rs]
 pub struct TextLine
-  impl From<TextLine> for Result<TextLine>
-  impl<'a> From<&'a TextLine> for Result<&'a TextLine>  (Ok wrappers; borrowed input remains borrowed)
   pub fn from_bytes(index: u64, body: TextBytes) -> Result<Self>
   pub const fn index(&self) -> u64
   pub const fn set_index(&mut self, index: u64)
-  pub fn url(&self) -> Option<&Url>
-  pub fn set_url(&mut self, url: Option<Arc<Url>>)
-  pub fn with_url(self, url: Arc<Url>) -> Self
+  pub fn sourceurl(&self) -> Option<&Url>
+  pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>)
+  pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self
   pub const fn timestamp(&self) -> Option<i128>
   pub const fn set_timestamp(&mut self, timestamp: Option<i128>)
-  pub const fn with_timestamp(self, timestamp: i128) -> Self
+  pub const fn with_timestamp(mut self, timestamp: i128) -> Self
   pub const fn bodytype(&self) -> Option<&MimeType>
   pub fn set_bodytype(&mut self, bodytype: Option<MimeType>)
-  pub fn with_bodytype(self, bodytype: MimeType) -> Self
+  pub fn with_bodytype(mut self, bodytype: MimeType) -> Self
   pub fn body(&self) -> &str
   pub const fn body_bytes(&self) -> &TextBytes
   pub fn set_body(&mut self, body: TextBytes) -> Result<()>
@@ -2096,11 +2103,11 @@ pub struct TextLine
   pub fn captures(&self) -> &[Option<TextBytes>]
   pub fn capture(&self, index: usize) -> Option<&str>
   pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()>
-  pub fn with_captures(self, captures: Vec<Option<TextBytes>>) -> Result<Self>
+  pub fn with_captures(mut self, captures: Vec<Option<TextBytes>>) -> Result<Self>
   pub const fn entries(&self) -> Option<&TextEntries>
   pub const fn entries_mut(&mut self) -> Option<&mut TextEntries>
   pub fn set_entries(&mut self, entries: Option<TextEntries>)
-  pub fn with_entries(self, entries: TextEntries) -> Self
+  pub fn with_entries(mut self, entries: TextEntries) -> Self
   pub fn get_entry_by_path(&self, path: &FieldPath) -> Option<&TextEntry>
   pub fn entry_by_path(&self, path: &FieldPath) -> Result<&TextEntry>
   pub fn get_entry_by_path_mut(&mut self, path: &FieldPath) -> Option<&mut TextEntry>
@@ -2850,13 +2857,16 @@ pub struct Differences<'schema>
   pub fn from_dtypes( left: &DataType, right: &DataType, with_metadata: bool, return_equal: bool, ) -> Self
 
 ### yggdryl::types::dtype  [rust\src\types\dtype.rs]
-pub fn scalar(&self, value: impl Into<Scalar>) -> Result<Scalar>
+pub enum DataType
+  pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar>
   pub fn stable_hash(&self) -> u64
   pub const fn id(&self) -> DataTypeId
   pub const fn kind(&self) -> DataTypeKind
   pub const fn name(&self) -> &'static str
   pub fn is_nested(&self) -> bool
   pub fn named_field(self, name: impl Into<SmolStr>, nullable: bool) -> Field
+  pub fn cast_scalar(&self, value: &Scalar) -> Result<Scalar>
+  pub fn try_cast_scalar(&self, value: &Scalar) -> Scalar
   pub fn nullable_field(self, name: impl Into<SmolStr>) -> Field
   pub fn required_field(self, name: impl Into<SmolStr>) -> Field
   pub fn validate(&self) -> Result<()>
@@ -3100,10 +3110,14 @@ pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal128(precision: u8, scale: i8) -> Result<Self>
   pub fn decimal256(precision: u8, scale: i8) -> Result<Self>
 
-### yggdryl::types::uuid  [rust\src\types\uuid\dtypes.rs]
-pub const fn uuid() -> Self
-  pub fn uuid_packed(&self, value: &[u8]) -> Result<u128>
-  pub fn uuid_value(&self, packed: u128) -> Result<SmolStr>
+### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
+pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarFamily and ScalarValue)
+  pub const fn new(value: u128) -> Self
+  pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
+  pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
+  pub fn from_bytes(value: &[u8]) -> Result<Self>
+  pub const fn get(self) -> u128
+  pub const fn into_bytes(self) -> [u8; 16]
 
 ### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
 pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarFamily and ScalarValue)
@@ -3401,36 +3415,27 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::types::scalar  [rust\src\types\scalar.rs]
-pub struct Float16(u16);
-  pub fn from_f16(value: half::f16) -> Self
-  pub const fn as_f16(self) -> half::f16
-  pub fn as_f32(self) -> f32
-  pub fn as_f64(self) -> f64
-  pub fn stable_hash(&self) -> u64
-  pub struct Float32(u32);
-  pub fn from_f32(value: f32) -> Self
-  pub const fn as_f32(self) -> f32
-  pub const fn as_f64(self) -> f64
-  pub fn stable_hash(&self) -> u64
-  pub struct Float64(u64);
-  pub fn from_f64(value: f64) -> Self
-  pub const fn as_f64(self) -> f64
-  pub const fn into_f64(self) -> f64
-  pub fn stable_hash(&self) -> u64
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, I8, I16, I32, I64, U8, U16, U32, U64, I128, U128, F16, F32, F64, D32, D64, D128, D256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Enum, Bytes, Geospatial, Sequence, Mapping, Record; 48 bytes; each width variant holds its leaf directly, no family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
-  pub fn from_float(value: f64, bit_width: u8) -> Result<Self>
+pub trait ScalarValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
+  fn dtype(&self) -> Result<DataType>
+  fn into_family(self) -> Self::Family
+  fn from_family(family: &Self::Family) -> Option<&Self>
+  fn into_scalar(self) -> Scalar
+  fn from_scalar(value: &Scalar) -> Option<&Self>
+  pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash
+  fn id(&self) -> DataTypeId
+  fn dtype(&self) -> Result<DataType>
+  fn into_scalar(self) -> Scalar
+  fn from_scalar(value: &Scalar) -> Option<&Self>
+  pub enum Scalar
+  pub fn id(&self) -> DataTypeId
+  pub fn family(&self) -> DataTypeKind
   pub const fn kind(&self) -> &'static str
   pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self
   pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self>
-  pub fn from_record<K, I>(entries: I) -> Result<Self> where K: Into<SmolStr>, I: IntoIterator<Item = (K, Self)>
+  pub fn from_record<K, I>(entries: I) -> Result<Self> where
   pub const fn as_bool(&self) -> Option<bool>
-  pub const fn as_i128(&self) -> Option<i128>
-  pub const fn as_u128(&self) -> Option<u128>
-  pub fn as_f64(&self) -> Option<f64>
-  pub fn as_f32(&self) -> Option<f32>
-  pub const fn as_f16(&self) -> Option<half::f16>
-  pub fn as_str(&self) -> Option<&str>  (String, Code and Enum values)
-  pub const fn as_enum(&self) -> Option<&EnumScalar>
+  pub fn as_str(&self) -> Option<&str>
+  pub const fn as_enum(&self) -> Option<&Enum>
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn as_json_bytes(&self) -> Result<Vec<u8>>
   pub fn as_json_utf8(&self) -> Result<String>
@@ -3449,10 +3454,7 @@ pub struct Float16(u16);
   pub fn record_iter(&self) -> std::collections::btree_map::Iter<'_, SmolStr, Self>
   pub const fn is_null(&self) -> bool
   pub const fn is_container(&self) -> bool
-  pub const fn is_integer(&self) -> bool
   pub const fn is_number(&self) -> bool
-  pub const fn as_i64(&self) -> Option<i64>
-  pub const fn as_u64(&self) -> Option<u64>
   pub fn path(&self, path: &str) -> Option<&Self>
   pub fn get_or<'value>(&'value self, key: &str, default: &'value Self) -> &'value Self
   pub fn entries(&self) -> std::slice::Iter<'_, (Self, Self)>
@@ -3462,7 +3464,9 @@ pub struct Float16(u16);
   pub fn without_key(&self, key: &str) -> Result<Self>
   pub fn with_field(&self, name: impl Into<SmolStr>, value: impl Into<Self>) -> Result<Self>
   pub fn without_field(&self, name: &str) -> Result<Self>
-  pub enum Children<'a>
+  pub fn into_native(&self) -> Result<Self>
+  pub fn from_arrow(value: crate::arrow::ArrowScalar) -> Self
+  pub fn as_arrow(&self) -> Option<&crate::arrow::ArrowScalar>
 
 ### yggdryl::types::serde  [rust\src\types\serde.rs]
 pub fn from_json(input: &str) -> Result<Self>
@@ -3472,12 +3476,39 @@ pub fn from_json(input: &str) -> Result<Self>
 pub fn from_json(value: &str) -> Result<Self>
   pub fn into_json(self) -> Result<String>
 
-### yggdryl::types::temporal  [rust\src\types\temporal\dtypes.rs]
-pub fn time(unit: TimeUnit) -> Result<Self>
-  pub fn time32(unit: TimeUnit) -> Result<Self>
-  pub fn time64(unit: TimeUnit) -> Result<Self>
-  pub fn duration32(unit: TimeUnit) -> Result<Self>
-  pub fn duration64(unit: TimeUnit) -> Result<Self>
+### yggdryl::types::temporal  [rust\src\types\temporal\scalars.rs]
+pub enum TemporalFamily
+  pub const fn as_str(self) -> &'static str
+  pub fn from_date(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn from_time(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn from_datetime(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn from_duration(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub const fn date32(days: i32) -> Self
+  pub fn date32_in(days: i32, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub const fn date64(milliseconds: i64) -> Self
+  pub fn date64_in(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn time32(count: i32, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn time64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn datetime64(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn datetime64_in(count: i64, unit: TimeUnit, zone: &str) -> Result<Self>
+  pub fn duration32(count: i32, unit: TimeUnit) -> Result<Self>
+  pub fn duration32_in(count: i32, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub fn duration64(count: i64, unit: TimeUnit) -> Result<Self>
+  pub fn duration64_in(count: i64, unit: TimeUnit, zone: Timezone) -> Result<Self>
+  pub const fn as_date32(&self) -> Option<(i32, TimeUnit, &Timezone)>
+  pub const fn as_date64(&self) -> Option<(i64, TimeUnit, &Timezone)>
+  pub const fn as_time32(&self) -> Option<(i32, TimeUnit, &Timezone)>
+  pub const fn as_time64(&self) -> Option<(i64, TimeUnit, &Timezone)>
+  pub const fn as_datetime64(&self) -> Option<(i64, TimeUnit, &Timezone)>
+  pub const fn as_duration32(&self) -> Option<(i32, TimeUnit, &Timezone)>
+  pub const fn as_duration64(&self) -> Option<(i64, TimeUnit, &Timezone)>
+  pub const fn temporal_family(&self) -> Option<TemporalFamily>
+  pub const fn temporal_unit(&self) -> Option<TimeUnit>  (an interval answers its layout unit)
+  pub const fn temporal_timezone(&self) -> Option<Timezone>  (an interval answers Timezone::NAIVE)
+  pub const fn temporal_count(&self) -> Option<i64>  (an interval answers its nanosecond component)
+  pub fn temporal_count_at(&self, unit: TimeUnit) -> Option<i64>
+  pub const fn is_temporal(&self) -> bool
+  pub fn temporal_dtype(&self) -> Option<DataType>
 
 ### yggdryl::types::temporal  [rust\src\types\temporal\scalars.rs]
 pub enum TemporalFamily
@@ -3673,8 +3704,6 @@ impl Field
   pub fn set_string_enum(&mut self, value: &StringEnum) -> Result<()>  (refused unless the datatype is a fixed US-ASCII string of at most sixteen bytes or a code)
   pub fn try_with_string_enum(mut self, value: &StringEnum) -> Result<Self>
   pub fn remove_string_enum(&mut self) -> Result<Option<StringEnum>>
-
-### yggdryl::types::string::casts  [rust\src\types\string\casts.rs]  (arrow feature; crate-private: the StringIngest and CodeIngest array casts, no public item)
 
 ### yggdryl::types::typed  [rust\src\types\typed.rs]
 pub struct FieldScalar<'a>
@@ -3916,3 +3945,306 @@ pub struct Authority(SmolStr);
   pub fn remove_extension(&mut self) -> bool
   pub fn clear_extensions(&mut self) -> bool
   pub fn stable_hash(&self) -> u64
+
+### yggdryl::expression::user  [rust\src\expression\user.rs]
+pub struct UserRef
+  pub fn new(namespace: &str, name: &str) -> Result<Self>
+  pub fn parse(text: &str) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub fn namespace(&self) -> &str
+  pub fn name(&self) -> &str
+  pub struct FunctionSignature
+  pub fn new( reference: UserRef, parameters: impl IntoIterator<Item = Field>, returns: Field, ) -> Result<Self>
+  pub const fn reference(&self) -> &UserRef
+  pub fn parameters(&self) -> &[Field]
+  pub const fn returns(&self) -> &Field
+  pub fn arity(&self) -> (usize, usize)
+  pub fn parameter_default(parameter: &Field) -> Result<Option<Scalar>>
+  pub fn with_default(parameter: Field, value: &Scalar) -> Result<Field>
+  pub fn as_field(&self) -> Result<Field>
+  pub fn from_field(field: &Field) -> Result<Self>
+  pub fn output_field(&self, arguments: &[Field], term: &Term) -> Result<Field>
+  pub fn fill(&self, values: &[Scalar]) -> Result<Option<Vec<Scalar>>>
+  pub trait UserFunction: Send + Sync
+  fn signature(&self) -> &FunctionSignature
+  fn call(&self, arguments: &[Scalar]) -> Result<Scalar>
+  fn call_arrow( &self, fields: &[Field], arguments: &[arrow_array::ArrayRef], rows: usize, output: &Field, ) -> Result<arrow_array::ArrayRef>
+  pub fn register_function(function: Arc<dyn UserFunction>) -> Result<()>
+  pub fn unregister_function(reference: &UserRef) -> bool
+  pub fn lookup_function(reference: &UserRef) -> Result<Arc<dyn UserFunction>>
+  pub fn registered_functions() -> Vec<UserRef>
+  pub fn user(namespace: &str, name: &str) -> Result<Self>
+  pub fn resolve(name: &str) -> Result<Self>
+
+### yggdryl::expression::filter  [rust\src\expression\filter.rs]
+pub struct Filter(Term)
+  pub const fn new(term: Term) -> Self
+  pub fn always_true() -> Self
+  pub fn always_false() -> Self
+  pub const fn term(&self) -> &Term
+  pub fn into_term(self) -> Term
+  pub fn stable_hash(&self) -> u64
+  pub fn all(operands: impl IntoIterator<Item = Self>) -> Self
+  pub fn any(operands: impl IntoIterator<Item = Self>) -> Self
+  pub fn and(self, other: Self) -> Self
+  pub fn or(self, other: Self) -> Self
+  pub fn not(self) -> Self
+  pub fn is_always_true(&self) -> bool
+  pub fn is_always_false(&self) -> bool
+  pub fn conjuncts(&self) -> Vec<Self>
+  pub fn columns(&self) -> Vec<String>
+  pub fn attributes(&self) -> Vec<Attribute>
+  pub fn parameters(&self) -> Vec<String>
+  pub fn has_attributes(&self) -> bool
+  pub fn simplify(&self) -> Self
+  pub fn check_budget(&self) -> Result<()>
+  pub fn field(&self, schema: &Field) -> Result<Field>
+  pub fn apply_field(&self, root: &Field) -> Result<Field>
+  pub fn apply_datatype(&self, dtype: &DataType) -> Result<DataType>
+  pub fn from_scalar(value: &crate::Scalar) -> Result<Self>
+  pub fn apply_scalar(&self, root: &Field, row: &crate::Scalar) -> Result<bool>
+  pub trait IntoFilter
+  fn into_filter(self) -> Result<Filter>
+  pub fn partition_equals(column: &str, value: &str, dtype: &DataType) -> Self
+  pub fn holder_partition_equals(column: &str, value: &str) -> Self
+  pub fn all_partitions_equal<C: AsRef<str>, V: AsRef<str>>( schema: &Field, pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
+  pub fn all_holder_partitions_equal<C: AsRef<str>, V: AsRef<str>>( pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
+  pub fn holder_carries_partition(column: &str, value: &str) -> Self
+  pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>( pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
+
+### yggdryl::expression::plan  [rust\src\expression\plan.rs]
+pub enum Location
+  pub fn parts<I, S>(parts: I) -> Self where
+  pub fn url(&self, base: Option<&Url>) -> Result<Url>
+  pub fn name(&self) -> Option<&str>
+  pub struct Target
+  pub const fn new(location: Location) -> Self
+  pub const fn url(url: Url) -> Self
+  pub fn parts<I, S>(parts: I) -> Self where
+  pub fn parse(text: &str) -> Result<Self>
+  pub fn with_property(mut self, name: impl Into<String>, value: impl Into<String>) -> Self
+  pub fn with_properties<K, V>(self, properties: impl IntoIterator<Item = (K, V)>) -> Self where
+  pub const fn location(&self) -> &Location
+  pub fn properties(&self) -> &[(String, String)]
+  pub fn property(&self, name: &str) -> Option<&str>
+  pub enum Source
+  pub enum Verb
+  pub const fn as_str(self) -> &'static str
+  pub const fn word(self) -> &'static str
+  pub struct Write
+  pub fn new(verb: Verb) -> Self
+  pub fn into(mut self, target: Target) -> Self
+  pub fn by(mut self, merge_by: Selector) -> Self
+  pub const fn verb(&self) -> Verb
+  pub const fn target(&self) -> Option<&Target>
+  pub const fn merge_by(&self) -> &Selector
+  pub struct Ordering
+  pub const fn asc(term: Term) -> Self
+  pub const fn desc(term: Term) -> Self
+  pub const fn nulls_first(mut self, nulls_first: bool) -> Self
+  pub const fn term(&self) -> &Term
+  pub const fn is_descending(&self) -> bool
+  pub const fn is_nulls_first(&self) -> bool
+  pub struct Plan
+  pub fn new() -> Self
+  pub fn from_scalar(value: &crate::Scalar) -> Result<Self>
+  pub fn from_field(field: &Field) -> Self
+  pub fn create(mut self, target: Option<Target>, schema: Selector) -> Self
+  pub fn write(mut self, write: Write) -> Self
+  pub fn select(mut self, selector: impl IntoSelector) -> Result<Self>
+  pub fn read_from(mut self, source: impl Into<Source>) -> Self
+  pub fn filter(mut self, filter: impl IntoFilter) -> Result<Self>
+  pub fn order_by(mut self, keys: impl IntoIterator<Item = Ordering>) -> Self
+  pub const fn limit(mut self, limit: Option<u64>) -> Self
+  pub const fn offset(mut self, offset: Option<u64>) -> Self
+  pub fn stable_hash(&self) -> u64
+  pub const fn create_target(&self) -> Option<&Target>
+  pub const fn schema(&self) -> Option<&Selector>
+  pub fn set_schema(&mut self, schema: Option<Selector>)
+  pub const fn root_metadata(&self) -> &crate::Metadata
+  pub fn set_root_metadata(&mut self, metadata: crate::Metadata)
+  pub const fn write_section(&self) -> Option<&Write>
+  pub const fn selector(&self) -> &Selector
+  pub fn set_selector(&mut self, selector: Selector)
+  pub const fn source(&self) -> Option<&Source>
+  pub const fn filter_section(&self) -> &Filter
+  pub fn set_filter(&mut self, filter: Filter)
+  pub fn ordering(&self) -> &[Ordering]
+  pub const fn row_limit(&self) -> Option<u64>
+  pub const fn row_offset(&self) -> Option<u64>
+  pub fn merge_by(&self) -> &Selector
+  pub fn set_merge_by(&mut self, merge_by: Selector)
+  pub fn root_name(&self) -> &str
+  pub fn set_root_name(&mut self, name: impl Into<SmolStr>)
+  pub fn is_empty(&self) -> bool
+  pub fn is_identity(&self) -> bool
+  pub fn read_sections(&self) -> Self
+  pub fn clear_read_sections(&mut self)
+  pub fn field(&self) -> Result<Option<Field>>
+  pub fn field_from(&self, root: &Field) -> Result<Field>
+  pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
+  pub fn columns(&self) -> Vec<String>
+  pub fn read_columns(&self) -> Option<Vec<String>>
+  pub fn attributes(&self) -> Vec<Attribute>
+  pub fn parameters(&self) -> Vec<String>
+  pub fn simplify(&self) -> Self
+  pub fn check_budget(&self) -> Result<()>
+  pub fn into_expression(self) -> Expression
+  pub fn clauses(&self) -> Vec<Expression>
+  pub trait IntoPlan
+  fn into_plan(self) -> Result<Plan>
+  pub fn holder(&self, base: Option<&Url>) -> Result<Holder>
+  pub fn record_options(&self, holder: &Holder) -> Result<RecordOptions>
+  pub fn execute(&self) -> Result<BatchReader>
+  pub fn apply_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader>
+
+### yggdryl::expression::term  [rust\src\expression\term.rs]
+pub enum Term
+  pub fn stable_hash(&self) -> u64
+  pub fn always_true() -> Self
+  pub fn always_false() -> Self
+  pub fn literal(value: impl Into<Scalar>) -> Self
+  pub fn typed_literal(dtype: DataType, value: Scalar) -> Result<Self>
+  pub fn from_scalar(value: &Scalar) -> Result<Self>
+  pub fn column(name: impl Into<SmolStr>) -> Self
+  pub const fn attribute(attribute: Attribute) -> Self
+  pub fn parameter(name: impl Into<SmolStr>) -> Self
+  pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Self
+  pub fn child(self, name: impl Into<SmolStr>) -> Self
+  pub fn at(self, index: i64) -> Self
+  pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self
+  pub fn all(operands: impl IntoIterator<Item = Self>) -> Self
+  pub fn any(operands: impl IntoIterator<Item = Self>) -> Self
+  pub fn and(self, other: Self) -> Self
+  pub fn or(self, other: Self) -> Self
+  pub fn not(self) -> Self
+  pub fn compare(self, comparison: Comparison, other: Self) -> Self
+  pub fn eq(self, other: Self) -> Self
+  pub fn ne(self, other: Self) -> Self
+  pub fn lt(self, other: Self) -> Self
+  pub fn le(self, other: Self) -> Self
+  pub fn gt(self, other: Self) -> Self
+  pub fn ge(self, other: Self) -> Self
+  pub fn is_in(self, list: impl IntoIterator<Item = Self>) -> Self
+  pub fn between(self, low: Self, high: Self) -> Self
+  pub fn is_null(self) -> Self
+  pub fn is_not_null(self) -> Self
+  pub fn like(self, pattern: Self) -> Self
+  pub fn ilike(self, pattern: Self) -> Self
+  pub fn glob(self, pattern: Self) -> Self
+  pub fn arithmetic(self, operator: Operator, other: Self) -> Self
+  pub fn add(self, other: Self) -> Self
+  pub fn subtract(self, other: Self) -> Self
+  pub fn multiply(self, other: Self) -> Self
+  pub fn divide(self, other: Self) -> Self
+  pub fn remainder(self, other: Self) -> Self
+  pub fn neg(self) -> Self
+  pub fn call(function: Function, arguments: impl IntoIterator<Item = Self>) -> Self
+  pub fn cast(self, dtype: DataType) -> Self
+  pub fn try_cast(self, dtype: DataType) -> Self
+  pub fn case(branches: impl IntoIterator<Item = (Self, Self)>, otherwise: Option<Self>) -> Self
+  pub const fn is_literal(&self) -> bool
+  pub const fn as_literal(&self) -> Option<&Literal>
+  pub fn as_column(&self) -> Option<&str>
+  pub fn as_path(&self) -> Option<&[FieldSegment]>
+  pub fn root_column(&self) -> Option<&str>
+  pub fn is_always_true(&self) -> bool
+  pub fn is_always_false(&self) -> bool
+  pub fn is_null_literal(&self) -> bool
+  pub fn depth(&self) -> usize
+  pub fn node_count(&self) -> usize
+  pub fn check_budget(&self) -> Result<()>
+  pub fn columns(&self) -> Vec<String>
+  pub fn attributes(&self) -> Vec<Attribute>
+  pub fn parameters(&self) -> Vec<String>
+  pub fn has_attributes(&self) -> bool
+  pub fn conjuncts(&self) -> Vec<Self>
+  pub fn simplify(&self) -> Self
+  pub trait IntoTerm
+  fn into_term(self) -> Result<Term>
+  pub fn col(name: impl Into<SmolStr>) -> Term
+  pub fn lit(value: impl Into<Scalar>) -> Term
+
+### yggdryl::expression::records  [rust\src\expression\records.rs]
+pub struct Records
+  pub const fn field(&self) -> &Field
+  pub fn collect_rows(self) -> Result<Vec<Scalar>>
+  pub fn into_arrow_reader(self) -> Result<crate::arrow::BatchReader>
+  pub fn from_arrow_reader(reader: crate::arrow::BatchReader) -> Result<Self>
+  pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
+  pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
+  pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
+
+### yggdryl::expression::attribute  [rust\src\expression\attribute.rs]
+pub enum Cost
+  pub const fn as_str(self) -> &'static str
+  pub enum Attribute
+  pub const ALL: [Self; 13] = [ Self::Url, Self::Path, Self::Name, Self::Stem, Self::Extension, Self::Scheme, Self::Parent, Self::Depth, Self::MimeType, Self::Size, Self::Kind, Self::IsContainer,
+  pub fn as_str(&self) -> &str
+  pub fn from_name(name: &str) -> Option<Self>
+  pub fn vocabulary() -> String
+  pub const fn cost(&self) -> Cost
+  pub fn dtype(&self) -> DataType
+  pub fn field(&self) -> Field
+  pub fn read_url(&self, url: &Url) -> Scalar
+  pub trait Attributes
+  fn attribute(&self, attribute: &Attribute) -> Result<Scalar>
+  pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H)
+  pub fn read_handle<H: IOBase + ?Sized>(handle: &H, attribute: &Attribute) -> Result<Scalar>
+
+### yggdryl::expression::explain  [rust\src\expression\explain.rs]
+pub fn explain(&self) -> String
+  pub fn explain(&self) -> String
+  pub fn explain(&self) -> String
+  pub fn explain(&self) -> String
+  pub fn explain(&self) -> String
+  pub fn explain(&self) -> String
+
+### yggdryl::expression::transform  [rust\src\expression\transform.rs]
+pub fn term(&self) -> Result<Option<Term>>
+  pub fn function(&self) -> Result<Option<Function>>
+  pub fn sources(&self) -> Result<Option<Vec<String>>>
+  pub fn is_derived(&self) -> bool
+  pub fn declares_derivation(&self) -> bool
+  pub fn set_term(&mut self, term: &Term) -> Result<()>
+  pub fn set_function<I, P>(&mut self, function: &Function, sources: I) -> Result<()> where
+  pub fn remove_term(&mut self) -> Option<String>
+  pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> Result<RecordBatch>
+
+### yggdryl::expression::literal  [rust\src\expression\literal.rs]
+pub struct Literal
+  pub fn new(dtype: DataType, value: impl Into<Scalar>) -> Result<Self>
+  pub fn infer(value: Scalar) -> Result<Self>
+  pub const fn null() -> Self
+  pub const fn dtype(&self) -> &DataType
+  pub const fn value(&self) -> &Scalar
+  pub const fn is_null(&self) -> bool
+  pub fn into_parts(self) -> (DataType, Scalar)
+
+### yggdryl::iomedia  [rust\src\iomedia.rs]
+pub trait IOMedia: Send
+  fn as_io_base(&self) -> &dyn IOBase
+  fn as_io_base_mut(&mut self) -> &mut dyn IOBase
+  fn row_size(&self) -> Result<u64>
+  fn column_size(&self) -> Result<usize>
+  fn record_options(&self) -> Result<RecordOptions>
+  fn read_parquet_statistics(&self) -> Result<crate::media::parquet::FileStatistics>
+  fn read_parquet_geospatial_statistics( &self, column: &str, ) -> Result<crate::media::parquet::GeospatialStatistics>
+  fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field>
+  fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader>
+  fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::arrow::ArrowScalar>
+  fn write_arrow( &mut self, value: crate::arrow::ArrowScalar, mode: crate::IOMode, options: Option<&RecordOptions>, ) -> Result<()>
+  fn write_arrow_reader( &mut self, batches: crate::arrow::BatchReader, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()>
+  fn overwrite_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
+  fn overwrite_prepared_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
+  fn overwrite_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<()>
+  fn write_arrow_batch( &mut self, batch: arrow_array::RecordBatch, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()>
+  fn append_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
+  fn append_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<()>
+  fn merge_arrow_reader( &mut self, batches: crate::arrow::BatchReader, options: &RecordOptions, ) -> Result<()>
+  fn merge_arrow_batch( &mut self, batch: arrow_array::RecordBatch, options: &RecordOptions, ) -> Result<()>
+  fn overwrite_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
+  fn append_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
+  fn merge_records<I, R>(&mut self, records: I, options: &RecordOptions) -> Result<()> where
+  fn write_records<I, R>( &mut self, records: I, mode: crate::IOMode, options: &RecordOptions, ) -> Result<()> where
+

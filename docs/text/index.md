@@ -121,7 +121,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
     ```python
     from yggdryl import Scalar
 
-    assert (Scalar.from_py(40) + 2).as_py() == 42
+    assert (Scalar.from_(40) + 2).as_py() == 42
     assert Scalar.decimal(1, 0).divide(Scalar.decimal(2, 0)) == Scalar.decimal(5, 1)
     ```
 
@@ -131,7 +131,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
     const assert = require('node:assert/strict')
     const { Scalar } = require('yggdryl')
 
-    assert.equal(Scalar.fromJs(40).add(2).asJs(), 42)
+    assert.equal(Scalar.from(40).add(2).asJs(), 42)
     assert.ok(Scalar.decimal(1n).divide(Scalar.decimal(2n)).equals(Scalar.decimal(5n, 1)))
     ```
 

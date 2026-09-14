@@ -2607,3 +2607,52 @@ round-tripping through a selector; a plan creating, inserting, upserting,
 deleting and reading one store; the sliced reader crossing batch boundaries as
 views; a holder built from a URL with properties; the split option sections
 composing into one plan and back.
+
+## 32. Scalar is the boundary, options take properties, and the function set has one door
+
+Everything a binding hands the expression layer crosses as one `Scalar`:
+`Scalar.from_` in Python and `Scalar.from` in JavaScript read the host value,
+and `Term`, `Filter`, `Selector`, `Projection`, `Plan` and `Expression` read
+that scalar with `from_scalar` - text parses, a sequence is projections or
+conditions, a mapping is aliases, null is the identity, anything else the
+literal it is - so a list of names, a dict of aliases and the text of a clause
+mean the same thing in every language and no binding re-implements a parser.
+Record options expose the same door as `set_*_scalar` / `with_*_scalar`. A
+columnar host object - a pyarrow container, a pandas or polars frame, a numpy
+array, an Arrow C exporter - lands as `Scalar::Arrow(ArrowScalar)` with its
+buffers shared rather than its rows walked; `ArrowValue` is renamed
+`ArrowScalar`, `read_arrow` / `write_arrow` take record options, and
+`write_arrow` redirects each shape to the primitive that takes it as it stands.
+
+Every record read and write takes `options` and, beside it, the option
+properties by name - `**properties` in Python, a plain object in JavaScript -
+set on a copy by their own setters; `...` and `undefined` mean not given and
+are skipped, `None` and `null` clear. The `select` section is spelled `select`
+on the options, as its clause is, and `apply_datatype` is the schema question
+`apply_field` is derived from.
+
+The closed function set keeps its promise by taking one door rather than a
+registry inside the grammar: `namespace.name(...)` is a user-defined function,
+registered once per process with a `FunctionSignature` that is itself a struct
+`Field` - one child per parameter, a `function:default` making a parameter
+optional, the return as `function:returns` - typed and called by the scalar
+and vectorized tiers through that signature, and unknown to the statistics
+tier, so nothing is ever pruned by it. A call over plain columns is stored as
+a column's `transform:function` and `transform:sources`, the shape a partition
+spec already has; any other term stays `transform:expression`. Python
+registers a callable with `@user_defined_function` / `@user_defined_filter`,
+row-wise under one interpreter attachment per batch or `vectorized` over
+pyarrow arrays; JavaScript parses the spelling and refuses it by name at bind.
+
+A `where` that names a column only the `select` publishes runs after the
+projection, as DuckDB lets a `where` read an alias; every other `where` runs
+first, where it prunes. The text reader's location column is `sourceurl`.
+
+Pins: a selector, a filter and a plan read from text, a list, a dict, null and
+a literal answering the same value in every language; a columnar object
+crossing `Scalar.from_` as an Arrow scalar with its field; a property beside
+`options` landing on a copy and an Ellipsis skipped; the two tiers agreeing on
+a user function, its defaults filled and its null rule kept; a signature
+round-tripping through its field; a stored call reading back as its function
+and sources; an unregistered name refused where it is typed; a text read
+shaped by a select over the row header's captures and a where over an alias.

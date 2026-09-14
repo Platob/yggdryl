@@ -92,18 +92,18 @@ impl TextLine {
     /// and a URL is several small strings that would otherwise be rebuilt once
     /// per row.
     #[must_use]
-    pub fn url(&self) -> Option<&Url> {
+    pub fn sourceurl(&self) -> Option<&Url> {
         self.url.as_deref()
     }
 
     /// Set or clear the object this line was read from.
-    pub fn set_url(&mut self, url: Option<Arc<Url>>) {
+    pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>) {
         self.url = url;
     }
 
     /// Return this line addressed to one object.
     #[must_use]
-    pub fn with_url(mut self, url: Arc<Url>) -> Self {
+    pub fn with_sourceurl(mut self, url: Arc<Url>) -> Self {
         self.url = Some(url);
         self
     }

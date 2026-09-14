@@ -146,7 +146,7 @@ fn options_are_flat_and_validate_rowheader_names() {
         .try_with_rowheader(r"(?<body>.+)")
         .unwrap_err()
         .to_string();
-    assert!(error.contains("distinct from url, rownum, body, and dropped_byte_size"));
+    assert!(error.contains("distinct from sourceurl, rownum, body, and dropped_byte_size"));
 }
 
 #[test]
@@ -168,7 +168,7 @@ fn ordinary_record_reading_emits_optional_row_numbers_and_regex_typed_captures()
         .unwrap();
     assert_eq!(batches.len(), 1);
     let batch = &batches[0];
-    assert_eq!(batch.schema().field(0).name(), "url");
+    assert_eq!(batch.schema().field(0).name(), "sourceurl");
     assert_eq!(batch.schema().field(1).name(), "rownum");
     assert_eq!(batch.schema().field(2).name(), "mtime");
     assert_eq!(batch.schema().field(3).name(), "body");
@@ -251,7 +251,7 @@ fn capture_schema_is_derived_from_regex_before_reading() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["url", "mtime", "body", "value"]
+        ["sourceurl", "mtime", "body", "value"]
     );
 }
 
@@ -738,7 +738,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
             .iter()
             .map(|field| field.name().as_str())
             .collect::<Vec<_>>(),
-        ["url", "mtime", "body", "dropped_byte_size", "kind"]
+        ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
     );
     assert!(
         reader
@@ -765,7 +765,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect::<Vec<_>>(),
-            ["url", "mtime", "body", "dropped_byte_size", "kind"]
+            ["sourceurl", "mtime", "body", "dropped_byte_size", "kind"]
         );
         assert!(
             reader
@@ -829,7 +829,7 @@ fn generic_record_writes_use_only_the_text_body() {
     let mut target = named("out.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
     let field = DataType::from_fields([
-        DataType::utf8().required_field("url"),
+        DataType::utf8().required_field("sourceurl"),
         DataType::Int64.required_field("rownum"),
         DataType::utf8().required_field("body"),
     ])
@@ -838,13 +838,13 @@ fn generic_record_writes_use_only_the_text_body() {
     options.set_field(field);
     let rows = [
         crate::Scalar::from_record([
-            ("url", crate::Scalar::from("input")),
+            ("sourceurl", crate::Scalar::from("input")),
             ("rownum", crate::Scalar::from(1_i64)),
             ("body", crate::Scalar::from("first")),
         ])
         .unwrap(),
         crate::Scalar::from_record([
-            ("url", crate::Scalar::from("input")),
+            ("sourceurl", crate::Scalar::from("input")),
             ("rownum", crate::Scalar::from(2_i64)),
             ("body", crate::Scalar::from("second")),
         ])
@@ -869,7 +869,7 @@ fn a_dictionary_encoded_body_is_a_text_body_a_write_unpacks_once() {
     let values = Arc::new(StringArray::from(vec!["one", "two"]));
     let body = DictionaryArray::<arrow_array::types::Int32Type>::try_new(keys, values).unwrap();
     let schema = Arc::new(arrow_schema::Schema::new(vec![
-        arrow_schema::Field::new("url", arrow_schema::DataType::Utf8, false),
+        arrow_schema::Field::new("sourceurl", arrow_schema::DataType::Utf8, false),
         arrow_schema::Field::new(
             "body",
             arrow_schema::DataType::Dictionary(
@@ -898,14 +898,14 @@ fn a_binary_body_is_refused_by_a_write_naming_what_it_expected() {
     let mut target = named("refused.txt", b"old");
     let mut options: RecordOptions = TextOptions::new().into();
     let field = DataType::from_fields([
-        DataType::utf8().required_field("url"),
+        DataType::utf8().required_field("sourceurl"),
         DataType::binary().required_field("body"),
     ])
     .unwrap()
     .required_field("row");
     options.set_field(field);
     let rows = [crate::Scalar::from_record([
-        ("url", crate::Scalar::from("input")),
+        ("sourceurl", crate::Scalar::from("input")),
         ("body", crate::Scalar::from(&b"first"[..])),
     ])
     .unwrap()];
@@ -1020,7 +1020,7 @@ fn the_classification_column_reads_the_line_and_leaves_the_body() {
         .iter()
         .map(Field::name)
         .collect();
-    assert_eq!(names, ["url", "mtime", "mimetype", "body"]);
+    assert_eq!(names, ["sourceurl", "mtime", "mimetype", "body"]);
 
     let batches = collect(&source, options);
     assert_eq!(
@@ -1390,7 +1390,7 @@ fn the_mtime_column_prefers_the_header_capture_over_the_handles_own_time() {
         .collect();
     // One column, not two: the capture fills `mtime` rather than sitting
     // beside it under the same name.
-    assert_eq!(names, ["url", "mtime", "body", "id"]);
+    assert_eq!(names, ["sourceurl", "mtime", "body", "id"]);
     assert_eq!(
         batch.schema().field(1).data_type(),
         &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Nanosecond, Some("UTC".into()))
@@ -1988,8 +1988,8 @@ mod decoding {
         assert_eq!(decoded[1].body(), "second");
         // The URL is one shared value, not one rebuilt per line.
         assert_eq!(
-            decoded[0].url().map(ToString::to_string),
-            decoded[2].url().map(ToString::to_string)
+            decoded[0].sourceurl().map(ToString::to_string),
+            decoded[2].sourceurl().map(ToString::to_string)
         );
     }
 
@@ -2057,7 +2057,7 @@ mod decoding {
     fn renaming_changes_what_a_column_is_called_and_nothing_else() {
         let options = TextOptions::new()
             .with_renamed_column("body", "payload")
-            .with_renamed_column("url", "source");
+            .with_renamed_column("sourceurl", "source");
         let batch = into_arrow_batch(lines(b"hello\n", &options), &options).expect("a batch");
         assert!(batch.column_by_name("payload").is_some());
         assert!(batch.column_by_name("source").is_some());
@@ -2090,7 +2090,7 @@ mod decoding {
 
     #[test]
     fn two_columns_may_not_emit_one_name() {
-        let options = TextOptions::new().with_renamed_column("body", "url");
+        let options = TextOptions::new().with_renamed_column("body", "sourceurl");
         let error = options.source_field().expect_err("one column per name");
         assert!(error.to_string().contains("twice"), "{error}");
     }
@@ -2243,8 +2243,8 @@ mod intake {
             assert_eq!(read.body(), original.body());
             assert_eq!(read.index(), original.index());
             assert_eq!(
-                read.url().map(ToString::to_string),
-                original.url().map(ToString::to_string)
+                read.sourceurl().map(ToString::to_string),
+                original.sourceurl().map(ToString::to_string)
             );
             assert_eq!(read.timestamp(), original.timestamp());
         }
@@ -2256,7 +2256,7 @@ mod intake {
         // A producer that calls the body `payload` and the object `source`.
         let renamed = TextOptions::new()
             .with_renamed_column("body", "payload")
-            .with_renamed_column("url", "source");
+            .with_renamed_column("sourceurl", "source");
         let lines = decode(b"hello\n", &renamed);
         let foreign = into_arrow_batch(lines, &renamed).expect("a batch");
 
@@ -2264,7 +2264,7 @@ mod intake {
         let back = from_arrow_batch(&foreign, &options).expect("lines read back");
         assert_eq!(back.len(), 1);
         assert_eq!(back[0].body(), "hello");
-        assert!(back[0].url().is_some(), "source resolved to url");
+        assert!(back[0].sourceurl().is_some(), "source resolved to url");
     }
 
     #[test]
@@ -2335,4 +2335,57 @@ mod intake {
         assert!(rendered.contains("mtime"), "{rendered}");
         assert!(rendered.contains("64-bit"), "{rendered}");
     }
+}
+
+#[test]
+fn a_text_read_is_shaped_by_its_select_and_where_sections() {
+    // The select casts, aliases and reads the row header's captures; the
+    // where clause names an alias, so it runs after the projection.
+    let source = named(
+        "app.log",
+        b"[INFO] id=7 first\n[WARN] id=9 second\n[INFO] id=11 third\nplain\n",
+    );
+    let mut options = options(r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)");
+    options.start_rownum = Some(1);
+    let options = options
+        .with_select(
+            "sourceurl, cast(rownum as int32) as n, trim(body) as line, level, id * 10 as tenfold int64",
+        )
+        .unwrap()
+        .with_filter("n > 1 and line like '%d' and level is not null")
+        .unwrap();
+    let batches = collect(&source, options);
+    let batch = arrow_select::concat::concat_batches(&batches[0].schema(), &batches).unwrap();
+    let names: Vec<_> = batch
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect();
+    assert_eq!(names, ["sourceurl", "n", "line", "level", "tenfold"]);
+    assert_eq!(batch.column(1).data_type(), &arrow_schema::DataType::Int32);
+    let lines = batch
+        .column(2)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap()
+        .iter()
+        .map(|line| line.unwrap().to_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(lines, ["second", "third"]);
+    let tenfold = batch
+        .column(4)
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap()
+        .values()
+        .to_vec();
+    assert_eq!(tenfold, [90, 110]);
+    // A buffer is located in memory, and the column says so.
+    let url = batch
+        .column(0)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    assert!(url.value(0).starts_with("mem://"), "{}", url.value(0));
 }

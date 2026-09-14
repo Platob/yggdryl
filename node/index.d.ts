@@ -3635,12 +3635,12 @@ export declare class RecordOptions {
    * The `select` section a read or write is shaped by; `select *` keeps
    * every column.
    */
-  get selector(): Selector
+  get select(): Selector
   /**
    * Set the `select` section: a `Selector`, the text of one, a `Term`, or
    * the column names.
    */
-  set selector(selector: Selector | Term | string | Array<Term | string>)
+  set select(select: Selector | Term | string | Array<Term | string>)
   /**
    * The `where` section a read is pruned and filtered by; always true
    * keeps every row.
@@ -3725,7 +3725,7 @@ export declare class RecordOptions {
   /** Return these options with the keys a write matches stored rows on. */
   withMergeBy(mergeBy: Selector | Term | string | Array<Term | string>): RecordOptions
   /** Return these options shaped by a `select` section, on reads and writes. */
-  withSelector(selector: Selector | Term | string | Array<Term | string>): RecordOptions
+  withSelect(select: Selector | Term | string | Array<Term | string>): RecordOptions
   /** Return these options pruned and filtered by a `where` section. */
   withFilter(filter: Filter | Term | string): RecordOptions
   /** Return these options with every section a plan spells. */
@@ -4747,7 +4747,7 @@ export declare class TextLine {
    */
   get index(): number
   /** The object this line was read from. */
-  get url(): string | null
+  get sourceurl(): string | null
   /**
    * When the record was written, in nanoseconds UTC.
    *
@@ -4858,12 +4858,12 @@ export declare class TextOptions {
    */
   set mergeBy(mergeBy: Selector | Term | string | Array<Term | string>)
   /** The `select` section a read or write is shaped by. */
-  get selector(): Selector
+  get select(): Selector
   /**
    * Set the `select` section: a `Selector`, the text of one, a `Term`, or
    * the column names.
    */
-  set selector(selector: Selector | Term | string | Array<Term | string>)
+  set select(select: Selector | Term | string | Array<Term | string>)
   /** The `where` section a read is pruned and filtered by. */
   get filter(): Filter
   /**
@@ -4977,7 +4977,7 @@ export declare class TextOptions {
   /** Return a copy with the keys a write matches stored rows on. */
   withMergeBy(mergeBy: Selector | Term | string | Array<Term | string>): TextOptions
   /** Return a copy shaped by a `select` section. */
-  withSelector(selector: Selector | Term | string | Array<Term | string>): TextOptions
+  withSelect(select: Selector | Term | string | Array<Term | string>): TextOptions
   /** Return a copy pruned and filtered by a `where` section. */
   withFilter(filter: Filter | Term | string): TextOptions
   /** Return a copy with every section a plan spells. */

@@ -114,15 +114,15 @@ test('arithmetic builders stay lazy term nodes', () => {
   const size = Term.column('size')
   assert.equal(size.add('1').toString(), 'size + 1')
   assert.equal(size.add(1).toString(), 'size + 1')
-  assert.equal(size.add(Scalar.fromJs(1)).toString(), 'size + 1')
+  assert.equal(size.add(Scalar.from(1)).toString(), 'size + 1')
   assert.equal(size.subtract('1').toString(), 'size - 1')
   assert.equal(size.multiply('2').toString(), 'size * 2')
   assert.equal(size.divide('2').toString(), 'size / 2')
   assert.equal(size.remainder('2').toString(), 'size % 2')
   assert.equal(size.negate().toString(), '-size')
 
-  const computed = size.add('1').bind(TRADES).eval(Scalar.fromJs(['EUR', null, 4]))
-  assert.ok(computed.equals(Scalar.fromJs(5)))
+  const computed = size.add('1').bind(TRADES).eval(Scalar.from(['EUR', null, 4]))
+  assert.ok(computed.equals(Scalar.from(5)))
   for (const hidden of [
     '_addNative',
     '_subtractNative',
@@ -153,9 +153,9 @@ test('binding resolves the columns and folds the literals', () => {
 
 test('a row answers, and unknown is not true', () => {
   const bound = new Term("ccy = 'EUR' and size > 1").bind(TRADES)
-  assert.equal(bound.matches(Scalar.fromJs(['EUR', null, 5])), true)
-  assert.equal(bound.matches(Scalar.fromJs(['USD', null, 5])), false)
-  assert.equal(bound.matches(Scalar.fromJs(['EUR', null, null])), false)
+  assert.equal(bound.matches(Scalar.from(['EUR', null, 5])), true)
+  assert.equal(bound.matches(Scalar.from(['USD', null, 5])), false)
+  assert.equal(bound.matches(Scalar.from(['EUR', null, null])), false)
 })
 
 test('a holder attribute is its own question', () => {
@@ -182,6 +182,14 @@ function rowsBatch(ccy, size) {
     size: arrow.vectorFromArray(size, new arrow.Int64()),
   }).batches[0]
 }
+
+test('a user function is spelled namespace.name and refused by name until registered', () => {
+  const term = new Term('Py.Double(size)')
+  assert.equal(term.toString(), 'py.double(size)')
+  assert.equal(Term.call('py.double', [Term.column('size')]).toString(), 'py.double(size)')
+  assert.throws(() => term.bind(ROWS), /py\.double/)
+  assert.throws(() => new Term('9lives.f(size)'), /lives/)
+})
 
 test('a filter is a where clause', () => {
   const filter = new Filter("where ccy = 'EUR' and size > 1")
@@ -220,7 +228,7 @@ test('a filter is a where clause', () => {
   assert.equal(kept.field.name, 'row')
   const rows = kept.collect()
   assert.equal(rows.length, 1)
-  assert.ok(rows[0].equals(Scalar.fromJs(['EUR', 5n])))
+  assert.ok(rows[0].equals(Scalar.from(['EUR', 5n])))
   assert.equal(filter._applyArrowReaderNative, undefined)
 })
 
@@ -254,7 +262,7 @@ test('a selector is a select clause', () => {
   assert.equal(bound.isAll, false)
   assert.equal(bound.isIdentity, false)
   assert.equal(Selector.all().bind(ROWS).isIdentity, true)
-  assert.ok(bound.applyRow(Scalar.fromJs(['EUR', 2n])).equals(Scalar.fromJs(['EUR', 2n, 4n])))
+  assert.ok(bound.applyRow(Scalar.from(['EUR', 2n])).equals(Scalar.from(['EUR', 2n, 4n])))
   assert.match(bound.explain(), /doubled/)
 
   const batch = rowsBatch(['A', 'B'], [1n, 2n])
@@ -276,7 +284,7 @@ test('a selector is a select clause', () => {
   assert.equal(rows.field.dtype.getFieldAt(2).name, 'doubled')
   const held = [...rows]
   assert.equal(held.length, 2)
-  assert.ok(held[1].equals(Scalar.fromJs(['B', 2n, 4n])))
+  assert.ok(held[1].equals(Scalar.from(['B', 2n, 4n])))
   assert.ok(rows.intoArrowReader === undefined || true)
 })
 

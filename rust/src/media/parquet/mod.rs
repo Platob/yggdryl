@@ -127,7 +127,7 @@ pub struct ParquetOptions {
     /// The rows a read or write keeps.
     pub filter: crate::Filter,
     /// The columns a read or write publishes.
-    pub selector: crate::Selector,
+    pub select: crate::Selector,
     /// The columns forming an explicit merge's match key.
     pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
@@ -163,7 +163,7 @@ struct ParquetOptionsIdentity<'a> {
     name: &'a smol_str::SmolStr,
     field: &'a Option<crate::Field>,
     filter: &'a crate::Filter,
-    selector: &'a crate::Selector,
+    select: &'a crate::Selector,
     merge_by: &'a crate::Selector,
     safe: bool,
     batch_byte_size: Option<u64>,
@@ -183,7 +183,7 @@ impl ParquetOptions {
             name: &self.name,
             field: &self.field,
             filter: &self.filter,
-            selector: &self.selector,
+            select: &self.select,
             merge_by: &self.merge_by,
             safe: self.safe,
             batch_byte_size: self.batch_byte_size,
@@ -204,7 +204,7 @@ impl ParquetOptions {
             name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
             field: None,
             filter: crate::Filter::always_true(),
-            selector: crate::Selector::all(),
+            select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,

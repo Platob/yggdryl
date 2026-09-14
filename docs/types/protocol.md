@@ -498,6 +498,8 @@ Folder writes and reads and Iceberg identity specs read the mark: [Partitions](.
 - `identity:` properties -> inert text; `field:partition` stays the marker `partition_fields` reads.
 - `partition:transform` -> parsed on read, never on write: a generic `update` stores any text, and the typed reader is what names the vocabulary it is not in.
 - `partition:transform` without a `partition:sources` -> refused by `term`, naming the key it wants beside it.
+- `transform:function` -> a grammar function by name or alias, or a [user function](../expression/functions.md) `namespace.name`, canonicalized on write; `transform:sources` the columns it reads, a JSON array of paths; `term` reads `function(sources...)`, and refuses a function with no sources beside it.
+- `transform:expression` -> any other term; `set_term` writes the function and sources for a call over plain columns and the expression otherwise, and removes the spelling it did not write.
 - `apply_arrow_batch` -> the one verb both declaring protocols answer; each walks the Structs it declares and leaves a written value alone.
 
 ## Commands

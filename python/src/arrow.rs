@@ -2,7 +2,7 @@
 //!
 //! `PyArrow`, pandas, polars, `NumPy`, and anything implementing the Arrow C
 //! data or stream protocol all describe the same four shapes the core's
-//! [`ArrowValue`] already names. This module reads each of them once, at the
+//! [`ArrowScalar`] already names. This module reads each of them once, at the
 //! boundary, and hands the buffers to Rust - so the conversion, the cast, and
 //! every later question about the value are the core's, not a per-library
 //! path in Python.
@@ -18,7 +18,7 @@ use arrow_pyarrow::FromPyArrow;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyList};
-use yggdryl::{ArrowCastOptions, ArrowShape, ArrowValue, Field as CoreField};
+use yggdryl::{ArrowCastOptions, ArrowScalar, ArrowShape, Field as CoreField};
 
 use crate::iomedia::{
     Frames, batch_reader_from_value, batch_reader_to_pyarrow, core_root_field_from_value,
@@ -35,27 +35,27 @@ use crate::{cast_options, value_error};
 /// asked, because Arrow buffers are shared behind a pointer. A stream is
 /// one-shot: the first method that narrows or exports it reads it, and asking
 /// again is a `ValueError` rather than an empty answer.
-#[pyclass(name = "ArrowValue", module = "yggdryl._native")]
-pub(crate) struct PyArrowValue {
-    inner: Mutex<Option<ArrowValue>>,
+#[pyclass(name = "ArrowScalar", module = "yggdryl._native")]
+pub(crate) struct PyArrowScalar {
+    inner: Mutex<Option<ArrowScalar>>,
 }
 
-impl PyArrowValue {
-    pub(crate) fn from_inner(inner: ArrowValue) -> Self {
+impl PyArrowScalar {
+    pub(crate) fn from_inner(inner: ArrowScalar) -> Self {
         Self {
             inner: Mutex::new(Some(inner)),
         }
     }
 
     /// Take the value out, leaving a held shape behind and a stream consumed.
-    fn take(&self) -> PyResult<ArrowValue> {
+    fn take(&self) -> PyResult<ArrowScalar> {
         let mut held = self
             .inner
             .lock()
-            .map_err(|_| PyValueError::new_err("this ArrowValue is poisoned"))?;
+            .map_err(|_| PyValueError::new_err("this ArrowScalar is poisoned"))?;
         let value = held.take().ok_or_else(|| {
             PyValueError::new_err(
-                "this ArrowValue held a stream, which crosses once and has already been read",
+                "this ArrowScalar held a stream, which crosses once and has already been read",
             )
         })?;
         // Arrow buffers live behind `Arc`, so a held shape is shared back at
@@ -66,14 +66,14 @@ impl PyArrowValue {
     }
 
     /// Read one answer off the value without consuming it.
-    fn peek<T>(&self, read: impl FnOnce(&ArrowValue) -> T) -> PyResult<T> {
+    fn peek<T>(&self, read: impl FnOnce(&ArrowScalar) -> T) -> PyResult<T> {
         let guard = self
             .inner
             .lock()
-            .map_err(|_| PyValueError::new_err("this ArrowValue is poisoned"))?;
+            .map_err(|_| PyValueError::new_err("this ArrowScalar is poisoned"))?;
         guard.as_ref().map(read).ok_or_else(|| {
             PyValueError::new_err(
-                "this ArrowValue was already consumed; an Arrow value crosses once",
+                "this ArrowScalar was already consumed; an Arrow value crosses once",
             )
         })
     }
@@ -83,7 +83,7 @@ impl PyArrowValue {
 ///
 /// The order is deterministic and each step is one library's own conversion:
 ///
-/// 1. a native `ArrowValue`, which is taken rather than copied;
+/// 1. a native `ArrowScalar`, which is taken rather than copied;
 /// 2. a pandas or polars frame or series, converted by that library;
 /// 3. a `NumPy` array;
 /// 4. a `PyArrow` container, whose exact class decides the shape;
@@ -99,11 +99,11 @@ impl PyArrowValue {
 /// by the core's one recursive cast - one compiled plan for a stream, one
 /// batch at a time - which is where a foreign runtime's types are narrowed to
 /// what this project's schema says they are.
-pub(crate) fn arrow_value_from_py(
+pub(crate) fn arrow_scalar_from_py(
     value: &Bound<'_, PyAny>,
     field: Option<&Bound<'_, PyAny>>,
     options: ArrowCastOptions,
-) -> PyResult<ArrowValue> {
+) -> PyResult<ArrowScalar> {
     let read = ingest(value)?;
     let Some(field) = field else {
         return Ok(read);
@@ -116,29 +116,50 @@ pub(crate) fn arrow_value_from_py(
     read.cast(&declared, options).map_err(value_error)
 }
 
-fn ingest(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
-    if let Ok(native) = value.extract::<PyRef<'_, PyArrowValue>>() {
-        return native.take();
+fn ingest(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
+    match try_ingest(value)? {
+        Some(value) => Ok(value),
+        None => native_value(value),
+    }
+}
+
+/// Read a columnar Python object as one Arrow scalar, or answer `None` for a
+/// value that is not one.
+///
+/// This is the recognition every boundary shares: `Scalar.from_` lands one of
+/// these under [`yggdryl::Scalar::Arrow`] rather than walking its rows, so a
+/// frame, a table or a reader given as any argument reaches the record
+/// surface as the buffers it already holds. A native `ArrowScalar` is taken,
+/// which is what crossing a one-shot stream means.
+///
+/// # Errors
+///
+/// Returns whatever a library conversion or an Arrow C crossing raised.
+pub(crate) fn try_ingest(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowScalar>> {
+    if let Ok(native) = value.extract::<PyRef<'_, PyArrowScalar>>() {
+        return native.take().map(Some);
     }
     if let Some(series) = series_to_arrow(value)? {
-        return array_of(&series);
+        return array_of(&series).map(Some);
     }
     if declared_by(value, "numpy", "ndarray") {
-        return numpy_value(value);
+        return numpy_value(value).map(Some);
     }
     // A held container is recognized by its exact class before the stream
     // ladder, because a `RecordBatch` also exports a stream and reading it as
     // one would lose the length it already knows.
-    if let Some(value) = pyarrow_value(value)? {
-        return Ok(value);
+    if let Some(value) = pyarrow_scalar(value)? {
+        return Ok(Some(value));
     }
     if let Some(reader) = columnar_reader(value)? {
-        return ArrowValue::from_reader(reader).map_err(value_error);
+        return ArrowScalar::from_reader(reader)
+            .map(Some)
+            .map_err(value_error);
     }
     if value.hasattr("__arrow_c_array__")? {
-        return array_of(value);
+        return array_of(value).map(Some);
     }
-    native_value(value)
+    Ok(None)
 }
 
 /// Read a batch stream out of a value that is already a source of rows.
@@ -195,7 +216,7 @@ fn series_to_arrow<'py>(value: &Bound<'py, PyAny>) -> PyResult<Option<Bound<'py,
 }
 
 /// Read one `NumPy` array as a column, or as rows when its dtype is a record.
-fn numpy_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
+fn numpy_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
     let py = value.py();
     let dimensions = value.getattr("ndim")?.extract::<usize>()?;
     if dimensions != 1 {
@@ -229,7 +250,7 @@ fn numpy_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
 ///
 /// The class decides the shape, which is what keeps a held table from being
 /// reported as one row and a stream from claiming a length it does not know.
-fn pyarrow_value(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowValue>> {
+fn pyarrow_scalar(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowScalar>> {
     let Ok(pyarrow) = value.py().import("pyarrow") else {
         return Ok(None);
     };
@@ -254,7 +275,7 @@ fn pyarrow_value(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowValue>> {
     if value.is_instance(&pyarrow.getattr("Scalar")?)? {
         let array = arrow_scalar_into_array(value)?;
         let field = inferred_field(&array, "value")?;
-        return ArrowValue::from_scalar_array(field, array)
+        return ArrowScalar::from_scalar_array(field, array)
             .map(Some)
             .map_err(value_error);
     }
@@ -262,7 +283,7 @@ fn pyarrow_value(value: &Bound<'_, PyAny>) -> PyResult<Option<ArrowValue>> {
 }
 
 /// Read any other Python value as one native scalar under its inferred Field.
-fn native_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
+fn native_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
     let scalar = crate::types::scalar::from_py(value).map_err(|error| {
         PyTypeError::new_err(format!(
             "expected a pyarrow Scalar, Array, ChunkedArray, RecordBatch, Table, \
@@ -273,32 +294,32 @@ fn native_value(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
         ))
     })?;
     let field = scalar.inferred_scalar_field().map_err(value_error)?;
-    ArrowValue::from_value(&field, &scalar).map_err(value_error)
+    ArrowScalar::from_value(&field, &scalar).map_err(value_error)
 }
 
 /// Share a held value's buffers, or report that a stream has none to share.
-fn shared(value: &ArrowValue) -> Option<ArrowValue> {
+fn shared(value: &ArrowScalar) -> Option<ArrowScalar> {
     let field = value.field().clone();
     match value.shape() {
-        ArrowShape::Scalar => ArrowValue::from_scalar_array(field, value.as_array()?.clone()).ok(),
-        ArrowShape::Array => ArrowValue::from_array(field, value.as_array()?.clone()).ok(),
-        ArrowShape::Batch => ArrowValue::from_batch_as(field, value.as_batch()?.clone()).ok(),
+        ArrowShape::Scalar => ArrowScalar::from_scalar_array(field, value.as_array()?.clone()).ok(),
+        ArrowShape::Array => ArrowScalar::from_array(field, value.as_array()?.clone()).ok(),
+        ArrowShape::Batch => ArrowScalar::from_batch_as(field, value.as_batch()?.clone()).ok(),
         ArrowShape::Stream => None,
     }
 }
 
-fn stream_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
-    ArrowValue::from_reader(batch_reader_from_value(value)?).map_err(value_error)
+fn stream_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
+    ArrowScalar::from_reader(batch_reader_from_value(value)?).map_err(value_error)
 }
 
-fn batch_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
-    ArrowValue::from_batch(RecordBatch::from_pyarrow_bound(value)?).map_err(value_error)
+fn batch_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
+    ArrowScalar::from_batch(RecordBatch::from_pyarrow_bound(value)?).map_err(value_error)
 }
 
-fn array_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowValue> {
+fn array_of(value: &Bound<'_, PyAny>) -> PyResult<ArrowScalar> {
     let array = arrow_array_from_pyarrow(value)?;
     let field = inferred_field(&array, "item")?;
-    ArrowValue::from_array(field, array).map_err(value_error)
+    ArrowScalar::from_array(field, array).map_err(value_error)
 }
 
 /// Name the Field one foreign column proves about itself.
@@ -309,7 +330,7 @@ fn inferred_field(array: &arrow_array::ArrayRef, name: &str) -> PyResult<CoreFie
 
 #[allow(clippy::wrong_self_convention)] // Python `into_*` methods do not consume wrappers.
 #[pymethods]
-impl PyArrowValue {
+impl PyArrowScalar {
     /// Read any Arrow-convertible object, optionally cast onto `field`.
     #[new]
     #[pyo3(signature = (value, field=None, *, safe=true, nullability="default", representation="value"))]
@@ -320,7 +341,7 @@ impl PyArrowValue {
         nullability: &str,
         representation: &str,
     ) -> PyResult<Self> {
-        Ok(Self::from_inner(arrow_value_from_py(
+        Ok(Self::from_inner(arrow_scalar_from_py(
             value,
             field,
             cast_options(safe, nullability, representation)?,
@@ -334,8 +355,9 @@ impl PyArrowValue {
     /// arrays, Arrow C data and stream exporters, datasets and scanners, and
     /// any value a `Scalar` can hold.
     #[staticmethod]
+    #[pyo3(name = "from_")]
     #[pyo3(signature = (value, field=None, *, safe=true, nullability="default", representation="value"))]
-    fn from_py(
+    fn from_(
         value: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
         safe: bool,
@@ -360,13 +382,13 @@ impl PyArrowValue {
     /// The number of rows, or `None` for a stream that has not been drained.
     #[getter]
     fn row_size(&self) -> PyResult<Option<usize>> {
-        self.peek(ArrowValue::row_size)
+        self.peek(ArrowScalar::row_size)
     }
 
     /// The number of columns one row carries.
     #[getter]
     fn column_size(&self) -> PyResult<usize> {
-        self.peek(ArrowValue::column_size)
+        self.peek(ArrowScalar::column_size)
     }
 
     /// Report whether reading this value consumes an undrained stream.
@@ -384,7 +406,7 @@ impl PyArrowValue {
         Ok(self
             .inner
             .lock()
-            .map_err(|_| PyValueError::new_err("this ArrowValue is poisoned"))?
+            .map_err(|_| PyValueError::new_err("this ArrowScalar is poisoned"))?
             .is_none())
     }
 
@@ -512,11 +534,11 @@ impl PyArrowValue {
         let consumed = self
             .inner
             .lock()
-            .map_err(|_| PyValueError::new_err("this ArrowValue is poisoned"))?;
+            .map_err(|_| PyValueError::new_err("this ArrowScalar is poisoned"))?;
         Ok(match consumed.as_ref() {
-            None => "ArrowValue(consumed)".to_owned(),
+            None => "ArrowScalar(consumed)".to_owned(),
             Some(value) => format!(
-                "ArrowValue({}, {}, rows={})",
+                "ArrowScalar({}, {}, rows={})",
                 value.shape(),
                 value.field(),
                 value

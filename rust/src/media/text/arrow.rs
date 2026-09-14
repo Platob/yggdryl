@@ -1083,7 +1083,7 @@ impl TextLines {
         // took are counts of those bytes.
         let body = TextBytes::from_whole_page(row.body)?;
         let mut line = TextLine::from_bytes(index, body)?;
-        line.set_url(self.url.clone());
+        line.set_sourceurl(self.url.clone());
         line.set_dropped_byte_size(row.dropped_byte_size);
 
         if self.reads_classification {

@@ -136,8 +136,8 @@ def main() -> int:
     )
 
     # The value feed: a leaf, a wide record, and the row a table hashes.
-    leaf = Scalar.from_py("AAPL")
-    record = Scalar.from_py({f"column_{index:03}": index for index in range(64)})
+    leaf = Scalar.from_("AAPL")
+    record = Scalar.from_({f"column_{index:03}": index for index in range(64)})
     cases.append(("scalar leaf digest", lambda: leaf.digest(), 4))
     cases.append(("scalar wide record digest", lambda: record.digest(), 64))
     cases.append(("scalar leaf stable_hash", lambda: leaf.stable_hash(), 4))

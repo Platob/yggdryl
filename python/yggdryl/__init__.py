@@ -28,7 +28,7 @@ from ._native import (
     DEFAULT_FETCH_BYTE_SIZE,
     DEFAULT_STREAM_BATCH_SIZE,
     IPC_DICTIONARY_IDS_KEY,
-    ArrowValue,
+    ArrowScalar,
     __version__,
     combined,
     refresh_logging,
@@ -75,7 +75,7 @@ from .uri import Parameters, Uri, Url, Urn
 
 __all__ = [
     "ArrowCastPlan",
-    "ArrowValue",
+    "ArrowScalar",
     "BytesParameters",
     "Bound",
     "Bounds",

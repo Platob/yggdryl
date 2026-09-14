@@ -52,7 +52,7 @@ mod union_mode;
 mod uri;
 
 #[cfg(feature = "arrow")]
-pub use arrow::{ArrowShape, ArrowValue};
+pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
 pub use charset::Charset;
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};

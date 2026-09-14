@@ -64,7 +64,7 @@ const state3_128: Xxh128 = new Xxh128()
 state32.writeBytes(payload)
 state64.writeBytes('AAPL')
 state3_64.writeBytes(new Uint8Array(payload))
-state3_128.writeScalar(Scalar.fromJs('AAPL'))
+state3_128.writeScalar(Scalar.from('AAPL'))
 const streamed: Digest = state3_128.asDigest()
 const seed32: number = state32.seed
 const seed64: bigint = state64.seed
@@ -95,7 +95,7 @@ void xxhash.Digest.from('xxh3-64:78af5f94892f3950')
 const handle = new IOBase('/tmp/trades.csv')
 const fromHandle: Digest = handle.readDigest('xxh3-64')
 const ranged: Digest = handle.readRangeDigest(0, 16)
-const fromValue: Digest = Scalar.fromJs('AAPL').digest()
+const fromValue: Digest = Scalar.from('AAPL').digest()
 void fromHandle
 void ranged
 void fromValue

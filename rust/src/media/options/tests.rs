@@ -125,7 +125,7 @@ fn the_declared_field_is_one_section_of_the_plan() {
     );
     assert_eq!(planned.name(), "trade");
     assert_eq!(planned.merge_by().to_string(), "id");
-    assert_eq!(planned.selector().to_string(), "id");
+    assert_eq!(planned.select().to_string(), "id");
     assert_eq!(planned.filter().to_string(), "id > 1");
     assert_eq!(planned.apply_columns(), Some(vec!["id".to_owned()]));
     let narrowed = planned.with_filter("id = 7 and venue = 'XNAS'").unwrap();

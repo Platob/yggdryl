@@ -29,19 +29,19 @@ class InferredRow:
 
 
 PYTHON_VALUE = {"id": 42, "symbol": "AAPL", "levels": [1.0, 2.0, 3.0]}
-NATIVE_VALUE = Scalar.from_py(PYTHON_VALUE)
+NATIVE_VALUE = Scalar.from_(PYTHON_VALUE)
 NATIVE_LEGS = NATIVE_VALUE["levels"]
 NATIVE_TEMPORAL = Scalar.datetime(1_700_000_000_000_000, "us", "UTC")
 NATIVE_DECIMAL = Scalar.decimal("1234567890123456789012345678901234567890", 6)
-NATIVE_INTEGER = Scalar.from_py(84)
-NATIVE_DIVISOR = Scalar.from_py(2)
+NATIVE_INTEGER = Scalar.from_(84)
+NATIVE_DIVISOR = Scalar.from_(2)
 NATIVE_ENUM = Scalar.from_enum("io_mode", "append")
 PRICE_EXPRESSION = Term.column("price")
 ARROW_SCALAR = pa.scalar(12.5, pa.float32())
 NATIVE_SCALAR = Scalar.from_arrow_scalar(ARROW_SCALAR)
 ARROW_ARRAY = pa.array(range(4096), type=pa.int32())
 NATIVE_ARRAY = Scalar.from_arrow_array(ARROW_ARRAY)
-INFERRED_ROWS = Scalar.from_py([InferredRow(1, "AAPL")])
+INFERRED_ROWS = Scalar.from_([InferredRow(1, "AAPL")])
 ARROW_BATCH = pa.record_batch(
     [ARROW_ARRAY, pa.array(["AAPL"] * len(ARROW_ARRAY))], names=["id", "symbol"]
 )
@@ -78,7 +78,7 @@ def main() -> None:
     gc.disable()
     try:
         for name, operation, iterations in (
-            ("from Python", lambda: Scalar.from_py(PYTHON_VALUE), small),
+            ("from Python", lambda: Scalar.from_(PYTHON_VALUE), small),
             ("into Python", NATIVE_VALUE.as_py, small),
             ("float construction", lambda: Scalar.float(12.5, 32), small),
             ("decimal construction", lambda: Scalar.decimal(1_050, 2), small),

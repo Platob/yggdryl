@@ -398,7 +398,7 @@ test('text options value protocols include every flat text setting', () => {
   const options = new TextOptions()
     .withName('line')
     .withBatchRowSize(32)
-    .withSelector(['body'])
+    .withSelect(['body'])
   options.rowheader = '(?<id>\\d+)'
   options.lstrip = ['^\\s+']
   options.rstrip = ['\\s+$']
@@ -443,7 +443,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       field.nullable,
     ]),
     [
-      ['url', 'Utf8', true],
+      ['sourceurl', 'Utf8', true],
       ['mtime', 'Timestamp<NANOSECOND, UTC>', true],
       ['body', 'Utf8', false],
     ],
@@ -456,7 +456,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   )
   // A located handle fills it with the canonical URL text of its location.
   assert.deepEqual(
-    [...table.getChild('url')],
+    [...table.getChild('sourceurl')],
     [handle.url.toString(), handle.url.toString()],
   )
 
@@ -479,7 +479,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(numbered)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    ['url', 'rownum', 'mtime', 'body', 'word'],
+    ['sourceurl', 'rownum', 'mtime', 'body', 'word'],
   )
 
   // Turning the flag off takes the column away rather than nulling it.
@@ -490,7 +490,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
       .readArrowReader(undated)
       .intoTable()
       .schema.fields.map((field) => field.name),
-    ['url', 'body'],
+    ['sourceurl', 'body'],
   )
 
   // A buffer records no modification time, so the column is there and null:
@@ -499,7 +499,7 @@ test('plain text dates every row, and the flag takes the column away', (t) => {
   const held = buffer.readArrowReader(options).intoTable()
   assert.deepEqual(
     held.schema.fields.map((field) => field.name),
-    ['url', 'mtime', 'body'],
+    ['sourceurl', 'mtime', 'body'],
   )
   assert.deepEqual([...held.getChild('mtime')], [null, null])
   assert.deepEqual(
@@ -521,7 +521,7 @@ test('a row header that dates a line fills mtime rather than adding a column', (
   // column's own datatype rather than at the one its syntax suggests.
   assert.deepEqual(
     table.schema.fields.map((field) => field.name),
-    ['url', 'mtime', 'body', 'id'],
+    ['sourceurl', 'mtime', 'body', 'id'],
   )
   assert.equal(table.schema.fields[1].type.unit, arrow.TimeUnit.NANOSECOND)
   assert.equal(table.schema.fields[1].type.timezone, 'UTC')
@@ -541,7 +541,7 @@ test('a row header that dates a line fills mtime rather than adding a column', (
   assert.deepEqual(
     counted.schema.fields.map((field) => [field.name, field.type.toString()]),
     [
-      ['url', 'Utf8'],
+      ['sourceurl', 'Utf8'],
       ['body', 'Utf8'],
       ['mtime', 'Int64'],
     ],
@@ -1051,7 +1051,7 @@ test('the declared root is one section: the field the plan creates', () => {
   const options = RecordOptions.forMimeType(MimeType.ARROW_STREAM)
   assert.equal(options.name, 'row')
   assert.equal(options.field, null)
-  assert.ok(options.selector.isAll)
+  assert.ok(options.select.isAll)
   assert.ok(options.filter.isAlwaysTrue)
   assert.ok(options.mergeBy.isAll)
 
@@ -1099,7 +1099,7 @@ test('a root declared through a field or a plan is the same value', () => {
 
   // Each section takes a side in equality on its own.
   assert.ok(!byField.equals(byPlan.withName('trade')))
-  assert.ok(!byField.equals(byPlan.withSelector(['id'])))
+  assert.ok(!byField.equals(byPlan.withSelect(['id'])))
   assert.ok(byField.withFilter('id > 1').equals(byPlan.withFilter('id > 1')))
 
   // Nullability is not one of the parts: the root is always required.
@@ -1113,7 +1113,7 @@ test('a root declared through a field or a plan is the same value', () => {
 test('the sections are one plan, and a plan splits back into them', () => {
   const options = RecordOptions.from('trades.parquet')
   options.filter = "venue = 'XNAS' and id > 5"
-  options.selector = 'id, symbol'
+  options.select = 'id, symbol'
   options.mergeBy = ['id']
   options.maxRowSize = 10
   options.field = Field.from('row: struct<id: int64, symbol: utf8, venue: utf8> not null')
@@ -1139,7 +1139,7 @@ test('the sections are one plan, and a plan splits back into them', () => {
     options.filter = 'venue = '
   }, /expression/)
   assert.ok(options.filter.equals("venue = 'XNAS' and id > 5"))
-  assert.throws(() => options.withSelector('select'), /projection/)
+  assert.throws(() => options.withSelect('select'), /projection/)
 })
 
 test('a declared name roots the schema inferred from plain records', (t) => {

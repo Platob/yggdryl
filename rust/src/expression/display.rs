@@ -507,6 +507,8 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Interval(_) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
         Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Record(_) => None,
+        #[cfg(feature = "arrow")]
+        Scalar::Arrow(_) => None,
     }
 }
 

@@ -189,8 +189,61 @@ impl Filter {
     ///
     /// Returns the same error [`Self::field`] would.
     pub fn apply_field(&self, root: &Field) -> Result<Field> {
-        self.field(root)?;
+        self.apply_datatype(root.dtype())?;
         Ok(root.clone())
+    }
+
+    /// The struct datatype a filter leaves untouched, once it has proven it
+    /// is a boolean over it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same error [`Self::field`] would.
+    pub fn apply_datatype(&self, dtype: &DataType) -> Result<DataType> {
+        self.field(&Field::new(
+            crate::media::DEFAULT_ROOT_NAME,
+            dtype.clone(),
+            false,
+        ))?;
+        Ok(dtype.clone())
+    }
+
+    /// Read a filter from the scalar that spells one.
+    ///
+    /// Text parses as the clause, a boolean is the constant it names, null
+    /// keeps every row, and a sequence is the conjunction of the filters its
+    /// items spell - one item per condition, all of them required.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that is not a predicate, and an error
+    /// naming the scalar for any other shape.
+    pub fn from_scalar(value: &crate::Scalar) -> Result<Self> {
+        if let Some(text) = value.as_str() {
+            return text.parse();
+        }
+        if value.is_null() {
+            return Ok(Self::always_true());
+        }
+        if let crate::Scalar::Boolean(kept) = value {
+            return Ok(if kept.get() {
+                Self::always_true()
+            } else {
+                Self::always_false()
+            });
+        }
+        if let Some(items) = value.as_sequence() {
+            return items.iter().try_fold(Self::always_true(), |held, item| {
+                Ok(held.and(Self::from_scalar(item)?))
+            });
+        }
+        Err(Error::InvalidRecord {
+            path: smol_str::SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                "the text of a where clause, a boolean, a sequence of conditions, or null",
+                format_args!("{value:?}"),
+            ),
+        })
     }
 
     /// Answer this filter for one row, reading unknown as "no".

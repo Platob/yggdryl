@@ -565,6 +565,24 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
                 ArrowCastOptions::new().with_safe(safety.is_safe()),
             )?))
         }
+        // A user function takes whole columns: its implementation answers the
+        // batch at once, or row by row through the one array crossing.
+        Kind::Function(super::Function::User(reference), arguments) => {
+            let rows = context.batch.num_rows();
+            let registered = super::user::lookup_function(reference)?;
+            let mut fields = Vec::with_capacity(arguments.len());
+            let mut columns = Vec::with_capacity(arguments.len());
+            for argument in arguments {
+                fields.push(argument.field.clone());
+                columns.push(evaluate(argument, context)?.into_column(rows)?);
+            }
+            Ok(Vector::Column(registered.call_arrow(
+                &fields,
+                &columns,
+                rows,
+                &node.field,
+            )?))
+        }
         // Arithmetic, the string functions, and the constructors have no
         // kernel available here, so they take the row evaluator. It is the
         // same code the scalar tier runs, which is why the two cannot

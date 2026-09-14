@@ -103,7 +103,7 @@
     const kept = filter.applyRecords([{ ccy: 'EUR', size: 5n }, { ccy: 'USD', size: 5n }], root)
     const rows = [...kept]
     assert.equal(rows.length, 1)
-    assert.ok(rows[0].equals(Scalar.fromJs(['EUR', 5n])))
+    assert.ok(rows[0].equals(Scalar.from(['EUR', 5n])))
 
     // Normalization keeps the answer in fewer nodes.
     assert.equal(new Filter('size = 1 or size = 2 or size = 3').simplify().toString(), 'size in (1, 2, 3)')

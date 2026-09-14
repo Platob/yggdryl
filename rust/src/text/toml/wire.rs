@@ -247,6 +247,15 @@ fn write_scalar<W: Write>(
     depth: usize,
 ) -> Result<()> {
     match value {
+        #[cfg(feature = "arrow")]
+        Scalar::Arrow(_) => {
+            let native = value.into_native().map_err(|error| Error::Codec {
+                format: "toml",
+                position: 0,
+                reason: error.to_string().into(),
+            })?;
+            return write_scalar(writer, &native, layout, depth);
+        }
         Scalar::Null => return Err(codec_error("TOML cannot represent null")),
         Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,
         Scalar::I8(_)

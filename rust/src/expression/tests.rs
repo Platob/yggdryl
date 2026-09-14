@@ -805,9 +805,16 @@ fn a_field_holds_a_selector_and_gives_it_back() {
         plan.fields()[1].get_metadata("transform:expression"),
         Some("i + 1")
     );
+    // A call over plain columns is stored as the function and its sources,
+    // the shape a signature and a partition spec share.
+    assert_eq!(plan.fields()[2].get_metadata("transform:expression"), None);
     assert_eq!(
-        plan.fields()[2].get_metadata("transform:expression"),
-        Some("lower(s)")
+        plan.fields()[2].get_metadata("transform:function"),
+        Some("lower")
+    );
+    assert_eq!(
+        plan.fields()[2].get_metadata("transform:sources"),
+        Some(r#"["s"]"#)
     );
     assert!(plan.as_transform().declares_derivation());
 

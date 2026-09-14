@@ -32,6 +32,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::Function;
 use super::term::Term;
 use crate::types::protocol::{TransformField, TransformFieldMut};
 use crate::{Error, Field, Result};
@@ -39,8 +40,27 @@ use crate::{Error, Field, Result};
 /// The property naming the term a column is computed with.
 const EXPRESSION: &str = "expression";
 
+/// The property naming the function a column is computed with, qualified.
+const FUNCTION: &str = "function";
+
+/// The property listing the columns a function reads, in argument order.
+const SOURCES: &str = "sources";
+
 /// The full key of the term a column is computed with.
 pub(crate) const TRANSFORM_EXPRESSION_KEY: &str = "transform:expression";
+
+/// The full key of the function a column is computed with.
+pub(crate) const TRANSFORM_FUNCTION_KEY: &str = "transform:function";
+
+/// The full key of the columns a function reads.
+pub(crate) const TRANSFORM_SOURCES_KEY: &str = "transform:sources";
+
+/// The three properties one derivation may be spelled with.
+pub(crate) const TRANSFORM_KEYS: [&str; 3] = [
+    TRANSFORM_EXPRESSION_KEY,
+    TRANSFORM_FUNCTION_KEY,
+    TRANSFORM_SOURCES_KEY,
+];
 
 impl<'field> TransformField<'field> {
     /// The term this column is computed with, if it declares one.
@@ -64,7 +84,53 @@ impl<'field> TransformField<'field> {
                     reason: format_smolstr!("{error}"),
                 });
         }
+        if let Some(function) = self.function()? {
+            let Some(sources) = self.sources()? else {
+                return Err(Error::InvalidMetadataValue {
+                    key: SmolStr::new_static(TRANSFORM_SOURCES_KEY),
+                    reason: format_smolstr!(
+                        "expected the columns {} reads beside {}, got none",
+                        function.as_str(),
+                        TRANSFORM_FUNCTION_KEY
+                    ),
+                });
+            };
+            let arguments = sources.iter().map(|source| {
+                let mut segments = source.split('.');
+                let root = segments.next().unwrap_or_default();
+                segments.fold(Term::column(root), Term::child)
+            });
+            return Ok(Some(Term::call(function, arguments)));
+        }
         self.as_field().as_partition().term()
+    }
+
+    /// The function this column is computed with, when it declares one by
+    /// name: a grammar function, or a [user-defined](super::user) one spelled
+    /// `namespace.name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the property when the stored text names no
+    /// function.
+    pub fn function(&self) -> Result<Option<Function>> {
+        self.get(FUNCTION)
+            .map(|stored| parse_transform_function(TRANSFORM_FUNCTION_KEY, stored))
+            .transpose()
+    }
+
+    /// The columns the declared function reads, in argument order: dotted
+    /// paths, as [`Field::get_field_by_path`](crate::Field::get_field_by_path)
+    /// spells them.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the property when the stored text is not a
+    /// JSON array of paths.
+    pub fn sources(&self) -> Result<Option<Vec<String>>> {
+        self.get(SOURCES)
+            .map(|stored| crate::metadata::parse_source_list(TRANSFORM_SOURCES_KEY, stored))
+            .transpose()
     }
 
     /// Return whether this column declares a derivation, however it spells it.
@@ -74,7 +140,10 @@ impl<'field> TransformField<'field> {
     /// read.
     #[must_use]
     pub fn is_derived(&self) -> bool {
-        self.contains_key(EXPRESSION) || self.as_field().as_partition().is_derived()
+        self.contains_key(EXPRESSION)
+            || self.contains_key(FUNCTION)
+            || self.contains_key(SOURCES)
+            || self.as_field().as_partition().is_derived()
     }
 
     /// Return whether this root declares a derived column anywhere.
@@ -94,7 +163,14 @@ impl<'field> TransformField<'field> {
 }
 
 impl TransformFieldMut<'_> {
-    /// Record the term this column is computed with, in canonical spelling.
+    /// Record the term this column is computed with.
+    ///
+    /// A call over plain columns - `year(event)`, `py.double(size)` - is
+    /// stored as the function and its sources, the shape a
+    /// [signature](super::FunctionSignature) reads and a partition spec
+    /// shares; any other term is stored as its canonical text. Either
+    /// spelling reads back through [`TransformField::term`], and the one not
+    /// written is removed, so a column declares its derivation once.
     ///
     /// # Errors
     ///
@@ -103,14 +179,72 @@ impl TransformFieldMut<'_> {
     /// leaving the field unchanged.
     pub fn set_term(&mut self, term: &Term) -> Result<()> {
         term.check_budget()?;
+        if let Term::Function(function, arguments) = term {
+            let columns: Option<Vec<String>> = arguments
+                .iter()
+                .map(|argument| argument.as_column().map(str::to_owned))
+                .collect();
+            if let Some(columns) = columns
+                && !columns.is_empty()
+            {
+                return self.set_function(function, columns);
+            }
+        }
         self.insert(EXPRESSION, term.to_string())?;
+        self.remove(FUNCTION);
+        self.remove(SOURCES);
         Ok(())
     }
 
-    /// Remove the declared term, answering what it was.
-    pub fn remove_term(&mut self) -> Option<String> {
-        self.remove(EXPRESSION)
+    /// Record the function this column is computed with and the columns it
+    /// reads, in argument order.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a source path is empty or repeated, or a property
+    /// write is refused.
+    pub fn set_function<I, P>(&mut self, function: &Function, sources: I) -> Result<()>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<str>,
+    {
+        let rendered = crate::metadata::render_source_list(TRANSFORM_SOURCES_KEY, sources)?;
+        self.insert(FUNCTION, function.as_str())?;
+        self.insert(SOURCES, rendered)?;
+        self.remove(EXPRESSION);
+        Ok(())
     }
+
+    /// Remove the declared derivation, answering the term it spelled.
+    pub fn remove_term(&mut self) -> Option<String> {
+        let term = self.as_field().as_transform().term().ok().flatten();
+        self.remove(EXPRESSION);
+        self.remove(FUNCTION);
+        self.remove(SOURCES);
+        term.map(|term| term.to_string())
+    }
+}
+
+/// Read the function a `transform:function` property names: a grammar
+/// function by canonical name or alias, or a user function by qualified name.
+///
+/// # Errors
+///
+/// Returns an error naming the key when the text names neither.
+pub(crate) fn parse_transform_function(key: &str, value: &str) -> Result<Function> {
+    Function::resolve(value).map_err(|error| Error::InvalidMetadataValue {
+        key: SmolStr::new(key),
+        reason: format_smolstr!("{error}"),
+    })
+}
+
+/// Restate an externally supplied transform function in its one spelling.
+///
+/// # Errors
+///
+/// Returns an error naming the key when the text names no function.
+pub(crate) fn canonicalize_transform_function(key: &str, value: &str) -> Result<String> {
+    Ok(parse_transform_function(key, value)?.as_str().to_owned())
 }
 
 /// Restate an externally supplied transform expression in its one spelling.

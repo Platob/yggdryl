@@ -11,6 +11,7 @@
 | [Terms](terms.md) | `Term` and `Bound`: literals, binding, parameters, simplification, `explain` |
 | [Selectors](selectors.md) | `Selector`: projections, declared columns, transforms, a field as a plan |
 | [Filters](filters.md) | `Filter`: predicates, pushdown normalization, three-valued logic |
+| [Functions](functions.md) | The closed function set's one door: registered user functions, their signature as a field, the Python decorators |
 | [Plans](plans.md) | `Plan`: sections, write verbs, locations, nested sources, sequences, `execute` |
 | [Holder attributes](holder.md) | `&holder.*` attributes, cost classes, pruning without reading |
 | [Evaluate](evaluate.md) | The streamed Arrow tier, native records, statistics, Iceberg scan planning |
@@ -125,11 +126,11 @@ Parse, bind once, ask a row.
     // The price is an exact decimal, because the column is exact and so is
     // the comparison: a JavaScript number here would be a different one.
     const price = Scalar.decimal(15000n, 2)
-    assert.equal(bound.matches(Scalar.fromJs(['EUR', price, 5])), true)
-    assert.equal(bound.matches(Scalar.fromJs(['USD', price, 5])), false)
+    assert.equal(bound.matches(Scalar.from(['EUR', price, 5])), true)
+    assert.equal(bound.matches(Scalar.from(['USD', price, 5])), false)
 
     // A null price makes the answer unknown, and unknown does not keep the row.
-    assert.equal(bound.matches(Scalar.fromJs(['EUR', null, 5])), false)
+    assert.equal(bound.matches(Scalar.from(['EUR', null, 5])), false)
 
     // A term is the tree a filter is one predicate over.
     assert.equal(new Filter(new Term('price > 100')).toString(), 'price > 100')

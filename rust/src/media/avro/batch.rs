@@ -65,7 +65,7 @@ pub struct AvroOptions {
     /// The rows a read or write keeps.
     pub filter: crate::Filter,
     /// The columns a read or write publishes.
-    pub selector: crate::Selector,
+    pub select: crate::Selector,
     /// The columns forming an explicit merge's match key.
     pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
@@ -100,7 +100,7 @@ impl AvroOptions {
             name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
             field: None,
             filter: crate::Filter::always_true(),
-            selector: crate::Selector::all(),
+            select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,

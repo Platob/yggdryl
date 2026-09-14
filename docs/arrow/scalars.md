@@ -13,7 +13,7 @@ One value across the array boundary, both ways, under the materialization budget
 | Limits | 1,000,000 expanded slots and 64 MiB fixed bytes, summed across siblings, checked before allocation |
 | Errors | `Error::IncompatibleSchema` (shape), `Error::PhysicalLimit` (budget), `Error::Allocation` (allocator) |
 | Bindings | Rust; Python `DataType.arrow_scalar` and `Field.arrow_scalar`; JavaScript none |
-| Shapes | Anything wider than one row is an [`ArrowValue`](values.md) |
+| Shapes | Anything wider than one row is an [`ArrowScalar`](values.md) |
 
 ## Use
 

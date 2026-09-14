@@ -3619,7 +3619,7 @@ mod handles {
         assert!(plan.excluded.len() + plan.skipped.len() >= 1);
 
         // A selection narrows the read to the named columns.
-        let selected = options.clone().with_selector("id").unwrap();
+        let selected = options.clone().with_select("id").unwrap();
         let reader = table.read_arrow_reader(&selected).unwrap();
         let names: Vec<String> = reader
             .schema()

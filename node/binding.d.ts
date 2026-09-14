@@ -2588,7 +2588,7 @@ declare module './index' {
   }
   namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
-    function fromJs(value: unknown, options?: CodecOptions): Scalar
+    function from(value: unknown, options?: CodecOptions): Scalar
     /** Read one item from a one-item Apache Arrow Vector. */
     function fromArrowScalar(value: ArrowVector, field?: Field): Scalar
     /** Read an Apache Arrow Vector through native Arrow IPC. */
@@ -2699,73 +2699,85 @@ declare module './index' {
     readParquetGeospatialStatistics(column: string): ParquetGeospatialStatistics
 
     /** Read the canonical non-null struct root `Field` of this resource. */
-    readArrowField(options?: RecordOptionsInput | null): Field
+    readArrowField(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): Field
     /** Read this resource's rows, selecting and casting as the options say. */
-    readArrowReader(options?: RecordOptionsInput | null): BatchReader
+    readArrowReader(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): BatchReader
     /** Replace this resource's rows with one native reader. */
     overwriteArrowReader(
       reader: BatchReader,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append one native reader after this resource's rows. */
     appendArrowReader(
       reader: BatchReader,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Merge one native reader by the non-empty `options.mergeBy` keys. */
     mergeArrowReader(
       reader: BatchReader,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Write one native reader using the required explicit mode. */
     writeArrowReader(
       reader: BatchReader,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
 
     /** Replace this resource's rows with one Apache Arrow JS table. */
     overwriteArrowTable(
       table: ArrowTable,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append one Apache Arrow JS table after this resource's rows. */
     appendArrowTable(
       table: ArrowTable,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Merge one Apache Arrow JS table by the non-empty `options.mergeBy` keys. */
     mergeArrowTable(
       table: ArrowTable,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Write one Apache Arrow JS table using the required explicit mode. */
     writeArrowTable(
       table: ArrowTable,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
 
     /** Replace this resource's rows with one Apache Arrow JS record batch. */
     overwriteArrowBatch(
       batch: ArrowRecordBatch,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append one Apache Arrow JS record batch after this resource's rows. */
     appendArrowBatch(
       batch: ArrowRecordBatch,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Merge one Apache Arrow JS record batch by `options.mergeBy`. */
     mergeArrowBatch(
       batch: ArrowRecordBatch,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Write one Apache Arrow JS record batch using the explicit mode. */
     writeArrowBatch(
       batch: ArrowRecordBatch,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
 
     /**
@@ -2773,43 +2785,51 @@ declare module './index' {
      * the class you pass, whose constructor receives one plain row.
      */
     readRecords<T = Record<string, unknown>>(
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): IterableIterator<T>
     readRecords<T>(
       cls: new (row: Record<string, unknown>) => T,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): IterableIterator<T>
     /** Replace this resource's rows with plain objects or field-class instances. */
     overwriteRecords(
       rows: AsyncIterable<StructRecord>,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
     overwriteRecords(
       rows: RecordSource,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
     /** Append plain objects or field-class instances after the stored rows. */
     appendRecords(
       rows: AsyncIterable<StructRecord>,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
-    appendRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    appendRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): void
     /** Merge records by the non-empty `options.mergeBy` keys. */
     mergeRecords(
       rows: AsyncIterable<StructRecord>,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
-    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | null): void
+    mergeRecords(rows: RecordSource, options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): void
     /** Write records using the required explicit mode. */
     writeRecords(
       rows: AsyncIterable<StructRecord>,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): Promise<void>
     writeRecords(
       rows: RecordSource,
       mode: IOMode,
-      options?: RecordOptionsInput | null,
+      options?: RecordOptionsInput | RecordProperties | null,
+      properties?: RecordProperties | null,
     ): void
   }
 
@@ -2977,6 +2997,13 @@ export type StructRecord =
 export type RecordSource = StructRecord | Iterable<StructRecord>
 /** Native record settings, or the media type naming the encoding. */
 export type RecordOptionsInput = RecordOptions | TextOptions | MediaTypeInput
+/**
+ * Option properties set on a copy of the options a record method runs
+ * under - the ones given beside it, or the handle's own - each by its own
+ * setter. A plain object in the options position is read as this bag, and an
+ * `undefined` value is skipped.
+ */
+export type RecordProperties = { readonly [property: string]: unknown }
 /** A partition spec, or the column names one would be built from. */
 export type PartitionInput = PartitionSpec | readonly string[]
 /** A native root `Field`, or the field expression naming one. */
@@ -3049,7 +3076,7 @@ export interface Iceberg {
 export declare const iceberg: Iceberg
 
 /**
- * A message value: the native scalar, or the row `Scalar.fromJs` reads.
+ * A message value: the native scalar, or the row `Scalar.from` reads.
  *
  * A plain object is the obvious JavaScript spelling of a named row, and the
  * declared root Struct field is what orders, types and validates it - in the
@@ -3060,7 +3087,7 @@ export type FixValueInput =
 
 /**
  * The public `FixMsg` constructor, which widens the value the native class
- * takes: `Scalar.fromJs` lives in the loader, so it runs here.
+ * takes: `Scalar.from` lives in the loader, so it runs here.
  */
 export interface FixMsgConstructor {
   /**

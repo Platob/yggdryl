@@ -9,13 +9,13 @@
 //! held on its own so one changes without touching the others: the
 //! [`field`](IORecordOptions::field) it declares, the
 //! [`filter`](IORecordOptions::filter) that keeps rows, the
-//! [`selector`](IORecordOptions::selector) that publishes columns, and the
+//! [`select`](IORecordOptions::select) that publishes columns, and the
 //! [`merge_by`](IORecordOptions::merge_by) keys a merge matches on. Together
 //! they are the sections of one [`Plan`] - [`plan`](IORecordOptions::plan)
 //! composes it and [`with_plan`](IORecordOptions::with_plan) splits one back
 //! into them - so a caller declares what it means in either form and a media
 //! extracts what it needs: a folder prunes its leaves by the equalities the
-//! filter spells, an encoding decodes the columns the selector names, a merge
+//! filter spells, an encoding decodes the columns the select clause names, a merge
 //! matches by the keys.
 //!
 //! An encoding is never guessed: [`RecordOptions::for_media_type`] derives it
@@ -65,7 +65,9 @@ use smol_str::SmolStr;
 use crate::expression::{IntoFilter, IntoPlan, IntoSelector, Plan, Term};
 use crate::media::ipc::IpcOptions;
 use crate::types::cast::ArrowCastOptions;
-use crate::{DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Selector};
+use crate::{
+    DataType, Error, Field, Filter, IOMode, Level, MediaType, MimeType, Result, Scalar, Selector,
+};
 
 /// Default rows materialized in one native-record conversion batch.
 ///
@@ -256,10 +258,10 @@ pub trait IORecordOptions: Sized {
 
     /// Borrow the columns a read or write publishes: the `select` clause;
     /// `*` publishes every column unchanged.
-    fn selector(&self) -> &Selector;
+    fn select(&self) -> &Selector;
 
     /// Set the columns a read or write publishes.
-    fn set_selector(&mut self, selector: Selector);
+    fn set_select(&mut self, select: Selector);
 
     /// The plan these properties are the sections of.
     ///
@@ -273,7 +275,7 @@ pub trait IORecordOptions: Sized {
             None => Plan::new(),
         };
         plan.set_filter(self.filter().clone());
-        plan.set_selector(self.selector().clone());
+        plan.set_selector(self.select().clone());
         plan.set_merge_by(self.merge_by().clone());
         plan.limit(self.max_row_size().map(|rows| rows as u64))
     }
@@ -293,7 +295,7 @@ pub trait IORecordOptions: Sized {
     fn set_plan(&mut self, plan: Plan) -> Result<()> {
         self.set_declared(plan.field()?);
         self.set_filter(plan.filter_section().clone());
-        self.set_selector(plan.selector().clone());
+        self.set_select(plan.selector().clone());
         self.set_merge_by(plan.merge_by().clone());
         if let Some(limit) = plan.row_limit() {
             self.set_max_row_size(Some(limit));
@@ -322,11 +324,11 @@ pub trait IORecordOptions: Sized {
     /// is the read that already happens. This is projection pushdown without
     /// a declared field.
     fn apply_columns(&self) -> Option<Vec<String>> {
-        if self.selector().is_all() {
+        if self.select().is_all() {
             return None;
         }
         let mut columns = self.filter().columns();
-        for column in self.selector().columns() {
+        for column in self.select().columns() {
             if !columns
                 .iter()
                 .any(|held| held.eq_ignore_ascii_case(&column))
@@ -351,7 +353,19 @@ pub trait IORecordOptions: Sized {
         &self,
         reader: crate::arrow::BatchReader,
     ) -> Result<crate::arrow::BatchReader> {
-        self.selector()
+        use arrow_array::RecordBatchReader as _;
+        let schema = reader.schema();
+        let late = crate::expression::filter_after_select(
+            self.filter(),
+            self.select(),
+            schema.fields().iter().map(|field| field.name().as_str()),
+        );
+        if late {
+            return self
+                .filter()
+                .apply_arrow_reader(self.select().apply_arrow_reader(reader)?);
+        }
+        self.select()
             .apply_arrow_reader(self.filter().apply_arrow_reader(reader)?)
     }
 
@@ -437,6 +451,94 @@ pub trait IORecordOptions: Sized {
         Ok(self)
     }
 
+    /// Set the `where` section from the scalar that spells it, as
+    /// [`Filter::from_scalar`] reads one.
+    ///
+    /// This is the one setter every binding's `filter` property crosses
+    /// through: a value is read as a scalar there and typed here.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Filter::from_scalar`] does.
+    fn set_filter_scalar(&mut self, filter: &Scalar) -> Result<()> {
+        self.set_filter(Filter::from_scalar(filter)?);
+        Ok(())
+    }
+
+    /// Return these options with the `where` section a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Filter::from_scalar`] does.
+    fn with_filter_scalar(mut self, filter: &Scalar) -> Result<Self> {
+        self.set_filter_scalar(filter)?;
+        Ok(self)
+    }
+
+    /// Set the `select` section from the scalar that spells it, as
+    /// [`Selector::from_scalar`] reads one: text, a sequence of projections,
+    /// or a mapping of aliases to terms.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Selector::from_scalar`] does.
+    fn set_select_scalar(&mut self, select: &Scalar) -> Result<()> {
+        self.set_select(Selector::from_scalar(select)?);
+        Ok(())
+    }
+
+    /// Return these options with the `select` section a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Selector::from_scalar`] does.
+    fn with_select_scalar(mut self, select: &Scalar) -> Result<Self> {
+        self.set_select_scalar(select)?;
+        Ok(self)
+    }
+
+    /// Set the merge key from the scalar that spells it, as
+    /// [`Selector::from_scalar`] reads one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Selector::from_scalar`] does, or the error
+    /// [`require_merge_by`](Self::require_merge_by) does.
+    fn set_merge_by_scalar(&mut self, merge_by: &Scalar) -> Result<()> {
+        self.set_merge_by(Selector::from_scalar(merge_by)?);
+        self.require_merge_by()
+    }
+
+    /// Return these options with the merge key a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`set_merge_by_scalar`](Self::set_merge_by_scalar) does.
+    fn with_merge_by_scalar(mut self, merge_by: &Scalar) -> Result<Self> {
+        self.set_merge_by_scalar(merge_by)?;
+        Ok(self)
+    }
+
+    /// Set every section from the plan a scalar spells, as
+    /// [`Plan::from_scalar`] reads one.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`Plan::from_scalar`] or [`set_plan`](Self::set_plan) does.
+    fn set_plan_scalar(&mut self, plan: &Scalar) -> Result<()> {
+        self.set_plan(Plan::from_scalar(plan)?)
+    }
+
+    /// Return these options with every section the plan a scalar spells.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`set_plan_scalar`](Self::set_plan_scalar) does.
+    fn with_plan_scalar(mut self, plan: &Scalar) -> Result<Self> {
+        self.set_plan_scalar(plan)?;
+        Ok(self)
+    }
+
     /// Return these options publishing the columns a selector names.
     ///
     /// The selector is a [`Selector`], a list of column names, or the text
@@ -445,8 +547,8 @@ pub trait IORecordOptions: Sized {
     /// # Errors
     ///
     /// Returns a parse error when the selector is text that does not parse.
-    fn with_selector(mut self, selector: impl IntoSelector) -> Result<Self> {
-        self.set_selector(selector.into_selector()?);
+    fn with_select(mut self, select: impl IntoSelector) -> Result<Self> {
+        self.set_select(select.into_selector()?);
         Ok(self)
     }
 
@@ -572,8 +674,22 @@ pub trait IORecordOptions: Sized {
             Some(declared) => declared.apply_arrow_batch(&batch, true, true, true, options)?,
             None => batch,
         };
-        batch = self.filter().apply_arrow_batch(&batch)?;
-        batch = self.selector().apply_arrow_batch(&batch)?;
+        let late = crate::expression::filter_after_select(
+            self.filter(),
+            self.select(),
+            batch
+                .schema()
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str()),
+        );
+        if late {
+            batch = self.select().apply_arrow_batch(&batch)?;
+            batch = self.filter().apply_arrow_batch(&batch)?;
+        } else {
+            batch = self.filter().apply_arrow_batch(&batch)?;
+            batch = self.select().apply_arrow_batch(&batch)?;
+        }
         match existing {
             // A holder already holding a value is left alone, so this fills
             // only what the destination declares and the incoming rows do not
@@ -774,12 +890,12 @@ macro_rules! record_options_fields {
             self.filter = filter;
         }
 
-        fn selector(&self) -> &$crate::Selector {
-            &self.selector
+        fn select(&self) -> &$crate::Selector {
+            &self.select
         }
 
-        fn set_selector(&mut self, selector: $crate::Selector) {
-            self.selector = selector;
+        fn set_select(&mut self, select: $crate::Selector) {
+            self.select = select;
         }
 
         fn safe(&self) -> bool {

@@ -223,7 +223,7 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
             ))
         }
         Term::Function(function, arguments) => {
-            function_field(expression, *function, arguments, schema)
+            function_field(expression, function, arguments, schema)
         }
         Term::Cast(inner, dtype, safety) => {
             let field = resolve(inner, schema)?;
@@ -610,10 +610,24 @@ fn exact_parts(dtype: &DataType) -> Option<(u8, i8)> {
 /// The output field of one function call.
 fn function_field(
     expression: &Term,
-    function: Function,
+    function: &Function,
     arguments: &[Term],
     schema: &Field,
 ) -> Result<Field> {
+    // A user function is typed by its registered signature, and refused by
+    // name when nothing is registered under it.
+    if let Function::User(reference) = function {
+        let registered = super::user::lookup_function(reference)
+            .map_err(|error| typing_error(format_smolstr!("{error}")))?;
+        let mut fields = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            fields.push(resolve(argument, schema)?);
+        }
+        return registered
+            .signature()
+            .output_field(&fields, expression)
+            .map_err(|error| typing_error(format_smolstr!("{error}")));
+    }
     let (least, most) = function.arity();
     if arguments.len() < least || arguments.len() > most {
         return Err(typing_error(format_smolstr!(
@@ -683,6 +697,7 @@ fn function_field(
             DataType::Int32
         }
         Function::Truncate => first.clone(),
+        Function::User(_) => unreachable!("a user function returned above"),
         Function::Coalesce | Function::IfNull => {
             let mut unified: Option<DataType> = None;
             for field in &fields {

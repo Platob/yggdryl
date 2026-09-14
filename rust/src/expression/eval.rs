@@ -214,7 +214,7 @@ impl Node {
                 for argument in arguments {
                     values.push(argument.eval(row)?);
                 }
-                call(*function, arguments, &values, self.field.dtype())
+                call(function, arguments, &values, self.field.dtype())
             }
             Kind::Cast(inner, safety) => {
                 let held = inner.eval(row)?;
@@ -532,11 +532,27 @@ fn like_walk(subject: &[char], steps: &[(char, bool)]) -> bool {
 /// Answer one function call.
 #[allow(clippy::too_many_lines)]
 fn call(
-    function: Function,
+    function: &Function,
     arguments: &[Node],
     values: &[Scalar],
     dtype: &DataType,
 ) -> Result<Scalar> {
+    // A user function fills its own signature: defaults, casts, and the null
+    // rule its parameters declare.
+    if let Function::User(reference) = function {
+        let registered = super::user::lookup_function(reference)?;
+        return match registered.signature().fill(values)? {
+            Some(filled) => {
+                let answer = registered.call(&filled)?;
+                if answer.is_null() {
+                    Ok(Scalar::Null)
+                } else {
+                    dtype.cast_scalar(&answer)
+                }
+            }
+            None => Ok(Scalar::Null),
+        };
+    }
     let first = values.first().unwrap_or(&Scalar::Null);
     // Coalesce and its two-argument spelling are the only functions that mean
     // something when an argument is null; a slice reads a null bound as the
@@ -639,6 +655,7 @@ fn call(
             };
             segment.apply_scalar(&container.field, first)
         }
+        Function::User(_) => unreachable!("a user function returned above"),
         Function::Slice => {
             let Some(items) = first.as_sequence() else {
                 return Ok(Scalar::Null);
@@ -689,7 +706,7 @@ fn scalar_text(value: &Scalar) -> Option<Cow<'_, str>> {
 /// Rendering and slicing rather than reimplementing civil-from-days keeps this
 /// crate's calendar in exactly one place; the cost is a small allocation per
 /// row, which the vectorized tier does not pay.
-fn calendar_part(value: &Scalar, function: Function) -> Scalar {
+fn calendar_part(value: &Scalar, function: &Function) -> Scalar {
     use crate::types::temporal::iso;
 
     let text = match value {

@@ -7,9 +7,11 @@
 | key | value |
 | --- | --- |
 | Owns | `IORecordOptions`, `RecordOptions`, each encoding's options struct |
-| Sections | the split sections of one [plan](../expression/plans.md), stored apart: `field` (the `create` section; none = inferred), `filter` (`where`; always true), `selector` (`select`; `*`), `merge_by` (`upsert by`; empty), `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), and `max_row_size` (`limit`) |
+| Sections | the split sections of one [plan](../expression/plans.md), stored apart: `field` (the `create` section; none = inferred), `filter` (`where`; always true), `select` (`select`; `*`), `merge_by` (`upsert by`; empty), `name` (`"row"`, `media::DEFAULT_ROOT_NAME`), and `max_row_size` (`limit`) |
 | Plan | `plan()` composes the sections into one `Plan`; `set_plan` / `with_plan` split a `Plan`, a clause, a `Field`, or text back into them |
-| Shared fields | `name`, `field`, `filter`, `selector`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level` |
+| Scalars | `set_select_scalar`, `set_filter_scalar`, `set_merge_by_scalar`, `set_plan_scalar` and their `with_` forms read the section from one `Scalar` as `from_scalar` does - text, a sequence, a mapping, null - the one door every binding's setter crosses |
+| Properties | every record read and write takes the options and, beside them, properties by name (`**properties`, a plain object) set on a copy by their own setters; `...` / `undefined` skipped, `None` / `null` clear |
+| Shared fields | `name`, `field`, `filter`, `select`, `merge_by`, `safe`, `batch_row_size`, `batch_byte_size`, `max_row_size`, `max_byte_size`, `commit_row_size`, `level` |
 | Pruning | `partition_pairs()` reads the equalities the filter pins, as partition paths spell them; a media prunes by them and lets the rest of the predicate run over the rows |
 | Identity | `Clone`, `Eq`, `Ord`, `Hash` include the variant; `stable_hash()` is run-stable over that variant's full configuration |
 | `batch_row_size` | rows per batch; [`pstream_bytes`](../holder/iobase/bytes.md) `batch_size` counts bytes |
@@ -37,7 +39,7 @@ The media type names the encoding, so no format argument is passed.
     assert_eq!(options.mime_type(), MimeType::PARQUET);
     assert_eq!(options.field(), Some(schema.clone()));
     assert_eq!(options.name(), "row");
-    assert!(options.selector().is_all());
+    assert!(options.select().is_all());
     assert!(options.filter().is_always_true());
     assert_eq!(options.batch_row_size(), Some(1024));
     assert_eq!(options.stable_hash(), options.clone().stable_hash());
@@ -61,7 +63,7 @@ The media type names the encoding, so no format argument is passed.
     assert str(options.mime_type) == "application/vnd.apache.parquet"
     assert options.name == "row"
     assert [child.name for child in options.field.dtype] == ["id"]
-    assert options.selector.is_all
+    assert options.select.is_all
     assert options.filter.is_always_true
     assert options.batch_row_size == 1024
     assert options.commit_row_size == 10_000
@@ -92,7 +94,7 @@ The media type names the encoding, so no format argument is passed.
     assert.equal(String(options.mimeType), 'application/vnd.apache.parquet')
     assert.equal(options.name, 'row')
     assert.ok(options.field.equals(schema))
-    assert.ok(options.selector.isAll)
+    assert.ok(options.select.isAll)
     assert.ok(options.filter.isAlwaysTrue)
     assert.equal(options.batchRowSize, 1024)
 
@@ -129,7 +131,7 @@ The media type names the encoding, so no format argument is passed.
     let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
         .with_field(schema.clone())
         .with_filter("venue = 'XNAS' and id > 5")?
-        .with_selector("id")?
+        .with_select("id")?
         .with_merge_by("id")?
         .with_max_row_size(10);
 
@@ -166,7 +168,7 @@ The media type names the encoding, so no format argument is passed.
     options = RecordOptions("trades.arrows")
     options.field = schema
     options.filter = "venue = 'XNAS' and id > 5"
-    options.selector = ["id"]
+    options.select = ["id"]
     options.merge_by = ["id"]
     options.max_row_size = 10
 
@@ -206,7 +208,7 @@ The media type names the encoding, so no format argument is passed.
     const options = new RecordOptions('trades.arrows')
       .withField(schema)
       .withFilter("venue = 'XNAS' and id > 5")
-      .withSelector(['id'])
+      .withSelect(['id'])
       .withMergeBy(['id'])
       .withMaxRowSize(10)
 
@@ -257,7 +259,7 @@ let declared = DataType::from_fields([
 
 let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?
     .with_field(declared.clone())
-    .with_selector("price")?;
+    .with_select("price")?;
 
 // One call is the whole pipeline: the declared apply, then the selection.
 // Passing a stored root as the second argument adds the completion layer.
@@ -321,7 +323,7 @@ assert!(message.contains("with_field"), "{message}");
 - `with_plan(f)` for a `Field` `f` -> equal, and hash-equal, to `with_field(f)`.
 - `set_plan` -> replaces every section the plan spells and clears the ones it does not; a `limit` sets `max_row_size`, and the plan's targets and source are not read, because the handle these options are given to is both.
 - `merge_by` naming a column twice -> refused naming it; `max_row_size` with `merge_by` -> refused naming both.
-- `selector` naming a column the stored root lacks -> the encoding reads everything and the cast supplies it as nulls.
+- `select` naming a column the stored root lacks -> the encoding reads everything and the cast supplies it as nulls.
 - `existing` root -> the cast is always safe; an unconvertible value becomes null.
 - Every read and write path -> routes through `apply_arrow_batch` / `apply_arrow_reader`, so declaration, derivation, selection, and stored shape agree.
 - Unused setting -> still there, still ignored, like [`ParquetOptions::level`](parquet.md).

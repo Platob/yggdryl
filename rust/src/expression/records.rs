@@ -68,7 +68,7 @@ impl Records {
             crate::media::DEFAULT_ROOT_NAME,
             &reader.schema(),
         )?;
-        let rows = crate::ArrowValue::from_reader_as(field.clone(), reader)?
+        let rows = crate::ArrowScalar::from_reader_as(field.clone(), reader)?
             .into_scalar()?
             .as_sequence()
             .map(<[Scalar]>::to_vec)

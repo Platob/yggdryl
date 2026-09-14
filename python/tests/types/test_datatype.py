@@ -15,7 +15,7 @@ import pytest
 from yggdryl import BytesParameters, DataType, Field, StringEnum, StringParameters, Version, types
 
 
-def test_dtype_infers_native_string_and_arrow_values() -> None:
+def test_dtype_infers_native_string_and_arrow_scalars() -> None:
     expected = DataType("int64")
 
     assert DataType(expected) == expected

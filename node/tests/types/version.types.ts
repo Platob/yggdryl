@@ -12,7 +12,7 @@ const json: string = value.toJSON()
 const field: VersionField = fields.version('release', { nullable: false })
 const defaultValue: Version = field.defaultJSValue()
 const optionalValue: Version | null = fields.version('release').defaultJSValue()
-const native: Scalar = Scalar.fromJs(value)
+const native: Scalar = Scalar.from(value)
 
 // @ts-expect-error numeric parts are read-only
 value.patch = 7

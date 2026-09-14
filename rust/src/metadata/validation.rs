@@ -3,7 +3,10 @@
 use std::collections::HashSet;
 
 use crate::Scalar;
-use crate::expression::{Function, TRANSFORM_EXPRESSION_KEY, canonicalize_transform_expression};
+use crate::expression::{
+    Function, TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_SOURCES_KEY,
+    canonicalize_transform_expression, canonicalize_transform_function,
+};
 use crate::hashing::txhash::{
     DIGEST_TIME_KEY, DIGEST_UNIT_KEY, canonicalize_digest_unit, validate_digest_time,
 };
@@ -266,6 +269,8 @@ pub(super) fn validate_entry(key: String, value: String) -> Result<(String, Stri
         TRANSFORM_EXPRESSION_KEY => {
             canonicalize_transform_expression(TRANSFORM_EXPRESSION_KEY, &value)?
         }
+        TRANSFORM_FUNCTION_KEY => canonicalize_transform_function(TRANSFORM_FUNCTION_KEY, &value)?,
+        TRANSFORM_SOURCES_KEY => canonicalize_source_list(TRANSFORM_SOURCES_KEY, &value)?,
         DIGEST_ROLE_KEY => {
             if value.as_str() != DIGEST_ROLE_HOLDER {
                 return Err(Error::InvalidMetadataValue {

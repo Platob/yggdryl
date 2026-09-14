@@ -52,6 +52,7 @@ use super::plan::{Location, Ordering, Plan, Source, Target, Verb, Write};
 use super::selector::{Projection, Selector};
 use super::{
     Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
+    UserRef,
 };
 use crate::{DataType, Error, I256, Result, Scalar, Url};
 
@@ -1374,6 +1375,18 @@ impl<'input> Parser<'input> {
                 position,
                 format_smolstr!("expected a value or a name, got the reserved word {word:?}"),
             ));
+        }
+        // `namespace.name(` is a user-defined function: registered outside
+        // the grammar, so the name is read here and resolved where it binds.
+        if matches!(self.peek_at(1), Some(Token::Symbol(".")))
+            && let Some(Token::Word(name)) = self.peek_at(2).cloned()
+            && matches!(self.peek_at(3), Some(Token::Symbol("(")))
+        {
+            let reference = UserRef::new(&word, &name)
+                .map_err(|error| parse_error(position, format_smolstr!("{error}")))?;
+            self.cursor += 3;
+            let arguments = self.arguments()?;
+            return Ok(Term::call(Function::User(reference), arguments));
         }
         // A word followed by `(` is a function call when the name is one, and
         // a parameterized datatype when a literal follows the closing paren.

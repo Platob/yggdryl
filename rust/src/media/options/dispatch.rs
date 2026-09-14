@@ -85,23 +85,23 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
-    fn selector(&self) -> &Selector {
+    fn select(&self) -> &Selector {
         match self {
-            Self::Ipc(options) => options.selector(),
+            Self::Ipc(options) => options.select(),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.selector(),
-            Self::Avro(options) => options.selector(),
-            Self::Text(options) => options.selector(),
+            Self::Parquet(options) => options.select(),
+            Self::Avro(options) => options.select(),
+            Self::Text(options) => options.select(),
         }
     }
 
-    fn set_selector(&mut self, selector: Selector) {
+    fn set_select(&mut self, select: Selector) {
         match self {
-            Self::Ipc(options) => options.set_selector(selector),
+            Self::Ipc(options) => options.set_select(select),
             #[cfg(feature = "parquet")]
-            Self::Parquet(options) => options.set_selector(selector),
-            Self::Avro(options) => options.set_selector(selector),
-            Self::Text(options) => options.set_selector(selector),
+            Self::Parquet(options) => options.set_select(select),
+            Self::Avro(options) => options.set_select(select),
+            Self::Text(options) => options.set_select(select),
         }
     }
 

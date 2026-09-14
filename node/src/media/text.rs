@@ -224,16 +224,16 @@ impl JsTextOptions {
 
     /// The `select` section a read or write is shaped by.
     #[napi(getter)]
-    pub fn selector(&self) -> JsSelector {
-        JsSelector::from_core(self.inner.selector().clone())
+    pub fn select(&self) -> JsSelector {
+        JsSelector::from_core(self.inner.select().clone())
     }
 
     /// Set the `select` section: a `Selector`, the text of one, a `Term`, or
     /// the column names.
     #[napi(setter)]
-    pub fn set_selector(
+    pub fn set_select(
         &mut self,
-        selector: napi::bindgen_prelude::Either4<
+        select: napi::bindgen_prelude::Either4<
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
             String,
@@ -245,7 +245,7 @@ impl JsTextOptions {
             >,
         >,
     ) -> Result<()> {
-        self.inner.set_selector(selector_from_input(selector)?);
+        self.inner.set_select(selector_from_input(select)?);
         Ok(())
     }
 
@@ -612,9 +612,9 @@ impl JsTextOptions {
 
     /// Return a copy shaped by a `select` section.
     #[napi]
-    pub fn with_selector(
+    pub fn with_select(
         &self,
-        selector: napi::bindgen_prelude::Either4<
+        select: napi::bindgen_prelude::Either4<
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsSelector>,
             napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
             String,
@@ -627,7 +627,7 @@ impl JsTextOptions {
         >,
     ) -> Result<Self> {
         let mut options = self.clone();
-        options.set_selector(selector)?;
+        options.set_select(select)?;
         Ok(options)
     }
 

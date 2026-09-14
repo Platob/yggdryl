@@ -104,7 +104,7 @@ class TestValues:
         naive = dt.datetime(2023, 11, 14, 22, 13, 20)
         assert txhash.TxHash.from_parts(naive, digest) == integer, "naive reads as UTC"
         assert txhash.TxHash.from_parts("2023-11-14T22:13:20Z", digest) == integer
-        assert txhash.TxHash.from_parts(Scalar.from_py(aware), digest) == integer
+        assert txhash.TxHash.from_parts(Scalar.from_(aware), digest) == integer
         day = txhash.TxHash.from_parts(dt.date(1970, 1, 2), digest)
         assert day.unix == 86_400_000_000
         seconds = txhash.TxHash.from_parts(aware, digest, unit="s")
@@ -251,9 +251,9 @@ class TestHasher:
         assert value.unit == "s" and value.unix == 1_700_000_000
         assert int(value.digest) == xxhash.xxh64(PAYLOAD, seed=7)
         assert seconds.unix_of(aware) == 1_700_000_000
-        row = seconds.digest_scalar(Scalar.from_py(["AAPL", 100]), INSTANT // 1_000_000)
+        row = seconds.digest_scalar(Scalar.from_(["AAPL", 100]), INSTANT // 1_000_000)
         state = xxhash.Xxh64(seed=7)
-        state.write_scalar(Scalar.from_py(["AAPL", 100]))
+        state.write_scalar(Scalar.from_(["AAPL", 100]))
         assert row.digest == state.as_digest()
         with pytest.raises(ValueError):
             txhash.TxHasher(unit="d")
@@ -300,7 +300,7 @@ class TestColumns:
             assert digests == xxhash.row_digests(batch, algorithm), algorithm
             assert times == batch.column("event"), algorithm
             first = txhash.TxHash.from_bytes("us", algorithm, coupled[0].as_py())
-            expected = Scalar.from_py([dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC), "AAPL"])
+            expected = Scalar.from_([dt.datetime(2023, 11, 14, 22, 13, 20, tzinfo=UTC), "AAPL"])
             assert first == txhash.TxHash.from_parts(INSTANT, expected.digest(algorithm))
             assert coupled[0] == coupled[2] and coupled[0] != coupled[1]
             assert txhash.compose(times, digests, algorithm=algorithm) == coupled
@@ -314,7 +314,7 @@ class TestColumns:
         column = txhash.column_txhashes(times, batch.column("symbol"), Field("symbol", "utf8"), unit="s")
         assert column[1].as_py() is None
         cell = txhash.TxHash.from_bytes("s", "xxh3-64", column[0].as_py())
-        assert cell.digest == Scalar.from_py("AAPL").digest()
+        assert cell.digest == Scalar.from_("AAPL").digest()
         narrow = txhash.column_txhashes(times, pa.array([1, 2, 3], pa.int32()), Field("q", "int64"), unit="s")
         wide = txhash.column_txhashes(times, pa.array([1, 2, 3], pa.int64()), Field("q", "int64"), unit="s")
         assert narrow == wide
@@ -337,7 +337,7 @@ class TestColumns:
         hasher = txhash.TxHasher(seed=7)
         coupled = hasher.row_txhashes(batch, batch.column("event"))
         state = xxhash.Xxh3(seed=7)
-        state.write_scalar(Scalar.from_py([dt.datetime(2023, 11, 14, 22, 13, 20, 1, tzinfo=UTC), "MSFT"]))
+        state.write_scalar(Scalar.from_([dt.datetime(2023, 11, 14, 22, 13, 20, 1, tzinfo=UTC), "MSFT"]))
         second = txhash.TxHash.from_bytes("us", "xxh3-64", coupled[1].as_py())
         assert second.digest == state.as_digest() and second.unix == INSTANT + 1
         column = txhash.TxHasher("xxh32", unit="s").column_txhashes(
@@ -345,7 +345,7 @@ class TestColumns:
         )
         cell = txhash.TxHash.from_bytes("s", "xxh32", column[0].as_py())
         assert cell.unix == 1_700_000_000
-        assert cell.digest == Scalar.from_py("AAPL").digest("xxh32")
+        assert cell.digest == Scalar.from_("AAPL").digest("xxh32")
 
 
 class TestHolders:
@@ -397,7 +397,7 @@ class TestHolders:
         assert filled.schema == root.into_arrow_schema()
         assert filled.column("key").type == pa.binary(16)
         second = txhash.TxHash.from_bytes("us", "xxh3-64", filled.column("key")[1].as_py())
-        expected = Scalar.from_py([dt.datetime(2023, 11, 14, 22, 13, 20, 1, tzinfo=UTC), "MSFT"])
+        expected = Scalar.from_([dt.datetime(2023, 11, 14, 22, 13, 20, 1, tzinfo=UTC), "MSFT"])
         assert second == txhash.TxHash.from_parts(INSTANT + 1, expected.digest())
         assert root.apply_arrow_batch(batch) == filled
         assert root.apply_arrow_batch(filled) == filled, "filling again changes nothing"

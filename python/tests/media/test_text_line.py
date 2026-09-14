@@ -66,7 +66,7 @@ class TestTextLine:
         lines = list(source().read_text_lines(options=TextOptions()))
         assert [line.index for line in lines] == [0, 1]
         assert lines[0].body == "8=FIX|55=AAPL|35=D"
-        assert lines[0].url is not None
+        assert lines[0].sourceurl is not None
 
     def test_a_read_wanting_no_entry_builds_no_tree(self) -> None:
         lines = list(source().read_text_lines(options=TextOptions()))

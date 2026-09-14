@@ -135,8 +135,8 @@ test('schema wrappers cross structurally and locations cross as text', () => {
     assert.deepEqual(format.loads(format.dumps(type)), type.toJSON())
     assert.deepEqual(format.loads(format.dumps(field)), field.toJSON())
   }
-  assert.equal(Scalar.fromJs(type).kind, 'mapping')
-  assert.equal(Scalar.fromJs(field).kind, 'mapping')
+  assert.equal(Scalar.from(type).kind, 'mapping')
+  assert.equal(Scalar.from(field).kind, 'mapping')
 
   for (const value of [
     Uri.fromString('https://example.com/value'),
@@ -292,10 +292,10 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.equal(mode.asStr(), 'append')
   assert.throws(() => Scalar.fromEnum('io_mode', 'missing'), /unknown/)
 
-  assert.deepEqual(Scalar.fromJs(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
-  assert.equal(Scalar.fromJs('AAPL').asStr(), 'AAPL')
-  assert.equal(Scalar.fromJs(1).asStr(), null)
-  const record = Scalar.fromJs({ z: 2, a: 1 })
+  assert.deepEqual(Scalar.from(Buffer.from([0, 255])).asBytes(), Buffer.from([0, 255]))
+  assert.equal(Scalar.from('AAPL').asStr(), 'AAPL')
+  assert.equal(Scalar.from(1).asStr(), null)
+  const record = Scalar.from({ z: 2, a: 1 })
   assert.equal(record.asJsonUtf8(), '{"a":1,"z":2}')
   assert.deepEqual(record.asJsonBytes(), Buffer.from(record.asJsonUtf8()))
   assert.equal(record.toString(), record.asJsonUtf8())
@@ -305,19 +305,19 @@ test('Scalar family factories keep selected widths, hashes, and natural accessor
   assert.ok(clone.equals(record))
   assert.equal(clone.compare(record), 0)
   assert.equal(clone.stableHash(), record.stableHash())
-  assert.ok(Scalar.fromJs(1).compare(Scalar.fromJs(2)) < 0)
+  assert.ok(Scalar.from(1).compare(Scalar.from(2)) < 0)
   assert.equal(Scalar.decimal(150n, 2).compare(Scalar.decimal(15n, 1)), 0)
 })
 
 test('Scalar identity accessors name the exact leaf and family', () => {
   const values = [
-    [Scalar.fromJs(null), 'null', 'null'],
-    [Scalar.fromJs(true), 'boolean', 'boolean'],
-    [Scalar.fromJs(1n), 'int64', 'integer'],
+    [Scalar.from(null), 'null', 'null'],
+    [Scalar.from(true), 'boolean', 'boolean'],
+    [Scalar.from(1n), 'int64', 'integer'],
     [Scalar.float(1.5, 32), 'float32', 'floating'],
     [Scalar.decimal(150n, 2), 'decimal128', 'decimal'],
     [Scalar.date(1), 'date32', 'temporal'],
-    [Scalar.fromJs('AAPL'), 'string', 'text'],
+    [Scalar.from('AAPL'), 'string', 'text'],
     [
       json.loads('"USD"', {
         field: new Field('value', 'currency', false),
@@ -342,8 +342,8 @@ test('Scalar identity accessors name the exact leaf and family', () => {
       'version',
       'text',
     ],
-    [Scalar.fromJs(Buffer.from('bytes')), 'binary', 'bytes'],
-    [Scalar.fromJs({ id: 1 }), 'struct', 'nested'],
+    [Scalar.from(Buffer.from('bytes')), 'binary', 'bytes'],
+    [Scalar.from({ id: 1 }), 'struct', 'nested'],
   ]
   for (const [value, expectedId, expectedFamily] of values) {
     assert.equal(value.id, expectedId)
@@ -369,12 +369,12 @@ test('exact intervals retain their flat JavaScript layouts', () => {
 
 test('Scalar traversal and persistent updates stay entirely native', () => {
   const instant = Scalar.datetime(1700000000123456789n, 'ns', 'Europe/Paris')
-  const record = Scalar.fromJs({ z: 2, legs: [{ at: instant }] })
+  const record = Scalar.from({ z: 2, legs: [{ at: instant }] })
 
   assert.equal(record.length, 2)
   assert.equal(record.isEmpty(), false)
-  assert.equal(Scalar.fromJs({}).isEmpty(), true)
-  assert.equal(Scalar.fromJs(1).isEmpty(), false)
+  assert.equal(Scalar.from({}).isEmpty(), true)
+  assert.equal(Scalar.from(1).isEmpty(), false)
   assert.equal(record.get('missing'), null)
   assert.equal(record.has('legs'), true)
   assert.equal(record.has('missing'), false)
@@ -413,7 +413,7 @@ test('Scalar traversal and persistent updates stay entirely native', () => {
   assert.ok(removed.remove('missing').equals(removed))
 
   const decimalKey = Scalar.decimal(150n, 2)
-  const mapping = Scalar.fromJs(new Map([[decimalKey, instant]]))
+  const mapping = Scalar.from(new Map([[decimalKey, instant]]))
   assert.equal(mapping.length, 1)
   assert.equal(mapping.get(Scalar.decimal(15n, 1)).count, instant.count)
   assert.equal([...mapping][0].kind, 'd128')
@@ -429,14 +429,14 @@ test('Scalar traversal and persistent updates stay entirely native', () => {
 })
 
 test('Scalar arithmetic infers JavaScript operands once and stays native', () => {
-  const forty = Scalar.fromJs(40)
-  assert.ok(forty.add(2).equals(Scalar.fromJs(42)))
-  assert.ok(forty.subtract(Scalar.fromJs(2)).equals(Scalar.fromJs(38)))
-  assert.ok(Scalar.fromJs(6).multiply(7).equals(Scalar.fromJs(42)))
-  assert.ok(Scalar.fromJs(84).divide(2).equals(Scalar.fromJs(42)))
-  assert.ok(Scalar.fromJs(5).remainder(2).equals(Scalar.fromJs(1)))
-  assert.ok(Scalar.fromJs(5).negate().equals(Scalar.fromJs(-5)))
-  assert.ok(Scalar.fromJs(-5).absolute().equals(Scalar.fromJs(5)))
+  const forty = Scalar.from(40)
+  assert.ok(forty.add(2).equals(Scalar.from(42)))
+  assert.ok(forty.subtract(Scalar.from(2)).equals(Scalar.from(38)))
+  assert.ok(Scalar.from(6).multiply(7).equals(Scalar.from(42)))
+  assert.ok(Scalar.from(84).divide(2).equals(Scalar.from(42)))
+  assert.ok(Scalar.from(5).remainder(2).equals(Scalar.from(1)))
+  assert.ok(Scalar.from(5).negate().equals(Scalar.from(-5)))
+  assert.ok(Scalar.from(-5).absolute().equals(Scalar.from(5)))
 
   assert.ok(
     Scalar.decimal(105n, 2)
@@ -474,19 +474,19 @@ test('Scalar arithmetic infers JavaScript operands once and stays native', () =>
   )
 
   assert.throws(
-    () => Scalar.fromJs(1).divide(0),
+    () => Scalar.from(1).divide(0),
     (error) =>
       error instanceof RangeError &&
       error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO' &&
       /division by zero/i.test(error.message),
   )
   assert.throws(
-    () => Scalar.fromJs(9223372036854775807n).add(1n),
+    () => Scalar.from(9223372036854775807n).add(1n),
     (error) =>
       error instanceof RangeError && error.code === 'ERR_YGGDRYL_ARITHMETIC_OVERFLOW',
   )
   assert.throws(
-    () => Scalar.fromJs('a').add('b'),
+    () => Scalar.from('a').add('b'),
     (error) =>
       error instanceof TypeError &&
       error.code === 'ERR_YGGDRYL_INVALID_ARITHMETIC' &&
@@ -577,7 +577,7 @@ test('Scalar Arrow scalar and array interop uses standard IPC', () => {
     /one-item Arrow Vector/,
   )
 
-  const empty = Scalar.fromJs([])
+  const empty = Scalar.from([])
   assert.throws(() => empty.intoArrowArray(), /empty.*pass a Field/i)
   const emptyVector = empty.intoArrowArray(new Field('value', 'int32', true))
   assert.equal(emptyVector.length, 0)
@@ -590,17 +590,17 @@ test('Scalar Arrow scalar and array interop uses standard IPC', () => {
 })
 
 test('Scalar Field accessors redirect to core inference', () => {
-  const scalar = Scalar.fromJs(42).intoField()
+  const scalar = Scalar.from(42).intoField()
   assert.equal(scalar.name, 'value')
   assert.equal(scalar.dtype.toString(), 'int64')
   assert.equal(scalar.nullable, false)
 
-  const item = Scalar.fromJs([1, null]).intoArrayField()
+  const item = Scalar.from([1, null]).intoArrayField()
   assert.equal(item.name, 'item')
   assert.equal(item.dtype.toString(), 'int64')
   assert.equal(item.nullable, true)
 
-  const root = Scalar.fromJs([{ id: 1, venue: null }, { id: 2, venue: 'XNAS' }])
+  const root = Scalar.from([{ id: 1, venue: null }, { id: 2, venue: 'XNAS' }])
     .intoStructField()
   assert.equal(root.name, 'row')
   assert.equal(root.nullable, false)
@@ -608,8 +608,8 @@ test('Scalar Field accessors redirect to core inference', () => {
   assert.deepEqual(children.map((child) => child.name), ['id', 'venue'])
   assert.equal(children[1].nullable, true)
 
-  assert.throws(() => Scalar.fromJs([]).intoArrayField(), /empty Sequence/)
-  assert.throws(() => Scalar.fromJs([[1]]).intoStructField(), /field names/)
+  assert.throws(() => Scalar.from([]).intoArrayField(), /empty Sequence/)
+  assert.throws(() => Scalar.from([[1]]).intoStructField(), /field names/)
 })
 
 test('Scalar Arrow record and table interop uses the native schema engine', () => {
@@ -631,18 +631,18 @@ test('Scalar Arrow record and table interop uses the native schema engine', () =
   assert.equal(restored.numRows, 2)
   assert.deepEqual([...restored.getChild('id')], [1, 2])
 
-  const inferred = Scalar.fromJs([{ id: 1 }, { id: 2 }]).intoArrowBatch()
+  const inferred = Scalar.from([{ id: 1 }, { id: 2 }]).intoArrowBatch()
   assert.deepEqual([...inferred.getChild('id')], [1n, 2n])
   assert.throws(
-    () => Scalar.fromJs([]).intoArrowTable(),
+    () => Scalar.from([]).intoArrowTable(),
     /cannot infer a Struct Field from empty rows; pass a Struct Field/i,
   )
 })
 
 test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => {
   const date = new Date('2026-08-15T12:30:00.000Z')
-  assert.ok(Scalar.fromJs(date).equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')))
-  assert.ok(Scalar.fromJs(date).asJs() instanceof Date)
+  assert.ok(Scalar.from(date).equals(Scalar.datetime(1786797000000n, 'ms', 'UTC')))
+  assert.ok(Scalar.from(date).asJs() instanceof Date)
 
   // On the wire every temporal is its classic ISO string; the typed reading
   // comes back wherever a schema names the column's datatype.
@@ -659,8 +659,8 @@ test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => 
 test('null crosses everywhere a value goes', () => {
   // Null is a value, not a trap: alone, inside arrays, as an object value,
   // and through both codecs, it stays null - and undefined lowers to it.
-  assert.equal(Scalar.fromJs(null).kind, 'null')
-  assert.equal(Scalar.fromJs(null).asJs(), null)
+  assert.equal(Scalar.from(null).kind, 'null')
+  assert.equal(Scalar.from(null).asJs(), null)
   assert.deepEqual(json.loads(json.dumps({ gap: null, list: [null, 1] })), {
     gap: null,
     list: [null, 1],
@@ -670,31 +670,31 @@ test('null crosses everywhere a value goes', () => {
 
 test('fromJs and asJs are the conversion every codec entry point crosses', () => {
   // The pivot answers what a JavaScript value becomes, losses included.
-  assert.equal(Scalar.fromJs(new Set([1, 2])).kind, 'sequence')
-  assert.deepEqual(Scalar.fromJs(new Set([1, 2])).asJs(), [1, 2])
-  assert.equal(Scalar.fromJs(new Map([['id', 1]])).kind, 'mapping')
-  assert.deepEqual(Scalar.fromJs(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
-  assert.equal(Scalar.fromJs({ id: 1 }).kind, 'record')
-  assert.equal(Scalar.fromJs(undefined).kind, 'null')
+  assert.equal(Scalar.from(new Set([1, 2])).kind, 'sequence')
+  assert.deepEqual(Scalar.from(new Set([1, 2])).asJs(), [1, 2])
+  assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'mapping')
+  assert.deepEqual(Scalar.from(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
+  assert.equal(Scalar.from({ id: 1 }).kind, 'record')
+  assert.equal(Scalar.from(undefined).kind, 'null')
 
   // dumps is fromJs with bytes on the far side, and loads is asJs - except
   // the instant, which the wire spells as its classic string.
   const value = { id: 1, tags: new Set(['a']) }
-  assert.deepEqual(json.loads(json.dumps(value)), Scalar.fromJs(value).asJs())
+  assert.deepEqual(json.loads(json.dumps(value)), Scalar.from(value).asJs())
   assert.equal(json.loads(json.dumps({ at: new Date(0) })).at, '1970-01-01T00:00:00.000Z')
-  assert.throws(() => Scalar.fromJs({}, { maxDepth: 0 }), /between 1 and 48/)
+  assert.throws(() => Scalar.from({}, { maxDepth: 0 }), /between 1 and 48/)
 })
 
-test('Scalar.fromJs applies a declared core Field exactly at intake', () => {
+test('Scalar.from applies a declared core Field exactly at intake', () => {
   const count = new Field('count', 'int8', false)
-  const value = Scalar.fromJs(127, { field: count })
+  const value = Scalar.from(127, { field: count })
   assert.equal(value.kind, 'i8')
   assert.equal(value.asJs(), 127)
-  assert.throws(() => Scalar.fromJs(128, { field: count }), /int8|count/)
-  assert.throws(() => Scalar.fromJs(null, { field: count }), /null|count/)
-  assert.equal(Scalar.fromJs(null, { field: new Field('count', 'int8', true) }).kind, 'null')
+  assert.throws(() => Scalar.from(128, { field: count }), /int8|count/)
+  assert.throws(() => Scalar.from(null, { field: count }), /null|count/)
+  assert.equal(Scalar.from(null, { field: new Field('count', 'int8', true) }).kind, 'null')
   const row = new Field('row', 'struct<id: int8 not null, release: version not null>', false)
-  const resolved = Scalar.fromJs({ release: '5.0.300', id: 7 }, { field: row })
+  const resolved = Scalar.from({ release: '5.0.300', id: 7 }, { field: row })
   assert.equal(resolved.kind, 'sequence')
   assert.equal(resolved.get(0).kind, 'i8')
   assert.ok(resolved.get(1).asJs().equals(new Version(5, 0, 300)))

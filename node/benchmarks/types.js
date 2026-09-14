@@ -93,7 +93,7 @@ const contentType = 'text/csv; charset=utf-8'
 const contentEncoding = 'gzip, zstd'
 const release = new Version(5, 0, 300)
 const earlierRelease = new Version(5, 0, 10)
-const releaseScalar = Scalar.fromJs(release)
+const releaseScalar = Scalar.from(release)
 const releaseField = fields.version('release', { nullable: false })
 
 benchmark('version/native_parts', () => new Version(5, 0, 300))
@@ -102,8 +102,8 @@ benchmark('version/patch', () => release.patch)
 benchmark('version/compare', () => earlierRelease.compare(release))
 benchmark('version/stable_hash', () => release.stableHash())
 benchmark('version/clone', () => release.clone())
-benchmark('version/into_scalar', () => Scalar.fromJs(release))
-benchmark('version/field_into_scalar', () => Scalar.fromJs('5.0.300', { field: releaseField }))
+benchmark('version/into_scalar', () => Scalar.from(release))
+benchmark('version/field_into_scalar', () => Scalar.from('5.0.300', { field: releaseField }))
 benchmark('version/scalar_as_js', () => releaseScalar.asJs())
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))

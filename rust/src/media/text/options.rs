@@ -13,7 +13,7 @@ use crate::{DataType, Error, Field, FieldPath, Level, Result, Timezone};
 use super::{LeadingFragment, LineSep};
 
 /// Reserved columns emitted before decoded row-header captures.
-pub(crate) const BASE_COLUMNS: [&str; 4] = ["url", "rownum", "body", "dropped_byte_size"];
+pub(crate) const BASE_COLUMNS: [&str; 4] = ["sourceurl", "rownum", "body", "dropped_byte_size"];
 
 /// The column stating when a record was written, and the row-header capture
 /// that fills it.
@@ -101,7 +101,7 @@ pub struct TextOptions {
     /// The rows a read or write keeps.
     pub filter: crate::Filter,
     /// The columns a read or write publishes.
-    pub selector: crate::Selector,
+    pub select: crate::Selector,
     /// The columns forming an explicit merge's match key.
     pub merge_by: crate::Selector,
     /// Whether a cast may null a value it cannot convert.
@@ -176,7 +176,7 @@ impl TextOptions {
             name: smol_str::SmolStr::new_static(crate::media::DEFAULT_ROOT_NAME),
             field: None,
             filter: crate::Filter::always_true(),
-            selector: crate::Selector::all(),
+            select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
             safe: false,
             batch_byte_size: None,
@@ -303,7 +303,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from url, rownum, body, and dropped_byte_size, got {:?}",
+                        "expected named captures distinct from sourceurl, rownum, body, and dropped_byte_size, got {:?}",
                         capture.name()
                     ),
                 });

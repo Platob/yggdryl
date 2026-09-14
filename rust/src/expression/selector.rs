@@ -356,6 +356,52 @@ impl Selector {
             .collect()
     }
 
+    /// Read a selector from the scalar that spells one.
+    ///
+    /// Text parses as the clause; a sequence is one projection per item,
+    /// each the text of one; a mapping or record is `term as name` per
+    /// entry; null is `*`. This is the one reading every binding's inputs
+    /// cross through, so a list of names, a dict of aliases and the text of
+    /// a clause mean the same thing in every language.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that is not a selector, and an error
+    /// naming the scalar for any other shape.
+    pub fn from_scalar(value: &Scalar) -> Result<Self> {
+        if let Some(text) = value.as_str() {
+            return text.parse();
+        }
+        if value.is_null() {
+            return Ok(Self::all());
+        }
+        if let Some(items) = value.as_sequence() {
+            let mut projections = Vec::with_capacity(items.len());
+            for item in items {
+                projections.push(Projection::from_scalar(item)?);
+            }
+            return Ok(Self::new(projections));
+        }
+        if let Some(entries) = value.as_mapping() {
+            let mut projections = Vec::with_capacity(entries.len());
+            for (name, term) in entries {
+                let Some(alias) = name.as_str() else {
+                    return Err(selector_shape_error(value));
+                };
+                projections.push(Projection::aliased(Term::from_scalar(term)?, alias));
+            }
+            return Ok(Self::new(projections));
+        }
+        if let Some(entries) = value.as_record() {
+            let mut projections = Vec::with_capacity(entries.len());
+            for (alias, term) in entries {
+                projections.push(Projection::aliased(Term::from_scalar(term)?, alias.clone()));
+            }
+            return Ok(Self::new(projections));
+        }
+        Err(selector_shape_error(value))
+    }
+
     /// Select the named columns unchanged, in order.
     ///
     /// Each name is one column, spelled exactly: a dotted name is a column
@@ -509,26 +555,29 @@ impl Selector {
         Ok(())
     }
 
-    /// The struct root this selector publishes from `root`.
+    /// The struct datatype this selector publishes from the struct `dtype`.
     ///
-    /// `*` publishes the root itself. Otherwise the result keeps the root's
-    /// name, nullability and metadata and holds one child per projection,
-    /// typed by [`Projection::field`]. Two projections publishing one name are
-    /// refused, because a batch cannot carry them.
+    /// `*` publishes the datatype itself. Otherwise the result holds one
+    /// child per projection, typed by [`Projection::field`] against a root of
+    /// that datatype. Two projections publishing one name are refused,
+    /// because a batch cannot carry them. This is the schema question every
+    /// other schema application - [`apply_field`](Self::apply_field), a
+    /// plan's `create` section, a reader's declared shape - is answered by.
     ///
     /// # Errors
     ///
-    /// Returns an error when a term cannot be typed against the root, or two
-    /// projections share a name.
-    pub fn apply_field(&self, root: &Field) -> Result<Field> {
+    /// Returns an error when `dtype` is not a struct, when a term cannot be
+    /// typed against it, or when two projections share a name.
+    pub fn apply_datatype(&self, dtype: &DataType) -> Result<DataType> {
         if self.is_all() {
-            return Ok(root.clone());
+            return Ok(dtype.clone());
         }
+        let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
         root.require_struct()?;
-        let projections = self.expanded(root);
+        let projections = self.expanded(&root);
         let mut children = Vec::with_capacity(projections.len());
         for projection in &projections {
-            let child = projection.field(root)?;
+            let child = projection.field(&root)?;
             if children
                 .iter()
                 .any(|held: &Field| held.name().eq_ignore_ascii_case(child.name()))
@@ -543,8 +592,20 @@ impl Selector {
             }
             children.push(child);
         }
+        DataType::from_fields(children)
+    }
+
+    /// The struct root this selector publishes from `root`.
+    ///
+    /// The root keeps its name, nullability and metadata around the datatype
+    /// [`apply_datatype`](Self::apply_datatype) publishes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the error [`apply_datatype`](Self::apply_datatype) does.
+    pub fn apply_field(&self, root: &Field) -> Result<Field> {
         root.clone()
-            .try_with_dtype(DataType::from_fields(children)?)
+            .try_with_dtype(self.apply_datatype(root.dtype())?)
     }
 
     /// The row this selector publishes from one row of `root`.
@@ -626,13 +687,18 @@ impl Selector {
 
     /// One child as the column declaration that recreates it.
     fn column_declaration(child: &Field) -> Projection {
-        let declared = child
-            .get_metadata(super::TRANSFORM_EXPRESSION_KEY)
-            .and_then(|stored| stored.parse::<Term>().ok());
+        // A partition column's own declaration is not a selector's to
+        // restate: only the transform protocol's two spellings are read.
+        let transform = child.as_transform();
+        let declared = (transform.is_derived() && !child.as_partition().is_derived())
+            .then(|| transform.term().ok().flatten())
+            .flatten();
         let (term, alias, metadata) = match declared {
             Some(term) if term.as_column() != Some(child.name()) => {
                 let mut metadata = child.as_metadata().clone();
-                metadata.remove(super::TRANSFORM_EXPRESSION_KEY);
+                for key in super::TRANSFORM_KEYS {
+                    metadata.remove(key);
+                }
                 (term, Some(SmolStr::new(child.name())), metadata)
             }
             _ => (
@@ -1155,5 +1221,43 @@ mod arrow {
         fn schema(&self) -> SchemaRef {
             Arc::clone(&self.schema)
         }
+    }
+}
+
+impl Projection {
+    /// Read one projection from the scalar that spells it: text, or a
+    /// `(term, alias)` pair spelled as a two-item sequence.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that is not a projection, and an error
+    /// naming the scalar for any other shape.
+    pub fn from_scalar(value: &Scalar) -> Result<Self> {
+        if let Some(text) = value.as_str() {
+            return text.parse();
+        }
+        if let Some([term, alias]) = value.as_sequence()
+            && let Some(alias) = alias.as_str()
+        {
+            return Ok(Self::aliased(Term::from_scalar(term)?, alias));
+        }
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                "the text of a projection or a (term, alias) pair",
+                format_args!("{value:?}"),
+            ),
+        })
+    }
+}
+
+/// The refusal for a scalar shape no selector reads.
+fn selector_shape_error(value: &Scalar) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: crate::text::expected_got(
+            "the text of a select clause, a sequence of projections, a mapping of aliases to terms, or null",
+            format_args!("{value:?}"),
+        ),
     }
 }

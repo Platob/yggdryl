@@ -344,7 +344,7 @@ fn an_open_cache_tracks_selection_and_completion_on_overwrite() {
     let mut media = Ipc::new(Buffer::from_bytes(writer.handle().as_slice().to_vec()));
     media.open().unwrap();
 
-    let options = media.record_options().unwrap().with_selector("id").unwrap();
+    let options = media.record_options().unwrap().with_select("id").unwrap();
     crate::IOMedia::overwrite_arrow_reader(&mut media, reader(), &options).unwrap();
 
     // Selection narrows the incoming stream first, then completion onto the
@@ -507,7 +507,7 @@ fn dimensions_count_message_metadata_and_ignore_transient_read_shaping() {
         .overwrite_arrow_reader(multi_batch_reader(), &options)
         .unwrap();
 
-    media.options_mut().set_selector("id".parse().unwrap());
+    media.options_mut().set_select("id".parse().unwrap());
     media.options_mut().set_max_row_size(Some(1));
     media.options_mut().set_max_byte_size(Some(1));
 

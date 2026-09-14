@@ -598,6 +598,29 @@ impl Plan {
     ///
     /// [`Self::field`] reads the field back, so a plan is where a record
     /// option keeps its declared schema.
+    /// Read a plan from the scalar that spells one: text, or null for the
+    /// empty plan.
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error for text that is not a plan, and an error naming
+    /// the scalar for any other shape.
+    pub fn from_scalar(value: &crate::Scalar) -> Result<Self> {
+        if let Some(text) = value.as_str() {
+            return text.into_plan();
+        }
+        if value.is_null() {
+            return Ok(Self::new());
+        }
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(
+                "the text of a plan or null",
+                format_args!("{value:?}"),
+            ),
+        })
+    }
+
     #[must_use]
     pub fn from_field(field: &Field) -> Self {
         let create = (field.name() != crate::media::DEFAULT_ROOT_NAME)
@@ -932,7 +955,29 @@ impl Plan {
         if let Some(schema) = &self.schema {
             return self.rooted(schema.declared_field(Some(root), self.root_name())?);
         }
-        self.selector.apply_field(&self.filter.apply_field(root)?)
+        root.clone()
+            .try_with_dtype(self.apply_datatype(root.dtype())?)
+    }
+
+    /// The struct datatype this plan leaves a stream at, from the struct
+    /// `dtype`.
+    ///
+    /// The `create` section types its computed columns against the datatype;
+    /// otherwise `where` keeps it and `select` publishes from it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a section does not bind against the datatype.
+    pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType> {
+        if let Some(schema) = &self.schema {
+            let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
+            return Ok(schema
+                .declared_field(Some(&root), self.root_name())?
+                .dtype()
+                .clone());
+        }
+        self.selector
+            .apply_datatype(&self.filter.apply_datatype(dtype)?)
     }
 
     /// Every top-level column this plan reads, in first-seen order.
@@ -1480,7 +1525,23 @@ mod arrow {
         /// the projection drops; a key that names what the projection
         /// publishes - an alias - orders after it instead.
         pub(crate) fn shape_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
-            let mut reader = self.filter.apply_arrow_reader(reader)?;
+            // A `where` over an alias runs after the projection that
+            // publishes it; every other `where` runs first, where it prunes.
+            let late = super::super::filter_after_select(
+                &self.filter,
+                &self.selector,
+                reader
+                    .schema()
+                    .fields()
+                    .iter()
+                    .map(|field| field.name().as_str())
+                    .collect::<Vec<_>>(),
+            );
+            let mut reader = if late {
+                reader
+            } else {
+                self.filter.apply_arrow_reader(reader)?
+            };
             let mut ordered = self.order_by.is_empty();
             if !ordered {
                 let input = reader.schema();
@@ -1492,6 +1553,9 @@ mod arrow {
                 }
             }
             reader = self.selector.apply_arrow_reader(reader)?;
+            if late {
+                reader = self.filter.apply_arrow_reader(reader)?;
+            }
             if !ordered {
                 reader = self.sorted_arrow_reader(reader)?;
             }

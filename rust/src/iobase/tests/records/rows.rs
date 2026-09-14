@@ -328,7 +328,7 @@ fn empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops()
     handle
         .append_records(
             std::iter::empty::<NativeRow>(),
-            &options.clone().with_selector("absent").unwrap(),
+            &options.clone().with_select("absent").unwrap(),
         )
         .unwrap();
     handle
@@ -338,7 +338,7 @@ fn empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops()
                 .clone()
                 .with_merge_by(["id"])
                 .unwrap()
-                .with_selector("absent")
+                .with_select("absent")
                 .unwrap(),
         )
         .unwrap();
@@ -367,7 +367,7 @@ fn empty_append_and_merge_are_byte_for_byte_no_ops() {
                 crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
                 [],
             ),
-            &options.clone().with_selector("absent").unwrap(),
+            &options.clone().with_select("absent").unwrap(),
         )
         .unwrap();
     assert!(missing.is_empty(), "an empty append must not create bytes");
@@ -382,7 +382,7 @@ fn empty_append_and_merge_are_byte_for_byte_no_ops() {
                 .clone()
                 .with_merge_by(["id"])
                 .unwrap()
-                .with_selector("absent")
+                .with_select("absent")
                 .unwrap(),
         )
         .unwrap();

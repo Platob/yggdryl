@@ -17,6 +17,9 @@
 use pyo3::class::basic::CompareOp;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyString, PyTuple};
+use std::sync::Arc;
+
+use yggdryl::ArrowCast;
 use yggdryl::expression::{
     Attribute, Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, FieldSegment as CoreSegment,
@@ -24,6 +27,11 @@ use yggdryl::expression::{
     Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection,
     Records as CoreRecords, Source as CoreSource, Target as CoreTarget, Term as CoreTerm,
     Verb as CoreVerb, Write as CoreWrite,
+};
+use yggdryl::expression::{
+    FunctionSignature as CoreFunctionSignature, UserFunction as CoreUserFunction,
+    UserRef as CoreUserRef, lookup_function, register_function, registered_functions,
+    unregister_function,
 };
 use yggdryl::{
     Expression as CoreExpression, Field as CoreField, Filter as CoreFilter, Scalar,
@@ -69,7 +77,9 @@ fn parameter_refs(parameters: &[(String, Scalar)]) -> Vec<(&str, Scalar)> {
         .collect()
 }
 
-/// Read a term from a `Term`, a `Filter`, or text that parses as one.
+/// Read a term from a `Term`, a `Filter`, or any scalar: text parses, and
+/// every other value is the literal it is, as [`CoreTerm::from_scalar`]
+/// reads one.
 pub(crate) fn term_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreTerm> {
     if let Ok(term) = value.extract::<PyRef<'_, PyTerm>>() {
         return Ok(term.inner.clone());
@@ -77,43 +87,29 @@ pub(crate) fn term_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreTerm> {
     if let Ok(filter) = value.extract::<PyRef<'_, PyFilter>>() {
         return Ok(filter.inner.term().clone());
     }
-    let text: String = value.extract().map_err(|_| {
-        value_error("expected a Term, a Filter, or the text of a term, got another object")
-    })?;
-    text.parse().map_err(value_error)
+    CoreTerm::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
-/// Read one arithmetic operand without confusing Python strings with values.
-///
-/// A string keeps the expression grammar's meaning (`"price"` is a column and
-/// `"'EUR'"` is a literal). Every other native Python value crosses through
-/// the shared `Scalar` inference before becoming a literal term.
-fn operand_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreTerm> {
+/// Read one projection: a `Term`, or any scalar [`CoreProjection::from_scalar`]
+/// reads - text, or a `(term, alias)` pair.
+fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
     if let Ok(term) = value.extract::<PyRef<'_, PyTerm>>() {
-        return Ok(term.inner.clone());
+        return Ok(CoreProjection::new(term.inner.clone()));
     }
-    if let Ok(filter) = value.extract::<PyRef<'_, PyFilter>>() {
-        return Ok(filter.inner.term().clone());
-    }
-    if value.is_instance_of::<PyString>() {
-        return value
-            .extract::<String>()?
-            .parse::<CoreTerm>()
-            .map_err(value_error);
-    }
-    Ok(CoreTerm::literal(crate::types::scalar::from_py(value)?))
+    CoreProjection::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read a list of operands, each a term or a value.
 fn operands_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<CoreTerm>> {
     let mut operands = Vec::new();
     for operand in value.try_iter()? {
-        operands.push(operand_from_value(&operand?)?);
+        operands.push(term_from_value(&operand?)?);
     }
     Ok(operands)
 }
 
-/// Read a filter from a `Filter`, a `Term`, a `where` expression, or text.
+/// Read a filter from a `Filter`, a `Term`, an `Expression`, or any scalar
+/// [`CoreFilter::from_scalar`] reads: text, a boolean, a list of conditions.
 pub(crate) fn filter_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFilter> {
     if let Ok(filter) = value.extract::<PyRef<'_, PyFilter>>() {
         return Ok(filter.inner.clone());
@@ -124,28 +120,12 @@ pub(crate) fn filter_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFilter
     if let Ok(expression) = value.extract::<PyRef<'_, PyExpression>>() {
         return expression.inner.clone().into_filter().map_err(value_error);
     }
-    let text: String = value.extract().map_err(|_| {
-        value_error("expected a Filter, a Term, an Expression, or the text of a predicate, got another object")
-    })?;
-    text.parse().map_err(value_error)
+    CoreFilter::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
-/// Read one projection: a term, text, or a `(term, alias)` pair.
-fn projection_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreProjection> {
-    if let Ok((term, alias)) = value.extract::<(Bound<'_, PyAny>, String)>() {
-        return Ok(CoreProjection::aliased(term_from_value(&term)?, alias));
-    }
-    if let Ok(term) = value.extract::<PyRef<'_, PyTerm>>() {
-        return Ok(CoreProjection::new(term.inner.clone()));
-    }
-    let text: String = value.extract().map_err(|_| {
-        value_error("expected a Term, the text of a projection, or a (term, alias) pair, got another object")
-    })?;
-    text.parse().map_err(value_error)
-}
-
-/// Read a selector from a `Selector`, a `Term`, a `select` expression, text,
-/// or an iterable of projections.
+/// Read a selector from a `Selector`, a `Term`, an `Expression`, or any
+/// scalar [`CoreSelector::from_scalar`] reads: text, a list of projections
+/// (each text, a `Term`, or a `(term, alias)` pair), or a dict of aliases.
 pub(crate) fn selector_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSelector> {
     if let Ok(selector) = value.extract::<PyRef<'_, PySelector>>() {
         return Ok(selector.inner.clone());
@@ -160,22 +140,11 @@ pub(crate) fn selector_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreSele
             .into_selector()
             .map_err(value_error);
     }
-    if value.is_instance_of::<PyString>() {
-        return value
-            .extract::<String>()?
-            .parse::<CoreSelector>()
-            .map_err(value_error);
-    }
-    let mut projections = Vec::new();
-    for projection in value.try_iter().map_err(|_| {
-        value_error("expected a Selector, a Term, an Expression, the text of a projection list, or an iterable of projections, got another object")
-    })? {
-        projections.push(projection_from_value(&projection?)?);
-    }
-    Ok(CoreSelector::new(projections))
+    CoreSelector::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
-/// Read a plan from a `Plan`, a clause, an `Expression`, a `Field`, or text.
+/// Read a plan from a `Plan`, a clause, an `Expression`, a `Field`, or the
+/// text of one.
 pub(crate) fn plan_from_value(value: &Bound<'_, PyAny>) -> PyResult<CorePlan> {
     if let Ok(plan) = value.extract::<PyRef<'_, PyPlan>>() {
         return Ok(plan.inner.clone());
@@ -192,13 +161,11 @@ pub(crate) fn plan_from_value(value: &Bound<'_, PyAny>) -> PyResult<CorePlan> {
     if let Ok(field) = value.extract::<PyRef<'_, PyField>>() {
         return Ok(CorePlan::from_field(&field.inner));
     }
-    let text: String = value.extract().map_err(|_| {
-        value_error("expected a Plan, a Selector, a Filter, an Expression, a Field, or the text of a plan, got another object")
-    })?;
-    text.as_str().into_plan().map_err(value_error)
+    CorePlan::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
-/// Read an expression from an `Expression`, a clause, a `Plan`, or text.
+/// Read an expression from an `Expression`, a `Plan`, a clause, or any
+/// scalar [`CoreExpression::from_scalar`] reads: text or a list of steps.
 pub(crate) fn expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreExpression> {
     if let Ok(expression) = value.extract::<PyRef<'_, PyExpression>>() {
         return Ok(expression.inner.clone());
@@ -212,10 +179,7 @@ pub(crate) fn expression_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreEx
     if let Ok(filter) = value.extract::<PyRef<'_, PyFilter>>() {
         return Ok(CoreExpression::Filter(filter.inner.clone()));
     }
-    let text: String = value.extract().map_err(|_| {
-        value_error("expected an Expression, a Plan, a Selector, a Filter, or the text of one, got another object")
-    })?;
-    text.parse().map_err(value_error)
+    CoreExpression::from_scalar(&crate::types::scalar::from_py(value)?).map_err(value_error)
 }
 
 /// Read one target: text a location is spelled as, quoted URL or catalog path.
@@ -396,7 +360,7 @@ fn row_value(schema: &CoreField, row: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// Run an Arrow value through one of the three arrow surfaces, keeping its
 /// holder: a batch answers a batch, a table a table, and anything else is
 /// read as a reader.
-fn apply_arrow_value<'py>(
+fn apply_arrow_scalar<'py>(
     py: Python<'py>,
     value: &Bound<'py, PyAny>,
     batch: impl FnOnce(&arrow_array::RecordBatch) -> yggdryl::Result<arrow_array::RecordBatch>,
@@ -443,7 +407,7 @@ fn rich_compare<T: Ord>(
 #[pyclass(name = "Term", module = "yggdryl._native", frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyTerm {
-    inner: CoreTerm,
+    pub(crate) inner: CoreTerm,
 }
 
 impl PyTerm {
@@ -547,15 +511,11 @@ impl PyTerm {
         )?)))
     }
 
-    /// Call one function of the closed scalar set.
+    /// Call one function: a grammar function by name, or a registered
+    /// user-defined function by its qualified `namespace.name`.
     #[staticmethod]
     fn call(function: &str, arguments: &Bound<'_, PyAny>) -> PyResult<Self> {
-        let function = CoreFunction::from_name(function).ok_or_else(|| {
-            value_error(format!(
-                "unknown function {function:?}; expected one of {}",
-                CoreFunction::vocabulary()
-            ))
-        })?;
+        let function = CoreFunction::resolve(function).map_err(value_error)?;
         Ok(Self::from_core(CoreTerm::call(
             function,
             operands_from_value(arguments)?,
@@ -572,9 +532,9 @@ impl PyTerm {
         for branch in branches.try_iter()? {
             let branch = branch?;
             let (when, then): (Bound<'_, PyAny>, Bound<'_, PyAny>) = branch.extract()?;
-            pairs.push((term_from_value(&when)?, operand_from_value(&then)?));
+            pairs.push((term_from_value(&when)?, term_from_value(&then)?));
         }
-        let otherwise = otherwise.map(operand_from_value).transpose()?;
+        let otherwise = otherwise.map(term_from_value).transpose()?;
         Ok(Self::from_core(CoreTerm::case(pairs, otherwise)))
     }
 
@@ -668,7 +628,7 @@ impl PyTerm {
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Add, operand_from_value(other)?),
+                .arithmetic(Operator::Add, term_from_value(other)?),
         ))
     }
 
@@ -677,7 +637,7 @@ impl PyTerm {
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Sub, operand_from_value(other)?),
+                .arithmetic(Operator::Sub, term_from_value(other)?),
         ))
     }
 
@@ -686,7 +646,7 @@ impl PyTerm {
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Mul, operand_from_value(other)?),
+                .arithmetic(Operator::Mul, term_from_value(other)?),
         ))
     }
 
@@ -695,7 +655,7 @@ impl PyTerm {
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Div, operand_from_value(other)?),
+                .arithmetic(Operator::Div, term_from_value(other)?),
         ))
     }
 
@@ -704,7 +664,7 @@ impl PyTerm {
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Rem, operand_from_value(other)?),
+                .arithmetic(Operator::Rem, term_from_value(other)?),
         ))
     }
 
@@ -723,49 +683,49 @@ impl PyTerm {
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .compare(comparison, operand_from_value(other)?),
+                .compare(comparison, term_from_value(other)?),
         ))
     }
 
     /// `self = other`.
     fn eq(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().eq(operand_from_value(other)?),
+            self.inner.clone().eq(term_from_value(other)?),
         ))
     }
 
     /// `self <> other`.
     fn ne(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().ne(operand_from_value(other)?),
+            self.inner.clone().ne(term_from_value(other)?),
         ))
     }
 
     /// `self < other`.
     fn lt(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().lt(operand_from_value(other)?),
+            self.inner.clone().lt(term_from_value(other)?),
         ))
     }
 
     /// `self <= other`.
     fn le(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().le(operand_from_value(other)?),
+            self.inner.clone().le(term_from_value(other)?),
         ))
     }
 
     /// `self > other`.
     fn gt(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().gt(operand_from_value(other)?),
+            self.inner.clone().gt(term_from_value(other)?),
         ))
     }
 
     /// `self >= other`.
     fn ge(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().ge(operand_from_value(other)?),
+            self.inner.clone().ge(term_from_value(other)?),
         ))
     }
 
@@ -778,10 +738,11 @@ impl PyTerm {
 
     /// `self between low and high`, inclusive at both ends.
     fn between(&self, low: &Bound<'_, PyAny>, high: &Bound<'_, PyAny>) -> PyResult<Self> {
-        Ok(Self::from_core(self.inner.clone().between(
-            operand_from_value(low)?,
-            operand_from_value(high)?,
-        )))
+        Ok(Self::from_core(
+            self.inner
+                .clone()
+                .between(term_from_value(low)?, term_from_value(high)?),
+        ))
     }
 
     /// `self is null`, which answers true or false and never unknown.
@@ -797,21 +758,21 @@ impl PyTerm {
     /// `self like pattern`, with SQL's `%` and `_` wildcards.
     fn like(&self, pattern: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().like(operand_from_value(pattern)?),
+            self.inner.clone().like(term_from_value(pattern)?),
         ))
     }
 
     /// `self ilike pattern`, folding ASCII case.
     fn ilike(&self, pattern: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().ilike(operand_from_value(pattern)?),
+            self.inner.clone().ilike(term_from_value(pattern)?),
         ))
     }
 
     /// `self glob pattern`, under the `.gitignore` path rule.
     fn glob(&self, pattern: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            self.inner.clone().glob(operand_from_value(pattern)?),
+            self.inner.clone().glob(term_from_value(pattern)?),
         ))
     }
 
@@ -905,7 +866,7 @@ impl PyTerm {
 
     fn __radd__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            operand_from_value(other)?.arithmetic(Operator::Add, self.inner.clone()),
+            term_from_value(other)?.arithmetic(Operator::Add, self.inner.clone()),
         ))
     }
 
@@ -915,7 +876,7 @@ impl PyTerm {
 
     fn __rsub__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            operand_from_value(other)?.arithmetic(Operator::Sub, self.inner.clone()),
+            term_from_value(other)?.arithmetic(Operator::Sub, self.inner.clone()),
         ))
     }
 
@@ -925,7 +886,7 @@ impl PyTerm {
 
     fn __rmul__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            operand_from_value(other)?.arithmetic(Operator::Mul, self.inner.clone()),
+            term_from_value(other)?.arithmetic(Operator::Mul, self.inner.clone()),
         ))
     }
 
@@ -935,7 +896,7 @@ impl PyTerm {
 
     fn __rtruediv__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            operand_from_value(other)?.arithmetic(Operator::Div, self.inner.clone()),
+            term_from_value(other)?.arithmetic(Operator::Div, self.inner.clone()),
         ))
     }
 
@@ -945,7 +906,7 @@ impl PyTerm {
 
     fn __rmod__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(Self::from_core(
-            operand_from_value(other)?.arithmetic(Operator::Rem, self.inner.clone()),
+            term_from_value(other)?.arithmetic(Operator::Rem, self.inner.clone()),
         ))
     }
 
@@ -1019,7 +980,7 @@ impl PyTerm {
 /// One term resolved against one schema, ready to answer.
 #[pyclass(name = "Bound", module = "yggdryl._native", frozen)]
 pub(crate) struct PyBound {
-    inner: CoreBound,
+    pub(crate) inner: CoreBound,
 }
 
 #[pymethods]
@@ -1197,7 +1158,7 @@ impl PyBound {
 )]
 #[derive(Clone)]
 pub(crate) struct PyFilter {
-    inner: CoreFilter,
+    pub(crate) inner: CoreFilter,
 }
 
 impl PyFilter {
@@ -1404,7 +1365,7 @@ impl PyFilter {
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        apply_arrow_value(
+        apply_arrow_scalar(
             py,
             value,
             |batch| self.inner.apply_arrow_batch(batch),
@@ -1512,7 +1473,7 @@ impl PyFilter {
 )]
 #[derive(Clone)]
 pub(crate) struct PySelector {
-    inner: CoreSelector,
+    pub(crate) inner: CoreSelector,
 }
 
 impl PySelector {
@@ -1760,7 +1721,7 @@ impl PySelector {
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        apply_arrow_value(
+        apply_arrow_scalar(
             py,
             value,
             |batch| self.inner.apply_arrow_batch(batch),
@@ -1839,7 +1800,7 @@ impl PySelector {
 /// A selector resolved against one schema, ready for batches.
 #[pyclass(name = "BoundSelector", module = "yggdryl._native", frozen)]
 pub(crate) struct PyBoundSelector {
-    inner: CoreBoundSelector,
+    pub(crate) inner: CoreBoundSelector,
 }
 
 #[pymethods]
@@ -1933,7 +1894,7 @@ impl PyBoundSelector {
 #[pyclass(name = "Plan", module = "yggdryl._native", frozen, skip_from_py_object)]
 #[derive(Clone)]
 pub(crate) struct PyPlan {
-    inner: CorePlan,
+    pub(crate) inner: CorePlan,
 }
 
 impl PyPlan {
@@ -2292,7 +2253,7 @@ impl PyPlan {
         value: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let expression = CoreExpression::Plan(Box::new(self.inner.clone()));
-        apply_arrow_value(
+        apply_arrow_scalar(
             py,
             value,
             |batch| expression.apply_arrow_batch(batch),
@@ -2382,7 +2343,7 @@ impl PyPlan {
 )]
 #[derive(Clone)]
 pub(crate) struct PyExpression {
-    inner: CoreExpression,
+    pub(crate) inner: CoreExpression,
 }
 
 impl PyExpression {
@@ -2601,7 +2562,7 @@ impl PyExpression {
         py: Python<'py>,
         value: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        apply_arrow_value(
+        apply_arrow_scalar(
             py,
             value,
             |batch| self.inner.apply_arrow_batch(batch),
@@ -2792,7 +2753,10 @@ pub(crate) fn expression_vocabularies(py: Python<'_>) -> PyResult<Py<PyDict>> {
     )?;
     listing.set_item(
         "functions",
-        CoreFunction::ALL.map(CoreFunction::as_str).to_vec(),
+        CoreFunction::ALL
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
     )?;
     let attributes: Vec<&str> = Attribute::ALL.iter().map(Attribute::as_str).collect();
     listing.set_item("holder_attributes", attributes)?;
@@ -2924,4 +2888,219 @@ fn column_bounds_parts(bounds: &CoreColumnBounds) -> ColumnStatistics {
         bounds.maximum().cloned().map(PyScalar::from_inner),
         bounds.nulls(),
     )
+}
+
+/// A Python callable registered as a user-defined function.
+///
+/// The scalar tier hands each call its arguments as the Python values their
+/// parameter fields project to and reads the answer back through the one
+/// scalar crossing. The vectorized tier does the same for a whole column
+/// under a single interpreter attachment - one crossing per column in, one
+/// array out - or, for a callable declared `vectorized`, hands it `pyarrow`
+/// arrays and casts the array it answers onto the declared return.
+struct PyUserFunction {
+    signature: CoreFunctionSignature,
+    callable: Py<PyAny>,
+    vectorized: bool,
+}
+
+/// A Python refusal, named as the function's own.
+fn user_error(reference: &CoreUserRef, error: &PyErr) -> yggdryl::Error {
+    yggdryl::Error::InvalidRecord {
+        path: format!("$.{reference}").into(),
+        reason: format!("{error}").into(),
+    }
+}
+
+impl PyUserFunction {
+    /// Call the Python function once, over values already filled to the
+    /// signature.
+    fn call_py(&self, py: Python<'_>, arguments: &[yggdryl::Scalar]) -> PyResult<yggdryl::Scalar> {
+        let mut values = Vec::with_capacity(arguments.len());
+        for (argument, parameter) in arguments.iter().zip(self.signature.parameters()) {
+            values.push(crate::types::scalar::as_py_with_field(
+                py, argument, parameter,
+            )?);
+        }
+        let answer = self.callable.call1(py, PyTuple::new(py, values)?)?;
+        crate::types::scalar::from_py(&answer.into_bound(py))
+    }
+}
+
+impl CoreUserFunction for PyUserFunction {
+    fn signature(&self) -> &CoreFunctionSignature {
+        &self.signature
+    }
+
+    fn call(&self, arguments: &[yggdryl::Scalar]) -> yggdryl::Result<yggdryl::Scalar> {
+        Python::attach(|py| self.call_py(py, arguments))
+            .map_err(|error| user_error(self.signature.reference(), &error))
+    }
+
+    fn call_arrow(
+        &self,
+        fields: &[yggdryl::Field],
+        arguments: &[arrow_array::ArrayRef],
+        rows: usize,
+        output: &yggdryl::Field,
+    ) -> yggdryl::Result<arrow_array::ArrayRef> {
+        use yggdryl::arrow::{array_from_value, array_to_value};
+
+        let reference = self.signature.reference();
+        Python::attach(|py| -> yggdryl::Result<arrow_array::ArrayRef> {
+            if self.vectorized {
+                // Whole columns cross: each argument cast onto its parameter
+                // datatype, nulls left to the callable, the answer cast onto
+                // the declared return.
+                let mut columns = Vec::with_capacity(arguments.len());
+                for (array, parameter) in arguments.iter().zip(self.signature.parameters()) {
+                    let target = parameter.clone().with_nullable(true);
+                    let cast = target
+                        .cast_arrow_array(Arc::clone(array), yggdryl::ArrowCastOptions::new())?;
+                    columns.push(
+                        arrow_array_to_pyarrow(py, &cast, Some(&target))
+                            .map_err(|error| user_error(reference, &error))?,
+                    );
+                }
+                let answer = (|| -> PyResult<arrow_array::ArrayRef> {
+                    let answer = self.callable.call1(py, PyTuple::new(py, columns)?)?;
+                    arrow_array_from_pyarrow(&answer.into_bound(py))
+                })()
+                .map_err(|error| user_error(reference, &error))?;
+                return Ok(output
+                    .clone()
+                    .with_nullable(true)
+                    .cast_arrow_array(answer, yggdryl::ArrowCastOptions::new())?);
+            }
+            // One attachment for the whole batch: every column crosses once,
+            // each row is filled to the signature and called, and the answers
+            // form one array.
+            let mut columns = Vec::with_capacity(arguments.len());
+            for (field, array) in fields.iter().zip(arguments) {
+                let values = array_to_value(field, array.as_ref())?;
+                columns.push(values.as_sequence().map(<[_]>::to_vec).unwrap_or_default());
+            }
+            let mut answers = Vec::with_capacity(rows);
+            let mut values = Vec::with_capacity(arguments.len());
+            for row in 0..rows {
+                values.clear();
+                for column in &columns {
+                    values.push(column.get(row).cloned().unwrap_or(yggdryl::Scalar::Null));
+                }
+                answers.push(match self.signature.fill(&values)? {
+                    Some(filled) => self
+                        .call_py(py, &filled)
+                        .map_err(|error| user_error(reference, &error))?,
+                    None => yggdryl::Scalar::Null,
+                });
+            }
+            Ok(array_from_value(
+                output,
+                &yggdryl::Scalar::from_sequence(answers),
+            )?)
+        })
+    }
+}
+
+/// Read the parameters of a signature: a struct `Field`, or an iterable of
+/// fields and `name: dtype` texts, in position order.
+fn parameters_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<CoreField>> {
+    if let Ok(field) = value.extract::<PyRef<'_, PyField>>() {
+        return Ok(field.inner.fields().to_vec());
+    }
+    let mut fields = Vec::new();
+    for parameter in value.try_iter()? {
+        fields.push(core_field_from_value(&parameter?)?);
+    }
+    Ok(fields)
+}
+
+/// Read the return of a signature: a `Field`, a `DataType`, or the text of a
+/// datatype, nullable unless the field says otherwise.
+fn returns_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
+    if let Ok(field) = value.extract::<PyRef<'_, PyField>>() {
+        return Ok(field.inner.clone().with_name("returns"));
+    }
+    let dtype = crate::types::datatype::core_dtype_from_value(value)?;
+    Ok(CoreField::new("returns", dtype, true))
+}
+
+/// Register a Python callable as the user-defined function `namespace.name`.
+///
+/// `parameters` type the arguments in position order and `returns` the
+/// answer; `defaults` name the parameters a call may leave out, and
+/// `vectorized` says the callable takes and answers `pyarrow` arrays. The
+/// signature comes back as the struct field it is, so it can be stored,
+/// compared, and read back with the same fidelity as any schema.
+#[pyfunction]
+#[pyo3(signature = (namespace, name, parameters, returns, callable, *, defaults=None, vectorized=false))]
+pub(crate) fn register_user_function(
+    namespace: &str,
+    name: &str,
+    parameters: &Bound<'_, PyAny>,
+    returns: &Bound<'_, PyAny>,
+    callable: &Bound<'_, PyAny>,
+    defaults: Option<&Bound<'_, PyDict>>,
+    vectorized: bool,
+) -> PyResult<PyField> {
+    let reference = CoreUserRef::new(namespace, name).map_err(value_error)?;
+    let mut fields = parameters_from_value(parameters)?;
+    if let Some(defaults) = defaults {
+        for (parameter, default) in defaults.iter() {
+            let parameter: String = parameter.extract()?;
+            let position = fields
+                .iter()
+                .position(|field| field.name().eq_ignore_ascii_case(&parameter))
+                .ok_or_else(|| {
+                    value_error(format!(
+                        "expected a default for one of the parameters, got {parameter:?}"
+                    ))
+                })?;
+            let value = crate::types::scalar::from_py(&default)?;
+            fields[position] =
+                CoreFunctionSignature::with_default(fields[position].clone(), &value)
+                    .map_err(value_error)?;
+        }
+    }
+    let signature = CoreFunctionSignature::new(reference, fields, returns_from_value(returns)?)
+        .map_err(value_error)?;
+    let field = signature.as_field().map_err(value_error)?;
+    register_function(Arc::new(PyUserFunction {
+        signature,
+        callable: callable.clone().unbind(),
+        vectorized,
+    }))
+    .map_err(value_error)?;
+    Ok(PyField::from_inner(field))
+}
+
+/// Remove the registered function `namespace.name`, answering whether one
+/// was registered.
+#[pyfunction]
+pub(crate) fn unregister_user_function(name: &str) -> PyResult<bool> {
+    Ok(unregister_function(
+        &CoreUserRef::parse(name).map_err(value_error)?,
+    ))
+}
+
+/// Every registered function, by qualified name.
+#[pyfunction]
+pub(crate) fn user_functions() -> Vec<String> {
+    registered_functions()
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// The signature field of the registered function `namespace.name`, or
+/// `None`.
+#[pyfunction]
+pub(crate) fn user_function_signature(name: &str) -> PyResult<Option<PyField>> {
+    let reference = CoreUserRef::parse(name).map_err(value_error)?;
+    match lookup_function(&reference) {
+        Ok(function) => Ok(Some(PyField::from_inner(
+            function.signature().as_field().map_err(value_error)?,
+        ))),
+        Err(_) => Ok(None),
+    }
 }

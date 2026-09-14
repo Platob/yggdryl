@@ -52,7 +52,7 @@ class TestTheEncodingComesFromTheHandle:
         assert str(options.mime_type) == "application/vnd.apache.arrow.stream"
         assert options.name == "row"
         assert options.field is None
-        assert options.selector.is_all
+        assert options.select.is_all
         assert options.filter.is_always_true
         assert options.merge_by.is_all
         assert options.batch_row_size is None
@@ -425,14 +425,14 @@ class TestTheDeclaredRootIsOneSection:
             metadata={"owner": "tests"},
         )
         options.batch_row_size = 16
-        options.selector = ["id"]
+        options.select = ["id"]
         options.filter = "id > 1"
         options.merge_by = ["id"]
 
         _, (state,) = options.__reduce__()
         assert state["name"] == "trade"
         assert state["field"] == options.field
-        assert state["selector"] == "id"
+        assert state["select"] == "id"
         assert state["filter"] == "id > 1"
         assert state["merge_by"] == "id"
         assert state["batch_row_size"] == 16
@@ -441,7 +441,7 @@ class TestTheDeclaredRootIsOneSection:
         restored = pickle.loads(pickle.dumps(options))
         assert restored == options
         assert restored.field == options.field
-        assert restored.selector == options.selector
+        assert restored.select == options.select
         assert restored.batch_row_size == 16
 
         options.field = None

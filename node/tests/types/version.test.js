@@ -54,7 +54,7 @@ test('Version native parser rejects only the numeric components', () => {
     '', '.1', ' 1', '-1', '+1', 'v1', '256', '999', '1.256', '1.999', 'FIX.5.0',
   ]) {
     assert.throws(() => Version.fromStr(text), /version/i)
-    assert.throws(() => Scalar.fromJs(text, { field }), /version/i)
+    assert.throws(() => Scalar.from(text, { field }), /version/i)
   }
 })
 
@@ -83,7 +83,7 @@ test('Version folds a patch tail that states no number instead of failing', () =
     const parsed = Version.fromStr(text)
     // The same tail always reads as the same version.
     assert.ok(parsed.equals(Version.fromStr(text)), text)
-    assert.doesNotThrow(() => Scalar.fromJs(text, { field }), text)
+    assert.doesNotThrow(() => Scalar.from(text, { field }), text)
   }
   assert.ok(!Version.fromStr('1.0-rc1').equals(Version.fromStr('1.0-rc2')))
   assert.ok(!Version.fromStr('1.0-rc1').equals(Version.fromStr('1.0')))
@@ -95,7 +95,7 @@ test('Version order, native hash, clone, and read-only parts share numeric ident
   assert.equal(new Version(5, 0, 2).compare(new Version(5, 0, 10)), -1)
   assert.equal(value.compare(new Version(5, 0, 10)), 1)
   assert.equal(value.compare(Version.fromStr('005.0.00300')), 0)
-  assert.equal(value.stableHash(), Scalar.fromJs(value).stableHash())
+  assert.equal(value.stableHash(), Scalar.from(value).stableHash())
   const copy = value.clone()
   assert.notEqual(copy, value)
   assert.ok(copy.equals(value))
@@ -111,22 +111,22 @@ test('Version order, native hash, clone, and read-only parts share numeric ident
 test('Version survives Scalar, nested native values, and declared JSON boundaries', () => {
   const value = new Version(5, 0, 300)
   const field = fields.version('release', { nullable: false })
-  const scalar = Scalar.fromJs(value)
+  const scalar = Scalar.from(value)
   assert.equal(scalar.id, 'version')
   assert.equal(scalar.dtype.id, 'version')
   assert.ok(scalar.asJs() instanceof Version)
   assert.ok(scalar.asJs().equals(value))
-  assert.ok(Scalar.fromJs('005.0.00300', { field }).equals(scalar))
-  assert.ok(Scalar.fromJs(value, { field }).equals(scalar))
-  const nested = Scalar.fromJs([{ release: value }]).asJs()
+  assert.ok(Scalar.from('005.0.00300', { field }).equals(scalar))
+  assert.ok(Scalar.from(value, { field }).equals(scalar))
+  const nested = Scalar.from([{ release: value }]).asJs()
   assert.ok(nested[0].release instanceof Version)
   assert.ok(nested[0].release.equals(value))
   assert.equal(json.dumps(value).toString(), '"5.0.300"')
   assert.ok(json.loads('"5.0.300"', { field }).equals(value))
   assert.ok(json.loads('"5.0.300"', { field, scalar: true }).equals(scalar))
   const literal = { __yggdryl_codec__: 'version', major: 5, minor: 0, patch: 300 }
-  assert.deepEqual(Scalar.fromJs(literal).asJs(), literal)
-  assert.throws(() => Scalar.fromJs(Object.create(Version.prototype)))
+  assert.deepEqual(Scalar.from(literal).asJs(), literal)
+  assert.throws(() => Scalar.from(Object.create(Version.prototype)))
 })
 
 test('Version field defaults and hints expose the native value with Arrow string storage', () => {
@@ -142,14 +142,14 @@ test('Version field defaults and hints expose the native value with Arrow string
   assert.equal(dtype.defaultArrowScalar(), '0')
   assert.equal(field.defaultArrowScalar(), '0')
   const value = new Version(5, 0, 300)
-  const scalar = Scalar.fromJs(value)
+  const scalar = Scalar.from(value)
   assert.equal(scalar.intoArrowScalar(field), '5.0.300')
   const vector = arrow.vectorFromArray(['005.0.00300', '5.0', '255.255.65535'], new arrow.Utf8())
   const native = Scalar.fromArrowArray(vector, field)
   assert.deepEqual(native.asJs().map(String), ['5.0.300', '5', '255.255.65535'])
   assert.ok(native.asJs().every((item) => item instanceof Version))
   assert.deepEqual([...native.intoArrowArray(field)], ['5.0.300', '5', '255.255.65535'])
-  const rows = Scalar.fromJs([{ release: value }])
+  const rows = Scalar.from([{ release: value }])
   const inferred = rows.intoArrowBatch()
   assert.equal(inferred.schema.fields[0].metadata.get('ARROW:extension:name'), 'yggdryl.version')
   assert.ok(Scalar.fromArrowBatch(inferred).asJs()[0][0].equals(value))
@@ -165,5 +165,5 @@ test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))
-  assert.equal(Scalar.fromJs('UConfigurationPlugin').asJs(), 'UConfigurationPlugin')
+  assert.equal(Scalar.from('UConfigurationPlugin').asJs(), 'UConfigurationPlugin')
 })

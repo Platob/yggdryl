@@ -446,7 +446,7 @@ assert_eq!(
     from yggdryl import Scalar
     from yggdryl.hashing import xxhash
 
-    symbol = Scalar.from_py("AAPL")
+    symbol = Scalar.from_("AAPL")
     assert symbol.as_value_bytes() == b"AAPL"
     assert symbol.digest() == symbol.digest("xxh3-64")
     assert int(symbol.digest()) == symbol.stable_hash() != xxhash.xxh3(b"AAPL")
@@ -455,8 +455,8 @@ assert_eq!(
     assert Scalar.decimal(100, 2).digest() == Scalar.decimal(1, 0).digest()
     assert Scalar.float(1.5, 32).digest() == Scalar.float(1.5, 64).digest()
     # Values that differ stay apart, across variant boundaries.
-    assert Scalar.from_py("1").digest() != Scalar.from_py(b"1").digest()
-    assert Scalar.from_py(None).digest() != Scalar.from_py("").digest()
+    assert Scalar.from_("1").digest() != Scalar.from_(b"1").digest()
+    assert Scalar.from_(None).digest() != Scalar.from_("").digest()
 
     state = xxhash.Xxh3()
     state.write_scalar(symbol)
@@ -470,7 +470,7 @@ assert_eq!(
     const { Scalar, hashing } = require('yggdryl')
     const { xxhash } = hashing
 
-    const symbol = Scalar.fromJs('AAPL')
+    const symbol = Scalar.from('AAPL')
     assert.ok(symbol.digest().equals(symbol.digest('xxh3-64')))
     assert.equal(symbol.digest().value(), symbol.stableHash())
     assert.notEqual(symbol.stableHash(), xxhash.xxh3('AAPL'))
@@ -478,7 +478,7 @@ assert_eq!(
     // Equal values answer one digest, across widths.
     assert.ok(Scalar.decimal(100n, 2).digest().equals(Scalar.decimal(1n, 0).digest()))
     // Values that differ stay apart, across variant boundaries.
-    assert.ok(!Scalar.fromJs('1').digest().equals(Scalar.fromJs(Buffer.from('1')).digest()))
+    assert.ok(!Scalar.from('1').digest().equals(Scalar.from(Buffer.from('1')).digest()))
 
     const state = new xxhash.Xxh3()
     state.writeScalar(symbol)
@@ -598,11 +598,11 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
     assert state.as_digest() == running
 
     expected = xxhash.Xxh3(seed=7)
-    expected.write_scalar(Scalar.from_py(["AAPL"]))
+    expected.write_scalar(Scalar.from_(["AAPL"]))
     assert filled.column("row_digest").to_pylist() == [int(expected.as_digest())] * 2
 
     rows = xxhash.row_digests(filled)
-    assert rows[0].as_py() == int(Scalar.from_py(["AAPL", 100]).digest())
+    assert rows[0].as_py() == int(Scalar.from_(["AAPL", 100]).digest())
     assert rows[0].as_py() != rows[1].as_py()
     ```
 
@@ -637,7 +637,7 @@ A digest holder is a field carrying `digest:role=holder`; a state's `apply_arrow
     assert.ok(state.asDigest().equals(running))
 
     const expected = new xxhash.Xxh3(7n)
-    expected.writeScalar(Scalar.fromJs(['AAPL']))
+    expected.writeScalar(Scalar.from(['AAPL']))
     const digest = expected.asDigest().value()
     assert.deepEqual([...filled.getChild('row_digest')], [digest, digest])
     ```
@@ -979,7 +979,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
     assert seconds.unix_of("2023-11-14T22:13:20Z") == 1_700_000_000
 
     # A value's canonical feed, under the same configuration.
-    row = seconds.digest_scalar(Scalar.from_py(["AAPL", 100]), 1_700_000_000)
+    row = seconds.digest_scalar(Scalar.from_(["AAPL", 100]), 1_700_000_000)
     assert row.digest != value.digest
 
     # A secret travels through the state that holds it.
@@ -1003,7 +1003,7 @@ Every spelling of an instant resolves to one unix count: an integer is the count
     assert.equal(seconds.unixOf('2023-11-14T22:13:20Z'), 1_700_000_000n)
 
     // A value's canonical feed, under the same configuration.
-    const row = seconds.digestScalar(Scalar.fromJs(['AAPL', 100]), 1_700_000_000n)
+    const row = seconds.digestScalar(Scalar.from(['AAPL', 100]), 1_700_000_000n)
     assert.ok(!row.digest.equals(value.digest))
 
     // A secret travels through the state that holds it.
@@ -1181,7 +1181,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
     second = txhash.TxHash.from_bytes("s", "xxh3-64", filled.column("key")[1].as_py())
     # The instant floors to the declared unit; the digest reads every field but the holder.
     assert second.unix == 1_700_000_000
-    row = Scalar.from_py([dt.datetime(2023, 11, 14, 22, 13, 20, 999_999, tzinfo=dt.timezone.utc), "MSFT"])
+    row = Scalar.from_([dt.datetime(2023, 11, 14, 22, 13, 20, 999_999, tzinfo=dt.timezone.utc), "MSFT"])
     assert second.digest == row.digest()
     ```
 
@@ -1212,7 +1212,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
     const second = txhash.TxHash.fromBytes('s', 'xxh3-64', filled.getChild('key').get(1))
     // An integer instant is the count already; the digest reads every field but the holder.
     assert.equal(second.unix, 1_700_000_001n)
-    assert.ok(second.digest.equals(Scalar.fromJs([1_700_000_001n, 'MSFT']).digest()))
+    assert.ok(second.digest.equals(Scalar.from([1_700_000_001n, 'MSFT']).digest()))
     ```
 
 | Holder setting | Effect |

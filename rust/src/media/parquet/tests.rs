@@ -208,7 +208,7 @@ fn dimensions_describe_all_batches_and_ignore_read_options() {
         )
         .unwrap();
     media.options_mut().set_max_row_size(Some(1));
-    media.options_mut().set_selector("id".parse().unwrap());
+    media.options_mut().set_select("id".parse().unwrap());
     media
         .options_mut()
         .set_filter("id = '999'".parse().unwrap());
@@ -346,7 +346,7 @@ fn an_open_footer_tracks_selection_and_completion_on_overwrite() {
         .unwrap();
     media.open().unwrap();
 
-    let options = media.record_options().unwrap().with_selector("id").unwrap();
+    let options = media.record_options().unwrap().with_select("id").unwrap();
     crate::IOMedia::overwrite_arrow_reader(
         &mut media,
         reader(
