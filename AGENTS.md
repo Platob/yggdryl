@@ -141,6 +141,27 @@ builder, or line-only read/write. Sole dispatchers, delegating complete contract
 with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 (digests), `MediaType` via `RecordOptions` (encoding).
 
+### Where a test lives
+
+`rust/tests/` is the contract a caller has: one top-level `<theme>.rs` per
+subtree - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
+`expression`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]` modules
+that mirror `src/`. A test there reaches the crate through `yggdryl::` and
+nothing else, so what it proves is what a caller can rely on, and a fixture
+builds its own inputs rather than borrowing the code under test.
+
+A `#[cfg(test)]` module stays in `src/` only where the thing tested is not
+reachable from outside, and its module doc says which private item that is and
+where the rest of the suite lives. That is the whole rule: `Iceberg`'s nine
+private modules and `TableMetadata`'s fields, the object client's signing and
+XML, the ZIP format readers, `canonicalize_dtype_value`, the ISO readers, the
+bundled zone registry, and roughly twenty single-item pins - `value_rank`,
+`low_64`, `read_at`, `convert`, `open_builder`, `home_from` and their kind.
+A shared measuring instrument crosses that line by being written twice -
+`Counting` in `tests/support/` and a smaller one beside the pins that need it -
+because an integration test cannot see a `#[cfg(test)]` item and publishing one
+would put a test fixture in the crate's API.
+
 ## Ownership
 
 - One row schema: a non-null Struct `Field`. Rows canonicalize to ordered

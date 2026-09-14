@@ -2794,3 +2794,50 @@ already routes on; the digest corpus and the prebuilt-field allocation pin
 both name all three.
 **Rust-only:** no Python or JavaScript field factory yet, stated in
 `docs/types/text.md` beside each.
+
+## 35. A test in `src` names what only the crate can see
+
+Two thirds of the Rust suite lived in `src` under `#[cfg(test)]`, and most of
+it had no reason to: it drove `DataType`, `Field`, `Scalar`, the Arrow
+boundary, the handles and the record formats through the same doors a caller
+has - from inside, where a private helper is one `super::` away and nothing
+says which contract is under test. A suite that can reach anything proves
+nothing about what is reachable.
+
+- About 1 600 tests move into `rust/tests/`, one top-level theme per subtree,
+  `#[path]` modules mirroring `src/`. Every one reaches the crate as
+  `yggdryl::` and no other way.
+- What stays in `src` stays for one stated reason each, written in the module
+  doc: the tested item is not reachable from outside. `media/iceberg` (nine
+  private modules and every `TableMetadata` field), `holder/object` (signing,
+  XML, the dialects), `holder/zip` (the format readers), `fix` (the identifier
+  control byte, the lineage and code-set renderers, `FixMsg::from_parts`),
+  `types/value` (`canonicalize_dtype_value`), `types/temporal/iso` (the ISO
+  readers), `types/timezone` (the bundled registry), and about twenty
+  single-item pins - `value_rank`, `leaf_display`, `low_64`,
+  `algorithm_of_width`, `accepts_time`, `read_at`, `convert`, `order`,
+  `open_builder`, `home_from`, `matches_segment`, `utf8_transcribe_into`,
+  `from_decimal_text`, `rendered_len`, `commit_arrow_readers`, `merged`,
+  `folder_reader`, `schema_json_from_field`, `Schema::names`, `Ipc`'s handle
+  field, and `Metadata`'s shared pointer.
+- A fixture stops borrowing the code under test where the move made that
+  possible: the geometry default is compared against stated `POINT EMPTY`
+  bytes, the Avro container fixture writes its own zig-zag `long`, an Arrow
+  array is narrowed with a local `downcast`, a row is read through a
+  one-element slice and `scalar_value`, and an equality-hash check uses
+  `DefaultHasher` rather than the crate's private stable hash.
+- One fixture is deliberately written twice. `Counting` - the handle that
+  mirrors a `Buffer` and tallies what reaches it - lives in `tests/support/`
+  for the three themes that assert against it, and a smaller one lives beside
+  the page-eviction pins, which need it *and* the private `read_at`. An
+  integration test cannot see a `#[cfg(test)]` item, and making the instrument
+  public to share it would put a measuring device in the crate's API.
+- Two defects the move surfaced, both invisible from inside: the exported
+  `impl_default_iomedia!` expanded to `$crate::iobase::…`, a private module, so
+  it never compiled outside the crate at all; and the two coupled-digest column
+  readings matched `DigestAlgorithm` exhaustively, which a caller cannot do
+  because the enum is `#[non_exhaustive]`.
+
+**Written in:** AGENTS "Where a test lives"; each `src` suite's module doc.
+**Fixtures:** every test name in the tree before the move is in it after -
+3 288 before, 3 291 after, the three added being pins the split created.
