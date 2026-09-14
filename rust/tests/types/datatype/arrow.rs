@@ -432,6 +432,8 @@ fn every_extension_typed_datatype_keeps_its_identity_across_the_c_interface() {
         DataType::Mic,
         DataType::Cfi,
         DataType::Isin,
+        DataType::Cusip,
+        DataType::Sedol,
         DataType::Side,
         DataType::State,
         DataType::TimeInForce,

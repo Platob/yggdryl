@@ -32,7 +32,7 @@ const INTERN_LIMIT: usize = 1 << 12;
 /// One slot per discriminant byte an identifier can carry: the highest one
 /// stated, plus one. A retired number (58, decision 14) is an empty slot,
 /// because a discriminant is a wire contract and never moves to close a gap.
-const PREBUILT_SLOTS: usize = DataTypeId::MediaType.as_u8() as usize + 1;
+const PREBUILT_SLOTS: usize = DataTypeId::Sedol.as_u8() as usize + 1;
 
 /// One nullable field per parameter-free leaf datatype, by [`DataTypeId::as_u8`].
 ///

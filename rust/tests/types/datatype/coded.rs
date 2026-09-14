@@ -24,13 +24,15 @@ fn text(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-/// The eight codes, each with its width and one value its standard names.
-const CODED: [(&str, DataType, usize, &str); 8] = [
+/// The ten codes, each with its width and one value its standard names.
+const CODED: [(&str, DataType, usize, &str); 10] = [
     ("country", DataType::Country, 2, "US"),
     ("currency", DataType::Currency, 3, "USD"),
     ("mic", DataType::Mic, 4, "XPAR"),
     ("cfi", DataType::Cfi, 6, "ESVUFR"),
     ("isin", DataType::Isin, 12, "US0378331005"),
+    ("cusip", DataType::Cusip, 9, "037833100"),
+    ("sedol", DataType::Sedol, 7, "B0YBKJ7"),
     ("side", DataType::Side, 4, "1"),
     ("state", DataType::State, 10, "20NEW"),
     ("timeinforce", DataType::TimeInForce, 8, "0"),

@@ -1209,6 +1209,8 @@ fn feed_cell(
         | DataType::Mic
         | DataType::Cfi
         | DataType::Isin
+        | DataType::Cusip
+        | DataType::Sedol
         | DataType::Side
         | DataType::State
         | DataType::TimeInForce

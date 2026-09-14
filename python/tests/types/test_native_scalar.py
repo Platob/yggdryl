@@ -408,6 +408,8 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("side", "1"),
         ("state", "20NEW"),
         ("timeinforce", "GTC"),
+        ("cusip", "037833100"),
+        ("sedol", "B0YBKJ7"),
     ]
     record_state = (
         "record",

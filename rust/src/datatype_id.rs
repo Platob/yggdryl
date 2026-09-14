@@ -169,11 +169,20 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     MediaType = 63,
+    /// CUSIP: a North American securities identifier, nine ASCII bytes.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Cusip = 64,
+    /// SEDOL: a London Stock Exchange securities identifier, seven ASCII
+    /// bytes.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Sedol = 65,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 63] = [
+    pub const ALL: [Self; 65] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -237,6 +246,8 @@ impl DataTypeId {
         Self::Timezone,
         Self::MimeType,
         Self::MediaType,
+        Self::Cusip,
+        Self::Sedol,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -288,6 +299,8 @@ impl DataTypeId {
             Self::Mic => "mic",
             Self::Cfi => "cfi",
             Self::Isin => "isin",
+            Self::Cusip => "cusip",
+            Self::Sedol => "sedol",
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
@@ -390,6 +403,8 @@ impl DataTypeId {
             | Self::Mic
             | Self::Cfi
             | Self::Isin
+            | Self::Cusip
+            | Self::Sedol
             | Self::Side
             | Self::State
             | Self::TimeInForce => DataTypeKind::Code,
@@ -550,10 +565,11 @@ impl DataTypeId {
     ///
     /// The number each standard fixes: two for a country, three for a
     /// currency, four for a market identifier or a side, six for a
-    /// classification, eight for a time in force, ten for a state, and
-    /// twelve for a securities number. It is a maximum, not a layout - a
-    /// code stores as the text it is - and it is what the value rule holds
-    /// a cell to and what [`crate::DataType::ascii_packed`] pads into.
+    /// classification, seven for a SEDOL, eight for a time in force, nine
+    /// for a CUSIP, ten for a state, and twelve for an ISIN. It is a
+    /// maximum, not a layout - a code stores as the text it is - and it is
+    /// what the value rule holds a cell to and what
+    /// [`crate::DataType::ascii_packed`] pads into.
     ///
     /// Every other variant returns `None`.
     pub const fn code_width(self) -> Option<usize> {
@@ -562,7 +578,9 @@ impl DataTypeId {
             Self::Currency => Some(3),
             Self::Mic | Self::Side => Some(4),
             Self::Cfi => Some(6),
+            Self::Sedol => Some(7),
             Self::TimeInForce => Some(8),
+            Self::Cusip => Some(9),
             Self::State => Some(10),
             Self::Isin => Some(12),
             _ => None,
@@ -648,7 +666,7 @@ mod tests {
 
     #[test]
     fn the_strings_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 63);
+        assert_eq!(DataTypeId::ALL.len(), 65);
         for id in [
             DataTypeId::String,
             DataTypeId::FixedString,
@@ -777,6 +795,8 @@ mod tests {
             (DataTypeId::Timezone, 61),
             (DataTypeId::MimeType, 62),
             (DataTypeId::MediaType, 63),
+            (DataTypeId::Cusip, 64),
+            (DataTypeId::Sedol, 65),
         ];
         assert_eq!(pinned.len(), DataTypeId::ALL.len());
         for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {
@@ -788,6 +808,8 @@ mod tests {
             "58 is retired and never reused"
         );
         assert_eq!(DataTypeId::Isin.code_width(), Some(12));
+        assert_eq!(DataTypeId::Cusip.code_width(), Some(9));
+        assert_eq!(DataTypeId::Sedol.code_width(), Some(7));
     }
 
     #[test]
