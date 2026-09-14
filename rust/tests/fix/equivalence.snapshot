@@ -16856,6 +16856,684 @@ ulbridge[128]:2.field.code	""
 ulbridge[128]:2.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 ulbridge[128]:2.field.msgdirection	"R"
 ulbridge[128].messages	3
+ulbridge[129]:0.type	F
+ulbridge[129]:0.digest	ccac57d34ca0d7891a9f774d3a014340
+ulbridge[129]:0.wire	8=FIX.4.2|9=245|35=F|49=PRDAUTEX|56=TRNPA|34=72|52=20260814-21:59:46|57=ITGA|116=trader3|128=ITGA|129=TRITON|11=0102000452788802|22=4|37=175631111-2274-42616_225|38=10000|41=0102000452788801|48=TW0002454006|54=2|55=2454|60=20260814-21:59:46|107=MEDIATEK|167=CS|10=016|
+ulbridge[129]:0.entry[0]	t8 8=FIX.4.2
+ulbridge[129]:0.entry[1]	t9 9=245
+ulbridge[129]:0.entry[2]	t35 35=F
+ulbridge[129]:0.entry[3]	t49 49=PRDAUTEX
+ulbridge[129]:0.entry[4]	t56 56=TRNPA
+ulbridge[129]:0.entry[5]	t34 34=72
+ulbridge[129]:0.entry[6]	t52 52=20260814-21:59:46
+ulbridge[129]:0.entry[7]	t57 57=ITGA
+ulbridge[129]:0.entry[8]	t116 116=trader3
+ulbridge[129]:0.entry[9]	t128 128=ITGA
+ulbridge[129]:0.entry[10]	t129 129=TRITON
+ulbridge[129]:0.entry[11]	t11 11=0102000452788802
+ulbridge[129]:0.entry[12]	t22 22=4
+ulbridge[129]:0.entry[13]	t37 37=175631111-2274-42616_225
+ulbridge[129]:0.entry[14]	t38 38=10000
+ulbridge[129]:0.entry[15]	t41 41=0102000452788801
+ulbridge[129]:0.entry[16]	t48 48=TW0002454006
+ulbridge[129]:0.entry[17]	t54 54=2
+ulbridge[129]:0.entry[18]	t55 55=2454
+ulbridge[129]:0.entry[19]	t60 60=20260814-21:59:46
+ulbridge[129]:0.entry[20]	t107 107=MEDIATEK
+ulbridge[129]:0.entry[21]	t167 167=CS
+ulbridge[129]:0.entry[22]	t10 10=016
+ulbridge[129]:0.field.beginstring	"FIX.4.2"
+ulbridge[129]:0.field.bodylength	245
+ulbridge[129]:0.field.msgtype	"F"
+ulbridge[129]:0.field.sendercompid	"PRDAUTEX"
+ulbridge[129]:0.field.targetcompid	"TRNPA"
+ulbridge[129]:0.field.delivertocompid	"ITGA"
+ulbridge[129]:0.field.msgseqnum	72
+ulbridge[129]:0.field.targetsubid	"ITGA"
+ulbridge[129]:0.field.onbehalfofsubid	"trader3"
+ulbridge[129]:0.field.delivertosubid	"TRITON"
+ulbridge[129]:0.field.sendingtime	"2026-08-14T21:59:46.000000000Z"
+ulbridge[129]:0.field.clordid	"0102000452788802"
+ulbridge[129]:0.field.origclordid	"0102000452788801"
+ulbridge[129]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[129]:0.field.symbol	"2454"
+ulbridge[129]:0.field.securityid	"TW0002454006"
+ulbridge[129]:0.field.securityidsource	"4"
+ulbridge[129]:0.field.securitytype	"CS"
+ulbridge[129]:0.field.side	"2"
+ulbridge[129]:0.field.orderqty	10000.0
+ulbridge[129]:0.field.offersize	10000.0
+ulbridge[129]:0.field.transacttime	"2026-08-14T21:59:46.000000000Z"
+ulbridge[129]:0.field.checksum	"016"
+ulbridge[129]:0.field.version	"4.2"
+ulbridge[129]:0.field.symbolticker	"2454"
+ulbridge[129]:0.field.updatedat	"2026-08-14T21:59:46.000000000Z"
+ulbridge[129]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[129]:0.field.isincode	"TW0002454006"
+ulbridge[129]:0.field.uuid	"98cbcaea-91cf-8b40-81e3-cf8bd204ac28"
+ulbridge[129]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[129]:0.field.createdat	"2026-08-14T21:59:46.000000000Z"
+ulbridge[129]:0.field.code	""
+ulbridge[129]:0.field.snapshotat	"2026-08-14T21:59:46.000000000Z"
+ulbridge[129]:0.field.msgdirection	"S"
+ulbridge[129].messages	1
+ulbridge[130]:0.type	9
+ulbridge[130]:0.digest	40f195aa6cb51a2f0478ef32822efa89
+ulbridge[130]:0.wire	8=FIX.4.2|9=215|35=9|49=TRNPA|56=PRDAUTEX|115=ITGA|34=72|52=20260814-21:59:47|37=175631111-2274-42616_225|11=0102000452788802|41=0102000452788801|39=8|60=20260814-21:59:46|434=1|58=Counterparty unavailable - please contact support|10=113|
+ulbridge[130]:0.entry[0]	t8 8=FIX.4.2
+ulbridge[130]:0.entry[1]	t9 9=215
+ulbridge[130]:0.entry[2]	t35 35=9
+ulbridge[130]:0.entry[3]	t49 49=TRNPA
+ulbridge[130]:0.entry[4]	t56 56=PRDAUTEX
+ulbridge[130]:0.entry[5]	t115 115=ITGA
+ulbridge[130]:0.entry[6]	t34 34=72
+ulbridge[130]:0.entry[7]	t52 52=20260814-21:59:47
+ulbridge[130]:0.entry[8]	t37 37=175631111-2274-42616_225
+ulbridge[130]:0.entry[9]	t11 11=0102000452788802
+ulbridge[130]:0.entry[10]	t41 41=0102000452788801
+ulbridge[130]:0.entry[11]	t39 39=8
+ulbridge[130]:0.entry[12]	t60 60=20260814-21:59:46
+ulbridge[130]:0.entry[13]	t434 434=1
+ulbridge[130]:0.entry[14]	t58 58=Counterparty unavailable - please contact support
+ulbridge[130]:0.entry[15]	t10 10=113
+ulbridge[130]:0.field.beginstring	"FIX.4.2"
+ulbridge[130]:0.field.bodylength	215
+ulbridge[130]:0.field.msgtype	"9"
+ulbridge[130]:0.field.sendercompid	"TRNPA"
+ulbridge[130]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[130]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[130]:0.field.msgseqnum	72
+ulbridge[130]:0.field.sendingtime	"2026-08-14T21:59:47.000000000Z"
+ulbridge[130]:0.field.clordid	"0102000452788802"
+ulbridge[130]:0.field.origclordid	"0102000452788801"
+ulbridge[130]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[130]:0.field.transacttime	"2026-08-14T21:59:46.000000000Z"
+ulbridge[130]:0.field.ordstatus	"95REJECTED"
+ulbridge[130]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[130]:0.field.checksum	"113"
+ulbridge[130]:0.field.version	"4.2"
+ulbridge[130]:0.field.updatedat	"2026-08-14T21:59:46.000000000Z"
+ulbridge[130]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[130]:0.field.state	"95REJECTED"
+ulbridge[130]:0.field.uuid	"98cbcaea-91cf-8b40-837f-8c4ce2e2a9b1"
+ulbridge[130]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[130]:0.field.createdat	"2026-08-14T21:59:46.000000000Z"
+ulbridge[130]:0.field.code	""
+ulbridge[130]:0.field.snapshotat	"2026-08-14T21:59:46.000000000Z"
+ulbridge[130]:0.field.msgdirection	"R"
+ulbridge[130].messages	1
+ulbridge[131]:0.type	cancelreject
+ulbridge[131]:0.digest	fb7a435f69ada51d15fe2d88ae4dcf1e
+ulbridge[131]:0.wire	CLORDID=0102000452788802|CXLREJRESPONSETO=cancel|ENV=PROD|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|SENDERCOMPID=TRNPA|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|
+ulbridge[131]:0.entry[0]	t11 CLORDID=0102000452788802
+ulbridge[131]:0.entry[1]	t434 CXLREJRESPONSETO=cancel
+ulbridge[131]:0.entry[2]	t0 ENV=PROD
+ulbridge[131]:0.entry[3]	t35 MSGTYPE=cancelreject
+ulbridge[131]:0.entry[4]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[131]:0.entry[5]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[131]:0.entry[6]	t39 ORDSTATUS=rejected
+ulbridge[131]:0.entry[7]	t41 ORIGCLORDID=0102000452788801
+ulbridge[131]:0.entry[8]	t49 SENDERCOMPID=TRNPA
+ulbridge[131]:0.entry[9]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[131]:0.entry[10]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[131]:0.entry[11]	t60 TRANSACTTIME=20260814215946479
+ulbridge[131]:0.entry[12]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[131]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[131]:0.field.msgtype	"cancelreject"
+ulbridge[131]:0.field.sendercompid	"TRNPA"
+ulbridge[131]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[131]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[131]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[131]:0.field.clordid	"0102000452788802"
+ulbridge[131]:0.field.origclordid	"0102000452788801"
+ulbridge[131]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[131]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[131]:0.field.ordstatus	"95REJECTED"
+ulbridge[131]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[131]:0.field.version	"5.0.2"
+ulbridge[131]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[131]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[131]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[131]:0.field.state	"95REJECTED"
+ulbridge[131]:0.field.uuid	"98cbcaea-ae5c-8a9c-81f9-94e1e717f2b6"
+ulbridge[131]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[131]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[131]:0.field.code	""
+ulbridge[131]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[131].messages	1
+ulbridge[132]:0.type	cancelreject
+ulbridge[132]:0.digest	1f3a6c8af8921026ffc08cf489054086
+ulbridge[132]:0.wire	CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CXLREJRESPONSETO=cancel|ENV=PROD|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|SENDERCOMPID=TRNPA|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|
+ulbridge[132]:0.entry[0]	t11 CLORDID=0102000452788802
+ulbridge[132]:0.entry[1]	t0 CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826
+ulbridge[132]:0.entry[2]	t434 CXLREJRESPONSETO=cancel
+ulbridge[132]:0.entry[3]	t0 ENV=PROD
+ulbridge[132]:0.entry[4]	t35 MSGTYPE=cancelreject
+ulbridge[132]:0.entry[5]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[132]:0.entry[6]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[132]:0.entry[7]	t39 ORDSTATUS=rejected
+ulbridge[132]:0.entry[8]	t41 ORIGCLORDID=0102000452788801
+ulbridge[132]:0.entry[9]	t49 SENDERCOMPID=TRNPA
+ulbridge[132]:0.entry[10]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[132]:0.entry[11]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[132]:0.entry[12]	t60 TRANSACTTIME=20260814215946479
+ulbridge[132]:0.entry[13]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[132]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[132]:0.field.msgtype	"cancelreject"
+ulbridge[132]:0.field.sendercompid	"TRNPA"
+ulbridge[132]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[132]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[132]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[132]:0.field.clordid	"0102000452788802"
+ulbridge[132]:0.field.origclordid	"0102000452788801"
+ulbridge[132]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[132]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[132]:0.field.ordstatus	"95REJECTED"
+ulbridge[132]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[132]:0.field.version	"5.0.2"
+ulbridge[132]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[132]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[132]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[132]:0.field.state	"95REJECTED"
+ulbridge[132]:0.field.uuid	"98cbcaea-ae5c-8a9c-81f9-94e1e717f2b6"
+ulbridge[132]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[132]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[132]:0.field.code	""
+ulbridge[132]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[132].messages	1
+ulbridge[133]:0.type	cancelreject
+ulbridge[133]:0.digest	1f3a6c8af8921026ffc08cf489054086
+ulbridge[133]:0.wire	CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CXLREJRESPONSETO=cancel|ENV=PROD|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|SENDERCOMPID=TRNPA|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|
+ulbridge[133]:0.entry[0]	t11 CLORDID=0102000452788802
+ulbridge[133]:0.entry[1]	t0 CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826
+ulbridge[133]:0.entry[2]	t434 CXLREJRESPONSETO=cancel
+ulbridge[133]:0.entry[3]	t0 ENV=PROD
+ulbridge[133]:0.entry[4]	t35 MSGTYPE=cancelreject
+ulbridge[133]:0.entry[5]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[133]:0.entry[6]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[133]:0.entry[7]	t39 ORDSTATUS=rejected
+ulbridge[133]:0.entry[8]	t41 ORIGCLORDID=0102000452788801
+ulbridge[133]:0.entry[9]	t49 SENDERCOMPID=TRNPA
+ulbridge[133]:0.entry[10]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[133]:0.entry[11]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[133]:0.entry[12]	t60 TRANSACTTIME=20260814215946479
+ulbridge[133]:0.entry[13]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[133]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[133]:0.field.msgtype	"cancelreject"
+ulbridge[133]:0.field.sendercompid	"TRNPA"
+ulbridge[133]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[133]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[133]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[133]:0.field.clordid	"0102000452788802"
+ulbridge[133]:0.field.origclordid	"0102000452788801"
+ulbridge[133]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[133]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[133]:0.field.ordstatus	"95REJECTED"
+ulbridge[133]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[133]:0.field.version	"5.0.2"
+ulbridge[133]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[133]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[133]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[133]:0.field.state	"95REJECTED"
+ulbridge[133]:0.field.uuid	"98cbcaea-ae5c-8a9c-81f9-94e1e717f2b6"
+ulbridge[133]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[133]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[133]:0.field.code	""
+ulbridge[133]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[133].messages	1
+ulbridge[134]:0.type	cancelreject
+ulbridge[134]:0.digest	63d0833e74b2dfd4fe0926e0038c9da7
+ulbridge[134]:0.wire	NOTRDREGTIMESTAMPS=5|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2|CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CXLREJRESPONSETO=cancel|ENV=PROD|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|SENDERCOMPID=TRNPA|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|
+ulbridge[134]:0.entry[0]	t768 NOTRDREGTIMESTAMPS=5
+ulbridge[134]:0.entry[0.0]	t0 NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[134]:0.entry[0.1]	t0 NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[134]:0.entry[0.2]	t0 NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[134]:0.entry[0.3]	t0 NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[134]:0.entry[0.4]	t0 NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[134]:0.entry[1]	t11 CLORDID=0102000452788802
+ulbridge[134]:0.entry[2]	t0 CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826
+ulbridge[134]:0.entry[3]	t434 CXLREJRESPONSETO=cancel
+ulbridge[134]:0.entry[4]	t0 ENV=PROD
+ulbridge[134]:0.entry[5]	t35 MSGTYPE=cancelreject
+ulbridge[134]:0.entry[6]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[134]:0.entry[7]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[134]:0.entry[8]	t39 ORDSTATUS=rejected
+ulbridge[134]:0.entry[9]	t41 ORIGCLORDID=0102000452788801
+ulbridge[134]:0.entry[10]	t49 SENDERCOMPID=TRNPA
+ulbridge[134]:0.entry[11]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[134]:0.entry[12]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[134]:0.entry[13]	t60 TRANSACTTIME=20260814215946479
+ulbridge[134]:0.entry[14]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[134]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[134]:0.field.msgtype	"cancelreject"
+ulbridge[134]:0.field.sendercompid	"TRNPA"
+ulbridge[134]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[134]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[134]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[134]:0.field.clordid	"0102000452788802"
+ulbridge[134]:0.field.origclordid	"0102000452788801"
+ulbridge[134]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[134]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[134]:0.field.ordstatus	"95REJECTED"
+ulbridge[134]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[134]:0.field.notrdregtimestamps	5
+ulbridge[134]:0.field.trdregtimestamps	[["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+ulbridge[134]:0.field.version	"5.0.2"
+ulbridge[134]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[134]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[134]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[134]:0.field.state	"95REJECTED"
+ulbridge[134]:0.field.uuid	"98cbcaea-ae5c-8a9c-8119-cfd0ac35015c"
+ulbridge[134]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[134]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[134]:0.field.code	""
+ulbridge[134]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[134].messages	1
+ulbridge[135]:0.type	cancelreject
+ulbridge[135]:0.digest	63d0833e74b2dfd4fe0926e0038c9da7
+ulbridge[135]:0.wire	NOTRDREGTIMESTAMPS=5|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2|CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CXLREJRESPONSETO=cancel|ENV=PROD|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|SENDERCOMPID=TRNPA|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|
+ulbridge[135]:0.entry[0]	t768 NOTRDREGTIMESTAMPS=5
+ulbridge[135]:0.entry[0.0]	t0 NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[135]:0.entry[0.1]	t0 NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[135]:0.entry[0.2]	t0 NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[135]:0.entry[0.3]	t0 NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[135]:0.entry[0.4]	t0 NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[135]:0.entry[1]	t11 CLORDID=0102000452788802
+ulbridge[135]:0.entry[2]	t0 CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826
+ulbridge[135]:0.entry[3]	t434 CXLREJRESPONSETO=cancel
+ulbridge[135]:0.entry[4]	t0 ENV=PROD
+ulbridge[135]:0.entry[5]	t35 MSGTYPE=cancelreject
+ulbridge[135]:0.entry[6]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[135]:0.entry[7]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[135]:0.entry[8]	t39 ORDSTATUS=rejected
+ulbridge[135]:0.entry[9]	t41 ORIGCLORDID=0102000452788801
+ulbridge[135]:0.entry[10]	t49 SENDERCOMPID=TRNPA
+ulbridge[135]:0.entry[11]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[135]:0.entry[12]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[135]:0.entry[13]	t60 TRANSACTTIME=20260814215946479
+ulbridge[135]:0.entry[14]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[135]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[135]:0.field.msgtype	"cancelreject"
+ulbridge[135]:0.field.sendercompid	"TRNPA"
+ulbridge[135]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[135]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[135]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[135]:0.field.clordid	"0102000452788802"
+ulbridge[135]:0.field.origclordid	"0102000452788801"
+ulbridge[135]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[135]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[135]:0.field.ordstatus	"95REJECTED"
+ulbridge[135]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[135]:0.field.notrdregtimestamps	5
+ulbridge[135]:0.field.trdregtimestamps	[["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+ulbridge[135]:0.field.version	"5.0.2"
+ulbridge[135]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[135]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[135]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[135]:0.field.state	"95REJECTED"
+ulbridge[135]:0.field.uuid	"98cbcaea-ae5c-8a9c-8119-cfd0ac35015c"
+ulbridge[135]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[135]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[135]:0.field.code	""
+ulbridge[135]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[135].messages	1
+ulbridge[136].messages	0
+ulbridge[137].messages	0
+ulbridge[138]:0.type	cancelreject
+ulbridge[138]:0.digest	901897354497c499493119e09b8024f6
+ulbridge[138]:0.wire	BLOOMBERGCODE=2454 TT Equity|DELIVERTOCOMPID=ITGA|GROUP=PMA2|IDSOURCE=4|MARKETORDERID=4527888|MINTRADEVOL=1|NOPARTYIDS=10|NOPARTYIDS[0]=PARTYID=3000090.019\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[1]=PARTYID=BU/SGP\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=shortcodeid\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[2]=PARTYID=FIRMA9120\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investorid\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[3]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=enteringtrader\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[4]=PARTYID=0102TRADER3\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingtrader\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[5]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investmentdecisionmaker\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[6]=PARTYID=2000657.018\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[7]=PARTYID=ITGA_TRITON@2\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=generallyacceptedmarketparticipantidentifier\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[8]=PARTYID=OMSVENDOR0102\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=buyside\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[9]=PARTYID=Autex\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=sellside\xe2\x80\xa2\xe2\x80\xa2|NOSECURITYALTID=2|NOSECURITYALTID[0]=SECURITYALTID=2454 TT Equity\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=bloomberg\xe2\x80\xa2\xe2\x80\xa2|NOSECURITYALTID[1]=SECURITYALTID=2454.TW\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=ric\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS=4|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2|ORDERORIGIN=buyside|PARENTORDERID=2934039|FIRM.ACRONYM=FIRMA9120|FIRM.LAST_INSTRUMENT_LOOKUP_DATE=20260814|FIRM.LAST_INSTRUMENT_LOOKUP_SUCCEED=yes|OMSVENDOR.ORDERQTY=10000|OMSVENDOR.TIMEINFORCE=day|PRENETWORKORG=114|PREORDERORIGIN=14|PRICETYPE=pershare|SECURITYDESC=MEDIATEK|SECURITYEXCHANGE=XTAI|SECURITYID=TW0002454006|SOLICITEDFLAG=yes|#SYMBOL=TW0002454006|TARGETSUBID=ITGA|TRANSVERSAL_KEY=0102002934039|ULLINK.BYPASSRISK=yes|CFICODE=ESXXXX|CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CURRENCY=TWD|CXLREJRESPONSETO=cancel|ENV=PROD|EXDESTINATION=TW|ISINCODE=TW0002454006|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|PLUGINORIGINATOR=OMSVENDOR_FIX_44_SellSide0102|PLUGINOWNER=ULMSG_DMZ_FIRM|SECURITYTYPE=equity|SENDERCOMPID=TRNPA|SYMBOL=2454|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|ULLINK.INSTRUMENTID=dbi;TW0002454006_XTAI_TWD|ULTOSESSIONNAME=ULMSG_DMZ_FIRM|
+ulbridge[138]:0.entry[0]	t0 BLOOMBERGCODE=2454 TT Equity
+ulbridge[138]:0.entry[1]	t128 DELIVERTOCOMPID=ITGA
+ulbridge[138]:0.entry[2]	t0 GROUP=PMA2
+ulbridge[138]:0.entry[3]	t22 IDSOURCE=4
+ulbridge[138]:0.entry[4]	t0 MARKETORDERID=4527888
+ulbridge[138]:0.entry[5]	t562 MINTRADEVOL=1
+ulbridge[138]:0.entry[6]	t453 NOPARTYIDS=10
+ulbridge[138]:0.entry[6.0]	t0 NOPARTYIDS[0]=PARTYID=3000090.019\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.1]	t0 NOPARTYIDS[1]=PARTYID=BU/SGP\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=shortcodeid\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.2]	t0 NOPARTYIDS[2]=PARTYID=FIRMA9120\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investorid\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.3]	t0 NOPARTYIDS[3]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=enteringtrader\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.4]	t0 NOPARTYIDS[4]=PARTYID=0102TRADER3\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingtrader\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.5]	t0 NOPARTYIDS[5]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investmentdecisionmaker\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.6]	t0 NOPARTYIDS[6]=PARTYID=2000657.018\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.7]	t0 NOPARTYIDS[7]=PARTYID=ITGA_TRITON@2\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=generallyacceptedmarketparticipantidentifier\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.8]	t0 NOPARTYIDS[8]=PARTYID=OMSVENDOR0102\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=buyside\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[6.9]	t0 NOPARTYIDS[9]=PARTYID=Autex\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=sellside\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[7]	t454 NOSECURITYALTID=2
+ulbridge[138]:0.entry[7.0]	t0 NOSECURITYALTID[0]=SECURITYALTID=2454 TT Equity\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=bloomberg\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[7.1]	t0 NOSECURITYALTID[1]=SECURITYALTID=2454.TW\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=ric\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[8]	t768 NOTRDREGTIMESTAMPS=4
+ulbridge[138]:0.entry[8.0]	t0 NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[8.1]	t0 NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[8.2]	t0 NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[8.3]	t0 NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[8.4]	t0 NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[138]:0.entry[9]	t0 ORDERORIGIN=buyside
+ulbridge[138]:0.entry[10]	t65006 PARENTORDERID=2934039
+ulbridge[138]:0.entry[11]	t0 FIRM.ACRONYM=FIRMA9120
+ulbridge[138]:0.entry[12]	t0 FIRM.LAST_INSTRUMENT_LOOKUP_DATE=20260814
+ulbridge[138]:0.entry[13]	t0 FIRM.LAST_INSTRUMENT_LOOKUP_SUCCEED=yes
+ulbridge[138]:0.entry[14]	t0 OMSVENDOR.ORDERQTY=10000
+ulbridge[138]:0.entry[15]	t0 OMSVENDOR.TIMEINFORCE=day
+ulbridge[138]:0.entry[16]	t0 PRENETWORKORG=114
+ulbridge[138]:0.entry[17]	t0 PREORDERORIGIN=14
+ulbridge[138]:0.entry[18]	t423 PRICETYPE=pershare
+ulbridge[138]:0.entry[19]	t107 SECURITYDESC=MEDIATEK
+ulbridge[138]:0.entry[20]	t207 SECURITYEXCHANGE=XTAI
+ulbridge[138]:0.entry[21]	t48 SECURITYID=TW0002454006
+ulbridge[138]:0.entry[22]	t377 SOLICITEDFLAG=yes
+ulbridge[138]:0.entry[23]	t0 #SYMBOL=TW0002454006
+ulbridge[138]:0.entry[24]	t57 TARGETSUBID=ITGA
+ulbridge[138]:0.entry[25]	t0 TRANSVERSAL_KEY=0102002934039
+ulbridge[138]:0.entry[26]	t0 ULLINK.BYPASSRISK=yes
+ulbridge[138]:0.entry[27]	t461 CFICODE=ESXXXX
+ulbridge[138]:0.entry[28]	t11 CLORDID=0102000452788802
+ulbridge[138]:0.entry[29]	t0 CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826
+ulbridge[138]:0.entry[30]	t15 CURRENCY=TWD
+ulbridge[138]:0.entry[31]	t434 CXLREJRESPONSETO=cancel
+ulbridge[138]:0.entry[32]	t0 ENV=PROD
+ulbridge[138]:0.entry[33]	t100 EXDESTINATION=TW
+ulbridge[138]:0.entry[34]	t65013 ISINCODE=TW0002454006
+ulbridge[138]:0.entry[35]	t35 MSGTYPE=cancelreject
+ulbridge[138]:0.entry[36]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[138]:0.entry[37]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[138]:0.entry[38]	t39 ORDSTATUS=rejected
+ulbridge[138]:0.entry[39]	t41 ORIGCLORDID=0102000452788801
+ulbridge[138]:0.entry[40]	t0 PLUGINORIGINATOR=OMSVENDOR_FIX_44_SellSide0102
+ulbridge[138]:0.entry[41]	t0 PLUGINOWNER=ULMSG_DMZ_FIRM
+ulbridge[138]:0.entry[42]	t167 SECURITYTYPE=equity
+ulbridge[138]:0.entry[43]	t49 SENDERCOMPID=TRNPA
+ulbridge[138]:0.entry[44]	t55 SYMBOL=2454
+ulbridge[138]:0.entry[45]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[138]:0.entry[46]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[138]:0.entry[47]	t60 TRANSACTTIME=20260814215946479
+ulbridge[138]:0.entry[48]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[138]:0.entry[49]	t0 ULLINK.INSTRUMENTID=dbi;TW0002454006_XTAI_TWD
+ulbridge[138]:0.entry[50]	t65012 ULTOSESSIONNAME=ULMSG_DMZ_FIRM
+ulbridge[138]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[138]:0.field.msgtype	"cancelreject"
+ulbridge[138]:0.field.sendercompid	"TRNPA"
+ulbridge[138]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[138]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[138]:0.field.delivertocompid	"ITGA"
+ulbridge[138]:0.field.targetsubid	"ITGA"
+ulbridge[138]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[138]:0.field.clordid	"0102000452788802"
+ulbridge[138]:0.field.origclordid	"0102000452788801"
+ulbridge[138]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[138]:0.field.symbol	"2454"
+ulbridge[138]:0.field.securityid	"TW0002454006"
+ulbridge[138]:0.field.securityidsource	"4"
+ulbridge[138]:0.field.securitytype	"equity"
+ulbridge[138]:0.field.securityexchange	"XTAI"
+ulbridge[138]:0.field.cficode	"ESXXXX"
+ulbridge[138]:0.field.orderqty	10000.0
+ulbridge[138]:0.field.currency	"TWD"
+ulbridge[138]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[138]:0.field.ordstatus	"95REJECTED"
+ulbridge[138]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[138]:0.field.nopartyids	10
+ulbridge[138]:0.field.parties	[["3000090.019","proprietary/customcode",3,null,null,null],["BU/SGP","shortcodeid",3,null,null,null],["FIRMA9120","proprietary/customcode",5,null,null,null],["0101","proprietary/customcode",36,null,null,null],["0102TRADER3","proprietary/customcode",12,null,null,null],["0101","proprietary/customcode",122,null,null,null],["2000657.018","proprietary/customcode",1,null,null,null],["ITGA_TRITON@2","generallyacceptedmarketparticipantidentifier",1,null,null,null],["OMSVENDOR0102","proprietary/customcode",null,null,null,null],["Autex","proprietary/customcode",null,null,null,null]]
+ulbridge[138]:0.field.nosecurityaltid	2
+ulbridge[138]:0.field.secaltidgrp	[["2454 TT Equity","bloomberg",null],["2454.TW","ric",null]]
+ulbridge[138]:0.field.notrdregtimestamps	4
+ulbridge[138]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+ulbridge[138]:0.field.version	"5.0.2"
+ulbridge[138]:0.field.symbolticker	"2454@XTAI"
+ulbridge[138]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[138]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[138]:0.field.parentorderid	"2934039"
+ulbridge[138]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[138]:0.field.targetsessionname	"ULMSG_DMZ_FIRM"
+ulbridge[138]:0.field.isincode	"TW0002454006"
+ulbridge[138]:0.field.miccode	"XTAI"
+ulbridge[138]:0.field.state	"95REJECTED"
+ulbridge[138]:0.field.uuid	"98cbcaea-ae5c-8a9c-82df-39d0eb857fcc"
+ulbridge[138]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[138]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[138]:0.field.code	""
+ulbridge[138]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[138]:0.field.msgdirection	"R"
+ulbridge[138].messages	1
+ulbridge[139].messages	0
+ulbridge[140]:0.type	cancelreject
+ulbridge[140]:0.digest	901897354497c499493119e09b8024f6
+ulbridge[140]:0.wire	BLOOMBERGCODE=2454 TT Equity|DELIVERTOCOMPID=ITGA|GROUP=PMA2|IDSOURCE=4|MARKETORDERID=4527888|MINTRADEVOL=1|NOPARTYIDS=10|NOPARTYIDS[0]=PARTYID=3000090.019\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[1]=PARTYID=BU/SGP\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=shortcodeid\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[2]=PARTYID=FIRMA9120\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investorid\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[3]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=enteringtrader\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[4]=PARTYID=0102TRADER3\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingtrader\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[5]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investmentdecisionmaker\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[6]=PARTYID=2000657.018\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[7]=PARTYID=ITGA_TRITON@2\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=generallyacceptedmarketparticipantidentifier\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[8]=PARTYID=OMSVENDOR0102\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=buyside\xe2\x80\xa2\xe2\x80\xa2|NOPARTYIDS[9]=PARTYID=Autex\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=sellside\xe2\x80\xa2\xe2\x80\xa2|NOSECURITYALTID=2|NOSECURITYALTID[0]=SECURITYALTID=2454 TT Equity\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=bloomberg\xe2\x80\xa2\xe2\x80\xa2|NOSECURITYALTID[1]=SECURITYALTID=2454.TW\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=ric\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS=4|NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2|NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2|ORDERORIGIN=buyside|PARENTORDERID=2934039|FIRM.ACRONYM=FIRMA9120|FIRM.LAST_INSTRUMENT_LOOKUP_DATE=20260814|FIRM.LAST_INSTRUMENT_LOOKUP_SUCCEED=yes|OMSVENDOR.ORDERQTY=10000|OMSVENDOR.TIMEINFORCE=day|PRENETWORKORG=114|PREORDERORIGIN=14|PRICETYPE=pershare|SECURITYDESC=MEDIATEK|SECURITYEXCHANGE=XTAI|SECURITYID=TW0002454006|SOLICITEDFLAG=yes|#SYMBOL=TW0002454006|TARGETSUBID=ITGA|TRANSVERSAL_KEY=0102002934039|ULLINK.BYPASSRISK=yes|CFICODE=ESXXXX|CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CURRENCY=TWD|CXLREJRESPONSETO=cancel|ENV=PROD|EXDESTINATION=TW|ISINCODE=TW0002454006|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|PLUGINORIGINATOR=OMSVENDOR_FIX_44_SellSide0102|PLUGINOWNER=ULMSG_DMZ_FIRM|SECURITYTYPE=equity|SENDERCOMPID=TRNPA|SYMBOL=2454|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|ULLINK.INSTRUMENTID=dbi;TW0002454006_XTAI_TWD|ULTOSESSIONNAME=ULMSG_DMZ_FIRM|
+ulbridge[140]:0.entry[0]	t0 BLOOMBERGCODE=2454 TT Equity
+ulbridge[140]:0.entry[1]	t128 DELIVERTOCOMPID=ITGA
+ulbridge[140]:0.entry[2]	t0 GROUP=PMA2
+ulbridge[140]:0.entry[3]	t22 IDSOURCE=4
+ulbridge[140]:0.entry[4]	t0 MARKETORDERID=4527888
+ulbridge[140]:0.entry[5]	t562 MINTRADEVOL=1
+ulbridge[140]:0.entry[6]	t453 NOPARTYIDS=10
+ulbridge[140]:0.entry[6.0]	t0 NOPARTYIDS[0]=PARTYID=3000090.019\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.1]	t0 NOPARTYIDS[1]=PARTYID=BU/SGP\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=shortcodeid\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.2]	t0 NOPARTYIDS[2]=PARTYID=FIRMA9120\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investorid\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.3]	t0 NOPARTYIDS[3]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=enteringtrader\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.4]	t0 NOPARTYIDS[4]=PARTYID=0102TRADER3\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingtrader\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.5]	t0 NOPARTYIDS[5]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investmentdecisionmaker\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.6]	t0 NOPARTYIDS[6]=PARTYID=2000657.018\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.7]	t0 NOPARTYIDS[7]=PARTYID=ITGA_TRITON@2\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=generallyacceptedmarketparticipantidentifier\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.8]	t0 NOPARTYIDS[8]=PARTYID=OMSVENDOR0102\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=buyside\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[6.9]	t0 NOPARTYIDS[9]=PARTYID=Autex\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=sellside\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[7]	t454 NOSECURITYALTID=2
+ulbridge[140]:0.entry[7.0]	t0 NOSECURITYALTID[0]=SECURITYALTID=2454 TT Equity\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=bloomberg\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[7.1]	t0 NOSECURITYALTID[1]=SECURITYALTID=2454.TW\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=ric\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[8]	t768 NOTRDREGTIMESTAMPS=4
+ulbridge[140]:0.entry[8.0]	t0 NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[8.1]	t0 NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[8.2]	t0 NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[8.3]	t0 NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[8.4]	t0 NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2
+ulbridge[140]:0.entry[9]	t0 ORDERORIGIN=buyside
+ulbridge[140]:0.entry[10]	t65006 PARENTORDERID=2934039
+ulbridge[140]:0.entry[11]	t0 FIRM.ACRONYM=FIRMA9120
+ulbridge[140]:0.entry[12]	t0 FIRM.LAST_INSTRUMENT_LOOKUP_DATE=20260814
+ulbridge[140]:0.entry[13]	t0 FIRM.LAST_INSTRUMENT_LOOKUP_SUCCEED=yes
+ulbridge[140]:0.entry[14]	t0 OMSVENDOR.ORDERQTY=10000
+ulbridge[140]:0.entry[15]	t0 OMSVENDOR.TIMEINFORCE=day
+ulbridge[140]:0.entry[16]	t0 PRENETWORKORG=114
+ulbridge[140]:0.entry[17]	t0 PREORDERORIGIN=14
+ulbridge[140]:0.entry[18]	t423 PRICETYPE=pershare
+ulbridge[140]:0.entry[19]	t107 SECURITYDESC=MEDIATEK
+ulbridge[140]:0.entry[20]	t207 SECURITYEXCHANGE=XTAI
+ulbridge[140]:0.entry[21]	t48 SECURITYID=TW0002454006
+ulbridge[140]:0.entry[22]	t377 SOLICITEDFLAG=yes
+ulbridge[140]:0.entry[23]	t0 #SYMBOL=TW0002454006
+ulbridge[140]:0.entry[24]	t57 TARGETSUBID=ITGA
+ulbridge[140]:0.entry[25]	t0 TRANSVERSAL_KEY=0102002934039
+ulbridge[140]:0.entry[26]	t0 ULLINK.BYPASSRISK=yes
+ulbridge[140]:0.entry[27]	t461 CFICODE=ESXXXX
+ulbridge[140]:0.entry[28]	t11 CLORDID=0102000452788802
+ulbridge[140]:0.entry[29]	t0 CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826
+ulbridge[140]:0.entry[30]	t15 CURRENCY=TWD
+ulbridge[140]:0.entry[31]	t434 CXLREJRESPONSETO=cancel
+ulbridge[140]:0.entry[32]	t0 ENV=PROD
+ulbridge[140]:0.entry[33]	t100 EXDESTINATION=TW
+ulbridge[140]:0.entry[34]	t65013 ISINCODE=TW0002454006
+ulbridge[140]:0.entry[35]	t35 MSGTYPE=cancelreject
+ulbridge[140]:0.entry[36]	t115 ONBEHALFOFCOMPID=ITGA
+ulbridge[140]:0.entry[37]	t37 ORDERID=175631111-2274-42616_225
+ulbridge[140]:0.entry[38]	t39 ORDSTATUS=rejected
+ulbridge[140]:0.entry[39]	t41 ORIGCLORDID=0102000452788801
+ulbridge[140]:0.entry[40]	t0 PLUGINORIGINATOR=OMSVENDOR_FIX_44_SellSide0102
+ulbridge[140]:0.entry[41]	t0 PLUGINOWNER=ULMSG_DMZ_FIRM
+ulbridge[140]:0.entry[42]	t167 SECURITYTYPE=equity
+ulbridge[140]:0.entry[43]	t49 SENDERCOMPID=TRNPA
+ulbridge[140]:0.entry[44]	t55 SYMBOL=2454
+ulbridge[140]:0.entry[45]	t56 TARGETCOMPID=PRDAUTEX
+ulbridge[140]:0.entry[46]	t58 TEXT=Counterparty unavailable - please contact support
+ulbridge[140]:0.entry[47]	t60 TRANSACTTIME=20260814215946479
+ulbridge[140]:0.entry[48]	t65011 ULFROMSESSIONNAME=Autex_FIX42_BuySide
+ulbridge[140]:0.entry[49]	t0 ULLINK.INSTRUMENTID=dbi;TW0002454006_XTAI_TWD
+ulbridge[140]:0.entry[50]	t65012 ULTOSESSIONNAME=ULMSG_DMZ_FIRM
+ulbridge[140]:0.field.beginstring	"FIX.5.0.2"
+ulbridge[140]:0.field.msgtype	"cancelreject"
+ulbridge[140]:0.field.sendercompid	"TRNPA"
+ulbridge[140]:0.field.targetcompid	"PRDAUTEX"
+ulbridge[140]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[140]:0.field.delivertocompid	"ITGA"
+ulbridge[140]:0.field.targetsubid	"ITGA"
+ulbridge[140]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+ulbridge[140]:0.field.clordid	"0102000452788802"
+ulbridge[140]:0.field.origclordid	"0102000452788801"
+ulbridge[140]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[140]:0.field.symbol	"2454"
+ulbridge[140]:0.field.securityid	"TW0002454006"
+ulbridge[140]:0.field.securityidsource	"4"
+ulbridge[140]:0.field.securitytype	"equity"
+ulbridge[140]:0.field.securityexchange	"XTAI"
+ulbridge[140]:0.field.cficode	"ESXXXX"
+ulbridge[140]:0.field.orderqty	10000.0
+ulbridge[140]:0.field.currency	"TWD"
+ulbridge[140]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[140]:0.field.ordstatus	"95REJECTED"
+ulbridge[140]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[140]:0.field.nopartyids	10
+ulbridge[140]:0.field.parties	[["3000090.019","proprietary/customcode",3,null,null,null],["BU/SGP","shortcodeid",3,null,null,null],["FIRMA9120","proprietary/customcode",5,null,null,null],["0101","proprietary/customcode",36,null,null,null],["0102TRADER3","proprietary/customcode",12,null,null,null],["0101","proprietary/customcode",122,null,null,null],["2000657.018","proprietary/customcode",1,null,null,null],["ITGA_TRITON@2","generallyacceptedmarketparticipantidentifier",1,null,null,null],["OMSVENDOR0102","proprietary/customcode",null,null,null,null],["Autex","proprietary/customcode",null,null,null,null]]
+ulbridge[140]:0.field.nosecurityaltid	2
+ulbridge[140]:0.field.secaltidgrp	[["2454 TT Equity","bloomberg",null],["2454.TW","ric",null]]
+ulbridge[140]:0.field.notrdregtimestamps	4
+ulbridge[140]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+ulbridge[140]:0.field.version	"5.0.2"
+ulbridge[140]:0.field.symbolticker	"2454@XTAI"
+ulbridge[140]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[140]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[140]:0.field.parentorderid	"2934039"
+ulbridge[140]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[140]:0.field.targetsessionname	"ULMSG_DMZ_FIRM"
+ulbridge[140]:0.field.isincode	"TW0002454006"
+ulbridge[140]:0.field.miccode	"XTAI"
+ulbridge[140]:0.field.state	"95REJECTED"
+ulbridge[140]:0.field.uuid	"98cbcaea-ae5c-8a9c-8069-9af37e6e37ca"
+ulbridge[140]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[140]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[140]:0.field.code	""
+ulbridge[140]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[140].messages	1
+ulbridge[141]:0.type	UL
+ulbridge[141]:0.digest	497fa4c4845957b0fff1bd0b371234be
+ulbridge[141]:0.wire	8=FIX.4.2|9=3438|35=UL|49=ULB_DMZ|56=ULB_FIRM|34=124|52=20260814-21:59:46|212=3367|213=#BLOOMBERGCODE=2454 TT Equity|#CFICODE=ESXXXX|#DELIVERTOCOMPID=ITGA|#GROUP=PMA2|#IDSOURCE=4|#ISINCODE=TW0002454006|#MARKETORDERID=4527888|#MINTRADEVOL=1|#NOPARTYIDS=10|#NOPARTYIDS[0]=PARTYID=3000090.019\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[1]=PARTYID=BU/SGP\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=shortcodeid\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[2]=PARTYID=FIRMA9120\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investorid\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[3]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=enteringtrader\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[4]=PARTYID=0102TRADER3\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingtrader\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[5]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investmentdecisionmaker\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[6]=PARTYID=2000657.018\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[7]=PARTYID=ITGA_TRITON@2\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=generallyacceptedmarketparticipantidentifier\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[8]=PARTYID=OMSVENDOR0102\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=buyside\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[9]=PARTYID=Autex\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=sellside\xe2\x80\xa2\xe2\x80\xa2|#NOSECURITYALTID=2|#NOSECURITYALTID[0]=SECURITYALTID=2454 TT Equity\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=bloomberg\xe2\x80\xa2\xe2\x80\xa2|#NOSECURITYALTID[1]=SECURITYALTID=2454.TW\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=ric\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS=4|#NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2|#ORDERORIGIN=buyside|#PARENTORDERID=2934039|#FIRM.ACRONYM=FIRMA9120|#FIRM.LAST_INSTRUMENT_LOOKUP_DATE=20260814|#FIRM.LAST_INSTRUMENT_LOOKUP_SUCCEED=yes|#OMSVENDOR.ORDERQTY=10000|#OMSVENDOR.TIMEINFORCE=day|#PRENETWORKORG=114|#PREORDERORIGIN=14|#PRICETYPE=pershare|#SECURITYDESC=MEDIATEK|#SECURITYEXCHANGE=XTAI|#SECURITYID=TW0002454006|#SOLICITEDFLAG=yes|#SYMBOL=TW0002454006|#TARGETSUBID=ITGA|#TRANSVERSAL_KEY=0102002934039|#ULLINK.BYPASSRISK=yes|CFICODE=ESXXXX|CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CURRENCY=TWD|CXLREJRESPONSETO=cancel|ENV=PROD|EXDESTINATION=TW|ISINCODE=TW0002454006|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|PLUGINORIGINATOR=OMSVENDOR_FIX_44_SellSide0102|PLUGINOWNER=ULMSG_DMZ_FIRM|SECURITYTYPE=equity|SENDERCOMPID=TRNPA|SYMBOL=2454|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|ULLINK.INSTRUMENTID=dbi;TW0002454006_XTAI_TWD|ULTOSESSIONNAME=ULMSG_DMZ_FIRM||10=250|
+ulbridge[141]:0.entry[0]	t8 8=FIX.4.2
+ulbridge[141]:0.entry[1]	t9 9=3438
+ulbridge[141]:0.entry[2]	t35 35=UL
+ulbridge[141]:0.entry[3]	t49 49=ULB_DMZ
+ulbridge[141]:0.entry[4]	t56 56=ULB_FIRM
+ulbridge[141]:0.entry[5]	t34 34=124
+ulbridge[141]:0.entry[6]	t52 52=20260814-21:59:46
+ulbridge[141]:0.entry[7]	t212 212=3367
+ulbridge[141]:0.entry[8]	t213 213=#BLOOMBERGCODE=2454 TT Equity|#CFICODE=ESXXXX|#DELIVERTOCOMPID=ITGA|#GROUP=PMA2|#IDSOURCE=4|#ISINCODE=TW0002454006|#MARKETORDERID=4527888|#MINTRADEVOL=1|#NOPARTYIDS=10|#NOPARTYIDS[0]=PARTYID=3000090.019\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[1]=PARTYID=BU/SGP\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=shortcodeid\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=clientid\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[2]=PARTYID=FIRMA9120\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investorid\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[3]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=enteringtrader\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[4]=PARTYID=0102TRADER3\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingtrader\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[5]=PARTYID=0101\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=investmentdecisionmaker\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[6]=PARTYID=2000657.018\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[7]=PARTYID=ITGA_TRITON@2\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=generallyacceptedmarketparticipantidentifier\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=executingfirm\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[8]=PARTYID=OMSVENDOR0102\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=buyside\xe2\x80\xa2\xe2\x80\xa2|#NOPARTYIDS[9]=PARTYID=Autex\xe2\x80\xa2\xe2\x80\xa2PARTYIDSOURCE=proprietary/customcode\xe2\x80\xa2\xe2\x80\xa2PARTYROLE=orderoriginatorsystem\xe2\x80\xa2\xe2\x80\xa2PARTYROLEQUALIFIER=sellside\xe2\x80\xa2\xe2\x80\xa2|#NOSECURITYALTID=2|#NOSECURITYALTID[0]=SECURITYALTID=2454 TT Equity\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=bloomberg\xe2\x80\xa2\xe2\x80\xa2|#NOSECURITYALTID[1]=SECURITYALTID=2454.TW\xe2\x80\xa2\xe2\x80\xa2SECURITYALTIDSOURCE=ric\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS=4|#NOTRDREGTIMESTAMPS[0]=TRDREGTIMESTAMP=20260814011345000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderacknowledgment\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[1]=TRDREGTIMESTAMP=20260814011345549000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=orderreception\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[2]=TRDREGTIMESTAMP=20260814011345162000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=ordersubmissiontime\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[3]=TRDREGTIMESTAMP=20260814215946416000\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=ULBRIDGE\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreception\xe2\x80\xa2\xe2\x80\xa2|#NOTRDREGTIMESTAMPS[4]=TRDREGTIMESTAMP=20260814215946479\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPORIGIN=CLIENT\xe2\x80\xa2\xe2\x80\xa2TRDREGTIMESTAMPTYPE=cancelreject\xe2\x80\xa2\xe2\x80\xa2|#ORDERORIGIN=buyside|#PARENTORDERID=2934039|#FIRM.ACRONYM=FIRMA9120|#FIRM.LAST_INSTRUMENT_LOOKUP_DATE=20260814|#FIRM.LAST_INSTRUMENT_LOOKUP_SUCCEED=yes|#OMSVENDOR.ORDERQTY=10000|#OMSVENDOR.TIMEINFORCE=day|#PRENETWORKORG=114|#PREORDERORIGIN=14|#PRICETYPE=pershare|#SECURITYDESC=MEDIATEK|#SECURITYEXCHANGE=XTAI|#SECURITYID=TW0002454006|#SOLICITEDFLAG=yes|#SYMBOL=TW0002454006|#TARGETSUBID=ITGA|#TRANSVERSAL_KEY=0102002934039|#ULLINK.BYPASSRISK=yes|CFICODE=ESXXXX|CLORDID=0102000452788802|CONVERSATIONID=c0a6098d-b745-4949-88fd-a2428b1c8826|CURRENCY=TWD|CXLREJRESPONSETO=cancel|ENV=PROD|EXDESTINATION=TW|ISINCODE=TW0002454006|MSGTYPE=cancelreject|ONBEHALFOFCOMPID=ITGA|ORDERID=175631111-2274-42616_225|ORDSTATUS=rejected|ORIGCLORDID=0102000452788801|PLUGINORIGINATOR=OMSVENDOR_FIX_44_SellSide0102|PLUGINOWNER=ULMSG_DMZ_FIRM|SECURITYTYPE=equity|SENDERCOMPID=TRNPA|SYMBOL=2454|TARGETCOMPID=PRDAUTEX|TEXT=Counterparty unavailable - please contact support|TRANSACTTIME=20260814215946479|ULFROMSESSIONNAME=Autex_FIX42_BuySide|ULLINK.INSTRUMENTID=dbi;TW0002454006_XTAI_TWD|ULTOSESSIONNAME=ULMSG_DMZ_FIRM|
+ulbridge[141]:0.entry[9]	t10 10=250
+ulbridge[141]:0.field.beginstring	"FIX.4.2"
+ulbridge[141]:0.field.bodylength	3438
+ulbridge[141]:0.field.msgtype	"UL"
+ulbridge[141]:0.field.sendercompid	"ULB_DMZ"
+ulbridge[141]:0.field.targetcompid	"ULB_FIRM"
+ulbridge[141]:0.field.onbehalfofcompid	"ITGA"
+ulbridge[141]:0.field.delivertocompid	"ITGA"
+ulbridge[141]:0.field.msgseqnum	124
+ulbridge[141]:0.field.targetsubid	"ITGA"
+ulbridge[141]:0.field.sendingtime	"2026-08-14T21:59:46.000000000Z"
+ulbridge[141]:0.field.xmldatalen	3367
+ulbridge[141]:0.field.xmldata	"I0JMT09NQkVSR0NPREU9MjQ1NCBUVCBFcXVpdHl8I0NGSUNPREU9RVNYWFhYfCNERUxJVkVSVE9DT01QSUQ9SVRHQXwjR1JPVVA9UE1BMnwjSURTT1VSQ0U9NHwjSVNJTkNPREU9VFcwMDAyNDU0MDA2fCNNQVJLRVRPUkRFUklEPTQ1Mjc4ODh8I01JTlRSQURFVk9MPTF8I05PUEFSVFlJRFM9MTB8I05PUEFSVFlJRFNbMF09UEFSVFlJRD0zMDAwMDkwLjAxOeKAouKAolBBUlRZSURTT1VSQ0U9cHJvcHJpZXRhcnkvY3VzdG9tY29kZeKAouKAolBBUlRZUk9MRT1jbGllbnRpZOKAouKAonwjTk9QQVJUWUlEU1sxXT1QQVJUWUlEPUJVL1NHUOKAouKAolBBUlRZSURTT1VSQ0U9c2hvcnRjb2RlaWTigKLigKJQQVJUWVJPTEU9Y2xpZW50aWTigKLigKJ8I05PUEFSVFlJRFNbMl09UEFSVFlJRD1GSVJNQTkxMjDigKLigKJQQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXigKLigKJQQVJUWVJPTEU9aW52ZXN0b3JpZOKAouKAonwjTk9QQVJUWUlEU1szXT1QQVJUWUlEPTAxMDHigKLigKJQQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXigKLigKJQQVJUWVJPTEU9ZW50ZXJpbmd0cmFkZXLigKLigKJ8I05PUEFSVFlJRFNbNF09UEFSVFlJRD0wMTAyVFJBREVSM+KAouKAolBBUlRZSURTT1VSQ0U9cHJvcHJpZXRhcnkvY3VzdG9tY29kZeKAouKAolBBUlRZUk9MRT1leGVjdXRpbmd0cmFkZXLigKLigKJ8I05PUEFSVFlJRFNbNV09UEFSVFlJRD0wMTAx4oCi4oCiUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4oCi4oCiUEFSVFlST0xFPWludmVzdG1lbnRkZWNpc2lvbm1ha2Vy4oCi4oCifCNOT1BBUlRZSURTWzZdPVBBUlRZSUQ9MjAwMDY1Ny4wMTjigKLigKJQQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXigKLigKJQQVJUWVJPTEU9ZXhlY3V0aW5nZmlybeKAouKAonwjTk9QQVJUWUlEU1s3XT1QQVJUWUlEPUlUR0FfVFJJVE9OQDLigKLigKJQQVJUWUlEU09VUkNFPWdlbmVyYWxseWFjY2VwdGVkbWFya2V0cGFydGljaXBhbnRpZGVudGlmaWVy4oCi4oCiUEFSVFlST0xFPWV4ZWN1dGluZ2Zpcm3igKLigKJ8I05PUEFSVFlJRFNbOF09UEFSVFlJRD1PTVNWRU5ET1IwMTAy4oCi4oCiUEFSVFlJRFNPVVJDRT1wcm9wcmlldGFyeS9jdXN0b21jb2Rl4oCi4oCiUEFSVFlST0xFPW9yZGVyb3JpZ2luYXRvcnN5c3RlbeKAouKAolBBUlRZUk9MRVFVQUxJRklFUj1idXlzaWRl4oCi4oCifCNOT1BBUlRZSURTWzldPVBBUlRZSUQ9QXV0ZXjigKLigKJQQVJUWUlEU09VUkNFPXByb3ByaWV0YXJ5L2N1c3RvbWNvZGXigKLigKJQQVJUWVJPTEU9b3JkZXJvcmlnaW5hdG9yc3lzdGVt4oCi4oCiUEFSVFlST0xFUVVBTElGSUVSPXNlbGxzaWRl4oCi4oCifCNOT1NFQ1VSSVRZQUxUSUQ9MnwjTk9TRUNVUklUWUFMVElEWzBdPVNFQ1VSSVRZQUxUSUQ9MjQ1NCBUVCBFcXVpdHnigKLigKJTRUNVUklUWUFMVElEU09VUkNFPWJsb29tYmVyZ+KAouKAonwjTk9TRUNVUklUWUFMVElEWzFdPVNFQ1VSSVRZQUxUSUQ9MjQ1NC5UV+KAouKAolNFQ1VSSVRZQUxUSURTT1VSQ0U9cmlj4oCi4oCifCNOT1RSRFJFR1RJTUVTVEFNUFM9NHwjTk9UUkRSRUdUSU1FU1RBTVBTWzBdPVRSRFJFR1RJTUVTVEFNUD0yMDI2MDgxNDAxMTM0NTAwMOKAouKAolRSRFJFR1RJTUVTVEFNUE9SSUdJTj1DTElFTlTigKLigKJUUkRSRUdUSU1FU1RBTVBUWVBFPW9yZGVyYWNrbm93bGVkZ21lbnTigKLigKJ8I05PVFJEUkVHVElNRVNUQU1QU1sxXT1UUkRSRUdUSU1FU1RBTVA9MjAyNjA4MTQwMTEzNDU1NDkwMDDigKLigKJUUkRSRUdUSU1FU1RBTVBPUklHSU49VUxCUklER0XigKLigKJUUkRSRUdUSU1FU1RBTVBUWVBFPW9yZGVycmVjZXB0aW9u4oCi4oCifCNOT1RSRFJFR1RJTUVTVEFNUFNbMl09VFJEUkVHVElNRVNUQU1QPTIwMjYwODE0MDExMzQ1MTYyMDAw4oCi4oCiVFJEUkVHVElNRVNUQU1QT1JJR0lOPUNMSUVOVOKAouKAolRSRFJFR1RJTUVTVEFNUFRZUEU9b3JkZXJzdWJtaXNzaW9udGltZeKAouKAonwjTk9UUkRSRUdUSU1FU1RBTVBTWzNdPVRSRFJFR1RJTUVTVEFNUD0yMDI2MDgxNDIxNTk0NjQxNjAwMOKAouKAolRSRFJFR1RJTUVTVEFNUE9SSUdJTj1VTEJSSURHReKAouKAolRSRFJFR1RJTUVTVEFNUFRZUEU9Y2FuY2VscmVjZXB0aW9u4oCi4oCifCNOT1RSRFJFR1RJTUVTVEFNUFNbNF09VFJEUkVHVElNRVNUQU1QPTIwMjYwODE0MjE1OTQ2NDc54oCi4oCiVFJEUkVHVElNRVNUQU1QT1JJR0lOPUNMSUVOVOKAouKAolRSRFJFR1RJTUVTVEFNUFRZUEU9Y2FuY2VscmVqZWN04oCi4oCifCNPUkRFUk9SSUdJTj1idXlzaWRlfCNQQVJFTlRPUkRFUklEPTI5MzQwMzl8I0ZJUk0uQUNST05ZTT1GSVJNQTkxMjB8I0ZJUk0uTEFTVF9JTlNUUlVNRU5UX0xPT0tVUF9EQVRFPTIwMjYwODE0fCNGSVJNLkxBU1RfSU5TVFJVTUVOVF9MT09LVVBfU1VDQ0VFRD15ZXN8I09NU1ZFTkRPUi5PUkRFUlFUWT0xMDAwMHwjT01TVkVORE9SLlRJTUVJTkZPUkNFPWRheXwjUFJFTkVUV09SS09SRz0xMTR8I1BSRU9SREVST1JJR0lOPTE0fCNQUklDRVRZUEU9cGVyc2hhcmV8I1NFQ1VSSVRZREVTQz1NRURJQVRFS3wjU0VDVVJJVFlFWENIQU5HRT1YVEFJfCNTRUNVUklUWUlEPVRXMDAwMjQ1NDAwNnwjU09MSUNJVEVERkxBRz15ZXN8I1NZTUJPTD1UVzAwMDI0NTQwMDZ8I1RBUkdFVFNVQklEPUlUR0F8I1RSQU5TVkVSU0FMX0tFWT0wMTAyMDAyOTM0MDM5fCNVTExJTksuQllQQVNTUklTSz15ZXN8Q0ZJQ09ERT1FU1hYWFh8Q0xPUkRJRD0wMTAyMDAwNDUyNzg4ODAyfENPTlZFUlNBVElPTklEPWMwYTYwOThkLWI3NDUtNDk0OS04OGZkLWEyNDI4YjFjODgyNnxDVVJSRU5DWT1UV0R8Q1hMUkVKUkVTUE9OU0VUTz1jYW5jZWx8RU5WPVBST0R8RVhERVNUSU5BVElPTj1UV3xJU0lOQ09ERT1UVzAwMDI0NTQwMDZ8TVNHVFlQRT1jYW5jZWxyZWplY3R8T05CRUhBTEZPRkNPTVBJRD1JVEdBfE9SREVSSUQ9MTc1NjMxMTExLTIyNzQtNDI2MTZfMjI1fE9SRFNUQVRVUz1yZWplY3RlZHxPUklHQ0xPUkRJRD0wMTAyMDAwNDUyNzg4ODAxfFBMVUdJTk9SSUdJTkFUT1I9T01TVkVORE9SX0ZJWF80NF9TZWxsU2lkZTAxMDJ8UExVR0lOT1dORVI9VUxNU0dfRE1aX0ZJUk18U0VDVVJJVFlUWVBFPWVxdWl0eXxTRU5ERVJDT01QSUQ9VFJOUEF8U1lNQk9MPTI0NTR8VEFSR0VUQ09NUElEPVBSREFVVEVYfFRFWFQ9Q291bnRlcnBhcnR5IHVuYXZhaWxhYmxlIC0gcGxlYXNlIGNvbnRhY3Qgc3VwcG9ydHxUUkFOU0FDVFRJTUU9MjAyNjA4MTQyMTU5NDY0Nzl8VUxGUk9NU0VTU0lPTk5BTUU9QXV0ZXhfRklYNDJfQnV5U2lkZXxVTExJTksuSU5TVFJVTUVOVElEPWRiaTtUVzAwMDI0NTQwMDZfWFRBSV9UV0R8VUxUT1NFU1NJT05OQU1FPVVMTVNHX0RNWl9GSVJNfA=="
+ulbridge[141]:0.field.clordid	"0102000452788802"
+ulbridge[141]:0.field.origclordid	"0102000452788801"
+ulbridge[141]:0.field.orderid	"175631111-2274-42616_225"
+ulbridge[141]:0.field.symbol	"2454"
+ulbridge[141]:0.field.securityid	"TW0002454006"
+ulbridge[141]:0.field.securityidsource	"4"
+ulbridge[141]:0.field.securitytype	"equity"
+ulbridge[141]:0.field.securityexchange	"XTAI"
+ulbridge[141]:0.field.cficode	"ESXXXX"
+ulbridge[141]:0.field.orderqty	10000.0
+ulbridge[141]:0.field.currency	"TWD"
+ulbridge[141]:0.field.transacttime	"2026-08-14T21:59:46.479000000Z"
+ulbridge[141]:0.field.ordstatus	"95REJECTED"
+ulbridge[141]:0.field.text	"Counterparty unavailable - please contact support"
+ulbridge[141]:0.field.nopartyids	10
+ulbridge[141]:0.field.parties	[["3000090.019","proprietary/customcode",3,null,null,null],["BU/SGP","shortcodeid",3,null,null,null],["FIRMA9120","proprietary/customcode",5,null,null,null],["0101","proprietary/customcode",36,null,null,null],["0102TRADER3","proprietary/customcode",12,null,null,null],["0101","proprietary/customcode",122,null,null,null],["2000657.018","proprietary/customcode",1,null,null,null],["ITGA_TRITON@2","generallyacceptedmarketparticipantidentifier",1,null,null,null],["OMSVENDOR0102","proprietary/customcode",null,null,null,null],["Autex","proprietary/customcode",null,null,null,null]]
+ulbridge[141]:0.field.nosecurityaltid	2
+ulbridge[141]:0.field.secaltidgrp	[["2454 TT Equity","bloomberg",null],["2454.TW","ric",null]]
+ulbridge[141]:0.field.notrdregtimestamps	4
+ulbridge[141]:0.field.trdregtimestamps	[["2026-08-14T01:13:45.000000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.549000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T01:13:45.162000000Z",10,"CLIENT",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.416000000Z",null,"ULBRIDGE",null,null,null,null,null,null,null,null,null],["2026-08-14T21:59:46.479000000Z",null,"CLIENT",null,null,null,null,null,null,null,null,null]]
+ulbridge[141]:0.field.checksum	"250"
+ulbridge[141]:0.field.version	"4.2"
+ulbridge[141]:0.field.symbolticker	"2454@XTAI"
+ulbridge[141]:0.field.updatedat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[141]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[141]:0.field.parentorderid	"2934039"
+ulbridge[141]:0.field.sendersessionname	"Autex_FIX42_BuySide"
+ulbridge[141]:0.field.targetsessionname	"ULMSG_DMZ_FIRM"
+ulbridge[141]:0.field.isincode	"TW0002454006"
+ulbridge[141]:0.field.miccode	"XTAI"
+ulbridge[141]:0.field.state	"95REJECTED"
+ulbridge[141]:0.field.uuid	"98cbcaea-ae5c-8a9c-81d8-8acfa822665c"
+ulbridge[141]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[141]:0.field.createdat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[141]:0.field.code	""
+ulbridge[141]:0.field.snapshotat	"2026-08-14T21:59:46.479000000Z"
+ulbridge[141]:0.field.msgdirection	"S"
+ulbridge[141].messages	1
+ulbridge[142]:0.type	0
+ulbridge[142]:0.digest	13ad44e6cf85d1be05046be3db50369f
+ulbridge[142]:0.wire	8=FIX.4.2|9=62|35=0|49=FIRMB|56=FIDESSA|34=16384|52=20260814-21:59:48.512549|10=033|
+ulbridge[142]:0.entry[0]	t8 8=FIX.4.2
+ulbridge[142]:0.entry[1]	t9 9=62
+ulbridge[142]:0.entry[2]	t35 35=0
+ulbridge[142]:0.entry[3]	t49 49=FIRMB
+ulbridge[142]:0.entry[4]	t56 56=FIDESSA
+ulbridge[142]:0.entry[5]	t34 34=16384
+ulbridge[142]:0.entry[6]	t52 52=20260814-21:59:48.512549
+ulbridge[142]:0.entry[7]	t10 10=033
+ulbridge[142]:0.field.beginstring	"FIX.4.2"
+ulbridge[142]:0.field.bodylength	62
+ulbridge[142]:0.field.msgtype	"0"
+ulbridge[142]:0.field.sendercompid	"FIRMB"
+ulbridge[142]:0.field.targetcompid	"FIDESSA"
+ulbridge[142]:0.field.msgseqnum	16384
+ulbridge[142]:0.field.sendingtime	"2026-08-14T21:59:48.512549000Z"
+ulbridge[142]:0.field.checksum	"033"
+ulbridge[142]:0.field.version	"4.2"
+ulbridge[142]:0.field.updatedat	"2026-08-14T21:59:48.512549000Z"
+ulbridge[142]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[142]:0.field.uuid	"98cbcaeb-2792-8288-a38b-cb061ed989bd"
+ulbridge[142]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[142]:0.field.createdat	"2026-08-14T21:59:48.512549000Z"
+ulbridge[142]:0.field.code	""
+ulbridge[142]:0.field.snapshotat	"2026-08-14T21:59:48.512549000Z"
+ulbridge[142]:0.field.msgdirection	"S"
+ulbridge[142].messages	1
+ulbridge[143]:0.type	0
+ulbridge[143]:0.digest	13ad44e6cf85d1be05046be3db50369f
+ulbridge[143]:0.wire	8=FIX.4.2|9=72|35=0|49=FIDESSA_BOPRD|56=FIRMAPRD|43=N|34=2481|52=20260814-21:59:49.825|10=122|
+ulbridge[143]:0.entry[0]	t8 8=FIX.4.2
+ulbridge[143]:0.entry[1]	t9 9=72
+ulbridge[143]:0.entry[2]	t35 35=0
+ulbridge[143]:0.entry[3]	t49 49=FIDESSA_BOPRD
+ulbridge[143]:0.entry[4]	t56 56=FIRMAPRD
+ulbridge[143]:0.entry[5]	t43 43=N
+ulbridge[143]:0.entry[6]	t34 34=2481
+ulbridge[143]:0.entry[7]	t52 52=20260814-21:59:49.825
+ulbridge[143]:0.entry[8]	t10 10=122
+ulbridge[143]:0.field.beginstring	"FIX.4.2"
+ulbridge[143]:0.field.bodylength	72
+ulbridge[143]:0.field.msgtype	"0"
+ulbridge[143]:0.field.sendercompid	"FIDESSA_BOPRD"
+ulbridge[143]:0.field.targetcompid	"FIRMAPRD"
+ulbridge[143]:0.field.msgseqnum	2481
+ulbridge[143]:0.field.possdupflag	false
+ulbridge[143]:0.field.sendingtime	"2026-08-14T21:59:49.825000000Z"
+ulbridge[143]:0.field.checksum	"122"
+ulbridge[143]:0.field.version	"4.2"
+ulbridge[143]:0.field.updatedat	"2026-08-14T21:59:49.825000000Z"
+ulbridge[143]:0.field.timepartition	"2026-08-14T21:00:00.000000000Z"
+ulbridge[143]:0.field.uuid	"98cbcaeb-75cc-8924-8123-a99b79186da6"
+ulbridge[143]:0.field.puuid	"99aa06d3-0147-88d8-a001-c324468d497f"
+ulbridge[143]:0.field.createdat	"2026-08-14T21:59:49.825000000Z"
+ulbridge[143]:0.field.code	""
+ulbridge[143]:0.field.snapshotat	"2026-08-14T21:59:49.825000000Z"
+ulbridge[143]:0.field.msgdirection	"R"
+ulbridge[143].messages	1
 shapes[000].line	sending >> 8=FIX.4.2|9=176|35=D|11=ORDER-1|55=AAPL|54=1|10=203| << queued seq=1092
 shapes[000]:0.type	D
 shapes[000]:0.digest	7beed007aa5a97bb176f81bde6c8d1bd

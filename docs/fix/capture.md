@@ -771,6 +771,8 @@ One voice or silence. Where a row names one absent field under several composed 
 
 Never overwriting is load-bearing here too, and the same corpus proves it: `CLIENT.SYMBOL` is `XAU` where `SYMBOL` is `XAU/USD`, and `OMSVENDOR.CALC.EXECBROKER` is `SWXCCP` where `EXECBROKER` is `2003103.001`. A namespace's spelling of a fact is not the fact.
 
+The cancel reject the corpus ends on shows the fill and its bound side by side: `OMSVENDOR.ORDERQTY=10000` fills the `OrderQty` the row never states and `OMSVENDOR.TIMEINFORCE=day` its `TimeInForce`, each composed pair staying the arrival it was under its own dotted name and tag 0, while `FIRM.ACRONYM`, `ULLINK.INSTRUMENTID` and `ULLINK.BYPASSRISK` name no field of the dictionary and stay under their namespaces, read back by `by_name("firm.acronym")` and never as `acronym`.
+
 === "Rust"
 
     ```rust

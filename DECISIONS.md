@@ -1904,13 +1904,16 @@ reopening; clear and replay; empty/stated maps and compiled fallback parity;
 integer-to-text identifiers, located invalid text/shape and atomic refusal;
 duplicates, null/empty/case/whitespace, unknown types and no nested promotion.
 The 129-line capture yields 83 messages and retains its four final live chains
-through the direct door. Enrichment derives terminal state at lines 35 and 73
-where the raw messages omit it. Its new final count is three, not the old
-four: the old hard-tag fallback reopened the closed ABBN.S chain from the
-untyped FIXML at line 101. That message states no MsgType and therefore has
-no declared identifier selection. Line 102 likewise supplies no selection;
-its HOLN chain opens from the typed order at line 107. Neither an order-only
-fallback nor a fabricated document type preserves the old enriched count.
+through the direct door (144 lines, 95 messages and five chains since the
+cancel/reject flow of decision 38's corpus entry, whose request opens a chain
+its instrument-less reject never meets). Enrichment derives terminal state at
+lines 35 and 73 where the raw messages omit it. Its new final count is three,
+not the old four (four with that fifth chain): the old hard-tag fallback
+reopened the closed ABBN.S chain from the untyped FIXML at line 101. That
+message states no MsgType and therefore has no declared identifier selection.
+Line 102 likewise supplies no selection; its HOLN chain opens from the typed
+order at line 107. Neither an order-only fallback nor a fabricated document
+type preserves the old enriched count.
 Pin these exact capture facts and each door's full replay independently;
 the direct and enriched messages do not state the same terminal information.
 No equivalence snapshot regeneration is expected for this lifecycle-only
@@ -2338,7 +2341,8 @@ Pins: distinct explicit creation instants (first not the minimum or grid);
 explicit-code cross-scope joins and occupied-key isolation; aligned-first,
 suppressed and late arrivals; terminal/reopen/clear/no-name lifetimes; failed
 first/subsequent publication; raw and already-filled replay; equal projection
-through Arrow; the 83-message capture and its existing exact live-chain counts.
+through Arrow; the 83-message capture (95 since decision 38's corpus entry)
+and its existing exact live-chain counts.
 Extend the existing lifecycle benchmark inputs/assertions without executing
 measurements. Update Rust ownership docs and inventory; binding additions
 remain deferred until the complete Rust story per the user's stage order.
@@ -2410,7 +2414,8 @@ are the pipeline; add no alternate converter, entry family or representation.
   so re-emission does not duplicate the document, outside this converter
   change. The suite asserts the exact divergent pairs, never a broad exemption.
   Non-UTF8 entry bytes likewise retain the existing explicit UTF8 row bound.
-- The 129-line/83-message capture pins direct lazy composition and both Arrow
+- The 129-line/83-message capture (144 lines and 95 messages since decision
+  38's corpus entry) pins direct lazy composition and both Arrow
   directions, one decode, source error identity with fusion, restored row
   numbers, bodies and capture presence; the existing row-by-row/batch
   agreement keeps carried/lifted columns and LIFTED_OUT_OF_A_DOCUMENT exact.
@@ -3008,3 +3013,56 @@ names.
 identity on `timepartition`, a batch missing the column is filled with the
 hour floor of `updatedat`, a pre-epoch clock lands in the hour that contains
 it; the regenerated equivalence snapshot with the two moved keys named.
+
+### The corpus
+
+**Rule.** `rust/tests/fix/ulbridge.log` is the one capture every FIX suite
+and benchmark reads, and it now ends on fifteen more lines of the bridge's
+own, transcribed from its log and anonymized the way the rest was
+(`FIRM.*`, `FIRMA9120`, `ULMSG_DMZ_FIRM`, `ULB_FIRM`, `FIRMB`, `FIRMAPRD`,
+`OMSVENDOR`, `trader3`, `0102TRADER3`; instruments, venues and vendor
+session names kept; `9=`, `212=` and `10=` recomputed over the `|`
+separator so every frame is consistent): a cancel request (`35=F`), its
+cancel reject (`35=9`, `434=1`, `39=8`, `58=`), the reject routed, enriched
+with five regulatory clocks and forwarded as a bridge row - `#`-marked keys,
+ten packed parties, two alternate identifiers, `FIRM.`, `OMSVENDOR.` and
+`ULLINK.` composed keys, once in parentheses after prose and once bare - the
+`35=UL` frame the row goes out in with an exact `212=`, and two Fidessa
+heartbeats, one saying `43=N`. The corpus is 144 lines and 95 messages;
+three of the new lines are prose and carry none.
+
+**What the lines pin, as the codec reads them today.** The frames are typed
+by their codes and the bridge rows by the spelling they call themselves,
+`cancelreject`; `ORDSTATUS=rejected` and `39=8` both read as the state
+`8`, on the message and in the crate's `state` column; a `#`-marked key
+with no bare twin is the key it marks, a marked twin restating the bare
+bytes is dropped, and `#SYMBOL=TW0002454006` beside `SYMBOL=2454` stays
+its own verbatim key. The ten parties replicate into `parties`, each role
+typed where FIX spells the bridge's word and null where it does not
+(`orderoriginatorsystem`, `buyside`), and `party` answers a role one party
+bears and none a role two bear. `#NOTRDREGTIMESTAMPS=4` over five indexed
+occurrences is a real bridge anomaly kept verbatim: the row holds the five
+occurrences, the counter holds the stated four, never renumbered, and
+`anomalies()` reports `Miscounted { 768, "trdregtimestamps", 4, 5 }`.
+`OMSVENDOR.ORDERQTY` fills `OrderQty` and `OMSVENDOR.TIMEINFORCE` fills
+`TimeInForce` (decision 20), while `FIRM.ACRONYM` and `ULLINK.INSTRUMENTID`
+name no field and stay under their namespaces. The prose-wrapped row and
+the bare row read as one message with one digest; two sessions' heartbeats
+digest equal, because a digest reads past the header and a heartbeat is
+nothing else. The batch door agrees with the line door on every tag of the
+new lines, and `LIFTED_OUT_OF_A_DOCUMENT` stays the two pairs it was.
+
+**What moves.** Every pinned count: 129 lines to 144 and 83 messages to 95
+in `rust/tests/fix/dataset.rs` (its `SILENT` list gains lines 136, 137 and
+139), `lifecycle.rs`, `lifecycle_previous.rs`, `rust/tests/iobase_calls.rs`
+and the pipeline benchmark's `95 * REPEATS`; the live-chain counts to five
+direct and four enriched, because the cancel request opens a chain under
+the instrument its `22=4|48=` names and the reject, naming the order but no
+instrument, scopes its keys under nothing and never meets it; the
+equivalence snapshot gains the keys `ulbridge[129]` to `ulbridge[143]` and
+no existing key moves. The codec needed no change.
+
+**Written in:** `rust/tests/fix/ulbridge.log`, `dataset.rs`, `lifecycle.rs`,
+`lifecycle_previous.rs`, `rust/tests/iobase_calls.rs`,
+`rust/benchmarks/fix/pipeline.rs`, `docs/fix/capture.md`, `decode.md`,
+`arrow.md`.

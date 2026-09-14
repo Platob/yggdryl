@@ -432,9 +432,12 @@ fn orphan_and_terminal_messages_keep_full_signed_nanosecond_range_without_histor
 fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary() {
     let codec = super::dataset::codec();
     let lines = super::dataset::text_lines();
-    assert_eq!(lines.len(), 129);
+    assert_eq!(lines.len(), 144);
     let schema = fix_schema(codec.registry(), "fix").unwrap();
-    for (enrich, expected_alive) in [(false, 4), (true, 3)] {
+    // The lifecycle suite says why each door ends on its count: four and
+    // three of the first 129 lines' chains, and the one the cancel request
+    // opens that its instrument-less reject never meets.
+    for (enrich, expected_alive) in [(false, 5), (true, 4)] {
         let mut life = FixLifecycle::new(Arc::clone(codec.registry()));
         let mut trace = Vec::new();
         for line in &lines {
@@ -455,7 +458,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
                 trace.push((stamped, life.alive()));
             }
         }
-        assert_eq!(trace.len(), 83);
+        assert_eq!(trace.len(), 95);
         assert_eq!(life.alive(), expected_alive);
         life.clear();
         for (message, alive) in &trace {
@@ -482,7 +485,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
             assert!(slices.iter().all(|batch| batch.num_rows() <= boundary));
             assert_eq!(
                 slices.iter().map(|batch| batch.num_rows()).sum::<usize>(),
-                83
+                95
             );
             let restored = codec
                 .messages(arrow::batch_reader(Arc::clone(&arrow_schema), slices))

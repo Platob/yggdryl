@@ -5,7 +5,8 @@
 //! second happened not to hold: a Jolokia exchange whose answer is a
 //! configuration document, FIXML behind a verb, frames spelled with `^A` and
 //! `<SOH>`, a `35=UL` frame packing a group inside a group, a bridge row
-//! keyed by name, a statistics line, an empty body and a warning - repeated
+//! keyed by name, a statistics line, an empty body, a warning and a
+//! cancel/reject flow - repeated
 //! until the release corpus is about eleven megabytes, so the numbers are
 //! per byte of a real capture rather than of one shape. Throughput is in
 //! bytes of that log.
@@ -149,7 +150,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .try_fold(0_usize, |read, message| message.map(|_| read + 1))
             .expect("an enriched message")
     };
-    assert_eq!(read_composed(), 83 * REPEATS);
+    assert_eq!(read_composed(), 95 * REPEATS);
     group.bench_function("decoded_lines_enrich", |bencher| {
         bencher.iter(|| black_box(read_composed()));
     });
