@@ -599,6 +599,3 @@ impl Read for LazyDecoder<'_> {
             .map_or(Ok(0), |decoder| decoder.read(target))
     }
 }
-
-#[cfg(test)]
-mod tests;

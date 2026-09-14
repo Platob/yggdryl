@@ -345,7 +345,7 @@ fn empty_native_row_intents_keep_overwrite_schema_and_make_append_merge_no_ops()
 fn an_empty_record_batch_overwrite_keeps_its_field_and_no_rows() {
     let mut handle = handle("empty-record-batch.arrows");
     let options = handle.record_options().unwrap();
-    let empty = RecordBatch::new_empty(crate::arrow::arrow_schema_from_field(&schema()).unwrap());
+    let empty = RecordBatch::new_empty(schema().into_arrow_schema().unwrap());
 
     handle.overwrite_arrow_batch(empty, &options).unwrap();
 
@@ -359,10 +359,7 @@ fn empty_append_and_merge_are_byte_for_byte_no_ops() {
     let options = missing.record_options().unwrap().with_field(schema());
     missing
         .append_arrow_reader(
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-                [],
-            ),
+            yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), []),
             &options.clone().with_select_by_names(["absent"]),
         )
         .unwrap();
@@ -370,10 +367,10 @@ fn empty_append_and_merge_are_byte_for_byte_no_ops() {
 
     missing.overwrite_arrow_reader(reader(), &options).unwrap();
     let before = missing.as_slice().to_vec();
-    let zero = RecordBatch::new_empty(crate::arrow::arrow_schema_from_field(&schema()).unwrap());
+    let zero = RecordBatch::new_empty(schema().into_arrow_schema().unwrap());
     missing
         .merge_arrow_reader(
-            crate::arrow::batch_reader(zero.schema(), [zero]),
+            yggdryl::arrow::batch_reader(zero.schema(), [zero]),
             &options
                 .clone()
                 .with_merge_by_names(["id"])
@@ -398,7 +395,7 @@ fn appending_casts_incoming_batches_to_the_target_shape() {
     .unwrap()
     .required_field("row");
     let incoming = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&loose).unwrap(),
+        loose.clone().into_arrow_schema().unwrap(),
         vec![
             Arc::new(StringArray::from(vec![Some("MSFT")])),
             Arc::new(arrow_array::Int32Array::from(vec![3])),
@@ -408,7 +405,7 @@ fn appending_casts_incoming_batches_to_the_target_shape() {
 
     handle
         .append_arrow_reader(
-            crate::arrow::batch_reader(incoming.schema(), [incoming]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
             &options,
         )
         .unwrap();
@@ -437,14 +434,14 @@ fn a_cast_that_cannot_be_planned_leaves_the_resource_alone() {
         .unwrap()
         .required_field("row");
     let incoming = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&hostile).unwrap(),
+        hostile.clone().into_arrow_schema().unwrap(),
         vec![Arc::new(StringArray::from(vec!["not a number"]))],
     )
     .unwrap();
 
     let message = handle
         .append_arrow_reader(
-            crate::arrow::batch_reader(incoming.schema(), [incoming]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
             &options,
         )
         .unwrap_err()
@@ -528,7 +525,7 @@ fn merge_refuses_an_empty_match_key_before_pulling_the_reader() {
 
     let pulls = Arc::new(AtomicUsize::new(0));
     let reader: BatchReader = Box::new(Counting {
-        schema: crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        schema: schema().into_arrow_schema().unwrap(),
         pulls: Arc::clone(&pulls),
     });
     let mut handle = handle("missing-merge-key.arrows");

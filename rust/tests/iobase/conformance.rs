@@ -1,4 +1,5 @@
-use super::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 
 use std::sync::Arc;
 
@@ -8,7 +9,7 @@ use std::sync::Arc;
 /// one per backend; `IOBase` is implemented for the box, so the byte half
 /// of the contract forwards unchanged.
 fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
-    let mut root = crate::holder::local::Folder::temporary()
+    let mut root = yggdryl::holder::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap();
@@ -19,22 +20,22 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("a writable temporary root");
 
-    let memory = Arc::new(crate::holder::fs::MemoryFileSystem::new());
-    crate::holder::fs::FileSystem::create_dir(memory.as_ref(), "bench", false)
+    let memory = Arc::new(yggdryl::holder::fs::MemoryFileSystem::new());
+    yggdryl::holder::fs::FileSystem::create_dir(memory.as_ref(), "bench", false)
         .expect("a writable memory root");
     vec![
         ("buffer", Box::new(Buffer::new()) as Box<dyn IOBase>),
         (
             "local::File",
             Box::new(
-                crate::holder::local::File::create(root.join(format!("{label}.bin")))
+                yggdryl::holder::local::File::create(root.join(format!("{label}.bin")))
                     .expect("a valid path"),
             ),
         ),
         (
             "fs::File",
             Box::new(
-                crate::holder::fs::File::from_path(memory, format!("bench/{label}.bin"), None)
+                yggdryl::holder::fs::File::from_path(memory, format!("bench/{label}.bin"), None)
                     .expect("a valid location"),
             ),
         ),
@@ -45,7 +46,7 @@ fn backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
                 // fixtures cross page boundaries and exercise the cache
                 // rather than living inside one page.
                 Buffer::new().buffered(
-                    crate::holder::buffered::BufferedOptions::default().with_page_size(4),
+                    yggdryl::holder::buffered::BufferedOptions::default().with_page_size(4),
                 ),
             ),
         ),
@@ -63,7 +64,7 @@ fn positional_backends(label: &str) -> Vec<(&'static str, Box<dyn IOBase>)> {
 
 /// Remove whatever the local backend left behind.
 fn cleanup(label: &str) {
-    let mut root = crate::holder::local::Folder::temporary()
+    let mut root = yggdryl::holder::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap();
@@ -73,7 +74,7 @@ fn cleanup(label: &str) {
     ));
     // Teardown goes through the abstraction, not around it: a folder
     // handle already addresses this tree, and absence is a no-op success.
-    if let Ok(mut folder) = crate::holder::local::Folder::new(&root) {
+    if let Ok(mut folder) = yggdryl::holder::local::Folder::new(&root) {
         folder.remove(true).expect("a removable tree");
     }
 }
@@ -131,8 +132,8 @@ fn every_backend_reads_positionally_without_a_shared_cursor() {
 fn every_backend_reads_a_missing_resource_as_empty() {
     // The laziness contract: absence is emptiness on the read path, so a
     // caller probes a location without an existence check first.
-    let memory = Arc::new(crate::holder::fs::MemoryFileSystem::new());
-    let mut root = crate::holder::local::Folder::temporary()
+    let memory = Arc::new(yggdryl::holder::fs::MemoryFileSystem::new());
+    let mut root = yggdryl::holder::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap();
@@ -143,13 +144,13 @@ fn every_backend_reads_a_missing_resource_as_empty() {
         (
             "local::File",
             Box::new(
-                crate::holder::local::File::new(root.join("absent.bin")).expect("a valid path"),
+                yggdryl::holder::local::File::new(root.join("absent.bin")).expect("a valid path"),
             ),
         ),
         (
             "fs::File",
             Box::new(
-                crate::holder::fs::File::from_path(memory, "nowhere/absent.bin", None)
+                yggdryl::holder::fs::File::from_path(memory, "nowhere/absent.bin", None)
                     .expect("a valid location"),
             ),
         ),
@@ -251,10 +252,10 @@ fn every_backend_appends_where_it_says_it_did() {
 
 #[test]
 fn arrow_filesystem_handles_reject_unavailable_random_mutation() {
-    let filesystem = Arc::new(crate::holder::fs::MemoryFileSystem::new());
-    crate::holder::fs::FileSystem::create_dir(filesystem.as_ref(), "bench", false)
+    let filesystem = Arc::new(yggdryl::holder::fs::MemoryFileSystem::new());
+    yggdryl::holder::fs::FileSystem::create_dir(filesystem.as_ref(), "bench", false)
         .expect("a writable memory root");
-    let mut handle = crate::holder::fs::File::from_path(filesystem, "bench/random.bin", None)
+    let mut handle = yggdryl::holder::fs::File::from_path(filesystem, "bench/random.bin", None)
         .expect("a valid location");
     handle
         .write_all_bytes(b"value")
@@ -388,7 +389,11 @@ fn every_backend_round_trips_a_content_coding() {
         let payload = "symbol,price\n".repeat(500).into_bytes();
         handle.write_all_bytes(&payload).expect("a writable handle");
 
-        for codec in [crate::Codec::Gzip, crate::Codec::Zlib, crate::Codec::Zstd] {
+        for codec in [
+            yggdryl::Codec::Gzip,
+            yggdryl::Codec::Zlib,
+            yggdryl::Codec::Zstd,
+        ] {
             let mut compressed = Buffer::new();
             handle
                 .compress_into(&mut compressed, codec)

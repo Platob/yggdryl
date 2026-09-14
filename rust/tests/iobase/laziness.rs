@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::super::{IOBase, Listing};
-use crate::holder::Holder;
-use crate::{Error, IOKind, MediaType, MimeType, Result, Url};
+use yggdryl::holder::Holder;
+use yggdryl::{Error, IOKind, MediaType, MimeType, Result, Url};
+use yggdryl::{IOBase, Listing};
 
 /// A container of `width` synthetic leaves that counts what it produces.
 ///
@@ -47,8 +47,8 @@ impl Wide {
     }
 }
 
-impl crate::IOMedia for Wide {
-    crate::impl_default_iomedia!();
+impl yggdryl::IOMedia for Wide {
+    yggdryl::impl_default_iomedia!();
 }
 
 impl IOBase for Wide {
@@ -108,7 +108,7 @@ impl IOBase for Wide {
                 if fails_at == Some(index) {
                     return Err(Error::absent("file", format!("{root}/part-{index}")));
                 }
-                Ok(Holder::from(crate::holder::Buffer::new()))
+                Ok(Holder::from(yggdryl::holder::Buffer::new()))
             }))
         }))
     }
@@ -160,12 +160,12 @@ fn a_failing_entry_ends_the_listing_without_discarding_what_came_before() {
 
 #[test]
 fn the_same_listing_over_the_same_state_yields_the_same_order_twice() {
-    let root = crate::holder::local::Folder::temporary()
+    let root = yggdryl::holder::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-order-{}", std::process::id()));
-    let mut folder = crate::holder::local::Folder::new(&root).expect("a local folder");
+    let mut folder = yggdryl::holder::local::Folder::new(&root).expect("a local folder");
     folder.remove(true).ok();
     for name in ["c.bin", "a.bin", "b.bin"] {
         let mut leaf = folder.child_by_path(name).expect("a child");
@@ -193,12 +193,12 @@ fn the_same_listing_over_the_same_state_yields_the_same_order_twice() {
 
 #[test]
 fn a_glob_whose_fixed_prefix_loses_lists_nothing_beneath_it() {
-    let root = crate::holder::local::Folder::temporary()
+    let root = yggdryl::holder::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-prefix-{}", std::process::id()));
-    let mut folder = crate::holder::local::Folder::new(&root).expect("a local folder");
+    let mut folder = yggdryl::holder::local::Folder::new(&root).expect("a local folder");
     folder.remove(true).ok();
     let mut leaf = folder
         .child_by_path("year=2024/month=01/part-0.parquet")
@@ -237,12 +237,12 @@ fn a_recursive_walk_descends_one_level_at_a_time() {
     // one leaf. The walk yields an entry before the subtree under it, and
     // what it retains is one level's cursor per *open* level - the
     // frontier - never the thirty-two entries it will eventually yield.
-    let root = crate::holder::local::Folder::temporary()
+    let root = yggdryl::holder::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path")
         .join(format!("yggdryl-deep-{}", std::process::id()));
-    let mut folder = crate::holder::local::Folder::new(&root).expect("a local folder");
+    let mut folder = yggdryl::holder::local::Folder::new(&root).expect("a local folder");
     folder.remove(true).ok();
     let mut path = String::new();
     for level in 0..16 {

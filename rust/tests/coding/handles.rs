@@ -1,9 +1,9 @@
 //! A coded handle presents the decoded bytes and stores the encoded ones.
 
-use super::Coding;
-use crate::holder::Buffer;
-use crate::{Codec, Level, MimeType, Url};
-use crate::{IOBase, IOMedia};
+use yggdryl::coding::Coding;
+use yggdryl::holder::Buffer;
+use yggdryl::{Codec, Level, MimeType, Url};
+use yggdryl::{IOBase, IOMedia};
 
 #[derive(Debug)]
 struct SharedReads {
@@ -24,16 +24,16 @@ impl SharedReads {
     }
 }
 
-impl crate::IOMedia for SharedReads {
-    crate::impl_default_iomedia!();
+impl yggdryl::IOMedia for SharedReads {
+    yggdryl::impl_default_iomedia!();
 }
 
 impl IOBase for SharedReads {
-    crate::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url, media_type,
+    yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url, media_type,
         set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
         is_tabular, is_io);
 
-    fn pread(&self, offset: u64, target: &mut [u8]) -> crate::Result<usize> {
+    fn pread(&self, offset: u64, target: &mut [u8]) -> yggdryl::Result<usize> {
         self.reads
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.handle.pread(offset, target)
@@ -179,7 +179,7 @@ fn truncation_shrinks_and_grows_the_decoded_value() {
 
 #[test]
 fn an_open_handle_answers_reads_out_of_what_it_holds() {
-    use crate::holder::buffered::tests::Counting;
+    use super::counting::Counting;
 
     let mut source = Coding::new(Buffer::new(), Codec::Gzip);
     source.write_all_bytes(PAYLOAD).unwrap();
@@ -225,7 +225,7 @@ fn closed_codings_stream_bounded_chunks_from_decoded_offsets() {
         let chunks = handle
             .pstream_bytes(7, 13)
             .unwrap()
-            .collect::<crate::Result<Vec<_>>>()
+            .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         assert!(
             chunks
@@ -261,7 +261,7 @@ fn compressed_headers_and_trailers_may_cross_source_chunks() {
         let decoded = handle
             .pstream_bytes(0, 1)
             .unwrap()
-            .collect::<crate::Result<Vec<_>>>()
+            .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
 
         assert!(decoded.iter().all(|chunk| chunk.len() == 1), "{codec}");
@@ -272,7 +272,7 @@ fn compressed_headers_and_trailers_may_cross_source_chunks() {
 
 #[test]
 fn one_byte_decoded_chunks_keep_a_bounded_encoded_transport_window() {
-    use crate::holder::buffered::tests::Counting;
+    use super::counting::Counting;
 
     // Deliberately incompressible enough to span many transport reads. The
     // regression was one `pread` per encoded byte when output batches were 1.
@@ -299,7 +299,7 @@ fn one_byte_decoded_chunks_keep_a_bounded_encoded_transport_window() {
 
 #[test]
 fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
-    use crate::holder::buffered::tests::Counting;
+    use super::counting::Counting;
 
     let payload = PAYLOAD.repeat(64);
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
@@ -336,7 +336,7 @@ fn a_closed_stream_is_lazy_and_never_measures_or_materializes() {
 
 #[test]
 fn closed_positional_reads_decode_only_the_requested_prefix() {
-    use crate::holder::buffered::tests::Counting;
+    use super::counting::Counting;
 
     let mut state = 0xA537_1D09_u32;
     let payload: Vec<u8> = (0..4 * 1024 * 1024)
@@ -382,12 +382,12 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
     let encoded = Codec::Gzip.dump(&payload).unwrap();
 
     let (direct_source, direct_reads) = SharedReads::new(encoded.clone());
-    let direct = crate::coding::gzip::Gzip::new(direct_source);
+    let direct = yggdryl::coding::gzip::Gzip::new(direct_source);
     assert_eq!(direct.read_all_bytes().unwrap(), payload);
     let direct_reads = direct_reads.load(std::sync::atomic::Ordering::Relaxed);
 
     let (boxed_source, boxed_reads) = SharedReads::new(encoded);
-    let boxed_inner = crate::coding::gzip::Gzip::new(boxed_source);
+    let boxed_inner = yggdryl::coding::gzip::Gzip::new(boxed_source);
     let boxed: Box<dyn IOBase> = Box::new(boxed_inner);
     assert_eq!(boxed.read_all_bytes().unwrap(), payload);
     assert!(direct_reads > 0);
@@ -403,9 +403,9 @@ fn boxed_coding_helpers_keep_the_native_single_stream_path() {
 fn a_coded_ipc_view_streams_through_its_owning_reader() {
     use std::sync::Arc;
 
-    use crate::media::{IORecordOptions, RecordOptions};
-    use crate::{DataType, MimeType};
     use arrow_array::{Int64Array, RecordBatch};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{DataType, MimeType};
 
     let field = DataType::from_fields([DataType::Int64.required_field("id")])
         .unwrap()
@@ -417,10 +417,10 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
     )
     .unwrap();
     let mut plain = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
-    crate::media::ipc::overwrite_arrow_reader(
+    yggdryl::media::ipc::overwrite_arrow_reader(
         &mut plain,
-        crate::arrow::batch_reader(schema, [batch]),
-        &crate::media::ipc::IpcOptions::new(),
+        yggdryl::arrow::batch_reader(schema, [batch]),
+        &yggdryl::media::ipc::IpcOptions::new(),
     )
     .unwrap();
 
@@ -446,7 +446,7 @@ fn a_coded_ipc_view_streams_through_its_owning_reader() {
 
 #[test]
 fn an_open_stream_reads_only_its_decoded_snapshot() {
-    use crate::holder::buffered::tests::Counting;
+    use super::counting::Counting;
 
     for codec in [Codec::Gzip, Codec::Zlib, Codec::Zstd] {
         let encoded = codec.dump(PAYLOAD).unwrap();
@@ -458,7 +458,7 @@ fn an_open_stream_reads_only_its_decoded_snapshot() {
         let chunks = handle
             .pstream_bytes(11, 19)
             .unwrap()
-            .collect::<crate::Result<Vec<_>>>()
+            .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(chunks.concat(), PAYLOAD[11..], "{codec}");
         assert_eq!(handle.handle().reads(), reads, "{codec} re-read its source");
@@ -503,9 +503,9 @@ fn empty_and_invalid_closed_streams_have_stable_end_states() {
 }
 
 mod dispatched {
-    use super::super::Coded;
-    use crate::holder::Buffer;
-    use crate::{Codec, IOBase, Level, Url};
+    use yggdryl::coding::Coded;
+    use yggdryl::holder::Buffer;
+    use yggdryl::{Codec, IOBase, Level, Url};
 
     const PAYLOAD: &[u8] = b"symbol,price\nAAPL,1\nAAPL,2\nAAPL,3\nAAPL,4\nAAPL,5\nAAPL,6\n\
     AAPL,7\nAAPL,8\nAAPL,9\nAAPL,10\nAAPL,11\nAAPL,12\n";
@@ -560,7 +560,7 @@ mod dispatched {
 
         let inner = handle.into_handle().unwrap();
         let encoded = inner.read_all_bytes().unwrap();
-        assert_eq!(crate::coding::gzip::load(&encoded).unwrap(), PAYLOAD);
+        assert_eq!(yggdryl::coding::gzip::load(&encoded).unwrap(), PAYLOAD);
     }
 
     #[test]
@@ -572,9 +572,9 @@ mod dispatched {
 }
 
 mod held {
-    use crate::holder::buffered::BufferedOptions;
-    use crate::holder::{Buffer, Holder};
-    use crate::{Codec, IOBase, Level, MimeType, Url};
+    use yggdryl::holder::buffered::BufferedOptions;
+    use yggdryl::holder::{Buffer, Holder};
+    use yggdryl::{Codec, IOBase, Level, MimeType, Url};
 
     const PLAIN: &[u8] = b"[INFO] alpha\n[WARN] beta\n";
 
@@ -640,11 +640,11 @@ mod held {
     #[cfg(feature = "arrow")]
     #[test]
     fn a_coded_holder_reads_its_text_records_through_the_decoded_view() {
-        use crate::IOMedia as _;
+        use yggdryl::IOMedia as _;
 
         let decoded = compressed("app.log.gz", Codec::Gzip).into_coded();
         let options = decoded.record_options().unwrap();
-        assert!(matches!(options, crate::media::RecordOptions::Text(_)));
+        assert!(matches!(options, yggdryl::media::RecordOptions::Text(_)));
 
         let bodies = decoded
             .read_arrow_reader(&options)
@@ -673,9 +673,11 @@ mod transport {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use super::super::Coding;
-    use crate::holder::Buffer;
-    use crate::{Codec, DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, IOMedia, Url};
+    use yggdryl::coding::Coding;
+    use yggdryl::holder::Buffer;
+    use yggdryl::{
+        Codec, DEFAULT_FETCH_BYTE_SIZE, DEFAULT_STREAM_BATCH_SIZE, IOBase, IOMedia, Url,
+    };
 
     /// A handle that records how many bytes each read asks it for.
     #[derive(Debug)]
@@ -686,15 +688,15 @@ mod transport {
     }
 
     impl IOMedia for Asked {
-        crate::impl_default_iomedia!();
+        yggdryl::impl_default_iomedia!();
     }
 
     impl IOBase for Asked {
-        crate::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url,
+        yggdryl::delegate_iobase!(handle: pwrite, size, capacity, reserve, truncate, url,
             media_type, set_media_type, flush, parent, child_by_path, ls, kind, clear, remove,
             is_atomic, is_tabular, is_io);
 
-        fn pread(&self, offset: u64, target: &mut [u8]) -> crate::Result<usize> {
+        fn pread(&self, offset: u64, target: &mut [u8]) -> yggdryl::Result<usize> {
             self.requests.fetch_add(1, Ordering::Relaxed);
             self.bytes.fetch_add(target.len(), Ordering::Relaxed);
             self.handle.pread(offset, target)
@@ -787,7 +789,7 @@ mod transport {
 mod restarts {
     use std::io::Write as _;
 
-    use crate::{Codec, Level};
+    use yggdryl::{Codec, Level};
 
     /// Three segments of a payload, each begun at a restart point.
     fn segmented(codec: Codec) -> (Vec<u8>, Vec<Vec<u8>>) {

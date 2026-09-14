@@ -111,7 +111,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _batches: BatchReader,
         _options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> yggdryl::Result<()> {
         self.reader_calls[0] += 1;
         Ok(())
     }
@@ -120,7 +120,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _batches: BatchReader,
         _options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> yggdryl::Result<()> {
         self.reader_calls[1] += 1;
         Ok(())
     }
@@ -129,7 +129,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _batches: BatchReader,
         _options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> yggdryl::Result<()> {
         self.reader_calls[2] += 1;
         Ok(())
     }
@@ -138,7 +138,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _batch: RecordBatch,
         _options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> yggdryl::Result<()> {
         self.batch_calls[0] += 1;
         Ok(())
     }
@@ -147,7 +147,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _batch: RecordBatch,
         _options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> yggdryl::Result<()> {
         self.batch_calls[1] += 1;
         Ok(())
     }
@@ -156,7 +156,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _batch: RecordBatch,
         _options: &RecordOptions,
-    ) -> crate::Result<()> {
+    ) -> yggdryl::Result<()> {
         self.batch_calls[2] += 1;
         Ok(())
     }
@@ -165,7 +165,7 @@ impl IOMedia for TypedDispatchProbe {
         &mut self,
         _records: I,
         _options: &RecordOptions,
-    ) -> crate::Result<()>
+    ) -> yggdryl::Result<()>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -177,7 +177,7 @@ impl IOMedia for TypedDispatchProbe {
         Ok(())
     }
 
-    fn append_records<I, R>(&mut self, _records: I, _options: &RecordOptions) -> crate::Result<()>
+    fn append_records<I, R>(&mut self, _records: I, _options: &RecordOptions) -> yggdryl::Result<()>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -189,7 +189,7 @@ impl IOMedia for TypedDispatchProbe {
         Ok(())
     }
 
-    fn merge_records<I, R>(&mut self, _records: I, _options: &RecordOptions) -> crate::Result<()>
+    fn merge_records<I, R>(&mut self, _records: I, _options: &RecordOptions) -> yggdryl::Result<()>
     where
         Self: Sized,
         I: IntoIterator<Item = R>,
@@ -203,7 +203,7 @@ impl IOMedia for TypedDispatchProbe {
 }
 
 impl IOBase for TypedDispatchProbe {
-    crate::delegate_iobase!(handle);
+    yggdryl::delegate_iobase!(handle);
 }
 
 #[test]

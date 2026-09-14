@@ -79,13 +79,13 @@ fn an_overwrite_keeps_the_schema_the_resource_already_stores() {
         .unwrap()
         .required_field("row");
     let incoming = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&loose).unwrap(),
+        loose.clone().into_arrow_schema().unwrap(),
         vec![Arc::new(StringArray::from(vec!["7"]))],
     )
     .unwrap();
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(incoming.schema(), [incoming]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
             &options,
         )
         .unwrap();
@@ -131,8 +131,8 @@ fn commit_row_size_controls_exact_publication_counts() {
         );
         let mut options = handle.record_options().unwrap().with_field(schema());
         options.set_commit_row_size(cadence);
-        let source = crate::arrow::batch_reader(
-            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        let source = yggdryl::arrow::batch_reader(
+            schema().into_arrow_schema().unwrap(),
             [rows_batch(&[1, 2]), rows_batch(&[3, 4])],
         );
 
@@ -158,8 +158,8 @@ fn every_write_intent_retains_its_intent_for_each_commit() {
         let plain = handle.record_options().unwrap().with_field(schema());
         handle
             .overwrite_arrow_reader(
-                crate::arrow::batch_reader(
-                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                yggdryl::arrow::batch_reader(
+                    schema().into_arrow_schema().unwrap(),
                     [rows_batch(&[1, 2])],
                 ),
                 &plain,
@@ -168,8 +168,8 @@ fn every_write_intent_retains_its_intent_for_each_commit() {
         handle.reset_publications();
 
         let options = plain.clone().with_commit_row_size(2);
-        let incoming = crate::arrow::batch_reader(
-            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        let incoming = yggdryl::arrow::batch_reader(
+            schema().into_arrow_schema().unwrap(),
             [rows_batch(&[1, 3, 4, 5])],
         );
         match intent {
@@ -285,12 +285,7 @@ fn empty_append_and_merge_do_not_touch_the_destination() {
     // Option discovery is outside the write; count only destination work
     // performed after the empty source crosses the primitive boundary.
     touches.store(0, Ordering::SeqCst);
-    let empty = || {
-        crate::arrow::batch_reader(
-            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-            [],
-        )
-    };
+    let empty = || yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), []);
 
     handle.append_arrow_reader(empty(), &options).unwrap();
     handle
@@ -360,8 +355,8 @@ fn a_later_source_failure_leaves_each_successful_prefix_visible() {
         if intent != "overwrite" {
             handle
                 .overwrite_arrow_reader(
-                    crate::arrow::batch_reader(
-                        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                    yggdryl::arrow::batch_reader(
+                        schema().into_arrow_schema().unwrap(),
                         [rows_batch(&[1, 2])],
                     ),
                     &plain,
@@ -423,8 +418,8 @@ fn a_second_publication_failure_keeps_the_first_commit_visible() {
         .unwrap()
         .with_field(schema())
         .with_commit_row_size(2);
-    let source = crate::arrow::batch_reader(
-        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+    let source = yggdryl::arrow::batch_reader(
+        schema().into_arrow_schema().unwrap(),
         [rows_batch(&[1, 2, 3, 4])],
     );
 
@@ -453,8 +448,8 @@ fn resumed_write_publishes_complete_cadences_and_abort_drops_only_the_remainder(
         session
             .push(
                 &mut handle,
-                crate::arrow::batch_reader(
-                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                yggdryl::arrow::batch_reader(
+                    schema().into_arrow_schema().unwrap(),
                     [rows_batch(&[1, 2])],
                 ),
             )
@@ -466,8 +461,8 @@ fn resumed_write_publishes_complete_cadences_and_abort_drops_only_the_remainder(
         session
             .push(
                 &mut handle,
-                crate::arrow::batch_reader(
-                    crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+                yggdryl::arrow::batch_reader(
+                    schema().into_arrow_schema().unwrap(),
                     [rows_batch(&[3])],
                 ),
             )
@@ -479,10 +474,7 @@ fn resumed_write_publishes_complete_cadences_and_abort_drops_only_the_remainder(
     session
         .push(
             &mut handle,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-                [rows_batch(&[4])],
-            ),
+            yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [rows_batch(&[4])]),
         )
         .unwrap();
     session.abort();
@@ -553,8 +545,8 @@ fn resumed_sessions_keep_append_and_merge_intent_for_every_cadence() {
     let plain = handle.record_options().unwrap().with_field(schema());
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            yggdryl::arrow::batch_reader(
+                schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[1, 2])],
             ),
             &plain,
@@ -567,8 +559,8 @@ fn resumed_sessions_keep_append_and_merge_intent_for_every_cadence() {
     append
         .push(
             &mut handle,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            yggdryl::arrow::batch_reader(
+                schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[3, 4])],
             ),
         )
@@ -586,8 +578,8 @@ fn resumed_sessions_keep_append_and_merge_intent_for_every_cadence() {
     merge
         .push(
             &mut handle,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            yggdryl::arrow::batch_reader(
+                schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[2, 5])],
             ),
         )
@@ -610,8 +602,8 @@ fn resumed_session_covers_large_cadence_multiple_commits_and_terminal_reuse() {
     session
         .push(
             &mut large,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            yggdryl::arrow::batch_reader(
+                schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[1, 2])],
             ),
         )
@@ -623,10 +615,7 @@ fn resumed_session_covers_large_cadence_multiple_commits_and_terminal_reuse() {
     let message = session
         .push(
             &mut large,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-                [rows_batch(&[3])],
-            ),
+            yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [rows_batch(&[3])]),
         )
         .unwrap_err()
         .to_string();
@@ -642,8 +631,8 @@ fn resumed_session_covers_large_cadence_multiple_commits_and_terminal_reuse() {
     exact_session
         .push(
             &mut exact,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            yggdryl::arrow::batch_reader(
+                schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[1, 2, 3, 4])],
             ),
         )
@@ -666,24 +655,21 @@ fn resumed_session_fuses_on_schema_source_and_publication_failures() {
     session
         .push(
             &mut mismatch,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-                [rows_batch(&[1])],
-            ),
+            yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [rows_batch(&[1])]),
         )
         .unwrap();
     let other = DataType::from_fields([DataType::utf8().required_field("id")])
         .unwrap()
         .required_field("row");
     let other_batch = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&other).unwrap(),
+        other.clone().into_arrow_schema().unwrap(),
         vec![Arc::new(StringArray::from(vec!["2"]))],
     )
     .unwrap();
     let message = session
         .push(
             &mut mismatch,
-            crate::arrow::batch_reader(other_batch.schema(), [other_batch]),
+            yggdryl::arrow::batch_reader(other_batch.schema(), [other_batch]),
         )
         .unwrap_err()
         .to_string();
@@ -725,8 +711,8 @@ fn resumed_session_fuses_on_schema_source_and_publication_failures() {
     let error = publication_session
         .push(
             &mut publication,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+            yggdryl::arrow::batch_reader(
+                schema().into_arrow_schema().unwrap(),
                 [rows_batch(&[1, 2])],
             ),
         )
@@ -749,10 +735,7 @@ fn resumed_leaf_keeps_the_target_captured_before_an_external_replacement() {
     session
         .push(
             &mut handle,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-                [rows_batch(&[1])],
-            ),
+            yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [rows_batch(&[1])]),
         )
         .unwrap();
 
@@ -761,14 +744,14 @@ fn resumed_leaf_keeps_the_target_captured_before_an_external_replacement() {
         .unwrap()
         .required_field("other");
     let loose_batch = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&loose).unwrap(),
+        loose.clone().into_arrow_schema().unwrap(),
         vec![Arc::new(StringArray::from(vec!["9"]))],
     )
     .unwrap();
     let external = handle.record_options().unwrap();
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(loose_batch.schema(), [loose_batch]),
+            yggdryl::arrow::batch_reader(loose_batch.schema(), [loose_batch]),
             &external,
         )
         .unwrap();
@@ -779,10 +762,7 @@ fn resumed_leaf_keeps_the_target_captured_before_an_external_replacement() {
     session
         .push(
             &mut handle,
-            crate::arrow::batch_reader(
-                crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-                [rows_batch(&[2])],
-            ),
+            yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [rows_batch(&[2])]),
         )
         .unwrap();
     session.finish(&mut handle).unwrap();
@@ -799,12 +779,7 @@ fn bounded_empty_intents_publish_only_overwrite() {
     handle.overwrite_arrow_reader(reader(), &plain).unwrap();
     handle.reset_publications();
     let bounded = plain.clone().with_commit_row_size(2);
-    let empty = || {
-        crate::arrow::batch_reader(
-            crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-            [],
-        )
-    };
+    let empty = || yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), []);
 
     handle.append_arrow_reader(empty(), &bounded).unwrap();
     handle

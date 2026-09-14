@@ -2,10 +2,10 @@
 
 use std::io::{Read, Write};
 
-use super::IOBase;
-use crate::Codec;
-use crate::holder::Buffer;
-use crate::{Field, MediaType, MimeType, Scalar, Url};
+use yggdryl::Codec;
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+use yggdryl::{Field, MediaType, MimeType, Scalar, Url};
 
 #[test]
 fn positional_writes_grow_and_zero_fill_the_gap() {
@@ -277,9 +277,9 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    use crate::holder::Holder;
-    use crate::{IOKind, Result};
-    use crate::{IOMedia, Listing};
+    use yggdryl::holder::Holder;
+    use yggdryl::{IOKind, Result};
+    use yggdryl::{IOMedia, Listing};
 
     struct Probe {
         bytes: Buffer,
@@ -287,11 +287,11 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     }
 
     impl IOMedia for Probe {
-        crate::impl_default_iomedia!();
+        yggdryl::impl_default_iomedia!();
     }
 
     impl IOBase for Probe {
-        crate::delegate_iobase!(bytes: pread, pstream_bytes, pwrite, size, capacity, reserve,
+        yggdryl::delegate_iobase!(bytes: pread, pstream_bytes, pwrite, size, capacity, reserve,
             truncate, url, media_type, set_media_type, flush, clear, remove);
 
         fn open(&mut self) -> Result<()> {
@@ -329,7 +329,7 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     }
 
     let state = Arc::new(AtomicBool::new(false));
-    let mut handle: Box<dyn IOBase> = Box::new(crate::Cursor::new(Probe {
+    let mut handle: Box<dyn IOBase> = Box::new(yggdryl::Cursor::new(Probe {
         bytes: Buffer::new(),
         opened: Arc::clone(&state),
     }));
@@ -366,15 +366,3 @@ fn boxed_cursors_preserve_lifecycle_hierarchy_and_kind() {
     assert!(handle.closed());
     assert!(!state.load(Ordering::SeqCst));
 }
-
-mod applying;
-mod buffered_handle;
-mod conformance;
-mod laziness;
-mod lifecycle;
-/// Any handle reads through one reader and writes through three explicit
-/// intents. Held record batches are zero-copy adapters over those primitives.
-#[cfg(feature = "arrow")]
-#[cfg(feature = "arrow")]
-mod records;
-mod shape;

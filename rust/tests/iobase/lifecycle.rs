@@ -1,7 +1,8 @@
-use super::*;
+use yggdryl::IOBase;
 #[cfg(feature = "arrow")]
-use crate::IOMedia;
-use crate::holder::local::{File, Folder, Path};
+use yggdryl::IOMedia;
+use yggdryl::holder::Buffer;
+use yggdryl::holder::local::{File, Folder, Path};
 
 /// A temp root nothing else in this file uses.
 fn root(label: &str) -> std::path::PathBuf {
@@ -35,16 +36,16 @@ struct Counted {
 // would supply is one this double has to count. The counters are
 // per-handle and never shared across threads; `IOBase` requires `Send`,
 // and `Cell` is `Send` when its contents are.
-impl crate::IOMedia for Counted {
-    crate::impl_default_iomedia!();
+impl yggdryl::IOMedia for Counted {
+    yggdryl::impl_default_iomedia!();
 }
 
 impl IOBase for Counted {
-    fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+    fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
         self.bytes.pread(offset, buffer)
     }
 
-    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> yggdryl::Result<usize> {
         self.bytes.pwrite(offset, bytes)
     }
 
@@ -52,29 +53,29 @@ impl IOBase for Counted {
         self.bytes.capacity()
     }
 
-    fn reserve(&mut self, capacity: u64) -> crate::Result<()> {
+    fn reserve(&mut self, capacity: u64) -> yggdryl::Result<()> {
         self.bytes.reserve(capacity)
     }
 
-    fn truncate(&mut self, size: u64) -> crate::Result<()> {
+    fn truncate(&mut self, size: u64) -> yggdryl::Result<()> {
         self.bytes.truncate(size)
     }
 
-    fn url(&self) -> Option<&crate::Url> {
+    fn url(&self) -> Option<&yggdryl::Url> {
         self.bytes.url()
     }
 
-    fn media_type(&self) -> &crate::MediaType {
+    fn media_type(&self) -> &yggdryl::MediaType {
         self.bytes.media_type()
     }
 
-    fn set_media_type(&mut self, media_type: crate::MediaType) {
+    fn set_media_type(&mut self, media_type: yggdryl::MediaType) {
         self.bytes.set_media_type(media_type);
     }
 
-    fn kind(&self) -> crate::IOKind {
+    fn kind(&self) -> yggdryl::IOKind {
         self.kinds.set(self.kinds.get() + 1);
-        crate::IOKind::Memory
+        yggdryl::IOKind::Memory
     }
 
     fn size(&self) -> u64 {
@@ -82,17 +83,17 @@ impl IOBase for Counted {
         self.bytes.size()
     }
 
-    fn ls(&self, _recursive: bool, _include_private: bool) -> crate::Listing {
+    fn ls(&self, _recursive: bool, _include_private: bool) -> yggdryl::Listing {
         self.listings.set(self.listings.get() + 1);
-        crate::Listing::empty()
+        yggdryl::Listing::empty()
     }
 
-    fn clear(&mut self) -> crate::Result<()> {
+    fn clear(&mut self) -> yggdryl::Result<()> {
         self.clears.set(self.clears.get() + 1);
         self.bytes.clear()
     }
 
-    fn remove(&mut self, recursive: bool) -> crate::Result<()> {
+    fn remove(&mut self, recursive: bool) -> yggdryl::Result<()> {
         // Exactly what every backend does: issue the delete, treat the
         // store's own not-found answer as success, probe nothing first.
         self.deletes.set(self.deletes.get() + 1);
@@ -169,7 +170,7 @@ fn a_container_clears_empty_and_removes_by_recursion() {
     assert!(
         folder
             .ls(true, true)
-            .collect::<crate::Result<Vec<_>>>()
+            .collect::<yggdryl::Result<Vec<_>>>()
             .expect("a listing")
             .is_empty(),
         "and is empty"
@@ -215,18 +216,18 @@ fn a_generic_path_routes_on_the_kind_it_already_resolved() {
         .expect("a write");
 
     let mut path = Path::new(&leaf).expect("a location");
-    assert_eq!(path.kind(), crate::IOKind::File);
+    assert_eq!(path.kind(), yggdryl::IOKind::File);
     path.remove(false).expect("a removable leaf");
     assert!(!leaf.exists());
 
     let mut container = Path::new(&root).expect("a location");
-    assert_eq!(container.kind(), crate::IOKind::Directory);
+    assert_eq!(container.kind(), yggdryl::IOKind::Directory);
     container.remove(true).expect("a removable container");
     assert!(!root.exists());
 
     // Undecided is absence, which is a no-op success.
     let mut absent = Path::new(root.join("never")).expect("a location");
-    assert_eq!(absent.kind(), crate::IOKind::Unknown);
+    assert_eq!(absent.kind(), yggdryl::IOKind::Unknown);
     absent.clear().expect("a no-op clear");
     absent.remove(true).expect("a no-op removal");
 }
@@ -272,7 +273,7 @@ fn a_buffer_gives_its_allocation_back() {
 fn a_coding_handle_removes_the_encoded_resource() {
     let root = root("coded");
     let path = root.join("trades.csv.gz");
-    let mut coded = crate::coding::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
+    let mut coded = yggdryl::coding::gzip::Gzip::new(File::new(&path).expect("a local leaf"));
     coded
         .write_all_bytes(b"symbol,price\n")
         .expect("a decoded write");
@@ -293,13 +294,13 @@ fn a_coding_handle_removes_the_encoded_resource() {
 #[cfg(feature = "arrow")]
 #[test]
 fn a_media_handle_drops_its_cache_as_part_of_the_removal() {
-    use crate::arrow::batch_reader;
-    use crate::media::ipc::Ipc;
+    use yggdryl::arrow::batch_reader;
+    use yggdryl::media::ipc::Ipc;
 
-    let field = crate::DataType::from_fields([crate::DataType::Int64.required_field("id")])
+    let field = yggdryl::DataType::from_fields([yggdryl::DataType::Int64.required_field("id")])
         .expect("a struct root")
         .required_field("row");
-    let schema = crate::arrow::arrow_schema_from_field(&field).expect("an Arrow schema");
+    let schema = field.clone().into_arrow_schema().expect("an Arrow schema");
 
     let mut media = Ipc::new(Buffer::new());
     let options = media.record_options().expect("IPC options");

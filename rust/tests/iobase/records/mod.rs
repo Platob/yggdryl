@@ -7,11 +7,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use arrow_array::{Int64Array, RecordBatch, RecordBatchReader, StringArray};
 use arrow_schema::{ArrowError, SchemaRef};
 
-use crate::arrow::BatchReader;
-use crate::holder::Buffer;
-use crate::media::{IORecordOptions, RecordOptions};
-use crate::{ArrowWriteSession, IOBase, IOMedia};
-use crate::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
+use yggdryl::arrow::BatchReader;
+use yggdryl::holder::Buffer;
+use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::{ArrowWriteSession, IOBase, IOMedia};
+use yggdryl::{DataType, Error, Field, IOMode, MimeType, Scalar, Url};
 
 fn schema() -> Field {
     DataType::from_fields([
@@ -24,7 +24,7 @@ fn schema() -> Field {
 
 fn batch() -> RecordBatch {
     RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        schema().into_arrow_schema().unwrap(),
         vec![
             Arc::new(Int64Array::from(vec![1, 2])),
             Arc::new(StringArray::from(vec![Some("AAPL"), None])),
@@ -35,10 +35,7 @@ fn batch() -> RecordBatch {
 
 /// The batches a write takes: one reader over one two-row batch.
 fn reader() -> BatchReader {
-    crate::arrow::batch_reader(
-        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-        [batch()],
-    )
+    yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [batch()])
 }
 
 fn handle(name: &str) -> Buffer {
@@ -60,7 +57,7 @@ fn rows(handle: &impl IOBase, options: &RecordOptions) -> usize {
 
 fn rows_batch(ids: &[i64]) -> RecordBatch {
     RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        schema().into_arrow_schema().unwrap(),
         vec![
             Arc::new(Int64Array::from(ids.to_vec())),
             Arc::new(StringArray::from(
@@ -103,16 +100,16 @@ impl PublicationProbe {
     }
 }
 
-impl crate::IOMedia for PublicationProbe {
-    crate::impl_default_iomedia!();
+impl yggdryl::IOMedia for PublicationProbe {
+    yggdryl::impl_default_iomedia!();
 }
 
 impl IOBase for PublicationProbe {
-    fn pread(&self, offset: u64, buffer: &mut [u8]) -> crate::Result<usize> {
+    fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
         self.handle.pread(offset, buffer)
     }
 
-    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> crate::Result<usize> {
+    fn pwrite(&mut self, offset: u64, bytes: &[u8]) -> yggdryl::Result<usize> {
         self.handle.pwrite(offset, bytes)
     }
 
@@ -124,11 +121,11 @@ impl IOBase for PublicationProbe {
         self.handle.capacity()
     }
 
-    fn reserve(&mut self, capacity: u64) -> crate::Result<()> {
+    fn reserve(&mut self, capacity: u64) -> yggdryl::Result<()> {
         self.handle.reserve(capacity)
     }
 
-    fn truncate(&mut self, size: u64) -> crate::Result<()> {
+    fn truncate(&mut self, size: u64) -> yggdryl::Result<()> {
         self.handle.truncate(size)
     }
 
@@ -136,27 +133,27 @@ impl IOBase for PublicationProbe {
         self.handle.url()
     }
 
-    fn media_type(&self) -> &crate::MediaType {
+    fn media_type(&self) -> &yggdryl::MediaType {
         self.handle.media_type()
     }
 
-    fn set_media_type(&mut self, media_type: crate::MediaType) {
+    fn set_media_type(&mut self, media_type: yggdryl::MediaType) {
         self.handle.set_media_type(media_type);
     }
 
-    fn kind(&self) -> crate::IOKind {
+    fn kind(&self) -> yggdryl::IOKind {
         self.destination_touches.fetch_add(1, Ordering::SeqCst);
-        crate::IOKind::Memory
+        yggdryl::IOKind::Memory
     }
 
-    fn write_all_bytes(&mut self, bytes: &[u8]) -> crate::Result<()> {
+    fn write_all_bytes(&mut self, bytes: &[u8]) -> yggdryl::Result<()> {
         let publication = self.publications.fetch_add(1, Ordering::SeqCst) + 1;
         self.pulls_when_published
             .lock()
             .unwrap()
             .push(self.source_pulls.load(Ordering::SeqCst));
         if self.fail_publication == Some(publication) {
-            return Err(crate::Error::Io(std::io::Error::other(format!(
+            return Err(yggdryl::Error::Io(std::io::Error::other(format!(
                 "publication {publication} refused"
             ))));
         }
@@ -192,7 +189,7 @@ fn counted_source(
     batches: impl IntoIterator<Item = std::result::Result<RecordBatch, ArrowError>>,
 ) -> BatchReader {
     Box::new(CountedSource {
-        schema: crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
+        schema: schema().into_arrow_schema().unwrap(),
         batches: batches.into_iter().collect(),
         pulls,
     })

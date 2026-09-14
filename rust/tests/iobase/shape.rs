@@ -1,13 +1,14 @@
-use super::{Buffer, IOBase};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
 
-use crate::coding::Coding;
-use crate::holder::Holder;
-use crate::holder::buffered::tests::Counting;
-use crate::{Codec, IOKind, MediaType, MimeType};
+use super::counting::Counting;
+use yggdryl::coding::Coding;
+use yggdryl::holder::Holder;
+use yggdryl::{Codec, IOKind, MediaType, MimeType};
 
 /// A writable temporary root of this test's own.
 fn root(label: &str) -> std::path::PathBuf {
-    let mut path = crate::holder::local::Folder::temporary()
+    let mut path = yggdryl::holder::local::Folder::temporary()
         .expect("the temporary directory")
         .path()
         .expect("a platform path");
@@ -67,19 +68,19 @@ fn a_named_location_answers_before_anything_exists() {
 
     // Nothing has been written, so the kind is undecided - and the name
     // still says which surface reads it, exactly as the media type does.
-    let missing = crate::holder::local::Path::new(path.join("trades.parquet")).unwrap();
+    let missing = yggdryl::holder::local::Path::new(path.join("trades.parquet")).unwrap();
     assert_eq!(missing.kind(), IOKind::Unknown);
     assert_eq!(missing.media_type().base(), &MimeType::PARQUET);
     assert!(missing.is_tabular());
     assert!(!missing.is_atomic());
 
-    let notes = crate::holder::local::Path::new(path.join("notes.txt")).unwrap();
+    let notes = yggdryl::holder::local::Path::new(path.join("notes.txt")).unwrap();
     assert_eq!(notes.kind(), IOKind::Unknown);
     assert!(notes.is_atomic());
     assert!(!notes.is_tabular());
 
     // The leaf implementation answers the same, existing or not.
-    let leaf = crate::holder::local::File::new(path.join("trades.arrows")).unwrap();
+    let leaf = yggdryl::holder::local::File::new(path.join("trades.arrows")).unwrap();
     assert!(leaf.is_tabular());
     assert!(!leaf.is_atomic());
 
@@ -93,7 +94,7 @@ fn a_folder_reads_as_the_table_beneath_it() {
     std::fs::create_dir_all(lake.join("year=2024/month=01")).unwrap();
     std::fs::write(lake.join("year=2024/month=01/part-0.parquet"), b"PAR1").unwrap();
 
-    let folder = crate::holder::local::Folder::new(&lake).unwrap();
+    let folder = yggdryl::holder::local::Folder::new(&lake).unwrap();
     assert_eq!(folder.kind(), IOKind::Directory);
     assert!(folder.is_container());
     // The probe descends to the first leaf; a folder is never one whole
@@ -106,19 +107,19 @@ fn a_folder_reads_as_the_table_beneath_it() {
     let logs = path.join("logs");
     std::fs::create_dir_all(&logs).unwrap();
     std::fs::write(logs.join("run.txt"), b"started").unwrap();
-    let folder = crate::holder::local::Folder::new(&logs).unwrap();
+    let folder = yggdryl::holder::local::Folder::new(&logs).unwrap();
     assert!(!folder.is_tabular());
     assert!(!folder.is_atomic());
     assert!(!folder.is_io());
 
     // So is an empty one, and so is a folder that does not exist yet.
-    let empty = crate::holder::local::Folder::new(path.join("empty")).unwrap();
+    let empty = yggdryl::holder::local::Folder::new(path.join("empty")).unwrap();
     assert!(!empty.is_tabular());
     assert!(!empty.is_atomic());
     assert!(!empty.is_io());
 
     // A location resolving to that lake answers exactly as the folder did.
-    let located = crate::holder::local::Path::new(&lake).unwrap();
+    let located = yggdryl::holder::local::Path::new(&lake).unwrap();
     assert_eq!(located.kind(), IOKind::Directory);
     assert!(located.is_tabular());
     assert!(!located.is_atomic());
@@ -133,18 +134,18 @@ fn a_record_encoding_handle_answers_without_touching_its_bytes() {
     let plain = Buffer::new();
     assert!(plain.is_atomic());
 
-    let ipc = crate::media::ipc::Ipc::new(Buffer::new());
+    let ipc = yggdryl::media::ipc::Ipc::new(Buffer::new());
     assert!(ipc.is_tabular());
     assert!(!ipc.is_atomic());
 
     #[cfg(feature = "parquet")]
     {
-        let parquet = crate::media::parquet::Parquet::new(Buffer::new());
+        let parquet = yggdryl::media::parquet::Parquet::new(Buffer::new());
         assert!(parquet.is_tabular());
         assert!(!parquet.is_atomic());
     }
 
-    let avro = crate::media::avro::Avro::new(Buffer::new());
+    let avro = yggdryl::media::avro::Avro::new(Buffer::new());
     assert!(avro.is_tabular());
     assert!(!avro.is_atomic());
 }
@@ -171,7 +172,7 @@ fn wrapping_a_handle_keeps_the_shape_it_wraps() {
     handle.set_media_type(MediaType::from(MimeType::PARQUET));
 
     // A page cache is invisible: it answers exactly what it wraps.
-    let cached = handle.buffered(crate::holder::buffered::BufferedOptions::default());
+    let cached = handle.buffered(yggdryl::holder::buffered::BufferedOptions::default());
     assert!(cached.is_tabular());
     assert!(!cached.is_atomic());
 
@@ -188,7 +189,7 @@ fn folder_dimensions_sum_only_the_selected_record_encoding() {
 
     use arrow_array::{Int64Array, RecordBatch};
 
-    use crate::IOMedia as _;
+    use yggdryl::IOMedia as _;
 
     fn rows(values: &[i64]) -> RecordBatch {
         let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
@@ -203,21 +204,21 @@ fn folder_dimensions_sum_only_the_selected_record_encoding() {
     let path = root("dimensions");
     let lake = path.join("lake");
     for (name, values) in [("a.arrows", vec![1, 2]), ("b.arrows", vec![3])] {
-        let mut leaf = crate::holder::local::Path::new(lake.join(name)).expect("a lazy leaf");
+        let mut leaf = yggdryl::holder::local::Path::new(lake.join(name)).expect("a lazy leaf");
         let batch = rows(&values);
         let options = leaf.record_options().expect("IPC options");
         leaf.overwrite_arrow_reader(
-            crate::arrow::batch_reader(batch.schema(), [batch]),
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
             &options,
         )
         .expect("a published IPC leaf");
     }
-    crate::holder::local::Path::new(lake.join("notes.txt"))
+    yggdryl::holder::local::Path::new(lake.join("notes.txt"))
         .expect("a text leaf")
         .write_all_bytes(b"not a table row")
         .expect("a published unrelated leaf");
 
-    let folder = crate::holder::local::Folder::new(&lake).expect("the lake folder");
+    let folder = yggdryl::holder::local::Folder::new(&lake).expect("the lake folder");
     assert_eq!(folder.row_size().expect("metadata row count"), 3);
     assert_eq!(folder.column_size().expect("metadata field width"), 1);
 

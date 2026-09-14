@@ -6,10 +6,10 @@
 //! alone - if it ever needed a line inside `expression/` beyond a `use`,
 //! the trait would be shaped wrong.
 //!
-//! [`ApplyExpression`]: crate::expression::ApplyExpression
+//! [`ApplyExpression`]: yggdryl::expression::ApplyExpression
 
-use crate::expression::{ApplyExpression, Bound, Expression};
-use crate::{DataType, Result, Scalar, Url};
+use yggdryl::expression::{ApplyExpression, Bound, Expression};
+use yggdryl::{DataType, Result, Scalar, Url};
 
 /// An owned listing, seen as a target: applying a predicate yields the
 /// positions of the entries it does not rule out, in listing order.

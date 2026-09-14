@@ -1,12 +1,17 @@
 //! Declared schemas drive native projection and casting.
 
-use super::{Buffer, DataType, Field, IORecordOptions, RecordBatchReader, handle};
+use arrow_array::RecordBatchReader;
+use yggdryl::holder::Buffer;
+use yggdryl::media::IORecordOptions;
+use yggdryl::{DataType, Field};
+
+use super::handle;
 
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 
-use crate::IOMedia;
+use yggdryl::IOMedia;
 
 /// Four columns, so a two-column read is a genuine subset.
 fn wide() -> Field {
@@ -34,7 +39,7 @@ fn stored(name: &str) -> Buffer {
     let mut handle = handle(name);
     let options = handle.record_options().unwrap();
     let batch = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&wide()).unwrap(),
+        wide().into_arrow_schema().unwrap(),
         vec![
             Arc::new(Int64Array::from(vec![1, 2])),
             Arc::new(StringArray::from(vec![Some("AAPL"), None])),
@@ -45,7 +50,7 @@ fn stored(name: &str) -> Buffer {
     .unwrap();
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(batch.schema(), [batch]),
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
             &options,
         )
         .unwrap();

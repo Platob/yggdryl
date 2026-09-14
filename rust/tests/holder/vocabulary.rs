@@ -1,13 +1,13 @@
 //! Composing a holder from the media type its name declares.
 
-use super::{Buffer, Holder};
-use crate::holder::buffered::BufferedOptions;
-use crate::{Codec, IOBase, MimeType, Url};
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::holder::{Buffer, Holder};
+use yggdryl::{Codec, IOBase, MimeType, Url};
 
 const PLAIN: &[u8] = b"symbol,price\nAAPL,1\n";
 
 /// A handle holding `bytes` under the media type `name` declares.
-fn named(name: &str, bytes: Vec<u8>) -> (Holder, crate::MediaType) {
+fn named(name: &str, bytes: Vec<u8>) -> (Holder, yggdryl::MediaType) {
     let url = Url::from_str(&format!("file:///{name}")).unwrap();
     let media_type = url.media_type();
     let holder = Holder::buffer(Buffer::from_bytes(bytes).with_media_type(media_type.clone()));
@@ -121,7 +121,7 @@ fn composing_never_resolves_the_location() {
 fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
     use std::sync::Arc;
 
-    use crate::holder::fs::{BoundLocation, FileSystem, MemoryFileSystem};
+    use yggdryl::holder::fs::{BoundLocation, FileSystem, MemoryFileSystem};
 
     let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
     let stored = Codec::Gzip.dump(PLAIN).unwrap();
@@ -139,7 +139,7 @@ fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
     // A wrapper answers where the bytes live, or every filesystem accessor -
     // the raw path, the URI, the info call - goes blank the moment a handle is
     // composed.
-    let composed = crate::holder::fs::located(location.clone()).into_declared_media();
+    let composed = yggdryl::holder::fs::located(location.clone()).into_declared_media();
     assert!(matches!(composed, Holder::Text(_)), "{composed:?}");
     assert_eq!(
         composed.bound_location().map(BoundLocation::path),
@@ -147,7 +147,7 @@ fn every_wrapper_keeps_the_filesystem_location_it_stands_on() {
     );
     assert_eq!(composed.read_all_bytes().unwrap(), PLAIN);
 
-    let cached = crate::holder::fs::located(location).buffered(BufferedOptions::default());
+    let cached = yggdryl::holder::fs::located(location).buffered(BufferedOptions::default());
     assert_eq!(
         cached.bound_location().map(BoundLocation::path),
         Some("trades.txt.gz")
@@ -174,7 +174,7 @@ fn a_composed_absent_location_is_still_absent() {
     let handle = Holder::local(url.into_path().unwrap())
         .unwrap()
         .into_declared_media();
-    assert_eq!(handle.kind(), crate::IOKind::Unknown);
+    assert_eq!(handle.kind(), yggdryl::IOKind::Unknown);
     assert!(handle.read_all_bytes().unwrap().is_empty());
 }
 
@@ -189,19 +189,19 @@ fn a_composed_whole_read_decodes_once() {
         streams: std::sync::Arc<AtomicUsize>,
     }
 
-    impl crate::IOMedia for Counted {
-        crate::impl_default_iomedia!();
+    impl yggdryl::IOMedia for Counted {
+        yggdryl::impl_default_iomedia!();
     }
 
     impl IOBase for Counted {
-        crate::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve, truncate, url,
+        yggdryl::delegate_iobase!(handle: pread, pwrite, size, capacity, reserve, truncate, url,
             media_type, set_media_type, flush, kind);
 
         fn pstream_bytes(
             &self,
             position: u64,
             batch_size: usize,
-        ) -> crate::Result<crate::ByteStream<'_>> {
+        ) -> yggdryl::Result<yggdryl::ByteStream<'_>> {
             self.streams.fetch_add(1, Ordering::Relaxed);
             self.handle.pstream_bytes(position, batch_size)
         }
@@ -218,7 +218,7 @@ fn a_composed_whole_read_decodes_once() {
     // Text over a coding answers the whole read through the coding rather than
     // through the trait's `size`-then-read default, which would decode the
     // value once to measure it and again to read it.
-    let text = crate::media::text::Text::new(crate::coding::Coding::new(source, Codec::Gzip));
+    let text = yggdryl::media::text::Text::new(yggdryl::coding::Coding::new(source, Codec::Gzip));
     assert_eq!(text.read_all_bytes().unwrap(), PLAIN);
     assert_eq!(streams.load(Ordering::Relaxed), 1);
 }

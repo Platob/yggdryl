@@ -4,8 +4,8 @@ use std::io::SeekFrom;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::*;
-use crate::{Error, IOBase, IOKind, Result};
+use yggdryl::holder::fs::*;
+use yggdryl::{Error, IOBase, IOKind, Result};
 
 fn write(filesystem: &dyn FileSystem, path: &str, bytes: &[u8]) -> Result<()> {
     let mut writer = filesystem.open_output_stream(path, None)?;

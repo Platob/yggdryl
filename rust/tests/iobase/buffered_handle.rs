@@ -1,9 +1,10 @@
 use std::io::{Read, Seek, SeekFrom, Write};
 
-use super::{Buffer, IOBase};
-use crate::IOCursor;
-use crate::holder::buffered::BufferedOptions;
-use crate::holder::buffered::tests::Counting;
+use super::counting::Counting;
+use yggdryl::IOBase;
+use yggdryl::IOCursor;
+use yggdryl::holder::Buffer;
+use yggdryl::holder::buffered::BufferedOptions;
 
 /// Small pages, so a modest fixture crosses several of them.
 const PAGE: usize = 64;
@@ -81,7 +82,7 @@ fn a_cursor_writes_through_and_reads_back_what_it_wrote() {
 
 #[test]
 fn a_buffered_file_reads_from_pages_and_writes_through() {
-    let path = crate::holder::local::Folder::temporary()
+    let path = yggdryl::holder::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap()
@@ -94,13 +95,13 @@ fn a_buffered_file_reads_from_pages_and_writes_through() {
     let payload: Vec<u8> = (0..5_000_u32).map(|index| index as u8).collect();
     std::fs::write(&path, &payload).unwrap();
 
-    let mut handle = crate::holder::local::File::new(&path)
+    let mut handle = yggdryl::holder::local::File::new(&path)
         .unwrap()
         .buffered(BufferedOptions::default().with_page_size(512));
 
     // The wrapper answers for the file it wraps.
     assert_eq!(handle.size(), 5_000);
-    assert_eq!(handle.kind(), crate::IOKind::File);
+    assert_eq!(handle.kind(), yggdryl::IOKind::File);
     assert_eq!(
         handle.url().unwrap().file_name(),
         path.file_name().and_then(std::ffi::OsStr::to_str)
