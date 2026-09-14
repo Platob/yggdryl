@@ -1394,7 +1394,7 @@ fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Resul
 /// otherwise would read mojibake and call it text.
 fn string_array(parameters: StringParameters, values: &[&Scalar]) -> Result<ArrayRef> {
     let charset = parameters.charset();
-    // A fixed width pads into its slot, exactly as a code does.
+    // A fixed width pads into its slot; nothing else in this family does.
     if let Some(width) = parameters.fixed() {
         let slot = usize::try_from(width)
             .map_err(|_| invalid_value("a string width within usize", width))?;

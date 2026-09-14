@@ -259,7 +259,8 @@ fn every_string_datatype_answers_one_question_about_its_charset() {
         Some(Charset::Latin9)
     );
 
-    // A code is an identity with a storage, not a string with a charset.
+    // A code is an identity over a registry, not a string with a charset:
+    // it stores as text without declaring one.
     assert_eq!(DataType::Currency.charset(), None);
     assert!(!DataType::Currency.is_string());
     assert!(DataType::utf8().is_string());

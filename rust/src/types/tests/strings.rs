@@ -388,9 +388,8 @@ fn ordering_and_hashing_are_consistent_for_every_width() {
         DataType::fixed_ascii(4).unwrap().stable_hash(),
         DataType::fixed_ascii(8).unwrap().stable_hash()
     );
-    // A code and the width that holds it are two identities over one
-    // storage, and the hash is the only thing telling three of the four
-    // pairs apart at all.
+    // A code and the width that would hold it are two identities over the
+    // same characters, and the hash is what tells them apart.
     for (code, width) in [
         (DataType::Country, DataType::fixed_ascii(2).unwrap()),
         (DataType::Currency, DataType::fixed_ascii(3).unwrap()),
