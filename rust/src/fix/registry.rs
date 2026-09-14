@@ -709,6 +709,27 @@ impl FixRegistry {
         {
             return Ok(());
         }
+        // One alias reaches one field, and `check_free` is what holds every
+        // other acquisition to that. This is the one write that does not go
+        // through it, so it states the rule itself: a spelling another field
+        // already answers for is that field's and stays there. Noted rather
+        // than refused, exactly as a contended tag is above - the arrival is
+        // what the caller asked for, and the lent spelling is the courtesy
+        // beside it. Taking it would repoint the one entry the index holds,
+        // leaving the first holder unreachable under its own alias and
+        // unable to be updated, and would delete that entry outright when
+        // the borrower departed.
+        if let Some(other) = self.alias_position_by_name(name) {
+            if other != holder {
+                log::debug!(
+                    "alias {name:?} of {:?} stays with {:?}",
+                    self.fields[holder].name(),
+                    self.fields[other].name()
+                );
+                return Ok(());
+            }
+        }
+        let stored = &self.fields[holder];
         let mut lent = stored.clone();
         let aliases: Vec<String> = lent
             .as_fix()

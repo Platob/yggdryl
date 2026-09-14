@@ -1440,6 +1440,90 @@ fn nothing_gates_a_tag_on_the_dictionary_that_speaks_it() {
 }
 
 #[test]
+fn a_lent_spelling_stays_with_the_field_that_already_answers_for_it() {
+    // The courtesy a second field on one tag buys the holder is an alias of
+    // the arrival's name. An alias reaches exactly one field - `check_free`
+    // refuses a second everywhere - and lending is the one write that does
+    // not go through it, so it states the rule itself: a spelling a third
+    // field already answers for is that field's and is not lent away.
+    let mut registry =
+        FixRegistry::from_fields([tagged("Symbol", 55), full("Price", 44, &[], &["Ticker"])])
+            .unwrap();
+    assert_eq!(registry.field_by_name("Ticker").unwrap().name(), "Price");
+
+    // A second field on tag 55 named `Ticker`: the tag stays with `Symbol`,
+    // the arrival is registered under its own name and identity, and the
+    // alias stays where it was.
+    assert!(registry.insert(tagged("Ticker", 55)).unwrap().is_none());
+    assert_eq!(registry.field_by_tag(55).unwrap().name(), "Symbol");
+    assert_eq!(
+        registry.field_by_id(id_of(55, "Ticker")).unwrap().name(),
+        "Ticker"
+    );
+    assert_eq!(
+        registry
+            .field_by_tag(55)
+            .unwrap()
+            .as_fix()
+            .aliases()
+            .count(),
+        0,
+        "the holder is lent nothing it would have to take from another field"
+    );
+    assert_eq!(
+        registry
+            .iter()
+            .filter(|field| field.as_fix().aliases().any(|alias| alias == "Ticker"))
+            .map(Field::name)
+            .collect::<Vec<_>>(),
+        ["Price"],
+        "one alias, one holder"
+    );
+
+    // Which is what keeps the first holder reachable and writable: taking
+    // the spelling made `Price` refuse its own update, because `check_free`
+    // then found its alias held by `Symbol`.
+    let mut price = registry.field_by_tag(44).unwrap().clone();
+    price
+        .as_fix_mut()
+        .set_description("the traded price")
+        .unwrap();
+    registry.update(price).unwrap();
+    assert_eq!(
+        registry.field_by_tag(44).unwrap().description(),
+        Some("the traded price")
+    );
+    // The spelling now names a field of its own, and a canonical name is
+    // read before an alias; `Price` keeps the claim it arrived with.
+    assert_eq!(registry.field_by_name("Ticker").unwrap().name(), "Ticker");
+    assert_eq!(
+        registry
+            .field_by_tag(44)
+            .unwrap()
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["Ticker"]
+    );
+
+    // The lenient verb reaches the same insert and answers the same way.
+    let mut lenient =
+        FixRegistry::from_fields([tagged("Symbol", 55), full("Price", 44, &[], &["Ticker"])])
+            .unwrap();
+    assert!(lenient.add_field(tagged("Ticker", 55)).unwrap());
+    assert_eq!(lenient.field_by_name("Ticker").unwrap().name(), "Ticker");
+    assert_eq!(
+        lenient
+            .field_by_tag(44)
+            .unwrap()
+            .as_fix()
+            .aliases()
+            .collect::<Vec<_>>(),
+        ["Ticker"]
+    );
+}
+
+#[test]
 fn two_fields_may_hold_one_tag_under_two_names() {
     let mut spec = tagged("Symbol", 5055);
     spec.as_fix_mut().set_aliases(["Ticker"]).unwrap();
