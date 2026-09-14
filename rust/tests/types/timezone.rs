@@ -5,9 +5,9 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::super::DataType;
-use crate::arrow::{scalar_array, scalar_value};
-use crate::{
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::types::DataType;
+use yggdryl::{
     ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Timezone,
     TimezoneField,
 };
@@ -205,7 +205,7 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
 
 #[test]
 fn the_value_type_is_the_one_every_temporal_already_carries() {
-    // Not a second zone type: the scalar carries `crate::Timezone`, so a zone
+    // Not a second zone type: the scalar carries `yggdryl::Timezone`, so a zone
     // read out of a column is the zone a datetime column declares.
     let value = zone("America/New_York");
     let Scalar::Timezone(held) = &value else {
@@ -215,7 +215,7 @@ fn the_value_type_is_the_one_every_temporal_already_carries() {
     assert_eq!(held.offset_at(1_700_000_000), Some(-5 * 3600));
     assert_eq!(held.abbreviation_at(1_688_000_000), Some("EDT"));
     assert_eq!(
-        Scalar::datetime64(0, crate::TimeUnit::Second, held)
+        Scalar::datetime64(0, yggdryl::TimeUnit::Second, held)
             .unwrap()
             .temporal_timezone(),
         Some(held)

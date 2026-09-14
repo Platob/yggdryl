@@ -1,6 +1,6 @@
-use super::super::{DataType, GeospatialParameters};
-use crate::{DataTypeId, DataTypeKind, EdgeAlgorithm};
-use crate::{Field, Scalar};
+use yggdryl::types::{DataType, GeospatialParameters};
+use yggdryl::{DataTypeId, DataTypeKind, EdgeAlgorithm};
+use yggdryl::{Field, Scalar};
 
 #[test]
 fn bare_variant_and_the_member_sugar_parse_to_different_types() {
@@ -180,7 +180,7 @@ fn defaults_are_a_present_variant_null_and_a_point_empty() {
     assert!(matches!(default, Scalar::Geometry(_)), "{default:?}");
     let bytes = default.as_wkb().expect("a WKB payload");
     assert_eq!(
-        crate::types::geospatial::wkb::into_wkt(bytes).unwrap(),
+        yggdryl::types::geospatial::wkb::into_wkt(bytes).unwrap(),
         "POINT EMPTY",
         "the default is POINT EMPTY"
     );
@@ -234,7 +234,7 @@ fn rows_validate_through_the_new_columns() {
 
 #[test]
 fn compatibility_rows_answer_for_every_target() {
-    use crate::Scheme;
+    use yggdryl::Scheme;
 
     let schema = DataType::from_fields([
         DataType::Variant.nullable_field("payload"),

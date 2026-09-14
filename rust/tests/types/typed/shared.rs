@@ -1,7 +1,7 @@
 //! Which datatypes keep a shared field, and that each keeps exactly one.
 
-use crate::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
-use crate::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
+use yggdryl::types::{BytesLayout, BytesParameters, StringLayout, StringParameters};
+use yggdryl::{DataType, DataTypeId, Field, Scalar, TimeUnit, Timezone};
 
 #[test]
 fn every_parameter_free_datatype_keeps_one_nullable_value_field() {

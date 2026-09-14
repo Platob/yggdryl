@@ -3,9 +3,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::types::UncheckedFieldScalar;
-use crate::types::temporal::Interval;
-use crate::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
+use yggdryl::types::UncheckedFieldScalar;
+use yggdryl::types::temporal::Interval;
+use yggdryl::{DataType, Field, FieldScalar, Scalar, TimeUnit, Timezone};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -70,7 +70,7 @@ fn the_value_is_what_the_field_stores() {
     let ccy = Field::new("ccy", DataType::Currency, false);
     let typed = FieldScalar::new(&ccy, "USD\0").unwrap();
     assert_eq!(typed.as_str(), Some("USD"));
-    assert_eq!(typed.value().id(), crate::DataTypeId::Currency);
+    assert_eq!(typed.value().id(), yggdryl::DataTypeId::Currency);
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn a_value_infers_the_shared_field_of_its_own_datatype() {
     ));
 
     let decimal = FieldScalar::infer(Scalar::d128(150, 2)).unwrap();
-    assert_eq!(decimal.dtype().id(), crate::DataTypeId::Decimal128);
+    assert_eq!(decimal.dtype().id(), yggdryl::DataTypeId::Decimal128);
     assert_eq!(decimal.as_decimal().map(|(_, scale)| scale), Some(2));
 
     let nothing = FieldScalar::infer(Scalar::Null).unwrap();
@@ -296,7 +296,7 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
     let unchecked = UncheckedFieldScalar::new(&price, "1.5");
     assert_eq!(
         unchecked.as_decimal(),
-        Some((crate::i256::from_i128(150), 2))
+        Some((yggdryl::i256::from_i128(150), 2))
     );
     let ratio = Field::new("ratio", DataType::Float64, false);
     assert_eq!(UncheckedFieldScalar::new(&ratio, "2.5").as_f64(), Some(2.5));
@@ -327,7 +327,7 @@ fn an_unchecked_pairing_reads_through_the_field_without_committing() {
 
 #[cfg(feature = "arrow")]
 mod arrow {
-    use super::{DataType, Field, FieldScalar, Scalar};
+    use yggdryl::types::{DataType, Field, FieldScalar, Scalar};
 
     #[test]
     fn a_pairing_round_trips_through_its_one_row_arrow_array() {
@@ -409,6 +409,6 @@ mod arrow {
         let array = typed.clone().into_arrow_array().unwrap();
         let decoded = FieldScalar::from_arrow_array(&field, array.as_ref()).unwrap();
         assert_eq!(decoded, typed);
-        assert_eq!(decoded.value().id(), crate::DataTypeId::Float16);
+        assert_eq!(decoded.value().id(), yggdryl::DataTypeId::Float16);
     }
 }

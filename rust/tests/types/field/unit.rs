@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-use super::Field;
-use crate::{DataType, Error, StringEnum};
+use yggdryl::types::Field;
+use yggdryl::{DataType, Error, StringEnum};
 
 #[test]
 fn a_field_declares_the_enum_its_string_values_name() {

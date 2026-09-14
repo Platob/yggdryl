@@ -25,3 +25,6 @@ pub use value::Version;
 /// The Arrow extension name preserving [`crate::DataType::Version`] over
 /// its Utf8 storage.
 pub(crate) const VERSION_EXTENSION_NAME: &str = "yggdryl.version";
+
+#[cfg(test)]
+mod tests;

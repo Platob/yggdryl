@@ -3,9 +3,9 @@ use std::cmp::Ordering;
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::super::{DataType, Str, StringLayout, StringParameters};
-use crate::{Charset, DataTypeId, DataTypeKind};
-use crate::{Error, Field, Scalar, Scheme};
+use yggdryl::types::{DataType, Str, StringLayout, StringParameters};
+use yggdryl::{Charset, DataTypeId, DataTypeKind};
+use yggdryl::{Error, Field, Scalar, Scheme};
 
 fn hash_of(value: &DataType) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -533,11 +533,11 @@ fn values_validate_and_canonicalize_under_the_one_ascii_rule() {
 #[test]
 fn arrow_storage_is_padded_and_reads_back_trimmed() {
     let field = DataType::fixed_ascii(8).unwrap().nullable_field("code");
-    let array = crate::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
+    let array = yggdryl::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
     assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(8));
     assert_eq!(stored(array.as_ref()).value(0), b"ABC\0\0\0\0\0");
     assert_eq!(
-        crate::arrow::scalar_value(&field, array.as_ref()).unwrap(),
+        yggdryl::arrow::scalar_value(&field, array.as_ref()).unwrap(),
         field.dtype().scalar(Scalar::from("ABC")).unwrap()
     );
 
@@ -547,24 +547,26 @@ fn arrow_storage_is_padded_and_reads_back_trimmed() {
         Scalar::Null,
         Scalar::from(""),
     ]);
-    let array = crate::arrow::array_from_value(&field, &values).unwrap();
+    let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
     let fixed = stored(array.as_ref());
     assert_eq!(fixed.len(), 3);
     assert_eq!(fixed.value(0), b"XY\0\0\0\0\0\0");
     assert!(fixed.is_null(1));
     assert_eq!(fixed.value(2), &[0; 8]);
+    // One row at a time through the public boundary: a one-element slice is
+    // what `scalar_value` reads, and slicing costs no copy.
     let read = |index: usize| {
-        crate::arrow::value::value_from_array(field.dtype(), array.as_ref(), index).unwrap()
+        yggdryl::arrow::scalar_value(&field, array.slice(index, 1).as_ref()).unwrap()
     };
     assert_eq!(read(0), field.dtype().scalar(Scalar::from("XY")).unwrap());
     assert_eq!(read(2), field.dtype().scalar(Scalar::from("")).unwrap());
 
     // What does not fit is refused at this boundary too.
-    assert!(crate::arrow::scalar_array(&field, &Scalar::from("ABCDEFGHI")).is_err());
+    assert!(yggdryl::arrow::scalar_array(&field, &Scalar::from("ABCDEFGHI")).is_err());
 
     // The variable US-ASCII layout rides Arrow's own text storage.
     let field = DataType::ascii().nullable_field("code");
-    let array = crate::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
+    let array = yggdryl::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
     assert_eq!(array.data_type(), &ArrowDataType::Utf8);
 }
 

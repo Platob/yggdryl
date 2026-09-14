@@ -7,18 +7,18 @@ use arrow_array::{
     StructArray, UInt32Array, UInt64Array,
 };
 
-use super::{ArrowCast, ArrowCastOptions};
+use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
 
 /// The reading that carries the bytes rather than the number they spell.
 fn bits() -> ArrowCastOptions {
-    ArrowCastOptions::new().with_representation(crate::Representation::Bits)
+    ArrowCastOptions::new().with_representation(yggdryl::Representation::Bits)
 }
-use crate::types::{
+use yggdryl::types::{
     DateTime64Field, GeometryField, Int32Field, Int64Field, StringField, StructField, UInt32Field,
     UInt64Field, VariantField,
 };
-use crate::{DataType, EdgeAlgorithm, Field};
-use crate::{TimeUnit, Timezone};
+use yggdryl::{DataType, EdgeAlgorithm, Field};
+use yggdryl::{TimeUnit, Timezone};
 
 #[test]
 fn a_typed_field_returns_its_own_array_type() {
@@ -42,7 +42,7 @@ fn a_string_field_parses_and_formats_through_the_same_call() {
     let cast = field
         .cast_arrow_array(numbers, ArrowCastOptions::new().with_safe(false))
         .unwrap();
-    let text = crate::types::cast::downcast::<StringArray>(cast.as_ref()).unwrap();
+    let text = cast.as_any().downcast_ref::<StringArray>().unwrap();
     assert_eq!(text.value(0), "1.5");
     assert_eq!(text.value(1), "2.5");
 }
@@ -282,7 +282,7 @@ fn bits_preserve_slices_and_apply_the_target_null_contract() {
     let refused = Int64Field::new("digest", false)
         .cast_arrow_array(
             Arc::new(source),
-            bits().with_nullability(crate::Nullability::Strict),
+            bits().with_nullability(yggdryl::Nullability::Strict),
         )
         .unwrap_err()
         .to_string();
@@ -360,7 +360,7 @@ fn geospatial_batch(dtype: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array
         DataType::from_fields([Field::new("shape", dtype, true)]).unwrap(),
         false,
     );
-    let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
+    let schema = root.clone().into_arrow_schema().unwrap();
     let values: Vec<Option<&[u8]>> = cells.iter().map(|cell| cell.as_deref()).collect();
     arrow_array::RecordBatch::try_new(schema, vec![Arc::new(BinaryArray::from(values))]).unwrap()
 }
@@ -368,7 +368,7 @@ fn geospatial_batch(dtype: DataType, cells: Vec<Option<Vec<u8>>>) -> arrow_array
 fn cast_shape_to(
     batch: arrow_array::RecordBatch,
     target: Field,
-) -> crate::arrow::Result<arrow_array::RecordBatch> {
+) -> yggdryl::arrow::Result<arrow_array::RecordBatch> {
     let root = Field::new("row", DataType::from_fields([target]).unwrap(), false);
     root.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
 }
@@ -550,7 +550,7 @@ fn a_variant_column_refuses_to_leave_the_type_until_the_codec_lands() {
         DataType::from_fields([Field::new("payload", DataType::variant(), true)]).unwrap(),
         false,
     );
-    let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
+    let schema = root.clone().into_arrow_schema().unwrap();
     let batch = arrow_array::RecordBatch::try_new(schema, vec![variant_storage_array(1)]).unwrap();
     let target = Field::new(
         "row",
@@ -576,8 +576,8 @@ mod layouts {
     use arrow_buffer::OffsetBuffer;
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields as ArrowFields};
 
-    use super::{ArrowCast, ArrowCastOptions};
-    use crate::DataType;
+    use yggdryl::DataType;
+    use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -753,7 +753,10 @@ mod layouts {
             .cast_arrow_array(Arc::clone(&text), strict())
             .unwrap();
         assert_eq!(
-            crate::types::cast::downcast::<FixedSizeBinaryArray>(fixed.as_ref())
+            fixed
+                .as_any()
+                .downcast_ref::<FixedSizeBinaryArray>()
+                .ok_or("downcast")
                 .unwrap()
                 .value(0),
             b"abc"
@@ -761,7 +764,8 @@ mod layouts {
 
         let back = DataType::utf8().cast_arrow_array(fixed, strict()).unwrap();
         assert_eq!(
-            crate::types::cast::downcast::<StringArray>(back.as_ref())
+            back.as_any()
+                .downcast_ref::<StringArray>()
                 .unwrap()
                 .value(0),
             "abc"
@@ -772,13 +776,18 @@ mod layouts {
 /// A string reads values under what the source declares and writes them
 /// under what the target declares: the layout, the charset and the bound.
 mod strings {
+
+    /// Narrow an Arrow array the way any caller does, so the fixture does
+    /// not borrow the crate's own internal narrowing.
+    fn downcast<T: Array + 'static>(array: &dyn Array) -> Option<&T> {
+        array.as_any().downcast_ref::<T>()
+    }
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, StringArray};
 
-    use super::{ArrowCast, ArrowCastOptions};
-    use crate::types::cast::downcast;
-    use crate::{DataType, Field};
+    use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
+    use yggdryl::{DataType, Field};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -792,7 +801,7 @@ mod strings {
     /// into the cast.
     fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
         let root = Field::new("row", DataType::from_fields([field]).unwrap(), false);
-        let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
+        let schema = root.clone().into_arrow_schema().unwrap();
         arrow_array::RecordBatch::try_new(schema, vec![column]).unwrap()
     }
 
@@ -800,7 +809,7 @@ mod strings {
         source: arrow_array::RecordBatch,
         target: DataType,
         options: ArrowCastOptions,
-    ) -> crate::arrow::Result<ArrayRef> {
+    ) -> yggdryl::arrow::Result<ArrayRef> {
         let root = Field::new(
             "row",
             DataType::from_fields([Field::new("text", target, true)]).unwrap(),
@@ -825,7 +834,11 @@ mod strings {
         let lenient = Field::new("text", dtype("utf8(4)"), true)
             .cast_arrow_array(text, ArrowCastOptions::new())
             .unwrap();
-        let lenient = downcast::<StringArray>(lenient.as_ref()).unwrap();
+        let lenient = lenient
+            .as_ref()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         assert_eq!(lenient.value(0), "abc");
         assert!(lenient.is_null(1));
         assert!(lenient.is_null(2));
@@ -844,7 +857,11 @@ mod strings {
         let lenient = Field::new("ccy", DataType::Currency, true)
             .cast_arrow_array(text, ArrowCastOptions::new())
             .unwrap();
-        let lenient = downcast::<StringArray>(lenient.as_ref()).unwrap();
+        let lenient = lenient
+            .as_ref()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         assert_eq!(lenient.value(0), "USD");
         assert!(lenient.is_null(1));
         assert!(lenient.is_null(2));
@@ -874,7 +891,11 @@ mod strings {
         let lenient = Field::new("ccy", DataType::Currency, true)
             .cast_arrow_array(stored, ArrowCastOptions::new())
             .unwrap();
-        let lenient = downcast::<StringArray>(lenient.as_ref()).unwrap();
+        let lenient = lenient
+            .as_ref()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
         assert_eq!(lenient.value(0), "USD");
         assert!(lenient.is_null(1));
     }
@@ -895,7 +916,11 @@ mod strings {
         // characters come back rather than the bytes.
         let back = cast_column(latin, DataType::utf8(), strict()).unwrap();
         assert_eq!(
-            downcast::<StringArray>(back.as_ref()).unwrap().value(0),
+            back.as_ref()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
             "caf\u{e9}"
         );
     }
@@ -926,7 +951,11 @@ mod strings {
         let source = batch(Field::new("text", dtype("fixed_ascii(4)"), true), fixed);
         let back = cast_column(source, dtype("ascii"), strict()).unwrap();
         assert_eq!(
-            downcast::<StringArray>(back.as_ref()).unwrap().value(0),
+            back.as_ref()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
             "ab"
         );
     }
@@ -940,7 +969,11 @@ mod strings {
         let source = batch(Field::new("text", DataType::Currency, true), currency);
         let back = cast_column(source, dtype("utf8(8)"), strict()).unwrap();
         assert_eq!(
-            downcast::<StringArray>(back.as_ref()).unwrap().value(0),
+            back.as_ref()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
             "USD"
         );
 
@@ -949,7 +982,12 @@ mod strings {
             .cast_arrow_array(bytes, strict())
             .unwrap();
         assert_eq!(
-            downcast::<BinaryArray>(latin.as_ref()).unwrap().value(0),
+            latin
+                .as_ref()
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .unwrap()
+                .value(0),
             b"caf\xe9"
         );
     }
@@ -958,13 +996,18 @@ mod strings {
 /// A byte column reads its cells only where it declares a maximum, which is
 /// the one thing about bytes Arrow has nowhere to state.
 mod bytes {
+
+    /// Narrow an Arrow array the way any caller does, so the fixture does
+    /// not borrow the crate's own internal narrowing.
+    fn downcast<T: Array + 'static>(array: &dyn Array) -> Option<&T> {
+        array.as_any().downcast_ref::<T>()
+    }
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BinaryArray, LargeBinaryArray, StringArray};
 
-    use super::{ArrowCast, ArrowCastOptions};
-    use crate::types::cast::downcast;
-    use crate::{DataType, Field};
+    use yggdryl::types::cast::{ArrowCast, ArrowCastOptions};
+    use yggdryl::{DataType, Field};
 
     fn dtype(expression: &str) -> DataType {
         expression.parse().unwrap()
@@ -978,7 +1021,7 @@ mod bytes {
     /// into the cast.
     fn batch(field: Field, column: ArrayRef) -> arrow_array::RecordBatch {
         let root = Field::new("row", DataType::from_fields([field]).unwrap(), false);
-        let schema = crate::arrow::arrow_schema_from_field(&root).unwrap();
+        let schema = root.clone().into_arrow_schema().unwrap();
         arrow_array::RecordBatch::try_new(schema, vec![column]).unwrap()
     }
 
@@ -1000,7 +1043,11 @@ mod bytes {
         let lenient = Field::new("payload", dtype("binary(4)"), true)
             .cast_arrow_array(cells, ArrowCastOptions::new())
             .unwrap();
-        let lenient = downcast::<BinaryArray>(lenient.as_ref()).unwrap();
+        let lenient = lenient
+            .as_ref()
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap();
         assert_eq!(lenient.value(0), b"abc");
         assert!(lenient.is_null(1));
         assert!(lenient.is_null(2));

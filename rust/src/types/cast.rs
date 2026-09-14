@@ -1694,6 +1694,3 @@ pub(crate) fn internal_target_error(kind: &'static str) -> Error {
         reason: "validated target projected an unexpected Arrow datatype".to_owned(),
     }
 }
-
-#[cfg(test)]
-mod tests;

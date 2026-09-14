@@ -1,5 +1,5 @@
-use super::super::{Bytes, BytesLayout, BytesParameters, DataType};
-use crate::{Field, Scalar, Scheme};
+use yggdryl::types::{Bytes, BytesLayout, BytesParameters, DataType};
+use yggdryl::{Field, Scalar, Scheme};
 
 /// Bytes bounded to `max` on the `binary` layout.
 fn bounded_binary(max: u32) -> DataType {

@@ -1,5 +1,5 @@
-use super::super::DataType;
-use crate::StringEnum;
+use yggdryl::StringEnum;
+use yggdryl::types::DataType;
 
 fn lists() -> [(&'static str, &'static [&'static str]); 3] {
     [

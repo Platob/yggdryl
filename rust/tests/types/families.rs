@@ -5,17 +5,17 @@ use std::sync::Arc;
 
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 
-use super::{
+use yggdryl::types::{
     BytesLayout, BytesParameters, DataType, DecimalType, DictionaryType, Fields, FloatingType,
     GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType, StringLayout,
     StringParameters, TemporalType, TimeUnit, UnionFields, UnionMode,
 };
-use crate::{Charset, Error, Field, Timezone};
+use yggdryl::{Charset, Error, Field, Timezone};
 
 #[test]
 fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     let integer = IntegerType::try_from(&DataType::UInt32).unwrap();
-    assert_eq!(integer.id(), crate::DataTypeId::UInt32);
+    assert_eq!(integer.id(), yggdryl::DataTypeId::UInt32);
     assert_eq!(DataType::from(integer), DataType::UInt32);
 
     let floating = FloatingType::try_from(&DataType::Float16).unwrap();
@@ -43,7 +43,7 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
     // the exact layout and `string_parameters` answers the layout, charset
     // and bound, so a third listing would only be one more thing to disagree.
     let ascii = DataType::fixed_ascii(7).unwrap();
-    assert_eq!(ascii.id(), crate::DataTypeId::FixedString);
+    assert_eq!(ascii.id(), yggdryl::DataTypeId::FixedString);
     assert_eq!(ascii.fixed_byte_width(), Some(7));
     assert!(ascii.is_string());
     let parameters = ascii.string_parameters().unwrap();
@@ -53,7 +53,7 @@ fn datatype_family_enums_round_trip_the_root_without_losing_parameters() {
 
     // The byte family reads back the same way: the layout and the bound.
     let bytes = DataType::fixed_size_binary(16).unwrap();
-    assert_eq!(bytes.id(), crate::DataTypeId::FixedSizeBinary);
+    assert_eq!(bytes.id(), yggdryl::DataTypeId::FixedSizeBinary);
     assert_eq!(bytes.fixed_byte_width(), Some(16));
     let parameters = bytes.bytes_parameters().unwrap();
     assert_eq!(parameters.layout(), BytesLayout::FixedSizeBinary);
@@ -331,14 +331,14 @@ fn temporal_decimal_and_wrapper_forms_are_validated() {
         DataType::from_str("timestamp(9,'Europe/Paris')").unwrap(),
         DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
-            timezone: crate::Timezone::from_str("Europe/Paris").unwrap()
+            timezone: yggdryl::Timezone::from_str("Europe/Paris").unwrap()
         }
     );
     assert_eq!(
         DataType::from_str("TIMESTAMP WITH TIME ZONE").unwrap(),
         DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
-            timezone: crate::Timezone::UTC
+            timezone: yggdryl::Timezone::UTC
         }
     );
     assert_eq!(
@@ -420,7 +420,7 @@ fn every_arrow_variant_has_a_lossless_owned_equivalent() {
         DataType::Float64,
         DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
-            timezone: crate::Timezone::from_str("Europe/Paris").unwrap(),
+            timezone: yggdryl::Timezone::from_str("Europe/Paris").unwrap(),
         },
         DataType::Date32,
         DataType::Date64,
@@ -582,36 +582,3 @@ fn public_field_collections_validate_children_without_clone_helpers() {
     assert!(Fields::from_fields([invalid.clone()]).is_err());
     assert!(UnionFields::from_fields([(0, invalid)]).is_err());
 }
-
-/// The three v3-era datatypes: variant, geometry, and geography.
-mod semi_structured_and_geospatial;
-
-/// The ASCII widths and the vocabularies over them.
-mod strings;
-
-/// The byte family: one tag, one layout, one bound.
-mod bytes;
-
-/// The UUID: one 128-bit identifier, stored as its sixteen bytes.
-mod uuid;
-
-/// One validated location with canonical text storage.
-mod url;
-
-/// One four-byte version with numeric ordering and canonical text storage.
-mod version;
-
-/// One canonical time zone name with canonical text storage.
-mod timezone;
-
-/// The two MIME-shaped datatypes with canonical text storage.
-mod media;
-
-/// The enum a field declares, and the codes its members name.
-mod string_enum;
-
-/// The logical names: the FIX datatype vocabulary in front of the parser.
-mod logical;
-
-/// The prebuilt vocabularies: the listings a code column starts from.
-mod vocabulary;

@@ -202,6 +202,3 @@ impl Scalar {
         self.dtype().ok()?.shared_field()
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -1,4 +1,4 @@
-use super::{i256, u256};
+use yggdryl::{i256, u256};
 
 fn signed(text: &str) -> i256 {
     text.parse().unwrap()

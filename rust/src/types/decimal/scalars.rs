@@ -473,9 +473,6 @@ fn decimal_digits(value: u128) -> usize {
     digits
 }
 
-#[cfg(test)]
-mod tests;
-
 pub(crate) fn is_exact_number(value: &Scalar) -> bool {
     value.is_integer() || value.is_decimal()
 }
@@ -898,3 +895,7 @@ impl Scalar {
             })
     }
 }
+
+#[cfg(test)]
+#[path = "scalars/tests.rs"]
+mod tests;

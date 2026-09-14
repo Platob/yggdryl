@@ -8,9 +8,9 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::super::DataType;
-use crate::arrow::{scalar_array, scalar_value};
-use crate::{
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::types::DataType;
+use yggdryl::{
     ArrowCast, ArrowCastOptions, Charset, DataTypeId, DataTypeKind, Field, FieldScalar, MediaType,
     MediaTypeField, MimeType, MimeTypeField, Scalar,
 };
@@ -283,7 +283,7 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
 
 #[test]
 fn the_value_types_are_the_ones_the_media_layer_routes_on() {
-    // Not a second MIME type: the scalar carries `crate::MimeType`, so a value
+    // Not a second MIME type: the scalar carries `yggdryl::MimeType`, so a value
     // read out of a column is what `RecordOptions` routes a record read on.
     let Scalar::MimeType(held) = &mime("application/json") else {
         panic!("expected a mimetype scalar")

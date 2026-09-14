@@ -1,15 +1,18 @@
-use super::super::DataType;
-use super::{TimeUnit, UnionMode};
-use crate::Timezone;
+use yggdryl::Timezone;
+use yggdryl::types::DataType;
+use yggdryl::{TimeUnit, UnionMode};
 
 #[test]
 fn message_codes_are_text_owned_by_the_fix_registry() {
     for spelling in ["msgtype", "MsgType", "MSGTYPE"] {
         assert!(DataType::from_str(spelling).is_err(), "{spelling}");
         assert!(DataType::from_logical_name(spelling).is_err(), "{spelling}");
-        assert!(crate::DataTypeId::from_str(spelling).is_err(), "{spelling}");
         assert!(
-            crate::StringEnum::from_logical_name(spelling).is_err(),
+            yggdryl::DataTypeId::from_str(spelling).is_err(),
+            "{spelling}"
+        );
+        assert!(
+            yggdryl::StringEnum::from_logical_name(spelling).is_err(),
             "{spelling}"
         );
     }
@@ -244,7 +247,7 @@ fn a_name_adds_no_datatype_of_its_own() {
     assert_eq!(*mode, UnionMode::Dense);
 
     // The prebuilt vocabularies are keyed by the same names.
-    for (name, _) in crate::StringEnum::PREBUILT {
+    for (name, _) in yggdryl::StringEnum::PREBUILT {
         assert!(
             DataType::LOGICAL_NAMES
                 .iter()

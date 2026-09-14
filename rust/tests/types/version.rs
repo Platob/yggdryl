@@ -5,9 +5,9 @@ use std::sync::Arc;
 use arrow_array::{Array, Int32Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::super::DataType;
-use crate::arrow::{scalar_array, scalar_value};
-use crate::{
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::types::DataType;
+use yggdryl::{
     ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar,
     Scheme, Version, VersionField,
 };
@@ -170,7 +170,6 @@ fn compact_fix_service_packs_are_numeric_patches_at_every_boundary() {
         assert_eq!(parsed.to_string(), canonical);
         assert_eq!(digest(&parsed), digest(&expected));
         assert_eq!(parsed.cmp(&expected), std::cmp::Ordering::Equal);
-        assert_eq!(parsed.rendered_len(), canonical.len());
         assert_eq!(field.scalar(text).unwrap(), Scalar::Version(expected));
         let json = format!("\"{text}\"");
         assert_eq!(serde_json::from_str::<Version>(&json).unwrap(), expected);
@@ -215,7 +214,6 @@ fn native_components_have_exact_widths_and_roundtrip_at_each_boundary() {
                 let parsed = version(&value.to_string());
                 assert_eq!(parsed, value);
                 assert_eq!(digest(&parsed), digest(&value));
-                assert_eq!(value.rendered_len(), value.to_string().len());
             }
         }
     }
@@ -436,7 +434,7 @@ fn defaults_merges_and_compatibility_do_not_fall_through() {
 #[cfg(feature = "iceberg")]
 #[test]
 fn a_closed_exchange_vocabulary_refuses_version_by_name() {
-    let error = crate::media::iceberg::PrimitiveType::from_dtype(&DataType::Version)
+    let error = yggdryl::media::iceberg::PrimitiveType::from_dtype(&DataType::Version)
         .unwrap_err()
         .to_string();
     assert!(error.contains("Iceberg"), "{error}");

@@ -3,7 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::{DataType, Field, FieldRecord, FieldScalar, Scalar};
+use yggdryl::{DataType, Field, FieldRecord, FieldScalar, Scalar};
 
 fn hash_of<T: Hash>(value: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -51,7 +51,7 @@ fn a_row_pairs_every_cell_with_its_child() {
     assert_eq!(record.as_str("absent"), None);
     assert_eq!(
         record.get(2).and_then(FieldScalar::as_decimal),
-        Some((crate::i256::from_i128(150), 2))
+        Some((yggdryl::i256::from_i128(150), 2))
     );
     assert_eq!(record.get("price"), record.get_by_index(2));
     assert!(record.get(3).is_none());
@@ -267,7 +267,7 @@ mod arrow {
             row(),
             Scalar::from_sequence([Scalar::from(8_i64), Scalar::Null, Scalar::d128(1, 2)]),
         ]);
-        let batch = crate::arrow::batch_from_value(&schema, &rows).unwrap();
+        let batch = yggdryl::arrow::batch_from_value(&schema, &rows).unwrap();
         let second = FieldRecord::from_arrow_batch(&schema, &batch, 1).unwrap();
         assert_eq!(second["id"].as_i64(), Some(8));
         assert!(second["symbol"].is_null());

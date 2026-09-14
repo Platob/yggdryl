@@ -1,12 +1,12 @@
 //! Well-Known Binary geometries: what parses, what bounds, and what prints.
 
-use crate::types::geospatial::wkb::{Coord, Dimensions};
+use yggdryl::types::geospatial::wkb::{Coord, Dimensions};
 
 mod identity {
     use std::collections::{BTreeSet, HashSet};
     use std::hash::Hash;
 
-    use crate::types::geospatial::wkb::{BoundingBox, Coord, Geometry};
+    use yggdryl::types::geospatial::wkb::{BoundingBox, Coord, Geometry};
 
     #[test]
     fn public_geometry_values_have_total_float_identity() {
@@ -131,7 +131,7 @@ mod reading {
         DIMENSIONS, ORDERS, axis_values, model_coordinate, push_doubles, push_header, push_u32,
         wkt_coordinate,
     };
-    use crate::types::geospatial::wkb::{Coord, Geometry, into_wkt};
+    use yggdryl::types::geospatial::wkb::{Coord, Geometry, into_wkt};
 
     #[test]
     fn a_point_parses_in_every_dimensionality_and_byte_order() {
@@ -425,7 +425,7 @@ mod reading {
 
 mod empties {
     use super::{ORDERS, push_doubles, push_header, push_u32};
-    use crate::types::geospatial::wkb::{Dimensions, Geometry, into_wkt};
+    use yggdryl::types::geospatial::wkb::{Dimensions, Geometry, into_wkt};
 
     #[test]
     fn a_zero_count_reads_as_empty_for_every_container_type() {
@@ -496,8 +496,8 @@ mod empties {
 
 mod nesting {
     use super::{push_doubles, push_header, push_u32};
-    use crate::DataType;
-    use crate::types::geospatial::wkb::{Coord, Dimensions, Geometry, bounding_box, into_wkt};
+    use yggdryl::DataType;
+    use yggdryl::types::geospatial::wkb::{Coord, Dimensions, Geometry, bounding_box, into_wkt};
 
     /// Wrap one XY point in `levels` single-member collections.
     fn nested_collections(levels: usize) -> Vec<u8> {
@@ -575,8 +575,8 @@ mod nesting {
 
 mod refusals {
     use super::{push_doubles, push_header, push_u32};
-    use crate::Error;
-    use crate::types::geospatial::wkb::{Geometry, bounding_box};
+    use yggdryl::Error;
+    use yggdryl::types::geospatial::wkb::{Geometry, bounding_box};
 
     /// Unwrap the codec variant every WKB refusal must carry.
     fn codec_parts(error: &Error) -> (&'static str, usize) {
@@ -693,7 +693,7 @@ mod refusals {
 
 mod bounds {
     use super::{push_doubles, push_header, push_u32};
-    use crate::types::geospatial::wkb::{BoundingBox, bounding_box};
+    use yggdryl::types::geospatial::wkb::{BoundingBox, bounding_box};
 
     #[test]
     fn a_mixed_collection_bounds_every_member() {
@@ -797,7 +797,7 @@ mod bounds {
 
 mod type_ids {
     use super::{push_doubles, push_header, push_u32};
-    use crate::types::geospatial::wkb::geometry_type_ids;
+    use yggdryl::types::geospatial::wkb::geometry_type_ids;
 
     #[test]
     fn a_mixed_collection_reports_each_code_once_sorted() {
@@ -822,7 +822,7 @@ mod type_ids {
 
 mod ewkb {
     use super::{push_doubles, push_u32};
-    use crate::types::geospatial::wkb::{Coord, Dimensions, Geometry, geometry_type_ids};
+    use yggdryl::types::geospatial::wkb::{Coord, Dimensions, Geometry, geometry_type_ids};
 
     /// Append an EWKB header: flags live in the code's high bits, and the
     /// SRID follows the code when its flag is set.
@@ -872,7 +872,7 @@ mod ewkb {
 
 mod exactness {
     use super::{push_doubles, push_header};
-    use crate::types::geospatial::wkb::{Geometry, into_wkt};
+    use yggdryl::types::geospatial::wkb::{Geometry, into_wkt};
 
     #[test]
     fn extreme_coordinates_round_trip_bit_exactly() {

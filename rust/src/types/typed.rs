@@ -1083,6 +1083,3 @@ static_field_constructor!(super::timezone::TimezoneType, DataType::Timezone);
 static_field_constructor!(super::mime_type::MimeTypeType, DataType::MimeType);
 static_field_constructor!(super::media_type::MediaTypeType, DataType::MediaType);
 static_field_constructor!(super::url::UrlType, DataType::Url);
-
-#[cfg(test)]
-mod tests;

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use arrow_array::{Array, RecordBatch, StringArray};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::super::DataType;
-use crate::arrow::{scalar_array, scalar_value};
-use crate::{
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::types::DataType;
+use yggdryl::{
     ArrowCast, ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Url,
     UrlField,
 };
@@ -217,7 +217,7 @@ fn defaults_merges_and_typed_fields_do_not_fall_through() {
 
 #[test]
 fn the_value_type_is_the_one_the_handles_address_themselves_by() {
-    // Not a second URL type: the scalar carries `crate::Url`, so a column read
+    // Not a second URL type: the scalar carries `yggdryl::Url`, so a column read
     // out of a table is the value a handle can be opened from.
     let value = url("file:///lake/part.txt");
     let Scalar::Url(held) = &value else {

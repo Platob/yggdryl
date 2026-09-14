@@ -773,6 +773,3 @@ fn parse_error(target: &'static str, reason: &'static str) -> Error {
         reason: reason.into(),
     }
 }
-
-#[cfg(test)]
-mod tests;
