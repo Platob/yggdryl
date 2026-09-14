@@ -3164,7 +3164,7 @@ export interface Fix {
    * `fill` names each message's chain by `code` (else by identifier),
    * truncates `updatedat` to the `intervalNs` epoch grid while `snapshotat`
    * keeps the real instant, carries the chain's first `createdat` and the
-   * previous message's `prevtimestamp`/`prevuuid`, and finalizes `uuid`;
+   * previous message's `prevupdatedat`/`prevuuid`, and finalizes `uuid`;
    * `snapshot` and `snapshots` answer only new grid snapshots; `alive`
    * counts the chains a terminal state has not closed, and `clear` forgets
    * them all.
@@ -3203,7 +3203,7 @@ export interface Fix {
    * context, the plugins and plugin sessions a line moved between, the
    * ISIN, MIC and order state a row derives, the `instuuid`, `uuid` and
    * `puuid` identities, the direct identifiers enrichment records in
-   * `altids`, `prevtimestamp`/`prevuuid`, and `createdat`, `code` and
+   * `altids`, `prevupdatedat`/`prevuuid`, and `createdat`, `code` and
    * `snapshotat`. Every registry holds them in their category from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks, so a new registry's `size` is 26.

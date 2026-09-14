@@ -4,7 +4,7 @@
 //! its bytes hash to, which way its line moved, which version it was read at,
 //! the derived facts a store is organised by - one instrument symbol that is
 //! the same across venues, its ISIN, the market it traded on, the state the
-//! order is in, and one timestamp a partition is cut on - and the facts a
+//! order is in, and the hour a partition is cut on - and the facts a
 //! bridge's own log states about the line it wrote: the session and the
 //! message context it handled the message under, the plugin that logged the
 //! line and the one the message came through before it, and the sessions
@@ -65,8 +65,9 @@ pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 /// The tag and name carrying the settled message or snapshot grid instant.
 pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");
 
-/// The tag and name carrying the partition that updatedat falls in.
-pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
+/// The tag and name carrying the hour updatedat falls in, which is the
+/// partition a row is stored under.
+pub const TIMEPARTITION_TAG_NAME: (i32, &str) = (65_004, "timepartition");
 
 /// The tag and name carrying the client order identifier this one descends
 /// from.
@@ -124,8 +125,9 @@ pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 /// The tag and name of the Map group carrying the message's identifiers.
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");
 
-/// The tag and name carrying the preceding message's clock in its event chain.
-pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");
+/// The tag and name carrying the preceding message's updatedat in its event
+/// chain.
+pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");
 
 /// The tag and name carrying the preceding message's UUID in its event chain.
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
@@ -151,12 +153,22 @@ pub const fn is_crate_tag(tag: i32) -> bool {
 /// since 4.4, and a field it already declares is never given a second tag.
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 
-/// How wide a partition is by default, in seconds.
+/// How wide a partition is, in seconds: the one width `timepartition` has.
 ///
 /// An hour. A day is too coarse to prune a capture with - a session's whole
 /// traffic lands in one partition - and a minute makes a day of capture
 /// fourteen hundred of them, which is more files than rows in the quiet ones.
+/// [`TIMEPARTITION_DERIVATION`] spells the same hour for the expression
+/// layer, and [`FixMsg::time_partition`](super::FixMsg::time_partition)
+/// floors by this constant, so the declared derivation and the value a row
+/// carries never say different things.
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
+
+/// How `timepartition` derives from `updatedat`, as the crate field declares
+/// it in its `transform:expression`: the expression layer's own
+/// `truncate(temporal, 'hour')`, which floors an instant to the hour that
+/// contains it - before the epoch as after it.
+const TIMEPARTITION_DERIVATION: &str = "truncate(updatedat, 'hour')";
 
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
@@ -218,7 +230,9 @@ fn aliased(
 
 /// Builds every field this crate defines.
 ///
-/// The partition declares its existing protocol source and transform.
+/// The partition column declares, in the protocols every catalog reads, that
+/// it is one and how it derives: `field:partition` marks it, and an Iceberg
+/// spec built from the fixed schema partitions by identity on it.
 fn build() -> Result<Vec<Field>> {
     let mut altids = crated(
         ALTIDS_TAG_NAME,
@@ -228,16 +242,20 @@ fn build() -> Result<Vec<Field>> {
          field name in sorted order; repeating-group members are not flattened.",
     )?;
     altids.as_fix_mut().set_counter(ALTIDS_TAG_NAME.0)?;
-    // The partition that updatedat falls in, as whole seconds since the
-    // epoch. An integer rather than a rendered date: a partition value is
-    // compared and ranged over, and a string would sort lexically.
-    let mut unixpartition = crated(
-        UNIXPARTITION_TAG_NAME,
-        "UnixPartition",
-        DataType::Int64,
-        "The partition updatedat falls in, as whole seconds \
-             since the epoch floored to the partition width.",
+    // The hour that updatedat falls in, as the same instant type updatedat
+    // has: a partition value is compared and ranged over, and an instant
+    // floored to its hour ranges exactly as the clock it was cut from.
+    let mut timepartition = crated(
+        TIMEPARTITION_TAG_NAME,
+        "TimePartition",
+        super::schema::CLOCK_DATATYPE,
+        "The hour updatedat falls in: updatedat floored to the partition \
+         width, as an instant.",
     )?;
+    // A column a path spells out and an Iceberg spec partitions by identity:
+    // the value *is* the partition, so a reader prunes on its bounds and a
+    // writer lays rows out by it without a transform between them.
+    timepartition.set_partition(true);
     // Named by the column it reads, because that is what the column is
     // called in a row.
     //
@@ -250,21 +268,17 @@ fn build() -> Result<Vec<Field>> {
         crate::metadata::PARTITION_SOURCES_KEY,
         [UPDATEDAT_TAG_NAME.1.to_owned()],
     )?;
-    unixpartition
+    timepartition
         .as_partition_mut()
         .insert("sources", sources)?;
-    // `truncate[3600]`, not `hour`: the value is seconds floored to a multiple
-    // of the width, which is what Iceberg's truncate transform means, whereas
-    // its `hour` yields hours since the epoch and the grammar's own `hour`
-    // yields the clock hour. The transform that says what the column holds is
-    // the one that goes on it.
-    //
-    // Written through the protocol view rather than through the Iceberg
-    // builder, because these fields exist whether or not the crate was built
-    // with Iceberg and a declaration is text either way.
-    unixpartition
-        .as_iceberg_mut()
-        .insert("transform", partition_transform())?;
+    // How it derives, in the expression layer's own vocabulary: a batch
+    // missing the column, or holding its default there, is filled by
+    // `Field::apply_arrow_batch` with exactly what `FixMsg::time_partition`
+    // answers for a row. A `truncate` over a column and a unit literal is
+    // not a call over plain columns, so it is stored as the expression text.
+    timepartition
+        .as_transform_mut()
+        .set_term(&TIMEPARTITION_DERIVATION.parse()?)?;
 
     Ok(vec![
         // The version the message was *read* at, which is not always the one
@@ -292,7 +306,7 @@ fn build() -> Result<Vec<Field>> {
             super::schema::CLOCK_DATATYPE,
             "The settled message instant, truncated to the snapshot grid by the lifecycle.",
         )?,
-        unixpartition,
+        timepartition,
         // Where an order came from. FIX threads a replace chain through
         // `OrigClOrdID(41)`, which says what this message *replaces* - not
         // what it descends from. A slice of a parent order, or a leg of a
@@ -437,10 +451,10 @@ fn build() -> Result<Vec<Field>> {
         )?,
         altids,
         crated(
-            PREVTIMESTAMP_TAG_NAME,
-            "PrevTimestamp",
+            PREVUPDATEDAT_TAG_NAME,
+            "PrevUpdatedAt",
             super::schema::CLOCK_DATATYPE,
-            "The preceding message's timestamp in the selected event chain.",
+            "The preceding message's updatedat in the selected event chain.",
         )?,
         crated(
             PREVUUID_TAG_NAME,
@@ -469,14 +483,6 @@ fn build() -> Result<Vec<Field>> {
     ])
 }
 
-/// The default partition width, spelled as the transform that produces it.
-///
-/// One rendering in one place, so the declared transform and the value the row
-/// carries can never say different things.
-fn partition_transform() -> String {
-    format!("truncate[{DEFAULT_PARTITION_SECONDS}]")
-}
-
 /// The fields this crate defines, in tag order.
 ///
 /// Every registry already holds them: [`FixRegistry::new`](super::FixRegistry::new)
@@ -492,6 +498,16 @@ fn partition_transform() -> String {
 /// assert_eq!(held[20].dtype(), held[2].dtype());
 /// assert_eq!(held[21].dtype(), &yggdryl::DataType::Uuid);
 /// assert!(held[20].is_nullable() && held[21].is_nullable());
+/// // The partition is the hour `updatedat` falls in, typed as that clock is,
+/// // marked as the column a layout is cut on, and derived by the expression
+/// // layer's own `truncate`.
+/// assert_eq!(held[3].name(), "timepartition");
+/// assert_eq!(held[3].dtype(), held[2].dtype());
+/// assert!(held[3].is_partition());
+/// assert_eq!(
+///     held[3].as_transform().term()?.map(|term| term.to_string()),
+///     Some("truncate(updatedat, 'hour')".to_owned()),
+/// );
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.
 /// let (tag, name) = yggdryl::VERSION_TAG_NAME;

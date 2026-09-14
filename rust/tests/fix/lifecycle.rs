@@ -7,7 +7,7 @@ use std::sync::Arc;
 use yggdryl::types::Uuid;
 use yggdryl::{
     CODE_TAG_NAME, DataType, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
     TimeUnit, Timezone, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
@@ -87,12 +87,12 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
             assert!(pair[0] < pair[1], "UUIDs sort by the full grid instant");
         }
     }
-    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
         assert_eq!(stamped[0].by_tag(tag).unwrap(), &Scalar::Null);
     }
     for pair in stamped.windows(2) {
         assert_eq!(
-            pair[1].by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            pair[1].by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             pair[0].by_tag(UPDATEDAT_TAG_NAME.0).unwrap(),
         );
         assert_eq!(
@@ -170,7 +170,7 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
         bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
-    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
         assert_eq!(held.by_tag(tag).unwrap(), &Scalar::Null);
     }
     assert_eq!(held.updatedat(), held.by_tag(52).unwrap());

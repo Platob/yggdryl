@@ -79,7 +79,7 @@ UPDATEDAT_TAG = 65003
 INSTUUID_TAG = 65016
 UUID_TAG = 65017
 PUUID_TAG = 65018
-PREVTIMESTAMP_TAG = 65021
+PREVUPDATEDAT_TAG = 65021
 PREVUUID_TAG = 65022
 CREATEDAT_TAG = 65023
 CODE_TAG = 65024
@@ -2124,7 +2124,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "msgtype",
     ], "named by the dictionary's folded names, in message order"
     assert columns[-7:] == [
-        "prevtimestamp",
+        "prevupdatedat",
         "prevuuid",
         "createdat",
         "code",
@@ -2163,7 +2163,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         ("instuuid", "InstUuid"),
         ("uuid", "Uuid"),
         ("puuid", "PUuid"),
-        ("prevtimestamp", "PrevTimestamp"),
+        ("prevupdatedat", "PrevUpdatedAt"),
         ("prevuuid", "PrevUuid"),
     ):
         assert schema[schema.index_of(name)].display == display, name
@@ -2172,9 +2172,9 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema[schema.index_of("isincode")].dtype == DataType("isin")
     assert schema[schema.index_of("miccode")].dtype == DataType("mic")
     assert schema[schema.index_of("state")].dtype == DataType("state")
-    assert schema[schema.index_of("prevtimestamp")].dtype == schema[schema.index_of("updatedat")].dtype
+    assert schema[schema.index_of("prevupdatedat")].dtype == schema[schema.index_of("updatedat")].dtype
     assert schema[schema.index_of("prevuuid")].dtype == DataType("uuid")
-    assert schema[schema.index_of("prevtimestamp")].nullable
+    assert schema[schema.index_of("prevupdatedat")].nullable
     assert schema[schema.index_of("prevuuid")].nullable
     # BeginString, the partition and the seven members of the settled bundle
     # are declared non-null; every other column is nullable, because a message
@@ -2184,7 +2184,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "beginstring",
         "sendingtime",
         "updatedat",
-        "unixpartition",
+        "timepartition",
         "uuid",
         "puuid",
         "createdat",
@@ -2205,7 +2205,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # SendingTime, and the partition follows it: never null.
     for clock in ("sendingtime", "updatedat", "createdat", "snapshotat"):
         assert row[schema.index_of(clock)] == CLOCK_INSTANT, clock
-    assert row[schema.index_of("unixpartition")] == CLOCK_PARTITION
+    assert row[schema.index_of("timepartition")] == CLOCK_PARTITION
     assert row[schema.index_of("code")] == ""
     for identity in ("uuid", "puuid"):
         held = uuid_module.UUID(row[schema.index_of(identity)])
@@ -2216,7 +2216,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("sendersessionid")] is None
     # A derived column a message gives nothing for is null, never a shift.
     assert row[schema.index_of("state")] is None
-    assert row[schema.index_of("prevtimestamp")] is None
+    assert row[schema.index_of("prevupdatedat")] is None
     assert row[schema.index_of("prevuuid")] is None
 
     # The arrival record closes the row with everything that arrived, in
@@ -2303,7 +2303,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "version",
         "symbolticker",
         "updatedat",
-        "unixpartition",
+        "timepartition",
         "parentclordid",
         "parentorderid",
         "sendersessionid",
@@ -2320,7 +2320,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "puuid",
         "targetsessionid",
         "altids",
-        "prevtimestamp",
+        "prevupdatedat",
         "prevuuid",
         "createdat",
         "code",
@@ -2330,7 +2330,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "Version",
         "SymbolTicker",
         "UpdatedAt",
-        "UnixPartition",
+        "TimePartition",
         "ParentClOrdID",
         "ParentOrderID",
         "SenderSessionId",
@@ -2347,7 +2347,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "PUuid",
         "TargetSessionId",
         "AltIds",
-        "PrevTimestamp",
+        "PrevUpdatedAt",
         "PrevUuid",
         "CreatedAt",
         "Code",
@@ -2371,11 +2371,11 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert all(field.description is not None for field in fields.values())
 
     # The clocks are instants in UTC, to the nanosecond; the code is text.
-    for name in ("updatedat", "prevtimestamp", "createdat", "snapshotat"):
+    for name in ("updatedat", "prevupdatedat", "createdat", "snapshotat"):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["code"].dtype == DataType("utf8")
     # The partition names the column it reads by that column's name.
-    held = fields["unixpartition"]
+    held = fields["timepartition"]
     assert held.dtype == DataType("int64")
     assert held.metadata["partition:sources"] == '["updatedat"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
@@ -2485,7 +2485,7 @@ def test_every_built_message_carries_its_version_and_its_settled_bundle(
     assert message.by_tag(SNAPSHOTAT_TAG) == CLOCK
     assert message.by_tag(52) == CLOCK
     assert message.by_tag(CODE_TAG).as_py() == ""
-    partition = message.unix_partition()
+    partition = message.time_partition()
     assert partition is not None and partition.as_py() == CLOCK_PARTITION
 
     # The bundle is children and never entries: the wire re-emits byte for
@@ -2509,9 +2509,9 @@ def test_every_built_message_carries_its_version_and_its_settled_bundle(
     assert clocked.updatedat().as_py() == instant
     assert clocked.createdat().as_py() == instant
     assert clocked.by_tag(SNAPSHOTAT_TAG).as_py() == instant
-    partition = clocked.unix_partition()
+    partition = clocked.time_partition()
     assert partition is not None and partition.as_py() == 1767344400  # 09:00Z
-    partition = clocked.unix_partition(60)
+    partition = clocked.time_partition(60)
     assert partition is not None and partition.as_py() == 1767346140  # 09:29Z
 
     # A message that stated no version is read at one all the same, and the
@@ -2653,7 +2653,7 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert parsed.column("timestamp").to_pylist() == [clock, None]
     assert parsed.column("updatedat").to_pylist() == [CLOCK_INSTANT, instant]
     assert parsed.column("sendingtime").to_pylist() == [CLOCK_INSTANT, instant]
-    assert parsed.column("unixpartition").to_pylist() == [CLOCK_PARTITION, 1767344400]
+    assert parsed.column("timepartition").to_pylist() == [CLOCK_PARTITION, 1767344400]
 
     # A column spelled `senderSessionId` is the crate's `sendersessionid` under the fold,
     # so it fills that column; the sequence fills `MsgSeqNum` where the frame
@@ -2787,10 +2787,10 @@ def _ns(count: int) -> Scalar:
 def _previous(message: FixMsg, expected: FixMsg | None) -> None:
     """That a filled message's previous pair is ``expected``'s own, or null."""
     if expected is None:
-        assert message.by_tag(PREVTIMESTAMP_TAG).is_null()
+        assert message.by_tag(PREVUPDATEDAT_TAG).is_null()
         assert message.by_tag(PREVUUID_TAG).is_null()
         return
-    assert message.by_tag(PREVTIMESTAMP_TAG) == expected.updatedat()
+    assert message.by_tag(PREVUPDATEDAT_TAG) == expected.updatedat()
     assert message.by_tag(PREVUUID_TAG) == expected.uuid()
 
 

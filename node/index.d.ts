@@ -1499,7 +1499,7 @@ export type JsFixFieldIterator = FixFieldIterator
  * Every accepted message has `updatedat` truncated to its epoch grid bucket
  * of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
  * carries its first message's `createdat` and hands each later message the
- * previous message's `prevtimestamp` and `prevuuid`. A terminal state closes
+ * previous message's `prevupdatedat` and `prevuuid`. A terminal state closes
  * the chain; what is held is the live chains, their code, first creation
  * instant, last clock and UUID, and highest consumed bucket - never pending
  * messages. `FixCodec.lifecycle` runs one at the default cadence over an
@@ -1772,7 +1772,7 @@ export declare class FixMsg {
    */
   puuid(): JsScalar
   /** The partition `updatedat` falls in, in whole seconds. */
-  unixPartition(seconds: number): JsScalar | null
+  timePartition(seconds: number): JsScalar | null
   /** One lifted facet's value, or `null` where nothing carries it. */
   lifted(facet: string): JsScalar | null
   /**
@@ -5842,7 +5842,7 @@ export interface FixCodecOptions {
  * before that, the two session names the line spells, the ISIN, MIC and
  * order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
  * the direct identifiers enrichment records in `altids`, the previous
- * message's `prevtimestamp` and `prevuuid`, and `createdat`, `code` and
+ * message's `prevupdatedat` and `prevuuid`, and `createdat`, `code` and
  * `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
  * `snapshotat` are non-null. Every registry already holds them in their
  * category, so this is the listing a schema or a document walks rather than
@@ -5891,7 +5891,7 @@ export declare function fixPluginMessage(): JsField
  * arrival record, unresolved keys at tag 0. Columns are spelled by the
  * dictionary's folded canonical names - `msgtype`, never `35` - so a row
  * reads the way a message reads; the tag stays each column's identity, on
- * its `fix:tag`, and is what fills it. `beginstring`, `unixpartition` and
+ * its `fix:tag`, and is what fills it. `beginstring`, `timepartition` and
  * the replay fields - `sendingtime`, `updatedat`, `createdat`, `uuid`,
  * `puuid`, `code`, `snapshotat` - are required.
  */

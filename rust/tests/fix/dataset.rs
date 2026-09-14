@@ -663,7 +663,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         assert_eq!(&held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)], event);
         assert_eq!(&held[column(yggdryl::CREATEDAT_TAG_NAME.0)], event);
         assert!(
-            !held[column(yggdryl::UNIXPARTITION_TAG_NAME.0)].is_null(),
+            !held[column(yggdryl::TIMEPARTITION_TAG_NAME.0)].is_null(),
             "row {row} has a partition"
         );
         assert!(

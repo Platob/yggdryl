@@ -575,14 +575,18 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
 
     // The partition the stamp falls in, floored from the clock's own
     // nanoseconds so a millisecond clock still has one - on every row.
-    let partition = tag_column(&read, yggdryl::UNIXPARTITION_TAG_NAME.0);
+    let partition = tag_column(&read, yggdryl::TIMEPARTITION_TAG_NAME.0);
     for (row, held) in partition.iter().enumerate() {
         assert!(!held.is_null(), "row {row} has a partition");
     }
     let seconds = 1_786_682_796_i64;
     assert_eq!(
-        partition[FILL_ROW].as_i64(),
+        partition[FILL_ROW].temporal_count_at(TimeUnit::Second),
         Some(seconds - seconds % yggdryl::DEFAULT_PARTITION_SECONDS)
+    );
+    assert_eq!(
+        partition[FILL_ROW].dtype().unwrap(),
+        stamp[FILL_ROW].dtype().unwrap()
     );
 
     // Every row says which FIX it was read as: the wire's own `BeginString`

@@ -408,8 +408,9 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus updatedat, createdat, snapshotat and prevtimestamp.
-    assert_eq!(utc, 72, "instants stated in UTC");
+    // Sixty-eight shipped fields, plus updatedat, timepartition, createdat,
+    // snapshotat and prevupdatedat.
+    assert_eq!(utc, 73, "instants stated in UTC");
 }
 
 #[test]
@@ -510,10 +511,13 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// Decision 26 retires msghash, renames updatedat, adds createdat/code/snapshotat,
 /// and replaces the identity recipes in the crate declarations. The shipped
 /// SendingTime/TransactTime definitions already supply the standard clock seeds.
+/// Decision 38 renames the previous clock to `prevupdatedat` and the partition
+/// to `timepartition`, types the partition as the hour instant, marks it as
+/// the partition column and declares its derivation as an expression.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 11_503_781_206_853_360_085);
+    assert_eq!(registry.stable_hash(), 17_281_414_671_393_725_658);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

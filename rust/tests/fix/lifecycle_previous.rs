@@ -7,7 +7,7 @@ use super::lifecycle_chains::{clock, row, try_row};
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
     UPDATEDAT_TAG_NAME, arrow, fix_schema,
 };
 
@@ -44,7 +44,7 @@ fn lifecycle(registry: &Arc<FixRegistry>) -> FixLifecycle {
 
 fn assert_pair(message: &FixMsg, expected: Option<&FixMsg>) {
     assert_eq!(
-        message.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+        message.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
         expected.map_or(&Scalar::Null, FixMsg::updatedat)
     );
     assert_eq!(
@@ -93,12 +93,12 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
         let mut first = event(&registry, 10, Some("A"), None, &[]);
         first
             .set_many([
-                (PREVTIMESTAMP_TAG_NAME.0, clock(800)),
+                (PREVUPDATEDAT_TAG_NAME.0, clock(800)),
                 (PREVUUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(801))),
             ])
             .unwrap();
         let first = life.fill(first).unwrap();
-        assert_eq!(first.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(), &clock(800));
+        assert_eq!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(), &clock(800));
         assert_eq!(
             first.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
             &Scalar::Uuid(Uuid::new(801))
@@ -107,7 +107,7 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
         second
             .set_many([
                 (
-                    PREVTIMESTAMP_TAG_NAME.0,
+                    PREVUPDATEDAT_TAG_NAME.0,
                     stated_time.map_or(Scalar::Null, clock),
                 ),
                 (
@@ -121,7 +121,7 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
         let expected_uuid =
             stated_uuid.map_or_else(|| first.uuid().clone(), |id| Scalar::Uuid(Uuid::new(id)));
         assert_eq!(
-            second.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            second.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             &expected_clock
         );
         assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &expected_uuid);
@@ -318,14 +318,14 @@ fn an_earlier_message_into_advanced_state_is_an_arrival_not_a_rewind() {
 fn malformed_stated_previous_values_neither_advance_attach_nor_close() {
     let registry = Arc::new(FixRegistry::new());
     let invalid = [
-        (PREVTIMESTAMP_TAG_NAME, Scalar::from("界".repeat(128))),
-        (PREVTIMESTAMP_TAG_NAME, Scalar::date32(0)),
+        (PREVUPDATEDAT_TAG_NAME, Scalar::from("界".repeat(128))),
+        (PREVUPDATEDAT_TAG_NAME, Scalar::date32(0)),
         (
-            PREVTIMESTAMP_TAG_NAME,
+            PREVUPDATEDAT_TAG_NAME,
             Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
         ),
         (
-            PREVTIMESTAMP_TAG_NAME,
+            PREVUPDATEDAT_TAG_NAME,
             Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
         (
@@ -493,7 +493,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
             for (message, (original, alive)) in restored.into_iter().zip(&trace) {
                 let expected_row = original.into_row(&schema).unwrap();
                 assert_eq!(message.into_row(&schema).unwrap(), expected_row);
-                for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
                     assert_eq!(message.by_tag(tag).unwrap(), original.by_tag(tag).unwrap());
                 }
                 assert_eq!(message.entries(), original.entries());

@@ -1918,7 +1918,7 @@ change.
 
 ## 24. A chain carries only its previous message's clock and UUID
 
-**Rule.** Append `prevtimestamp` (65021, `PrevTimestamp`) and `prevuuid`
+**Rule.** Append `prevupdatedat` (65021, `PrevUpdatedAt`) and `prevuuid`
 (65022, `PrevUuid`) to the crate definitions. The former has the existing
 `timestamp` datatype, DateTime64 nanoseconds in UTC; the latter is Uuid.
 Both are nullable. There are twenty-three crate definitions: twenty-two
@@ -1942,7 +1942,7 @@ conversion failures are located at `$.timestamp`.
 **Stamps.** Resolve the selected chain by decision 23 before preparing its
 previous pair. Fill each absent/null previous field independently from that
 pair; preserve each non-null stated value independently.
-Stated `prevuuid` must be a native Uuid; stated `prevtimestamp` must be a
+Stated `prevuuid` must be a native Uuid; stated `prevupdatedat` must be a
 native DateTime64 in nanoseconds and UTC. Wrong shapes/parameters refuse at
 their field, rather than coercing a statement or bypassing validation.
 A first message or one belonging to no chain carries null previous fields
@@ -2958,3 +2958,53 @@ a user function, its defaults filled and its null rule kept; a signature
 round-tripping through its field; a stored call reading back as its function
 and sources; an unregistered name refused where it is typed; a text read
 shaped by a select over the row header's captures and a where over an alias.
+
+## 38. `prevupdatedat`, `timepartition`, and the rules a registry carries
+
+Settled with the user's request to rename two crate columns and to keep the
+enriching pass while it moves out of Rust into the registry. Each part of
+this entry is appended by the change that lands it; the first two are below.
+
+### The previous clock is `prevupdatedat`
+
+**Rule.** Tag 65021 is `prevupdatedat` (`PrevUpdatedAt`), never
+`prevtimestamp`: the value it carries is the previous message's `updatedat`
+(decision 26 renamed the clock and this follows it). Same datatype, same
+position, same nullability, same stamps; no alias, no second spelling
+anywhere - Rust constants, Python, JavaScript, the CLI, the docs, the
+inventories and the equivalence snapshot all read the new name.
+
+### The partition is an hour, typed as the clock it is cut from
+
+**Rule.** Tag 65004 is `timepartition` (`TimePartition`): `updatedat`
+floored to the hour, as `DateTime64(ns, UTC)` - the exact layout every FIX
+clock has - rather than the whole seconds `unixpartition` held. A partition
+value is compared and ranged over, and an instant floored to its hour ranges
+exactly as the clock it was cut from, reads as a date in every catalog, and
+needs no arithmetic to compare against a clock.
+`FixMsg::time_partition()` answers it (Python `time_partition`, JavaScript
+`timePartition`); `DEFAULT_PARTITION_SECONDS` stays the one width, an hour.
+
+The crate field declares what it is in the protocols every catalog reads:
+`field:partition` marks it as the column a layout is cut on, so an Iceberg
+spec built from the fixed schema partitions by identity on it and prunes on
+its bounds; `partition:sources = ["updatedat"]` names what it reads; and its
+derivation is the expression layer's own `transform:expression =
+"truncate(updatedat, 'hour')"`, so `Field::apply_arrow_batch` fills a batch
+that lacks the column with exactly what `time_partition` answers for a row.
+The Iceberg `truncate[3600]` declaration goes with the integer it described.
+
+**What moves.** The equivalence snapshot moves on every row's
+`timepartition` (an instant where an integer was) and on every row's `uuid`:
+the message identity digests the named row content (decision 26), the column
+is part of that content, and both its name and its value changed. Nothing
+else moves - entries, wire, digests and every other column are byte for
+byte what they were.
+
+**Written in:** `fix/crated.rs`, `fix/schema.rs`, `fix/lifecycle.rs`, both
+bindings, `docs/fix/*`, `DECISIONS.md` 24 and 26 restated under the new
+names.
+**Fixtures:** `rust/tests/fix/schema.rs` - the fixed schema partitions by
+identity on `timepartition`, a batch missing the column is filled with the
+hour floor of `updatedat`, a pre-epoch clock lands in the hour that contains
+it; the regenerated equivalence snapshot with the two moved keys named.

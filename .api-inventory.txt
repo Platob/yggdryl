@@ -717,7 +717,7 @@ pub const CRATE_TAG_MAX: i32 = 65_100;
 pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");  (settled event or lifecycle grid instant)
-pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
+pub const TIMEPARTITION_TAG_NAME: (i32, &str) = (65_004, "timepartition");
 pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
 pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_006, "parentorderid");
 pub const SENDERSESSIONID_TAG_NAME: (i32, &str) = (65_007, "sendersessionid");
@@ -734,7 +734,7 @@ pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
-pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
+pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable native UUID of the preceding message in the selected event chain)
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
 pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
@@ -926,7 +926,7 @@ impl FixMsg
   pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `nofixentries`; a row without that column has no entries)
   pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null)
   pub fn symbol_ticker(&self) -> Scalar
-  pub fn unix_partition(&self, seconds: i64) -> Scalar
+  pub fn time_partition(&self, seconds: i64) -> Scalar
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry

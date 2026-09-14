@@ -132,7 +132,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
 
 /// BeginString and the partition supplement the identity owner's replay bundle.
 fn is_required(tag: i32) -> bool {
-    tag == 8 || tag == super::UNIXPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
+    tag == 8 || tag == super::TIMEPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
 }
 
 /// The fixed root every message answers as.
@@ -866,8 +866,8 @@ impl super::FixMsg {
             })
         } else if is(super::SYMBOLTICKER_TAG_NAME) {
             self.symbol_ticker()
-        } else if is(super::UNIXPARTITION_TAG_NAME) {
-            partition_of(self.updatedat(), super::DEFAULT_PARTITION_SECONDS)
+        } else if is(super::TIMEPARTITION_TAG_NAME) {
+            partition_of(self.updatedat())
         } else if is(super::ISINCODE_TAG_NAME) {
             self.isin_code()
         } else if is(super::MICCODE_TAG_NAME) {
@@ -1020,31 +1020,34 @@ impl super::FixMsg {
 }
 
 impl super::FixMsg {
-    /// The partition [`Self::updatedat`] falls in, in whole seconds.
+    /// The partition [`Self::updatedat`] falls in: that instant floored to
+    /// the hour, the crate's one partition width
+    /// ([`DEFAULT_PARTITION_SECONDS`](super::DEFAULT_PARTITION_SECONDS)),
+    /// as the same nanosecond UTC clock.
     ///
-    /// Floor division rather than truncation, so a timestamp before the epoch
-    /// lands in the partition that contains it rather than the one after.
+    /// Floor division rather than truncation, so a clock before the epoch
+    /// lands in the hour that contains it rather than the one after. This is
+    /// the value the `timepartition` column carries, and the value the
+    /// column's own `transform:expression` computes when a batch arrives
+    /// without it.
     #[must_use]
-    pub fn unix_partition(&self, seconds: i64) -> crate::Scalar {
-        partition_of(self.updatedat(), seconds)
+    pub fn time_partition(&self) -> crate::Scalar {
+        partition_of(self.updatedat())
     }
 }
 
-/// The partition one market clock falls in, in whole seconds.
+/// The hour one market clock falls in, as an instant of the clock's layout.
 ///
-/// Floor division rather than truncation, so a timestamp before the epoch
-/// lands in the partition that contains it rather than the one after - and
-/// floored from the clock's own nanoseconds, so a clock stated to the
-/// microsecond still has a partition rather than a null for not being a
-/// whole second.
-fn partition_of(clock: &crate::Scalar, seconds: i64) -> crate::Scalar {
-    if seconds <= 0 {
-        return crate::Scalar::Null;
-    }
+/// Floor division rather than truncation, so a clock before the epoch lands
+/// in the hour that contains it rather than the one after - and floored from
+/// the clock's own nanoseconds, so a clock stated to the microsecond still
+/// has a partition rather than a null for not being a whole second.
+fn partition_of(clock: &crate::Scalar) -> crate::Scalar {
     let Some(nanoseconds) = clock.temporal_count_at(crate::TimeUnit::Nanosecond) else {
         return crate::Scalar::Null;
     };
-    let width = i128::from(seconds) * 1_000_000_000;
-    let floored = i128::from(nanoseconds).div_euclid(width) * i128::from(seconds);
-    i64::try_from(floored).map_or(crate::Scalar::Null, crate::Scalar::from)
+    let width = super::DEFAULT_PARTITION_SECONDS * 1_000_000_000;
+    let floored = nanoseconds.div_euclid(width) * width;
+    crate::Scalar::datetime64(floored, crate::TimeUnit::Nanosecond, crate::Timezone::UTC)
+        .unwrap_or(crate::Scalar::Null)
 }

@@ -371,7 +371,7 @@ function frameCase(registry, reader, schema, key, label, line) {
   const ticker = held.symbolTicker()
   // The settled grid clock every message carries (decision 26).
   const clock = held.updatedat()
-  const partition = held.unixPartition(3600)
+  const partition = held.timePartition(3600)
   const text = escapedText([...bytes])
   return {
     key,

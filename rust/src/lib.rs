@@ -71,13 +71,13 @@ pub use fix::{
     FixRegistry, FixSpellings, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME,
     PLUGIN_DIALECT, PLUGIN_TAG_MIN, PLUGINCONFIG_CODE_NAME, PLUGINID_TAG_NAME,
-    PREVPLUGINID_TAG_NAME, PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Plugin,
+    PREVPLUGINID_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Plugin,
     Plugins, SENDERSESSIONID_TAG_NAME, SENDERSESSIONNAME_TAG_NAME, SNAPSHOTAT_TAG_NAME, SOH,
     STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME,
-    TARGETSESSIONID_TAG_NAME, TARGETSESSIONNAME_TAG_NAME, ULBRIDGE_ROWHEADER,
-    UNIXPARTITION_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME, VERSION_TAG_NAME, Words,
-    fix_column_of, fix_column_tags, fix_crate_fields, fix_lift, fix_lifts, fix_plugin_fields,
-    fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags, is_crate_tag,
+    TARGETSESSIONID_TAG_NAME, TARGETSESSIONNAME_TAG_NAME, TIMEPARTITION_TAG_NAME,
+    ULBRIDGE_ROWHEADER, UPDATEDAT_TAG_NAME, UUID_TAG_NAME, VERSION_TAG_NAME, Words, fix_column_of,
+    fix_column_tags, fix_crate_fields, fix_lift, fix_lifts, fix_plugin_fields, fix_plugin_message,
+    fix_schema, fix_schema_carrying, fix_schema_tags, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
 #[cfg(feature = "arrow")]
