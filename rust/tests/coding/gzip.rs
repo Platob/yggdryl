@@ -1,10 +1,10 @@
 //! RFC 1952 gzip buffers, streams, and the transparent handle.
 
-use super::{Gzip, dump, dump_with_level, load, reader, writer, writer_with_level};
-use crate::IOBase;
-use crate::Level;
-use crate::holder::Buffer;
 use std::io::{Read, Write};
+use yggdryl::IOBase;
+use yggdryl::Level;
+use yggdryl::coding::gzip::{Gzip, dump, dump_with_level, load, reader, writer, writer_with_level};
+use yggdryl::holder::Buffer;
 
 /// Long enough that framing overhead cannot hide the compression.
 const PAYLOAD: &[u8] = b"symbol,price

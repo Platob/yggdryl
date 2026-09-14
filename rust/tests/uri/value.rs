@@ -1,6 +1,6 @@
 //! Resource identifier unit tests.
 
-use super::{Authority, Scheme, Uri, UriPath, Url, Urn};
+use yggdryl::{Authority, Scheme, Uri, UriPath, Url, Urn};
 
 #[test]
 fn canonical_uri_round_trip() {
@@ -44,7 +44,7 @@ fn authority_ports_are_explicit_valid_u16_values() {
 
 /// Percent-decoded access to the components that can carry escapes.
 mod decoding {
-    use super::{Uri, Url, Urn};
+    use yggdryl::{Uri, Url, Urn};
 
     #[test]
     fn a_component_answers_raw_or_as_the_text_its_escapes_stand_for() {
@@ -101,8 +101,8 @@ mod decoding {
 
 /// The query addressed as its pairs.
 mod parameters {
-    use super::{Uri, Url};
-    use crate::Parameters;
+    use yggdryl::Parameters;
+    use yggdryl::{Uri, Url};
 
     fn url(value: &str) -> Url {
         Url::from_str(value).unwrap()

@@ -1,7 +1,7 @@
 //! What a value carries into an Arrow column, and what comes back out.
 
-use crate::arrow::{scalar_array, scalar_value};
-use crate::{DataType, Field, Scalar, TimeUnit};
+use yggdryl::arrow::{scalar_array, scalar_value};
+use yggdryl::{DataType, Field, Scalar, TimeUnit};
 
 fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
     let field = Field::new("column", dtype, true);
@@ -11,8 +11,8 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
-    use crate::types::{BytesLayout, BytesParameters};
-    use crate::{DataTypeId, i256};
+    use yggdryl::types::{BytesLayout, BytesParameters};
+    use yggdryl::{DataTypeId, i256};
 
     #[test]
     fn an_unsigned_integer_survives_its_whole_range() {
@@ -205,7 +205,7 @@ mod widths {
         // same reading a text column takes into a binary one.
         let stored = scalar_array(&field, &Scalar::from("AAPL")).unwrap();
         assert_eq!(
-            crate::arrow::scalar_value(&field, stored.as_ref()).unwrap(),
+            yggdryl::arrow::scalar_value(&field, stored.as_ref()).unwrap(),
             Scalar::from(b"AAPL".to_vec())
         );
 
@@ -218,15 +218,15 @@ mod widths {
 }
 
 mod bulk {
-    use super::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar};
 
     #[test]
     fn one_native_sequence_builds_one_arrow_array() {
         let field = DataType::Int64.nullable_field("id");
         let values = Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)]);
-        let array = crate::arrow::array_from_value(&field, &values).unwrap();
+        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
         assert_eq!(
-            crate::arrow::array_to_value(&field, array.as_ref()).unwrap(),
+            yggdryl::arrow::array_to_value(&field, array.as_ref()).unwrap(),
             Scalar::from_sequence([Scalar::from(1), Scalar::Null, Scalar::from(3)])
         );
     }
@@ -245,9 +245,9 @@ mod bulk {
             Scalar::from_record([("id", Scalar::from(2))]).unwrap(),
         ]);
 
-        let batch = crate::arrow::batch_from_value(&root, &rows).unwrap();
+        let batch = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
         assert_eq!(
-            crate::arrow::batch_to_value(&batch).unwrap(),
+            yggdryl::arrow::batch_to_value(&batch).unwrap(),
             Scalar::from_sequence([
                 Scalar::from_sequence([Scalar::from(1), Scalar::from("XNAS")]),
                 Scalar::from_sequence([Scalar::from(2), Scalar::Null]),
@@ -258,18 +258,18 @@ mod bulk {
     #[test]
     fn bulk_builders_refuse_non_sequence_inputs() {
         let field = Field::new("id", DataType::Int64, false);
-        assert!(crate::arrow::array_from_value(&field, &Scalar::from(1)).is_err());
+        assert!(yggdryl::arrow::array_from_value(&field, &Scalar::from(1)).is_err());
 
         let root = DataType::from_fields([field])
             .unwrap()
             .required_field("row");
-        assert!(crate::arrow::batch_from_value(&root, &Scalar::from(1)).is_err());
+        assert!(yggdryl::arrow::batch_from_value(&root, &Scalar::from(1)).is_err());
     }
 }
 
 mod restating {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
-    use crate::Timezone;
+    use yggdryl::Timezone;
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
@@ -299,14 +299,14 @@ mod restating {
             timezone: Timezone::NAIVE,
         };
         let at =
-            Scalar::datetime64(1_700_000_000, TimeUnit::Second, crate::Timezone::NAIVE).unwrap();
+            Scalar::datetime64(1_700_000_000, TimeUnit::Second, yggdryl::Timezone::NAIVE).unwrap();
 
         assert_eq!(
             round_trip(micros.clone(), at),
             Scalar::datetime64(
                 1_700_000_000_000_000,
                 TimeUnit::Microsecond,
-                crate::Timezone::NAIVE,
+                yggdryl::Timezone::NAIVE,
             )
             .unwrap()
         );
@@ -329,12 +329,12 @@ mod restating {
         assert_eq!(
             round_trip(
                 DataType::time(TimeUnit::Microsecond).unwrap(),
-                Scalar::time32(45_296, TimeUnit::Second, crate::Timezone::NAIVE).unwrap()
+                Scalar::time32(45_296, TimeUnit::Second, yggdryl::Timezone::NAIVE).unwrap()
             ),
             Scalar::time64(
                 45_296_000_000,
                 TimeUnit::Microsecond,
-                crate::Timezone::NAIVE,
+                yggdryl::Timezone::NAIVE,
             )
             .unwrap()
         );
@@ -350,7 +350,7 @@ mod restating {
         );
         let error = scalar_array(
             &seconds,
-            &Scalar::datetime64(1_500, TimeUnit::Millisecond, crate::Timezone::NAIVE).unwrap(),
+            &Scalar::datetime64(1_500, TimeUnit::Millisecond, yggdryl::Timezone::NAIVE).unwrap(),
         )
         .unwrap_err()
         .to_string();
@@ -366,6 +366,6 @@ mod restating {
         let too_wide = i64::from(i32::MAX) + 1;
         assert!(scalar_array(&field, &Scalar::from(too_wide)).is_err());
         let foreign = arrow_array::DurationSecondArray::from(vec![too_wide]);
-        assert!(crate::arrow::scalar_value(&field, &foreign).is_err());
+        assert!(yggdryl::arrow::scalar_value(&field, &foreign).is_err());
     }
 }

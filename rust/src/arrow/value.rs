@@ -1723,6 +1723,3 @@ fn allocation_error(
 ) -> Error {
     Error::allocation(context, requested, error.clone())
 }
-
-#[cfg(test)]
-mod tests;

@@ -1005,3 +1005,7 @@ fn digits(unscaled: i128) -> u32 {
 fn held_f64(value: i128) -> f64 {
     value as f64
 }
+
+#[cfg(test)]
+#[path = "eval/tests.rs"]
+mod tests;

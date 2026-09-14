@@ -1,7 +1,7 @@
 //! Focused edge cases for the one path grammar.
 
-use super::{FieldPath, FieldSegment};
-use crate::Scalar;
+use yggdryl::Scalar;
+use yggdryl::{FieldPath, FieldSegment};
 
 fn parse(text: &str) -> FieldPath {
     FieldPath::from_str(text).expect("path parses")

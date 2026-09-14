@@ -26,6 +26,8 @@ mod i256;
 mod logical;
 #[path = "types/media.rs"]
 mod media;
+#[path = "types/metadata.rs"]
+mod metadata;
 #[path = "types/scalar.rs"]
 mod scalar;
 #[path = "types/strict_cast.rs"]

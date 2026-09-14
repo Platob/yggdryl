@@ -323,6 +323,3 @@ impl<H: IOBase> crate::IOMedia for Zlib<H> {
 impl<H: IOBase> IOBase for Zlib<H> {
     crate::delegate_iobase!(coding);
 }
-
-#[cfg(test)]
-mod tests;

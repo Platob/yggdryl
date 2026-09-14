@@ -6,3 +6,7 @@ mod encoding;
 mod fuzz;
 #[path = "uri/parser.rs"]
 mod parser;
+#[path = "uri/pattern.rs"]
+mod pattern;
+#[path = "uri/value.rs"]
+mod value;

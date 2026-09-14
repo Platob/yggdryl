@@ -9,12 +9,10 @@ use std::cell::Cell;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use super::{
-    Bound, Bounds, ColumnBounds, Expression, Literal, Residual, Safety, Selector, Statement,
+use yggdryl::expression::{
+    Bound, Bounds, ColumnBounds, Expression, Literal, Residual, Selector, Statement,
 };
-use crate::{
-    DataType, DataTypeId, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url, Version,
-};
+use yggdryl::{DataType, Field, MediaType, Result, Scalar, TimeUnit, Timezone, Url};
 
 // ---------------------------------------------------------------------------
 // Text
@@ -153,8 +151,8 @@ fn a_parse_failure_names_where_it_stopped() {
 fn nesting_past_the_limit_is_refused_not_crashed() {
     let deep = format!(
         "{}a{}",
-        "(".repeat(super::RECURSION_LIMIT + 8),
-        ")".repeat(super::RECURSION_LIMIT + 8)
+        "(".repeat(yggdryl::expression::RECURSION_LIMIT + 8),
+        ")".repeat(yggdryl::expression::RECURSION_LIMIT + 8)
     );
     let error = deep.parse::<Expression>().unwrap_err();
     assert!(format!("{error}").contains("hard limit"), "{error}");
@@ -317,121 +315,16 @@ fn scalar_and_vectorized_agree() {
         let vectorized = bound.evaluate(&batch).unwrap();
         for (position, row) in rows.iter().enumerate() {
             let scalar = bound.eval(row).unwrap();
-            let held = crate::arrow::value::value_from_array(
-                bound.field().dtype(),
-                vectorized.as_ref(),
-                position,
-            )
-            .unwrap();
+            // One row out of the vectorized column, through the public
+            // boundary: a one-element slice is what `scalar_value` reads.
+            let held =
+                yggdryl::arrow::scalar_value(bound.field(), vectorized.slice(position, 1).as_ref())
+                    .unwrap();
             assert_eq!(
                 scalar, held,
                 "{text} disagreed on row {position}: scalar {scalar:?}, vectorized {held:?}"
             );
         }
-    }
-}
-
-#[test]
-fn scalar_casts_return_the_exact_target_leaf() {
-    let cases = [
-        (
-            DataType::decimal32(9, 2).unwrap(),
-            Scalar::from(125),
-            DataTypeId::Decimal32,
-        ),
-        (
-            DataType::decimal64(18, 2).unwrap(),
-            Scalar::from(125),
-            DataTypeId::Decimal64,
-        ),
-        (
-            DataType::Float32,
-            Scalar::from(1.5_f64),
-            DataTypeId::Float32,
-        ),
-        (
-            DataType::large_utf8(),
-            Scalar::from("value"),
-            DataTypeId::LargeString,
-        ),
-        (
-            DataType::utf8_view(),
-            Scalar::from("value"),
-            DataTypeId::StringView,
-        ),
-        (
-            DataType::large_binary(),
-            Scalar::from("value"),
-            DataTypeId::LargeBinary,
-        ),
-        (
-            DataType::binary_view(),
-            Scalar::from("value"),
-            DataTypeId::BinaryView,
-        ),
-        (
-            DataType::fixed_ascii(4).unwrap(),
-            Scalar::from("FIX"),
-            DataTypeId::FixedString,
-        ),
-        (
-            DataType::Currency,
-            Scalar::from("USD"),
-            DataTypeId::Currency,
-        ),
-    ];
-
-    for (target, input, id) in cases {
-        let converted = super::eval::convert(&target, &input, Safety::Strict).unwrap();
-        assert_eq!(converted.id(), id, "cast to {target}");
-    }
-}
-
-#[test]
-fn versions_do_not_fall_through_text_or_numeric_expression_paths() {
-    let patch2 = Scalar::from("5.0.2".parse::<Version>().unwrap());
-    let patch10 = Scalar::from("5.0.10".parse::<Version>().unwrap());
-
-    assert_eq!(
-        super::eval::convert(
-            &DataType::Version,
-            &Scalar::from("005.000.002"),
-            Safety::Strict
-        )
-        .unwrap(),
-        patch2
-    );
-    assert_eq!(
-        super::eval::convert(&DataType::Version, &patch2, Safety::Strict).unwrap(),
-        patch2
-    );
-    assert_eq!(
-        super::eval::convert(&DataType::utf8(), &patch2, Safety::Strict).unwrap(),
-        Scalar::from("5.0.2")
-    );
-    assert!(super::eval::convert(&DataType::Version, &Scalar::from(5), Safety::Strict).is_err());
-    assert_eq!(
-        super::eval::order(&DataType::Version, &patch2, &patch10),
-        Some(std::cmp::Ordering::Less)
-    );
-
-    let schema = DataType::from_fields([DataType::Version.required_field("v")])
-        .unwrap()
-        .required_field("row");
-    let row = Scalar::from_sequence([patch2]);
-    for (text, expected) in [
-        ("v < version '5.0.10'", Scalar::from(true)),
-        ("length(v)", Scalar::from(5_i64)),
-        ("v like '5.0%'", Scalar::from(true)),
-    ] {
-        let answer = text
-            .parse::<Expression>()
-            .unwrap()
-            .bind(&schema)
-            .unwrap()
-            .eval(&row)
-            .unwrap();
-        assert_eq!(answer, expected, "{text}");
     }
 }
 
@@ -444,7 +337,7 @@ fn scalar_arithmetic_propagates_checked_failures() {
         .unwrap();
     assert!(matches!(
         bound.eval(&rows()[4]),
-        Err(crate::Error::DivisionByZero { .. })
+        Err(yggdryl::Error::DivisionByZero { .. })
     ));
     assert_eq!(bound.eval(&rows()[2]).unwrap(), Scalar::Null);
 
@@ -460,7 +353,7 @@ fn scalar_arithmetic_propagates_checked_failures() {
         .unwrap();
     assert!(matches!(
         negated.eval(&Scalar::from_sequence([Scalar::from(i8::MIN)])),
-        Err(crate::Error::ArithmeticOverflow {
+        Err(yggdryl::Error::ArithmeticOverflow {
             operation: "negation",
             ..
         })
@@ -492,29 +385,29 @@ fn projections_agree_between_the_tiers() {
         let vectorized = bound.evaluate(&batch).unwrap();
         for (position, row) in rows.iter().enumerate() {
             let scalar = bound.eval(row).unwrap();
-            let held = crate::arrow::value::value_from_array(
-                bound.field().dtype(),
-                vectorized.as_ref(),
-                position,
-            )
-            .unwrap();
+            // One row out of the vectorized column, through the public
+            // boundary: a one-element slice is what `scalar_value` reads.
+            let held =
+                yggdryl::arrow::scalar_value(bound.field(), vectorized.slice(position, 1).as_ref())
+                    .unwrap();
             assert_eq!(scalar, held, "{text} disagreed on row {position}");
         }
     }
 }
 
 fn batch_of(schema: &Field, rows: &[Scalar]) -> arrow_array::RecordBatch {
-    let arrow_schema = crate::arrow::arrow_schema_from_field(schema).unwrap();
+    let arrow_schema = schema.clone().into_arrow_schema().unwrap();
     let columns = schema
         .fields()
         .iter()
         .enumerate()
         .map(|(index, field)| {
-            let values: Vec<&Scalar> = rows
+            let values: Vec<Scalar> = rows
                 .iter()
-                .map(|row| &row.as_sequence().unwrap()[index])
+                .map(|row| row.as_sequence().unwrap()[index].clone())
                 .collect();
-            crate::arrow::value::array_from_values(field, &values).unwrap()
+            yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                .unwrap()
         })
         .collect();
     arrow_array::RecordBatch::try_new(arrow_schema, columns).unwrap()
@@ -564,7 +457,7 @@ fn a_reader_filters_and_projects_in_one_pass() {
     let reader = statement
         .bind(&schema)
         .unwrap()
-        .project_reader(crate::arrow::batch_reader(arrow_schema, [batch]))
+        .project_reader(yggdryl::arrow::batch_reader(arrow_schema, [batch]))
         .unwrap();
     let rows: usize = reader.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
@@ -591,11 +484,11 @@ impl Counting {
     }
 }
 
-impl crate::IOMedia for Counting {
-    crate::impl_default_iomedia!();
+impl yggdryl::IOMedia for Counting {
+    yggdryl::impl_default_iomedia!();
 }
 
-impl crate::IOBase for Counting {
+impl yggdryl::IOBase for Counting {
     fn pread(&self, _offset: u64, _buffer: &mut [u8]) -> Result<usize> {
         Ok(0)
     }
@@ -644,7 +537,11 @@ fn a_free_attribute_answers_without_a_single_stat() {
         .bind(&schema)
         .unwrap();
     let handle = Counting::new("file:///lake/year=2024/part-0.parquet");
-    assert!(!bound.matches_holder(&super::Handle(&handle)).unwrap());
+    assert!(
+        !bound
+            .matches_holder(&yggdryl::expression::Handle(&handle))
+            .unwrap()
+    );
     assert_eq!(
         handle.stats.get(),
         0,
@@ -653,7 +550,11 @@ fn a_free_attribute_answers_without_a_single_stat() {
 
     // A holder the free test does not rule out pays for the stat, once.
     let matching = Counting::new("file:///lake/year=2023/part-0.parquet");
-    assert!(bound.matches_holder(&super::Handle(&matching)).unwrap());
+    assert!(
+        bound
+            .matches_holder(&yggdryl::expression::Handle(&matching))
+            .unwrap()
+    );
     assert_eq!(matching.stats.get(), 1);
 }
 
@@ -667,7 +568,9 @@ fn a_row_predicate_rules_no_holder_out() {
         .unwrap();
     let handle = Counting::new("file:///lake/part-0.parquet");
     assert!(
-        bound.matches_holder(&super::Handle(&handle)).unwrap(),
+        bound
+            .matches_holder(&yggdryl::expression::Handle(&handle))
+            .unwrap(),
         "a listing filter may never discard a file it has not read"
     );
 }
@@ -683,12 +586,12 @@ fn every_selector_declares_a_cost_and_a_type() {
         let answered = selector.read_url(&url);
         assert_eq!(
             answered.is_null(),
-            matches!(selector.cost(), super::Cost::Stat),
+            matches!(selector.cost(), yggdryl::expression::Cost::Stat),
             "{selector} disagreed with its own cost class"
         );
     }
     let partition = Selector::Partition("year".into());
-    assert_eq!(partition.cost(), super::Cost::Free);
+    assert_eq!(partition.cost(), yggdryl::expression::Cost::Free);
     let url = Url::from_str("file:///lake/year=2024/part-0.parquet").unwrap();
     assert_eq!(partition.read_url(&url), Scalar::from("2024"));
 }
@@ -786,7 +689,10 @@ fn bounds_of(schema: &Field, rows: &[Scalar]) -> Bounds {
             }
             let ordered = |held: &Option<Scalar>, keep_greater: bool| match held {
                 None => Some(value.clone()),
-                Some(held) => match super::eval::order(field.dtype(), value, held) {
+                // The fixture orders values the way the scalar itself does;
+                // the rows below hold one width per column, so the datatype
+                // directed ordering the pushdown uses agrees with it.
+                Some(held) => match Some(value.cmp(held)) {
                     Some(std::cmp::Ordering::Greater) if keep_greater => Some(value.clone()),
                     Some(std::cmp::Ordering::Less) if !keep_greater => Some(value.clone()),
                     _ => None,

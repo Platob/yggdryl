@@ -680,6 +680,3 @@ impl<'a> Parser<'a> {
 fn text_key(value: String) -> Result<Literal> {
     Literal::infer(Scalar::from(value))
 }
-
-#[cfg(test)]
-mod tests;

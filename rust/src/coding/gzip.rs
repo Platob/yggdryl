@@ -149,6 +149,3 @@ impl<H: IOBase> crate::IOMedia for Gzip<H> {
 impl<H: IOBase> IOBase for Gzip<H> {
     crate::delegate_iobase!(coding);
 }
-
-#[cfg(test)]
-mod tests;

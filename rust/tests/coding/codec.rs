@@ -2,8 +2,9 @@
 
 use std::io::{Read, Write};
 
-use super::{Codec, Level, gzip, zlib, zstd};
-use crate::{MediaType, MimeType, Url};
+use yggdryl::coding::{gzip, zlib, zstd};
+use yggdryl::{Codec, Level};
+use yggdryl::{MediaType, MimeType, Url};
 
 /// A payload with enough structure that compression actually shrinks it.
 fn sample() -> Vec<u8> {

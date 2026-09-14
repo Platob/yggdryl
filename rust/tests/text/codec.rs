@@ -1,8 +1,8 @@
-use super::{Json, Jsonl, TextCodec, Toml, Yaml};
-use crate::IOBase;
-use crate::holder::Buffer;
-use crate::{MimeType, Scalar, Url};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use yggdryl::IOBase;
+use yggdryl::holder::Buffer;
+use yggdryl::text::{Json, Jsonl, TextCodec, Toml, Yaml};
+use yggdryl::{MimeType, Scalar, Url};
 
 fn handle(name: &str) -> Buffer {
     Buffer::new().with_media_type(
@@ -72,16 +72,16 @@ struct Measured {
     reads: AtomicUsize,
 }
 
-impl crate::IOMedia for Measured {
-    crate::delegate_iomedia!(inner);
+impl yggdryl::IOMedia for Measured {
+    yggdryl::delegate_iomedia!(inner);
 }
 
 impl IOBase for Measured {
-    crate::delegate_iobase!(inner: pwrite, capacity, reserve, truncate, url, media_type,
+    yggdryl::delegate_iobase!(inner: pwrite, capacity, reserve, truncate, url, media_type,
         set_media_type, flush, parent, child_by_path, ls, kind, clear, remove, is_atomic,
         is_tabular, is_io);
 
-    fn pread(&self, offset: u64, target: &mut [u8]) -> crate::Result<usize> {
+    fn pread(&self, offset: u64, target: &mut [u8]) -> yggdryl::Result<usize> {
         self.reads.fetch_add(1, Ordering::Relaxed);
         self.inner.pread(offset, target)
     }
@@ -97,7 +97,7 @@ fn text_codec_handle_reads_stream_without_measuring_the_payload() {
     let message = "0123456789abcdef".repeat(32 * 1024);
     let expected = Scalar::from_record([("message", Scalar::from(message))]).unwrap();
     let plain = Json.into_bytes(&expected).unwrap();
-    let encoded = crate::coding::gzip::dump(&plain).unwrap();
+    let encoded = yggdryl::coding::gzip::dump(&plain).unwrap();
     let source = Measured {
         inner: Buffer::from_bytes(encoded)
             .with_media_type(Url::from_str("file:///large.json.gz").unwrap().media_type()),

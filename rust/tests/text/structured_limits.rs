@@ -1,8 +1,8 @@
 //! One enum over every structured text format, chosen at runtime.
 
-use super::Structured;
-use crate::text::{Format, Json, TextCodec};
-use crate::{MimeType, Url};
+use yggdryl::text::Structured;
+use yggdryl::text::{Format, Json, TextCodec};
+use yggdryl::{MimeType, Url};
 
 #[test]
 fn a_name_picks_the_format() {

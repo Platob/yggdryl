@@ -139,6 +139,3 @@ impl From<Yaml> for Structured {
         Self::Yaml
     }
 }
-
-#[cfg(test)]
-mod tests;

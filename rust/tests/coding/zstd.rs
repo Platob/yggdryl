@@ -1,10 +1,10 @@
-//! RFC 1950 zlib buffers, streams, and the transparent handle.
+//! RFC 8878 Zstandard buffers, streams, and the transparent handle.
 
-use super::{Zlib, dump, dump_with_level, load, reader, writer, writer_with_level};
-use crate::IOBase;
-use crate::Level;
-use crate::holder::Buffer;
 use std::io::{Read, Write};
+use yggdryl::IOBase;
+use yggdryl::Level;
+use yggdryl::coding::zstd::{Zstd, dump, dump_with_level, load, reader, writer, writer_with_level};
+use yggdryl::holder::Buffer;
 
 /// Long enough that framing overhead cannot hide the compression.
 const PAYLOAD: &[u8] = b"symbol,price
@@ -76,7 +76,7 @@ fn a_payload_that_is_not_this_format_is_reported() {
 
 #[test]
 fn the_handle_reads_decoded_and_stores_encoded() {
-    let mut handle = Zlib::new(Buffer::new());
+    let mut handle = Zstd::new(Buffer::new());
     handle.write_all_bytes(PAYLOAD).unwrap();
     handle.flush().unwrap();
 
@@ -91,7 +91,7 @@ fn the_handle_reads_decoded_and_stores_encoded() {
 
 #[test]
 fn a_handle_level_reaches_the_encoder() {
-    let mut handle = Zlib::new(Buffer::new()).with_level(Level::BEST);
+    let mut handle = Zstd::new(Buffer::new()).with_level(Level::BEST);
     assert_eq!(handle.level(), Level::BEST);
 
     handle.write_all_bytes(PAYLOAD).unwrap();

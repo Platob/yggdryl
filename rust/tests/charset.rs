@@ -1,5 +1,7 @@
 //! Character-encoding integration tests.
 
+#[path = "charset/codecs.rs"]
+mod codecs;
 #[path = "charset/handles.rs"]
 mod handles;
 #[path = "charset/records.rs"]

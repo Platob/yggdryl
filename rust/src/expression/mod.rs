@@ -60,9 +60,6 @@ mod typing;
 #[cfg(feature = "arrow")]
 mod arrow;
 
-#[cfg(test)]
-mod tests;
-
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};

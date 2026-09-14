@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Datum, Int64Array, RecordBatch, StringArray, StructArray};
 
-use super::{ArrowShape, ArrowValue};
-use crate::arrow::batch_reader;
-use crate::{ArrowCastOptions, DataType, Field};
+use yggdryl::ArrowValue;
+use yggdryl::arrow::batch_reader;
+use yggdryl::{ArrowCastOptions, DataType, Field};
 
 fn quote_root() -> Field {
     DataType::from_fields([
@@ -36,8 +36,9 @@ fn prices() -> ArrayRef {
 }
 
 mod shapes {
-    use super::{ArrowShape, ArrowValue, Field, prices, quote_batch, quote_root};
-    use crate::{DataType, Scalar};
+    use super::{Field, prices, quote_batch, quote_root};
+    use yggdryl::{ArrowShape, ArrowValue};
+    use yggdryl::{DataType, Scalar};
 
     #[test]
     fn every_shape_reports_itself_and_its_width() {
@@ -62,7 +63,7 @@ mod shapes {
 
     #[test]
     fn a_stream_states_its_root_without_being_pulled() {
-        let reader = crate::arrow::batch_reader(
+        let reader = yggdryl::arrow::batch_reader(
             quote_root()
                 .into_arrow_schema()
                 .expect("the root projects to Arrow"),
@@ -123,7 +124,7 @@ mod shapes {
 
 mod pairing {
     use super::{ArrowValue, Field, prices, quote_batch, quote_root};
-    use crate::{DataType, Scalar};
+    use yggdryl::{DataType, Scalar};
 
     #[test]
     fn a_scalar_holds_exactly_one_row() {
@@ -174,7 +175,7 @@ mod narrowing {
     use super::{
         Array, ArrowValue, Datum, Field, StructArray, batch_reader, prices, quote_batch, quote_root,
     };
-    use crate::{DataType, Scalar};
+    use yggdryl::{DataType, Scalar};
 
     #[test]
     fn every_shape_widens_to_the_one_reader_a_record_write_takes() {
@@ -263,7 +264,7 @@ mod narrowing {
 
 mod casting {
     use super::{ArrowCastOptions, ArrowValue, Field, batch_reader, prices};
-    use crate::{DataType, Scalar};
+    use yggdryl::{DataType, Scalar};
 
     #[test]
     fn a_column_is_reshaped_and_keeps_its_shape() {
@@ -287,7 +288,7 @@ mod casting {
         let target = DataType::from_fields([DataType::Float64.required_field("size")])
             .expect("the root datatype is valid")
             .required_field("row");
-        let batch = crate::arrow::batch_from_value(
+        let batch = yggdryl::arrow::batch_from_value(
             &source,
             &Scalar::from_sequence([Scalar::from_sequence([Scalar::from(100_i64)])]),
         )

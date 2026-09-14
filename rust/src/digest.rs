@@ -593,6 +593,3 @@ impl std::hash::Hasher for Digester {
         self.write_bytes(bytes);
     }
 }
-
-#[cfg(test)]
-mod tests;
