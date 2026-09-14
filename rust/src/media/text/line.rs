@@ -265,20 +265,19 @@ impl TextLine {
     ///
     /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving
     /// the line unchanged.
-    pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()> {
-        let mut read = Vec::with_capacity(captures.len());
+    pub fn set_captures(&mut self, mut captures: Vec<Option<TextBytes>>) -> Result<()> {
         let mut decoded_captures = 0;
-        for capture in captures {
-            read.push(match capture {
-                Some(held) => {
-                    let (held, count) = decoded(held)?;
-                    decoded_captures += count;
-                    Some(held)
-                }
-                None => None,
-            });
+        // Read where they stand: a capture that was already text is the range
+        // it was, so a second vector would allocate once per line to hold
+        // what this one already holds. A refusal drops the vector that came
+        // in and leaves the line untouched, which is the stated contract.
+        for capture in &mut captures {
+            let Some(held) = capture.take() else { continue };
+            let (held, count) = decoded(held)?;
+            decoded_captures += count;
+            *capture = Some(held);
         }
-        self.captures = read;
+        self.captures = captures;
         self.decoded_captures = decoded_captures;
         Ok(())
     }

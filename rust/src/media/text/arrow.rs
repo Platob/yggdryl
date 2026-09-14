@@ -12,6 +12,7 @@ use regex_automata::dfa::{
     Automaton,
     dense::{Builder as DfaBuilder, DFA},
 };
+use regex::bytes::CaptureLocations;
 use regex_automata::{Input, nfa::thompson, util::syntax};
 use smol_str::{SmolStr, format_smolstr};
 
@@ -547,6 +548,11 @@ struct RawRows<R> {
     url: Option<Url>,
     options: Arc<TextOptions>,
     capture_values: bool,
+    /// Where the row header's groups land, reused across every line.
+    ///
+    /// Built from the expression on the first line that is scanned, so a
+    /// read declaring no row header never builds one at all.
+    locations: Option<CaptureLocations>,
     index: u64,
     active: Option<RawRecord>,
     done: bool,
@@ -705,10 +711,10 @@ enum ScannedHeader {
     },
 }
 
-/// One complete row-header match and its capture ranges within the scan.
+/// One complete row-header match and the captures it cut from the line.
 struct HeaderMatch {
     range: Range<usize>,
-    captures: Vec<Option<Range<usize>>>,
+    captures: Vec<Option<TextBytes>>,
 }
 
 /// A bounded retained prefix plus its complete decoded byte length.
@@ -733,41 +739,55 @@ fn header_dfa(source: &str) -> Option<DFA<Vec<u32>>> {
         .ok()
 }
 
-fn header_match(options: &TextOptions, bytes: &[u8], capture_values: bool) -> Option<HeaderMatch> {
-    let rowheader = options.rowheader_regex()?;
-    let found = rowheader.captures(bytes)?;
-    let whole = found.get(0)?;
-    let range = whole.start()..whole.end();
+/// The row header matched against the first `scan` bytes of `held`.
+///
+/// A capture comes back as the range of `held`'s own page that the match
+/// named, never as a copy of the matched bytes: the line is a range of the
+/// page the splitter read it into, so a run of the line is a range of the
+/// same page. The one vector the captures need is the one built here.
+fn header_match(
+    options: &TextOptions,
+    held: &Held,
+    scan: usize,
+    capture_values: bool,
+    locations: &mut Option<CaptureLocations>,
+) -> Result<Option<HeaderMatch>> {
+    let Some(rowheader) = options.rowheader_regex() else {
+        return Ok(None);
+    };
+    // Read into the locations the reader keeps rather than into a fresh
+    // `Captures`: where the match lands is a vector as wide as the
+    // expression's groups, and the expression is one per read.
+    let locations = locations.get_or_insert_with(|| rowheader.capture_locations());
+    if rowheader
+        .captures_read(locations, &held.as_bytes()[..scan])
+        .is_none()
+    {
+        return Ok(None);
+    }
+    let Some((start, end)) = locations.get(0) else {
+        return Ok(None);
+    };
+    let range = start..end;
     if !capture_values {
-        return Some(HeaderMatch {
+        return Ok(Some(HeaderMatch {
             range,
             captures: Vec::new(),
-        });
+        }));
     }
-    let mut captures = vec![None; options.capture_names().len()];
+    let mut captures: Vec<Option<TextBytes>> = vec![None; options.capture_names().len()];
     for (target, capture_index) in captures.iter_mut().zip(
         rowheader
             .capture_names()
             .enumerate()
             .filter_map(|(index, name)| name.map(|_| index)),
     ) {
-        let Some(value) = found.get(capture_index) else {
+        let Some((start, end)) = locations.get(capture_index) else {
             continue;
         };
-        // The range, not the bytes: a capture is a run of the line it was
-        // matched in, and the line is a range of a page, so the caller cuts
-        // it out of that page rather than copying it out of the match.
-        *target = Some(value.start()..value.end());
+        *target = Some(held.slice(start..end)?);
     }
-    Some(HeaderMatch { range, captures })
-}
-
-/// The bytes each capture range names, as ranges of the page `held` is on.
-fn captured(held: &Held, captures: Vec<Option<Range<usize>>>) -> Result<Vec<Option<TextBytes>>> {
-    captures
-        .into_iter()
-        .map(|range| range.map(|range| held.slice(range)).transpose())
-        .collect()
+    Ok(Some(HeaderMatch { range, captures }))
 }
 
 impl<R: Read> RawRows<R> {
@@ -795,6 +815,7 @@ impl<R: Read> RawRows<R> {
             url,
             options,
             capture_values,
+            locations: None,
             index: 0,
             active: None,
             done: false,
@@ -807,6 +828,7 @@ impl<R: Read> RawRows<R> {
         line: PhysicalLine,
         index: u64,
         capture_values: bool,
+        locations: &mut Option<CaptureLocations>,
     ) -> Result<ParsedLine> {
         let PhysicalLine {
             mut bytes,
@@ -838,16 +860,16 @@ impl<R: Read> RawRows<R> {
                 (captures, true, body_decoded_size)
             }
             ScannedHeader::Unresolved => {
-                if let Some(found) = header_match(options, bytes.as_bytes(), capture_values) {
+                let scan = bytes.len();
+                if let Some(found) =
+                    header_match(options, &bytes, scan, capture_values, locations)?
+                {
                     let removed_size =
                         u64::try_from(found.range.len()).map_err(|_| Error::InvalidRecord {
                             path: format_smolstr!("$[{index}].body"),
                             reason: SmolStr::new_static("row-header match exceeds u64::MAX bytes"),
                         })?;
-                    // The captures are cut before the match is removed: they
-                    // are ranges of the line as it was matched, and removing
-                    // the header moves what those ranges are measured from.
-                    let captures = captured(&bytes, found.captures)?;
+                    let captures = found.captures;
                     bytes.remove(found.range);
                     let body_decoded_size =
                         decoded_size.checked_sub(removed_size).ok_or_else(|| {
@@ -1000,11 +1022,20 @@ impl<R: Read> RawRows<R> {
                         if dfa.is_dead_state(current) {
                             let scan_end = part_start + offset + 1;
                             if dfa_matched {
-                                if let Some(found) = header_match(
+                                let found = match header_match(
                                     options,
-                                    &bytes.as_bytes()[..scan_end],
+                                    &bytes,
+                                    scan_end,
                                     self.capture_values,
+                                    &mut self.locations,
                                 ) {
+                                    Ok(found) => found,
+                                    Err(error) => {
+                                        self.done = true;
+                                        return Some(Err(error));
+                                    }
+                                };
+                                if let Some(found) = found {
                                     let removed_size = match u64::try_from(found.range.len()) {
                                         Ok(size) => size,
                                         Err(_) => {
@@ -1017,15 +1048,7 @@ impl<R: Read> RawRows<R> {
                                             }));
                                         }
                                     };
-                                    // Cut before the removal moves what the
-                                    // capture ranges are measured from.
-                                    let captures = match captured(&bytes, found.captures) {
-                                        Ok(captures) => captures,
-                                        Err(error) => {
-                                            self.done = true;
-                                            return Some(Err(error));
-                                        }
-                                    };
+                                    let captures = found.captures;
                                     bytes.remove(found.range);
                                     bytes.truncate(retained);
                                     header = ScannedHeader::Matched {
@@ -1068,7 +1091,13 @@ impl<R: Read> RawRows<R> {
             }));
         };
         self.index = next_index;
-        Some(Self::parse_line(options, line, index, self.capture_values))
+        Some(Self::parse_line(
+            options,
+            line,
+            index,
+            self.capture_values,
+            &mut self.locations,
+        ))
     }
 
     fn next_framed(&mut self) -> Option<Result<RawRow>> {
