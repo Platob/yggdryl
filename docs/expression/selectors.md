@@ -116,7 +116,7 @@
     assert.ok(new Selector(['ccy', 'size as quantity']).equals('ccy, size as quantity'))
 
     const published = selector.applyField(root)
-    assert.equal(String(published.dtype.fields[2].dtype), 'int32')
+    assert.equal(String(published.dtype.getFieldAt(2).dtype), 'int32')
 
     const batch = new arrow.Table({
       ccy: arrow.vectorFromArray(['EUR', 'USD'], new arrow.Utf8()),

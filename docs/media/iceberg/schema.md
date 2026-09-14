@@ -461,7 +461,7 @@ Add a column, then read the earlier file back with the new column null.
     assert.deepEqual(iceberg.schemaIntoJson(schema).asJs(), document)
     ```
 
-Documents pass through the core [JSON](../../text/json.md) codec as [`Scalar`](../../types/scalar.md) values, validated and normalized by the official Iceberg model before projection.
+Documents pass through the core [JSON](../json/index.md) codec as [`Scalar`](../../types/scalar.md) values, validated and normalized by the official Iceberg model before projection.
 
 | document | `Field` |
 | --- | --- |
@@ -658,7 +658,7 @@ assert_eq!(written.fields()[1].parquet_field_id()?, Some(8));
 assert!(!written.fields()[0].is_nullable());
 ```
 
-[Parquet](../parquet.md) has no Iceberg code path: it stores `PARQUET:field_id` in the [footer](../parquet-footer.md) and reads it back, so a reader resolves columns by id.
+[Parquet](../parquet/index.md) has no Iceberg code path: it stores `PARQUET:field_id` in the [footer](../parquet/footer.md) and reads it back, so a reader resolves columns by id.
 
 ## Edges
 

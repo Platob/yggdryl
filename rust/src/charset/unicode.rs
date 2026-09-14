@@ -233,3 +233,7 @@ pub(super) fn utf16_encode_into<const BIG: bool>(input: &str, target: &mut Vec<u
         }
     }
 }
+
+#[cfg(test)]
+#[path = "unicode/tests.rs"]
+mod tests;

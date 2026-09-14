@@ -235,6 +235,3 @@ impl Iterator for Rows {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

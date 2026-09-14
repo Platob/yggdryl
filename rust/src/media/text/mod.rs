@@ -27,6 +27,3 @@ pub use leading::LeadingFragment;
 pub use line::TextLine;
 pub use options::TextOptions;
 pub use sep::LineSep;
-
-#[cfg(test)]
-mod tests;

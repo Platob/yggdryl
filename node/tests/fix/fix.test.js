@@ -1960,7 +1960,7 @@ test('the crate fields declare their own protocols', () => {
   assert.match(mapping.dtype.toString(), /keys_sorted=true/)
   for (const registry of [new fix.FixRegistry(), seed()]) {
     assert.ok(registry.definition('groups', 'altids').equals(mapping))
-    assert.ok(registry.groupByCounter(65020).equals(mapping))
+    assert.ok(registry.groupByTag(65020).equals(mapping))
     assert.equal(registry.getFieldByTag(65020), null)
     assert.equal(registry.getFieldByName('altids'), null)
     assert.equal(registry.getFieldById(mapping.fix.id), null)
@@ -2030,7 +2030,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
       ['state', 'State', 65015, 'state'],
     ],
   )
-  assert.equal(derived[2].dtype.fixedByteWidth, 10)
+  assert.equal(derived[2].dtype.codeWidth, 10)
 
   // And the three identities - the instrument, the message's time/content
   // UUID and the event chain's - native UUIDs rather than untyped bytes, so
@@ -2153,7 +2153,7 @@ test('a CBlock read under a dialect stamps membership on everything it produced'
   assert.ok(fix.crateFields().every((field) => {
     const declared = field.fix.counter === null
       ? registry.fieldByTag(field.fix.tag)
-      : registry.groupByCounter(field.fix.counter)
+      : registry.groupByTag(field.fix.counter)
     return !declared.fix.hasBranch('bloomberg')
   }))
 

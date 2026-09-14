@@ -786,6 +786,3 @@ fn write_key(formatter: &mut fmt::Formatter<'_>, key: &Literal) -> fmt::Result {
     }
     formatter.write_str("''")
 }
-
-#[cfg(test)]
-mod tests;

@@ -281,11 +281,12 @@ impl MaterializationBudget {
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
-            // A registered code is fixed US-ASCII storage at the width its
-            // standard fixes. The variants stay spelled out so this match
-            // keeps refusing to compile when a datatype is added; the number
-            // they charge is read from `fixed_byte_width`, which owns it,
-            // rather than restated here.
+            // A registered code is US-ASCII text bounded at the width its
+            // standard fixes, so it charges one 32-bit offset a row and at
+            // most that many payload bytes. The variants stay spelled out so
+            // this match keeps refusing to compile when a datatype is added;
+            // the number they charge is read from `code_width`, which owns
+            // it, rather than restated here.
             DataType::Country
             | DataType::Currency
             | DataType::Mic
@@ -294,7 +295,8 @@ impl MaterializationBudget {
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce => {
-                self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
+                self.add_offsets(rows, 4)?;
+                self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
             }
             DataType::Int64
             | DataType::UInt64
@@ -319,6 +321,9 @@ impl MaterializationBudget {
             }
             DataType::Version
             | DataType::Url
+            | DataType::Timezone
+            | DataType::MimeType
+            | DataType::MediaType
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.
@@ -389,11 +394,12 @@ impl MaterializationBudget {
             | DataType::Time32(_)
             | DataType::Interval(TimeUnit::YearMonth)
             | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
-            // A registered code is fixed US-ASCII storage at the width its
-            // standard fixes. The variants stay spelled out so this match
-            // keeps refusing to compile when a datatype is added; the number
-            // they charge is read from `fixed_byte_width`, which owns it,
-            // rather than restated here.
+            // A registered code is US-ASCII text bounded at the width its
+            // standard fixes, so it charges one 32-bit offset a row and at
+            // most that many payload bytes. The variants stay spelled out so
+            // this match keeps refusing to compile when a datatype is added;
+            // the number they charge is read from `code_width`, which owns
+            // it, rather than restated here.
             DataType::Country
             | DataType::Currency
             | DataType::Mic
@@ -402,7 +408,8 @@ impl MaterializationBudget {
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce => {
-                self.add_fixed_rows(rows, dtype.fixed_byte_width().unwrap_or_default())?;
+                self.add_offsets(rows, 4)?;
+                self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
             }
             DataType::Int64
             | DataType::UInt64
@@ -425,6 +432,9 @@ impl MaterializationBudget {
             }
             DataType::Version
             | DataType::Url
+            | DataType::Timezone
+            | DataType::MimeType
+            | DataType::MediaType
             | DataType::List(_)
             | DataType::Map(_)
             // A geospatial column is one binary column of WKB payloads.

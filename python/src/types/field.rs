@@ -12,10 +12,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
 use yggdryl::ArrowCast;
 use yggdryl::expression::Function as CoreFunction;
-use yggdryl::{
-    DataType as CoreDataType, Field as CoreField, PythonKind as CorePythonKind,
-    Scheme as CoreScheme,
-};
+use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
 
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
@@ -521,10 +518,8 @@ impl PyField {
         safe: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let scalar = if crate::types::datatype::needs_core_value_rules(self.inner.dtype())
-            || matches!(
-                self.inner.dtype(),
-                CoreDataType::Uuid | CoreDataType::Version | CoreDataType::Url
-            ) {
+            || crate::types::datatype::is_parsed_text(self.inner.dtype())
+        {
             core_arrow_scalar(py, value, self.inner.dtype(), safe)?
         } else {
             // Project the complete Field so registered extension metadata can

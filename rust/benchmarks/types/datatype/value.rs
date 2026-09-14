@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::Criterion;
 use yggdryl::{
-    DataType, Enum, Field, FieldScalar, Float16, Float32, Float64, I256, IOMode, Scalar, TimeUnit,
-    Timezone,
+    DataType, Enum, Field, FieldScalar, Float16, Float32, Float64, IOMode, Scalar, TimeUnit,
+    Timezone, i256,
 };
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
@@ -18,7 +18,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
             .unwrap(),
         ),
         ("id", Scalar::from(42_i64)),
-        ("price", Scalar::d256(I256::from_i128(1_050), 2)),
+        ("price", Scalar::d256(i256::from_i128(1_050), 2)),
         ("symbol", Scalar::from("AAPL")),
     ])
     .unwrap();
@@ -39,7 +39,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let typed_integer = Scalar::from(42_i64);
     let typed_decimal = Scalar::d128(1_050, 2);
     let typed_field = Field::new("size", DataType::Int64, false);
-    let integer256: I256 = "1234567890123456789012345678901234567890".parse().unwrap();
+    let integer256: i256 = "1234567890123456789012345678901234567890".parse().unwrap();
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
     let float32 = Float32::from_f32(1.25);
     let float64 = Float64::from_f64(1.25);

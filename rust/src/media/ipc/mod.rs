@@ -1089,4 +1089,5 @@ impl<H: IOBase> IOBase for Ipc<H> {
 }
 
 #[cfg(test)]
+#[path = "tests.rs"]
 mod tests;

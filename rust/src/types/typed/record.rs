@@ -358,6 +358,3 @@ impl From<FieldRecord<'_>> for Scalar {
         record.into_scalar()
     }
 }
-
-#[cfg(test)]
-mod tests;

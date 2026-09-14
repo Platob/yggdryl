@@ -1236,10 +1236,10 @@ impl Projection {
         if let Some(text) = value.as_str() {
             return text.parse();
         }
-        if let Some([term, alias]) = value.as_sequence()
-            && let Some(alias) = alias.as_str()
-        {
-            return Ok(Self::aliased(Term::from_scalar(term)?, alias));
+        if let Some([term, alias]) = value.as_sequence() {
+            if let Some(alias) = alias.as_str() {
+                return Ok(Self::aliased(Term::from_scalar(term)?, alias));
+            }
         }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),

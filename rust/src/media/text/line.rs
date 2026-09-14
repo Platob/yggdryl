@@ -96,6 +96,18 @@ impl TextLine {
         self.url.as_deref()
     }
 
+    /// The object this line was read from, as the handle every line shares.
+    ///
+    /// [`sourceurl`](Self::sourceurl) is what a reader comparing or rendering one wants.
+    /// A column that *holds* the URL wants this: a URL is several small
+    /// strings, and a whole read answers one, so the column takes a
+    /// reference count of the handle the read already built rather than
+    /// rebuilding the strings once per row.
+    #[must_use]
+    pub const fn shared_url(&self) -> Option<&Arc<Url>> {
+        self.url.as_ref()
+    }
+
     /// Set or clear the object this line was read from.
     pub fn set_sourceurl(&mut self, url: Option<Arc<Url>>) {
         self.url = url;
@@ -253,20 +265,19 @@ impl TextLine {
     ///
     /// Returns the refusal [`from_bytes`](Self::from_bytes) does, leaving
     /// the line unchanged.
-    pub fn set_captures(&mut self, captures: Vec<Option<TextBytes>>) -> Result<()> {
-        let mut read = Vec::with_capacity(captures.len());
+    pub fn set_captures(&mut self, mut captures: Vec<Option<TextBytes>>) -> Result<()> {
         let mut decoded_captures = 0;
-        for capture in captures {
-            read.push(match capture {
-                Some(held) => {
-                    let (held, count) = decoded(held)?;
-                    decoded_captures += count;
-                    Some(held)
-                }
-                None => None,
-            });
+        // Read where they stand: a capture that was already text is the range
+        // it was, so a second vector would allocate once per line to hold
+        // what this one already holds. A refusal drops the vector that came
+        // in and leaves the line untouched, which is the stated contract.
+        for capture in &mut captures {
+            let Some(held) = capture.take() else { continue };
+            let (held, count) = decoded(held)?;
+            decoded_captures += count;
+            *capture = Some(held);
         }
-        self.captures = read;
+        self.captures = captures;
         self.decoded_captures = decoded_captures;
         Ok(())
     }

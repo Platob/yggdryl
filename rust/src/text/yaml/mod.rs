@@ -703,24 +703,27 @@ fn is_plain_key(key: &Scalar) -> bool {
         key,
         Scalar::Null
             | Scalar::Boolean(_)
-            | Scalar::I8(_)
-            | Scalar::I16(_)
-            | Scalar::I32(_)
-            | Scalar::I64(_)
-            | Scalar::U8(_)
-            | Scalar::U16(_)
-            | Scalar::U32(_)
-            | Scalar::U64(_)
-            | Scalar::I128(_)
-            | Scalar::U128(_)
-            | Scalar::F16(_)
-            | Scalar::F32(_)
-            | Scalar::F64(_)
+            | Scalar::Int8(_)
+            | Scalar::Int16(_)
+            | Scalar::Int32(_)
+            | Scalar::Int64(_)
+            | Scalar::UInt8(_)
+            | Scalar::UInt16(_)
+            | Scalar::UInt32(_)
+            | Scalar::UInt64(_)
+            | Scalar::Int128(_)
+            | Scalar::UInt128(_)
+            | Scalar::Float16(_)
+            | Scalar::Float32(_)
+            | Scalar::Float64(_)
             | Scalar::String(_)
             | Scalar::Code(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
+            | Scalar::Timezone(_)
+            | Scalar::MimeType(_)
+            | Scalar::MediaType(_)
             | Scalar::Enum(_)
     )
 }
@@ -751,29 +754,35 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         }
         Scalar::Null => writer.write_all(b"null")?,
         Scalar::Boolean(value) => writer.write_all(if value.get() { b"true" } else { b"false" })?,
-        Scalar::I8(value) => write!(writer, "{value}")?,
-        Scalar::I16(value) => write!(writer, "{value}")?,
-        Scalar::I32(value) => write!(writer, "{value}")?,
-        Scalar::I64(value) => write!(writer, "{value}")?,
-        Scalar::U8(value) => write!(writer, "{value}")?,
-        Scalar::U16(value) => write!(writer, "{value}")?,
-        Scalar::U32(value) => write!(writer, "{value}")?,
-        Scalar::U64(value) => write!(writer, "{value}")?,
-        Scalar::I128(value) => write!(writer, "{value}")?,
-        Scalar::U128(value) => write!(writer, "{value}")?,
-        Scalar::F16(value) => write_float(writer, value.as_f64())?,
-        Scalar::F32(value) => write_float(writer, value.as_f64())?,
-        Scalar::F64(value) => write_float(writer, value.as_f64())?,
+        Scalar::Int8(value) => write!(writer, "{value}")?,
+        Scalar::Int16(value) => write!(writer, "{value}")?,
+        Scalar::Int32(value) => write!(writer, "{value}")?,
+        Scalar::Int64(value) => write!(writer, "{value}")?,
+        Scalar::UInt8(value) => write!(writer, "{value}")?,
+        Scalar::UInt16(value) => write!(writer, "{value}")?,
+        Scalar::UInt32(value) => write!(writer, "{value}")?,
+        Scalar::UInt64(value) => write!(writer, "{value}")?,
+        Scalar::Int128(value) => write!(writer, "{value}")?,
+        Scalar::UInt128(value) => write!(writer, "{value}")?,
+        Scalar::Float16(value) => write_float(writer, value.as_f64())?,
+        Scalar::Float32(value) => write_float(writer, value.as_f64())?,
+        Scalar::Float64(value) => write_float(writer, value.as_f64())?,
         // A decimal leaf displays exactly its canonical decimal text.
-        Scalar::D32(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::D64(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::D128(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::D256(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal32(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
         Scalar::String(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Code(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
-        Scalar::Uuid(value) => write_scalar_string(writer, &value.to_string())?,
+        Scalar::Timezone(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::MimeType(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::MediaType(value) => write_scalar_string(writer, &value.to_string())?,
+        Scalar::Uuid(value) => {
+            let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
+            write_scalar_string(writer, value.render(&mut slot))?;
+        }
         Scalar::Enum(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Bytes(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.
@@ -783,7 +792,14 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
                 &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
             )?;
         }
-        Scalar::Geospatial(value) => {
+        Scalar::Geometry(value) => {
+            writer.write_all(b"!!binary ")?;
+            write_quoted(
+                writer,
+                &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
+            )?;
+        }
+        Scalar::Geography(value) => {
             writer.write_all(b"!!binary ")?;
             write_quoted(
                 writer,

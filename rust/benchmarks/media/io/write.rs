@@ -677,7 +677,7 @@ fn shape_benchmarks(criterion: &mut Criterion) {
                         .record_options()
                         .expect("an implemented encoding")
                         .with_field(cast_field.clone())
-                        .with_selector("PRICE, symbol")
+                        .with_select("PRICE, symbol")
                         .unwrap();
                     (target, options)
                 },

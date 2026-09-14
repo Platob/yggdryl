@@ -249,7 +249,8 @@ pub enum DataTypeId
   pub const fn is_string(self) -> bool
   pub const fn is_nested(self) -> bool
   pub const fn is_wrapper(self) -> bool
-  pub const fn fixed_byte_width(self) -> Option<usize>
+  pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
+  pub const fn code_width(self) -> Option<usize>  (the eight registered codes; the most bytes one value may be)
 
 ### yggdryl::root::datatype_kind  [rust\src\datatype_kind.rs]
 pub enum DataTypeKind
@@ -856,7 +857,7 @@ pub struct MsgType  (registry-owned non-null Struct Field with a compiled group 
   pub const fn as_field(&self) -> &Field
   pub fn name(&self) -> &str
   pub fn as_str(&self) -> &str
-  pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
+  pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn identifier_values<'a>(&'a self, message: &'a FixMsg) -> impl Iterator<Item = (&'a Field, &'a Scalar)>  (borrowed direct members selected by a registration-time plan; no metadata parsing or allocation)
   impl Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Display, AsRef<Field> for MsgType
 
@@ -875,8 +876,8 @@ impl FixRegistry
   pub fn update_definition(&mut self, category: FixCategory, field: Field) -> Result<Field>
   pub fn add_definition(&mut self, category: FixCategory, field: Field) -> Result<bool>  (true = arrived; an existing name merges one level deep: stored members kept in order, new ones appended, references re-resolved)
   pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>
-  pub fn get_group_by_counter(&self, tag: i32) -> Option<&Field>
-  pub fn group_by_counter(&self, tag: i32) -> Result<&Field>
+  pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field>
+  pub fn group_by_tag(&self, tag: i32) -> Result<&Field>
 
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
@@ -1352,9 +1353,6 @@ pub enum Holder
   pub fn as_io(&self) -> &dyn IOBase
   pub fn as_io_mut(&mut self) -> &mut dyn IOBase
 
-### yggdryl::root::i256  [rust\src\i256.rs]
-pub struct I256([u64; 4]);
-  pub fn stable_hash(&self) -> u64
 
 ### yggdryl::root::iobase  [rust\src\iobase.rs]
 pub const DEFAULT_STREAM_BATCH_SIZE: usize = 64 * 1024;
@@ -1440,6 +1438,8 @@ pub enum IOMode
   pub const fn as_str(self) -> &'static str
 
 ### yggdryl::root::media_type  [rust\src\media_type.rs]
+// `DataType::MediaType` and its field/scalar live in types\media_type\; the value stays here.
+pub use types::{MediaTypeField, MediaTypeType};  (`DataType::MediaType` over Utf8, extension `yggdryl.mediatype`; default application/octet-stream; Scalar::MediaType holds Arc<MediaType>; intake is total - unrecognized text infers the default base)
 pub struct MediaType
   pub fn new(base: MimeType) -> Self
   pub fn from_parts<I>(base: MimeType, encodings: I) -> Result<Self> where I: IntoIterator<Item = MimeType>,
@@ -2267,6 +2267,8 @@ pub struct Metadata(Arc<MetadataMap>);
   pub fn merge_with(&self, other: &ProtocolMetadata<'_>) -> Result<Metadata>
 
 ### yggdryl::root::mime_type  [rust\src\mime_type.rs]
+// `DataType::MimeType` and its field/scalar live in types\mime_type\; the value stays here.
+pub use types::{MimeTypeField, MimeTypeType};  (`DataType::MimeType` over Utf8, extension `yggdryl.mimetype`; default application/octet-stream; Scalar::MimeType holds the value inline)
 pub struct MimeType(MimeTypeValue);
   pub const OCTET_STREAM: Self = Self(MimeTypeValue::OctetStream);
   pub const JSON: Self = Self(MimeTypeValue::Json);
@@ -2677,7 +2679,8 @@ pub enum TimeUnit
   pub const fn is_interval(self) -> bool
   pub const fn as_str(self) -> &'static str
 
-### yggdryl::root::timezone  [rust\src\timezone.rs]
+### yggdryl::types::timezone  [rust\src\types\timezone\mod.rs]
+pub use types::timezone::{Timezone, TimezoneField, TimezoneType};  (`DataType::Timezone` over Utf8, extension `yggdryl.timezone`; default NAIVE; merges only with itself)
 pub struct Timezone
   pub const NAIVE: Self
   pub const UTC: Self
@@ -2830,15 +2833,15 @@ pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
   pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
 
 ### yggdryl::types::decimal  [rust\src\types\decimal\scalars.rs]
-pub fn from_decimal(unscaled: I256, scale: i8) -> Self
+pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub const fn d128(unscaled: i128, scale: i8) -> Self
-  pub const fn d256(unscaled: I256, scale: i8) -> Self
+  pub const fn d256(unscaled: i256, scale: i8) -> Self
   pub const fn as_d128(&self) -> Option<(i128, i8)>
-  pub const fn as_d256(&self) -> Option<(I256, i8)>
-  pub fn as_decimal(&self) -> Option<(I256, i8)>
+  pub const fn as_d256(&self) -> Option<(i256, i8)>
+  pub fn as_decimal(&self) -> Option<(i256, i8)>
   pub const fn is_decimal(&self) -> bool
   pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128>
-  pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<I256>
+  pub fn decimal256_unscaled_at(&self, scale: i8) -> Option<i256>
   pub fn into_decimal_utf8(&self) -> Option<String>
 
 ### yggdryl::types::default  [rust\src\types\default.rs]
@@ -3090,6 +3093,13 @@ pub type NullField = TypedField<scalar::Null>;
   pub struct PartitionFields<'field>(std::slice::Iter<'field, Field>);
   pub struct PartitionFieldNames<'field>(PartitionFields<'field>);
 
+### yggdryl::types::i256  [rust\src\types\i256.rs]
+pub struct u256([u64; 4]);  (unsigned magnitude; ZERO, MAX; from_u128, from_le_bytes, into_le_bytes, as_u128, is_zero, checked_add/sub/mul/div/rem, stable_hash; Display/FromStr base-10; serde = the base-10 text)
+  pub fn stable_hash(&self) -> u64
+pub struct i256([u64; 4]);  (signed two's complement; ZERO; from_i128, from_u128, from_le_bytes, into_le_bytes, as_i128, as_u128, is_negative, is_zero, unsigned_abs -> u256, checked_neg/abs/add/sub/mul/div/rem, stable_hash; Display/FromStr base-10; serde = the base-10 text)
+  pub fn stable_hash(&self) -> u64
+  pub const fn unsigned_abs(self) -> u256
+
 ### yggdryl::types::geospatial  [rust\src\types\geospatial\scalars.rs]
 pub trait GeospatialValue: ScalarValue
   pub fn as_bytes(&self) -> &[u8]
@@ -3099,9 +3109,6 @@ pub trait GeospatialValue: ScalarValue
   pub fn as_bytes(&self) -> &[u8]
   pub fn storage(&self) -> &Arc<[u8]>
   pub fn into_inner(self) -> Arc<[u8]>
-  pub enum Geospatial
-  pub fn as_bytes(&self) -> &[u8]
-  pub fn storage(&self) -> &Arc<[u8]>
 
 ### yggdryl::types::floating  [rust\src\types\floating\dtypes.rs]
 pub fn decimal32(precision: u8, scale: i8) -> Result<Self>
@@ -3121,12 +3128,14 @@ pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/H
 
 ### yggdryl::types::uuid  [rust\src\types\uuid\scalars.rs]
 pub struct Uuid  (transparent u128, 16 bytes; big-endian storage; Copy, Eq/Ord/Hash, Display, serde; ScalarFamily and ScalarValue)
+  pub const TEXT_LEN: usize = 36;
   pub const fn new(value: u128) -> Self
   pub fn from_v7(unix_micros: i64, payload: u64) -> Result<Self>  (RFC 9562 microsecond fraction and low 62 payload bits; range 0..=281474976710655999; no allocation on success)
   pub const fn from_v8(payload: u128) -> Self  (replace version/variant bits only; preserve 122 payload bits; no allocation)
   pub fn from_bytes(value: &[u8]) -> Result<Self>
   pub const fn get(self) -> u128
   pub const fn into_bytes(self) -> [u8; 16]
+  pub fn render(self, slot: &mut [u8; Self::TEXT_LEN]) -> &str  (the canonical spelling into the caller's slot; allocates nothing)
 
 ### yggdryl::types::version  [rust\src\types\version\mod.rs]
 pub struct Version
@@ -3426,7 +3435,7 @@ pub trait ScalarValue: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Ha
   fn dtype(&self) -> Result<DataType>
   fn into_scalar(self) -> Scalar
   fn from_scalar(value: &Scalar) -> Option<&Self>
-  pub enum Scalar
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Code, Uuid, Version, Url, Timezone, MimeType, MediaType, Enum, Bytes, Geometry, Geography, Sequence, Mapping, Record, Arrow (feature arrow: Arc<ArrowScalar>, a columnar payload crossing as the scalar it is; into_native reads it as rows, as_arrow borrows it); 48 bytes; each width and geospatial variant holds its leaf directly, `Code` is the one family enum between; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub fn id(&self) -> DataTypeId
   pub fn family(&self) -> DataTypeKind
   pub const fn kind(&self) -> &'static str
@@ -3594,7 +3603,7 @@ impl DataType
   pub const fn string_parameters(&self) -> Option<StringParameters>  (String only; codes answer None)
   pub const fn is_string(&self) -> bool
   pub const fn charset(&self) -> Option<Charset>
-  pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width)
+  pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width; None for a code)
 
 ### yggdryl::types::string::scalars  [rust\src\types\string\scalars.rs]
 pub const INLINE_CAPACITY: usize = 23;
@@ -3654,8 +3663,9 @@ impl DataType
   pub const fn cfi() -> Self
   pub const fn isin() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
+  pub const fn code_width(&self) -> Option<usize>  (the most bytes one value may be; a maximum, so fixed_byte_width is None)
   pub const fn is_code(&self) -> bool
-  pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>  (a fixed US-ASCII string of at most sixteen bytes, or a code)
+  pub fn ascii_packed(&self, value: &[u8]) -> Result<i128>  (a fixed US-ASCII string of at most sixteen bytes, or a code; padded to that width by the packing, never by a column)
   pub fn ascii_value(&self, packed: i128) -> Result<Str>
 
 ### yggdryl::types::string::dictionary  [rust\src\types\string\dictionary.rs]

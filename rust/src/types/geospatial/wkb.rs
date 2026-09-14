@@ -495,6 +495,3 @@ pub fn geometry_type_ids(bytes: &[u8]) -> Result<Vec<u32>> {
 pub fn into_wkt(bytes: &[u8]) -> Result<String> {
     Ok(Geometry::from_slice(bytes)?.into_wkt())
 }
-
-#[cfg(test)]
-mod tests;

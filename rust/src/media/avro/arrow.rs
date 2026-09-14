@@ -344,3 +344,7 @@ fn locate(error: crate::Error, column: &str) -> crate::Error {
         other => other,
     }
 }
+
+#[cfg(test)]
+#[path = "arrow/tests.rs"]
+mod tests;

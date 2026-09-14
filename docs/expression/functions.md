@@ -11,7 +11,7 @@ The closed function set, and its one door: a user-defined function is registered
 | Signature | a struct `Field` named `namespace.name`: one child per parameter in position order, a parameter carrying `function:default` optional, the return as the `function:returns` property; `as_field` and `from_field` are lossless |
 | Call | arguments bound by position, defaults filled, each cast to its parameter through `DataType::cast_scalar`; a null meeting a parameter declared `not null` answers null without a call; the answer is cast to the declared return |
 | Tiers | the scalar tier calls `call`; the vectorized tier calls `call_arrow`, whose default runs `call` once per row through the one array crossing; the statistics tier never learns a user function, so a filter over one reads the rows |
-| Stored | a call over plain columns is a column's `transform:function` and `transform:sources` ([Selectors](selectors.md#a-field-is-a-selector)) |
+| Stored | a call over plain columns is a column's `transform:function` and `transform:sources` ([Selectors](selectors.md#a-selector-declares-a-schema)) |
 | Registry | process-wide, one implementation per qualified name, the latest registration wins; an unregistered name is refused where it is typed or bound, never silently null |
 | Bindings | Python `@user_defined_function` and `@user_defined_filter` in `yggdryl.expression`; JavaScript parses and prints the spelling and refuses it at bind |
 

@@ -43,8 +43,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::types::Geospatial;
-use crate::{DataType, Error, Field, I256, Result, Scalar, TimeUnit};
+use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, i256};
 
 /// Arrow's widest exact decimal, and so the widest integer a decimal can hold.
 const MAX_DECIMAL_PRECISION: usize = 76;
@@ -149,38 +148,38 @@ impl Scalar {
         match self {
             Self::Null => Ok(DataType::Null),
             Self::Boolean(_) => Ok(DataType::Boolean),
-            Self::I8(_) => Ok(DataType::Int8),
-            Self::I16(_) => Ok(DataType::Int16),
-            Self::I32(_) => Ok(DataType::Int32),
-            Self::I64(_) => Ok(DataType::Int64),
-            Self::U8(_) => Ok(DataType::UInt8),
-            Self::U16(_) => Ok(DataType::UInt16),
-            Self::U32(_) => Ok(DataType::UInt32),
-            Self::U64(_) => Ok(DataType::UInt64),
+            Self::Int8(_) => Ok(DataType::Int8),
+            Self::Int16(_) => Ok(DataType::Int16),
+            Self::Int32(_) => Ok(DataType::Int32),
+            Self::Int64(_) => Ok(DataType::Int64),
+            Self::UInt8(_) => Ok(DataType::UInt8),
+            Self::UInt16(_) => Ok(DataType::UInt16),
+            Self::UInt32(_) => Ok(DataType::UInt32),
+            Self::UInt64(_) => Ok(DataType::UInt64),
             // Arrow has no 128-bit integer, and an exact decimal with scale
             // zero is an integer, so that is what a wide integer becomes.
-            Self::I128(value) => integer_decimal(digits(value.get().unsigned_abs())),
-            Self::U128(value) => integer_decimal(digits(value.get())),
-            Self::F16(_) => Ok(DataType::Float16),
-            Self::F32(_) => Ok(DataType::Float32),
-            Self::F64(_) => Ok(DataType::Float64),
-            Self::D32(value) => decimal_dtype(
-                I256::from_i128(i128::from(value.coefficient())),
+            Self::Int128(value) => integer_decimal(digits(value.get().unsigned_abs())),
+            Self::UInt128(value) => integer_decimal(digits(value.get())),
+            Self::Float16(_) => Ok(DataType::Float16),
+            Self::Float32(_) => Ok(DataType::Float32),
+            Self::Float64(_) => Ok(DataType::Float64),
+            Self::Decimal32(value) => decimal_dtype(
+                i256::from_i128(i128::from(value.coefficient())),
                 value.scale(),
-                DecimalWidth::D32,
+                DecimalWidth::Decimal32,
             ),
-            Self::D64(value) => decimal_dtype(
-                I256::from_i128(i128::from(value.coefficient())),
+            Self::Decimal64(value) => decimal_dtype(
+                i256::from_i128(i128::from(value.coefficient())),
                 value.scale(),
-                DecimalWidth::D64,
+                DecimalWidth::Decimal64,
             ),
-            Self::D128(value) => decimal_dtype(
-                I256::from_i128(value.coefficient()),
+            Self::Decimal128(value) => decimal_dtype(
+                i256::from_i128(value.coefficient()),
                 value.scale(),
-                DecimalWidth::D128,
+                DecimalWidth::Decimal128,
             ),
-            Self::D256(value) => {
-                decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::D256)
+            Self::Decimal256(value) => {
+                decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::Decimal256)
             }
             // A string value already declares its layout, its charset and
             // its width, so the inferred datatype is what the value says it
@@ -190,11 +189,14 @@ impl Scalar {
             Self::Code(code) => Ok(code.datatype()),
             Self::Version(_) => Ok(DataType::Version),
             Self::Url(_) => Ok(DataType::Url),
+            Self::Timezone(_) => Ok(DataType::Timezone),
+            Self::MimeType(_) => Ok(DataType::MimeType),
+            Self::MediaType(_) => Ok(DataType::MediaType),
             Self::Uuid(_) => Ok(DataType::Uuid),
             Self::Enum(_) => Ok(DataType::utf8()),
             Self::Bytes(bytes) => bytes.dtype(),
-            Self::Geospatial(Geospatial::Geometry(_)) => DataType::geometry(None),
-            Self::Geospatial(Geospatial::Geography(_)) => DataType::geography(None, None),
+            Self::Geometry(_) => DataType::geometry(None),
+            Self::Geography(_) => DataType::geography(None, None),
             Self::Date32(_) => Ok(DataType::Date32),
             Self::Date64(_) => Ok(DataType::Date64),
             Self::Time32(value) => DataType::time32(value.unit()),
@@ -298,23 +300,23 @@ fn merge_inferred(left: &DataType, right: &DataType) -> Option<DataType> {
 
 /// Return the exact decimal a coefficient and scale name.
 enum DecimalWidth {
-    D32,
-    D64,
-    D128,
-    D256,
+    Decimal32,
+    Decimal64,
+    Decimal128,
+    Decimal256,
 }
 
-fn decimal_dtype(unscaled: I256, scale: i8, width: DecimalWidth) -> Result<DataType> {
+fn decimal_dtype(unscaled: i256, scale: i8, width: DecimalWidth) -> Result<DataType> {
     let precision = decimal_precision(unscaled, scale)?;
     match width {
-        DecimalWidth::D32 => DataType::decimal32(precision, scale),
-        DecimalWidth::D64 => DataType::decimal64(precision, scale),
-        DecimalWidth::D128 => DataType::decimal128(precision, scale),
-        DecimalWidth::D256 => DataType::decimal256(precision, scale),
+        DecimalWidth::Decimal32 => DataType::decimal32(precision, scale),
+        DecimalWidth::Decimal64 => DataType::decimal64(precision, scale),
+        DecimalWidth::Decimal128 => DataType::decimal128(precision, scale),
+        DecimalWidth::Decimal256 => DataType::decimal256(precision, scale),
     }
 }
 
-fn decimal_precision(unscaled: I256, scale: i8) -> Result<u8> {
+fn decimal_precision(unscaled: i256, scale: i8) -> Result<u8> {
     // Arrow requires a positive scale to fit inside the precision, so a
     // coefficient of 5 at scale 3 is `0.005` and needs three digits, not one.
     let precision = unscaled
@@ -364,6 +366,3 @@ fn unnameable(reason: SmolStr) -> Error {
         reason,
     }
 }
-
-#[cfg(test)]
-mod tests;

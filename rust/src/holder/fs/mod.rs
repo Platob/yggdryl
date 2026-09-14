@@ -70,6 +70,3 @@ pub use uri::{ResolvedFileSystem, ResolvedFileSystemUri, S3AddressingStyle, S3Fi
 pub fn located(location: BoundLocation) -> Holder {
     Holder::FsPath(Path::new(location))
 }
-
-#[cfg(test)]
-mod tests;

@@ -18,8 +18,8 @@ values cross the JavaScript boundary.
 | `iceberg` | [iceberg](../media/iceberg/index.md) |
 | `fix` | [fix](../fix/index.md) |
 | `MimeType`, `MediaType`, `Timezone` | [enums](../types/scalar.md) |
-| `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../text/index.md) |
-| `avro` | [Avro](../media/avro.md) |
+| `codec`, `json`, `toml`, `yaml`, `Scalar` | [text](../media/structured.md) |
+| `avro` | [Avro](../media/avro/index.md) |
 | `gzip`, `zlib`, `zstd` | [coding](../coding/index.md) |
 | `hashing` (`hashing.xxhash`, `hashing.txhash`), `Digest`, `TxHash`, `TxHasher` | [hashing](../hashing.md) and this page |
 
@@ -1046,7 +1046,7 @@ keeps the document's spelling; 20001 to 20004 are retired, not reused.
 - `TextOptions.startRownum` -> `bigint | null` over the whole signed 64-bit
   range; a `number` is rejected, never silently narrowed.
 - `TextOptions` logical framing -> `framing`, `leadingFragment`, and
-  `maxRecordByteSize`, contracted in [plain-text records](../media/text.md).
+  `maxRecordByteSize`, contracted in [plain-text records](../media/text/index.md).
 - A `bigint` wider than 128 bits -> refused, since no exact native integer
   holds it.
 - A handler-backed handle in a `Worker` -> refused by name; handlers run

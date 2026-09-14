@@ -79,6 +79,9 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "uuid": types.uuid("value"),
         "version": types.version("value"),
         "url": types.url("value"),
+        "timezone": types.timezone("value"),
+        "mimetype": types.mimetype("value"),
+        "mediatype": types.mediatype("value"),
         "side": types.side("value"),
         "state": types.state("value"),
         "timeinforce": types.timeinforce("value"),
@@ -86,7 +89,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 58
+    assert len(values_by_kind) == 61
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }
@@ -98,6 +101,9 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
     assert types.Int32Field is Field
     assert types.VersionField is Field
     assert types.UrlField is Field
+    assert types.TimezoneField is Field
+    assert types.MimeTypeField is Field
+    assert types.MediaTypeField is Field
     assert types.TypedField is Field
 
 

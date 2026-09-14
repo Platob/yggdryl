@@ -232,4 +232,5 @@ pub fn writer<W: std::io::Write>(target: W, algorithm: DigestAlgorithm) -> Diges
 }
 
 #[cfg(test)]
+#[path = "tests.rs"]
 mod tests;

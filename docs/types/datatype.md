@@ -176,11 +176,11 @@ The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
-| `Currency` | String | `currency` | ISO 4217 alpha-3, exactly 3 bytes |
-| `Country` | String | `country` | ISO 3166-1 alpha-2, exactly 2 bytes |
-| `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
-| `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
-| `isin` | - | `isin` | ISO 6166, exactly 12 bytes closed by a check digit |
+| `Currency` | String | `currency` | ISO 4217 alpha-3, at most 3 bytes |
+| `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
+| `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
+| `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |
+| `isin` | - | `isin` | ISO 6166, twelve bytes closed by a check digit |
 | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
@@ -450,7 +450,7 @@ Nesting is carried, not flattened, so every format round-trips it.
 
 | call | form |
 | --- | --- |
-| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../text/index.md), `indent=` in Python |
+| `into_json`, `into_yaml`, `into_toml` | text; shared [Formatting](../media/structured.md), `indent=` in Python |
 | `into_json_bytes`, `toJSONBytes` | the same JSON, encoded |
 | `from_json` | bytes, text, or a parsed object |
 
@@ -638,7 +638,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - A `TZTimeOnly` stating no offset -> null, not a guess. FIX means local time by omitting one and an instant cannot hold that; the text stays in the message's own entries. It is also what keeps a dateless `UTCTimestamp` - a malformed one - from reading as an instant on the epoch day.
 - A FIX temporal the ISO reading refuses -> null, and the raw text stays in the message's own entries. A leap second (`23:59:60Z`, which FIX permits) is such a value: it was text under `fixed_ascii(16)` and is null now, which is the cost of being typed.
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
-- `DataType::from_arrow(currency.into_arrow())` -> `fixed_size_binary(3)`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
+- `DataType::from_arrow(currency.into_arrow())` -> `utf8`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
 - prebuilt `currency`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
 - prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.

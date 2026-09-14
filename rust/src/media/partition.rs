@@ -475,18 +475,18 @@ fn partition_values(batch: &RecordBatch, columns: &[String]) -> Result<Vec<Vec<S
                 ),
             });
         };
-        // A fixed string, a string in a charset other than UTF-8, and a
-        // registered code ride binary storage, which the formatter would
-        // spell as hex; the directory carries the trimmed text the value is,
-        // so a `currency` column spells `ccy=USD` and the read casts that
-        // text back through the code's own path.
+        // A fixed string and a string in a charset other than UTF-8 ride
+        // binary storage, which the formatter would spell as hex; the
+        // directory carries the trimmed text the value is, so such a column
+        // spells its text and the read casts that text back through the
+        // datatype's own path. A code already rides text storage, so its
+        // column is formatted where it stands.
         let schema = batch.schema();
         let field = Field::from_arrow(schema.field(index))?;
         let dtype = field.dtype();
-        let stored_as_bytes = dtype.is_code()
-            || dtype
-                .string_parameters()
-                .is_some_and(|parameters| parameters.is_fixed() || !is_text_storage(parameters));
+        let stored_as_bytes = dtype
+            .string_parameters()
+            .is_some_and(|parameters| parameters.is_fixed() || !is_text_storage(parameters));
         let column = if stored_as_bytes {
             cast_field_array(
                 &DataType::utf8().nullable_field(column.as_str()),
@@ -1033,4 +1033,5 @@ fn retried<T>(mut step: impl FnMut() -> Result<T>) -> Result<T> {
 }
 
 #[cfg(test)]
+#[path = "partition/tests.rs"]
 mod tests;

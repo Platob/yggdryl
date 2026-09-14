@@ -6,7 +6,7 @@ Variant, geometry, and geography datatypes plus the dependency-free WKB reader b
 
 | | |
 | --- | --- |
-| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geospatial`, `types::geospatial::wkb` |
+| Owns | `variant`, `geometry(crs)`, `geography(crs, algorithm)`, `Scalar::Geometry`, `Scalar::Geography`, `types::geospatial::wkb` |
 | Defaults | CRS `OGC:CRS84`; edges `spherical`; display omits defaults |
 | Algorithms | `spherical`, `vincenty`, `thomas`, `andoyer`, `karney`; case-insensitive ([`EdgeAlgorithm`](scalar.md)) |
 | Arrow | variant: struct of non-nullable `metadata`, `value` binaries under `arrow.parquet.variant`; pair: WKB binary under `geoarrow.wkb`, CRS and algorithm in GeoArrow JSON; both ride `ARROW:extension:name`/`ARROW:extension:metadata` |
@@ -15,7 +15,7 @@ Variant, geometry, and geography datatypes plus the dependency-free WKB reader b
 
 ## Use
 
-Bare spellings fill the defaults [Parquet](../media/parquet.md) and [Iceberg](../media/iceberg/index.md) v3 share.
+Bare spellings fill the defaults [Parquet](../media/parquet/index.md) and [Iceberg](../media/iceberg/index.md) v3 share.
 
 === "Rust"
 
@@ -176,7 +176,7 @@ assert!(error.to_string().contains("byte 5"), "{error}");
 - `POINT EMPTY` -> NaN coordinates decode as `coordinate: None`.
 - Empty geometry -> `bounding_box` is the fold identity; `BoundingBox::is_empty` skips the statistic.
 - `geometry_type_ids` -> the distinct ISO type codes the payload holds.
-- `Scalar::Bytes` holding WKB -> canonicalized to `Scalar::Geospatial`; `as_wkb` reads both.
+- `Scalar::Bytes` holding WKB -> canonicalized to `Scalar::Geometry` or `Scalar::Geography`; `as_wkb` reads all three.
 - `geoarrow.wkb` -> community mapping; GeoArrow is not finalized.
 
 ## Commands

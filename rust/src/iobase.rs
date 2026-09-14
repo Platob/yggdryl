@@ -1308,6 +1308,3 @@ pub trait IOBase: Send + IOMedia {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

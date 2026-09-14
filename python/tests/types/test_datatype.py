@@ -614,9 +614,9 @@ def test_every_byte_column_is_one_datatype_with_a_layout_and_a_bound() -> None:
 
 def test_a_registered_code_is_its_own_datatype() -> None:
     # ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
-    # and ISO 6166 twelve: each is a datatype storing exactly that, not a name
-    # over a width. The five are the registrations whose name answers a type
-    # of its own.
+    # and ISO 6166 twelve: each is a datatype of its own holding its values to
+    # exactly that, not a name over a width. The five are the registrations
+    # whose name answers a type of its own.
     currency = DataType.from_logical_name("Currency")
     assert currency == DataType("currency")
     assert DataType.logical_names()["currency"] == currency
@@ -625,7 +625,10 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     assert currency.id == "currency"
     assert currency.kind == "code"
     assert str(currency) == "currency"
-    assert currency.fixed_byte_width == 3
+    # The width bounds a value; a code stores as the text it is, so it names
+    # no fixed layout.
+    assert currency.code_width == 3
+    assert currency.fixed_byte_width is None
     assert currency.string_parameters is None
     assert currency.charset is None
     assert not currency.is_string
@@ -641,9 +644,12 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         ("isin", 12),
     ]:
         dtype = DataType(name)
-        assert (dtype.id, dtype.fixed_byte_width, dtype.kind) == (name, width, "code")
+        assert (dtype.id, dtype.code_width, dtype.kind) == (name, width, "code")
+        assert dtype.fixed_byte_width is None
 
-    # The packed integer is the value's own bytes, exactly as for a width.
+    # The packed integer is the value's bytes padded to the code's own width,
+    # exactly as for a fixed US-ASCII string of it. The padding is the
+    # packing's; the column stores the text alone.
     assert currency.ascii_packed("USD") == DataType.fixed_ascii(3).ascii_packed("USD")
     assert currency.ascii_value(0x555344) == "USD"
     with pytest.raises(ValueError, match="at most 2 bytes"):
@@ -667,31 +673,61 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         isin.scalar("US037833100")
 
 
+def test_a_code_and_a_uuid_read_into_every_string_and_byte_datatype() -> None:
+    # Both families are one cast away in each direction, and the refusal on
+    # the way names the row rather than leaving pyarrow to complain about a
+    # slice length. A column's extension name is what a reading reads it
+    # under, so each source travels as the batch that carries it.
+    def row(field: Field) -> Field:
+        return Field("row", DataType.from_fields([field]), nullable=False)
+
+    def through(source: Field, stored: pa.Array, target: Field) -> pa.Array:
+        batch = pa.RecordBatch.from_arrays(
+            [stored], schema=pa.schema([source.into_arrow()])
+        )
+        return row(target).cast_arrow_batch(batch, safe=False).column(0)
+
+    ccy = Field("ccy", "currency")
+    stored = ccy.cast_arrow_array(pa.array(["USD"]), safe=False)
+    for spelling in ["utf8", "ascii", "utf8(3)", "fixed_ascii(3)", "binary", "fixed_size_binary(3)"]:
+        read = through(ccy, stored, Field("ccy", DataType(spelling)))
+        assert ccy.cast_arrow_array(read, safe=False).to_pylist() == ["USD"]
+    with pytest.raises(ValueError, match="exactly 8 bytes"):
+        through(ccy, stored, Field("ccy", "fixed_size_binary(8)"))
+
+    text = "01912d68-783e-7c9a-b1f2-0123456789ab"
+    uid = Field("id", "uuid")
+    identifiers = uid.cast_arrow_array(pa.array([text]), safe=False)
+    for spelling in ["utf8", "ascii", "utf8(36)", "fixed_ascii(36)", "binary", "fixed_size_binary(16)"]:
+        read = through(uid, identifiers, Field("id", DataType(spelling)))
+        back = uid.cast_arrow_array(read, safe=False)
+        assert through(uid, back, Field("id", "utf8")).to_pylist() == [text]
+    with pytest.raises(ValueError, match="a fixed binary of 16 bytes"):
+        through(uid, identifiers, Field("id", "fixed_size_binary(8)"))
+
+
 def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     ccy = Field("ccy", "currency")
     arrow_field = ccy.into_arrow()
 
-    assert arrow_field.type == pa.binary(3)
+    # A code stores as the text it is; the extension name is what carries the
+    # identity, so pyarrow sees a string column a reader can already use.
+    assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
         b"ARROW:extension:name": b"yggdryl.currency",
         b"ARROW:extension:metadata": b"",
     }
     assert Field.from_arrow(arrow_field) == ccy
 
-    # The same three bytes under the string family's name are the fixed
-    # string, and under no name at all are a plain fixed binary.
-    assert Field.from_arrow(Field("ccy", DataType.fixed_ascii(3)).into_arrow()) == Field(
-        "ccy", DataType.fixed_ascii(3)
-    )
-    assert Field.from_arrow(pa.field("ccy", pa.binary(3))) == Field(
-        "ccy", "fixed_size_binary(3)"
-    )
+    # The same text under the string family's name is a bounded string, and
+    # under no name at all is plain text.
+    bounded = Field("ccy", DataType("ascii(3)"))
+    assert Field.from_arrow(bounded.into_arrow()) == bounded
+    assert bounded.into_arrow().type == pa.string()
+    assert Field.from_arrow(pa.field("ccy", pa.string())) == Field("ccy", "utf8")
 
-    assert ccy.arrow_scalar("USD") == pa.scalar(b"USD", pa.binary(3))
-    assert ccy.cast_arrow_array(pa.array(["USD", "EU"])).to_pylist() == [
-        b"USD",
-        b"EU\x00",
-    ]
+    assert ccy.arrow_scalar("USD") == pa.scalar("USD", pa.string())
+    assert ccy.cast_arrow_array(pa.array(["USD", "EU"])).to_pylist() == ["USD", "EU"]
     # A cell the code refuses is null under the default safe cast and an
     # error naming the row when strict, exactly as a string cell is.
     assert ccy.cast_arrow_array(pa.array(["EURO"])).to_pylist() == [None]

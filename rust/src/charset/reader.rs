@@ -85,3 +85,7 @@ impl<R: Read> Read for Reader<R> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "reader/tests.rs"]
+mod tests;

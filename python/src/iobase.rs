@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyString, PyTuple, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyDictMethods, PyString, PyTuple, PyType};
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
@@ -486,7 +486,7 @@ impl PyIOBase {
         options: Option<&Bound<'_, PyAny>>,
         properties: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Option<RecordOptions>> {
-        if options.is_none() && properties.is_none_or(|properties| properties.is_empty()) {
+        if options.is_none() && properties.is_none_or(PyDictMethods::is_empty) {
             return Ok(None);
         }
         self.resolve_options_with(options, properties, |this| {
@@ -526,7 +526,7 @@ impl PyIOBase {
             None => record_options_into_py(py, default(self)?)?,
         };
         for (name, value) in properties.iter() {
-            if value.is(&py.Ellipsis()) {
+            if value.is(py.Ellipsis()) {
                 continue;
             }
             held.setattr(name.cast::<PyString>()?, value)?;
@@ -623,10 +623,7 @@ impl PyIOBase {
 
 /// The Python options value one core options value is: text options for
 /// plain text, record options for every other encoding.
-fn record_options_into_py<'py>(
-    py: Python<'py>,
-    options: RecordOptions,
-) -> PyResult<Bound<'py, PyAny>> {
+fn record_options_into_py(py: Python<'_>, options: RecordOptions) -> PyResult<Bound<'_, PyAny>> {
     Ok(match options {
         RecordOptions::Text(text) => Py::new(py, PyTextOptions::from_core((*text).clone()))?
             .into_bound(py)

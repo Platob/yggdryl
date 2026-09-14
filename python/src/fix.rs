@@ -507,17 +507,17 @@ impl PyFixRegistry {
     }
 
     /// The group definition one counter tag heads, or `None`.
-    fn get_group_by_counter(&self, tag: FixTag) -> Option<PyField> {
+    fn get_group_by_tag(&self, tag: FixTag) -> Option<PyField> {
         self.inner
-            .get_group_by_counter(tag.0)
+            .get_group_by_tag(tag.0)
             .cloned()
             .map(PyField::from_inner)
     }
 
     /// The group definition one counter tag heads.
-    fn group_by_counter(&self, tag: FixTag) -> PyResult<PyField> {
+    fn group_by_tag(&self, tag: FixTag) -> PyResult<PyField> {
         self.inner
-            .group_by_counter(tag.0)
+            .group_by_tag(tag.0)
             .cloned()
             .map(PyField::from_inner)
             .map_err(|error| absent(&error))
@@ -860,9 +860,9 @@ impl PyMsgType {
         PyField::from_inner_with_read_only(self.inner().as_field().clone(), true)
     }
     /// The group this message declares under one counter tag, or `None`.
-    fn get_group_by_counter(&self, tag: FixTag) -> Option<PyField> {
+    fn get_group_by_tag(&self, tag: FixTag) -> Option<PyField> {
         self.inner()
-            .get_group_by_counter(tag.0)
+            .get_group_by_tag(tag.0)
             .cloned()
             .map(PyField::from_inner)
     }

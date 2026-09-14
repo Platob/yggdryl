@@ -550,7 +550,7 @@ The options field selects and casts in one pass; columns it omits are never read
     assert.deepEqual(selected.schema.fields.map((field) => field.name), ['symbol'])
     ```
 
-[Parquet](../../media/parquet.md) skips the column chunk bytes; [Arrow IPC](../../media/ipc.md) skips decode and allocation but still reads the message body.
+[Parquet](../../media/parquet/index.md) skips the column chunk bytes; [Arrow IPC](../../media/ipc/index.md) skips decode and allocation but still reads the message body.
 
 ## Limits
 
@@ -821,7 +821,7 @@ Keys use Arrow's row format: null matches null, composite keys compare column by
 
 ## Text records
 
-`text/plain` uses the same record methods, and `into_text` / `intoText` adds no line-only method. Physical lines are records by default; [Plain-text records](../../media/text.md) defines the schema, parsing order, errors, and benchmarks.
+`text/plain` uses the same record methods, and `into_text` / `intoText` adds no line-only method. Physical lines are records by default; [Plain-text records](../../media/text/index.md) defines the schema, parsing order, errors, and benchmarks.
 
 ## Edges
 

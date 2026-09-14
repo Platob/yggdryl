@@ -232,8 +232,8 @@ Each lookup exists by position, by path, or either:
 1. equal types are that type;
 2. `null` yields to the defined side;
 3. same-family nesting recurses; a struct takes the union of its fields;
-4. bytes win; two byte types meet parameter by parameter - the wider offsets, the variable layout over a fixed one, no bound over a bound when widening, and the mirror when narrowing. A type storing a fixed width beside fixed bytes of that same width - a fixed string, a code, `uuid` - keeps the storage both have: the plain bytes when widening, the side constraining them when narrowing. A numeric width never shares fixed bytes: `int32` beside `fixed_size_binary(4)` is variable bytes;
-5. text wins next; two strings meet parameter by parameter - the wider offsets, the variable layout over a fixed one, UTF-8 over two different charsets, no bound over a bound when widening, and the narrower layout, repertoire and bound when narrowing. A registered code is the `fixed_ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
+4. bytes win; two byte types meet parameter by parameter - the wider offsets, the variable layout over a fixed one, no bound over a bound when widening, and the mirror when narrowing. A type storing a fixed width beside fixed bytes of that same width - a fixed string, `uuid` - keeps the storage both have: the plain bytes when widening, the side constraining them when narrowing. A numeric width never shares fixed bytes, and neither does a code, whose width bounds variable text: `int32` beside `fixed_size_binary(4)`, and `currency` beside `fixed_size_binary(3)`, are variable bytes;
+5. text wins next; two strings meet parameter by parameter - the wider offsets, the variable layout over a fixed one, UTF-8 over two different charsets, no bound over a bound when widening, and the narrower layout, repertoire and bound when narrowing. A registered code is the `ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
 6. numbers meet by width, temporals by unit; widening keeps the widest decimal backing either side declared.
 
 Anything left is refused. Every rule answers in Python and JavaScript too; the parameter-by-parameter cases are shown once, in Rust.
@@ -743,7 +743,7 @@ protocol is done, so a required column its protocol did not write is still refus
     assert root.apply_arrow_batch(applied).equals(applied)
 
     # Each step is separately switchable; a cast alone materializes and writes nothing.
-    cast_only = root.apply_arrow_batch(batch, digest=False, partition=False)
+    cast_only = root.apply_arrow_batch(batch, digest=False, transform=False)
     assert cast_only.column("year").to_pylist() == [None]
 
     # A declared non-null column its protocol did not write is refused by path.
@@ -759,7 +759,7 @@ protocol is done, so a required column its protocol did not write is still refus
     # declaration; with it off, nothing is going to write it.
     assert strict_root.apply_arrow_batch(batch, nullability="strict").num_columns == 2
     try:
-        strict_root.apply_arrow_batch(batch, partition=False, nullability="strict")
+        strict_root.apply_arrow_batch(batch, transform=False, nullability="strict")
     except ValueError as error:
         assert "$.year" in str(error), error
     else:
@@ -779,7 +779,7 @@ protocol is done, so a required column its protocol did not write is still refus
 
 ## Serializing a schema
 
-One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../text/index.md) option, `indent` in Python.
+One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_dict`) backs JSON, YAML, and TOML, so a schema embeds inline in any document. Each writer takes the shared [`Formatting`](../media/structured.md) option, `indent` in Python.
 
 === "Rust"
 

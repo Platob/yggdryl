@@ -100,7 +100,7 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   assert.equal(registry.fieldByTag(52).name, 'sendingtime')
   assert.equal(registry.fieldByTag(60).name, 'transacttime')
   assert.equal(fix.crateFields().length, 25)
-  assert.equal(registry.groupByCounter(65020).name, 'altids')
+  assert.equal(registry.groupByTag(65020).name, 'altids')
 })
 
 test('addDefinition folds a definition into the one its name reaches', () => {
@@ -169,12 +169,12 @@ test('inline codes and the complete native catalog survive snapshots', () => {
   for (const copy of [declared.clone(), fix.FixRegistry.fromJson(declared.intoJson())]) {
     assert.ok(copy.equals(declared))
     assert.equal(copy.stableHash(), declared.stableHash())
-    assert.equal(copy.groupByCounter(453).name, 'Parties')
-    assert.equal(copy.getGroupByCounter(999), null)
+    assert.equal(copy.groupByTag(453).name, 'Parties')
+    assert.equal(copy.getGroupByTag(999), null)
   }
   // A counter is a tag: an exact number, never text.
-  assert.throws(() => declared.groupByCounter(1.5), /tag must be a signed 32-bit integer/)
-  assert.throws(() => declared.getGroupByCounter('453'), /into rust type `f64`/)
+  assert.throws(() => declared.groupByTag(1.5), /tag must be a signed 32-bit integer/)
+  assert.throws(() => declared.getGroupByTag('453'), /into rust type `f64`/)
   assert.throws(() => registry.definitions('codesets'))
   const changed = registry.clone()
   const definition = changed.definition('components', 'NewOrderSingle')
@@ -242,8 +242,8 @@ test('message singleton indices distinguish names from another wire code', () =>
   assert.equal(second.msgtype('anotherorder').asStr(), 'D')
   assert.equal([...second.msgtypes()].length, 5)
   const held = catalog().msgtype('D')
-  assert.equal(held.getGroupByCounter(453).name, 'Parties')
-  assert.equal(held.getGroupByCounter(999), null)
+  assert.equal(held.getGroupByTag(453).name, 'Parties')
+  assert.equal(held.getGroupByTag(999), null)
 })
 
 test('numeric counters remain int32 beside message-scoped occurrence lists', () => {
@@ -367,7 +367,7 @@ test('compiled identifiers never assign one ambiguous tag to another direct memb
 
 test('a builtin altids group reference reloads without a persisted builtin definition', (t) => {
   const registry = new fix.FixRegistry()
-  const mapping = registry.groupByCounter(65020)
+  const mapping = registry.groupByTag(65020)
   mapping.fix.group = 'altids'
   registry.createDefinition('components', message('identified', 'ID', [mapping]))
   assert.deepEqual(registry.toJSON().groups, [])

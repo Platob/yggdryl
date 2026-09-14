@@ -390,7 +390,7 @@ let before_changes = table.current_snapshot().expect("the insert").snapshot_id;
 let update = taxis(&[1], &[1_000_371], &[1.8], &[16.32], &["N"])?;
 table.commit_merge(
     yggdryl::arrow::batch_reader(update.schema(), [update]),
-    &["trip_id".to_owned()],
+    &yggdryl::Selector::from_columns(["trip_id"]),
     true,
 )?;
 assert_eq!(fares(&table)?[0], (1_000_371, 16.32));

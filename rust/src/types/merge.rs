@@ -190,9 +190,16 @@ impl DataType {
             return Ok(self.clone());
         }
         // A version has numeric ordering semantics that a text or numeric
-        // merge cannot preserve, and a URL carries a validation a text merge
-        // would silently drop. Only the equal-type arm above may merge either.
-        if matches!(self, Self::Version | Self::Url) || matches!(other, Self::Version | Self::Url) {
+        // merge cannot preserve, and a URL, a zone, a MIME type and a media
+        // type each carry a validation and a canonical spelling a text merge
+        // would silently drop. Only the equal-type arm above may merge these.
+        let canonical_text = |dtype: &Self| {
+            matches!(
+                dtype,
+                Self::Version | Self::Url | Self::Timezone | Self::MimeType | Self::MediaType
+            )
+        };
+        if canonical_text(self) || canonical_text(other) {
             return Err(unmergeable(self, other));
         }
         if let Some(merged) = merge_encoded(self, other, how, recode)? {
@@ -515,13 +522,13 @@ const fn variable_bytes_layout(view: bool, large: bool) -> BytesLayout {
 }
 
 /// The byte width of a fixed-width byte layout: fixed bytes, a fixed string,
-/// a registered code, or a UUID, each of whose storage is the fixed binary of
-/// that width. A number's width is its own encoding and never bytes it
-/// shares, so `int32` beside `fixed_size_binary(4)` is variable bytes.
+/// or a UUID, each of whose storage is the fixed binary of that width. A
+/// number's width is its own encoding and never bytes it shares, so `int32`
+/// beside `fixed_size_binary(4)` is variable bytes, and a registered code's
+/// width is a maximum over variable text rather than a layout.
 fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
         DataType::Bytes(_) | DataType::String(_) | DataType::Uuid => dtype.fixed_byte_width(),
-        _ if dtype.is_code() => dtype.fixed_byte_width(),
         _ => None,
     }
 }
@@ -531,9 +538,8 @@ fn fixed_width(dtype: &DataType) -> Option<usize> {
 /// Two sides storing the same number of bytes keep that storage, and the
 /// direction decides which of the two names it. Widening answers the plain
 /// bytes, which hold every value either side can carry; narrowing answers the
-/// side that constrains them - a fixed string, a registered code, a UUID -
-/// because that is the tightest type naming both and the storage is identical
-/// either way. Any other pairing is variable bytes in the byte side's layout:
+/// side that constrains them - a fixed string, a UUID - because that is the
+/// tightest type naming both and the storage is identical either way. Any other pairing is variable bytes in the byte side's layout:
 /// the other side's rendering fits no fixed width and no maximum.
 fn rebuild_binary(
     parameters: BytesParameters,
@@ -564,38 +570,35 @@ fn rebuild_binary(
 
 /// The parameters a text datatype merges as, if it is text at all.
 ///
-/// A registered code is the fixed US-ASCII width it stores. Two schemas that
-/// agree on a code never reach here - the merge answers an equal pair before
-/// reading anything - so this decides only the pairs that disagree, and
-/// [`merge_text`] is what says when the code identity survives.
+/// A registered code is US-ASCII bounded at the width its standard fixes,
+/// which is what it stores. Two schemas that agree on a code never reach
+/// here - the merge answers an equal pair before reading anything - so this
+/// decides only the pairs that disagree, and [`merge_text`] is what says when
+/// the code identity survives.
 fn text_parameters(dtype: &DataType) -> Option<StringParameters> {
     match dtype {
         DataType::String(parameters) => Some(*parameters),
-        _ if dtype.is_code() => {
-            let width = u32::try_from(dtype.fixed_byte_width()?).ok()?;
-            Some(
-                StringParameters::ascii(StringLayout::FixedString)
-                    .with_bound(NonZeroU32::new(width)?),
-            )
+        _ => {
+            let width = u32::try_from(dtype.code_width()?).ok()?;
+            Some(StringParameters::ascii(StringLayout::String).with_bound(NonZeroU32::new(width)?))
         }
-        _ => None,
     }
 }
 
 /// Meet two text types, conserving a registered code where the direction can.
 ///
 /// Widening never answers a code: a code names fewer values than the width it
-/// stores in, so the type holding both sides is the plain one - `currency`
-/// beside `fixed_ascii(3)` is `fixed_ascii(3)`. Narrowing asks the opposite
-/// question, for the tightest type that names both, and there the code is the
-/// answer whenever the other side is at least as general: `currency` beside
-/// `utf8` or `fixed_ascii(3)` narrows to `currency`, and only a side narrower
-/// still, such as `fixed_ascii(2)`, outranks it.
+/// is bounded by, so the type holding both sides is the plain one - `currency`
+/// beside `ascii(3)` is `ascii(3)`. Narrowing asks the opposite question, for
+/// the tightest type that names both, and there the code is the answer
+/// whenever the other side is at least as general: `currency` beside `utf8`
+/// or `ascii(3)` narrows to `currency`, and only a side narrower still, such
+/// as `ascii(2)`, outranks it.
 ///
 /// Two *different* codes are the one pair neither direction answers with a
 /// code, because neither standard names the other's values: a currency merged
-/// with a country is `fixed_ascii(3)` widening and `fixed_ascii(2)` narrowing,
-/// never one standard's code carrying the other's values.
+/// with a country is `ascii(3)` widening and `ascii(2)` narrowing, never one
+/// standard's code carrying the other's values.
 fn merge_text(
     left: (&DataType, StringParameters),
     right: (&DataType, StringParameters),
@@ -1134,7 +1137,6 @@ mod tests {
                 DataType::fixed_ascii(4).unwrap(),
                 DataType::fixed_size_binary(4).unwrap(),
             ),
-            (DataType::Currency, DataType::fixed_size_binary(3).unwrap()),
             (DataType::Uuid, DataType::fixed_size_binary(16).unwrap()),
         ] {
             assert_eq!(
@@ -1161,6 +1163,17 @@ mod tests {
                 .unwrap(),
             DataType::binary()
         );
+
+        // A code shares no fixed width with anything: its own width bounds
+        // variable text, so bytes beside it are variable bytes either way.
+        for how in [true, false] {
+            assert_eq!(
+                DataType::Currency
+                    .merge_with(&DataType::fixed_size_binary(3).unwrap(), how)
+                    .unwrap(),
+                DataType::binary()
+            );
+        }
     }
 
     #[test]
@@ -1193,14 +1206,15 @@ mod tests {
         );
 
         // Two different codes are the pair neither direction answers with a
-        // code: neither standard names the other's values.
+        // code: neither standard names the other's values, so the answer is
+        // the bounded ASCII text both store as.
         assert_eq!(
             down(&DataType::Currency, &DataType::Country),
-            DataType::fixed_ascii(2).unwrap()
+            DataType::from_str("ascii(2)").unwrap()
         );
         assert_eq!(
             up(&DataType::Currency, &DataType::Country),
-            DataType::fixed_ascii(3).unwrap()
+            DataType::from_str("ascii(3)").unwrap()
         );
 
         // A number's rendering does not fit a code, so absorbing one is still

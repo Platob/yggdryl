@@ -1125,4 +1125,5 @@ impl From<parquet::errors::ParquetError> for Error {
 }
 
 #[cfg(test)]
+#[path = "tests.rs"]
 mod tests;

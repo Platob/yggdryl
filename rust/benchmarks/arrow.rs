@@ -22,9 +22,10 @@ use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
 use yggdryl::holder::Buffer;
+use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
-    ArrowCast, ArrowCastOptions, ArrowValue, DataType, Field, IOBase, IOMedia, IOMode, Scalar,
-    TimeUnit, Timezone, Url,
+    ArrowCast, ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType,
+    MimeType, Scalar, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -94,7 +95,7 @@ fn rows(count: usize) -> Scalar {
 
 /// One batch of `count` trade rows, built through the family's own boundary.
 fn batch(root: &Field, count: usize) -> RecordBatch {
-    ArrowValue::from_rows(root, &rows(count))
+    ArrowScalar::from_rows(root, &rows(count))
         .expect("the trade rows materialize")
         .into_batch()
         .expect("a held batch is already a batch")
@@ -124,18 +125,18 @@ fn prices(count: usize) -> ArrayRef {
 }
 
 /// One held batch as a value, without rebuilding its arrays.
-fn held(root: &Field, batch: &RecordBatch) -> ArrowValue {
-    ArrowValue::from_batch_as(root.clone(), batch.clone()).expect("the batch matches its root")
+fn held(root: &Field, batch: &RecordBatch) -> ArrowScalar {
+    ArrowScalar::from_batch_as(root.clone(), batch.clone()).expect("the batch matches its root")
 }
 
 /// One stream over `parts`, which is one-shot and so is rebuilt per sample.
-fn streamed(schema: &SchemaRef, parts: &[RecordBatch]) -> ArrowValue {
-    ArrowValue::from_reader(batch_reader(Arc::clone(schema), parts.to_vec()))
+fn streamed(schema: &SchemaRef, parts: &[RecordBatch]) -> ArrowScalar {
+    ArrowScalar::from_reader(batch_reader(Arc::clone(schema), parts.to_vec()))
         .expect("the stream names its root")
 }
 
 /// Pull one batch: the latency half of an iteration surface.
-fn first_batch(value: ArrowValue) -> usize {
+fn first_batch(value: ArrowScalar) -> usize {
     value
         .into_reader()
         .expect("every shape widens to a reader")
@@ -146,7 +147,7 @@ fn first_batch(value: ArrowValue) -> usize {
 }
 
 /// Pull every batch: the throughput half.
-fn drain(value: ArrowValue) -> usize {
+fn drain(value: ArrowScalar) -> usize {
     drain_reader(value.into_reader().expect("every shape widens to a reader"))
 }
 
@@ -155,6 +156,14 @@ fn drain_reader(reader: BatchReader) -> usize {
     reader
         .map(|batch| batch.expect("a batch decodes").num_rows())
         .sum()
+}
+
+/// The one section a structured document reads off record options: the
+/// declared field, carried by any record encoding's options.
+fn declaring(field: &Field) -> RecordOptions {
+    RecordOptions::for_media_type(&MediaType::new(MimeType::ARROW_STREAM))
+        .expect("the IPC encoding is built in")
+        .with_field(field.clone())
 }
 
 /// A handle whose media type comes from a name, so the format is declared.
@@ -200,7 +209,7 @@ fn construction_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("arrow_value_construct");
     group.bench_function("from_value", |bencher| {
         bencher.iter(|| {
-            ArrowValue::from_value(black_box(&price), black_box(&one))
+            ArrowScalar::from_value(black_box(&price), black_box(&one))
                 .expect("one price materializes")
         });
     });
@@ -221,7 +230,7 @@ fn construction_benchmarks(criterion: &mut Criterion) {
             bencher.iter_batched(
                 || (price.clone(), Arc::clone(&column)),
                 |(field, column)| {
-                    ArrowValue::from_array(field, column).expect("the price column pairs")
+                    ArrowScalar::from_array(field, column).expect("the price column pairs")
                 },
                 BatchSize::SmallInput,
             );
@@ -229,14 +238,14 @@ fn construction_benchmarks(criterion: &mut Criterion) {
         group.bench_function(format!("from_batch/{count}"), |bencher| {
             bencher.iter_batched(
                 || batch.clone(),
-                |batch| ArrowValue::from_batch(batch).expect("the batch names its root"),
+                |batch| ArrowScalar::from_batch(batch).expect("the batch names its root"),
                 BatchSize::SmallInput,
             );
         });
         group.bench_function(format!("from_reader/{count}"), |bencher| {
             bencher.iter_batched(
                 || batch_reader(Arc::clone(&schema), parts.clone()),
-                |reader| ArrowValue::from_reader(reader).expect("the stream names its root"),
+                |reader| ArrowScalar::from_reader(reader).expect("the stream names its root"),
                 BatchSize::SmallInput,
             );
         });
@@ -249,7 +258,7 @@ fn construction_benchmarks(criterion: &mut Criterion) {
         group.throughput(Throughput::Elements(count as u64));
         group.bench_function(format!("from_rows/{count}"), |bencher| {
             bencher.iter(|| {
-                ArrowValue::from_rows(black_box(&root), black_box(&native))
+                ArrowScalar::from_rows(black_box(&root), black_box(&native))
                     .expect("the trade rows materialize")
             });
         });
@@ -275,11 +284,11 @@ fn reader_benchmarks(criterion: &mut Criterion) {
         let parts = parts(&batch);
 
         let array_value = || {
-            ArrowValue::from_array(price.clone(), Arc::clone(&column)).expect("the column pairs")
+            ArrowScalar::from_array(price.clone(), Arc::clone(&column)).expect("the column pairs")
         };
         let batch_value = || held(&root, &batch);
         let stream_value = || streamed(&schema, &parts);
-        let shapes: [(&str, &dyn Fn() -> ArrowValue); 3] = [
+        let shapes: [(&str, &dyn Fn() -> ArrowScalar); 3] = [
             ("array", &array_value),
             ("batch", &batch_value),
             ("stream", &stream_value),
@@ -479,8 +488,9 @@ fn structured_benchmarks(criterion: &mut Criterion) {
         for (format, name) in [("json", "trades.json"), ("jsonl", "trades.jsonl")] {
             let mut source = handle(name);
             source
-                .write_arrow_value(held(&root, &batch), IOMode::Overwrite)
+                .write_arrow(held(&root, &batch), IOMode::Overwrite, None)
                 .expect("the Arrow rows write");
+            let options = declaring(&root);
             let bytes = source.read_all_bytes().expect("the document reads back");
 
             let mut native = handle(name);
@@ -494,12 +504,12 @@ fn structured_benchmarks(criterion: &mut Criterion) {
             );
 
             group.throughput(Throughput::Bytes(bytes.len() as u64));
-            group.bench_function(format!("write_arrow_value/{format}/{count}"), |bencher| {
+            group.bench_function(format!("write_arrow/{format}/{count}"), |bencher| {
                 bencher.iter_batched(
                     || (handle(name), held(&root, &batch)),
                     |(mut target, value)| {
                         target
-                            .write_arrow_value(value, IOMode::Overwrite)
+                            .write_arrow(value, IOMode::Overwrite, None)
                             .expect("the Arrow rows write");
                     },
                     BatchSize::SmallInput,
@@ -516,10 +526,10 @@ fn structured_benchmarks(criterion: &mut Criterion) {
                     BatchSize::SmallInput,
                 );
             });
-            group.bench_function(format!("read_arrow_value/{format}/{count}"), |bencher| {
+            group.bench_function(format!("read_arrow/{format}/{count}"), |bencher| {
                 bencher.iter(|| {
                     black_box(&source)
-                        .read_arrow_value(Some(black_box(&root)))
+                        .read_arrow(Some(black_box(&options)))
                         .expect("the document reads as rows")
                 });
             });

@@ -15,13 +15,13 @@ The PyO3 binding holds the same native values the Rust core does, behind the pro
 | `Term`, `Bound`, `Filter`, `Selector`, `BoundSelector`, `Plan`, `Expression`, `Records`, `Bounds` | [Expression](../expression/index.md) |
 | `Uri`, `Url`, `Urn` | [URI](../uri/index.md) |
 | `IOBase`, and the role classes in `yggdryl.holder`, `yggdryl.coding`, `yggdryl.media` | this page and [Holder](../holder/index.md) |
-| `RecordOptions` | [RecordOptions](../media/options.md), [Arrow IPC](../media/ipc.md), [Parquet](../media/parquet.md) |
+| `RecordOptions` | [RecordOptions](../media/options.md), [Arrow IPC](../media/ipc/index.md), [Parquet](../media/parquet/index.md) |
 | `iceberg` | [Iceberg](../media/iceberg/index.md) |
 | `MimeType`, `MediaType`, `Timezone` | [Scalar](../types/scalar.md) |
 | `enums` | [Codes](../types/codes.md) and this page |
 | `StringEnum`, `StringParameters`, `BytesParameters` | [Strings & bytes](../types/text.md), [Codes](../types/codes.md), and this page |
-| `json`, `toml`, `yaml` | [Structured text](../text/index.md) and the format pages |
-| `avro` | [Apache Avro](../media/avro.md) schema, container, single-object, and batch media |
+| `json`, `toml`, `yaml` | [Structured text](../media/structured.md) and the format pages |
+| `avro` | [Apache Avro](../media/avro/index.md) schema, container, single-object, and batch media |
 | `gzip`, `zlib`, `zstd` | [gzip](../coding/gzip.md), [zlib](../coding/zlib.md), [zstd](../coding/zstd.md) |
 | `hashing`: `hashing.xxhash`, `hashing.txhash` | [Hashing](../hashing.md) and this page |
 | `refresh_logging` | this page |
@@ -219,7 +219,7 @@ assert restored["at"] == "2026-08-15T12:30:00.000000+02:00[Europe/Paris]"
 | `dict` | `Mapping` | keys are values too, not only strings |
 | dataclass, named tuple, attribute object | `Record` | sorted string names; no second schema model |
 
-Pass a `Field` when strings or numbers need an exact decimal, binary, or temporal reading. [`yggdryl.text.codec`](../text/index.md) adds `from_io` / `from_stream` and `into_io` / `into_stream` for a dynamic format.
+Pass a `Field` when strings or numbers need an exact decimal, binary, or temporal reading. [`yggdryl.text.codec`](../media/structured.md) adds `from_io` / `from_stream` and `into_io` / `into_stream` for a dynamic format.
 
 ## Arrow values
 
@@ -1110,7 +1110,7 @@ with pytest.raises(ValueError, match="overwrite"):
 
 ### Record options
 
-Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record retained-byte limit, and row numbering of [plain-text records](../media/text.md).
+Configure field, selection, batch sizing, compression, and merge keys on one [`RecordOptions`](../media/options.md) value. `TextOptions` adds the pre-read row-header schema, logical framing, leading-fragment treatment, per-record retained-byte limit, and row numbering of [plain-text records](../media/text/index.md).
 
 ## pandas and polars
 

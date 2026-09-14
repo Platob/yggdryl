@@ -1,10 +1,11 @@
 """The registered code vocabularies, declared as enums over their datatypes.
 
 Each class is the Python spelling of one registered code in the datatype
-grammar: `country` is ISO 3166-1 alpha-2 in two bytes, `currency` is ISO 4217
-in three, `mic` is ISO 10383 in four, and `cfi` is ISO 10962 in six. A member
-*is* the integer its code packs into, so the same code is the same integer in
-every process and in every column that stores it.
+grammar: `country` is ISO 3166-1 alpha-2 in at most two bytes, `currency` is
+ISO 4217 in three, `mic` is ISO 10383 in four, and `cfi` is ISO 10962 in six.
+A member *is* the integer its code packs into - its bytes padded to that width
+- so the same code is the same integer in every process, whatever a column
+stores it as.
 
 The declared members are the codes a caller names in source. The standards
 behind them are registries, not fixed sets - ISO 4217 retires codes, ISO 10383
@@ -62,8 +63,8 @@ class Country(CountryCode):
 class Currency(CurrencyCode):
     """ISO 4217, the three-letter currency code.
 
-    The `currency` datatype is exactly three bytes, so a currency stores with
-    no padding at all: `USD` is the three characters and nothing else.
+    The `currency` datatype stores as the text it is, so a currency column
+    holds `USD` and nothing else - no padding to write and none to trim.
     """
 
     AED = "AED"

@@ -36,7 +36,7 @@ pub(super) fn metadata_only_change(stored: &Field, incoming: &Field) -> bool {
 
 /// Finalize integer keys before hashbrown selects a control byte.
 #[derive(Clone, Copy, Debug, Default)]
-struct Mix(u64);
+pub(super) struct Mix(u64);
 
 impl Mix {
     const fn finalise(mut value: u64) -> u64 {
@@ -172,6 +172,14 @@ impl Hasher for Mix {
 }
 
 type Index<K> = HashMap<K, usize, BuildHasherDefault<Mix>>;
+
+/// A map keyed by something already spread over its bits.
+///
+/// The dictionary's own hasher, for every index in the FIX layer that keys
+/// on a tag, a digest or an identity: those keys are integers a digest or
+/// the wire already spread, and SipHash would rehash what is hashed. The
+/// name-keyed maps keep the default, which is what an unspread key needs.
+pub(super) type FixMap<K, V> = HashMap<K, V, BuildHasherDefault<Mix>>;
 
 /// Fold a name directly into a seeded streaming state.
 ///
@@ -709,6 +717,27 @@ impl FixRegistry {
         {
             return Ok(());
         }
+        // One alias reaches one field, and `check_free` is what holds every
+        // other acquisition to that. This is the one write that does not go
+        // through it, so it states the rule itself: a spelling another field
+        // already answers for is that field's and stays there. Noted rather
+        // than refused, exactly as a contended tag is above - the arrival is
+        // what the caller asked for, and the lent spelling is the courtesy
+        // beside it. Taking it would repoint the one entry the index holds,
+        // leaving the first holder unreachable under its own alias and
+        // unable to be updated, and would delete that entry outright when
+        // the borrower departed.
+        if let Some(other) = self.alias_position_by_name(name) {
+            if other != holder {
+                log::debug!(
+                    "alias {name:?} of {:?} stays with {:?}",
+                    self.fields[holder].name(),
+                    self.fields[other].name()
+                );
+                return Ok(());
+            }
+        }
+        let stored = &self.fields[holder];
         let mut lent = stored.clone();
         let aliases: Vec<String> = lent
             .as_fix()
@@ -1068,7 +1097,15 @@ impl FixRegistry {
     pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
         other.validate_catalog()?;
         let mut staged = self.clone();
-        let counts = staged.fold(other.fields.iter().cloned())?;
+        // In the order the other dictionary *answers*, never the order it
+        // happens to be stored in. The fold's precedence is its input order,
+        // and a caller merging a registry supplies no order of its own - so
+        // the one a registry has is the one it publishes: tag-major, the
+        // tag's holder first. Storage order is neither that nor stable: a
+        // removal swaps the last field into the hole, and a store round trip
+        // writes in `iter` order and loads in file order, so two dictionaries
+        // that compare equal could merge to two different answers.
+        let counts = staged.fold(other.iter().cloned())?;
         staged.merge_catalog(other)?;
         *self = staged;
         Ok(counts)
@@ -1416,7 +1453,7 @@ impl FixRegistry {
         }
         for alternate in alternate {
             if let Some(group) = self
-                .get_group_by_counter(*alternate)
+                .get_group_by_tag(*alternate)
                 .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
             {
                 return Err(Error::conflict(

@@ -126,6 +126,9 @@ impl JsDataType {
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
+            "timezone" => CoreDataType::Timezone,
+            "mimetype" => CoreDataType::MimeType,
+            "mediatype" => CoreDataType::MediaType,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"
@@ -529,9 +532,9 @@ impl JsDataType {
 
     /// The parameters a string datatype declares, `null` for every other.
     ///
-    /// The registered codes are not strings - a currency is three ASCII
-    /// bytes with an identity - so they answer `null` here and
-    /// `fixedByteWidth` instead.
+    /// The registered codes are not strings - a currency is an identity over
+    /// ISO 4217 that stores as the text it is - so they answer `null` here
+    /// and `codeWidth` instead.
     #[napi(getter)]
     pub fn string_parameters(&self) -> Option<StringParameters> {
         self.inner
@@ -560,8 +563,9 @@ impl JsDataType {
     }
 
     /// The fixed byte width of one value, `null` when the width varies: a
-    /// fixed string or fixed bytes answer their declared width, the numbers,
-    /// the codes and a UUID their storage width.
+    /// fixed string or fixed bytes answer their declared width, the numbers
+    /// and a UUID their storage width. A code's width bounds its values
+    /// rather than laying them out, so a code answers `codeWidth`.
     #[napi(getter)]
     pub fn fixed_byte_width(&self) -> Option<u32> {
         self.inner
@@ -569,11 +573,26 @@ impl JsDataType {
             .map(|width| u32::try_from(width).unwrap_or(u32::MAX))
     }
 
-    /// The integer an ASCII value packs into: its storage bytes, big-endian.
+    /// The most bytes a registered code's value may be, `null` for every
+    /// other datatype.
+    ///
+    /// The number its standard fixes - three for a currency, six for a CFI
+    /// classification - and a maximum rather than a layout: a code stores as
+    /// the text it is, so `fixedByteWidth` answers `null` and this answers
+    /// the bound its values are held to.
+    #[napi(getter)]
+    pub fn code_width(&self) -> Option<u32> {
+        self.inner
+            .code_width()
+            .map(|width| u32::try_from(width).unwrap_or(u32::MAX))
+    }
+
+    /// The integer an ASCII value packs into: its bytes padded with trailing
+    /// NUL to the width, big-endian.
     ///
     /// The packed integer is the same in every process, so it is what an enum
-    /// member and a stable hash are, and it is exactly the bytes a fixed
-    /// US-ASCII column or a code stores. It reaches 128 bits at the widest
+    /// member and a stable hash are. The padding is the packing's: a code's
+    /// column stores the text alone. It reaches 128 bits at the widest
     /// packable width, so it crosses as a `bigint` at every width.
     #[napi]
     pub fn ascii_packed(&self, value: String) -> Result<BigInt> {
@@ -583,7 +602,7 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// The ASCII value a packed integer carries, without its padding.
+    /// The ASCII value a packed integer carries, without that padding.
     #[napi]
     pub fn ascii_value(&self, packed: BigInt) -> Result<String> {
         self.inner

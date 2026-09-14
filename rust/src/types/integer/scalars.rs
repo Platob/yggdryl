@@ -135,16 +135,16 @@ pub(crate) fn canonical_unsigned(dtype: &DataType, value: &Scalar) -> Result<(Sc
 
 fn same_integer_representation(left: &Scalar, right: &Scalar) -> bool {
     match (left, right) {
-        (Scalar::I8(left), Scalar::I8(right)) => left == right,
-        (Scalar::I16(left), Scalar::I16(right)) => left == right,
-        (Scalar::I32(left), Scalar::I32(right)) => left == right,
-        (Scalar::I64(left), Scalar::I64(right)) => left == right,
-        (Scalar::I128(left), Scalar::I128(right)) => left == right,
-        (Scalar::U8(left), Scalar::U8(right)) => left == right,
-        (Scalar::U16(left), Scalar::U16(right)) => left == right,
-        (Scalar::U32(left), Scalar::U32(right)) => left == right,
-        (Scalar::U64(left), Scalar::U64(right)) => left == right,
-        (Scalar::U128(left), Scalar::U128(right)) => left == right,
+        (Scalar::Int8(left), Scalar::Int8(right)) => left == right,
+        (Scalar::Int16(left), Scalar::Int16(right)) => left == right,
+        (Scalar::Int32(left), Scalar::Int32(right)) => left == right,
+        (Scalar::Int64(left), Scalar::Int64(right)) => left == right,
+        (Scalar::Int128(left), Scalar::Int128(right)) => left == right,
+        (Scalar::UInt8(left), Scalar::UInt8(right)) => left == right,
+        (Scalar::UInt16(left), Scalar::UInt16(right)) => left == right,
+        (Scalar::UInt32(left), Scalar::UInt32(right)) => left == right,
+        (Scalar::UInt64(left), Scalar::UInt64(right)) => left == right,
+        (Scalar::UInt128(left), Scalar::UInt128(right)) => left == right,
         _ => false,
     }
 }
@@ -206,11 +206,11 @@ pub(crate) fn validate_integer_tuple(
 // Each width is its own family, as `Boolean` is: the `Scalar` variant holds
 // the leaf directly, so there is no grouping enum to widen into.
 macro_rules! integer_scalar_value {
-    ($leaf:ident, $variant:ident, $id:ident, $dtype:expr) => {
+    ($leaf:ident, $dtype:expr) => {
         impl ScalarValue for $leaf {
             type Family = Self;
 
-            const ID: DataTypeId = DataTypeId::$id;
+            const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Integer;
 
             fn dtype(&self) -> Result<DataType> {
@@ -226,7 +226,7 @@ macro_rules! integer_scalar_value {
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::$variant(self)
+                Scalar::$leaf(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
@@ -238,7 +238,7 @@ macro_rules! integer_scalar_value {
             const KIND: DataTypeKind = DataTypeKind::Integer;
 
             fn id(&self) -> DataTypeId {
-                DataTypeId::$id
+                DataTypeId::$leaf
             }
 
             fn dtype(&self) -> Result<DataType> {
@@ -246,12 +246,12 @@ macro_rules! integer_scalar_value {
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::$variant(self)
+                Scalar::$leaf(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::$variant(value) => Some(value),
+                    Scalar::$leaf(value) => Some(value),
                     _ => None,
                 }
             }
@@ -259,18 +259,18 @@ macro_rules! integer_scalar_value {
     };
 }
 
-integer_scalar_value!(Int8, I8, Int8, |_: &Int8| DataType::Int8);
-integer_scalar_value!(Int16, I16, Int16, |_: &Int16| { DataType::Int16 });
-integer_scalar_value!(Int32, I32, Int32, |_: &Int32| { DataType::Int32 });
-integer_scalar_value!(Int64, I64, Int64, |_: &Int64| { DataType::Int64 });
-integer_scalar_value!(UInt8, U8, UInt8, |_: &UInt8| { DataType::UInt8 });
-integer_scalar_value!(UInt16, U16, UInt16, |_: &UInt16| { DataType::UInt16 });
-integer_scalar_value!(UInt32, U32, UInt32, |_: &UInt32| { DataType::UInt32 });
-integer_scalar_value!(UInt64, U64, UInt64, |_: &UInt64| { DataType::UInt64 });
-integer_scalar_value!(Int128, I128, Int128, |value: &Int128| {
+integer_scalar_value!(Int8, |_: &Int8| DataType::Int8);
+integer_scalar_value!(Int16, |_: &Int16| { DataType::Int16 });
+integer_scalar_value!(Int32, |_: &Int32| { DataType::Int32 });
+integer_scalar_value!(Int64, |_: &Int64| { DataType::Int64 });
+integer_scalar_value!(UInt8, |_: &UInt8| { DataType::UInt8 });
+integer_scalar_value!(UInt16, |_: &UInt16| { DataType::UInt16 });
+integer_scalar_value!(UInt32, |_: &UInt32| { DataType::UInt32 });
+integer_scalar_value!(UInt64, |_: &UInt64| { DataType::UInt64 });
+integer_scalar_value!(Int128, |value: &Int128| {
     wide_integer_dtype(value.get().unsigned_abs())
 });
-integer_scalar_value!(UInt128, U128, UInt128, |value: &UInt128| {
+integer_scalar_value!(UInt128, |value: &UInt128| {
     wide_integer_dtype(value.get())
 });
 
@@ -390,16 +390,16 @@ fn wide_integer_dtype(magnitude: u128) -> DataType {
 /// order and hashing read. A value that is not an integer answers `None`.
 pub(crate) const fn integer_parts(value: &Scalar) -> Option<(bool, u128)> {
     Some(match value {
-        Scalar::I8(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-        Scalar::I16(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-        Scalar::I32(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-        Scalar::I64(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
-        Scalar::I128(value) => (value.get() < 0, value.get().unsigned_abs()),
-        Scalar::U8(value) => (false, value.get() as u128),
-        Scalar::U16(value) => (false, value.get() as u128),
-        Scalar::U32(value) => (false, value.get() as u128),
-        Scalar::U64(value) => (false, value.get() as u128),
-        Scalar::U128(value) => (false, value.get()),
+        Scalar::Int8(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::Int16(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::Int32(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::Int64(value) => (value.get() < 0, (value.get() as i128).unsigned_abs()),
+        Scalar::Int128(value) => (value.get() < 0, value.get().unsigned_abs()),
+        Scalar::UInt8(value) => (false, value.get() as u128),
+        Scalar::UInt16(value) => (false, value.get() as u128),
+        Scalar::UInt32(value) => (false, value.get() as u128),
+        Scalar::UInt64(value) => (false, value.get() as u128),
+        Scalar::UInt128(value) => (false, value.get()),
         _ => return None,
     })
 }
@@ -463,16 +463,16 @@ impl Scalar {
     pub const fn is_integer(&self) -> bool {
         matches!(
             self,
-            Self::I8(_)
-                | Self::I16(_)
-                | Self::I32(_)
-                | Self::I64(_)
-                | Self::U8(_)
-                | Self::U16(_)
-                | Self::U32(_)
-                | Self::U64(_)
-                | Self::I128(_)
-                | Self::U128(_)
+            Self::Int8(_)
+                | Self::Int16(_)
+                | Self::Int32(_)
+                | Self::Int64(_)
+                | Self::UInt8(_)
+                | Self::UInt16(_)
+                | Self::UInt32(_)
+                | Self::UInt64(_)
+                | Self::Int128(_)
+                | Self::UInt128(_)
         )
     }
 }
@@ -503,29 +503,29 @@ impl Scalar {
 // A native integer keeps its width: an `i32` is an `I32`, not an `I64` that
 // happens to fit, because the width is what a column declaration reads back.
 macro_rules! width_value_from {
-    ($($type:ty => $variant:ident($leaf:ident)),+ $(,)?) => {$(
+    ($($type:ty => $leaf:ident),+ $(,)?) => {$(
         impl From<$type> for Scalar {
             fn from(value: $type) -> Self {
-                Self::$variant($leaf::new(value))
+                Self::$leaf($leaf::new(value))
             }
         }
     )+};
 }
 
 width_value_from!(
-    i8 => I8(Int8), i16 => I16(Int16), i32 => I32(Int32), i64 => I64(Int64),
-    u8 => U8(UInt8), u16 => U16(UInt16), u32 => U32(UInt32), u64 => U64(UInt64),
+    i8 => Int8, i16 => Int16, i32 => Int32, i64 => Int64,
+    u8 => UInt8, u16 => UInt16, u32 => UInt32, u64 => UInt64,
 );
 
 impl From<i128> for Scalar {
     fn from(value: i128) -> Self {
-        Self::I128(Int128::new(value))
+        Self::Int128(Int128::new(value))
     }
 }
 
 impl From<u128> for Scalar {
     fn from(value: u128) -> Self {
-        Self::U128(UInt128::new(value))
+        Self::UInt128(UInt128::new(value))
     }
 }
 
@@ -538,16 +538,16 @@ pub(crate) struct IntegerValueKind<'a> {
 
 pub(crate) fn integer_value_kind(value: &Scalar) -> Option<IntegerValueKind<'_>> {
     let (signed, bits) = match value {
-        Scalar::I8(_) => (true, 8),
-        Scalar::I16(_) => (true, 16),
-        Scalar::I32(_) => (true, 32),
-        Scalar::I64(_) => (true, 64),
-        Scalar::I128(_) => (true, 128),
-        Scalar::U8(_) => (false, 8),
-        Scalar::U16(_) => (false, 16),
-        Scalar::U32(_) => (false, 32),
-        Scalar::U64(_) => (false, 64),
-        Scalar::U128(_) => (false, 128),
+        Scalar::Int8(_) => (true, 8),
+        Scalar::Int16(_) => (true, 16),
+        Scalar::Int32(_) => (true, 32),
+        Scalar::Int64(_) => (true, 64),
+        Scalar::Int128(_) => (true, 128),
+        Scalar::UInt8(_) => (false, 8),
+        Scalar::UInt16(_) => (false, 16),
+        Scalar::UInt32(_) => (false, 32),
+        Scalar::UInt64(_) => (false, 64),
+        Scalar::UInt128(_) => (false, 128),
         _ => return None,
     };
     Some(IntegerValueKind {

@@ -54,7 +54,7 @@ use super::{
     Comparison, Expression, Filter, Function, Literal, Operator, RECURSION_LIMIT, Safety, Term,
     UserRef,
 };
-use crate::{DataType, Error, I256, Result, Scalar, Url};
+use crate::{DataType, Error, Result, Scalar, Url, i256};
 
 impl FromStr for Term {
     type Err = Error;
@@ -1378,10 +1378,13 @@ impl<'input> Parser<'input> {
         }
         // `namespace.name(` is a user-defined function: registered outside
         // the grammar, so the name is read here and resolved where it binds.
-        if matches!(self.peek_at(1), Some(Token::Symbol(".")))
-            && let Some(Token::Word(name)) = self.peek_at(2).cloned()
-            && matches!(self.peek_at(3), Some(Token::Symbol("(")))
-        {
+        let user_name = match (self.peek_at(1), self.peek_at(2), self.peek_at(3)) {
+            (Some(Token::Symbol(".")), Some(Token::Word(name)), Some(Token::Symbol("("))) => {
+                Some(name.clone())
+            }
+            _ => None,
+        };
+        if let Some(name) = user_name {
             let reference = UserRef::new(&word, &name)
                 .map_err(|error| parse_error(position, format_smolstr!("{error}")))?;
             self.cursor += 3;
@@ -1738,7 +1741,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             )
         }
         D::Decimal256 { scale, .. } => Scalar::d256(
-            I256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
+            i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")
             })?),
             *scale,

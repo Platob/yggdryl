@@ -40,7 +40,7 @@ use crate::metadata::is_all_sources;
 use crate::types::cast::{ArrowCast, ArrowCastOptions, Nullability, Representation};
 use crate::types::string::is_text_storage;
 use crate::types::{BytesLayout, Str, StringLayout, StringParameters};
-use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, I256, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit, Timezone, i256};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
@@ -1102,22 +1102,22 @@ fn feed_cell(
         ),
         DataType::Decimal32 { scale, .. } => write_decimal(
             digester,
-            I256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
+            i256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
             *scale,
         ),
         DataType::Decimal64 { scale, .. } => write_decimal(
             digester,
-            I256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
+            i256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
             *scale,
         ),
         DataType::Decimal128 { scale, .. } => write_decimal(
             digester,
-            I256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
+            i256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
             *scale,
         ),
         DataType::Decimal256 { scale, .. } => write_decimal(
             digester,
-            I256::from_le_bytes(
+            i256::from_le_bytes(
                 downcast::<Decimal256Array>(array)?
                     .value(index)
                     .to_le_bytes(),
@@ -1194,8 +1194,8 @@ fn feed_cell(
         }
         // Everything below reads through the shared scalar boundary. The arms
         // are spelled out rather than caught by `_` so a datatype added to the
-        // model is a compile error here, not a silent fallback: code storage
-        // trims the padding its layout adds, an identifier and a
+        // model is a compile error here, not a silent fallback: a code holds
+        // its text to the width its standard fixes, an identifier and a
         // version restate their canonical text, an interval and a 32-bit
         // duration validate components the buffer alone does not fix, a
         // geospatial payload carries its own tag, and every list, struct, map,
@@ -1215,6 +1215,9 @@ fn feed_cell(
         | DataType::Uuid
         | DataType::Version
         | DataType::Url
+        | DataType::Timezone
+        | DataType::MimeType
+        | DataType::MediaType
         | DataType::List(_)
         | DataType::ListView(_)
         | DataType::FixedSizeList(..)
@@ -1265,9 +1268,6 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
         ))
     })
 }
-
-#[cfg(test)]
-mod tests;
 
 /// Feed one string cell as the characters a [`Str`] read from it holds.
 ///

@@ -129,7 +129,7 @@ One bind per stream, and the stream stays a stream.
 
     // Native records go through the same bound plan, one bind for all of them.
     const records = steps.applyRecords([{ ccy: 'a', size: 1n }, { ccy: 'b', size: 2n }], root)
-    assert.equal(records.field.dtype.fields[0].name, 'ccy')
+    assert.equal(records.field.dtype.getFieldAt(0).name, 'ccy')
     assert.deepEqual([...records].map((row) => row.asJs()), [['A'], ['B']])
     ```
 

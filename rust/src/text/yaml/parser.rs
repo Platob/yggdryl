@@ -615,13 +615,13 @@ fn parse_integer(value: &str, position: usize) -> Option<Result<RawValue>> {
                     i128::try_from(magnitude).ok().and_then(i128::checked_neg)
                 }
             })
-            .map(|value| i64::try_from(value).map_or(RawValue::I128(value), RawValue::I64))
+            .map(|value| i64::try_from(value).map_or(RawValue::Int128(value), RawValue::Int64))
             .ok_or_else(|| {
                 codec_error(position, "YAML integer is outside the signed 128-bit range")
             })
     } else {
         u128::from_str_radix(digits, radix)
-            .map(|value| u64::try_from(value).map_or(RawValue::U128(value), RawValue::U64))
+            .map(|value| u64::try_from(value).map_or(RawValue::UInt128(value), RawValue::UInt64))
             .map_err(|_| {
                 codec_error(
                     position,

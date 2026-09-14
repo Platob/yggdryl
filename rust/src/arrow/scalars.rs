@@ -807,6 +807,3 @@ fn struct_array_from_batch(batch: &RecordBatch) -> Result<StructArray> {
         None,
     )?)
 }
-
-#[cfg(test)]
-mod tests;

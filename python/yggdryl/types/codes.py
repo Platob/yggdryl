@@ -1,14 +1,15 @@
 """The registered code field factories: eight identities, one width each.
 
 The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, ``isin``,
-and FIX's own ``side``, ``state`` and ``timeinforce`` - are
-datatypes of their own, each storing the width its standard fixes, so a code
-factory is not a fixed-width string wearing a name: the field it builds
-carries the code's identity across Arrow, answers ``is_code`` and
-``fixed_byte_width``, and never ``string_parameters``. The declared
-vocabularies live in :mod:`yggdryl.enums`, whose classes carry their members
-onto the field they build; ``isin`` is an open identifier space closed by its
-own check digit, so no class declares it.
+and FIX's own ``side``, ``state`` and ``timeinforce`` - are datatypes of their
+own, each storing as the ASCII text it is and held to the width its standard
+fixes, so a code factory is not a bounded string wearing a name: the field it
+builds carries the code's identity across Arrow under its own extension name,
+answers ``is_code`` and ``code_width``, and never ``string_parameters``. The
+width bounds a value rather than laying it out, so ``fixed_byte_width`` is
+``None``. The declared vocabularies live in :mod:`yggdryl.enums`, whose
+classes carry their members onto the field they build; ``isin`` is an open
+identifier space closed by its own check digit, so no class declares it.
 """
 
 from __future__ import annotations

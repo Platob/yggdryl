@@ -277,7 +277,7 @@ pub trait IORecordOptions: Sized {
         plan.set_filter(self.filter().clone());
         plan.set_selector(self.select().clone());
         plan.set_merge_by(self.merge_by().clone());
-        plan.limit(self.max_row_size().map(|rows| rows as u64))
+        plan.limit(self.max_row_size())
     }
 
     /// Set every property from the sections of one plan.
@@ -1333,4 +1333,5 @@ impl RecordOptions {
 }
 
 #[cfg(test)]
+#[path = "options/tests.rs"]
 mod tests;

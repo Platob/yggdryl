@@ -23,8 +23,8 @@ use crate::types::arithmetic::{Arithmetic, invalid_binary};
 use crate::types::decimal::scalars::exact_value_parts;
 use crate::types::value::{ValidationFailure, expected};
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Error, I256, Result, Scalar, ScalarFamily, ScalarValue,
-    TimeUnit, Timezone,
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, ScalarFamily, ScalarValue, TimeUnit,
+    Timezone, i256,
 };
 
 /// Operations shared by every temporal representation.
@@ -1326,7 +1326,7 @@ pub(crate) fn duration_integer_arithmetic(
     })?;
     let count = duration
         .temporal_count_at(parts.unit)
-        .map(|value| I256::from_i128(i128::from(value)))
+        .map(|value| i256::from_i128(i128::from(value)))
         .ok_or_else(|| invalid_binary(operation, left, right, "invalid duration count"))?;
     let scalar = exact_value_parts(integer)
         .map(|parts| parts.0)
@@ -1359,7 +1359,7 @@ pub(crate) fn duration_integer_arithmetic(
             ));
         }
     }
-    .and_then(I256::as_i128)
+    .and_then(i256::as_i128)
     .and_then(|value| i64::try_from(value).ok())
     .ok_or_else(|| Error::ArithmeticOverflow {
         operation: operation.name(),

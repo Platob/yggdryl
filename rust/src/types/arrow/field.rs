@@ -13,10 +13,10 @@ use arrow_schema::{
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::types::{
-    BYTES_EXTENSION_NAME, BytesParameters, GEOARROW_WKB_EXTENSION_NAME, STRING_EXTENSION_NAME,
-    StringParameters, URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
-    VERSION_EXTENSION_NAME, arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension,
-    is_variant_storage,
+    BYTES_EXTENSION_NAME, BytesParameters, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
+    MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringParameters, TIMEZONE_EXTENSION_NAME,
+    URL_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
+    arrow_dtype_to_ffi, arrow_extension_parts, code_for_extension, is_variant_storage,
 };
 use crate::types::{Field, FieldRef};
 use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
@@ -395,13 +395,12 @@ pub(crate) enum RecognizedExtension {
     /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
     /// document says whether it is a geometry or a geography.
     Geospatial(GeospatialParameters),
-    /// A code's own `yggdryl.{country,currency,mic,cfi}` over the
-    /// `FixedSizeBinary` width that code fixes.
+    /// A code's own `yggdryl.{country,currency,mic,cfi}` over Utf8.
     ///
     /// It is separate from [`Self::String`] because the identity is the
-    /// point: three bytes under `yggdryl.currency` are a currency and three
-    /// bytes under `yggdryl.string` are a `fixed_ascii(3)`, and neither
-    /// imports as the other.
+    /// point: text under `yggdryl.currency` is a currency and the same text
+    /// under `yggdryl.string` is a bounded ASCII string, and neither imports
+    /// as the other.
     Code(DataType),
     /// The `yggdryl.string` extension: a layout, a charset and a bound over
     /// the Arrow storage that layout and charset lay out.
@@ -415,6 +414,12 @@ pub(crate) enum RecognizedExtension {
     Version,
     /// The canonical URL text over Utf8.
     Url,
+    /// The canonical time zone name over Utf8.
+    Timezone,
+    /// The canonical MIME type over Utf8.
+    MimeType,
+    /// The canonical media type over Utf8.
+    MediaType,
 }
 
 impl RecognizedExtension {
@@ -433,6 +438,9 @@ impl RecognizedExtension {
             Self::Uuid => DataType::Uuid,
             Self::Version => DataType::Version,
             Self::Url => DataType::Url,
+            Self::Timezone => DataType::Timezone,
+            Self::MimeType => DataType::MimeType,
+            Self::MediaType => DataType::MediaType,
         }
     }
 }
@@ -442,8 +450,8 @@ impl RecognizedExtension {
 /// over its exact storage struct with an empty extension metadata document,
 /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
 /// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
-/// the width that code fixes, and the canonical `arrow.uuid` over
-/// `FixedSizeBinary(16)`, each with an empty or absent document.
+/// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with
+/// an empty or absent document.
 ///
 /// The answer is what the extension describes, which is the *values* of a
 /// dictionary-encoded column: [`encoded_values`] peels the encoding here and
@@ -453,7 +461,9 @@ impl RecognizedExtension {
 /// Any other pairing keeps today's behavior exactly - a foreign extension
 /// name, one of ours over a storage it does not spell, a variant or a code
 /// with a non-empty document: the field imports as its storage type with the
-/// `ARROW:extension:*` keys as plain metadata.
+/// `ARROW:extension:*` keys as plain metadata. A code, a version and a URL
+/// all ride Utf8, so it is the *name* that separates them, and a name none of
+/// them claims leaves the column the plain text it is.
 ///
 /// # Errors
 ///
@@ -537,12 +547,18 @@ pub(crate) fn recognized_arrow_extension(
         URL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
             Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Url))
         }
-        code if document.unwrap_or("").is_empty() => Ok(match storage {
-            ArrowDataType::FixedSizeBinary(width) => {
-                code_for_extension(code, *width).map(RecognizedExtension::Code)
-            }
-            _ => None,
-        }),
+        TIMEZONE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+            Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Timezone))
+        }
+        MIMETYPE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+            Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::MimeType))
+        }
+        MEDIATYPE_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+            Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::MediaType))
+        }
+        code if document.unwrap_or("").is_empty() && matches!(storage, ArrowDataType::Utf8) => {
+            Ok(code_for_extension(code).map(RecognizedExtension::Code))
+        }
         _ => Ok(None),
     }
 }

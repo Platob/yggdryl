@@ -28,7 +28,6 @@ pub mod expression;
 pub mod fix;
 pub mod hashing;
 pub mod holder;
-mod i256;
 mod iobase;
 mod iocursor;
 mod iofile;
@@ -46,7 +45,6 @@ mod path;
 mod scheme;
 pub mod text;
 mod time_unit;
-mod timezone;
 pub mod types;
 mod union_mode;
 mod uri;
@@ -82,7 +80,6 @@ pub use fix::{
     fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
-pub use i256::I256;
 #[cfg(feature = "arrow")]
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
 pub use iobase::{
@@ -106,12 +103,12 @@ pub use text::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_sc
 pub use text::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use text::{Format, Limits, ScalarIter, Structured};
 pub use time_unit::TimeUnit;
-pub use timezone::Timezone;
 #[cfg(feature = "arrow")]
 pub use types::cast::{
     ArrowCast, ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation,
 };
 pub use types::floating::scalars::{Float16, Float32, Float64};
+pub use types::i256::{i256, u256};
 pub use types::protocol::{
     ArrowPropertyField, ArrowPropertyFieldMut, AzField, AzFieldMut, DigestField, DigestFieldMut,
     FieldPropertiesField, FieldPropertiesFieldMut, FileField, FileFieldMut, FixField, FixFieldMut,
@@ -122,6 +119,7 @@ pub use types::protocol::{
     PythonField, PythonFieldMut, PythonKind, PythonMetadata, S3Field, S3FieldMut, SparkField,
     SparkFieldMut, SqlField, SqlFieldMut, TransformField, TransformFieldMut, UrnField, UrnFieldMut,
 };
+pub use types::timezone::Timezone;
 pub use types::{
     Bytes, Children, Code, CodeValue, DecimalValue, Differences, Enum, Field, FieldRecord,
     FieldRef, FieldScalar, FieldType, FloatingValue, GeospatialValue, IntegerValue, NestedValue,
@@ -130,8 +128,10 @@ pub use types::{
 };
 pub use types::{
     BytesType, DataType, DecimalType, DictionaryType, Fields, FloatingType, GeospatialParameters,
-    GeospatialType, IntegerType, MapType, NestedType, RunEndEncodedType, StringEnum, StringType,
-    TemporalType, UnionFields, UrlField, UrlType, Version, VersionField, VersionType,
+    GeospatialType, IntegerType, MapType, MediaTypeField, MediaTypeType, MimeTypeField,
+    MimeTypeType, NestedType, RunEndEncodedType, StringEnum, StringType, TemporalType,
+    TimezoneField, TimezoneType, UnionFields, UrlField, UrlType, Version, VersionField,
+    VersionType,
 };
 pub use union_mode::UnionMode;
 pub use uri::{

@@ -105,38 +105,17 @@ typed_array!(
     arrow_array::Decimal256Array
 );
 typed_array!(crate::types::version::VersionType, arrow_array::StringArray);
-// A registered code stores as the fixed binary its standard fixes.
-typed_array!(
-    crate::types::string::CountryType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::string::CurrencyType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::string::MicType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::string::CfiType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::string::IsinType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::string::SideType,
-    arrow_array::FixedSizeBinaryArray
-);
-typed_array!(
-    crate::types::string::StateType,
-    arrow_array::FixedSizeBinaryArray
-);
+// A registered code stores as the text it is, exactly as a version does.
+typed_array!(crate::types::string::CountryType, arrow_array::StringArray);
+typed_array!(crate::types::string::CurrencyType, arrow_array::StringArray);
+typed_array!(crate::types::string::MicType, arrow_array::StringArray);
+typed_array!(crate::types::string::CfiType, arrow_array::StringArray);
+typed_array!(crate::types::string::IsinType, arrow_array::StringArray);
+typed_array!(crate::types::string::SideType, arrow_array::StringArray);
+typed_array!(crate::types::string::StateType, arrow_array::StringArray);
 typed_array!(
     crate::types::string::TimeInForceType,
-    arrow_array::FixedSizeBinaryArray
+    arrow_array::StringArray
 );
 // A UUID stores as the fixed binary of its sixteen bytes.
 typed_array!(

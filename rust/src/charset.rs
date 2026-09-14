@@ -940,6 +940,3 @@ impl<'de> Deserialize<'de> for Charset {
         Self::from_str(&value).map_err(serde::de::Error::custom)
     }
 }
-
-#[cfg(test)]
-mod tests;

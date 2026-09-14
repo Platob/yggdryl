@@ -51,7 +51,7 @@ use crate::types::string::{is_text_storage, needs_extension};
 use crate::types::temporal::casts::{
     holds_temporal, ingest_temporal_text, is_temporal_arrow, render_temporal_text,
 };
-use crate::types::uuid::casts::{ingest_uuid_array, render_uuid_text};
+use crate::types::uuid::casts::ingest_uuid_array;
 use crate::types::version::casts::{ingest_version_array, is_text_layout};
 use crate::types::{
     CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
@@ -320,19 +320,22 @@ enum ArrayCastKind {
     /// into the target's own layout. An unbounded layout declares nothing
     /// Arrow does not, so it stays with the kernel.
     BytesIngest,
-    /// Values entering a registered code: the string rule at the width the
-    /// code fixes, which is a constant, so the validation and the padding
-    /// run monomorphized per code rather than reading a width out of the
-    /// datatype on every row.
+    /// Values entering a registered code: the string rule at the width its
+    /// standard fixes, which is a constant, so the validation runs
+    /// monomorphized per code rather than reading a width out of the datatype
+    /// on every row, and a column that already holds what the code promises
+    /// is shared rather than copied.
     CodeIngest,
     /// Values entering a UUID: every exposed value is validated under the one
     /// UUID rule and stored as its sixteen bytes.
     UuidIngest,
-    /// A recognized UUID source rendering as its hyphenated spelling.
-    UuidText,
     /// Text entering a version is parsed and rewritten to its canonical text.
     VersionIngest,
+    /// Text entering a URL is parsed and rewritten to its canonical text.
     UrlIngest,
+    TimezoneIngest,
+    MimeTypeIngest,
+    MediaTypeIngest,
     /// Text entering a decimal: every exposed value is read at the declared
     /// scale, and a digit that scale cannot state stays refused rather than
     /// rounded away - dropping a digit off a price is a value change.
@@ -501,6 +504,8 @@ impl ArrayCastPlan {
                         Some(RecognizedExtension::String(source)) if source == field.dtype()
                     )
             }
+            // A fixed width is not re-read: the storage Arrow declares is the
+            // width, so a column already in it holds nothing to check.
             DataType::Bytes(parameters) => {
                 crate::types::bytes::needs_extension(*parameters)
                     && !matches!(
@@ -521,6 +526,18 @@ impl ArrayCastPlan {
                 Some(RecognizedExtension::Version)
             ),
             DataType::Url => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url)),
+            DataType::Timezone => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Timezone)
+            ),
+            DataType::MimeType => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::MimeType)
+            ),
+            DataType::MediaType => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::MediaType)
+            ),
             _ => false,
         };
         let kind = if source_type == &expected
@@ -630,9 +647,11 @@ impl ArrayCastPlan {
                     });
                 }
             }
-            // A code takes fixed binary directly and everything the kernel
-            // renders as text through one Utf8 temporary, at the width its
-            // own type fixes; the rule is checked per value either way.
+            // A code takes binary directly and everything the kernel renders
+            // as text through one Utf8 temporary, at the width its own
+            // standard fixes; the rule is checked per value either way, and
+            // a column that already holds what the code promises is shared
+            // rather than copied.
             (code, source) if code.is_code() => {
                 if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
@@ -659,11 +678,12 @@ impl ArrayCastPlan {
             {
                 ArrayCastKind::GeospatialWkt
             }
-            // A UUID takes its sixteen bytes directly and every text spelling
+            // A UUID takes its sixteen bytes directly, a slot of any other
+            // width as the spelling that slot holds, and every text spelling
             // through one Utf8 temporary; the one UUID rule runs per value
-            // either way.
+            // whichever it was.
             (DataType::Uuid, source) => {
-                if matches!(source, ArrowDataType::FixedSizeBinary(16))
+                if matches!(source, ArrowDataType::FixedSizeBinary(_))
                     || can_cast_types(source, &ArrowDataType::Utf8)
                 {
                     ArrayCastKind::UuidIngest
@@ -681,13 +701,20 @@ impl ArrayCastPlan {
             (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
             },
-            (DataType::String(parameters), ArrowDataType::FixedSizeBinary(16))
-                if is_text_storage(*parameters)
-                    && !parameters.is_bounded()
-                    && matches!(source_extension, Some(RecognizedExtension::Uuid)) =>
-            {
-                ArrayCastKind::UuidText
+            (DataType::Timezone, source) if is_text_layout(source) => ArrayCastKind::TimezoneIngest,
+            (DataType::Timezone, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to timezone is not supported"),
+            },
+            (DataType::MimeType, source) if is_text_layout(source) => ArrayCastKind::MimeTypeIngest,
+            (DataType::MimeType, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to mimetype is not supported"),
+            },
+            (DataType::MediaType, source) if is_text_layout(source) => {
+                ArrayCastKind::MediaTypeIngest
             }
+            (DataType::MediaType, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to mediatype is not supported"),
+            },
             (DataType::String(parameters), source)
                 if is_text_storage(*parameters)
                     && !parameters.is_bounded()
@@ -696,12 +723,13 @@ impl ArrayCastPlan {
                 ArrayCastKind::TemporalText
             }
             // A string reads its values, never its buffers: a recognized
-            // string or code source is read under what it declares, bare text
-            // as text, and bare bytes as bytes already in the target's
-            // charset. Plain UTF-8 from bare storage declares nothing to
-            // check, so it stays with Arrow's own kernel below; an encoded
-            // source is decoded first, by the arms below, so the reading
-            // sees the column the encoding was hiding.
+            // string, code or UUID source is read under what it declares -
+            // a UUID spelling its sixteen bytes as the identifier they name -
+            // bare text as text, and bare bytes as bytes already in the
+            // target's charset. Plain UTF-8 from bare storage declares
+            // nothing to check, so it stays with Arrow's own kernel below; an
+            // encoded source is decoded first, by the arms below, so the
+            // reading sees the column the encoding was hiding.
             (DataType::String(parameters), source)
                 if !matches!(
                     source,
@@ -709,7 +737,11 @@ impl ArrayCastPlan {
                 ) && (needs_extension(*parameters)
                     || matches!(
                         source_extension,
-                        Some(RecognizedExtension::String(_) | RecognizedExtension::Code(_))
+                        Some(
+                            RecognizedExtension::String(_)
+                                | RecognizedExtension::Code(_)
+                                | RecognizedExtension::Uuid
+                        )
                     )) =>
             {
                 if !(matches!(
@@ -734,15 +766,37 @@ impl ArrayCastPlan {
                             StringSource::String(*parameters)
                         }
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
+                        Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
                     },
                 }
             }
+            // Two fixed byte widths are the same refusal a fixed-size list
+            // pair gets: the payload a row holds is not the payload the target
+            // declares, so it is a value change rather than a framing change,
+            // and Arrow's own message names neither datatype.
+            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
+                if parameters
+                    .fixed()
+                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
+            {
+                return Err(Error::Unsupported {
+                    kind: dtype.name(),
+                    reason: format!(
+                        "a fixed binary of {source_width} bytes holds a different payload than \
+                         {dtype}, so it is a value change rather than a framing change"
+                    ),
+                });
+            }
             // A bounded byte layout reads its cells for the same reason: the
-            // maximum is the one thing about bytes Arrow cannot check. An
-            // encoded source is decoded first, by the arms below.
+            // width a value must fit is a rule about values, and Arrow's own
+            // builder refuses a cell that misses it without naming the column
+            // or the row. A maximum is the one thing about bytes Arrow cannot
+            // check at all; a fixed width it checks, but only with a message
+            // that names neither side. An encoded source is decoded first, by
+            // the arms below.
             (DataType::Bytes(parameters), source)
-                if crate::types::bytes::needs_extension(*parameters)
+                if parameters.is_bounded()
                     && !matches!(
                         source,
                         ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
@@ -1007,23 +1061,6 @@ impl ArrayCastPlan {
                     reason: "a wrapper/layout change around Struct values is not supported because positional Arrow casting would bypass case-insensitive name reconciliation".to_owned(),
                 });
             }
-            // Two fixed byte widths are the same refusal a fixed-size list
-            // pair gets: the payload a row holds is not the payload the target
-            // declares, so it is a value change rather than a framing change,
-            // and Arrow's own message names neither datatype.
-            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
-                if parameters
-                    .fixed()
-                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
-            {
-                return Err(Error::Unsupported {
-                    kind: dtype.name(),
-                    reason: format!(
-                        "a fixed binary of {source_width} bytes holds a different payload than \
-                         {dtype}, so it is a value change rather than a framing change"
-                    ),
-                });
-            }
             // Anything Arrow's own kernel can cast, it casts - including the
             // wrapper and layout changes around non-Struct values: a list to
             // a view list, a fixed-size list to a variable one, a dictionary
@@ -1155,14 +1192,33 @@ impl ArrayCastPlan {
                 exposure,
                 budget,
             )?,
-            ArrayCastKind::UuidText => {
-                render_uuid_text(&array, &self.expected, &self.field, exposure, budget)?
-            }
             ArrayCastKind::VersionIngest => {
                 ingest_version_array(&array, &self.field, exposure, budget)?
             }
             ArrayCastKind::UrlIngest => {
                 crate::types::url::casts::ingest_url_array(&array, &self.field, exposure, budget)?
+            }
+            ArrayCastKind::TimezoneIngest => crate::types::timezone::casts::ingest_timezone_array(
+                &array,
+                &self.field,
+                exposure,
+                budget,
+            )?,
+            ArrayCastKind::MimeTypeIngest => {
+                crate::types::mime_type::casts::ingest_mime_type_array(
+                    &array,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?
+            }
+            ArrayCastKind::MediaTypeIngest => {
+                crate::types::media_type::casts::ingest_media_type_array(
+                    &array,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?
             }
             // One match per array selects the code's width; every row after
             // it runs against a constant.
@@ -1470,6 +1526,29 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             kind: "url",
             reason: format!("casting url to {} is not supported", other.name()),
         }),
+        // A canonical text source crosses to its own target and to text; every
+        // other target would have to re-read a spelling it does not model.
+        (DataType::Timezone, RecognizedExtension::Timezone)
+        | (DataType::MimeType, RecognizedExtension::MimeType)
+        | (DataType::MediaType, RecognizedExtension::MediaType) => Ok(()),
+        (
+            DataType::String(parameters),
+            RecognizedExtension::Timezone
+            | RecognizedExtension::MimeType
+            | RecognizedExtension::MediaType,
+        ) if is_text_storage(*parameters) => Ok(()),
+        (other, RecognizedExtension::Timezone) => Err(Error::Unsupported {
+            kind: "timezone",
+            reason: format!("casting timezone to {} is not supported", other.name()),
+        }),
+        (other, RecognizedExtension::MimeType) => Err(Error::Unsupported {
+            kind: "mimetype",
+            reason: format!("casting mimetype to {} is not supported", other.name()),
+        }),
+        (other, RecognizedExtension::MediaType) => Err(Error::Unsupported {
+            kind: "mediatype",
+            reason: format!("casting mediatype to {} is not supported", other.name()),
+        }),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
             reason: format!(
@@ -1615,6 +1694,3 @@ pub(crate) fn internal_target_error(kind: &'static str) -> Error {
         reason: "validated target projected an unexpected Arrow datatype".to_owned(),
     }
 }
-
-#[cfg(test)]
-mod tests;

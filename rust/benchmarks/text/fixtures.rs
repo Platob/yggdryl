@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use yggdryl::{DataType, Field, I256, Scalar, TimeUnit, Timezone};
+use yggdryl::{DataType, Field, Scalar, TimeUnit, Timezone, i256};
 
 pub(crate) fn nested(depth: usize) -> Scalar {
     (0..depth).fold(Scalar::from(0), |value, _| Scalar::from_sequence([value]))
@@ -24,7 +24,7 @@ pub(crate) fn typed() -> (Scalar, Field) {
     let value = Scalar::from_record([
         (
             "amount",
-            Scalar::d256(I256::from_str("1234500").unwrap(), 4),
+            Scalar::d256(i256::from_str("1234500").unwrap(), 4),
         ),
         (
             "at",

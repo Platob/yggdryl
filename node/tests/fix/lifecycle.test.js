@@ -46,7 +46,7 @@ function uuidOf(value) {
  */
 function event(registry, nanos, code, scope = null, identifiers = []) {
   const members = [52, UPDATEDAT, CREATEDAT, SNAPSHOTAT, CODE].map((tag) => registry.fieldByTag(tag))
-  members.push(registry.groupByCounter(ALTIDS))
+  members.push(registry.groupByTag(ALTIDS))
   const values = [clock(nanos), clock(nanos), clock(nanos), clock(nanos), code, new Map(identifiers)]
   if (scope !== null) {
     members.push(registry.fieldByTag(INSTUUID))

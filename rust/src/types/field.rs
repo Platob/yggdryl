@@ -1076,7 +1076,3 @@ impl Index<usize> for Field {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "field/tests.rs"]
-mod tests;

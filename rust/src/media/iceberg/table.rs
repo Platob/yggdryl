@@ -2876,6 +2876,9 @@ fn grouped_batches(
     partition: &Field,
 ) -> Result<Vec<(Vec<Scalar>, Vec<RecordBatch>)>> {
     let mut groups: Vec<(Vec<Scalar>, Vec<RecordBatch>)> = Vec::new();
+    // `Scalar`'s hash reads canonical content only, never the
+    // interior-mutable caches a datatype holds, so the key is stable.
+    #[allow(clippy::mutable_key_type)]
     let mut index: HashMap<Vec<Scalar>, usize> = HashMap::new();
     let transforms = spec.write_transforms(schema, partition)?;
 
@@ -2918,6 +2921,9 @@ fn row_groups(
     transforms: &[super::partition::PartitionTransform],
 ) -> Result<Vec<(Vec<Scalar>, Vec<u32>)>> {
     let mut order: Vec<(Vec<Scalar>, Vec<u32>)> = Vec::new();
+    // `Scalar`'s hash reads canonical content only, never the
+    // interior-mutable caches a datatype holds, so the key is stable.
+    #[allow(clippy::mutable_key_type)]
     let mut seen: HashMap<Vec<Scalar>, usize> = HashMap::new();
     for row in 0..batch.num_rows() {
         let row = u32::try_from(row).map_err(|_| {

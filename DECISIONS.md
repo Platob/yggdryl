@@ -2542,7 +2542,309 @@ until the Rust story, Python and Node were complete.
 - `scripts/check_docs_examples.py` counts per language are reported before
   and after in the commit, as counts, not timings; Gate 4 runs whole.
 
-## 31. One term tree, two clauses, one plan, and a best-effort rule
+## 31. A code is the text it is; an identifier is the bits it is
+
+**Rule.** A registered code stores as Arrow's `Utf8`, under its own
+`yggdryl.*` extension name, holding the ASCII text a value is. The eight -
+`country`, `currency`, `mic`, `cfi`, `isin`, `side`, `state`, `timeinforce` -
+no longer ride `FixedSizeBinary(n)`, so nothing pads a cell to the width and
+nothing trims a cell back. The width each standard fixes stays, as a maximum
+the value rule enforces rather than a layout a column enforces:
+`DataType::code_width` and `DataTypeId::code_width` own it, `fixed_byte_width`
+answers `None` for a code, and `code_for_extension` loses the width argument
+that used to make a name and a storage agree.
+
+What tells a code from the text beside it is the extension *name*, never the
+storage. `yggdryl.currency` over `Utf8` with an empty document is a currency;
+the same `Utf8` under `yggdryl.string` is the string its document describes;
+under no name at all it is plain text. `yggdryl.currency` over any other
+storage is a foreign field wearing our name and imports as that storage - the
+rule decision 14 already applied to a retired code, so a column written under
+the old fixed width imports as the `fixed_size_binary(n)` it is, and there is
+no reader that turns it back into a code.
+
+`ascii_packed` is unchanged in every integer it answers. It pads a value with
+trailing NUL to the width and reads it big-endian, and that padding belongs to
+the packing rather than to a column: a `field:enum` document written before
+this change names the same members after it, and a stable hash hashes the same
+bits. A fixed string pads into `fixed_byte_width`; a code pads into
+`code_width`.
+
+A UUID does not move, and the asymmetry is the decision. `arrow.uuid` is the
+canonical Arrow extension and its `FixedSizeBinary(16)` is not ours to
+redefine the way a `yggdryl.*` name is; the value is 128 bits in which every
+byte carries identity and no repertoire makes it text; sixteen bytes beat the
+thirty-six a spelling costs, and decision 23's chains key on it. What a code
+gains by moving - Parquet's `String` logical type, byte-array statistics,
+dictionary encoding, a reader outside this crate that already knows the
+column - a UUID would pay 20 bytes a row and one canonical extension for.
+
+Instead the two families meet in one cast tier. A recognized UUID source is a
+`StringSource` the single string ingest reads, so an identifier column casts
+into every string datatype - any layout, charset or bound - where only plain
+unbounded text worked before, and the second renderer that served that one
+case is deleted. A fixed slot of any width casts *into* `uuid` as the spelling
+it holds; sixteen bytes stay the identifier, because a trailing `0x00` there
+is identity rather than padding. A bounded byte target reads its cells whether
+the bound is a maximum or a fixed width, so a cell that misses the width is
+refused naming the field, the row and both lengths rather than by Arrow's own
+builder complaining about a slice.
+
+**Why.** A currency is not a byte slot; it is a value from a published
+registry that happens to be short ASCII. Storing it padded made the crate
+invent a layout - the same objection decision 14 raised against a packed
+datatype the crate invented - and every consumer outside Arrow already read it
+as text: Avro spelled it `string`, Iceberg spelled it `string`, a partition
+directory spelled it `USD`. Only Arrow disagreed, and Parquet inherited the
+disagreement: a code column carried no logical type at all, so a reader
+outside this crate saw an untyped `FIXED_LEN_BYTE_ARRAY`, and its footer
+bounds carried the slot's NUL for every value short of the width. `version`
+and `url` were already identities over text under their own extension names;
+a code is the same shape and now says so.
+
+**What moves.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `types/arrow.rs`, `arrow/field.rs` | the eight storage arms answer `Utf8`; recognition matches `Utf8` and the name alone | every other extension; the dictionary peel |
+| `types/string/codes.rs`, `datatype_id.rs` | `code_width` on both; `fixed_byte_width` drops its code arms; `code_for_extension(name)`; `ascii_padded` gone with the padding it wrote | every discriminant; every packed integer; `ALL.len() == 60` |
+| `types/string/casts.rs`, `types/cast.rs`, `uuid/casts.rs` | `ingest_code_array` builds text and shares a passing column; `StringSource::Uuid`; `ArrayCastKind::UuidText` and `render_uuid_text` gone; a fixed slot of any width enters `uuid` | the one UUID rule; `safe` and strict semantics |
+| `types/bytes/casts.rs` | a fixed width is filled and refused here, named and located | the maximum's own refusal; the plan-time refusal for two declared widths |
+| `types/merge.rs`, `budget/limits.rs`, `media/partition.rs`, `arrow/value.rs`, `bytes/scalars.rs` | a code is bounded variable text everywhere it was a fixed slot | every other pairing |
+| `uuid/dtypes.rs`, `uuid/scalars.rs` | `Uuid::TEXT_LEN` and `Uuid::render` into a caller's slot; the JSON, YAML, TOML, serde and expression writers drop one allocation each | the canonical spelling; the packed value |
+| Python, Node | `code_width`/`codeWidth` bound beside `code_name`; `fixed_byte_width` `None` for a code | every other accessor |
+| docs | `types/codes.md` restated whole; `types/uuid.md` gains the rendering and the readings; `cast.md`, `field.md`, `text.md`, `datatype.md`, `index.md`, `arrow/schema.md`, the playground manifest | every other page |
+
+**Written in:** `types/string/codes.rs`, on the module; `types/arrow/field.rs`,
+on `recognized_arrow_extension`; `types/uuid/dtypes.rs`, on `uuid_rendered`;
+`AGENTS.md`, under Strings and Bytes; `docs/types/codes.md`.
+**Fixtures:** every code storage pin in `rust/tests/types/datatype/coded.rs`
+restated as text, plus a code and a UUID read into every string and byte
+datatype and back; a code column through Parquet, asserting the `String`
+logical type and the byte-array bounds a padded column never earned; a text
+column every cell of which passes, shared rather than copied; the typed-field
+downcast, which would have caught the eight markers still naming
+`FixedSizeBinaryArray`; `fixed_size_binary(8)` refused naming both sides;
+`code_width` beside `fixed_byte_width` in the three languages; the UUID
+rendering benchmarked against the owned string it replaces.
+
+## 32. A line is the range of the window it was read into
+
+**Rule.** The splitter's window is the page every line cut from it is a range
+of. It is filled while nothing points into it and handed out only once the
+fill is complete, so a line costs one reference count rather than a copy of
+its bytes: the header off its front, the strips off both edges, the byte
+limit off its tail and every named capture are offsets into that page. A line
+takes a vector of its own only where it cannot be a range - one that spanned
+two windows, and one whose row header matched in the middle rather than at an
+edge. A window a line still names is never written over: the refill takes a
+fresh one and moves the open tail into it.
+
+**Why.** `media/text/bytes.rs` already said this - "The text reader fills one
+page-sized buffer, seals it, and hands out ranges into it, so a line costs one
+reference count rather than a copy of its own bytes" - and the reader did not
+do it. Every physical line was assembled into a vector of its own, the
+retained body was copied out of that into a second vector, the record copied
+that into a third, and the third was boxed into a page for that line alone:
+four allocations and three copies of every line's bytes, with four more per
+declared capture. The counting allocator pinned it at four a line and twelve
+for a header declaring two captures, and callgrind put 28% of an end-to-end
+text read inside `malloc`/`free` and 7% more inside `memcpy`. The window was
+already there, already one buffer, already filled in complete units; only the
+sealing was missing.
+
+Retention is the cost this trades against, and it is stated rather than
+hidden: a caller that keeps its lines keeps the windows they name, which is
+one page per 64 KiB of object read rather than one page per line of it. A
+caller that drops each line as it reads it - the fold, the Arrow builder, the
+codec - lets the splitter write the window over again and allocates nothing at
+all past the constant. A line that has not ended takes its vector before the
+refill rather than after, so a record larger than the window does not make the
+splitter take a fresh window for every part of it.
+
+**Written in:** `media/text/reader.rs`, on the module and on `Lines::rewind`;
+`media/text/arrow.rs`, on `Held`.
+**Fixtures:** in the counting allocator, `read_text_lines` over 16 and over
+1 024 rows at one constant and no slope, and a second case pinning what
+keeping every line costs - the constant, the collector's own vector, and two
+per window - and that the bodies of 1 024 rows name no more pages than the
+object has windows; through the reader, every existing line, framing, strip,
+limit, capture, charset and entries fixture unmoved.
+
+**What it costs.**
+
+| where | what changes | what must not move |
+| --- | --- | --- |
+| `media/text/reader.rs` | the window behind a shared handle; `LinePart` carries a range; `rewind` takes a fresh window where the current one is named; the pinned multi-byte searcher built once per read | the flexible and single-byte scans; the overlap rule; where an over-long line is cut |
+| `media/text/arrow.rs` | `Held`; `RawRow` carries `TextBytes`; `header_match` reads into the reader's own landing place and cuts each capture out of the line's page | `RawRows`' framing, dedup, limit and leading-fragment rules; every error and its location |
+| `media/text/line.rs`, `bytes.rs`, `batch.rs` | `shared_url`; captures read where they stand; an owned vector becomes a page; the URL column clones a count | `TextLine`'s contract; `TextBytes`' identity, `from_bytes`, `from_page` |
+| tests | the two allocation pins above, restated | every behaviour fixture |
+
+**How it lands.** Measured against the commit before it on `text_lines`,
+`text_records`, `text_record_framing`, `text_batch` and `text_scan`, named
+baselines, beside the counting allocator and callgrind - because wall clock on
+a shared box moved an untouched scan by 4% in both directions across two runs,
+and the allocation and instruction counts did not move at all.
+
+## 33. A scalar variant is spelled as its datatype, and geospatial flattens too
+
+Decision 29 flattened the five width families into `Scalar` and kept their
+short names, on the reasoning that a second spelling would be a rename rather
+than a flattening. The rename is what is wanted: `Scalar::I8` sits beside
+`DataTypeId::Int8`, `DataType::Int8` and the parser's `int8`, and `i8` is a
+spelling the datatype grammar does not accept at all. Decision 29's
+flattening stands; only its naming clause and its geospatial exception move.
+
+- Every width variant takes its datatype's spelling: `Int8`..`Int64`,
+  `UInt8`..`UInt64`, `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`;
+  `Decimal32`, `Decimal64`, `Decimal128`, `Decimal256`. The leaf type, the
+  `DataTypeId` and the variant are now one identifier, so
+  `integer_scalar_value!`, `floating_value!`, `decimal_value!` and
+  `width_value_from!` lose the arguments that repeated it.
+- `Geospatial` goes the way the width families went. `Scalar::Geometry(Geometry)`
+  and `Scalar::Geography(Geography)` hold their leaves directly, each leaf is
+  its own `ScalarFamily`, and the enum is deleted outright. `Code` is the one
+  family enum left, because a code is an identity over a registry rather than a
+  width of one thing.
+- Cross-reading value semantics are unchanged, and that is what keeps the
+  flattening honest: geometry and geography share `value_rank` 14 and compare
+  by their WKB, exactly as `Geospatial` did, through a `geospatial_bytes`
+  reader beside `float_value` and `decimal_value`. One payload is one value
+  under both readings, in equality, order and hash.
+- The wire vocabulary does not follow the Rust spelling. `Scalar::kind()` and
+  the serde tags keep `i8`..`d256`, which decision 29 pinned as already
+  wire-visible and which `every_width_leaf_round_trips_under_its_unchanged_tag`
+  still holds. The one tag that does move is geometry's: `geospatial` was the
+  family's name on the wire for a value the datatype grammar, the `DataTypeId`
+  and the digest feed all call `geometry`, and with the family gone there is
+  nothing left to call it. `kind()` and the serde tag both read `geometry`;
+  `geography` was already itself.
+- `i256` moves from a root file into `types/`, where the decimals that need it
+  live, and is spelled like the native integer it extends. Its unsigned
+  magnitude becomes `u256` rather than a file of free `[u64; 4]` helpers: every
+  wide add, multiply and division was already unsigned arithmetic with the sign
+  handled around it, so the pair is the shape the code had. `u256` is a value
+  in its own right - parse, render, compare, checked arithmetic, serde, stable
+  hash - and `i256::unsigned_abs` answers it, which is how the signed minimum
+  gets a magnitude at all.
+
+**Written in:** `types/scalar.rs`, on `Scalar` and `ScalarFamily`;
+`types/geospatial/scalars.rs`, on `geospatial_value!`; `types/i256.rs`, on the
+module and both structs.
+**Fixtures:** `a_geospatial_value_is_its_own_kind_over_its_bytes` and
+`the_structural_wire_round_trips_a_geospatial_value` restate the moved tag;
+`every_width_leaf_round_trips_under_its_unchanged_tag` and the pinned stable
+hashes are unmoved; `types/i256/tests.rs` keeps every signed fixture and adds
+the unsigned boundaries, division identity, byte round trip and serde.
+
+## 34. A canonical text value the crate already owns is a datatype of its own
+
+A time zone, a MIME type and a media type were vocabularies the crate parsed,
+canonicalized and rendered for its own routing, and nothing else. A column of
+them had to be `utf8` - which is to say the validation, the canonical spelling
+and the identity were dropped at the column boundary and re-derived by whoever
+read it. `Url` and `Version` already answered this: a value that parses,
+canonicalizes and renders itself is its own datatype.
+
+- `DataType::Timezone`, `DataType::MimeType` and `DataType::MediaType`, each
+  parameter-free, each `DataTypeKind::Text`, each stored as Arrow `Utf8` under
+  its own extension name (`yggdryl.timezone`, `yggdryl.mimetype`,
+  `yggdryl.mediatype`), each with a typed field marker, a prebuilt shared
+  field, an ingest cast and a default. `Scalar::Timezone`, `Scalar::MimeType`
+  and `Scalar::MediaType` hold the crate's own value types, not a second
+  spelling of them: a zone read out of a column is the zone a `datetime64`
+  column declares, and a media type read out of one is what `RecordOptions`
+  routes a record read on.
+- `Scalar::MediaType` is behind an `Arc`, as `Scalar::Url` is, because a base,
+  a charset and a coding list are wider than the 48-byte scalar. The other two
+  ride inline.
+- Not registered codes. A code is at most twelve US-ASCII bytes so it never
+  touches the heap, and its identity is a published registry; an IANA zone name
+  and a parameterised media type are neither, and a media type has no
+  borrowable canonical text at all - it renders one.
+- They are appended, three ways, because three numberings are wire contracts:
+  `DataTypeId` takes 61, 62 and 63; `DataType` takes its three variants at the
+  end of the enum, because `Hash` is derived there and a stored schema digest
+  is over the derived discriminant; `Scalar::value_rank` takes 21, 22 and 23,
+  the next free numbers. `dtype_rank` takes 59, 60 and 61.
+- Intake follows each value, not a new rule. A zone takes an alias, a case and
+  a fixed offset; a MIME type refuses a name that is not `type/subtype`; a
+  media type infers, so its intake is total and unrecognized text answers the
+  default base rather than refusing - it is also the crate's filename and
+  content-negotiation reader, and a column of them holds what that answers.
+- Merging is the `Version`/`Url` rule extended: only with itself. Merging into
+  text would drop exactly the canonicalization that makes the column worth
+  declaring, and a MIME type and a media type never merge into each other.
+- `timezone.rs` moves from a root file into `types/timezone/`, beside the
+  temporal datatypes that declare a zone and the datatype that now holds one.
+  The value's crate-root export is unchanged. `MimeType` and `MediaType` keep
+  their root files, as `Url` keeps `uri/`: the value is the media layer's
+  routing vocabulary and `types/{mime_type,media_type}/` holds only what makes
+  it a datatype.
+
+**Written in:** `types/timezone/mod.rs`, `types/mime_type/mod.rs` and
+`types/media_type/mod.rs`, on each module; `types/scalar.rs`, on
+`text_scalar_value!`, which is the one shape `Version`, `Timezone` and
+`MimeType` now share instead of three copies of it.
+**Fixtures:** `types/tests/timezone.rs` and `types/tests/media.rs` - identity,
+canonicalization, ordering and hashing, the structural wire, the Arrow
+extension round trip, a text column ingested with a located bad row, defaults,
+merges and typed fields, and that the value is the one the rest of the crate
+already routes on; the digest corpus and the prebuilt-field allocation pin
+both name all three.
+**Bindings:** `types.timezone` / `fields.timezone`, `types.mimetype` /
+`fields.mimetype` and `types.mediatype` / `fields.mediatype`, built the way
+`url` is: each value crosses as its canonical text, so neither language grows
+a wrapper class and neither can hold a spelling the core did not produce.
+
+## 35. A test in `src` names what only the crate can see
+
+Two thirds of the Rust suite lived in `src` under `#[cfg(test)]`, and most of
+it had no reason to: it drove `DataType`, `Field`, `Scalar`, the Arrow
+boundary, the handles and the record formats through the same doors a caller
+has - from inside, where a private helper is one `super::` away and nothing
+says which contract is under test. A suite that can reach anything proves
+nothing about what is reachable.
+
+- About 1 600 tests move into `rust/tests/`, one top-level theme per subtree,
+  `#[path]` modules mirroring `src/`. Every one reaches the crate as
+  `yggdryl::` and no other way.
+- What stays in `src` stays for one stated reason each, written in the module
+  doc: the tested item is not reachable from outside. `media/iceberg` (nine
+  private modules and every `TableMetadata` field), `holder/object` (signing,
+  XML, the dialects), `holder/zip` (the format readers), `fix` (the identifier
+  control byte, the lineage and code-set renderers, `FixMsg::from_parts`),
+  `types/value` (`canonicalize_dtype_value`), `types/temporal/iso` (the ISO
+  readers), `types/timezone` (the bundled registry), and about twenty
+  single-item pins - `value_rank`, `leaf_display`, `low_64`,
+  `algorithm_of_width`, `accepts_time`, `read_at`, `convert`, `order`,
+  `open_builder`, `home_from`, `matches_segment`, `utf8_transcribe_into`,
+  `from_decimal_text`, `rendered_len`, `commit_arrow_readers`, `merged`,
+  `folder_reader`, `schema_json_from_field`, `Schema::names`, `Ipc`'s handle
+  field, and `Metadata`'s shared pointer.
+- A fixture stops borrowing the code under test where the move made that
+  possible: the geometry default is compared against stated `POINT EMPTY`
+  bytes, the Avro container fixture writes its own zig-zag `long`, an Arrow
+  array is narrowed with a local `downcast`, a row is read through a
+  one-element slice and `scalar_value`, and an equality-hash check uses
+  `DefaultHasher` rather than the crate's private stable hash.
+- One fixture is deliberately written twice. `Counting` - the handle that
+  mirrors a `Buffer` and tallies what reaches it - lives in `tests/support/`
+  for the three themes that assert against it, and a smaller one lives beside
+  the page-eviction pins, which need it *and* the private `read_at`. An
+  integration test cannot see a `#[cfg(test)]` item, and making the instrument
+  public to share it would put a measuring device in the crate's API.
+- Two defects the move surfaced, both invisible from inside: the exported
+  `impl_default_iomedia!` expanded to `$crate::iobase::…`, a private module, so
+  it never compiled outside the crate at all; and the two coupled-digest column
+  readings matched `DigestAlgorithm` exhaustively, which a caller cannot do
+  because the enum is `#[non_exhaustive]`.
+
+**Written in:** AGENTS "Where a test lives"; each `src` suite's module doc.
+**Fixtures:** every test name in the tree before the move is in it after -
+3 288 before, 3 291 after, the three added being pins the split created.
+
+## 36. One term tree, two clauses, one plan, and a best-effort rule
 
 The expression layer is rebuilt around one vocabulary in every language:
 `Term` is the tree, `Filter` is a `where` clause over it, `Selector` is a
@@ -2608,7 +2910,7 @@ deleting and reading one store; the sliced reader crossing batch boundaries as
 views; a holder built from a URL with properties; the split option sections
 composing into one plan and back.
 
-## 32. Scalar is the boundary, options take properties, and the function set has one door
+## 37. Scalar is the boundary, options take properties, and the function set has one door
 
 Everything a binding hands the expression layer crosses as one `Scalar`:
 `Scalar.from_` in Python and `Scalar.from` in JavaScript read the host value,

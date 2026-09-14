@@ -30,7 +30,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Content codings | [coding](docs/coding/index.md) |
 | Character encodings | [charset](docs/charset/index.md) |
 | Record encodings and tables | [media](docs/media/index.md) |
-| Structured text | [text](docs/text/index.md) |
+| Structured documents | [media/structured](docs/media/structured.md) |
 | Identifiers | [uri](docs/uri/index.md) |
 | Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [fix](docs/fix/index.md) |
 | Extensions | [Python](docs/extensions/python.md), [JavaScript](docs/extensions/javascript.md) |
@@ -201,8 +201,8 @@ temporals, non-finite floats, and arbitrary mapping keys across JSON, TOML, and
 YAML.
 Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
 explicit byte, depth, node, and document limits. See the
-[shared text](docs/text/index.md), [JSON](docs/text/json.md),
-[TOML](docs/text/toml.md), and [YAML](docs/text/yaml.md) pages.
+[structured documents](docs/media/structured.md), [JSON](docs/media/json/index.md),
+[TOML](docs/media/toml/index.md), and [YAML](docs/media/yaml/index.md) pages.
 
 ## Native value behavior
 

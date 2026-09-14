@@ -24,13 +24,13 @@ use yggdryl::arrow::{
 };
 use yggdryl::types::bytes::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::types::decimal::{Decimal32, Decimal64};
-use yggdryl::types::geospatial::{Geography, Geometry, Geospatial};
+use yggdryl::types::geospatial::{Geography, Geometry};
 use yggdryl::types::string::{Code, Str, StringLayout, StringParameters};
 use yggdryl::types::temporal::Interval;
 use yggdryl::types::{Cfi, Country, Currency, Isin, Mic, Side, State, TimeInForce};
 use yggdryl::{
     ArrowCast, DataType as CoreDataType, Enum, Error as CoreError, Field as CoreField, Float16,
-    Float32, Float64, I256, Scalar, TimeUnit, Timezone,
+    Float32, Float64, Scalar, TimeUnit, Timezone, i256,
 };
 
 use crate::iomedia::{batch_to_pyarrow, core_root_field_from_value};
@@ -109,7 +109,7 @@ fn timezone_or_naive(value: Option<&Bound<'_, PyAny>>) -> PyResult<Timezone> {
     value.map_or(Ok(Timezone::NAIVE), core_timezone_from_value)
 }
 
-fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<I256> {
+fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<i256> {
     if value.is_instance_of::<PyBool>()
         || !(value.is_instance_of::<PyInt>() || value.is_instance_of::<PyString>())
     {
@@ -120,7 +120,7 @@ fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<I256> {
     value
         .str()?
         .to_str()?
-        .parse::<I256>()
+        .parse::<i256>()
         .map_err(|error| PyOverflowError::new_err(error.to_string()))
 }
 
@@ -294,35 +294,35 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
     match value {
         Scalar::Null => tagged_pickle_state(py, "null", None),
         Scalar::Boolean(value) => scalar!("bool", value.get()),
-        Scalar::I8(value) => scalar!("i8", value.get()),
-        Scalar::I16(value) => scalar!("i16", value.get()),
-        Scalar::I32(value) => scalar!("i32", value.get()),
-        Scalar::I64(value) => scalar!("i64", value.get()),
-        Scalar::U8(value) => scalar!("u8", value.get()),
-        Scalar::U16(value) => scalar!("u16", value.get()),
-        Scalar::U32(value) => scalar!("u32", value.get()),
-        Scalar::U64(value) => scalar!("u64", value.get()),
-        Scalar::I128(value) => scalar!("i128", value.get()),
-        Scalar::U128(value) => scalar!("u128", value.get()),
-        Scalar::F16(value) => {
+        Scalar::Int8(value) => scalar!("i8", value.get()),
+        Scalar::Int16(value) => scalar!("i16", value.get()),
+        Scalar::Int32(value) => scalar!("i32", value.get()),
+        Scalar::Int64(value) => scalar!("i64", value.get()),
+        Scalar::UInt8(value) => scalar!("u8", value.get()),
+        Scalar::UInt16(value) => scalar!("u16", value.get()),
+        Scalar::UInt32(value) => scalar!("u32", value.get()),
+        Scalar::UInt64(value) => scalar!("u64", value.get()),
+        Scalar::Int128(value) => scalar!("i128", value.get()),
+        Scalar::UInt128(value) => scalar!("u128", value.get()),
+        Scalar::Float16(value) => {
             scalar!("f16", value.as_f16().to_bits())
         }
-        Scalar::F32(value) => {
+        Scalar::Float32(value) => {
             scalar!("f32", value.as_f32().to_bits())
         }
-        Scalar::F64(value) => {
+        Scalar::Float64(value) => {
             scalar!("f64", value.as_f64().to_bits())
         }
-        Scalar::D32(value) => {
+        Scalar::Decimal32(value) => {
             decimal_pickle_state(py, "d32", &value.coefficient().to_string(), value.scale())
         }
-        Scalar::D64(value) => {
+        Scalar::Decimal64(value) => {
             decimal_pickle_state(py, "d64", &value.coefficient().to_string(), value.scale())
         }
-        Scalar::D128(value) => {
+        Scalar::Decimal128(value) => {
             decimal_pickle_state(py, "d128", &value.coefficient().to_string(), value.scale())
         }
-        Scalar::D256(value) => {
+        Scalar::Decimal256(value) => {
             decimal_pickle_state(py, "d256", &value.coefficient().to_string(), value.scale())
         }
         // The ordinary string - UTF-8, the default layout, no width - pickles
@@ -372,6 +372,21 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "url",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
+        Scalar::Timezone(value) => tagged_pickle_state(
+            py,
+            "timezone",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::MimeType(value) => tagged_pickle_state(
+            py,
+            "mimetype",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::MediaType(value) => tagged_pickle_state(
+            py,
+            "mediatype",
+            Some(PyString::new(py, &value.to_string()).into_any().unbind()),
+        ),
         Scalar::Enum(value) => tagged_pickle_state(
             py,
             "enum",
@@ -404,12 +419,12 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                 Some(pickle_tuple(py, vec![layout, fixed, payload])?),
             )
         }
-        Scalar::Geospatial(Geospatial::Geometry(value)) => tagged_pickle_state(
+        Scalar::Geometry(value) => tagged_pickle_state(
             py,
             "geospatial",
             Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         ),
-        Scalar::Geospatial(Geospatial::Geography(value)) => tagged_pickle_state(
+        Scalar::Geography(value) => tagged_pickle_state(
             py,
             "geography",
             Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
@@ -581,14 +596,14 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
                 .parse::<i32>()
-                .map(|coefficient| Scalar::D32(Decimal32::new(coefficient, scale)))
+                .map(|coefficient| Scalar::Decimal32(Decimal32::new(coefficient, scale)))
                 .map_err(|_| PyOverflowError::new_err("D32 coefficient is out of range"))
         }
         "d64" => {
             let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
                 .parse::<i64>()
-                .map(|coefficient| Scalar::D64(Decimal64::new(coefficient, scale)))
+                .map(|coefficient| Scalar::Decimal64(Decimal64::new(coefficient, scale)))
                 .map_err(|_| PyOverflowError::new_err("D64 coefficient is out of range"))
         }
         "d128" => {
@@ -601,7 +616,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "d256" => {
             let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
-                .parse::<I256>()
+                .parse::<i256>()
                 .map(|coefficient| Scalar::d256(coefficient, scale))
                 .map_err(|error| PyOverflowError::new_err(error.to_string()))
         }
@@ -663,6 +678,21 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .parse::<yggdryl::Url>()
             .map(|value| Scalar::Url(Arc::new(value)))
             .map_err(value_error),
+        "timezone" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::Timezone>()
+            .map(Scalar::Timezone)
+            .map_err(value_error),
+        "mimetype" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::MimeType>()
+            .map(Scalar::MimeType)
+            .map_err(value_error),
+        "mediatype" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::MediaType>()
+            .map(|value| Scalar::MediaType(Arc::new(value)))
+            .map_err(value_error),
         "enum" => {
             let (kind, value) = payload()?.extract::<(String, String)>()?;
             Enum::from_parts(&kind, &value)
@@ -692,10 +722,10 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map_err(value_error)
         }
         "geospatial" => Geometry::new(pickle_bytes(&payload()?)?)
-            .map(|value| Scalar::Geospatial(Geospatial::Geometry(value)))
+            .map(Scalar::Geometry)
             .map_err(value_error),
         "geography" => Geography::new(pickle_bytes(&payload()?)?)
-            .map(|value| Scalar::Geospatial(Geospatial::Geography(value)))
+            .map(Scalar::Geography)
             .map_err(value_error),
         "date32" => {
             let (count, unit, zone) = pickle_temporal::<i32>(&payload()?)?;
@@ -1630,22 +1660,23 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
             .to_owned()
             .into_any()
             .unbind()),
-        Scalar::I8(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::I16(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::I32(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::I64(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::U8(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::U16(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::U32(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::U64(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::I128(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::U128(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
-        Scalar::F16(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Scalar::F32(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Scalar::F64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
-        Scalar::D32(_) | Scalar::D64(_) | Scalar::D128(_) | Scalar::D256(_) => {
-            decimal_as_py(py, value)
-        }
+        Scalar::Int8(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Int16(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Int32(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Int64(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::UInt8(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::UInt16(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::UInt32(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::UInt64(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Int128(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::UInt128(value) => Ok(value.get().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Float16(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Float32(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Float64(value) => Ok(value.as_f64().into_pyobject(py)?.into_any().unbind()),
+        Scalar::Decimal32(_)
+        | Scalar::Decimal64(_)
+        | Scalar::Decimal128(_)
+        | Scalar::Decimal256(_) => decimal_as_py(py, value),
         Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Code(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         Scalar::Uuid(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
@@ -1654,13 +1685,18 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
             .into_any()
             .unbind()),
         // A location crosses as the canonical text it validated to, exactly as
-        // the other parsed text families do.
+        // the other parsed text families do; a zone, a MIME type and a media
+        // type each render their own canonical spelling the same way.
         Scalar::Url(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Timezone(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::MimeType(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
         Scalar::Bytes(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
-        Scalar::Geospatial(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        Scalar::Geometry(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        Scalar::Geography(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         Scalar::Date32(_) | Scalar::Date64(_) => date_as_py(py, value),
         Scalar::Time32(time) => time_as_py(py, value, time.timezone()),
         Scalar::Time64(time) => time_as_py(py, value, time.timezone()),
@@ -2445,7 +2481,7 @@ fn decimal_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
         let digit = digit?.extract::<u8>()?;
         digits.push(char::from(b'0' + digit));
     }
-    let unscaled = digits.parse::<I256>().map_err(|_| {
+    let unscaled = digits.parse::<i256>().map_err(|_| {
         PyOverflowError::new_err("decimal coefficient exceeds the 256 bits D256 holds")
     })?;
     Ok(Scalar::from_decimal(unscaled, scale))

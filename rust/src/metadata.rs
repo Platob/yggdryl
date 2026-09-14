@@ -917,4 +917,5 @@ pub(crate) use validation::{
 pub(crate) use validation::is_all_sources;
 
 #[cfg(test)]
+#[path = "metadata/tests.rs"]
 mod tests;

@@ -235,6 +235,9 @@ test('typed field factories cover every native datatype variant', () => {
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],
+    ['timezone', fields.timezone('value')],
+    ['mimetype', fields.mimetype('value')],
+    ['mediatype', fields.mediatype('value')],
     ['list', fields.list('value', item)],
     ['list_view', fields.listView('value', item)],
     ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
@@ -257,7 +260,7 @@ test('typed field factories cover every native datatype variant', () => {
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
   // so no field builds them.
-  assert.equal(byId.size, 58)
+  assert.equal(byId.size, 61)
   assert.deepEqual(
     [...byId.keys()].sort(),
     binding.enums.dataTypeIds.filter((id) => id !== 'int128' && id !== 'uint128').sort(),
@@ -444,8 +447,9 @@ test('the url factory builds a validated, canonical location column', () => {
 
 test('the registered codes build their own datatype at their own width', () => {
   // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
-  // and ISO 6166 twelve: each factory builds the code, never the ASCII width
-  // that would hold the same bytes without the identity.
+  // and ISO 6166 twelve: each factory builds the code, held to that width,
+  // never the ASCII width that would hold the same text without the
+  // identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
     ['currency', [fields.currency('settlement_ccy'), 3]],
@@ -456,7 +460,8 @@ test('the registered codes build their own datatype at their own width', () => {
 
   for (const [name, [value, width]] of declared) {
     assert.equal(value.dtype.id, name, name)
-    assert.equal(value.dtype.fixedByteWidth, width, name)
+    assert.equal(value.dtype.codeWidth, width, name)
+    assert.equal(value.dtype.fixedByteWidth, null, name)
     assert.equal(value.dtype.kind, 'code', name)
     assert.equal(value.dtype.stringParameters, null, name)
     assert.ok(value.dtype.equals(new DataType(name)), name)

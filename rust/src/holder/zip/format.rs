@@ -278,7 +278,7 @@ pub(super) fn dos_datetime(nanos: i64) -> (u16, u16) {
     let seconds = nanos.div_euclid(NANOS_PER_SECOND);
     let days = seconds.div_euclid(SECONDS_PER_DAY);
     let within = seconds.rem_euclid(SECONDS_PER_DAY);
-    let (year, month, day) = crate::timezone::civil_from_days(days);
+    let (year, month, day) = crate::types::timezone::civil_from_days(days);
     if year < DOS_EPOCH_YEAR {
         // 1980-01-01T00:00:00, the earliest instant the format can state.
         return (0x0021, 0);
@@ -306,7 +306,7 @@ pub(super) fn dos_nanos(date: u16, time: u16) -> i64 {
     let hour = i64::from(time >> 11).min(23);
     let minute = i64::from((time >> 5) & 0x3F).min(59);
     let second = i64::from((time & 0x1F) * 2).min(59);
-    let days = crate::timezone::days_from_civil(year, month, day);
+    let days = crate::types::timezone::days_from_civil(year, month, day);
     (days * SECONDS_PER_DAY + hour * 3_600 + minute * 60 + second) * NANOS_PER_SECOND
 }
 

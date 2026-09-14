@@ -70,7 +70,7 @@ fn catalog() -> FixRegistry {
 #[test]
 fn crate_map_groups_are_inherited_instead_of_stored_or_overridden() {
     let registry = FixRegistry::new();
-    let map = registry.get_group_by_counter(65_020).unwrap();
+    let map = registry.get_group_by_tag(65_020).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
@@ -87,7 +87,7 @@ fn crate_map_groups_are_inherited_instead_of_stored_or_overridden() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
+    assert_eq!(loaded.get_group_by_tag(65_020), Some(map));
 
     let root = scratch("crate-map");
     let mut folder = Folder::new(&root).unwrap();
@@ -99,14 +99,14 @@ fn crate_map_groups_are_inherited_instead_of_stored_or_overridden() {
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
+    assert_eq!(loaded.get_group_by_tag(65_020), Some(map));
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
-    let mut map = registry.get_group_by_counter(65_020).unwrap().clone();
+    let mut map = registry.get_group_by_tag(65_020).unwrap().clone();
     map.as_fix_mut().set_group("altids").unwrap();
     let component = DataType::from_fields([map])
         .unwrap()
@@ -387,7 +387,7 @@ fn ordinary_stored_component_references_still_require_null_placeholders() {
 #[test]
 fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let registry = FixRegistry::new();
-    let map = registry.get_group_by_counter(65_020).unwrap();
+    let map = registry.get_group_by_tag(65_020).unwrap();
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
@@ -401,8 +401,8 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
-    assert!(loaded.get_group_by_counter(9001).is_none());
+    assert_eq!(loaded.get_group_by_tag(65_020), Some(map));
+    assert!(loaded.get_group_by_tag(9001).is_none());
 
     let root = scratch("crate-map-substitution");
     let folder = Folder::new(&root).unwrap();
@@ -412,8 +412,8 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_group_by_counter(65_020), Some(map));
-    assert!(loaded.get_group_by_counter(9001).is_none());
+    assert_eq!(loaded.get_group_by_tag(65_020), Some(map));
+    assert!(loaded.get_group_by_tag(9001).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -481,7 +481,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
     );
     let message = loaded.msgtype("D").unwrap();
     assert_eq!(message.name(), "NewOrderSingle");
-    assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
+    assert_eq!(message.get_group_by_tag(453).unwrap().name(), "Parties");
 
     let reversed = Scalar::from_record(record.iter().map(|(key, value)| {
         (
@@ -726,7 +726,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
         "the derived tag survives the round trip"
     );
     assert_eq!(loaded.field(453).unwrap().dtype(), &DataType::Int32);
-    assert_eq!(loaded.group_by_counter(453).unwrap().name(), "Parties");
+    assert_eq!(loaded.group_by_tag(453).unwrap().name(), "Parties");
     assert_eq!(loaded.field(448).unwrap().as_fix().codes().count(), 1);
     assert_eq!(
         loaded.field(448).unwrap().as_fix().code_name("B"),
@@ -977,8 +977,8 @@ fn contexts_sharing_a_counter_are_explicitly_ambiguous() {
     registry
         .insert_definition(FixCategory::Groups, group)
         .unwrap();
-    assert!(registry.get_group_by_counter(453).is_none());
-    assert!(registry.group_by_counter(453).is_err());
+    assert!(registry.get_group_by_tag(453).is_none());
+    assert!(registry.group_by_tag(453).is_err());
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 3);
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
 }
@@ -1235,11 +1235,7 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
         ] {
             assert_eq!(target.definition(category, name).unwrap().name(), name);
         }
-        let group = target
-            .msgtype("D")
-            .unwrap()
-            .get_group_by_counter(453)
-            .unwrap();
+        let group = target.msgtype("D").unwrap().get_group_by_tag(453).unwrap();
         assert_eq!(group.name(), "Parties");
         assert_eq!(
             target
@@ -1289,11 +1285,7 @@ fn merging_catalogs_resolves_imported_references_against_the_inline_code_union()
         assert_eq!(field.as_fix().code_name("B"), Some("Broker"), "{path}");
         assert_eq!(field.as_fix().code_name("C"), Some("Client"), "{path}");
     }
-    let group = target
-        .msgtype("I")
-        .unwrap()
-        .get_group_by_counter(453)
-        .unwrap();
+    let group = target.msgtype("I").unwrap().get_group_by_tag(453).unwrap();
     let DataType::List(item) = group.dtype() else {
         panic!("the resolved group list")
     };
@@ -1693,7 +1685,7 @@ fn one_message_code_namespace_answers_the_bare_code_to_its_first_holder() {
     let folded = registry.msgtype("D").unwrap();
     assert_eq!(folded.name(), "NewOrderSingle");
     assert!(folded.as_field().as_fix().has_branch("venue"));
-    assert_eq!(folded.get_group_by_counter(453).unwrap().name(), "Parties");
+    assert_eq!(folded.get_group_by_tag(453).unwrap().name(), "Parties");
     let mut message = DataType::from_fields([])
         .unwrap()
         .required_field("VenueOrder");
@@ -1817,12 +1809,12 @@ fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
     registry
         .insert_definition(FixCategory::Groups, group.clone())
         .unwrap();
-    assert!(registry.get_group_by_counter(453).is_none());
+    assert!(registry.get_group_by_tag(453).is_none());
     assert_eq!(
         registry
             .msgtype("D")
             .unwrap()
-            .get_group_by_counter(453)
+            .get_group_by_tag(453)
             .unwrap()
             .name(),
         "Parties"
@@ -1842,7 +1834,7 @@ fn message_context_resolves_a_group_whose_global_counter_is_ambiguous() {
         registry
             .msgtype("T")
             .unwrap()
-            .get_group_by_counter(453)
+            .get_group_by_tag(453)
             .unwrap()
             .name(),
         "TradeParties"
@@ -1885,8 +1877,8 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         .insert_definition(FixCategory::Components, message)
         .unwrap();
     let message = registry.msgtype("H").unwrap();
-    assert_eq!(message.get_group_by_counter(627).unwrap().name(), "Hops");
-    assert_eq!(message.get_group_by_counter(453).unwrap().name(), "Parties");
+    assert_eq!(message.get_group_by_tag(627).unwrap().name(), "Hops");
+    assert_eq!(message.get_group_by_tag(453).unwrap().name(), "Parties");
     let mut duplicate = DataType::from_fields([
         DataType::from_fields([parties.clone()])
             .unwrap()
@@ -1905,7 +1897,7 @@ fn message_group_paths_cross_list_items_and_refuse_repeated_contexts() {
         registry
             .msgtype("R")
             .unwrap()
-            .get_group_by_counter(453)
+            .get_group_by_tag(453)
             .is_none()
     );
 }

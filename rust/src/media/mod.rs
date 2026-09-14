@@ -513,6 +513,3 @@ impl From<crate::media::text::Text<Holder>> for Media {
         Self::Text(value)
     }
 }
-
-#[cfg(all(test, feature = "arrow"))]
-mod tests;

@@ -153,21 +153,21 @@ impl JsFixRegistry {
 impl JsFixRegistry {
     /// Look up a globally unique group by its scalar counter tag.
     #[napi]
-    pub fn get_group_by_counter(&self, tag: f64) -> Result<Option<JsField>> {
+    pub fn get_group_by_tag(&self, tag: f64) -> Result<Option<JsField>> {
         let tag = exact_i32(tag, "tag")?;
         Ok(self
             .inner
-            .get_group_by_counter(tag)
+            .get_group_by_tag(tag)
             .cloned()
             .map(JsField::from_core))
     }
 
     /// Look up a globally unique group, failing when absent or ambiguous.
     #[napi]
-    pub fn group_by_counter(&self, tag: f64) -> Result<JsField> {
+    pub fn group_by_tag(&self, tag: f64) -> Result<JsField> {
         let tag = exact_i32(tag, "tag")?;
         self.inner
-            .group_by_counter(tag)
+            .group_by_tag(tag)
             .cloned()
             .map(JsField::from_core)
             .map_err(napi_error)

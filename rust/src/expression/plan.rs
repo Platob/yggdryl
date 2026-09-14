@@ -242,7 +242,7 @@ impl Target {
 
     /// Read one property as the type a knob has.
     #[cfg(feature = "arrow")]
-    fn knob<T: std::str::FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>> {
+    pub fn knob<T: std::str::FromStr>(&self, name: &str, expected: &str) -> Result<Option<T>> {
         self.property(name)
             .map(|value| {
                 value.trim().parse().map_err(|_| Error::InvalidRecord {
@@ -1668,6 +1668,3 @@ mod arrow {
         Ok(crate::arrow::batch_reader(schema, empty))
     }
 }
-
-#[cfg(test)]
-mod tests;

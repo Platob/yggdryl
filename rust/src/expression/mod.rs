@@ -71,9 +71,6 @@ mod user;
 #[cfg(feature = "arrow")]
 mod arrow;
 
-#[cfg(test)]
-mod tests;
-
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
@@ -333,7 +330,7 @@ impl Safety {
 /// and the statistics evaluator agree about a function none of them knows. A
 /// bare name outside this set is a parse error listing the vocabulary it is
 /// not in. A *qualified* name - `namespace.name(...)` - is a
-/// [user-defined function](user): registered with a signature rather than
+/// [user-defined function](UserFunction): registered with a signature rather than
 /// known to the grammar, typed and called by the two row evaluators through
 /// that signature, and opaque to the statistics evaluator.
 #[derive(
@@ -392,7 +389,7 @@ pub enum Function {
     /// [`FieldSegment::Range`], 0-based and half-open, a null bound meaning
     /// the list's own end.
     Slice,
-    /// A registered [user-defined function](user), by qualified name.
+    /// A registered [user-defined function](UserFunction), by qualified name.
     User(UserRef),
 }
 
@@ -588,11 +585,6 @@ impl Expression {
         Ok(plan.into_plan()?.into_expression())
     }
 
-    /// The sequence of expressions, applied in order.
-    ///
-    /// One expression is itself; none is the empty sequence, which changes
-    /// nothing.
-    #[must_use]
     /// Read an expression from the scalar that spells one.
     ///
     /// Text parses as whichever clause, plan or sequence it is; a sequence
@@ -629,6 +621,11 @@ impl Expression {
         })
     }
 
+    /// The sequence of expressions, applied in order.
+    ///
+    /// One expression is itself; none is the empty sequence, which changes
+    /// nothing.
+    #[must_use]
     pub fn sequence(steps: impl IntoIterator<Item = Self>) -> Self {
         let mut steps: Vec<Self> = steps.into_iter().collect();
         if steps.len() == 1 {

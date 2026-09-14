@@ -87,55 +87,57 @@ impl Scalar {
             kind,
         };
         Ok(match self {
-            Self::I8(value) => Self::from(value.get().checked_neg().ok_or_else(|| overflow("i8"))?),
-            Self::I16(value) => {
+            Self::Int8(value) => {
+                Self::from(value.get().checked_neg().ok_or_else(|| overflow("i8"))?)
+            }
+            Self::Int16(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i16"))?)
             }
-            Self::I32(value) => {
+            Self::Int32(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i32"))?)
             }
-            Self::I64(value) => {
+            Self::Int64(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i64"))?)
             }
-            Self::I128(value) => {
+            Self::Int128(value) => {
                 Self::from(value.get().checked_neg().ok_or_else(|| overflow("i128"))?)
             }
-            Self::U8(value) => Self::from(-i16::from(value.get())),
-            Self::U16(value) => Self::from(-i32::from(value.get())),
-            Self::U32(value) => Self::from(-i64::from(value.get())),
-            Self::U64(value) => Self::from(-i128::from(value.get())),
-            Self::U128(_) => {
+            Self::UInt8(value) => Self::from(-i16::from(value.get())),
+            Self::UInt16(value) => Self::from(-i32::from(value.get())),
+            Self::UInt32(value) => Self::from(-i64::from(value.get())),
+            Self::UInt64(value) => Self::from(-i128::from(value.get())),
+            Self::UInt128(_) => {
                 return Err(invalid_unary(
                     "negation",
                     self,
                     "u128 has no lossless signed promotion",
                 ));
             }
-            Self::F16(value) => Self::F16(-*value),
-            Self::F32(value) => Self::F32(-*value),
-            Self::F64(value) => Self::F64(-*value),
-            Self::D32(value) => Self::D32(super::decimal::Decimal32::new(
+            Self::Float16(value) => Self::Float16(-*value),
+            Self::Float32(value) => Self::Float32(-*value),
+            Self::Float64(value) => Self::Float64(-*value),
+            Self::Decimal32(value) => Self::Decimal32(super::decimal::Decimal32::new(
                 value
                     .coefficient()
                     .checked_neg()
                     .ok_or_else(|| overflow("d32"))?,
                 value.scale(),
             )),
-            Self::D64(value) => Self::D64(super::decimal::Decimal64::new(
+            Self::Decimal64(value) => Self::Decimal64(super::decimal::Decimal64::new(
                 value
                     .coefficient()
                     .checked_neg()
                     .ok_or_else(|| overflow("d64"))?,
                 value.scale(),
             )),
-            Self::D128(value) => Self::d128(
+            Self::Decimal128(value) => Self::d128(
                 value
                     .coefficient()
                     .checked_neg()
                     .ok_or_else(|| overflow("d128"))?,
                 value.scale(),
             ),
-            Self::D256(value) => Self::d256(
+            Self::Decimal256(value) => Self::d256(
                 value
                     .coefficient()
                     .checked_neg()
@@ -176,47 +178,51 @@ impl Scalar {
             kind,
         };
         Ok(match self {
-            Self::I8(value) => Self::from(value.get().checked_abs().ok_or_else(|| overflow("i8"))?),
-            Self::I16(value) => {
+            Self::Int8(value) => {
+                Self::from(value.get().checked_abs().ok_or_else(|| overflow("i8"))?)
+            }
+            Self::Int16(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i16"))?)
             }
-            Self::I32(value) => {
+            Self::Int32(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i32"))?)
             }
-            Self::I64(value) => {
+            Self::Int64(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i64"))?)
             }
-            Self::I128(value) => {
+            Self::Int128(value) => {
                 Self::from(value.get().checked_abs().ok_or_else(|| overflow("i128"))?)
             }
-            Self::U8(_) | Self::U16(_) | Self::U32(_) | Self::U64(_) | Self::U128(_) => {
-                self.clone()
-            }
-            Self::F16(value) => Self::F16(value.abs()),
-            Self::F32(value) => Self::F32(value.abs()),
-            Self::F64(value) => Self::F64(value.abs()),
-            Self::D32(value) => Self::D32(super::decimal::Decimal32::new(
+            Self::UInt8(_)
+            | Self::UInt16(_)
+            | Self::UInt32(_)
+            | Self::UInt64(_)
+            | Self::UInt128(_) => self.clone(),
+            Self::Float16(value) => Self::Float16(value.abs()),
+            Self::Float32(value) => Self::Float32(value.abs()),
+            Self::Float64(value) => Self::Float64(value.abs()),
+            Self::Decimal32(value) => Self::Decimal32(super::decimal::Decimal32::new(
                 value
                     .coefficient()
                     .checked_abs()
                     .ok_or_else(|| overflow("d32"))?,
                 value.scale(),
             )),
-            Self::D64(value) => Self::D64(super::decimal::Decimal64::new(
+            Self::Decimal64(value) => Self::Decimal64(super::decimal::Decimal64::new(
                 value
                     .coefficient()
                     .checked_abs()
                     .ok_or_else(|| overflow("d64"))?,
                 value.scale(),
             )),
-            Self::D128(value) => Self::d128(
+            Self::Decimal128(value) => Self::d128(
                 value
                     .coefficient()
                     .checked_abs()
                     .ok_or_else(|| overflow("d128"))?,
                 value.scale(),
             ),
-            Self::D256(value) => Self::d256(
+            Self::Decimal256(value) => Self::d256(
                 if value.coefficient().is_negative() {
                     value
                         .coefficient()
@@ -376,8 +382,13 @@ fn inferred_target(
         }
         let left_scale = left_decimal.map_or(0, |parts| parts.1);
         let right_scale = right_decimal.map_or(0, |parts| parts.1);
-        let wide = matches!(left, Scalar::D256(_) | Scalar::I128(_) | Scalar::U128(_))
-            || matches!(right, Scalar::D256(_) | Scalar::I128(_) | Scalar::U128(_));
+        let wide = matches!(
+            left,
+            Scalar::Decimal256(_) | Scalar::Int128(_) | Scalar::UInt128(_)
+        ) || matches!(
+            right,
+            Scalar::Decimal256(_) | Scalar::Int128(_) | Scalar::UInt128(_)
+        );
         let scale = match operation {
             Arithmetic::Div => {
                 inferred_decimal_division_scale(left, left_scale, right, right_scale, wide)?
@@ -518,7 +529,7 @@ impl Neg for &Scalar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Float16, Float32, Float64, I256, TimeUnit, Timezone};
+    use crate::{Float16, Float32, Float64, TimeUnit, Timezone, i256};
 
     #[test]
     fn integer_arithmetic_preserves_width_and_promotes_without_loss() {
@@ -604,28 +615,28 @@ mod tests {
 
         let maximum = Scalar::d128(i128::MAX, 0);
         assert_eq!(maximum.checked_div(&maximum).unwrap(), Scalar::d128(1, 0));
-        let wide: I256 =
+        let wide: i256 =
             "9999999999999999999999999999999999999999999999999999999999999999999999999999"
                 .parse()
                 .unwrap();
         let maximum = Scalar::d256(wide, 0);
         assert_eq!(
             maximum.checked_div(&maximum).unwrap(),
-            Scalar::d256(I256::from_i128(1), 0)
+            Scalar::d256(i256::from_i128(1), 0)
         );
         assert_eq!(
             Scalar::d128(3, 0).checked_div(&Scalar::d128(6, 0)).unwrap(),
             Scalar::d128(5, 1)
         );
 
-        let denominator = (0..75).fold(I256::from_i128(1), |value, _| {
-            value.checked_mul(I256::from_i128(2)).unwrap()
+        let denominator = (0..75).fold(i256::from_i128(1), |value, _| {
+            value.checked_mul(i256::from_i128(2)).unwrap()
         });
-        let coefficient = (0..75).fold(I256::from_i128(1), |value, _| {
-            value.checked_mul(I256::from_i128(5)).unwrap()
+        let coefficient = (0..75).fold(i256::from_i128(1), |value, _| {
+            value.checked_mul(i256::from_i128(5)).unwrap()
         });
         assert_eq!(
-            Scalar::d256(I256::from_i128(1), 0)
+            Scalar::d256(i256::from_i128(1), 0)
                 .checked_div(&Scalar::d256(denominator, 0))
                 .unwrap(),
             Scalar::d256(coefficient, 75)

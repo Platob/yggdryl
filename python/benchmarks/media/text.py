@@ -73,7 +73,7 @@ def baseline(target: pathlib.Path) -> int:
     # same column the same way, so both sides carry the same field.
     modified = datetime.fromtimestamp(target.stat().st_mtime, timezone.utc)
     columns: dict[str, list[object]] = {
-        "url": [],
+        "sourceurl": [],
         "rownum": [],
         "mtime": [],
         "body": [],
@@ -84,7 +84,7 @@ def baseline(target: pathlib.Path) -> int:
     for rownum, line in enumerate(text.splitlines(), 1):
         found = COMPILED.search(line)
         assert found is not None
-        columns["url"].append(target.as_uri())
+        columns["sourceurl"].append(target.as_uri())
         columns["rownum"].append(rownum)
         columns["mtime"].append(modified)
         columns["body"].append((line[: found.start()] + line[found.end() :]).strip())

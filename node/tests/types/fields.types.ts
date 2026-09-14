@@ -18,6 +18,9 @@ import {
   type Int32Field,
   type ListField,
   type MapField,
+  type MediaTypeField,
+  type MimeTypeField,
+  type TimezoneField,
   type TimeField,
   type DateTime64Field,
   type UrlField,
@@ -66,6 +69,15 @@ const sourceId: 'url' = source.dtype.id
 const sourceKind: 'text' = source.dtype.kind
 const sourceValue: string = source.defaultJSValue()
 const nullableSource: string | null = fields.url('source').defaultJSValue()
+// A zone, a MIME type and a media type are canonical text the same way: the
+// declared value is the spelling the crate parsed it to.
+const zone: TimezoneField = fields.timezone('zone', { nullable: false })
+const zoneId: 'timezone' = zone.dtype.id
+const zoneValue: string = zone.defaultJSValue()
+const mime: MimeTypeField = fields.mimetype('mime', { nullable: false })
+const mimeKind: 'text' = mime.dtype.kind
+const media: MediaTypeField = fields.mediatype('media', { nullable: false })
+const mediaId: 'mediatype' = media.dtype.id
 const payloadId: 'variant' = payload.dtype.id
 const shape: GeometryField = fields.geometry('shape', { nullable: false })
 const shapeKind: 'geospatial' = shape.dtype.kind
@@ -124,6 +136,10 @@ void sourceId
 void sourceKind
 void sourceValue
 void nullableSource
+void zoneId
+void zoneValue
+void mimeKind
+void mediaId
 void shapeKind
 void projectedShape
 void region

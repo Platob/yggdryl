@@ -232,7 +232,7 @@ applied_root = Field(
     "rows", DataType.from_fields([Field("value", "int64")]), nullable=False
 )
 applied_batch: pa.RecordBatch = applied_root.apply_arrow_batch(
-    source_batch, digest=True, partition=True, cast=True
+    source_batch, digest=True, transform=True, cast=True
 )
 applied_schema: pa.Schema = applied_root.apply_arrow_schema(source_batch.schema)
 applied_reader: pa.RecordBatchReader = applied_root.apply_arrow_reader(
@@ -709,7 +709,7 @@ class NotArrowReader:
     pass
 
 
-record_options: RecordOptions = record_handle.record_options()
+record_options: RecordOptions | TextOptions = record_handle.record_options()
 hashable_record_options = RecordOptions("trades.arrows")
 record_options_stable_hash: int = hashable_record_options.stable_hash()
 record_options_hash: int = hash(hashable_record_options)
@@ -903,7 +903,7 @@ assert iceberg_document
 assert iceberg_reread
 
 # Record configuration crosses through the one options object.
-selected_options: RecordOptions = record_handle.record_options()
+selected_options: RecordOptions | TextOptions = record_handle.record_options()
 selected_options.select = ["id"]
 selected_options.batch_row_size = 1024
 selected_reader: pa.RecordBatchReader = record_handle.read_arrow_reader(
@@ -1529,8 +1529,8 @@ fix_definition: Field = fix_catalog.definition("groups", "parties")
 fix_optional_definition: Field | None = fix_catalog.get_definition("components", "party")
 fix_definitions: FixDefinitionIterator = fix_catalog.definitions("groups")
 fix_definition_item: Field = next(fix_definitions)
-fix_group_by_counter: Field = fix_catalog.group_by_counter(453)
-fix_optional_group: Field | None = fix_catalog.get_group_by_counter(453)
+fix_group_by_counter: Field = fix_catalog.group_by_tag(453)
+fix_optional_group: Field | None = fix_catalog.get_group_by_tag(453)
 fix_removed_definition: Field | None = fix_catalog.remove_definition("groups", "parties")
 fix_catalog_snapshot: str = fix_catalog.into_json()
 fix_catalog_restored: fix.FixRegistry = fix.FixRegistry.from_json(fix_catalog_snapshot)
@@ -1545,7 +1545,7 @@ fix_msgtype_item: fix.MsgType = next(fix_msgtypes)
 fix_msgtype_name: str = fix_msgtype.name
 fix_msgtype_value: str = fix_msgtype.value
 fix_msgtype_field: Field = fix_msgtype.field
-fix_msgtype_group: Field | None = fix_msgtype.get_group_by_counter(453)
+fix_msgtype_group: Field | None = fix_msgtype.get_group_by_tag(453)
 fix_identifier_values: list[tuple[Field, Scalar]] = fix_msgtype.identifier_values(fix_message)
 fix_identifier_field: Field = fix_identifier_values[0][0]
 fix_identifier_value: Scalar = fix_identifier_values[0][1]

@@ -106,7 +106,7 @@ impl<'field> TransformField<'field> {
     }
 
     /// The function this column is computed with, when it declares one by
-    /// name: a grammar function, or a [user-defined](super::user) one spelled
+    /// name: a grammar function, or a [user-defined](crate::expression::UserFunction) one spelled
     /// `namespace.name`.
     ///
     /// # Errors
@@ -184,9 +184,7 @@ impl TransformFieldMut<'_> {
                 .iter()
                 .map(|argument| argument.as_column().map(str::to_owned))
                 .collect();
-            if let Some(columns) = columns
-                && !columns.is_empty()
-            {
+            if let Some(columns) = columns.filter(|columns| !columns.is_empty()) {
                 return self.set_function(function, columns);
             }
         }

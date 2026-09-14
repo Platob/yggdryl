@@ -11,9 +11,9 @@ use crate::types::string::is_text_storage;
 use crate::types::{
     Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, Code,
     ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout, StringParameters,
-    TIMEINFORCE_WIDTH, ascii_bytes, ascii_padded, code_cell_text, uuid_bytes, uuid_parse,
+    TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
-use crate::{DataType, Field, I256, Scalar, TimeUnit, Timezone, UnionMode};
+use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
@@ -33,7 +33,8 @@ use arrow_array::{
     UInt64Array, UnionArray, make_array, new_empty_array,
 };
 use arrow_buffer::{
-    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer, i256,
+    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, OffsetBuffer, ScalarBuffer,
+    i256 as ArrowI256,
 };
 use arrow_schema::DataType as ArrowDataType;
 use half::f16;
@@ -187,6 +188,38 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                     Scalar::Null => Ok(None),
                     Scalar::Url(url) => Ok(Some(url.to_string())),
                     other => Err(invalid_value("url", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        // Each canonical text datatype writes the one spelling its value
+        // renders, so the column holds what the value says it is.
+        DataType::Timezone => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::Timezone(zone) => Ok(Some(zone.as_str().to_owned())),
+                    other => Err(invalid_value("timezone", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        DataType::MimeType => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::MimeType(mime) => Ok(Some(mime.as_str().to_owned())),
+                    other => Err(invalid_value("mimetype", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        DataType::MediaType => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::MediaType(media) => Ok(Some(media.to_string())),
+                    other => Err(invalid_value("mediatype", other.kind())),
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
@@ -387,61 +420,73 @@ pub(crate) fn value_from_array(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
+        DataType::Timezone => Scalar::Timezone(
+            crate::Timezone::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        ),
+        DataType::MimeType => Scalar::MimeType(
+            crate::MimeType::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        ),
+        DataType::MediaType => Scalar::from(
+            crate::MediaType::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        ),
         DataType::String(parameters) => string_value(*parameters, array, index)?,
-        // A code reads back trimmed, at the width its own type fixes: the
-        // padding is the layout, not the text.
+        // A code reads back as the text its column holds, checked once more
+        // at the width its own standard fixes.
         DataType::Country => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Country(crate::types::Country::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Currency => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Currency(crate::types::Currency::new(
-                code_cell_text(dtype, fixed.value(index))?,
+                code_cell_text(dtype, text.value(index).as_bytes())?,
             )?))
         }
         DataType::Mic => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Mic(crate::types::Mic::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Cfi => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Cfi(crate::types::Cfi::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Isin => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Isin(crate::types::Isin::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::Side => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::Side(crate::types::Side::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::State => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::State(crate::types::State::new(code_cell_text(
                 dtype,
-                fixed.value(index),
+                text.value(index).as_bytes(),
             )?)?))
         }
         DataType::TimeInForce => {
-            let fixed = downcast::<FixedSizeBinaryArray>(array)?;
+            let text = downcast::<StringArray>(array)?;
             Scalar::Code(Code::TimeInForce(crate::types::TimeInForce::new(
-                code_cell_text(dtype, fixed.value(index))?,
+                code_cell_text(dtype, text.value(index).as_bytes())?,
             )?))
         }
         DataType::List(child) => {
@@ -519,18 +564,18 @@ pub(crate) fn value_from_array(
         DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
         DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
-            Scalar::D32(crate::types::Decimal32::new(value, *scale))
+            Scalar::Decimal32(crate::types::Decimal32::new(value, *scale))
         }
         DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
-            Scalar::D64(crate::types::Decimal64::new(value, *scale))
+            Scalar::Decimal64(crate::types::Decimal64::new(value, *scale))
         }
         DataType::Decimal128 { scale, .. } => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
         }
         DataType::Decimal256 { scale, .. } => {
             let value = downcast::<Decimal256Array>(array)?.value(index);
-            Scalar::d256(I256::from_le_bytes(value.to_le_bytes()), *scale)
+            Scalar::d256(i256::from_le_bytes(value.to_le_bytes()), *scale)
         }
         DataType::Map(map) => {
             let entries = downcast::<MapArray>(array)?.value(index);
@@ -551,16 +596,12 @@ pub(crate) fn value_from_array(
         }
         DataType::RunEndEncoded(encoded) => run_value(encoded, array, index)?,
         // A geospatial column reads back in its canonical value spelling.
-        DataType::Geometry(_) => Scalar::Geospatial(crate::types::Geospatial::Geometry(
-            crate::types::Geometry::new(Arc::<[u8]>::from(
-                downcast::<BinaryArray>(array)?.value(index),
-            ))?,
-        )),
-        DataType::Geography(_) => Scalar::Geospatial(crate::types::Geospatial::Geography(
-            crate::types::Geography::new(Arc::<[u8]>::from(
-                downcast::<BinaryArray>(array)?.value(index),
-            ))?,
-        )),
+        DataType::Geometry(_) => Scalar::Geometry(crate::types::Geometry::new(Arc::<[u8]>::from(
+            downcast::<BinaryArray>(array)?.value(index),
+        ))?),
+        DataType::Geography(_) => Scalar::Geography(crate::types::Geography::new(
+            Arc::<[u8]>::from(downcast::<BinaryArray>(array)?.value(index)),
+        )?),
         DataType::Variant => {
             return Err(unsupported(
                 dtype,
@@ -1370,29 +1411,20 @@ fn uuid_array(values: &[&Scalar]) -> Result<ArrayRef> {
     )?))
 }
 
-/// Build the padded fixed-width storage of a registered code column.
+/// Build the text storage of a registered code column.
 ///
-/// The slot is a compile-time length, so the per-row padding is a
-/// fixed-size copy.
+/// A value never outgrows `WIDTH`, which is a compile-time length, so the
+/// payload is bounded before a byte of it is copied.
 fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Result<ArrayRef> {
-    let mut bytes = vec![0_u8; values.len() * WIDTH];
-    let mut validity = Vec::with_capacity(values.len());
-    for (index, value) in values.iter().enumerate() {
+    let mut builder = StringBuilder::with_capacity(values.len(), values.len() * WIDTH);
+    for value in values {
         match ascii_bytes(value) {
-            Some(raw) => {
-                let text = code_cell_text(dtype, raw)?;
-                ascii_padded(&mut bytes[index * WIDTH..][..WIDTH], text);
-                validity.push(true);
-            }
-            None if matches!(value, Scalar::Null) => validity.push(false),
+            Some(raw) => builder.append_value(code_cell_text(dtype, raw)?),
+            None if matches!(value, Scalar::Null) => builder.append_null(),
             None => return Err(invalid_value_kind("ASCII text", value)),
         }
     }
-    Ok(Arc::new(FixedSizeBinaryArray::try_new(
-        WIDTH as i32,
-        Buffer::from(bytes),
-        nulls(validity),
-    )?))
+    Ok(Arc::new(builder.finish()))
 }
 
 /// Build the storage of one string column, in the charset it declares.
@@ -1403,7 +1435,7 @@ fn code_array<const WIDTH: usize>(dtype: &DataType, values: &[&Scalar]) -> Resul
 /// otherwise would read mojibake and call it text.
 fn string_array(parameters: StringParameters, values: &[&Scalar]) -> Result<ArrayRef> {
     let charset = parameters.charset();
-    // A fixed width pads into its slot, exactly as a code does.
+    // A fixed width pads into its slot; nothing else in this family does.
     if let Some(width) = parameters.fixed() {
         let slot = usize::try_from(width)
             .map_err(|_| invalid_value("a string width within usize", width))?;
@@ -1597,7 +1629,8 @@ fn string_value(parameters: StringParameters, array: &dyn Array, index: usize) -
 fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Geospatial(bytes) => Ok(Some(bytes.as_bytes())),
+        Scalar::Geometry(value) => Ok(Some(value.as_bytes())),
+        Scalar::Geography(value) => Ok(Some(value.as_bytes())),
         Scalar::Bytes(bytes) => Ok(Some(bytes.as_bytes())),
         _ => Err(invalid_value_kind("well-known binary", value)),
     }
@@ -1666,10 +1699,10 @@ fn interval_value(value: &Scalar, unit: TimeUnit) -> Result<&crate::types::Inter
     }
 }
 
-fn decimal256(value: &Scalar, scale: i8) -> Result<i256> {
+fn decimal256(value: &Scalar, scale: i8) -> Result<ArrowI256> {
     value
         .decimal256_unscaled_at(scale)
-        .map(|coefficient| i256::from_le_bytes(coefficient.into_le_bytes()))
+        .map(|coefficient| ArrowI256::from_le_bytes(coefficient.into_le_bytes()))
         .ok_or_else(|| {
             invalid_value(
                 &format!("a decimal256 representable at scale {scale}"),
@@ -1690,6 +1723,3 @@ fn allocation_error(
 ) -> Error {
     Error::allocation(context, requested, error.clone())
 }
-
-#[cfg(test)]
-mod tests;

@@ -1,7 +1,6 @@
 //! Geospatial values and typed scalar aliases.
 
 use std::fmt;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -65,104 +64,60 @@ macro_rules! geospatial_leaf {
 geospatial_leaf!(Geometry);
 geospatial_leaf!(Geography);
 
-/// One exact geospatial interpretation over validated WKB.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[non_exhaustive]
-pub enum Geospatial {
-    /// Planar geometry.
-    Geometry(Geometry),
-    /// Geographic coordinates.
-    Geography(Geography),
-}
+const _: () = assert!(std::mem::size_of::<Geometry>() == 16);
+const _: () = assert!(std::mem::size_of::<Geography>() == 16);
 
-impl Geospatial {
-    /// Borrow the WKB payload independently of its interpretation.
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Geometry(value) => value.as_bytes(),
-            Self::Geography(value) => value.as_bytes(),
-        }
-    }
-
-    /// Borrow the shared storage independently of the interpretation.
-    ///
-    /// Geometry and geography differ in the coordinate reference they name,
-    /// not in the bytes, so rewriting one as the other shares this handle.
-    pub fn storage(&self) -> &Arc<[u8]> {
-        match self {
-            Self::Geometry(value) => value.storage(),
-            Self::Geography(value) => value.storage(),
-        }
-    }
-}
-
-impl fmt::Display for Geospatial {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in self.as_bytes() {
-            write!(formatter, "{byte:02x}")?;
-        }
-        Ok(())
-    }
-}
-
-impl PartialEq for Geospatial {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_bytes() == other.as_bytes()
-    }
-}
-
-impl Eq for Geospatial {}
-
-impl PartialOrd for Geospatial {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Geospatial {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.as_bytes().cmp(other.as_bytes())
-    }
-}
-
-impl Hash for Geospatial {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_bytes().hash(state);
-    }
-}
-
-const _: () = assert!(std::mem::size_of::<Geospatial>() == 24);
-
+// Each interpretation is its own family, as every width leaf is: the `Scalar`
+// variant holds the leaf directly, so there is no grouping enum to widen into.
+// Geometry and geography differ in the coordinate reference they name, not in
+// the bytes, so rewriting one as the other shares the storage handle.
 macro_rules! geospatial_value {
-    ($leaf:ident, $variant:ident, $id:ident, $constructor:ident) => {
+    ($leaf:ident, $dtype:expr) => {
         impl ScalarValue for $leaf {
-            type Family = Geospatial;
+            type Family = Self;
 
-            const ID: DataTypeId = DataTypeId::$id;
+            const ID: DataTypeId = DataTypeId::$leaf;
             const KIND: DataTypeKind = DataTypeKind::Geospatial;
 
             fn dtype(&self) -> Result<DataType> {
-                DataType::$constructor(None)
+                $dtype
             }
 
             fn into_family(self) -> Self::Family {
-                Geospatial::$variant(self)
+                self
             }
 
             fn from_family(family: &Self::Family) -> Option<&Self> {
-                match family {
-                    Geospatial::$variant(value) => Some(value),
-                    _ => None,
-                }
+                Some(family)
             }
 
             fn into_scalar(self) -> Scalar {
-                Scalar::Geospatial(Geospatial::$variant(self))
+                Scalar::$leaf(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Geospatial;
+
+            fn id(&self) -> DataTypeId {
+                DataTypeId::$leaf
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                <Self as ScalarValue>::dtype(self)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$leaf(self)
             }
 
             fn from_scalar(value: &Scalar) -> Option<&Self> {
                 match value {
-                    Scalar::Geospatial(Geospatial::$variant(value)) => Some(value),
+                    Scalar::$leaf(value) => Some(value),
                     _ => None,
                 }
             }
@@ -180,76 +135,5 @@ macro_rules! geospatial_value {
     };
 }
 
-geospatial_value!(Geometry, Geometry, Geometry, geometry);
-
-impl ScalarValue for Geography {
-    type Family = Geospatial;
-
-    const ID: DataTypeId = DataTypeId::Geography;
-    const KIND: DataTypeKind = DataTypeKind::Geospatial;
-
-    fn dtype(&self) -> Result<DataType> {
-        DataType::geography(None, None)
-    }
-
-    fn into_family(self) -> Self::Family {
-        Geospatial::Geography(self)
-    }
-
-    fn from_family(family: &Self::Family) -> Option<&Self> {
-        match family {
-            Geospatial::Geography(value) => Some(value),
-            _ => None,
-        }
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Geospatial(Geospatial::Geography(self))
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Geospatial(Geospatial::Geography(value)) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl GeospatialValue for Geography {
-    fn as_bytes(&self) -> &[u8] {
-        Self::as_bytes(self)
-    }
-
-    fn storage(&self) -> &Arc<[u8]> {
-        Self::storage(self)
-    }
-}
-
-impl ScalarFamily for Geospatial {
-    const KIND: DataTypeKind = DataTypeKind::Geospatial;
-
-    fn id(&self) -> DataTypeId {
-        match self {
-            Self::Geometry(_) => DataTypeId::Geometry,
-            Self::Geography(_) => DataTypeId::Geography,
-        }
-    }
-
-    fn dtype(&self) -> Result<DataType> {
-        match self {
-            Self::Geometry(value) => ScalarValue::dtype(value),
-            Self::Geography(value) => ScalarValue::dtype(value),
-        }
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Geospatial(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Geospatial(value) => Some(value),
-            _ => None,
-        }
-    }
-}
+geospatial_value!(Geometry, DataType::geometry(None));
+geospatial_value!(Geography, DataType::geography(None, None));

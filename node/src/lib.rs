@@ -1,12 +1,15 @@
 //! Native Node.js views over Yggdryl schema, URI, JSON, YAML, and TOML values.
 
 // JavaScript owns its arguments and observes Rust failures as exceptions.
-// These signatures intentionally model the Node-API boundary.
+// These signatures intentionally model the Node-API boundary. NAPI reads
+// every parameter type syntactically to write the TypeScript declaration, so
+// an input union is spelled out at each entry rather than through an alias.
 #![allow(
     clippy::inherent_to_string,
     clippy::missing_errors_doc,
     clippy::needless_pass_by_value,
-    clippy::return_self_not_must_use
+    clippy::return_self_not_must_use,
+    clippy::type_complexity
 )]
 
 pub mod charset;

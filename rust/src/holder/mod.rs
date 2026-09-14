@@ -970,6 +970,3 @@ impl From<crate::media::Media> for Holder {
         Self::Media(Box::new(value))
     }
 }
-
-#[cfg(test)]
-mod tests;

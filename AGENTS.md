@@ -140,12 +140,14 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/temporal/` | the calendar and clock datatypes, their units and zones, and `iso.rs` - the ISO 8601 spellings every text codec and the scalar renderer write through |
-| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families |
+| `types/timezone/` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
+| `types/{mime_type,media_type}/` | the `mimetype` and `mediatype` datatypes over the root values, which stay the media layer's routing vocabulary |
+| `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families; `i256.rs` holds the `i256`/`u256` pair the exact decimals compute in |
 | `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
-| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the eight registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::fixed_byte_width` and `is_code` instead, because it is an identity with a storage rather than a charset |
+| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the eight registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
@@ -167,6 +169,27 @@ builder, or line-only read/write. Sole dispatchers, delegating complete contract
 with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 (digests), `MediaType` via `RecordOptions` (encoding).
 
+### Where a test lives
+
+`rust/tests/` is the contract a caller has: one top-level `<theme>.rs` per
+subtree - `types`, `arrow`, `media`, `holder`, `iobase`, `coding`, `charset`,
+`expression`, `hashing`, `text`, `uri`, `fix` - declaring `#[path]` modules
+that mirror `src/`. A test there reaches the crate through `yggdryl::` and
+nothing else, so what it proves is what a caller can rely on, and a fixture
+builds its own inputs rather than borrowing the code under test.
+
+A `#[cfg(test)]` module stays in `src/` only where the thing tested is not
+reachable from outside, and its module doc says which private item that is and
+where the rest of the suite lives. That is the whole rule: `Iceberg`'s nine
+private modules and `TableMetadata`'s fields, the object client's signing and
+XML, the ZIP format readers, `canonicalize_dtype_value`, the ISO readers, the
+bundled zone registry, and roughly twenty single-item pins - `value_rank`,
+`low_64`, `read_at`, `convert`, `open_builder`, `home_from` and their kind.
+A shared measuring instrument crosses that line by being written twice -
+`Counting` in `tests/support/` and a smaller one beside the pins that need it -
+because an integration test cannot see a `#[cfg(test)]` item and publishing one
+would put a test fixture in the crate's API.
+
 ## Ownership
 
 - One row schema: a non-null Struct `Field`. Rows canonicalize to ordered
@@ -186,7 +209,9 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 - Shared and dispatch enums each live in their named root file, re-exported from
   the crate root: `Charset`, `Codec`, `DataTypeId`, `DataTypeKind`,
   `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
-  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `UnionMode`. `Timezone` is the
+  exception that moved: it is a datatype of its own, so it lives in
+  `types/timezone/` and is re-exported from the crate root like `Scalar`. No
   local copies, no `enums` module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
   `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
   `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already
@@ -400,11 +425,14 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
 
 - `types::Scalar` is the single cross-platform scalar: no parallel value tree, no
   retired alias.
-- Variants match native/Arrow widths: `I8`..`I64`, `U8`..`U64`, `I128`, `U128`;
-  `F16`, `F32`, `F64`; `D32`, `D64`, `D128`, `D256`; `Date32`, `Date64`;
+- Variants are spelled as their datatype is: `Int8`..`Int64`, `UInt8`..`UInt64`,
+  `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
+  `Decimal64`, `Decimal128`, `Decimal256`; `Date32`, `Date64`;
   `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
-  `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
+  `Geometry`, `Geography`; `Sequence`, `Mapping`, `Record`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
+  The wire vocabulary does not follow the spelling: `Scalar::kind()` and the
+  serde tags keep the short `i8`, `d128` names they always wrote.
 - `Scalar::Record` is a deterministic sorted name-to-`Scalar` map, resolved to an
   ordered sequence by Struct-field canonicalization; enum scalars keep generic
   enum identity in the smallest lossless integer representation.
@@ -419,7 +447,8 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
 - Rust keeps exact-width variants and constructors, every width a direct
-  `Scalar` variant with no family enum between; shared logic goes through the
+  `Scalar` variant with no family enum between, and each geospatial reading
+  likewise; `Code` is the one family enum left; shared logic goes through the
   cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
   `temporal_family`/`temporal_unit`/`temporal_timezone`/`temporal_count`, and a
   family constructor picks the physical width once.
@@ -798,9 +827,11 @@ of the five layouts or to what a string declares.
   parameterized variant can hold what its constructor refuses, and `validate`
   is what catches it before a boundary. `string_parameters` reads back for
   every string, which is what makes "which charset is this column in" one
-  question. The eight registered codes are not strings: a currency is three
-  ASCII bytes with an identity, so it is `DataType::Currency`, kind `Code`,
-  answers `is_code` and `fixed_byte_width`, and never `string_parameters`.
+  question. The eight registered codes are not strings: a currency is an
+  identity over ISO 4217 that stores as the text it is, so it is
+  `DataType::Currency`, kind `Code`, answers `is_code` and `code_width`, and
+  never `string_parameters`. `code_width` is a maximum rather than a layout,
+  so `fixed_byte_width` answers `None` for a code.
 - **Three spellings, one layout.** The `string` name is the general one, the
   `utf8` name is what the same layout is called when its charset is UTF-8 and
   the `ascii` name when it is US-ASCII, so `large_string`, `large_utf8` and
@@ -844,6 +875,17 @@ of the five layouts or to what a string declares.
   rides the `yggdryl.string` extension document, and only then: plain `utf8`,
   `large_utf8` and `utf8_view` cross bare. A document over a storage it does
   not describe is a foreign field wearing our name and imports as its storage.
+- **A code's identity is its extension name, not its storage.** That split
+  governs `DataType::String`; a registered code is outside it. A code is
+  US-ASCII text held to one width, so it rides Arrow's `Utf8` whatever else
+  is true, and what separates it from the text beside it is the *name*:
+  `yggdryl.currency` over `Utf8` with an empty document is a currency, the
+  same storage under `yggdryl.string` is the string that document describes,
+  and under no name at all it is plain text. `yggdryl.currency` over any
+  other storage is a foreign field wearing our name and imports as that
+  storage, by the same rule a string document does. The width no column
+  enforces is enforced where values enter, which is what makes it a value
+  rule rather than a layout.
 - **`Str::from_bytes` is the one door bytes take, and the charset decides how
   strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
   guarantees the first and the second rides Arrow's text storage - so bytes
@@ -860,7 +902,10 @@ of the five layouts or to what a string declares.
   build, the cast) refuses them naming the scalar. A `StringEnum` packs its
   members into integers through `ascii_packed`, so it is accepted on a fixed
   US-ASCII string of at most sixteen bytes or a code and refused by name
-  elsewhere.
+  elsewhere. `ascii_packed` pads a value with trailing NUL to that width and
+  reads it big-endian: the padding belongs to the packing, never to a column,
+  so a code's integers are the same whatever its storage holds. A fixed
+  string pads into `fixed_byte_width`, a code into `code_width`.
 
 ## Bytes
 
@@ -877,7 +922,14 @@ declares.
   `FixedSizeBinary` variant. `bytes_parameters` reads back for every byte
   column. A UUID and a geospatial value are bytes with an identity, so they
   are their own datatypes and answer no `bytes_parameters`, exactly as a
-  code answers no `string_parameters`.
+  code answers no `string_parameters`. A UUID stays `FixedSizeBinary(16)`
+  where a code moved to text, and the asymmetry is the point: `arrow.uuid` is
+  the canonical Arrow extension and its storage is not ours to redefine, the
+  value is 128 opaque bits with no repertoire to be text in, and sixteen
+  bytes beat the thirty-six a spelling would take. A code's `yggdryl.*` name
+  is ours, and a code's value *is* ASCII text. Both read into the other
+  family through the one cast tier rather than through a renderer of their
+  own.
 - **One number, one reading per layout.** `binary(16)` is a maximum of
   sixteen bytes and `fixed_size_binary(16)` the exact width; bytes are never
   padded, so a fixed value is exactly its width. `bytes`, `blob`, `bytea`,
@@ -899,7 +951,8 @@ declares.
 
 ## Structured codecs
 
-`docs/text/` documents the surface; these bind a change to `text/`.
+`docs/media/structured.md` and the JSON, YAML, and TOML scheme pages document the
+surface; these bind a change to `text/`.
 
 - Parse bytes, slices, readers and emit bytes, writers over `Scalar`; string
   conveniences reuse the same parser with no intermediate serialization.
@@ -1140,7 +1193,10 @@ section change together. What binds every page:
   together, README stays a short landing page. A family page lives under
   `docs/<layer>/` for the layer owning the vocabulary, with
   `docs/<layer>/index.md` as its overview; extension pages document boundaries
-  only.
+  only. `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
+  Avro, plain text, JSON, YAML, TOML - each holding `index.md` for the scheme,
+  `scalar.md` for rows as native values, and `arrow.md` for rows as Arrow
+  batches; `text/` documents there too, as three of those schemes.
 - Every supported example uses tabs in Rust, Python, JavaScript order, the same
   operation expressed idiomatically; show Rust-only explicitly, never invent a
   binding. Every block is self-contained with an assertion and runs through
@@ -1166,6 +1222,10 @@ python scripts/check_docs_examples.py --lang python       # runs under python/.v
 python scripts/check_docs_examples.py --lang javascript   # needs the built addon beside Arrow JS
 python -m mkdocs build --strict --config-file mkdocs.yml
 ```
+
+The scripting halves run one process per block on a pool one process wide per
+core, since a block spends most of its life importing the extension; `--jobs N`
+narrows it when a machine has to stay responsive.
 
 ## Handoff
 

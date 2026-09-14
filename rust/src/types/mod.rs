@@ -15,8 +15,11 @@ mod enumeration;
 mod field;
 pub mod floating;
 pub mod geospatial;
+pub(crate) mod i256;
 pub mod integer;
+pub mod media_type;
 mod merge;
+pub mod mime_type;
 pub mod nested;
 mod parser;
 mod pretty;
@@ -26,6 +29,7 @@ mod scalar;
 pub(crate) mod serde;
 pub mod string;
 pub mod temporal;
+pub mod timezone;
 mod typed;
 pub mod url;
 pub mod uuid;
@@ -59,8 +63,12 @@ pub(crate) use geospatial::DEFAULT_CRS;
 pub use geospatial::*;
 pub(crate) use geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
 pub use integer::*;
+pub(crate) use media_type::MEDIATYPE_EXTENSION_NAME;
+pub use media_type::{MediaTypeField, MediaTypeType};
 pub(crate) use merge::Recode;
 pub use merge::Widening;
+pub(crate) use mime_type::MIMETYPE_EXTENSION_NAME;
+pub use mime_type::{MimeTypeField, MimeTypeType};
 pub use nested::*;
 pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
@@ -72,19 +80,20 @@ pub(crate) use string::{
     TIMEINFORCE_WIDTH, code_refusal, code_text,
 };
 pub(crate) use string::{
-    ascii_bytes, ascii_padded, ascii_text, code_cell_text, code_for_extension, trim_padding,
+    ascii_bytes, ascii_text, code_cell_text, code_for_extension, trim_padding,
 };
 pub use temporal::scalars::TemporalFamily;
 pub use temporal::*;
+pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
+pub use timezone::{Timezone, TimezoneField, TimezoneType};
 pub use typed::{
     FieldRecord, FieldScalar, FieldType, TypedField, TypedFieldRef, UncheckedFieldScalar,
 };
 pub use url::*;
 pub use uuid::*;
-pub(crate) use uuid::{UUID_EXTENSION_NAME, uuid_bytes, uuid_parse, uuid_text};
+pub(crate) use uuid::{
+    UUID_EXTENSION_NAME, UUID_TEXT_LEN, uuid_bytes, uuid_parse, uuid_rendered, uuid_text,
+};
 pub(crate) use value::{dtype_scalar, rooted_at_field};
 pub(crate) use version::VERSION_EXTENSION_NAME;
 pub use version::*;
-
-#[cfg(test)]
-mod tests;

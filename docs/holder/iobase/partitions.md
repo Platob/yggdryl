@@ -192,10 +192,8 @@ Both halves are one bound [expression](../../expression/holder.md): `&holder.par
       .overwriteRecords([{ id: 3n }])
 
     const handle = new IOBase(lake)
-    const options = handle.recordOptions().withFilterPartitions([
-      ['year', '2024'],
-      ['month', '01'],
-    ])
+    const options = handle.recordOptions()
+    options.filter = "year = '2024' and month = '01'"
     assert.equal(handle.readArrowReader(options).intoTable().numRows, 2)
 
     fs.rmSync(root, { recursive: true, force: true })
@@ -429,7 +427,7 @@ column that is absent, or present holding nothing but nulls, is filled.
         Arc::new(Date32Array::from(vec![19_723, 20_089])) as ArrayRef,
     )])?;
 
-    let filled = root.as_partition().apply_arrow_batch(&batch)?;
+    let filled = root.as_transform().apply_arrow_batch(&batch)?;
 
     assert_eq!(filled.num_columns(), 2);
     assert_eq!(

@@ -238,7 +238,8 @@ declared `field` off them.
 
     ```rust
     use yggdryl::holder::Buffer;
-    use yggdryl::{ArrowShape, ArrowScalar, DataType, IOBase, IOMedia, IOMode, Scalar, Url};
+    use yggdryl::media::{IORecordOptions, RecordOptions};
+    use yggdryl::{ArrowShape, ArrowScalar, DataType, IOBase, IOMedia, IOMode, MimeType, Scalar, Url};
 
     let root = DataType::from_fields([
         DataType::utf8().required_field("symbol"),
@@ -258,7 +259,10 @@ declared `field` off them.
     let text = String::from_utf8(handle.read_all_bytes()?)?;
     assert!(text.contains(r#""symbol":"AAPL""#), "{text}");
 
-    let read = handle.read_arrow(None)?;
+    // Read back under the same declaration: a structured document takes its
+    // field from any record encoding's options.
+    let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root.clone());
+    let read = handle.read_arrow(Some(&declared))?;
     assert_eq!(read.shape(), ArrowShape::Batch);
     assert_eq!(read.into_scalar()?, rows);
     ```

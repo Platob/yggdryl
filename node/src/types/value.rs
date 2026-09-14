@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, I256, Scalar, TemporalFamily, TimeUnit};
+use yggdryl::{DataType, Field as CoreField, Scalar, TemporalFamily, TimeUnit, i256};
 
 use crate::napi_error;
 use crate::types::version::JsVersion;
@@ -87,8 +87,8 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
         D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
-        // A code reads back as its trimmed text and a UUID as its hyphenated
-        // spelling, so both project as the string family does.
+        // A code reads back as the text it stores and a UUID as its
+        // hyphenated spelling, so both project as the string family does.
         D::String(_)
         | D::Country
         | D::Currency
@@ -99,7 +99,10 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::State
         | D::TimeInForce
         | D::Uuid
-        | D::Url => JsValueHint::String,
+        | D::Url
+        | D::Timezone
+        | D::MimeType
+        | D::MediaType => JsValueHint::String,
         D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
@@ -330,6 +333,21 @@ fn text_or_binary_to_js<'env>(
             Scalar::Url(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native url record value")),
         },
+        // A zone, a MIME type and a media type each render their own
+        // canonical spelling, so they cross as that text rather than as a
+        // second wrapper class per family.
+        D::Timezone => match value {
+            Scalar::Timezone(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native timezone record value")),
+        },
+        D::MimeType => match value {
+            Scalar::MimeType(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native mimetype record value")),
+        },
+        D::MediaType => match value {
+            Scalar::MediaType(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native mediatype record value")),
+        },
         // A geospatial value is its Well-Known Binary payload, so it crosses
         // exactly as the binary family does.
         D::Geometry(_) | D::Geography(_) => Buffer::from(
@@ -461,7 +479,7 @@ fn union_to_js<'env>(
 fn decimal256_to_js<'env>(env: &'env Env, value: &Scalar, scale: i8) -> Result<Unknown<'env>> {
     let encoded = value
         .decimal256_unscaled_at(scale)
-        .or_else(|| value.as_i128().map(I256::from_i128))
+        .or_else(|| value.as_i128().map(i256::from_i128))
         .map(|unscaled| unscaled.to_string())
         .ok_or_else(|| napi_error("invalid native decimal256 record value"))?;
     let global = env.get_global()?;

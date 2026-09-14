@@ -391,7 +391,11 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     assert_eq!(before.intersection(&after).count(), 2, "the others were carried");
 
     // A merge upserts on the key: 3 is stored and updates, 4 is new and appends.
-    table.commit_merge(rows(vec![3, 4], vec!["XLON", "XLON"], vec![7, 8]), &["id".to_owned()], true)?;
+    table.commit_merge(
+        rows(vec![3, 4], vec!["XLON", "XLON"], vec![7, 8]),
+        &yggdryl::Selector::from_columns(["id"]),
+        true,
+    )?;
     let total: usize = table
         .scan(None)?
         .map(|batch| batch.map(|batch| batch.num_rows()))
@@ -402,7 +406,7 @@ The filter is the vocabulary [`IOBase::children_where`](../../holder/iobase/part
     table.commit_merge_where(
         &[("venue", "XNAS")],
         rows(vec![1], vec!["XNAS"], vec![42]),
-        &["id".to_owned()],
+        &yggdryl::Selector::from_columns(["id"]),
         true,
     )?;
 

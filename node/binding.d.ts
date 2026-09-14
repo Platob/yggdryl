@@ -247,6 +247,9 @@ export type DataTypeId =
   | 'uuid'
   | 'version'
   | 'url'
+  | 'timezone'
+  | 'mimetype'
+  | 'mediatype'
   | 'list'
   | 'list_view'
   | 'fixed_size_list'
@@ -329,6 +332,9 @@ interface DataTypeKindById {
   uuid: 'uuid'
   version: 'text'
   url: 'text'
+  timezone: 'text'
+  mimetype: 'text'
+  mediatype: 'text'
   list: 'nested'
   list_view: 'nested'
   fixed_size_list: 'nested'
@@ -766,9 +772,9 @@ export type FixedUtf8Field = FieldOf<'fixed_string', string>
 export type AsciiField = FieldOf<'string', string>
 /** US-ASCII padded with trailing NUL to a fixed width; read back trimmed. */
 export type FixedAsciiField = FieldOf<'fixed_string', string>
-/** ISO 3166-1 alpha-2, the two-letter country code, in its own two bytes. */
+/** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
-/** ISO 4217, the three-letter currency code, in its own three bytes. */
+/** ISO 4217, the three-letter currency code, stored as its text. */
 export type CurrencyField = FieldOf<'currency', string>
 /** ISO 10383, the four-character market identifier code. */
 export type MicField = FieldOf<'mic', string>
@@ -776,11 +782,11 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
-/** FIX Side(54), the one-character order side, in four bytes. */
+/** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
-/** An order state ranked from the first to the terminal ones, in ten bytes. */
+/** An order state ranked from the first to the terminal ones, held to ten bytes. */
 export type StateField = FieldOf<'state', string>
-/** FIX TimeInForce(59), the spelled instruction, in eight bytes. */
+/** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
 export type TimeInForceField = FieldOf<'timeinforce', string>
 export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
 export type ListViewField<V = unknown> = FieldOf<
@@ -829,6 +835,12 @@ export type VersionField = FieldOf<'version', Version>
 
 /** One validated, canonical location. */
 export type UrlField = FieldOf<'url', string>
+/** One canonical time zone name, a fixed offset, or the zone-free marker. */
+export type TimezoneField = FieldOf<'timezone', string>
+/** One validated, canonical MIME type. */
+export type MimeTypeField = FieldOf<'mimetype', string>
+/** A MIME type with its charset and content codings. */
+export type MediaTypeField = FieldOf<'mediatype', string>
 /** A planar geometry column carrying Well-Known Binary payloads. */
 export type GeometryField = FieldOf<'geometry', Uint8Array>
 /** A geography column: WKB features on a sphere or spheroid. */
@@ -1036,6 +1048,9 @@ export interface FieldsNamespace {
   uuid(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
   url(name: string, options?: FieldOptions): UrlField
+  timezone(name: string, options?: FieldOptions): TimezoneField
+  mimetype(name: string, options?: FieldOptions): MimeTypeField
+  mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
   currency(name: string, options?: FieldOptions): CurrencyField
   mic(name: string, options?: FieldOptions): MicField

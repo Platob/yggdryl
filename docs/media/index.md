@@ -1,6 +1,6 @@
 # Media
 
-`Media` binds a handle to the record encoding that its declared media type names.
+A handle's declared media type names one scheme, and every scheme answers the same two surfaces: rows as native scalars, rows as Arrow batches.
 
 ## Contract
 
@@ -11,17 +11,51 @@
 | Selects on | the handle's declared media type; nothing is read to decide |
 | Every variant | implements [`IOMedia`](../holder/iobase/records.md): `record_options`, `read_arrow_field`, `read_arrow_reader`, three write methods |
 | Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation live in [Records](../holder/iobase/records.md) |
-| Settings | one shared [`RecordOptions`](options.md) behind every encoding |
-| Plain text | `Media::Text`, retaining [`TextOptions`](text.md); any other handle still reaches rows through `IOMedia` and [`RecordOptions`](options.md) |
-| Content coding | the handle's business, not the encoding's |
+| Settings | one shared [`RecordOptions`](options.md) behind every record encoding |
+| Documents | JSON, JSON Lines, YAML, and TOML are not record encodings; [Structured documents](structured.md) owns them and their one Arrow bridge |
+| Content coding | the handle's business, not the scheme's |
 | Errors | an encoding with no implementation in this build is reported, never guessed |
 | Bindings | Rust: the enum; Python: `yggdryl.media.Media` with `Ipc`, `Parquet`, `Avro` under it and `Text` beside it; JavaScript: one `IOBase` class |
 
+## Schemes
+
+Each scheme owns three pages: what it is, how rows cross as native scalars, and how they cross as Arrow.
+
+| Scheme | Declared by | Overview | Scalars | Arrow |
+| --- | --- | --- | --- | --- |
+| Arrow IPC | `application/vnd.apache.arrow.stream`, `.arrows` | [Arrow IPC](ipc/index.md) | [rows](ipc/scalar.md) | [batches](ipc/arrow.md) |
+| Apache Parquet | `application/vnd.apache.parquet`, `.parquet` | [Parquet](parquet/index.md) | [rows](parquet/scalar.md) | [batches](parquet/arrow.md) |
+| Apache Avro | `application/avro`, `.avro` | [Avro](avro/index.md) | [containers](avro/scalar.md) | [batches](avro/arrow.md) |
+| Plain text | `text/plain`, `.txt`, `.log` | [Plain-text records](text/index.md) | [lines](text/scalar.md) | [batches](text/arrow.md) |
+| JSON | `application/json`, `application/x-ndjson`, `.json`, `.jsonl` | [JSON](json/index.md) | [documents](json/scalar.md) | [rows](json/arrow.md) |
+| YAML | `application/yaml`, `.yaml` | [YAML](yaml/index.md) | [documents](yaml/scalar.md) | [rows](yaml/arrow.md) |
+| TOML | `application/toml`, `.toml` | [TOML](toml/index.md) | [documents](toml/scalar.md) | [rows](toml/arrow.md) |
+| Apache Iceberg | a table folder, not a leaf | [Iceberg](iceberg/index.md) | - | [reads](iceberg/read.md), [writes](iceberg/write.md) |
+
+Iceberg is a table over a folder rather than one leaf, so both surfaces live on its own read and write pages.
+
+| Shared page | Owns |
+| --- | --- |
+| [RecordOptions](options.md) | the declared root, `batch_row_size`, identity, shared by every record encoding |
+| [Structured documents](structured.md) | the `Format` vocabulary, limits, formatting, and the facade over JSON, YAML, and TOML |
+| [Placeholders](placeholders.md) | the Jinja-style `{{ }}` contract YAML and TOML share |
+| [Parquet footer](parquet/footer.md) | footer metadata, statistics, and the caching `Parquet<H>` wrapper |
+| [Iceberg schema](iceberg/schema.md), [catalog](iceberg/catalog.md) | evolution and field ids, the warehouse over one folder |
+
+## The two surfaces
+
+| Surface | Calls | Answers |
+| --- | --- | --- |
+| Scalars | `overwrite_records`, `append_records`, `merge_records`, `read_records`; `read_scalar` and `write_scalar` for a document | native rows: a tuple, a mapping, a dataclass, a plain object, a [`Scalar`](../types/scalar.md) |
+| Arrow | `read_arrow_reader`, `read_arrow_field`, the three `*_arrow_reader` intents; `read_arrow` and `write_arrow` | an [`arrow::BatchReader`](../arrow/readers.md), one batch at a time |
+
+Choosing the scheme is the only thing that changes; the calls stay the same.
+
 ## Use
 
-`Media::open` binds the implementation the name declares. Python applies the same
-choice when the handle is built, so `type(handle)` names it; JavaScript has one
-`IOBase` class.
+`Media::open` binds the implementation the name declares, and reports the media
+type it found when this build has none. Python applies the same choice when the
+handle is built, so `type(handle)` names it; JavaScript has one `IOBase` class.
 
 === "Rust"
 
@@ -39,6 +73,10 @@ choice when the handle is built, so `type(handle)` names it; JavaScript has one
     assert!(matches!(Media::open(named("trades.arrows")?)?, Media::Ipc(_)));
     assert!(matches!(Media::open(named("trades.parquet")?)?, Media::Parquet(_)));
     assert!(matches!(Media::open(named("trades.log")?)?, Media::Text(_)));
+
+    // An encoding with no implementation in this build is named, never guessed.
+    let message = Media::open(named("trades.csv")?).unwrap_err().to_string();
+    assert!(message.contains("text/csv"), "{message}");
     ```
 
 === "Python"
@@ -58,25 +96,9 @@ choice when the handle is built, so `type(handle)` names it; JavaScript has one
     assert isinstance(IOBase(root / "trades.log"), Text)
     ```
 
-## Pages
-
-| Page | Owns |
-| --- | --- |
-| [Arrow IPC](ipc.md) | Arrow IPC streams over any handle, schema carriage, the one-stream contract |
-| [Apache Parquet](parquet.md) | The Parquet record surface, pushdown, compression, coded-handle refusal |
-| [Parquet footer](parquet-footer.md) | Footer metadata, statistics, and the caching `Parquet<H>` wrapper |
-| [Apache Avro](avro.md) | Avro as streamed Arrow batches, block options, schema resolution |
-| [Plain-text records](text.md) | `TextOptions`, the url/rownum/body schema, autotyping |
-| [RecordOptions](options.md) | The declared root, `batch_row_size`, identity, shared by every encoding |
-| [Iceberg](iceberg/index.md) | Table anatomy: metadata, snapshots, manifests, partition specs |
-| [Iceberg schema](iceberg/schema.md) | Evolution, field ids, `SchemaUpdate`, the type mappings |
-| [Iceberg reads](iceberg/read.md) | Scan planning, pushdown, time travel, parallel multi-file reads |
-| [Iceberg writes](iceberg/write.md) | The three record methods, size targets, commits, branches and tags |
-| [Iceberg catalog](iceberg/catalog.md) | The warehouse over one folder, as namespaces of tables |
-
 ## Shared IOMedia calls
 
-Choosing the encoding is the only thing that changes, and the handle owns the content coding: the same calls, different bytes underneath. Rust only; Python and JavaScript make the same calls on the handle itself, as on [Arrow IPC](ipc.md#use).
+Choosing the encoding is the only thing that changes, and the handle owns the content coding: the same calls, different bytes underneath. Rust only; Python and JavaScript make the same calls on the handle itself, as on [Arrow IPC](ipc/index.md#use).
 
 ```rust
 use std::sync::Arc;
@@ -155,23 +177,6 @@ consumes the media and answers it.
     assert isinstance(gzip_handle, Gzip)
     assert isinstance(gzip_handle.into_handle(), Path)
     ```
-
-## Unimplemented encodings
-
-The error names the media type found and the ones that would have worked. Rust only; a Python name with no implementation composes nothing (see [Edges](#edges)).
-
-```rust
-use yggdryl::holder::Holder;
-use yggdryl::media::Media;
-use yggdryl::holder::Buffer;
-use yggdryl::Url;
-
-let url = Url::from_str("file:///trades.csv")?;
-let handle = Holder::buffer(Buffer::new().with_media_type(url.media_type()));
-
-let message = Media::open(handle).unwrap_err().to_string();
-assert!(message.contains("text/csv"), "{message}");
-```
 
 ## Edges
 
