@@ -2792,8 +2792,10 @@ extension round trip, a text column ingested with a located bad row, defaults,
 merges and typed fields, and that the value is the one the rest of the crate
 already routes on; the digest corpus and the prebuilt-field allocation pin
 both name all three.
-**Rust-only:** no Python or JavaScript field factory yet, stated in
-`docs/types/text.md` beside each.
+**Bindings:** `types.timezone` / `fields.timezone`, `types.mimetype` /
+`fields.mimetype` and `types.mediatype` / `fields.mediatype`, built the way
+`url` is: each value crosses as its canonical text, so neither language grows
+a wrapper class and neither can hold a spelling the core did not produce.
 
 ## 35. A test in `src` names what only the crate can see
 

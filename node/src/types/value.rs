@@ -99,7 +99,10 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::State
         | D::TimeInForce
         | D::Uuid
-        | D::Url => JsValueHint::String,
+        | D::Url
+        | D::Timezone
+        | D::MimeType
+        | D::MediaType => JsValueHint::String,
         D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
         // struct projects positionally, exactly like a list.
@@ -329,6 +332,21 @@ fn text_or_binary_to_js<'env>(
         D::Url => match value {
             Scalar::Url(value) => value.to_string().into_unknown(env)?,
             _ => return Err(napi_error("invalid native url record value")),
+        },
+        // A zone, a MIME type and a media type each render their own
+        // canonical spelling, so they cross as that text rather than as a
+        // second wrapper class per family.
+        D::Timezone => match value {
+            Scalar::Timezone(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native timezone record value")),
+        },
+        D::MimeType => match value {
+            Scalar::MimeType(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native mimetype record value")),
+        },
+        D::MediaType => match value {
+            Scalar::MediaType(value) => value.to_string().into_unknown(env)?,
+            _ => return Err(napi_error("invalid native mediatype record value")),
         },
         // A geospatial value is its Well-Known Binary payload, so it crosses
         // exactly as the binary family does.

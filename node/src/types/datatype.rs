@@ -126,6 +126,9 @@ impl JsDataType {
             "uuid" => CoreDataType::Uuid,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::Url,
+            "timezone" => CoreDataType::Timezone,
+            "mimetype" => CoreDataType::MimeType,
+            "mediatype" => CoreDataType::MediaType,
             _ => {
                 return Err(Error::from_reason(format!(
                     "{kind:?} is not a parameter-free datatype kind"

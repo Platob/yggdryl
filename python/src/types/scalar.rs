@@ -372,6 +372,21 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "url",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
+        Scalar::Timezone(value) => tagged_pickle_state(
+            py,
+            "timezone",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::MimeType(value) => tagged_pickle_state(
+            py,
+            "mimetype",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        Scalar::MediaType(value) => tagged_pickle_state(
+            py,
+            "mediatype",
+            Some(PyString::new(py, &value.to_string()).into_any().unbind()),
+        ),
         Scalar::Enum(value) => tagged_pickle_state(
             py,
             "enum",
@@ -662,6 +677,21 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .extract::<String>()?
             .parse::<yggdryl::Url>()
             .map(|value| Scalar::Url(Arc::new(value)))
+            .map_err(value_error),
+        "timezone" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::Timezone>()
+            .map(Scalar::Timezone)
+            .map_err(value_error),
+        "mimetype" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::MimeType>()
+            .map(Scalar::MimeType)
+            .map_err(value_error),
+        "mediatype" => payload()?
+            .extract::<String>()?
+            .parse::<yggdryl::MediaType>()
+            .map(|value| Scalar::MediaType(Arc::new(value)))
             .map_err(value_error),
         "enum" => {
             let (kind, value) = payload()?.extract::<(String, String)>()?;
@@ -1645,8 +1675,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
             .into_any()
             .unbind()),
         // A location crosses as the canonical text it validated to, exactly as
-        // the other parsed text families do.
+        // the other parsed text families do; a zone, a MIME type and a media
+        // type each render their own canonical spelling the same way.
         Scalar::Url(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
+        Scalar::Timezone(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::MimeType(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         Scalar::Enum(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.

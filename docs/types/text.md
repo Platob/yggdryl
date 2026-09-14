@@ -931,15 +931,43 @@ fixed offset each hold one spelling.
     assert!(field.scalar("+99:00").is_err());
     ```
 
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    dtype = DataType("timezone")
+    field = types.timezone("zone", nullable=False)
+    value = json.loads('"Asia/Calcutta"', field=field, cls=Scalar)
+    assert dtype.kind == "text"
+    assert value.as_py() == "Asia/Kolkata"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const dtype = new DataType('timezone')
+    const value = json.loads('"Asia/Calcutta"', {
+      field: fields.timezone('zone', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(dtype.kind, 'text')
+    assert.equal(value.asJs(), 'Asia/Kolkata')
+    ```
+
 | rule | behaviour |
 | --- | --- |
-| Kind | `text`; the alias is `TimezoneField` |
+| Kind | `text`; the aliases are `TimezoneField`, `types.timezone`, `fields.timezone` |
 | Value | `crate::Timezone`, four bytes, interned for the process lifetime |
 | Storage | `Utf8` holding the canonical name, extension name `yggdryl.timezone` |
 | Ordering | the canonical name's, which is Arrow's own string order |
 | Default | `NAIVE`, the zone-free marker every temporal already defaults to |
 | Merging | only with itself: merging into text would drop the canonicalization |
-| Rust only | no Python or JavaScript field factory yet |
+| Bindings | the value crosses as its canonical name; a zone has no wrapper class of its own in either language |
 
 ## Media types
 
@@ -973,15 +1001,51 @@ intake is total by construction and unrecognized text answers the default base.
     assert_eq!(field.scalar("TEXT/CSV; CHARSET=UTF-8")?, Scalar::from(media));
     ```
 
+=== "Python"
+
+    ```python
+    from yggdryl import DataType, Scalar, types
+    from yggdryl.text import json
+
+    field = types.mimetype("held", nullable=False)
+    value = json.loads('"APPLICATION/JSON"', field=field, cls=Scalar)
+    assert DataType("mimetype").kind == "text"
+    assert value.as_py() == "application/json"
+
+    media = types.mediatype("held", nullable=False)
+    declared = json.loads('"TEXT/CSV; CHARSET=UTF-8"', field=media, cls=Scalar)
+    assert declared.as_py() == "text/csv;charset=utf-8"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, fields, json } = require('yggdryl')
+
+    const value = json.loads('"APPLICATION/JSON"', {
+      field: fields.mimetype('held', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(new DataType('mimetype').kind, 'text')
+    assert.equal(value.asJs(), 'application/json')
+
+    const declared = json.loads('"TEXT/CSV; CHARSET=UTF-8"', {
+      field: fields.mediatype('held', { nullable: false }),
+      scalar: true,
+    })
+    assert.equal(declared.asJs(), 'text/csv;charset=utf-8')
+    ```
+
 | rule | behaviour |
 | --- | --- |
-| Kind | `text`; the aliases are `MimeTypeField` and `MediaTypeField` |
+| Kind | `text`; the aliases are `MimeTypeField` and `MediaTypeField`, `types.mimetype` / `fields.mimetype` and `types.mediatype` / `fields.mediatype` |
 | Value | `crate::MimeType` inline; `crate::MediaType` behind one shared pointer, because a base, a charset and a coding list are wider than the scalar |
 | Storage | `Utf8` holding the canonical text, extension names `yggdryl.mimetype` and `yggdryl.mediatype` |
 | Intake | a MIME type refuses a name that is not `type/subtype`; a media type infers, so every text has an answer |
 | Default | `application/octet-stream`, which is what both values answer `Default` with |
 | Merging | only with itself, and never with each other: a media type models a charset and codings a MIME type does not |
-| Rust only | no Python or JavaScript field factory yet |
+| Bindings | both cross as their canonical text; neither has a wrapper class of its own in Python or JavaScript |
 
 ## Edges
 

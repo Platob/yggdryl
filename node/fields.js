@@ -204,6 +204,12 @@ function createFields(DataType, Field, native) {
     uuid: simple('uuid'),
     version: simple('version'),
     url: simple('url'),
+    // Canonical text the crate already owns: a zone, a MIME type, and a
+    // media type each parse, canonicalize and render themselves, so each is a
+    // datatype rather than prose that happens to look like one.
+    timezone: simple('timezone'),
+    mimetype: simple('mimetype'),
+    mediatype: simple('mediatype'),
     // Each registered code is a datatype of its own, storing as the text it
     // is, held to the width its standard fixes, and carrying that identity
     // across Arrow under its own extension name.

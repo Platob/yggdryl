@@ -2370,8 +2370,13 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
                 ("patch", JsonValue::Number(JsonNumber::from(value.patch()))),
             ],
         )),
-        // A location crosses as the canonical text it validated to.
+        // A location crosses as the canonical text it validated to, and a
+        // zone, a MIME type and a media type each render their own canonical
+        // spelling the same way.
         Scalar::Url(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::Timezone(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::MimeType(value) => Ok(JsonValue::String(value.to_string())),
+        Scalar::MediaType(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Enum(value) => Ok(JsonValue::String(value.as_str().to_owned())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
