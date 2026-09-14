@@ -117,7 +117,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
 | `holder::fs::FileSystem` | Arrow's seven-method shape for interop; core contract and variants keep generic `FileSystem`/`Fs*` names |
 | `coding/` | transparent `Coded` handles; `{gzip,zlib,zstd}.rs` each own `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
-| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the eight registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::fixed_byte_width` and `is_code` instead, because it is an identity with a storage rather than a charset |
+| `types/string.rs` + `types/string/` | every string the crate has, one family: the `StringLayout` vocabulary beside `StringParameters`, the one string datatype `DataType::String` and the one string value `Str` in `scalars.rs`, the eight registered codes' values in `code.rs` and their identities and widths in `codes.rs`, the `field:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. `utf8`, `large_utf8`, `utf8_view`, `ascii`, `fixed_ascii(n)` and `string(windows-1252,32)` are all spellings of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside its implementations: `ascii`/`single_byte`/`unicode` own the codecs, generated `tables.rs` owns the code pages, `Decoder`/`Reader`/`Writer` the chunked doors, `Transcoded` the decoding handle. Fused rather than split like `codec.rs`/`coding/`, because no single code page is a public module of its own |
 | `media/` | record routing and settings; `{ipc,parquet,avro}/` each own free functions over `IOBase` plus a stateful wrapper |
 | `media/text/` | `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering |
@@ -760,9 +760,11 @@ of the five layouts or to what a string declares.
   parameterized variant can hold what its constructor refuses, and `validate`
   is what catches it before a boundary. `string_parameters` reads back for
   every string, which is what makes "which charset is this column in" one
-  question. The eight registered codes are not strings: a currency is three
-  ASCII bytes with an identity, so it is `DataType::Currency`, kind `Code`,
-  answers `is_code` and `fixed_byte_width`, and never `string_parameters`.
+  question. The eight registered codes are not strings: a currency is an
+  identity over ISO 4217 that stores as the text it is, so it is
+  `DataType::Currency`, kind `Code`, answers `is_code` and `code_width`, and
+  never `string_parameters`. `code_width` is a maximum rather than a layout,
+  so `fixed_byte_width` answers `None` for a code.
 - **Three spellings, one layout.** The `string` name is the general one, the
   `utf8` name is what the same layout is called when its charset is UTF-8 and
   the `ascii` name when it is US-ASCII, so `large_string`, `large_utf8` and
@@ -806,6 +808,17 @@ of the five layouts or to what a string declares.
   rides the `yggdryl.string` extension document, and only then: plain `utf8`,
   `large_utf8` and `utf8_view` cross bare. A document over a storage it does
   not describe is a foreign field wearing our name and imports as its storage.
+- **A code's identity is its extension name, not its storage.** That split
+  governs `DataType::String`; a registered code is outside it. A code is
+  US-ASCII text held to one width, so it rides Arrow's `Utf8` whatever else
+  is true, and what separates it from the text beside it is the *name*:
+  `yggdryl.currency` over `Utf8` with an empty document is a currency, the
+  same storage under `yggdryl.string` is the string that document describes,
+  and under no name at all it is plain text. `yggdryl.currency` over any
+  other storage is a foreign field wearing our name and imports as that
+  storage, by the same rule a string document does. The width no column
+  enforces is enforced where values enter, which is what makes it a value
+  rule rather than a layout.
 - **`Str::from_bytes` is the one door bytes take, and the charset decides how
   strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
   guarantees the first and the second rides Arrow's text storage - so bytes
@@ -822,7 +835,10 @@ of the five layouts or to what a string declares.
   build, the cast) refuses them naming the scalar. A `StringEnum` packs its
   members into integers through `ascii_packed`, so it is accepted on a fixed
   US-ASCII string of at most sixteen bytes or a code and refused by name
-  elsewhere.
+  elsewhere. `ascii_packed` pads a value with trailing NUL to that width and
+  reads it big-endian: the padding belongs to the packing, never to a column,
+  so a code's integers are the same whatever its storage holds. A fixed
+  string pads into `fixed_byte_width`, a code into `code_width`.
 
 ## Bytes
 
@@ -839,7 +855,14 @@ declares.
   `FixedSizeBinary` variant. `bytes_parameters` reads back for every byte
   column. A UUID and a geospatial value are bytes with an identity, so they
   are their own datatypes and answer no `bytes_parameters`, exactly as a
-  code answers no `string_parameters`.
+  code answers no `string_parameters`. A UUID stays `FixedSizeBinary(16)`
+  where a code moved to text, and the asymmetry is the point: `arrow.uuid` is
+  the canonical Arrow extension and its storage is not ours to redefine, the
+  value is 128 opaque bits with no repertoire to be text in, and sixteen
+  bytes beat the thirty-six a spelling would take. A code's `yggdryl.*` name
+  is ours, and a code's value *is* ASCII text. Both read into the other
+  family through the one cast tier rather than through a renderer of their
+  own.
 - **One number, one reading per layout.** `binary(16)` is a maximum of
   sixteen bytes and `fixed_size_binary(16)` the exact width; bytes are never
   padded, so a fixed value is exactly its width. `bytes`, `blob`, `bytea`,
