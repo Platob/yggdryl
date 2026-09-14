@@ -41,10 +41,9 @@ from yggdryl import (
     Scalar,
     types,
     fix,
-    txhash,
-    xxhash,
 )
 from yggdryl.coding import gzip, zlib, zstd
+from yggdryl.hashing import txhash, xxhash
 from yggdryl.media import avro, iceberg
 from yggdryl.text import json, toml, yaml
 from yggdryl._native import (
@@ -256,6 +255,7 @@ coupled_unit: str = coupled_value.unit
 coupled_digest_half: xxhash.Digest = coupled_value.digest
 coupled_bytes: bytes = bytes(coupled_value)
 coupled_instant: Scalar = coupled_value.into_datetime()
+coupled_uuid: Scalar = coupled_value.into_uuid()
 coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
 coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
 coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)
@@ -1303,7 +1303,10 @@ fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
 fix_message_ticker: Scalar | None = fix_message.symbol_ticker()
-fix_message_clock: Scalar | None = fix_message.market_timestamp()
+fix_message_clock: Scalar = fix_message.updatedat()
+fix_message_created: Scalar = fix_message.createdat()
+fix_message_uuid: Scalar = fix_message.uuid()
+fix_message_puuid: Scalar = fix_message.puuid()
 fix_message_partition: Scalar | None = fix_message.unix_partition(3600)
 fix_message_lifted: Scalar | None = fix_message.lifted("bidpx")
 fix_message_lift_source: int | None = fix_message.lift_source("bidpx")
@@ -1325,6 +1328,7 @@ fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
     version="4.2",
+    default_sending_time=datetime.datetime(2024, 1, 2, 10, 15, 30, tzinfo=datetime.timezone.utc),
     separator=124,
     payload_column="line",
     null_values=["<none>"],
@@ -1338,6 +1342,12 @@ fix_reader_payload_column: str = fix_reader_pinned.payload_column
 fix_reader_null_values: list[str] = fix_reader_pinned.null_values
 fix_reader_direction: str | None = fix_reader_pinned.direction
 fix_reader_batch_byte_size: int = fix_reader_pinned.batch_byte_size
+fix_reader_default_sending_time: Scalar | None = fix_reader_pinned.default_sending_time
+fix_reader_native_clock: fix.FixCodec = fix.FixCodec(
+    fix_registry_from_fields,
+    default_sending_time=Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC"),
+)
+fix_reader_unpinned_clock: fix.FixCodec = fix.FixCodec(default_sending_time=None)
 fix_read_messages: fix.FixMessages = fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|")
 fix_read_text: fix.FixMsg = next(fix_read_messages)
 fix_read_bytes: fix.FixMsg = next(fix_reader.parse_line(b"8=FIX.4.4|35=D|10=0|"))
@@ -1370,7 +1380,15 @@ fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back
 fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 fix_life: fix.FixLifecycle = fix.FixLifecycle(fix_registry_from_fields)
 fix_life_default: fix.FixLifecycle = fix.FixLifecycle()
+fix_default_interval: int = fix.FixLifecycle.DEFAULT_INTERVAL_NS
+fix_life_gridded: fix.FixLifecycle = fix.FixLifecycle(
+    fix_registry_from_fields, interval_ns=fix_default_interval
+)
+fix_life_interval: int = fix_life_gridded.interval_ns
+fix_life_gridded.set_interval_ns(10)
 fix_life_filled: fix.FixMsg = fix_life.fill(fix_read_text)
+fix_life_snapshot: fix.FixMsg | None = fix_life.snapshot(fix_read_text)
+fix_life_snapshots: fix.FixMessages = fix_life_gridded.snapshots(iter([fix_read_text]))
 fix_life_alive: int = fix_life.alive()
 fix_life.clear()
 
@@ -1511,7 +1529,9 @@ assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
 assert fix_message_ticker is None or fix_message_ticker
-assert fix_message_clock is None or fix_message_clock
+assert isinstance(fix_message_clock, Scalar) and isinstance(fix_message_created, Scalar)
+assert isinstance(fix_message_uuid, Scalar) and isinstance(fix_message_puuid, Scalar)
+assert fix_default_interval == fix_life_interval
 assert fix_message_partition is None or fix_message_partition
 assert fix_message_lifted is None or fix_message_lifted
 assert fix_message_lift_source is None or fix_message_lift_source

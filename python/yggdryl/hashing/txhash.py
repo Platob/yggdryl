@@ -4,8 +4,9 @@ A :class:`TxHash` is a unix count followed by a digest: the instant first,
 big-endian, so ``bytes(value)`` sorts by time and then by content; the digest
 after it, at its algorithm's exact width. The instant is always UTC and
 counted in microseconds unless a resolution is named, and the digest is what
-:mod:`yggdryl.xxhash` answers for the same bytes - this module defines no
-second hash, only the coupling.
+:mod:`yggdryl.hashing.xxhash` answers for the same bytes - this module defines
+no second hash, only the coupling. :meth:`TxHash.into_uuid` projects a value
+with a 64-bit digest to a lossy RFC 9562 UUIDv8 ``uuid`` scalar.
 
 Every ``unix`` argument reads the same way: an ``int`` is the count already,
 and a ``datetime``, a ``date``, timestamp text, or a native ``Scalar`` is read
@@ -15,7 +16,7 @@ the epoch, and a naive one is read as if it were UTC.
 
 from __future__ import annotations
 
-from ._native import (
+from .._native import (
     TxHash,
     TxHasher,
     txh3,

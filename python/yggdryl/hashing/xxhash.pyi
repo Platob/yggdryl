@@ -1,6 +1,6 @@
 import pyarrow  # type: ignore[import-untyped]
 
-from ._native import (
+from .._native import (
     Digest as Digest,
     Digester as Digester,
     FieldLike,

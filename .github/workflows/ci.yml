@@ -334,7 +334,7 @@ jobs:
       # `pandas` and `polars` are not runtime dependencies; they are installed
       # so the tests covering the frame entry points run here instead of
       # skipping. `xxhash` is the outside C binding the digest parity suite
-      # measures this implementation against: `python/tests/xxhash` opens with
+      # measures this implementation against: `python/tests/hashing/xxhash` opens with
       # `pytest.importorskip("xxhash")`, so without it every parity test in
       # that suite silently skipped, in both matrix legs.
       - name: Install test tools

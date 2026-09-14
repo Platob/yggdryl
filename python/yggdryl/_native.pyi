@@ -1124,6 +1124,9 @@ class ProtocolField:
     def has_branch(self, dialect: str) -> bool: ...
     @property
     def id(self) -> int | None: ...
+    # `tag`, `counter` and every alternate in `tags` are positive `i32`
+    # values; 0, a negative or a `bool` is refused, because tag 0 is what an
+    # unresolved arrival entry records rather than a field's identity.
     @property
     def tag(self) -> int | None: ...
     @tag.setter
@@ -4384,6 +4387,7 @@ class TxHash:
     def with_unit(self, unit: str) -> TxHash: ...
     def into_datetime(self) -> Scalar: ...
     def into_scalar(self) -> Scalar: ...
+    def into_uuid(self) -> Scalar: ...
     def stable_hash(self) -> int: ...
     def __bytes__(self) -> bytes: ...
     def __len__(self) -> int: ...
@@ -4627,12 +4631,16 @@ class FixRegistry:
     raises ``ValueError`` while a message or the process default shares it.
 
     Every registry holds this crate's own definitions from construction.
-    ``fix_crate_fields`` lists twenty scalar fields from tag 65000 and the
-    ``altids`` Map group at 65020; ``len`` counts only scalar fields, beside
-    those inserted or loaded. The ``pluginconfig`` component is also
-    registered. A store never writes these builtins. What a dictionary
-    contributed is ``fix:branches`` on each field it touched, listed by
-    ``dialects``; no lookup consults it.
+    ``fix_crate_fields`` lists twenty-four scalar fields - tags 65001 to
+    65019 and 65021 to 65025 - and the ``altids`` Map group at 65020; the
+    retired 65000 is not reused. ``FixRegistry()`` also seeds the standard
+    clocks ``SendingTime`` (52) and ``TransactTime`` (60), each a nanosecond
+    UTC ``datetime64``, as ordinary definitions a loaded dictionary may
+    supply itself, so a new registry's ``len`` is 26. ``len`` counts only
+    scalar fields, beside those inserted or loaded. The ``pluginconfig``
+    component is also registered. A store never writes the crate's own
+    definitions. What a dictionary contributed is ``fix:branches`` on each
+    field it touched, listed by ``dialects``; no lookup consults it.
     """
 
     def __init__(self) -> None: ...
@@ -4727,16 +4735,29 @@ class FixMsg:
     schema and the value it carries, against that registry.
 
     A message ``FixCodec`` built opens with ``beginstring`` - the wire's own,
-    else the version it was read at - and closes with the crate's
-    ``timestamp``, so ``market_timestamp`` answers for it and ``into_row`` fills
-    both columns. Neither is an entry unless the wire sent it, so ``into_bytes``
-    re-emits the line byte for byte.
+    else the version it was read at. Every message carries the settled
+    bundle, each non-null: ``updatedat``, ``createdat``, ``uuid``, ``puuid``,
+    ``code``, ``snapshotat`` and ``SendingTime``. At intake ``SendingTime``
+    is the stated one, else the carrier's, else the codec's
+    ``default_sending_time``, else UTC now; ``snapshotat`` is the stated one,
+    else ``TransactTime``, else ``SendingTime``; ``updatedat`` and
+    ``createdat`` default to ``snapshotat``; ``code`` is the empty unknown
+    name. No clock is read after intake. A message built here appends any
+    member its root lacks. ``updatedat()``, ``createdat()``, ``uuid()`` and
+    ``puuid()`` always answer: ``uuid`` is a version-8 UUID of ``updatedat``'s
+    nanoseconds and the named content, ``puuid`` a version-8 UUID of
+    ``code`` alone, both recomputed when the row changes, and a stated one
+    that disagrees is a ``ValueError``. None of these is an entry unless the
+    wire sent it, so ``into_bytes`` re-emits the line byte for byte.
 
     The row is written through ``set`` and ``remove``, typed by the field the
-    key resolves to; the entries never are. ``from_row`` reads a fixed row
-    back into the message that made it, entries included, without a parse.
-    A hashed message is frozen: a write after ``hash()`` is a ``TypeError``,
-    and a copy takes writes again.
+    key resolves to; the entries never are. A mandatory field refuses
+    ``None`` and refuses removal with a ``ValueError``, leaving the message
+    unchanged. ``entries`` answers a resolved key's positive tag and tag 0
+    for a key no dictionary resolved. ``from_row`` reads a fixed row carrying
+    the whole bundle back into the message that made it, entries included,
+    without a parse or a clock read. A hashed message is frozen: a write
+    after ``hash()`` is a ``TypeError``, and a copy takes writes again.
     """
 
     def __init__(
@@ -4779,7 +4800,10 @@ class FixMsg:
     def __ne__(self, other: object, /) -> bool: ...
     def digest(self) -> bytes: ...
     def symbol_ticker(self) -> Scalar | None: ...
-    def market_timestamp(self) -> Scalar | None: ...
+    def updatedat(self) -> Scalar: ...
+    def createdat(self) -> Scalar: ...
+    def uuid(self) -> Scalar: ...
+    def puuid(self) -> Scalar: ...
     def unix_partition(self, seconds: int = 3600) -> Scalar | None: ...
     def lifted(self, facet: str) -> Scalar | None: ...
     def lift_source(self, facet: str) -> int | None: ...
@@ -4799,10 +4823,13 @@ class FixMessages(Iterator[FixMsg]):
     """A lazy stream of messages: what every stage of ``FixCodec`` answers.
 
     One line's messages, a stream of lines parsed, records parsed, messages
-    filled or stamped, a batch read back - one shape, pulled one message at a
-    time and never collected. A line the reader refuses raises ``ValueError``
-    where it is met and the stream goes on past it; a failure in the Python
-    iterable behind the stream raises as itself and ends it.
+    enriched, filled by a lifecycle or reduced to its snapshots, a batch read
+    back - one shape, pulled one message at a time and never collected. A
+    line the reader refuses, or a message a stage refuses - a malformed
+    mandatory clock, a lifecycle transition - raises ``ValueError`` where it
+    is met and the stream goes on past it without that item having advanced
+    any state; an item that is not what the stage reads, or a failure in the
+    Python iterable behind the stream, raises as itself and ends it.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]
@@ -4835,9 +4862,19 @@ class FixCodec:
     ``parse_text_arrow_reader`` parses a capture's batches into batches of FIX
     rows, ``enrich_messages_arrow_reader`` fills batches of FIX rows in place,
     ``messages`` and ``arrow_reader`` cross between the two shapes, and
-    ``write_arrow_reader`` re-emits the wire. Batches close on raw bytes
-    against ``batch_byte_size``. A pin is on the codec; a stage is a call. A
-    version crosses as ``str`` and is parsed once at the boundary.
+    ``write_arrow_reader`` re-emits the wire. ``lifecycle`` fills a stream of
+    messages through one ``FixLifecycle`` at its default interval. Batches
+    close on raw bytes against ``batch_byte_size``. A pin is on the codec; a
+    stage is a call. A version crosses as ``str`` and is parsed once at the
+    boundary.
+
+    ``default_sending_time`` is the ``SendingTime`` a genuinely new message
+    takes when neither it nor its carrier states a valid one: a ``Scalar``
+    must already be a nanosecond UTC ``datetime64``, an aware UTC
+    ``datetime`` is read once into that clock, and any other value is the
+    core's ``ValueError``. Unstated, each undated new message reads UTC now
+    once, so a parse of undated bytes repeats only under a pinned default. A
+    line's own ``timestamp`` is capture context and stamps nothing.
     """
 
     def __init__(
@@ -4845,6 +4882,7 @@ class FixCodec:
         registry: FixRegistry | None = None,
         *,
         version: str | None = None,
+        default_sending_time: Scalar | datetime.datetime | None = None,
         separator: int | None = None,
         payload_column: str = "body",
         capture_names: Sequence[str] | None = None,
@@ -4856,6 +4894,8 @@ class FixCodec:
     def registry(self) -> FixRegistry: ...
     @property
     def version(self) -> str | None: ...
+    @property
+    def default_sending_time(self) -> Scalar | None: ...
     @property
     def separator(self) -> int | None: ...
     @property
@@ -4898,19 +4938,43 @@ class FixCodec:
 class FixLifecycle:
     __hash__: ClassVar[None]  # type: ignore[assignment]
 
-    """The state a stream of messages has reached, one chain per order alive.
+    """The state a stream of messages has reached, one chain per live event.
 
     Built once per stream over a registry - the process default when none is
-    given - and fed every message in order through ``fill``, which stamps the
-    crate's ``instid``, ``id`` and ``persistentid`` columns: the instrument,
-    the message and the order chain the message's identifiers reach. A
-    terminal state closes the chain, so ``alive`` counts the orders still
-    open and ``clear`` forgets them all. A stated value is never overwritten
-    and the entries are untouched. Mutable, so unhashable.
+    given - on an epoch grid of ``interval_ns`` nanoseconds,
+    ``DEFAULT_INTERVAL_NS`` (one second) unless stated, and fed every message
+    in order through ``fill`` or ``snapshot``. A nonempty ``code`` names its
+    live chain globally; otherwise the first identifier - stated ``altids``,
+    else the message type's declared identifiers - reaching a live chain under
+    the message's ``instuuid`` lends that chain's code, and a new chain is
+    named ``<scope uuid or ->/<identifier>``. ``puuid`` hashes that code.
+    Every accepted message has ``updatedat`` floored to its grid instant
+    while ``snapshotat`` keeps the real one, takes its live chain's first
+    ``createdat``, and fills each absent ``prevtimestamp`` and ``prevuuid``
+    from the chain's last message; a stated non-null value is kept. A
+    terminal state closes the chain, so ``alive`` counts the events still
+    open and ``clear`` forgets them all, keeping the interval. A refusal is a
+    ``ValueError`` that changes no chain; the entries are untouched.
+
+    ``snapshot`` answers a message only when it arrived off its grid in a
+    bucket above the highest its live chain has consumed, and ``None``
+    otherwise; ``snapshots`` does the same over an iterable, lazily, taking
+    this lifecycle's live state with it and leaving it with none at the same
+    interval. ``set_interval_ns`` changes the interval only while no chain is
+    live. Mutable, so unhashable.
     """
 
-    def __init__(self, registry: FixRegistry | None = None) -> None: ...
+    DEFAULT_INTERVAL_NS: ClassVar[int]
+
+    def __init__(
+        self, registry: FixRegistry | None = None, *, interval_ns: int = 1000000000
+    ) -> None: ...
+    @property
+    def interval_ns(self) -> int: ...
+    def set_interval_ns(self, interval_ns: int) -> None: ...
     def fill(self, message: FixMsg) -> FixMsg: ...
+    def snapshot(self, message: FixMsg) -> FixMsg | None: ...
+    def snapshots(self, messages: Iterable[FixMsg]) -> FixMessages: ...
     def alive(self) -> int: ...
     def clear(self) -> None: ...
     def __repr__(self) -> str: ...

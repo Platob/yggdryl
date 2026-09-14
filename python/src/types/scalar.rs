@@ -1165,9 +1165,9 @@ impl PyScalar {
     /// temporal widths, because the feed writes each family's canonical form
     /// rather than its storage width.
     #[pyo3(signature = (algorithm = "xxh3-64"))]
-    fn digest(&self, algorithm: &str) -> PyResult<crate::xxhash::PyDigest> {
-        let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
-        Ok(crate::xxhash::PyDigest::from_core(
+    fn digest(&self, algorithm: &str) -> PyResult<crate::hashing::xxhash::PyDigest> {
+        let algorithm = crate::hashing::xxhash::algorithm_from_str(algorithm)?;
+        Ok(crate::hashing::xxhash::PyDigest::from_core(
             self.inner.digest(algorithm),
         ))
     }

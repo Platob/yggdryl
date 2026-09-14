@@ -85,10 +85,13 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
         assert registry.remove_definition(category, name) is not None
         assert registry.get_definition(category, name) is None
         assert registry.remove_definition(category, name) is None
-    # Only the crate's own fields are left: they seed every registry and
-    # are never a definition a caller can remove.
-    assert len(registry) == len(list(registry.definitions("fields"))) == 20
-    assert len(fix_crate_fields()) == 21
+    # Only what every registry is built with is left: the crate's own
+    # twenty-four scalar fields, which are never a definition a caller can
+    # remove, and the two seeded standard clocks, SendingTime (52) and
+    # TransactTime (60). The crate also lists its `altids` Map group.
+    assert len(registry) == len(list(registry.definitions("fields"))) == 26
+    assert len(fix_crate_fields()) == 25
+    assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
     assert registry.group_by_counter(65020).name == "altids"
 
 
@@ -424,7 +427,8 @@ def test_catalog_merge_refreshes_every_reference_with_the_inline_code_union() ->
     source.create_definition("components", message)
     before_source = source.into_json()
 
-    assert target.merge_with(source) == (0, 2)
+    # Both fields and both seeded standard clocks merge; nothing arrives.
+    assert target.merge_with(source) == (0, 4)
     for path in ["PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID", "IncomingOrder.Parties.PartyID"]:
         member = target.field_by_path(path)
         codes = json.loads(member.metadata["fix:codes"])["codes"]
@@ -496,11 +500,12 @@ def test_catalog_merge_extends_a_referenced_definition_and_refuses_a_changed_mem
     before_source = source.into_json()
 
     # Nothing arrived - the source's one field is the target's own tag 448,
-    # which merges - and the member it adds to `Party` is appended after the
-    # member the target already declared, keeping the stored order. The group
-    # and the message restate the component through references, so both see
-    # it without holding a copy.
-    assert target.merge_with(source) == (0, 1)
+    # which merges, as do the two seeded standard clocks every registry holds
+    # - and the member it adds to `Party` is appended after the member the
+    # target already declared, keeping the stored order. The group and the
+    # message restate the component through references, so both see it
+    # without holding a copy.
+    assert target.merge_with(source) == (0, 3)
     assert [held.name for held in target.definition("components", "Party")] == ["PartyID", "Extra"]
     for path in ("Party.Extra", "Parties.Extra", "NewOrderSingle.Parties.Extra"):
         assert target.field_by_path(path).dtype == DataType("int32"), path
@@ -513,7 +518,7 @@ def test_catalog_merge_extends_a_referenced_definition_and_refuses_a_changed_mem
     # Folding the same source again changes nothing at all.
     extended = target.into_json()
     extended_hash = target.stable_hash()
-    assert target.merge_with(source) == (0, 1)
+    assert target.merge_with(source) == (0, 3)
     assert target.into_json() == extended
 
     # A member both sides declare, under another datatype, refuses the whole
@@ -540,10 +545,11 @@ def test_folded_named_merges_keep_canonical_names_and_references() -> None:
             incoming.set_name(respell(name))
             source.create_definition(category, incoming)
 
-        # Nothing arrived: the two fields are the target's own and each
-        # definition folds into the one its name spells, which keeps its
-        # canonical name, its members and every reference to it.
-        assert target.merge_with(source) == (0, 2)
+        # Nothing arrived: the two fields and the two seeded standard clocks
+        # are the target's own and each definition folds into the one its
+        # name spells, which keeps its canonical name, its members and every
+        # reference to it.
+        assert target.merge_with(source) == (0, 4)
         assert target == original
         for category, name in definitions:
             assert target.definition(category, respell(name)).name == name

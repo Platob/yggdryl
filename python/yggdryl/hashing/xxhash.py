@@ -13,7 +13,7 @@ transform, which the specification pins to murmur3 x86_32.
 
 from __future__ import annotations
 
-from ._native import (
+from .._native import (
     Digest,
     Digester,
     Xxh3,

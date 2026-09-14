@@ -12,11 +12,16 @@ identifier, by tag, by name or by dotted path and persists them as JSON
 shards through any ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
 was resolved against, written through :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
-Every registry holds twenty crate-owned scalar fields, the ``altids`` Map
-group and the separate ``pluginconfig`` component/message from construction;
-ordinary size and iteration count only the scalars. A store neither writes
-these builtins nor overrides them. Resolution, folding, merging,
-sharding and validation are native; this module only names them.
+Every registry holds twenty-four crate-owned scalar fields, the ``altids`` Map
+group and the separate ``pluginconfig`` component/message from construction,
+and :class:`FixRegistry` seeds the standard clocks ``SendingTime`` (52) and
+``TransactTime`` (60) beside them as ordinary definitions a loaded dictionary
+may supply itself, so ``len(FixRegistry())`` is 26; ordinary size and
+iteration count only the scalars. A store neither writes the crate's
+definitions nor overrides them. A tag is a positive ``int``: ``fix.tag``,
+``fix.tags`` and ``fix.counter`` refuse 0, which only an unresolved arrival
+entry records. Resolution, folding, merging, sharding and validation are
+native; this module only names them.
 
 :func:`fix_cfb_fields` reads one Ullink ``CBlock`` for the vocabulary it
 declares, in declaration order and keyed, which is what
@@ -45,24 +50,33 @@ as an iterator and each with an Arrow-batch twin. :meth:`FixCodec.parse_line`
 turns one captured line into a lazy :class:`FixMessages` stream and
 :meth:`FixCodec.parse_lines` a whole iterable of lines, one line at a time;
 :meth:`FixCodec.parse_text_line` and :meth:`FixCodec.parse_text_lines` read
-the lines a text reader answers, the line's own body and clock beside the
+the lines a text reader answers, the line's own body beside the
 row-header captures that state its ``pluginid`` and ``beginstring`` -
 ``capture_names`` is what says which capture is which, once for the whole
 run, and a ``msgdirection`` capture or column states the direction FIX's
 own tag 385 carries, filled from the verb in front of the payload where the
-row states none. Every message
-it builds opens with ``beginstring`` - the wire's own, else the version the
-message was read at - and closes with the
-crate's ``timestamp``: the row's own clock where the capture stated one, else
-the first clock the message carries, else the epoch, so
-:meth:`FixMsg.market_timestamp` always answers.
+row states none. A line's ``timestamp`` is capture context and stamps nothing.
+Every message it builds opens with ``beginstring`` - the wire's own, else the
+version the message was read at - and carries the settled bundle, each member
+non-null: ``SendingTime`` is the message's own, else the carrier's, else the
+codec's ``default_sending_time``, else UTC now read once; ``snapshotat`` is the
+real event instant, ``TransactTime`` else ``SendingTime``; ``updatedat`` and
+``createdat`` start at ``snapshotat``; ``code`` is the empty unknown name; and
+``uuid`` and ``puuid`` are computed. No clock is read after that intake, so
+replay carries the settled row or pins the same ``default_sending_time``, and
+:meth:`FixMsg.updatedat`, :meth:`FixMsg.createdat`, :meth:`FixMsg.uuid` and
+:meth:`FixMsg.puuid` always answer. ``uuid`` is a version-8 UUID of
+``updatedat``'s nanoseconds and the message's named content, and ``puuid`` a
+version-8 UUID of ``code`` alone; a row change recomputes both, a stated one
+that disagrees is refused, and :meth:`FixMsg.remove` refuses a mandatory
+field with ``ValueError``.
 :meth:`FixCodec.parse_text_arrow_reader` turns a whole Arrow capture into
 batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
 document expands to - closed on the raw bytes of the payload column against
-the codec's ``batch_byte_size``. A capture's ``timestamp`` column stamps its
-row; its ``pluginid`` column names the plugin that logged the line; and
-any other column named after a field - ``prevpluginid``, ``senderSessionId``,
+the codec's ``batch_byte_size``. A capture's ``timestamp`` column is carried as
+its own context; its ``pluginid`` column names the plugin that logged the line;
+and any other column named after a field - ``prevpluginid``, ``senderSessionId``,
 or a bridge's ``seqNum`` for ``MsgSeqNum`` - fills that field where the frame
 did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
 :meth:`FixCodec.enrich_messages` fill what a message implied but did not carry,
@@ -86,39 +100,58 @@ converters every stage composes over batches:
 messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
 batches under a schema. :meth:`FixCodec.write_arrow_reader` is the encode
 direction, re-emitting every row's wire. A pin - ``version``,
-``separator``, ``payload_column``, ``null_values``, ``direction``,
-``batch_byte_size`` - is on the codec; a stage is a call.
+``default_sending_time``, ``separator``, ``payload_column``, ``null_values``,
+``direction``, ``batch_byte_size`` - is on the codec; a stage is a call.
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns
 spelled by the dictionary's folded canonical names, ``msgtype`` and never
 ``35``, so a column is found with ``schema.index_of("msgtype")`` and nothing has
-to be resolved per row; the tag stays on each column's ``fix:tag``.
+to be resolved per row; the tag stays on each column's ``fix:tag``. Its tags
+end with the crate's own and ``MsgDirection`` (385), and one ``nofixentries``
+list closes the row with the whole arrival record, where an unresolved key has
+tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``unixpartition``,
+``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are its non-null
+columns. A replayable row carries the whole settled bundle, and
+:meth:`FixMsg.from_row` refuses one that lacks a member.
 :func:`fix_schema_carrying` puts a capture's own columns in front of them,
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
-specification: 21 definitions from tag 65000, twenty scalar fields and the
-nullable sorted-key ``map<utf8, utf8>`` group ``altids`` at 65020. The scalar
-fields are ``msghash``,
-``version``, ``symbolticker``, ``timestamp``, ``unixpartition``,
-``parentclordid`` and ``parentorderid``; what a bridge's own log states about a
-line - ``sendersessionid`` and ``targetsessionid``, the sessions the message
-itself names, ``msgctxid``,
-the plugin ``pluginid`` that logged it and the ``prevpluginid`` it came
-through before that, and the session names ``sendersessionname`` and
-``targetsessionname`` the line spells; the three facts a row derives from what
-the message said - ``isincode``,
-``miccode`` and ``state``; and the three identities a stream implies -
-``instid``, ``id`` and ``persistentid``. The separate ``pluginconfig``
-component/message is not part of this tag listing.
+specification: 25 definitions in tag order, twenty-four scalar fields at tags
+65001 to 65019 and 65021 to 65025 and the nullable sorted-key
+``map<utf8, utf8>`` group ``altids`` at 65020; the retired 65000 is not reused.
+The scalar fields are ``version``, ``symbolticker``, ``updatedat``,
+``unixpartition``, ``parentclordid`` and ``parentorderid``; what a bridge's own
+log states about a line - ``sendersessionid`` and ``targetsessionid``, the
+sessions the message itself names, ``msgctxid``, the plugin ``pluginid`` that
+logged it and the ``prevpluginid`` it came through before that, and the session
+names ``sendersessionname`` and ``targetsessionname`` the line spells; the three
+facts a row derives from what the message said - ``isincode``, ``miccode`` and
+``state``; the ``uuid``-typed ``instuuid``, ``uuid`` and ``puuid``; the previous
+message's ``prevtimestamp`` and ``prevuuid``; and ``createdat``, ``code`` and
+``snapshotat``. ``updatedat``, ``uuid``, ``puuid``, ``createdat``, ``code`` and
+``snapshotat`` are non-null, and ``unixpartition`` partitions ``updatedat``. The
+separate ``pluginconfig`` component/message and the seeded clocks are not part
+of this tag listing.
 
-:class:`FixLifecycle` stamps those three. It reads a stream once, in order,
-through :meth:`FixLifecycle.fill`: every message gets the instrument's identity
-and its own, and one naming an order gets the identity of the chain that order
-belongs to - joined on ``OrigClOrdID``, ``ClOrdID``, ``OrderID``,
-``SecondaryClOrdID`` and ``SecondaryOrderID``, closed by a terminal state, so
-:meth:`FixLifecycle.alive` counts the orders still open and
-:meth:`FixLifecycle.clear` forgets them. :meth:`FixCodec.lifecycle` runs one over
-an iterable of messages, lazily, and composes over a whole capture through
-:meth:`FixCodec.messages` and :meth:`FixCodec.arrow_reader`.
+:class:`FixLifecycle` names the chains. It reads a stream once, in order,
+through :meth:`FixLifecycle.fill`: a nonempty ``code`` selects its live chain
+globally; otherwise the first identifier - stated ``altids``, else the message
+type's declared identifiers - reaching a live chain under the message's
+``instuuid`` lends that chain's code, and a new chain is named
+``<scope uuid or ->/<identifier>``, never taking an identifier another live
+chain holds. ``puuid`` hashes that code. Every accepted message has
+``updatedat`` floored to its epoch grid - :attr:`FixLifecycle.DEFAULT_INTERVAL_NS`,
+one second, unless ``interval_ns`` says otherwise - while ``snapshotat`` keeps
+the real instant; takes its live chain's first accepted ``createdat``; and fills
+each absent ``prevtimestamp`` and ``prevuuid`` from the chain's last message. A
+terminal state closes the chain, so :meth:`FixLifecycle.alive` counts the events
+still open and :meth:`FixLifecycle.clear` forgets them, keeping the interval,
+which :meth:`FixLifecycle.set_interval_ns` changes only while none is live.
+:meth:`FixLifecycle.snapshot` runs the same transition and answers only an
+arrival off its grid in a bucket above the highest its live chain consumed,
+and :meth:`FixLifecycle.snapshots` does so lazily over an iterable, taking the
+lifecycle's live state with it. :meth:`FixCodec.lifecycle` fills an iterable of
+messages at the default interval, lazily, and each composes over a whole
+capture through :meth:`FixCodec.messages` and :meth:`FixCodec.arrow_reader`.
 
 A dictionary is a membership, not a namespace: :meth:`FixRegistry.from_cfb_file`
 and :meth:`FixRegistry.add_cfb_file` take a ``dialect`` and stamp it on every

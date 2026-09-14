@@ -1,6 +1,6 @@
 import pyarrow  # type: ignore[import-untyped]
 
-from ._native import (
+from .._native import (
     DataType,
     FieldLike,
     TxHash as TxHash,

@@ -2669,7 +2669,10 @@ impl PyProtocolField {
     ///
     /// Reads and writes `fix:tag` through the core's own typed accessors, so
     /// the property name is never spelled at a call site. `del view["tag"]`
-    /// removes it, the way every other property is removed.
+    /// removes it, the way every other property is removed. A tag is a
+    /// positive `i32`: 0 or a negative is the core's `ValueError`, because
+    /// tag 0 is what an unresolved arrival entry records, never a field's
+    /// identity, and a `bool` is a `TypeError`.
     #[getter]
     fn tag(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("tag")?;
@@ -2689,10 +2692,10 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
-    /// The alternate tags, highest priority first.
+    /// The positive tag of a group's count field or a Map's own counter.
     ///
-    /// An absent property is an empty list, and assigning an empty iterable
-    /// removes it: a field states alternate tags only when it has them.
+    /// Assigning `None` removes it; 0 or a negative is the core's
+    /// `ValueError`, exactly as `tag` refuses one.
     #[getter]
     fn counter(&self, py: Python<'_>) -> PyResult<Option<i32>> {
         self.require_fix("counter")?;
@@ -2839,6 +2842,12 @@ impl PyProtocolField {
         }
     }
 
+    /// The alternate tags, highest priority first.
+    ///
+    /// An absent property is an empty list, and assigning an empty iterable
+    /// removes it: a field states alternate tags only when it has them. Each
+    /// is a positive `i32` stated once; 0, a negative or a repeat is the
+    /// core's `ValueError` and leaves the field unchanged.
     #[getter]
     fn tags(&self, py: Python<'_>) -> PyResult<Vec<i32>> {
         self.require_fix("tags")?;
@@ -3095,7 +3104,7 @@ impl PyProtocolField {
     #[setter]
     fn set_algorithm(&self, py: Python<'_>, value: &str) -> PyResult<()> {
         self.require_digest("algorithm")?;
-        let algorithm = crate::xxhash::algorithm_from_str(value)?;
+        let algorithm = crate::hashing::xxhash::algorithm_from_str(value)?;
         let mut field = self.borrow_field_mut(py)?;
         field
             .inner
@@ -3171,7 +3180,7 @@ impl PyProtocolField {
     #[setter]
     fn set_unit(&self, py: Python<'_>, value: &str) -> PyResult<()> {
         self.require_digest("unit")?;
-        let unit = crate::txhash::unit_from_str(value)?;
+        let unit = crate::hashing::txhash::unit_from_str(value)?;
         let mut field = self.borrow_field_mut(py)?;
         field
             .inner

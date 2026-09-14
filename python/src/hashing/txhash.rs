@@ -18,13 +18,13 @@ use yggdryl::hashing::txhash::{self, TxHash, TxHasher};
 use yggdryl::hashing::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
 use yggdryl::{Digester, Scalar, TimeUnit, Timezone};
 
+use crate::hashing::xxhash::{
+    PyDigest, PyDigester, PyXxh3, PyXxh32, PyXxh64, PyXxh128, algorithm_from_str, feed_content,
+};
 use crate::types::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::types::field::core_field_from_value;
 use crate::types::scalar::{PyScalar, date_epoch_days, datetime_utc_microseconds};
 use crate::value_error;
-use crate::xxhash::{
-    PyDigest, PyDigester, PyXxh3, PyXxh32, PyXxh64, PyXxh128, algorithm_from_str, feed_content,
-};
 
 /// Register this module's classes and functions on the native module.
 pub(crate) fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -216,6 +216,20 @@ impl PyTxHash {
         PyScalar {
             inner: self.inner.into_scalar(),
         }
+    }
+
+    /// The RFC 9562 `UUIDv8` projection as a `uuid` `Scalar`.
+    ///
+    /// Lossy and one-way: the instant restated to signed nanoseconds, then the
+    /// digest's low 58 bits; neither the unit nor the algorithm survives.
+    /// Raises `ValueError` for a digest that is not 64 bits wide, or an
+    /// instant that does not fit signed 64-bit nanoseconds.
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
+    fn into_uuid(&self) -> PyResult<PyScalar> {
+        let uuid = self.inner.into_uuid().map_err(value_error)?;
+        Ok(PyScalar {
+            inner: Scalar::Uuid(uuid),
+        })
     }
 
     /// A deterministic cross-language hash of this value.
@@ -548,7 +562,7 @@ pub(crate) fn txhash_digest(
 
 /// Couple every row's digest with the instant beside it.
 ///
-/// The digest half is `xxhash.row_digests` of the batch; the instant column
+/// The digest half is `hashing.xxhash.row_digests` of the batch; the instant column
 /// is any timestamp, date, or integer array of the batch's length, read at
 /// `unit`. The answer is a `fixed_size_binary` of the coupled width, null
 /// where the instant is.

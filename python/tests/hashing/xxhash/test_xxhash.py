@@ -16,8 +16,9 @@ import pyarrow as pa
 import pytest
 
 import yggdryl
-from yggdryl import Field, Scalar, xxhash
+from yggdryl import Field, Scalar
 from yggdryl.enums import DIGEST_ALGORITHMS
+from yggdryl.hashing import xxhash
 
 xxhash_c = pytest.importorskip(
     "xxhash", reason="the outside C libxxhash binding is required for parity"

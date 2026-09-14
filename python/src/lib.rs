@@ -29,17 +29,16 @@ mod coding;
 mod enums;
 mod expression;
 mod fix;
+mod hashing;
 mod holder;
 mod iobase;
 mod iomedia;
 mod media;
 mod text;
 mod text_line;
-mod txhash;
 mod types;
 mod uri;
 mod version;
-mod xxhash;
 
 pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
     PyValueError::new_err(error.to_string())
@@ -488,8 +487,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<media::iceberg::PyManifestFile>()?;
     module.add_class::<media::iceberg::PyDataFile>()?;
     media::partition::register(module)?;
-    xxhash::register(module)?;
-    txhash::register(module)?;
+    hashing::register(module)?;
     Ok(())
 }
 

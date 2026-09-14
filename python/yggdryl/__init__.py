@@ -17,13 +17,12 @@ from . import (
     enums,
     expression,
     fix,
+    hashing,
     holder,
     media,
     text,
-    txhash,
     types,
     uri,
-    xxhash,
 )
 from ._native import (
     DEFAULT_FETCH_BYTE_SIZE,
@@ -109,6 +108,7 @@ __all__ = [
     "expression",
     "field",
     "fix",
+    "hashing",
     "holder",
     "media",
     "refresh_logging",
@@ -116,6 +116,4 @@ __all__ = [
     "text",
     "types",
     "uri",
-    "txhash",
-    "xxhash",
 ]

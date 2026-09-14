@@ -24,6 +24,17 @@ from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, fix_schema, 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
+# The one intake clock undated test bytes take, so a parse repeats; replay
+# never consults now (``fixed_codec`` in ``rust/tests/fix.rs``).
+CLOCK = Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC")
+# The tag of the crate's `uuid`: the one identity every write recomputes.
+UUID_TAG = 65017
+
+
+def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
+    """A codec whose undated messages all take ``CLOCK`` as their SendingTime."""
+    return FixCodec(registry, default_sending_time=CLOCK, **pins)
+
 
 @pytest.fixture(scope="module")
 def _seed_catalog() -> FixRegistry:
@@ -118,7 +129,7 @@ def _stated(message: FixMsg) -> dict[int, Scalar]:
 
 
 def test_parse_lines_pulls_one_line_at_a_time_and_continues_past_a_refused_one() -> None:
-    codec = FixCodec(_config_registry())
+    codec = _fixed(_config_registry())
     pulled = 0
 
     def lines() -> Iterator[bytes]:
@@ -147,7 +158,7 @@ def test_parse_lines_pulls_one_line_at_a_time_and_continues_past_a_refused_one()
 
 
 def test_an_item_that_is_not_bytes_is_refused_where_it_is_met(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     mixed = codec.parse_lines([b"8=FIX.4.4|35=D|11=A|10=0|", "8=FIX.4.4|35=D|11=B|10=0|"])
     assert next(mixed).by_tag(11).as_py() == "A"
     with pytest.raises(TypeError, match="bytes"):
@@ -169,7 +180,7 @@ def test_an_item_that_is_not_bytes_is_refused_where_it_is_met(seed: FixRegistry)
 
 
 def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
-    codec = FixCodec(seed, capture_names=["beginstring"])
+    codec = _fixed(seed, capture_names=["beginstring"])
     pulled = 0
 
     def lines() -> Iterator[TextLine]:
@@ -192,7 +203,7 @@ def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
     assert old.field.index_of("lastqty") is not None
     assert old.get_by_name("lastshares") is not None
     # A bulk document is many messages, and the stream door yields each.
-    assert len(list(FixCodec(_config_registry()).parse_text_lines([TextLine(0, BULK_CONFIG)]))) == 2
+    assert len(list(_fixed(_config_registry()).parse_text_lines([TextLine(0, BULK_CONFIG)]))) == 2
 
 
 def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
@@ -204,10 +215,13 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     assert bare.direction == "S"
     # The default target, stated once in the core and read here.
     assert bare.batch_byte_size == 128 * 1024 * 1024
+    # Unpinned, each undated new message reads UTC now once.
+    assert bare.default_sending_time is None
 
     pinned = FixCodec(
         seed,
         version="FIX.4.2",
+        default_sending_time=CLOCK,
         separator=124,
         payload_column="line",
         null_values=["<none>"],
@@ -215,6 +229,7 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
         batch_byte_size=4096,
     )
     assert pinned.version == "4.2"
+    assert pinned.default_sending_time == CLOCK
     assert pinned.separator == 124
     assert pinned.payload_column == "line"
     assert pinned.null_values == ["<none>"]
@@ -229,22 +244,29 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     # the line door reads the same frame without naming anything.
     (read,) = list(pinned.parse_text_lines([TextLine(0, b"8=FIX.4.2|35=D|11=A|10=0|")]))
     assert read.by_tag(11).as_py() == "A"
+    # The line stated no clock, so it settled on the pinned one.
+    assert read.by_tag(52) == CLOCK
+    assert read.updatedat() == CLOCK
 
 
 def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -> None:
-    reader = FixCodec(seed).parse_text_arrow_reader(_capture([], 1))
+    reader = _fixed(seed).parse_text_arrow_reader(_capture([], 1))
     names = reader.schema.names
     # The capture's own column leads; the fixed columns follow, named by their
     # folded names, each carrying its tag on the field.
     assert names[:6] == ["body", "beginstring", "bodylength", "msgtype", "sendercompid", "targetcompid"]
-    assert names[-2:] == ["nofixentries", "nounmappedfixentries"]
+    # FIX's own `msgdirection`, then the one arrival record closes the row.
+    assert names[-2:] == ["msgdirection", "nofixentries"]
     assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
+    assert reader.schema.field("msgtype").metadata[b"display"] == b"MsgType"
+    # The content identity's storage is sixteen bytes, not a string.
+    assert reader.schema.field("uuid").type == pa.uuid()
     # And an empty capture yields no batch at all.
     assert reader.read_all().num_rows == 0
 
 
 def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistry) -> None:
-    parsed = FixCodec(seed).parse_text_arrow_reader(_capture(CAPTURE, len(CAPTURE))).read_all()
+    parsed = _fixed(seed).parse_text_arrow_reader(_capture(CAPTURE, len(CAPTURE))).read_all()
     assert parsed.num_rows == len(CARRYING), "one row a message; the text reader answers one a line"
     assert [bytes(body) for body in _column(parsed, "body")] == CARRYING
     msgtype = _column(parsed, "msgtype")
@@ -257,13 +279,13 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistr
 def test_several_small_input_batches_accumulate_into_one_output_batch(seed: FixRegistry) -> None:
     lines = _wide()
     # Twenty input batches of ten rows, far under the default target.
-    whole = FixCodec(seed).parse_text_arrow_reader(_capture(lines, 10)).read_all()
+    whole = _fixed(seed).parse_text_arrow_reader(_capture(lines, 10)).read_all()
     assert whole.num_rows == 200
     assert len(whole.to_batches()) == 1, "one batch under the byte target"
 
     # Under a target holding about five input batches, the output batches are
     # fewer than the input ones and no row is lost.
-    bounded = FixCodec(seed, batch_byte_size=5 * 10 * 470).parse_text_arrow_reader(_capture(lines, 10))
+    bounded = _fixed(seed, batch_byte_size=5 * 10 * 470).parse_text_arrow_reader(_capture(lines, 10))
     batches = list(bounded)
     assert 2 <= len(batches) < 20, len(batches)
     assert sum(batch.num_rows for batch in batches) == 200
@@ -274,7 +296,7 @@ def test_several_small_input_batches_accumulate_into_one_output_batch(seed: FixR
 def test_one_large_input_batch_splits_by_rows_in_proportion(seed: FixRegistry) -> None:
     lines = _wide()
     target = 4096
-    batches = list(FixCodec(seed, batch_byte_size=target).parse_text_arrow_reader(_capture(lines, len(lines))))
+    batches = list(_fixed(seed, batch_byte_size=target).parse_text_arrow_reader(_capture(lines, len(lines))))
     assert len(batches) > 1
     assert sum(batch.num_rows for batch in batches) == 200, "the bound shapes batches, it does not drop rows"
     # One input batch charges every row the same share of its bytes, so the
@@ -287,13 +309,13 @@ def test_one_large_input_batch_splits_by_rows_in_proportion(seed: FixRegistry) -
 
     # A target no row fits under closes a batch after every row, so one
     # enormous line can never produce an empty batch.
-    each = list(FixCodec(seed, batch_byte_size=1).parse_text_arrow_reader(_capture(lines, len(lines))))
+    each = list(_fixed(seed, batch_byte_size=1).parse_text_arrow_reader(_capture(lines, len(lines))))
     assert len(each) == 200
     assert all(batch.num_rows == 1 for batch in each)
 
 
 def test_messages_to_batches_close_on_the_arrival_records_raw_bytes(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     schema = fix_schema(seed)
     lines = _wide()
     one = list(codec.arrow_reader(schema, codec.parse_lines(lines)))
@@ -301,21 +323,21 @@ def test_messages_to_batches_close_on_the_arrival_records_raw_bytes(seed: FixReg
 
     # A bound of about ten lines of pairs cuts the stream into batches of
     # about ten, and every row survives the cut.
-    bounded = FixCodec(seed, batch_byte_size=10 * 450)
+    bounded = _fixed(seed, batch_byte_size=10 * 450)
     many = list(bounded.arrow_reader(schema, codec.parse_lines(lines)))
     assert 10 <= len(many) < 40, len(many)
     assert sum(batch.num_rows for batch in many) == 200
     assert all(5 <= batch.num_rows <= 20 for batch in many[:-1])
 
     # A target of one byte is a batch a message.
-    each = list(FixCodec(seed, batch_byte_size=1).arrow_reader(schema, codec.parse_lines(lines)))
+    each = list(_fixed(seed, batch_byte_size=1).arrow_reader(schema, codec.parse_lines(lines)))
     assert len(each) == 200
 
 
 def test_the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_record_alone(
     seed: FixRegistry,
 ) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     bare = codec.parse_text_arrow_reader(_capture([REPORT], 1)).read_all()
     assert _column(bare, "leavesqty") == [None]
 
@@ -335,7 +357,7 @@ def test_the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_rec
 
 
 def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
-    codec = FixCodec(seed, null_values=[])
+    codec = _fixed(seed, null_values=[])
     schema = fix_schema(seed)
     parsed = list(codec.parse_lines(CAPTURE))
     again = list(codec.messages(codec.arrow_reader(schema, parsed)))
@@ -358,10 +380,29 @@ def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
 
 
 def test_altids_maps_cross_native_rows_and_arrow_without_changing_nullability(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
-    schema = Field("maprow", DataType.from_fields([seed.group_by_counter(65020)]), nullable=False)
+    codec = _fixed(seed)
+    # A message built by hand appends the settled bundle it lacks, reading its
+    # SendingTime where the root states one, so the three share one root and
+    # that root is the replayable row (``native_mapping_survives_message_rows_and_arrow_in_both_directions``).
+    root = Field(
+        "maprow",
+        DataType.from_fields([seed.group_by_counter(65020), seed.field_by_tag(52)]),
+        nullable=False,
+    )
     values = [None, {}, {"clordid": "C-1", "orderid": "O-1"}]
-    messages = [FixMsg.from_row(schema, {"altids": value}, seed) for value in values]
+    messages = [FixMsg(root, {"altids": value, "sendingtime": CLOCK}, seed) for value in values]
+    schema = messages[0].field
+    assert all(message.field == schema for message in messages)
+    assert [child.name for child in schema] == [
+        "altids",
+        "sendingtime",
+        "updatedat",
+        "createdat",
+        "uuid",
+        "puuid",
+        "code",
+        "snapshotat",
+    ]
     table = codec.arrow_reader(schema, messages).read_all()
     mapping = table.schema.field("altids")
     assert mapping.nullable
@@ -382,7 +423,7 @@ def test_altids_maps_cross_native_rows_and_arrow_without_changing_nullability(se
 
 
 def test_altids_fill_agrees_between_message_and_arrow_streams(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     lines = [
         b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|",
         b"8=FIX.4.4|35=D|10=0|",
@@ -410,7 +451,7 @@ def test_altids_fill_agrees_between_message_and_arrow_streams(seed: FixRegistry)
 
 
 def test_messages_pull_from_the_reader_one_batch_at_a_time(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     source = codec.parse_text_arrow_reader(_capture(CAPTURE, 3))
     messages = codec.messages(source)
     assert isinstance(messages, FixMessages)
@@ -422,7 +463,7 @@ def test_messages_pull_from_the_reader_one_batch_at_a_time(seed: FixRegistry) ->
 
 
 def test_a_python_failure_behind_a_batch_stream_arrives_with_the_batch(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     schema = fix_schema(seed)
     message = _one(codec, ORDER)
     reader = codec.arrow_reader(schema, [message, b"not a message"])
@@ -436,7 +477,7 @@ def test_byte_in_byte_out_over_the_whole_corpus(seed: FixRegistry) -> None:
     # The convention that drops a stated absence is deliberately not
     # byte-preserving, so it is turned off to measure the reader rather than
     # the convention.
-    codec = FixCodec(seed, null_values=[], separator=124)
+    codec = _fixed(seed, null_values=[], separator=124)
     sink = io.BytesIO()
     written = codec.write_arrow_reader(codec.parse_text_arrow_reader(_capture(CAPTURE, len(CAPTURE))), sink)
     # One line out per message, so the lines that carried none are not there.
@@ -444,13 +485,13 @@ def test_byte_in_byte_out_over_the_whole_corpus(seed: FixRegistry) -> None:
     back = sink.getvalue().split(b"\n")
     assert back.pop() == b""
     assert len(back) == len(CARRYING)
-    plain = FixCodec(seed, null_values=[])
+    plain = _fixed(seed, null_values=[])
     for line, source in zip(back, CARRYING):
         assert line == next(plain.parse_line(source)).into_bytes(124), source
 
 
 def test_a_batch_with_no_arrival_record_cannot_be_written(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     batch = codec.parse_text_arrow_reader(_capture(CAPTURE, len(CAPTURE))).read_all()
     facets = batch.select(["symbol", "side"])
     sink = io.BytesIO()
@@ -468,7 +509,7 @@ def test_a_batch_with_no_arrival_record_cannot_be_written(seed: FixRegistry) -> 
 
 
 def test_a_set_value_is_typed_by_the_registry_field_and_appended_when_absent(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     message = _one(codec, ORDER)
     before = len(message)
     declared = seed.field_by_tag(34)
@@ -486,7 +527,7 @@ def test_a_set_value_is_typed_by_the_registry_field_and_appended_when_absent(see
 
 
 def test_a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     before = _stated(message)
     at = message.field.index_of("symbol")
 
@@ -497,13 +538,18 @@ def test_a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index
     assert len(message) == len(before) + 2, "two unknown children beside the tagged ones"
     assert message.by_tag(55).as_py() == "MSFT"
     assert message.by_tag(54).as_py() == "2"
+    # The content identity changes; every other tag still reaches its previous value.
     for tag, value in before.items():
-        if tag not in (55, 54):
-            assert message.by_tag(tag) == value, tag
+        if tag in (55, 54):
+            continue
+        if tag == UUID_TAG:
+            assert message.by_tag(tag) != value
+            continue
+        assert message.by_tag(tag) == value, tag
 
 
 def test_a_set_leaves_the_entries_and_the_wire_untouched(seed: FixRegistry) -> None:
-    parsed = _one(FixCodec(seed), ORDER)
+    parsed = _one(_fixed(seed), ORDER)
     message = copy.copy(parsed)
     message.set(55, "MSFT")
     message.set(38, 100.0)
@@ -514,7 +560,7 @@ def test_a_set_leaves_the_entries_and_the_wire_untouched(seed: FixRegistry) -> N
 
 
 def test_a_null_is_stored_as_a_stated_null(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     message.set(55, None)
     assert message.field.field_at(message.field.index_of("symbol")).nullable
     held = message.get_by_tag(55)
@@ -522,7 +568,7 @@ def test_a_null_is_stored_as_a_stated_null(seed: FixRegistry) -> None:
 
 
 def test_an_unknown_name_is_refused_and_the_message_stands(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     before = copy.copy(message)
     with pytest.raises(KeyError, match="nosuchfield"):
         message.set("nosuchfield", "y")
@@ -537,7 +583,7 @@ def test_an_unknown_name_is_refused_and_the_message_stands(seed: FixRegistry) ->
 
 
 def test_an_unknown_name_still_reaches_the_child_spelled_that_way(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     at = message.field.index_of("venuething")
     message.set("Venue_Thing", "8")
     child = message.field.field_at(at)
@@ -547,7 +593,7 @@ def test_an_unknown_name_still_reaches_the_child_spelled_that_way(seed: FixRegis
 
 
 def test_a_bare_unknown_tag_is_appended_under_its_decimal_spelling(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     message.set(7777, "custom")
     child = message.field.field_at(len(message) - 1)
     assert child.name == "7777"
@@ -564,7 +610,7 @@ def test_a_bare_unknown_tag_is_appended_under_its_decimal_spelling(seed: FixRegi
 
 
 def test_remove_answers_the_value_and_the_other_tags_still_reach_their_children(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     before = _stated(message)
     count = len(message)
 
@@ -572,8 +618,12 @@ def test_remove_answers_the_value_and_the_other_tags_still_reach_their_children(
     assert message.get_by_tag(55) is None
     assert len(message) == count - 1
     for tag, value in before.items():
-        if tag != 55:
-            assert message.by_tag(tag) == value, tag
+        if tag == 55:
+            continue
+        if tag == UUID_TAG:
+            assert message.by_tag(tag) != value
+            continue
+        assert message.by_tag(tag) == value, tag
     # By name, by decimal, and a miss.
     assert message.remove("VenueThing") == Scalar("7")
     assert message.remove(9999) == Scalar("x")
@@ -584,7 +634,7 @@ def test_remove_answers_the_value_and_the_other_tags_still_reach_their_children(
 
 
 def test_a_hashed_message_is_frozen_and_a_copy_takes_the_write(seed: FixRegistry) -> None:
-    message = _one(FixCodec(seed), ORDER)
+    message = _one(_fixed(seed), ORDER)
     held = {message}
     with pytest.raises(TypeError, match="hashed FixMsg is frozen"):
         message.set(55, "MSFT")
@@ -599,7 +649,7 @@ def test_a_hashed_message_is_frozen_and_a_copy_takes_the_write(seed: FixRegistry
 
 
 def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     schema = fix_schema(seed)
     parsed = _one(codec, ORDER)
     row = parsed.into_row(schema)
@@ -612,20 +662,32 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
     assert held.digest() == parsed.digest()
     for tag in (8, 35, 11, 55, 54):
         assert held.by_tag(tag) == parsed.by_tag(tag), tag
-    # And it makes the row it came from, whole.
+    # And it makes the row it came from, whole, carrying the settled bundle
+    # rather than reading a clock again.
     assert held.into_row(schema) == row
-    # A row read out of a batch as a mapping is the same row.
+    assert held.updatedat() == parsed.updatedat() == CLOCK
+    assert held.by_tag(52) == parsed.by_tag(52)
+    assert held.puuid() == parsed.puuid()
+    # A row read out of a batch is the same message again through the
+    # native door, which reads the batch's own typed columns.
     table = codec.parse_text_arrow_reader(_capture([ORDER], 1)).read_all()
-    (mapping,) = table.to_pylist()
-    from_mapping = FixMsg.from_row(Field.from_arrow_schema(table.schema, "fix"), mapping, seed)
-    assert from_mapping.entries() == parsed.entries()
-    assert from_mapping.by_tag(55) == parsed.by_tag(55)
+    (from_batch,) = list(codec.messages(table))
+    assert from_batch.entries() == parsed.entries()
+    assert from_batch.by_tag(55) == parsed.by_tag(55)
+    assert from_batch.updatedat() == parsed.updatedat()
+    assert from_batch.by_name("body").as_py() == ORDER
+    # A schema missing a member of the settled bundle is no replayable row,
+    # and the refusal names the member
+    # (``replay_bundle_is_required_before_record_defaults_can_supply_a_value``).
+    partial = Field("fix", DataType.from_fields([column for column in schema if column.name != "puuid"]), nullable=False)
+    with pytest.raises(ValueError, match="puuid"):
+        parsed.into_row(partial)
     # The process default is the registry when none is named.
     assert FixMsg.from_row(schema, row).registry is not None
 
 
 def test_a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     capture = Field(
         "line",
         DataType.from_fields([Field("url", "utf8"), Field("rownum", "int64"), Field("body", "binary")]),
@@ -655,11 +717,11 @@ def test_a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole(see
 
 
 def test_a_row_without_the_entries_column_has_no_entries(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     wide = fix_schema(seed)
     narrow = Field(
         "fix",
-        DataType.from_fields([column for column in wide if column.name not in ("nofixentries", "nounmappedfixentries")]),
+        DataType.from_fields([column for column in wide if column.name != "nofixentries"]),
         nullable=False,
     )
     parsed = _one(codec, ORDER)

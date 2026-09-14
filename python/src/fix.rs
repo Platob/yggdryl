@@ -17,15 +17,15 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyInt, PyIterator};
+use pyo3::types::{PyBool, PyBytes, PyDateTime, PyInt, PyIterator};
 
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField,
     FixCategory as CoreFixCategory, FixCodec as CoreFixCodec, FixField as CoreFixField,
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
     FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType,
-    Plugin as CorePlugin, Plugins as CorePlugins, Scalar, Version as CoreVersion,
-    from_json_scalar_with_field, into_json_scalar,
+    Plugin as CorePlugin, Plugins as CorePlugins, Scalar, TimeUnit, Timezone,
+    Version as CoreVersion, from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -212,12 +212,17 @@ impl PyFixRegistry {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
-    /// A registry holding this crate's own definitions.
+    /// A registry holding this crate's own definitions and the standard clocks.
     ///
-    /// `fix_crate_fields` lists twenty scalar fields from tag 65000 and the
-    /// `altids` Map group at 65020. A dictionary loaded from a store, built
-    /// from fields or left alone holds them alike; `len` counts only scalar
-    /// fields. The crate's `pluginconfig` component is also registered.
+    /// `fix_crate_fields` lists twenty-four scalar fields - tags 65001 to
+    /// 65019 and 65021 to 65025 - and the `altids` Map group at 65020; the
+    /// retired 65000 is not reused. Beside them sit two seeded standard
+    /// clocks, `SendingTime` (52) and `TransactTime` (60), each a
+    /// nanosecond UTC `datetime64`, so a new registry holds twenty-six
+    /// scalar fields. The seeds are ordinary definitions a loaded dictionary
+    /// supplies its own metadata for; the crate's fields are held by every
+    /// dictionary alike. `len` counts only scalar fields. The crate's
+    /// `pluginconfig` component is also registered.
     #[new]
     fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -243,9 +248,11 @@ impl PyFixRegistry {
     ///
     /// `location` is an `IOBase` handle or anything that names a folder: a
     /// string, a path-like, a `Url`. A folder that is not there loads as a new
-    /// registry - the crate's own fields and nothing else - and is not
-    /// created; a stored copy of a crate field is read past, because the
-    /// crate's own definition is the one that types a row. A shard that does
+    /// registry - the crate's own fields and the two seeded standard clocks -
+    /// and is not created; a stored copy of a crate field is read past,
+    /// because the crate's own definition is the one that types a row, while
+    /// a stored `SendingTime` or `TransactTime` is the definition the seed
+    /// then leaves in place. A shard that does
     /// not parse, and a root still holding the retired `records/` layout, are
     /// a `ValueError` naming the URL.
     #[staticmethod]
@@ -1053,11 +1060,12 @@ fn python_failure(error: PyErr) -> CoreError {
 /// A stream of messages, one at a time.
 ///
 /// Every stage of the codec answers one of these - one line's messages, a
-/// stream of lines parsed, records parsed, messages filled or stamped, a
-/// batch read back - so a message stream has one shape at this boundary
-/// whatever made it. Nothing is collected: the core iterator is the stream,
-/// and a Python iterable behind it is pulled one item at a time. A line the
-/// reader refuses raises `ValueError` where it is met and the stream goes on
+/// stream of lines parsed, records parsed, messages enriched, filled by a
+/// lifecycle or reduced to its snapshots, a batch read back - so a message
+/// stream has one shape at this boundary whatever made it. Nothing is
+/// collected: the core iterator is the stream, and a Python iterable behind
+/// it is pulled one item at a time. A line the reader refuses, or a message a
+/// stage refuses, raises `ValueError` where it is met and the stream goes on
 /// past it; a Python failure behind the stream raises as itself and ends it.
 #[pyclass(name = "FixMessages", module = "yggdryl._native")]
 pub(crate) struct PyFixMessages {
@@ -1244,12 +1252,16 @@ type MsgPickle = (Py<PyAny>, (String, String, String));
 ///
 /// The schema is one non-null Struct `Field` - the only row schema - and the
 /// value the row it declares, so a mapping input is canonicalized into that
-/// order by the core exactly as every other row is. The row is written
-/// through `set` and `remove`; the entries never are, because they are what
-/// the wire carried. The message hashes, pickles, copies and compares by the
-/// schema and the value it carries, against the registry it was resolved
-/// against - and a hashed message is frozen, which is Python's contract for
-/// a hash, so a write after `hash()` refuses and a copy is what takes it.
+/// order by the core exactly as every other row is. Every message carries
+/// the settled bundle - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
+/// `snapshotat` and `SendingTime` - each non-null, and the core holds the
+/// first four directly, so their readers answer without a lookup. The row is
+/// written through `set` and `remove`; the entries never are, because they
+/// are what the wire carried. The message hashes, pickles, copies and
+/// compares by the schema and the value it carries, against the registry it
+/// was resolved against - and a hashed message is frozen, which is Python's
+/// contract for a hash, so a write after `hash()` refuses and a copy is what
+/// takes it.
 #[pyclass(name = "FixMsg", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PyFixMsg {
     inner: CoreFixMsg,
@@ -1294,6 +1306,13 @@ impl PyFixMsg {
     /// `value` is anything the `Scalar` boundary reads - a native `Scalar`, a
     /// mapping of names, a sequence in the root's own order - and is
     /// validated and canonicalized against `field` by the core.
+    ///
+    /// A mandatory field the root lacks is appended from the registry's
+    /// definition and settled: `SendingTime` is the stated one, else UTC
+    /// now; `snapshotat` the stated one, else `TransactTime`, else
+    /// `SendingTime`; `updatedat` and `createdat` default to `snapshotat`;
+    /// `code` to the empty unknown name; `uuid` and `puuid` are computed, and
+    /// a stated one that disagrees is a `ValueError`.
     #[new]
     #[pyo3(signature = (field, value, registry=None))]
     fn new(
@@ -1318,7 +1337,11 @@ impl PyFixMsg {
     /// parsed message's are, and the entries are rebuilt from the
     /// `nofixentries` column, so `into_bytes` re-emits the line the row was
     /// read from; a row without that column has no entries. Nothing is
-    /// parsed again. `registry` defaults to the process one.
+    /// parsed again and no clock is read: a replayable row carries the whole
+    /// non-null bundle - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
+    /// `snapshotat` and `SendingTime` - a missing or mistyped member is a
+    /// located `ValueError`, and a stated `uuid` or `puuid` the row's content
+    /// does not hash to is refused. `registry` defaults to the process one.
     #[staticmethod]
     #[pyo3(signature = (schema, row, registry=None))]
     fn from_row(
@@ -1458,11 +1481,14 @@ impl PyFixMsg {
     /// `key` is a tag or a name, resolved as a lookup resolves one through
     /// the dictionary, and a name the dictionary does not know still reaches a child spelled
     /// that way. A known field types the value through the core's value
-    /// contract; `None` is stored as a stated null. An existing child is
-    /// replaced where it stands and an absent one appended; a bare tag no
-    /// dictionary explains appends a text child named by its decimal. Only
-    /// the row changes: the entries, the wire and the digest stay what they
-    /// were.
+    /// contract; `None` is stored as a stated null, except under a mandatory
+    /// field, which refuses it. An existing child is replaced where it stands
+    /// and an absent one appended; a bare tag no dictionary explains appends
+    /// a text child named by its decimal. Only the row changes, and `uuid`
+    /// and `puuid` are recomputed from it - a written `uuid` or `puuid` is an
+    /// assertion the result must hash to; the settled clocks stay unless the
+    /// write names one, and the entries, the wire and the digest stay what
+    /// they were.
     ///
     /// A key reaching no field and no child is a `KeyError` naming it, a value
     /// the field refuses a `ValueError`, and either leaves the message as it
@@ -1479,8 +1505,11 @@ impl PyFixMsg {
     /// Removes the child a key reaches, answering its value, or `None`.
     ///
     /// The key resolves as `set` resolves one, and a key reaching nothing
-    /// answers `None` and changes nothing. The entries are untouched. A hashed
-    /// message is frozen and refuses with `TypeError`.
+    /// answers `None` and changes nothing. The entries are untouched. A
+    /// mandatory field - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
+    /// `snapshotat` or `SendingTime` - refuses removal with a `ValueError`,
+    /// and the message stays exactly as it was. A hashed message is frozen
+    /// and refuses with `TypeError`.
     fn remove(&mut self, key: &Bound<'_, PyAny>) -> PyResult<Option<PyScalar>> {
         self.require_mutable()?;
         let key = FixKeyArg::from_py(key)?;
@@ -1558,17 +1587,48 @@ impl PyFixMsg {
         Self::answered(Some(&self.inner.symbol_ticker()))
     }
 
-    /// The timestamp a capture is ordered and partitioned by.
+    /// The settled message instant, or the snapshot grid instant a lifecycle
+    /// truncated it to.
     ///
-    /// The crate's `timestamp` child every built message closes with: the
-    /// row's own clock where the capture stated one, else the first clock the
-    /// message carries, else the epoch - so a message the codec built always
-    /// answers, and only a message built by hand without that child does not.
-    fn updatedat(&self) -> Option<PyScalar> {
-        Self::answered(Some(self.inner.updatedat()))
+    /// The crate's non-null `updatedat` (65003), a nanosecond UTC
+    /// `datetime64`: at intake the stated one, else `snapshotat`. No clock is
+    /// read after intake, and a `FixLifecycle` truncates it to its interval's
+    /// epoch grid while `snapshotat` keeps the real event instant. Every
+    /// message answers, because every message carries it.
+    fn updatedat(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.updatedat().clone())
     }
 
-    /// The partition that timestamp falls in, in whole seconds.
+    /// The settled creation instant.
+    ///
+    /// The crate's non-null `createdat` (65023), a nanosecond UTC
+    /// `datetime64`: at intake the stated one, else `snapshotat`; a
+    /// `FixLifecycle` carries a live chain's first accepted creation instant
+    /// onto every later message of that chain.
+    fn createdat(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.createdat().clone())
+    }
+
+    /// The message's time and content identity.
+    ///
+    /// The crate's non-null `uuid` (65017): a version-8 UUID packing the
+    /// signed nanoseconds of `updatedat` with 58 bits of the XXH64 of the
+    /// message's named content - `uuid`, `updatedat`, `createdat` and the
+    /// arrival record excluded. Recomputed whenever the row changes.
+    fn uuid(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.uuid().clone())
+    }
+
+    /// The event chain's identity.
+    ///
+    /// The crate's non-null `puuid` (65018): a version-8 UUID over the
+    /// XXH3-128 of `code`'s exact UTF-8 bytes alone, so one chain name is
+    /// one `puuid` and the empty unknown name hashes the empty bytes.
+    fn puuid(&self) -> PyScalar {
+        PyScalar::from_inner(self.inner.puuid().clone())
+    }
+
+    /// The partition `updatedat` falls in, in whole seconds.
     #[pyo3(signature = (seconds=3600))]
     fn unix_partition(&self, seconds: i64) -> Option<PyScalar> {
         Self::answered(Some(&self.inner.unix_partition(seconds)))
@@ -1622,7 +1682,10 @@ impl PyFixMsg {
     /// What arrived, in arrival order, untranslated.
     ///
     /// Flattened pre-order: a group's members follow the counter pair that
-    /// heads them, so a caller reading the sequence reads the wire.
+    /// heads them, so a caller reading the sequence reads the wire. A key
+    /// the dictionary resolved carries its canonical positive tag; an
+    /// unresolved name, an unresolved numeric key and an occurrence key all
+    /// carry tag 0, with the raw key and value kept exactly as they arrived.
     fn entries(&self) -> Vec<(i32, String, String)> {
         let mut held = Vec::new();
         flatten_entries(self.inner.entries(), &mut held);
@@ -1635,8 +1698,12 @@ impl PyFixMsg {
     /// filled by the tag its field carries - never by its spelling - so a
     /// message that carried nothing at a column answers null there rather than
     /// shifting its neighbours, which is what makes two rows of one capture
-    /// comparable at all. A column no tag names answers null: it is the
-    /// capture's, and nothing in the message says what it held.
+    /// comparable at all. A column no tag or group counter names is the
+    /// capture's: it takes the child of that name where the message has one
+    /// and is null otherwise. The `nofixentries` list closes the row with the
+    /// whole arrival record. A schema missing or mistyping a member of the
+    /// settled bundle, or a cell its column cannot hold, is a `ValueError`,
+    /// and the projected `uuid` is recomputed over what the row holds.
     #[allow(clippy::wrong_self_convention)]
     fn into_row(&self, schema: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
@@ -1727,9 +1794,16 @@ impl PyFixCodec {
     /// Open a codec over one dictionary, or over the process default.
     ///
     /// Every pin is the core's, spelled once here. `version` crosses as
-    /// text; `separator` is the byte a numeric frame splits on where
-    /// the line does not say; `payload_column` names the batch column a line
-    /// is read from; `capture_names` are what a run's row-header captures are
+    /// text; `default_sending_time` is the `SendingTime` a genuinely new
+    /// message takes when neither it nor its carrier states a valid one -
+    /// a native `Scalar` crosses as itself and must already be a nanosecond
+    /// UTC `datetime64`, a `datetime` is read once into that clock, and any
+    /// other layout is the core's `ValueError`; unstated, each undated new
+    /// message reads UTC now once, so pinning it is what makes a parse of
+    /// undated bytes repeatable. `separator` is the byte a numeric frame
+    /// splits on where the line does not say; `payload_column` names the
+    /// batch column a line is read from; `capture_names` are what a run's
+    /// row-header captures are
     /// called, in the order a line answers them, which is what lets
     /// `parse_text_line` read a capture by position rather than by name;
     /// `null_values` are the spellings that mean nothing was
@@ -1743,6 +1817,7 @@ impl PyFixCodec {
         registry=None,
         *,
         version=None,
+        default_sending_time=None,
         separator=None,
         payload_column="body",
         capture_names=None,
@@ -1754,6 +1829,7 @@ impl PyFixCodec {
     fn new(
         registry: Option<PyRef<'_, PyFixRegistry>>,
         version: Option<&str>,
+        default_sending_time: Option<&Bound<'_, PyAny>>,
         separator: Option<u8>,
         payload_column: &str,
         capture_names: Option<Vec<String>>,
@@ -1769,6 +1845,11 @@ impl PyFixCodec {
         }
         if let Some(held) = version {
             inner = inner.with_version(version_from_py(held)?);
+        }
+        if let Some(held) = default_sending_time {
+            inner = inner
+                .try_with_default_sending_time(Some(sending_time_from_py(held)?))
+                .map_err(value_error)?;
         }
         if let Some(held) = separator {
             inner = inner.with_separator(held);
@@ -1796,6 +1877,16 @@ impl PyFixCodec {
     #[getter]
     fn version(&self) -> Option<String> {
         self.inner.version().map(|version| version.to_string())
+    }
+
+    /// The nanosecond UTC `SendingTime` an undated new message takes, or
+    /// `None` where each one reads UTC now once.
+    #[getter]
+    fn default_sending_time(&self) -> Option<PyScalar> {
+        self.inner
+            .default_sending_time()
+            .cloned()
+            .map(PyScalar::from_inner)
     }
 
     /// The byte a numeric frame splits on, or `None` where the line decides.
@@ -1907,11 +1998,14 @@ impl PyFixCodec {
 
     /// One line a text reader answered: its messages.
     ///
-    /// The line's body is the bytes read, its timestamp the clock that stamps
-    /// the message, and its row-header captures state the rest - the plugin
-    /// that logged it, the version, and every field a capture's name reaches.
-    /// `with_capture_names` is what decides which capture is which, once for
-    /// the whole run, because a line answers its captures by position.
+    /// The line's body is the bytes read, and its row-header captures state
+    /// the rest - the plugin that logged it, the version, and every field a
+    /// capture's name reaches. `capture_names` is what decides which capture
+    /// is which, once for the whole run, because a line answers its captures
+    /// by position. The line's `timestamp` is capture context and stamps
+    /// nothing: `SendingTime` is the message's own, else a `SendingTime`
+    /// capture, else the codec's `default_sending_time`, else UTC now, and
+    /// `snapshotat` is `TransactTime`, else that `SendingTime`.
     ///
     /// A `pluginid` capture fills the crate's `pluginid` field and selects
     /// nothing: the dictionary is one namespace.
@@ -1927,6 +2021,13 @@ impl PyFixCodec {
     }
 
     /// A stream of lines, lazily: each as `parse_text_line` reads it.
+    ///
+    /// `lines` is any iterable of `TextLine`, pulled one line at a time. A
+    /// payload nobody could read is an unknown message rather than the end of
+    /// the run; a mandatory clock, layout or content failure raises
+    /// `ValueError` where it is met and the stream continues; an item that is
+    /// not a `TextLine`, or a failure of the iterable itself, raises as
+    /// itself and ends it.
     fn parse_text_lines(&self, lines: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(lines, |held| {
             let held = held.cast::<PyTextLine>().map_err(PyErr::from)?;
@@ -1967,7 +2068,9 @@ impl PyFixCodec {
     /// An order stating `OrderQty` and `CumQty` has said what `LeavesQty` is.
     /// Only the row is filled: the arrival record is what the wire carried
     /// and is left alone, so `into_bytes` re-emits the received line either
-    /// way, and a stated value is never replaced.
+    /// way, and a stated value is never replaced. The settled clocks are
+    /// carried rather than read again, and `uuid` and `puuid` are recomputed
+    /// over the filled row, so a second enrichment is equal.
     /// The component's identifiers fill its own-level `altids` Map without
     /// flattening groups or replacing a stated map, including an empty one.
     /// A declared identifier that cannot spell UTF-8 raises the core's
@@ -2051,14 +2154,20 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, self.inner.arrow_reader(schema, messages))
     }
 
-    /// Stamps a stream of messages with the identities it implies, in order,
+    /// Fills a stream of messages with the chains it implies, in order,
     /// lazily.
     ///
-    /// One `FixLifecycle` over the whole iterable: each message gets its
-    /// `instid`, its `id` and - where it carries an order identifier - the
-    /// `persistentid` of the chain that identifier reaches, and a terminal
-    /// state closes the chain. The iterable is pulled once, in order, and an
-    /// item that is not a `FixMsg` raises `TypeError` where it is met.
+    /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
+    /// iterable, every message answered as `FixLifecycle.fill` answers one:
+    /// its `code` names the live chain `puuid` hashes, its previous-message
+    /// stamps and the chain's first `createdat` are carried, and `updatedat`
+    /// is truncated to the one-second epoch grid while `snapshotat` keeps
+    /// the real instant; a terminal state closes the chain. The iterable is
+    /// pulled once, in order; a message the transition refuses raises
+    /// `ValueError` where it is met without advancing the state, and an item
+    /// that is not a `FixMsg` raises `TypeError` and ends the stream. A
+    /// cadence of another interval, or only the snapshots, is
+    /// `FixLifecycle.snapshots`.
     fn lifecycle(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
         let pulled = Pulled::new(messages, message_of)?;
         let failed = pulled.failed.clone();
@@ -2105,14 +2214,17 @@ impl PyFixCodec {
     }
 }
 
-/// The state a stream of messages has reached, one chain per order alive.
+/// The state a stream of messages has reached, one chain per live event.
 ///
 /// One [`FixLifecycle`](CoreFixLifecycle), fed every message of a stream in
-/// order through `fill`; the chains it holds are the orders still alive, so
-/// it is mutable and, like the registry, unhashable.
+/// order through `fill` or `snapshot`; the chains it holds are the events
+/// still alive, so it is mutable and, like the registry, unhashable. The
+/// dictionary is held beside it only so `snapshots` can leave a lifecycle of
+/// the same configuration behind.
 #[pyclass(name = "FixLifecycle", module = "yggdryl._native")]
 pub(crate) struct PyFixLifecycle {
     inner: CoreFixLifecycle,
+    registry: Arc<CoreFixRegistry>,
 }
 
 #[pymethods]
@@ -2121,21 +2233,64 @@ impl PyFixLifecycle {
     #[classattr]
     const __hash__: Option<Py<PyAny>> = None;
 
-    /// A stream with no order alive yet, over one dictionary or the process
-    /// default.
+    /// The grid interval a lifecycle takes when none is stated: one second,
+    /// in nanoseconds - a deterministic epoch grid, not a timer.
+    #[classattr]
+    const DEFAULT_INTERVAL_NS: i64 = CoreFixLifecycle::DEFAULT_INTERVAL_NS;
+
+    /// A stream with no event alive yet, over one dictionary or the process
+    /// default, on an epoch grid of `interval_ns` nanoseconds.
+    ///
+    /// A nonpositive interval is the core's `ValueError`.
     #[new]
-    #[pyo3(signature = (registry=None))]
-    fn new(registry: Option<PyRef<'_, PyFixRegistry>>) -> PyResult<Self> {
-        Ok(Self {
-            inner: CoreFixLifecycle::new(registry_or_global(registry)?),
-        })
+    #[pyo3(signature = (registry=None, *, interval_ns=CoreFixLifecycle::DEFAULT_INTERVAL_NS))]
+    fn new(registry: Option<PyRef<'_, PyFixRegistry>>, interval_ns: i64) -> PyResult<Self> {
+        let registry = registry_or_global(registry)?;
+        let inner = CoreFixLifecycle::new(Arc::clone(&registry))
+            .try_with_interval_ns(interval_ns)
+            .map_err(value_error)?;
+        Ok(Self { inner, registry })
     }
 
-    /// Stamps one message with its three identities and moves the chain it
-    /// belongs to along.
+    /// The epoch-grid interval, in nanoseconds.
+    #[getter]
+    fn interval_ns(&self) -> i64 {
+        self.inner.interval_ns()
+    }
+
+    /// Selects the epoch-grid interval, in nanoseconds.
     ///
-    /// A stated `instid`, `id` or `persistentid` is never overwritten, and the
-    /// entries are untouched, so `into_bytes` re-emits the received line.
+    /// Repeating the current interval changes nothing, even while chains are
+    /// live. A nonpositive interval, or a different one while any chain is
+    /// live, is a `ValueError` that leaves the interval and every chain as
+    /// they were.
+    fn set_interval_ns(&mut self, interval_ns: i64) -> PyResult<()> {
+        self.inner.set_interval_ns(interval_ns).map_err(value_error)
+    }
+
+    /// Normalizes one message to its grid and moves the chain it belongs to
+    /// along, answering the whole result.
+    ///
+    /// A nonempty stated `code` selects its live chain whatever instrument
+    /// scope it names; otherwise the first identifier - from a stated
+    /// `altids`, else the message type's declared identifiers - reaching a
+    /// live chain under the message's `instuuid` lends that chain's code, and
+    /// the first identifier names a new chain `<scope uuid or ->/<identifier>`
+    /// when none does. No identifier and no code opens nothing, and an
+    /// identifier another live chain holds is never taken from it.
+    ///
+    /// `updatedat` becomes its grid instant - floored to a multiple of
+    /// `interval_ns` - while `snapshotat` keeps the real one; a live chain's
+    /// first accepted `createdat` replaces a later one; each absent previous
+    /// stamp, `prevtimestamp` and `prevuuid`, comes from the chain's last
+    /// message, and a stated one is kept; a derived `instuuid` fills where
+    /// none is stated. `uuid` and `puuid` are then settled over the result.
+    /// A terminal state closes the chain after its stamps. The entries are
+    /// untouched, so `into_bytes` re-emits the received line.
+    ///
+    /// A refusal - an unrepresentable grid instant, a malformed identifier or
+    /// previous value, a code-hash collision, a stamp its field refuses - is
+    /// a `ValueError` that changes no chain, history or bucket.
     fn fill(&mut self, message: &PyFixMsg) -> PyResult<PyFixMsg> {
         self.inner
             .fill(message.inner.clone())
@@ -2143,13 +2298,54 @@ impl PyFixLifecycle {
             .map_err(value_error)
     }
 
-    /// How many orders are alive: opened by a message and not yet closed by
+    /// The same transition as `fill`, answering only a new snapshot.
+    ///
+    /// The result is answered when the message belongs to a named chain,
+    /// arrived off its grid and falls in a bucket above the highest that live
+    /// chain has consumed; otherwise `None`. An already-aligned arrival still
+    /// consumes its bucket, and a suppressed message still advances the
+    /// chain's history and closes it when terminal. Refusals are `fill`'s.
+    fn snapshot(&mut self, message: &PyFixMsg) -> PyResult<Option<PyFixMsg>> {
+        self.inner
+            .snapshot(message.inner.clone())
+            .map(|held| held.map(PyFixMsg::from_inner))
+            .map_err(value_error)
+    }
+
+    /// The snapshots of a stream of messages, lazily, as `snapshot` answers
+    /// each.
+    ///
+    /// `messages` is any iterable of `FixMsg`, pulled once, in order; only a
+    /// suppressed message is dropped. A message the transition refuses raises
+    /// `ValueError` where it is met without advancing the state, and the
+    /// stream continues; an item that is not a `FixMsg`, or a failure of the
+    /// iterable itself, raises as itself and ends it.
+    ///
+    /// The stream owns the state this lifecycle had reached - its chains,
+    /// their creation instants, history and buckets - and carries it on;
+    /// this lifecycle is left with none, at the same interval and over the
+    /// same dictionary, exactly as `clear` would leave it.
+    fn snapshots(&mut self, messages: &Bound<'_, PyAny>) -> PyResult<PyFixMessages> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let left = CoreFixLifecycle::new(Arc::clone(&self.registry))
+            .try_with_interval_ns(self.inner.interval_ns())
+            .map_err(value_error)?;
+        let owned = std::mem::replace(&mut self.inner, left);
+        Ok(PyFixMessages::pulling(
+            owned.snapshots(pulled.map(Ok::<CoreFixMsg, CoreError>)),
+            failed,
+        ))
+    }
+
+    /// How many events are alive: opened by a message and not yet closed by
     /// a terminal state.
     fn alive(&self) -> usize {
         self.inner.alive()
     }
 
-    /// Forgets every chain, as a new session or a new day would.
+    /// Forgets every chain's creation instant, history, bucket and
+    /// identifiers, as a new session or a new day would; the interval stays.
     fn clear(&mut self) {
         self.inner.clear();
     }
@@ -2157,6 +2353,24 @@ impl PyFixLifecycle {
     fn __repr__(&self) -> String {
         format!("FixLifecycle({} alive)", self.inner.alive())
     }
+}
+
+/// Read a default `SendingTime` the way Python states one.
+///
+/// A `datetime` holds microseconds, so it can never already be the
+/// nanosecond UTC clock the codec takes: it crosses the `Scalar` boundary and
+/// is cast once through that clock's own datatype, which is where a naive or
+/// differently zoned value is refused. Everything else - a native `Scalar`
+/// above all - crosses as itself, and the codec's exact-layout check is the
+/// one refusal it meets.
+fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    let held = from_py(value)?;
+    if value.is_instance_of::<PyDateTime>() {
+        return CoreDataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)
+            .and_then(|clock| clock.scalar(held))
+            .map_err(value_error);
+    }
+    Ok(held)
 }
 
 /// Read one FIX version, or report the native parse failure as a `ValueError`.
@@ -2170,10 +2384,15 @@ fn version_from_py(text: &str) -> PyResult<CoreVersion> {
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
-/// trailer, this crate's own derived facts, and the two lists that close every
-/// row. Columns are spelled by the dictionary's folded canonical names -
-/// `msgtype`, never `35` - so a row reads the way a message reads; the tag
-/// stays each column's identity, on its `fix:tag`, and is what fills it.
+/// trailer, this crate's own definitions in tag order with `MsgDirection`
+/// (385) after them, and the one `nofixentries` list that closes every row
+/// with the whole arrival record. Columns are spelled by the dictionary's
+/// folded canonical names - `msgtype`, never `35` - so a row reads the way a
+/// message reads; the tag stays each column's identity, on its `fix:tag`, and
+/// is what fills it. `beginstring`, `sendingtime`, `updatedat`,
+/// `unixpartition`, `uuid`, `puuid`, `createdat`, `code` and `snapshotat` are
+/// the non-null columns; a dictionary missing a member of the settled bundle
+/// is a `ValueError`.
 #[pyfunction]
 #[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
 pub(crate) fn fix_schema(
@@ -2214,20 +2433,25 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The twenty-one definitions this crate lists in tag order: twenty scalar
-/// fields from tag 65000, then the `altids` Map group at 65020.
+/// The twenty-five definitions this crate lists in tag order: twenty-four
+/// scalar fields at tags 65001 to 65019 and 65021 to 65025, and the `altids`
+/// Map group at 65020. The retired 65000 is not reused.
 ///
-/// The digest, the version read, the cross-venue symbol, the market clock, the
-/// partition it falls in, the two parent order identifiers no standard tag
-/// names, what a bridge's own log states about a line - the session the
-/// message itself names, its message context, the plugin that logged it and
-/// the one it came through before that, and the two session names the line
-/// spells - the three facts a row derives from what the message said: its
-/// ISIN, its market and the order's state - and the three identities a
-/// stream implies, which `FixLifecycle` stamps: the instrument, the message
-/// and the order chain. The Map holds the message's own-level identifiers.
-/// Every registry holds these definitions from construction; only the scalar
-/// fields contribute to its length.
+/// The version read, the cross-venue symbol, the settled `updatedat` clock
+/// and the partition it falls in, the two parent order identifiers no
+/// standard tag names, what a bridge's own log states about a line - the
+/// sessions the message itself names, its message context, the plugin that
+/// logged it and the one it came through before that, and the two session
+/// names the line spells - the three facts a row derives from what the
+/// message said: its ISIN, its market and the order's state - the
+/// instrument's `instuuid`, the message's `uuid` and the chain's `puuid`,
+/// the previous message's `prevtimestamp` and `prevuuid`, and `createdat`,
+/// `code` and `snapshotat`. The Map holds the message's own-level
+/// identifiers. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+/// `snapshotat` are non-null; every other definition is nullable. Every
+/// registry holds these definitions from construction beside the seeded
+/// `SendingTime` and `TransactTime`; only scalar fields contribute to its
+/// length.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -2600,7 +2824,8 @@ impl PyFixMsgIterator {
 /// The order is the core's: a registry installed by
 /// [`install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY` names,
 /// then `~/.config/fix` when it exists, then a new registry holding the
-/// crate's own fields alone. Only the third step treats absence as that
+/// crate's own fields and the two seeded standard clocks. Only the third step
+/// treats absence as that
 /// default; every other failure is a `ValueError` carrying the native
 /// message, and the default stays unresolved so the next call retries.
 #[pyfunction]

@@ -19,7 +19,8 @@ import pathlib
 import pickle
 import subprocess
 import sys
-from typing import Any, Iterable
+import uuid as uuid_module
+from typing import Any, Iterable, Iterator
 
 import pyarrow as pa
 import pytest
@@ -50,12 +51,44 @@ from yggdryl.fix import (
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What every registry holds before anything is inserted: the crate's own
-# scalar fields. ``fix_crate_fields`` also lists the Map group at 65020;
-# registry length and scalar iteration still count only these twenty.
-CRATE_TAG_MIN = 65000
-CRATED = 20
-CRATE_TAGS = list(range(CRATE_TAG_MIN, CRATE_TAG_MIN + CRATED))
+# The crate's own scalar fields: tags 65001 to 65019 and 65021 to 65025, the
+# retired 65000 never reused. ``fix_crate_fields`` also lists the ``altids``
+# Map group at 65020, which registry length and scalar iteration never count
+# (``rust/tests/fix/digest.rs``).
+CRATED = 24
+CRATE_TAGS = [*range(65001, 65020), *range(65021, 65026)]
+# What ``FixRegistry()`` holds before anything is inserted: the crate's own
+# scalar fields and the two seeded standard clocks, SendingTime (52) and
+# TransactTime (60). A loaded dictionary states its own 52 and 60, so it holds
+# its fields plus ``CRATED`` (``seeded_fields`` and ``crated_fields`` in
+# ``rust/tests/fix.rs``).
+SEEDED = CRATED + 2
+
+# The one intake clock undated test bytes take, so a parse repeats; replay
+# never consults now (``fixed_codec`` in ``rust/tests/fix.rs``).
+CLOCK_NS = 1_704_190_530_000_000_000
+CLOCK = Scalar.datetime(CLOCK_NS, "ns", "UTC")
+CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
+# The hour ``CLOCK`` falls in: 2024-01-02T10:00Z.
+CLOCK_PARTITION = 1_704_189_600
+
+# The seven members every message carries, non-null, in the order a message
+# built without them appends them.
+BUNDLE = ["updatedat", "createdat", "uuid", "puuid", "code", "snapshotat", "sendingtime"]
+UPDATEDAT_TAG = 65003
+INSTUUID_TAG = 65016
+UUID_TAG = 65017
+PUUID_TAG = 65018
+PREVTIMESTAMP_TAG = 65021
+PREVUUID_TAG = 65022
+CREATEDAT_TAG = 65023
+CODE_TAG = 65024
+SNAPSHOTAT_TAG = 65025
+
+
+def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
+    """A codec whose undated messages all take ``CLOCK`` as their SendingTime."""
+    return FixCodec(registry, default_sending_time=CLOCK, **pins)
 
 # One Ullink CBlock in the shape a production file has: a vocabulary of a
 # specification tag and a venue one, and a grammar binding whose root the
@@ -202,7 +235,7 @@ def test_direction_rules_cross_as_a_list() -> None:
     # applies under a stated table.
     registry = FixRegistry()
     registry.insert(field)
-    codec = FixCodec(registry)
+    codec = _fixed(registry)
     assert next(codec.parse_line(b"TX 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "S"
     assert next(codec.parse_line(b"RX 8=FIX.4.4|35=D|10=0|")).by_tag(385).as_py() == "R"
     assert next(codec.parse_line(b"sending >> 8=FIX.4.4|35=D|10=0|")).get_by_tag(385) is None
@@ -246,6 +279,56 @@ def test_tag_rejects_bool_and_refuses_to_narrow() -> None:
         field.fix.aliases = ["Sym", "sym"]
 
 
+def test_a_tag_counter_and_alternate_are_positive_and_a_refusal_writes_nothing() -> None:
+    """Tag 0 is what an unresolved arrival records, never a field's identity.
+
+    Pinned by ``registry_tag_writers_refuse_nonpositive_values_atomically`` and
+    ``externally_stated_zero_identity_is_refused_without_mutating_the_registry``
+    in ``rust/tests/fix/zero_entries.rs``.
+    """
+    field = Field("positive", "utf8")
+    field.fix.tag = 1
+    field.fix.counter = 2
+    field.fix.tags = [3, 2**31 - 1]
+    before = field.into_json()
+    for tag in (0, -1, -(2**31)):
+        for key, write in (
+            ("fix:tag", lambda: setattr(field.fix, "tag", tag)),
+            ("fix:counter", lambda: setattr(field.fix, "counter", tag)),
+            ("fix:tags", lambda: setattr(field.fix, "tags", [4, tag])),
+        ):
+            with pytest.raises(ValueError, match=key) as refused:
+                write()
+            assert "from 1 to 2147483647" in str(refused.value), (key, tag)
+            assert field.into_json() == before, (key, tag)
+    field.fix.tag = 2**31 - 1
+    field.fix.counter = 2**31 - 1
+    assert field.fix.tag == 2**31 - 1
+    assert field.fix.counter == 2**31 - 1
+    field.fix.tags = []
+    assert "fix:tags" not in field.metadata
+
+    # A stored spelling reads the same way: zero, a sign or a value past `i32`
+    # is refused where it is read, and a registry refuses to take the field.
+    for key in ("fix:tag", "fix:counter", "fix:tags"):
+        for text in ("0", "000", "-1", "+1", "2147483648"):
+            incoming = Field("incoming", "utf8", metadata={"fix:tag": "90001"})
+            incoming.metadata[key] = text
+            with pytest.raises(ValueError, match=key):
+                getattr(incoming.fix, key.removeprefix("fix:"))
+            registry = FixRegistry()
+            snapshot = registry.into_json()
+            with pytest.raises(ValueError):
+                registry.insert(incoming)
+            assert registry.into_json() == snapshot, (key, text)
+    padded = Field(
+        "positive",
+        "utf8",
+        metadata={"fix:tag": "0001", "fix:counter": "0001", "fix:tags": "0001"},
+    )
+    assert (padded.fix.tag, padded.fix.counter, padded.fix.tags) == (1, 1, [1])
+
+
 def test_id_is_the_tag_under_the_name_and_never_stored() -> None:
     trade = Field("TradeID", "utf8")
     # There is no identity without a tag.
@@ -281,8 +364,9 @@ def test_id_is_the_tag_under_the_name_and_never_stored() -> None:
         trade.fix.id = 7  # type: ignore[misc]
     assert trade.fix.id == held
 
-    # Nothing gates a tag on a dictionary any more: any non-negative tag.
-    for tag in (0, 35, 4999, 5000, 10_000, 40_000, 2**31 - 1):
+    # Nothing gates a tag on a dictionary any more: any positive tag. Zero is
+    # the unresolved arrival's, and refused.
+    for tag in (1, 35, 4999, 5000, 10_000, 40_000, 2**31 - 1):
         field = Field("Venue", "utf8")
         field.fix.tag = tag
         assert field.fix.tag == tag and field.fix.id is not None, tag
@@ -366,7 +450,8 @@ def test_membership_round_trips_as_a_sorted_list() -> None:
 
 def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) -> None:
     # The store's fields, and the crate's own beside them: a store never
-    # writes those, so a loaded dictionary holds the crate's definition.
+    # writes those, so a loaded dictionary holds the crate's definition. The
+    # store states its own SendingTime and TransactTime, so no seed adds one.
     assert len(seed) == 6241 + CRATED
     assert bool(seed)
 
@@ -476,7 +561,7 @@ def test_protocol_and_msgtype_inference_stays_native_and_shallow() -> None:
     # is the first one the shallow scan reaches: the wildcard the request
     # echoes names none.
     assert FixCodec.infer_msgtype_text(answered) == "Plugin"
-    codec = FixCodec(FixRegistry())
+    codec = _fixed(FixRegistry())
     assert next(codec.parse_line(answered.encode())).get_by_tag(385) is None
     assert next(codec.parse_line(("Response: " + answered).encode())).by_tag(385).as_py() == "R"
     selected = (
@@ -516,7 +601,7 @@ def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> Non
     # alternate, the alias, and the membership. No second field.
     venue = _field("symbol", "utf8", 5055, branches=["cme"], aliases=["VenueTicker"])
     assert registry.add_field(venue) is False
-    assert len(registry) == 2 + CRATED
+    assert len(registry) == 2 + SEEDED
     holder = registry.field_by_tag(55)
     assert holder.fix.tags == [5055]
     assert holder.fix.aliases == ["Ticker", "VenueTicker"]
@@ -533,18 +618,20 @@ def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> Non
     # the holder; the newcomer is reached by its name or its id.
     reused = _field("VenueSym", "utf8", 55, branches=["ice"])
     assert registry.add_field(reused) is True
-    assert len(registry) == 3 + CRATED
+    assert len(registry) == 3 + SEEDED
     assert registry.field_by_tag(55).name == "symbol"
     assert registry.field_by_tag(55).fix.aliases == ["Ticker", "VenueTicker", "VenueSym"]
     assert registry.field_by_id(reused.fix.id).name == "VenueSym"
     assert registry.field_by_name("venuesym").fix.id == reused.fix.id
     assert registry.get_field_by_tag(55).fix.branches == ["cme"]
     assert registry.dialects() == ["cme", "ice"]
-    # Tag-major, then by id: both fields on tag 55 walk before the venue's.
+    # Tag-major, then by id: both fields on tag 55 walk between the seeded
+    # SendingTime (52) and TransactTime (60), and before the venue's.
     walked = [field.fix.id for field in registry]
-    assert walked[:3] == sorted(walked[:3], key=lambda held: (registry.field_by_id(held).fix.tag, held))
-    assert {registry.field_by_id(held).name for held in walked[:2]} == {"symbol", "VenueSym"}
-    assert walked[2] == trade_id
+    assert [registry.field_by_id(held).fix.tag for held in walked[:5]] == [52, 55, 55, 60, 5001]
+    assert walked[:5] == sorted(walked[:5], key=lambda held: (registry.field_by_id(held).fix.tag, held))
+    assert {registry.field_by_id(held).name for held in walked[1:3]} == {"symbol", "VenueSym"}
+    assert walked[4] == trade_id
 
     # A colon-bearing string is a name, never an identifier, and a bare int
     # is a tag, never an id.
@@ -559,7 +646,7 @@ def test_one_namespace_folds_a_venues_field_by_name_and_keeps_it_by_tag() -> Non
     assert registry.remove_by_id(_field("Nowhere", "utf8", 9999).fix.id) is None
     removed = registry.remove_by_id(reused.fix.id)
     assert removed is not None and removed.name == "VenueSym"
-    assert len(registry) == 2 + CRATED
+    assert len(registry) == 2 + SEEDED
     assert registry.get_field_by_id(reused.fix.id) is None
     assert registry.field_by_tag(55).fix.id == symbol_id
     removed = registry.remove_by_id(trade_id)
@@ -656,9 +743,10 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
             _field("Tail", "utf8", 9001),
         ]
     )
-    # Tag-major, then by identifier. The crate's own fields close every walk:
-    # standard fields from 65000, above any tag a test claims.
-    assert [field.fix.tag for field in registry] == [1, 44, 55, 5001, 5002, 9001, *CRATE_TAGS]
+    # Tag-major, then by identifier. The seeded SendingTime (52) and
+    # TransactTime (60) walk among the dictionary's own tags, and the crate's
+    # own fields close every walk, above any tag a test claims.
+    assert [field.fix.tag for field in registry] == [1, 44, 52, 55, 60, 5001, 5002, 9001, *CRATE_TAGS]
 
     walk = iter(registry)
     assert next(walk).name == "Account"
@@ -669,7 +757,7 @@ def test_registry_iterates_lazily_in_ascending_identifier_order() -> None:
         registry.remove(1)
     del walk
     assert registry.remove(1) is not None
-    assert [field.fix.tag for field in registry] == [44, 55, 5001, 5002, 9001, *CRATE_TAGS]
+    assert [field.fix.tag for field in registry] == [44, 52, 55, 60, 5001, 5002, 9001, *CRATE_TAGS]
 
 
 def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
@@ -679,9 +767,12 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
 
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
-    # The crate's own twenty close the walk, above every tag the
-    # specification publishes.
+    # The crate's own twenty-four close the walk, above every tag the
+    # specification publishes; the store's own SendingTime and TransactTime
+    # stand where their tags put them.
     assert tags[-CRATED:] == CRATE_TAGS
+    assert seed.field_by_tag(52).name == "sendingtime"
+    assert seed.field_by_tag(60).name == "transacttime"
     # Every stored field is a specification field and the crate's own are
     # standard fields too, so nothing here states a membership.
     assert all(field.fix.branches == [] for field in seed)
@@ -703,10 +794,10 @@ def test_registry_takes_every_storage_location(
         assert FixRegistry.from_handle(location) == seed
 
     # A folder that is not there loads as a new registry - the crate's own
-    # fields and nothing else - and is not created.
+    # fields and the two seeded clocks - and is not created.
     missing = tmp_path / "missing"
     assert FixRegistry.from_handle(missing) == FixRegistry()
-    assert len(FixRegistry.from_handle(missing)) == CRATED
+    assert len(FixRegistry.from_handle(missing)) == SEEDED
     assert not missing.exists()
 
 
@@ -739,7 +830,7 @@ def test_registry_round_trips_through_the_three_categories(
     # The crate's own fields are never written either: they are the crate's
     # rather than the store's, so the shard their tag block would take is in
     # no category at all, and the reload holds them all the same.
-    assert not (root / "fields" / f"{CRATE_TAG_MIN // 100}.json").exists()
+    assert not (root / "fields" / f"{CRATE_TAGS[0] // 100}.json").exists()
     assert FixRegistry.from_handle(root) == seed
 
     reloaded = FixRegistry.from_handle(IOBase(root))
@@ -785,19 +876,19 @@ def test_registry_insert_update_and_remove(seed: FixRegistry) -> None:
             _field("Price", "decimal128(20, 8)", 44, aliases=["Px"]),
         ]
     )
-    assert len(registry) == 2 + CRATED
+    assert len(registry) == 2 + SEEDED
     assert registry.insert(_field("Side", "utf8", 54)) is None
     assert registry.field_by_tag(54).name == "Side"
 
     # A key another field holds is refused, naming both; nothing changes.
     with pytest.raises(ValueError, match="held by symbol"):
         registry.insert(_field("SymbolSfx", "utf8", 65, aliases=["ticker"]))
-    assert len(registry) == 3 + CRATED
+    assert len(registry) == 3 + SEEDED
 
     # One namespace: the same alias under a venue's tag is the same conflict.
     with pytest.raises(ValueError, match="held by symbol"):
         registry.insert(_field("VenueSym", "utf8", 5055, branches=["cme"], aliases=["ticker"]))
-    assert len(registry) == 3 + CRATED
+    assert len(registry) == 3 + SEEDED
     assert registry.get_field_by_tag(5055) is None
 
     # A merge concatenates the two list properties, incoming first.
@@ -838,7 +929,7 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
         "symbol", "utf8", 9001, tags=[66], aliases=["Sym", "TICKER"], description="incoming"
     )
     assert registry.add_field(incoming) is False
-    assert len(registry) == 2 + CRATED
+    assert len(registry) == 2 + SEEDED
     stored = registry.field_by_tag(55)
     assert stored.name == "Symbol"
     assert stored.fix.id == _field("symbol", "utf8", 55).fix.id
@@ -855,8 +946,10 @@ def test_registry_add_field_answers_whether_the_field_arrived_or_folded() -> Non
     before = registry.into_json()
     assert registry.add_field(incoming) is False
     assert registry.into_json() == before
-    assert registry.add_field(_field("TransactTime", "utf8", 60)) is True
-    assert len(registry) == 3 + CRATED
+    # TransactTime (60) is a seeded clock every registry already holds, so the
+    # field that arrives here is one no registry seeds.
+    assert registry.add_field(_field("Text", "utf8", 58)) is True
+    assert len(registry) == 3 + SEEDED
 
     # A datatype that disagrees with the stored field is refused, and the
     # refusal writes nothing: merging metadata never redeclares a datatype.
@@ -880,17 +973,17 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
         ]
     )
 
-    # Tag 55 is stored and folds; 60 is new; the venue's 5055 shares the tag
+    # Tag 55 is stored and folds; 58 is new; the venue's 5055 shares the tag
     # and the name of nothing, and arrives with its membership.
     added, merged = registry.add_fields(
         [
             _field("SYMBOL", "utf8", 55, tags=[65], aliases=["Sym"]),
-            _field("TransactTime", "utf8", 60),
+            _field("Text", "utf8", 58),
             _field("VenueSym", "utf8", 5055, branches=["cme"]),
         ]
     )
     assert (added, merged) == (2, 1)
-    assert len(registry) == 4 + CRATED
+    assert len(registry) == 4 + SEEDED
     assert registry.field_by_tag(5055).fix.branches == ["cme"]
 
     # The fold kept what only the stored field declared and added the rest.
@@ -908,14 +1001,14 @@ def test_registry_add_fields_adds_what_is_absent_and_merges_what_is_present() ->
                 _field("Account", "utf8", 1),
             ]
         )
-    assert len(registry) == 4 + CRATED
+    assert len(registry) == 4 + SEEDED
     assert registry.get_field_by_tag(54) is None
     assert registry.field_by_tag(55).dtype == DataType("utf8")
 
     # No ``fix:tag`` is no identity, so there is nothing to add or fold under.
     with pytest.raises(ValueError, match="fix:tag"):
         registry.add_fields([Field("Untagged", "utf8")])
-    assert len(registry) == 4 + CRATED
+    assert len(registry) == 4 + SEEDED
 
 
 def test_merge_with_folds_the_fields_and_unions_their_membership() -> None:
@@ -931,9 +1024,10 @@ def test_merge_with_folds_the_fields_and_unions_their_membership() -> None:
 
     # The other dictionary holds the crate's own fields as every registry
     # does, and they are never folded: they are the crate's definition, not
-    # something a dictionary states, so only `symbol` merges.
-    assert dictionary.merge_with(other) == (1, 1)
-    assert len(dictionary) == 3 + CRATED
+    # something a dictionary states. `symbol` merges, and so do the two seeded
+    # standard clocks, which are ordinary definitions.
+    assert dictionary.merge_with(other) == (1, 3)
+    assert len(dictionary) == 3 + SEEDED
     assert dictionary.field_by_tag(55).name == "symbol"
 
     # Membership unions onto the field it merges into and arrives whole with
@@ -944,7 +1038,7 @@ def test_merge_with_folds_the_fields_and_unions_their_membership() -> None:
     # Unioned, not replaced: a second merge of a dictionary that also speaks
     # `symbol` adds its name beside the one already there.
     third = FixRegistry.from_fields([_field("Symbol", "utf8", 55, branches=["cme"])])
-    assert dictionary.merge_with(third) == (0, 1)
+    assert dictionary.merge_with(third) == (0, 3)
     assert dictionary.field_by_tag(55).fix.branches == ["cme", "ice"]
 
 
@@ -954,9 +1048,11 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect_on_every_field(
     path = tmp_path / "MSFIX44.cfb"
     path.write_text(CBLOCK, encoding="utf-8")
 
+    # The file's two fields arrive, and the parsed dictionary's two seeded
+    # standard clocks merge into this one's.
     registry = FixRegistry()
-    assert registry.add_cfb_file(path, "Morgan") == (2, 0)
-    assert len(registry) == 2 + CRATED
+    assert registry.add_cfb_file(path, "Morgan") == (2, 2)
+    assert len(registry) == 2 + SEEDED
 
     # Membership means "this dictionary speaks it": the standard tag and the
     # venue's own are both stamped, folded once, and the registry lists it.
@@ -966,7 +1062,7 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect_on_every_field(
 
     # With no name the file's own stem stands in, and a second dictionary
     # speaking a field unions onto it rather than replacing anything.
-    assert registry.add_cfb_file(path) == (0, 2)
+    assert registry.add_cfb_file(path) == (0, 4)
     assert registry.field_by_tag(55).fix.branches == ["morgan", "msfix44"]
     assert registry.dialects() == ["morgan", "msfix44"]
 
@@ -975,7 +1071,7 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect_on_every_field(
     retyped.write_text(CBLOCK.replace('name="55" alt="Symbol" type="string"', 'name="55" alt="Symbol" type="integer"'), encoding="utf-8")
     with pytest.raises(ValueError):
         registry.add_cfb_file(retyped, "morgan")
-    assert len(registry) == 2 + CRATED
+    assert len(registry) == 2 + SEEDED
     assert registry.dialects() == ["morgan", "msfix44"]
     # The keyword is `dialect`, and a name the grammar refuses is refused
     # before anything is read.
@@ -1012,7 +1108,7 @@ def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(
     # The registry form is the same file read whole: the same vocabulary, plus
     # the message roots its grammar bindings describe.
     registry, roots = FixRegistry.from_cfb_file(path, dialect="Bloomberg")
-    assert len(registry) == len(fields) + CRATED
+    assert len(registry) == len(fields) + SEEDED
     assert [root.name for root in roots] == ["7"]
     # The message definition the file produces is stamped like its fields.
     assert next(registry.msgtypes()).field.fix.branches == ["bloomberg"]
@@ -1174,7 +1270,11 @@ def test_registry_mutation_refuses_while_something_shares_it(
 
 
 def _order(seed: FixRegistry) -> Field:
-    """A root that carries a group and one tag no dictionary explains."""
+    """A root that carries a group, one tag no dictionary explains, and its SendingTime.
+
+    A message built by hand reads UTC now for a SendingTime it does not state,
+    so the root states one and two builds of it are one message.
+    """
     return Field(
         "NewOrderSingle",
         DataType.from_fields(
@@ -1184,6 +1284,7 @@ def _order(seed: FixRegistry) -> Field:
                 seed.field_by_name("NoPartyIDs"),
                 seed.definition("groups", "Parties"),
                 Field("9999", "utf8"),
+                seed.field_by_tag(52),
             ]
         ),
         nullable=False,
@@ -1198,6 +1299,7 @@ ORDER_VALUE: dict[str, Any] = {
         {"partyid": "BROKER", "partyidsource": "D", "partyrole": 1},
     ],
     "9999": "custom",
+    "sendingtime": CLOCK,
 }
 
 
@@ -1205,9 +1307,22 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     root = _order(seed)
     message = FixMsg(root, ORDER_VALUE, seed)
 
-    assert message.field == root
+    # The root's own children lead, and every member of the settled bundle it
+    # lacks is appended after them, each non-null
+    # (``rust/tests/fix/content_identity.rs``).
+    assert message.field != root
+    assert [child.name for child in message.field] == [
+        *(child.name for child in root),
+        "updatedat",
+        "createdat",
+        "uuid",
+        "puuid",
+        "code",
+        "snapshotat",
+    ]
+    assert all(not child.nullable for child in message.field if child.name in BUNDLE)
     assert message.registry == seed
-    assert len(message) == 5
+    assert len(message) == 12
     symbol_id = seed.field_by_tag(55).fix.id
     assert symbol_id is not None
     assert message.by_tag(55).as_py() == "AAPL"
@@ -1253,13 +1368,20 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
     with pytest.raises(OverflowError):
         message.get_by_id(2**31)
 
-    # The mapping input became the ordered row the root declares.
-    pairs = [(name, value.as_py()) for name, value in message]
-    assert [name for name, _ in pairs] == [child.name for child in root]
-    assert pairs[0] == ("symbol", "AAPL")
+    # The mapping input became the ordered row the message declares.
+    pairs = [(name, value) for name, value in message]
+    assert [name for name, _ in pairs] == [child.name for child in message.field]
+    assert pairs[0][0] == "symbol" and pairs[0][1].as_py() == "AAPL"
+    # With no clock of its own, every clock the bundle settles is SendingTime.
+    assert message.by_tag(52) == CLOCK
+    assert message.updatedat() == CLOCK
+    assert message.createdat() == CLOCK
+    assert message.by_tag(SNAPSHOTAT_TAG) == CLOCK
+    assert message.by_tag(CODE_TAG).as_py() == ""
 
-    # A native Scalar names the same row.
-    assert FixMsg(root, message.value, seed) == message
+    # A native Scalar names the same row under the message's own root, the
+    # identities it states included.
+    assert FixMsg(message.field, message.value, seed) == message
 
 
 def test_a_venues_field_and_msgtype_are_both_reachable_from_a_venue_message() -> None:
@@ -1366,10 +1488,11 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored.registry == seed
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
-    assert repr(message) == 'FixMsg("NewOrderSingle", 5 values)'
+    assert repr(message) == 'FixMsg("NewOrderSingle", 12 values)'
     assert repr(seed) == f"FixRegistry({6241 + CRATED} fields)"
-    # A new registry is never empty: it holds the crate's own fields.
-    assert repr(FixRegistry()) == f"FixRegistry({CRATED} fields)"
+    # A new registry is never empty: it holds the crate's own fields and the
+    # two seeded standard clocks.
+    assert repr(FixRegistry()) == f"FixRegistry({SEEDED} fields)"
 
 
 INSTALL_SCRIPT = """
@@ -1428,7 +1551,7 @@ def test_scalar_value_and_field_stay_the_native_ones(seed: FixRegistry) -> None:
 
 def test_reader_parses_every_frame_shape_the_core_reads(seed: FixRegistry) -> None:
     """One reader, five entry points, and each is the core's own."""
-    reader = FixCodec(seed)
+    reader = _fixed(seed)
 
     framed = next(reader.parse_line(b"sending >> 8=FIX.4.4|35=D|55=AAPL|10=0|"))
     assert framed.by_tag(55).as_py() == "AAPL"
@@ -1466,7 +1589,7 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
         b"|#NOPARTYIDS[0]=PARTYID=BUYSIDEPARTYIDSOURCE=DPARTYROLE=1|"
     )
     parsed = (
-        FixCodec(seed)
+        _fixed(seed)
         .parse_text_arrow_reader(pa.table({"body": pa.array([bridge], pa.binary())}))
         .read_all()
     )
@@ -1488,14 +1611,14 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     # a value is read, never what a field is called: the column is the
     # dictionary's own whatever version read the row, and the 4.2 spelling
     # still reaches it as an alias.
-    dated = FixCodec(seed, version="4.2")
+    dated = _fixed(seed, version="4.2")
     named = next(dated.parse_line(b"8=FIX.4.4|35=8|32=100|10=0|"))
     assert named.field.index_of("lastqty") is not None
     assert named.get_by_name("lastshares") is not None
     assert named.get_by_name("lastqty") is not None
 
     # A stated absence produces no field at all.
-    silent = FixCodec(seed, null_values=["<none>"])
+    silent = _fixed(seed, null_values=["<none>"])
     assert next(silent.parse_line(b"8=FIX.4.4|35=D|55=<none>|10=0|")).get_by_tag(55) is None
 
     # There is no dialect to pin: the dictionary is one namespace.
@@ -1504,11 +1627,67 @@ def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
     assert not hasattr(FixCodec(seed), "branch")
 
 
+def test_the_default_sending_time_is_the_clock_undated_intake_takes() -> None:
+    """The pin that makes a parse of undated bytes repeat.
+
+    Pinned by ``fixed_intake_clock_settles_native_hard_values_and_replays_exactly``,
+    ``message_sending_and_transact_clocks_precede_the_fixed_default`` and
+    ``fixed_default_clock_intake_is_exact_and_atomic`` in
+    ``rust/tests/fix/content_identity.rs``.
+    """
+    registry = FixRegistry()
+    assert FixCodec(registry).default_sending_time is None
+    assert FixCodec(registry, default_sending_time=None).default_sending_time is None
+    codec = FixCodec(registry, default_sending_time=CLOCK)
+    assert codec.default_sending_time == CLOCK
+    # An aware UTC `datetime` is read once into the same nanosecond clock.
+    assert FixCodec(registry, default_sending_time=CLOCK_INSTANT).default_sending_time == CLOCK
+
+    # Undated bytes take it, every settled clock follows it, and two parses
+    # of the same bytes are one message.
+    wire = b"8=FIX.4.4|35=0|10=0|"
+    first = next(codec.parse_line(wire))
+    second = next(codec.parse_line(wire))
+    assert first == second
+    assert first.uuid() == second.uuid()
+    assert first.digest() == second.digest()
+    assert first.updatedat() == CLOCK
+    assert first.createdat() == CLOCK
+    assert first.by_tag(SNAPSHOTAT_TAG) == CLOCK
+    assert first.by_tag(52) == CLOCK
+    assert first.by_tag(CODE_TAG).as_py() == ""
+    assert first.into_bytes(ord("|")) == wire
+
+    # A message's own clocks precede the pin: SendingTime is the stated one,
+    # and TransactTime settles the event, the update and the creation.
+    stated = next(
+        codec.parse_line(
+            b"8=FIX.4.4|35=0|52=19700101-00:00:02.123456789|60=19700101-00:00:03.987654321|10=0|"
+        )
+    )
+    event = Scalar.datetime(3_987_654_321, "ns", "UTC")
+    assert stated.by_tag(52) == Scalar.datetime(2_123_456_789, "ns", "UTC")
+    assert stated.by_tag(60) == event
+    assert stated.by_tag(SNAPSHOTAT_TAG) == event
+    assert stated.updatedat() == event
+    assert stated.createdat() == event
+
+    # The pin is exact: a clock of another unit, a naive one or text is the
+    # core's refusal, located at the option.
+    for refused in (
+        Scalar.datetime(0, "us", "UTC"),
+        Scalar.datetime(0, "ns"),
+        "1970-01-01T00:00:00Z",
+    ):
+        with pytest.raises(ValueError, match="default_sending_time"):
+            FixCodec(registry, default_sending_time=refused)
+
+
 def test_a_reader_fills_what_the_line_implied_and_leaves_the_wire_alone(
     seed: FixRegistry,
 ) -> None:
     """Enrichment is a call; the rules are the core's."""
-    reader = FixCodec(seed)
+    reader = _fixed(seed)
 
     # A `SecurityID` an ISIN's check digit closes has stated its source, and
     # under that source the crate's `isincode` column and the country its
@@ -1549,7 +1728,7 @@ def test_identifier_membership_and_enriched_altids_are_the_core_answers(seed: Fi
         "clordid", "origclordid", "quoterespid", "listid", "execid", "execrefid",
         "allocid", "reforderid", "refclordid"
     ]
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     wire = b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|"
     original = codec.parse_fix_line(wire)
     filled = codec.enrich_message(original)
@@ -1572,7 +1751,7 @@ def test_identifier_membership_and_enriched_altids_are_the_core_answers(seed: Fi
 
 @pytest.mark.parametrize("stated", [{}, {"venue": "001"}])
 def test_stated_altids_maps_are_preserved_even_when_empty(seed: FixRegistry, stated: dict[str, str]) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     message = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=C-1|10=0|")
     before = message.entries(), message.into_bytes(124), message.digest()
     message.set("altids", stated)
@@ -1583,7 +1762,7 @@ def test_stated_altids_maps_are_preserved_even_when_empty(seed: FixRegistry, sta
 
 
 def test_identifier_maps_distinguish_known_empty_unknown_and_nested_messages(seed: FixRegistry) -> None:
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     for code in (b"0", b"D"):
         filled = codec.enrich_message(codec.parse_fix_line(b"8=FIX.4.4|35=" + code + b"|10=0|"))
         assert filled.by_tag(65020).as_py() == {}
@@ -1605,7 +1784,7 @@ REPORT = (
 
 def test_the_enriching_pass_restates_before_it_fills(seed: FixRegistry) -> None:
     """Restatement is the pass's first step; the rules are the dictionary's."""
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     read = next(codec.parse_line(REPORT))
     assert read.by_tag(65001).as_py() == "4.2"
     assert read.by_tag(150).as_py() == "40PARTFILL"
@@ -1716,7 +1895,7 @@ def test_a_bridge_document_is_read_out_of_the_line_that_carries_it(
     assert MimeType.infer_bytes(LOGGED) == MimeType.JSON
     assert FixCodec.infer_msgtype_bytes(LOGGED) == b"Plugin"
 
-    reader = FixCodec(bridge)
+    reader = _fixed(bridge)
     message = next(reader.parse_plugin_line(LOGGED))
     # FIX's own names stay FIX's and the bridge's own are the bridge's, both
     # inside the occurrence the document answered for. The registry is one
@@ -1761,7 +1940,7 @@ def _plugin_row(plugin: str) -> bytes:
 
 def test_a_configuration_is_a_message_the_crate_registered(bridge: FixRegistry) -> None:
     """A configuration types as `pluginconfig` and the wire still says no 35."""
-    message = next(FixCodec(bridge).parse_line(LOGGED))
+    message = next(_fixed(bridge).parse_line(LOGGED))
     # The name the crate registered the code under, and the code itself.
     assert PLUGINCONFIG_CODE_NAME == ("UCFG", "pluginconfig")
     assert message.field.name == PLUGINCONFIG_CODE_NAME[1]
@@ -1798,7 +1977,7 @@ def test_the_enriching_stream_fills_a_row_from_the_configuration_that_named_its_
     bridge: FixRegistry,
 ) -> None:
     """A bridge states its two ends once; the lines behind it name only the plugin."""
-    codec = FixCodec(bridge)
+    codec = _fixed(bridge)
 
     def one(body: bytes) -> FixMsg:
         return next(codec.parse_line(body))
@@ -1881,7 +2060,7 @@ def test_every_plugin_a_document_answers_for_crosses_both_ways(
 
     # And back to a typed message, and out of one again: the crossing keeps
     # the ObjectName, the attributes and their types.
-    reader = FixCodec(bridge)
+    reader = _fixed(bridge)
     message = held[0].into_fixmsg(reader)
     assert message.by_path("PriorityLevel").as_py() == 5
     back = Plugin.from_fixmsg(message)
@@ -1944,10 +2123,15 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "bodylength",
         "msgtype",
     ], "named by the dictionary's folded names, in message order"
-    assert columns[-2:] == [
+    assert columns[-7:] == [
+        "prevtimestamp",
+        "prevuuid",
+        "createdat",
+        "code",
+        "snapshotat",
+        "msgdirection",
         "nofixentries",
-        "nounmappedfixentries",
-    ], "and the two lists close it"
+    ], "and the one arrival record closes it"
     # The tag stays the identity: each column carries its field's, in order.
     assert fix_schema_tags()[:3] == [8, 9, 35]
     assert [child.fix.tag for child in schema][:3] == [8, 9, 35]
@@ -1958,58 +2142,90 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.index_of("999999") is None
     assert schema.name == "FixMessage"
     # The crate's own columns are spelled the same way, with the FIX-style
-    # spelling kept as the display: twenty scalars and a Map after the trailer, then
-    # FIX's own `msgdirection`, read from the line where the wire states
-    # none, then the two lists.
-    assert fix_schema_tags()[-(CRATED + 2) :] == [*CRATE_TAGS, 65020, 385]
-    assert [child.fix.tag for child in schema][-(CRATED + 4) :] == [
-        *CRATE_TAGS,
-        65020,
-        385,
-        None,
-        None,
-    ]
-    assert columns[-(CRATED + 4) : -3] == [field.name for field in fix_crate_fields()]
+    # spelling kept as the display: twenty-five definitions after the trailer,
+    # tags 65001 to 65025 with the `altids` Map at 65020, then FIX's own
+    # `msgdirection`, read from the line where the wire states none, then the
+    # arrival record (``rust/tests/fix/schema.rs``).
+    assert len(fix_schema_tags()) == 105
+    assert fix_schema_tags()[-26:] == [*range(65001, 65026), 385]
+    assert [child.fix.tag for child in schema][-27:] == [*range(65001, 65026), 385, None]
+    assert columns[-27:-2] == [field.name for field in fix_crate_fields()]
     assert columns.count("altids") == 1
     altids = schema[schema.index_of("altids")]
     assert altids.nullable and altids.fix.counter == 65020
     assert altids.into_arrow().type.equals(pa.map_(pa.string(), pa.string(), keys_sorted=True))
-    assert schema[schema.index_of("timestamp")].display == "Timestamp"
-    assert schema[schema.index_of("sendersessionid")].display == "SenderSessionId"
+    # The retired columns are gone rather than renamed.
+    for retired in ("msghash", "timestamp", "instid", "id", "persistentid", "nounmappedfixentries"):
+        assert schema.index_of(retired) is None, retired
+    for name, display in (
+        ("updatedat", "UpdatedAt"),
+        ("sendersessionid", "SenderSessionId"),
+        ("instuuid", "InstUuid"),
+        ("uuid", "Uuid"),
+        ("puuid", "PUuid"),
+        ("prevtimestamp", "PrevTimestamp"),
+        ("prevuuid", "PrevUuid"),
+    ):
+        assert schema[schema.index_of(name)].display == display, name
     # The three columns a row derives from what the message said are typed
     # as the thing they hold, never as the text a venue spelled it in.
     assert schema[schema.index_of("isincode")].dtype == DataType("isin")
     assert schema[schema.index_of("miccode")].dtype == DataType("mic")
     assert schema[schema.index_of("state")].dtype == DataType("state")
-    # Four columns every message fills are declared so; every other one is
-    # nullable, because a message that carried nothing there answers null
-    # rather than shifting its neighbours.
+    assert schema[schema.index_of("prevtimestamp")].dtype == schema[schema.index_of("updatedat")].dtype
+    assert schema[schema.index_of("prevuuid")].dtype == DataType("uuid")
+    assert schema[schema.index_of("prevtimestamp")].nullable
+    assert schema[schema.index_of("prevuuid")].nullable
+    # BeginString, the partition and the seven members of the settled bundle
+    # are declared non-null; every other column is nullable, because a message
+    # that carried nothing there answers null rather than shifting its
+    # neighbours.
     assert [child.name for child in schema if not child.nullable] == [
         "beginstring",
-        "msghash",
-        "timestamp",
+        "sendingtime",
+        "updatedat",
         "unixpartition",
+        "uuid",
+        "puuid",
+        "createdat",
+        "code",
+        "snapshotat",
     ]
 
-    reader = FixCodec(seed)
-    message = next(reader.parse_line(b"8=FIX.4.4|35=D|55=AAPL|9999=x|10=0|"))
+    reader = _fixed(seed)
+    wire = b"8=FIX.4.4|35=D|11=A|9999=x|VenueOwnThing=y|10=0|"
+    message = next(reader.parse_line(wire))
     row = message.into_row(schema).as_py()
     assert len(row) == len(columns)
     assert row[schema.index_of("beginstring")] == "FIX.4.4"
     assert row[schema.index_of("msgtype")] == "D"
-    assert row[schema.index_of("symbol")] == "AAPL"
+    assert row[schema.index_of("clordid")] == "A"
     assert row[schema.index_of("version")] == "4.4"
-    # A message with no clock is stamped with the epoch, and the partition
-    # follows it: never null, and sorting first and visibly.
-    assert row[schema.index_of("timestamp")] == dt.datetime(
-        1970, 1, 1, tzinfo=dt.timezone.utc
-    )
-    assert row[schema.index_of("unixpartition")] == 0
+    # A message with no clock of its own settles on the codec's default
+    # SendingTime, and the partition follows it: never null.
+    for clock in ("sendingtime", "updatedat", "createdat", "snapshotat"):
+        assert row[schema.index_of(clock)] == CLOCK_INSTANT, clock
+    assert row[schema.index_of("unixpartition")] == CLOCK_PARTITION
+    assert row[schema.index_of("code")] == ""
+    for identity in ("uuid", "puuid"):
+        held = uuid_module.UUID(row[schema.index_of(identity)])
+        assert held.version == 8 and held.variant == uuid_module.RFC_4122, identity
+    # The projected row's uuid is recomputed over what the row holds; the
+    # retained code keeps the chain's puuid.
+    assert row[schema.index_of("puuid")] == message.puuid().as_py()
     assert row[schema.index_of("sendersessionid")] is None
     # A derived column a message gives nothing for is null, never a shift.
     assert row[schema.index_of("state")] is None
-    # A tag no dictionary explains is still there, in its own column.
-    assert len(row[-1]) == 1
+    assert row[schema.index_of("prevtimestamp")] is None
+    assert row[schema.index_of("prevuuid")] is None
+
+    # The arrival record closes the row with everything that arrived, in
+    # arrival order: a key no dictionary explains records tag 0 and its raw
+    # key (``the_row_stays_lossless_and_says_what_nothing_explained``).
+    arrived = reader.arrow_reader(schema, [message]).read_all().column("nofixentries").to_pylist()[0]
+    assert [entry["tag"] for entry in arrived] == [8, 35, 11, 0, 0, 10]
+    assert [entry["key"] for entry in arrived if entry["tag"] == 0] == ["9999", "VenueOwnThing"]
+    assert message.into_bytes(ord("|")) == wire
 
 
 def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
@@ -2018,8 +2234,8 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
         "line",
         DataType.from_fields(
             [
-                Field("url", DataType("utf8"), nullable=False),
-                Field("body", DataType("binary"), nullable=False),
+                Field("url", DataType("utf8")),
+                Field("body", DataType("binary")),
             ]
         ),
         nullable=False,
@@ -2033,9 +2249,22 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
     # A column no tag names is the capture's, so a row answers null there: the
     # capture fills it, and nothing in the message says what it held.
-    row = next(FixCodec(seed).parse_line(b"8=FIX.4.4|35=D|10=0|")).into_row(carried).as_py()
+    message = next(_fixed(seed).parse_line(b"8=FIX.4.4|35=D|10=0|"))
+    row = message.into_row(carried).as_py()
     assert row[0] is None
     assert row[carried.index_of("msgtype")] == "D"
+    # A required capture column the message cannot fill refuses the projection
+    # rather than publishing a null into it.
+    strict = fix_schema_carrying(
+        Field(
+            "line",
+            DataType.from_fields([Field("url", DataType("utf8"), nullable=False)]),
+            nullable=False,
+        ),
+        plain,
+    )
+    with pytest.raises(ValueError, match=r"\$\.url"):
+        message.into_row(strict)
 
     # A capture column whose folded name a FIX column takes is not carried in
     # front: `senderSessionId` and `sendersessionid` are one name, and the FIX column is
@@ -2060,16 +2289,20 @@ def test_a_captures_own_columns_lead_the_row(seed: FixRegistry) -> None:
 
 
 def test_the_crate_fields_declare_their_own_protocols() -> None:
-    """The digest says how it was taken, the partition what it derives from."""
+    """The partition says what it derives from; the identities and clocks what they hold.
+
+    The listing is pinned by ``the_crate_carries_fields_of_its_own_from_65000``
+    in ``rust/tests/fix/digest.rs``.
+    """
     fields = {field.name: field for field in fix_crate_fields()}
-    assert len(fields) == CRATED + 1
-    # In tag order, one block from 65000, above every tag FIX or a venue
-    # publishes, and none is a dictionary's contribution.
+    assert len(fields) == CRATED + 1 == 25
+    # In tag order, one block from 65001, above every tag FIX or a venue
+    # publishes, and none is a dictionary's contribution. The retired 65000
+    # is not reused.
     assert list(fields) == [
-        "msghash",
         "version",
         "symbolticker",
-        "timestamp",
+        "updatedat",
         "unixpartition",
         "parentclordid",
         "parentorderid",
@@ -2082,17 +2315,21 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "isincode",
         "miccode",
         "state",
-        "instid",
-        "id",
-        "persistentid",
+        "instuuid",
+        "uuid",
+        "puuid",
         "targetsessionid",
         "altids",
+        "prevtimestamp",
+        "prevuuid",
+        "createdat",
+        "code",
+        "snapshotat",
     ]
     assert [field.display for field in fields.values()] == [
-        "MsgHash",
         "Version",
         "SymbolTicker",
-        "Timestamp",
+        "UpdatedAt",
         "UnixPartition",
         "ParentClOrdID",
         "ParentOrderID",
@@ -2105,34 +2342,42 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "ISINCode",
         "MICCode",
         "State",
-        "InstId",
-        "Id",
-        "PersistentId",
+        "InstUuid",
+        "Uuid",
+        "PUuid",
         "TargetSessionId",
         "AltIds",
+        "PrevTimestamp",
+        "PrevUuid",
+        "CreatedAt",
+        "Code",
+        "SnapshotAt",
     ]
-    assert [field.fix.tag for field in fields.values()] == [*CRATE_TAGS, 65020]
+    assert [field.fix.tag for field in fields.values()] == list(range(65001, 65026))
     assert all(field.fix.branches == [] for field in fields.values())
     assert [field.fix.id for field in fields.values()] == [
-        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, [*CRATE_TAGS, 65020])
+        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, range(65001, 65026))
     ]
-    # Every one is nullable as a field - the fixed row is what declares the
-    # four every message fills - and every one says what it holds.
-    assert all(field.nullable for field in fields.values())
+    # The settled bundle's crate members are non-null as fields; every other
+    # one is nullable, and every one says what it holds.
+    assert [name for name, field in fields.items() if not field.nullable] == [
+        "updatedat",
+        "uuid",
+        "puuid",
+        "createdat",
+        "code",
+        "snapshotat",
+    ]
     assert all(field.description is not None for field in fields.values())
 
-    held = fields["msghash"]
-    assert held.dtype == DataType("fixed_size_binary(16)")
-    assert held.metadata["digest:role"] == "holder"
-    assert held.metadata["digest:algorithm"] == "xxh3-128"
-    assert held.metadata["digest:sources"] == '["nofixentries"]'
-
-    # The clock is an instant in UTC, and the partition names the column it
-    # reads by that column's name.
-    assert fields["timestamp"].dtype == DataType('datetime64(ns,"UTC")')
+    # The clocks are instants in UTC, to the nanosecond; the code is text.
+    for name in ("updatedat", "prevtimestamp", "createdat", "snapshotat"):
+        assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
+    assert fields["code"].dtype == DataType("utf8")
+    # The partition names the column it reads by that column's name.
     held = fields["unixpartition"]
     assert held.dtype == DataType("int64")
-    assert held.metadata["partition:sources"] == '["timestamp"]'
+    assert held.metadata["partition:sources"] == '["updatedat"]'
     assert held.metadata["iceberg:transform"] == "truncate[3600]"
 
     # What a bridge's own log states about a line - the session the message
@@ -2160,16 +2405,18 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert fields["isincode"].dtype == DataType("isin")
     assert fields["miccode"].dtype == DataType("mic")
     assert fields["state"].dtype == DataType("state")
-    # The three identities the lifecycle pass stamps are digests, sixteen
-    # bytes each, big-endian for the reason `msghash` is.
-    for name in ("instid", "id", "persistentid"):
-        assert fields[name].dtype == DataType("fixed_size_binary(16)"), name
+    # The instrument, the message, the chain and the previous message are
+    # UUID values, never untyped digest bytes, and no alias reaches them.
+    for name in ("instuuid", "uuid", "puuid", "prevuuid"):
+        assert fields[name].dtype == DataType("uuid"), name
+        assert fields[name].fix.aliases == [], name
 
-    # Every registry holds them from construction, and a bridge row spelling
-    # `SESSIONID` or `ULFROMSESSIONNAME` reaches them by name. The listing is
-    # the very definition a registry answers.
+    # Every registry holds them from construction beside the two seeded
+    # standard clocks, and a bridge row spelling `SESSIONID` or
+    # `ULFROMSESSIONNAME` reaches them by name. The listing is the very
+    # definition a registry answers.
     registry = FixRegistry()
-    assert len(registry) == CRATED
+    assert len(registry) == SEEDED == 26
     assert registry.dialects() == []
     for name, field in fields.items():
         if name == "altids":
@@ -2185,6 +2432,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert registry.field_by_tag(65007).name == "sendersessionid"
     assert registry.field_by_name("SenderSessionId").name == "sendersessionid"
     assert registry.field_by_name("ULFROMSESSIONNAME").name == "sendersessionname"
+    # The seeds are ordinary definitions, typed as the clock the bundle reads.
+    for tag, name, display in ((52, "sendingtime", "SendingTime"), (60, "transacttime", "TransactTime")):
+        seeded = registry.field_by_tag(tag)
+        assert (seeded.name, seeded.display) == (name, display)
+        assert seeded.dtype == DataType('datetime64(ns,"UTC")')
+    # The retired names reach nothing, and 65000 is no field's tag.
+    for retired in ("instid", "id", "persistentid", "timestamp", "msghash"):
+        assert registry.get_field_by_name(retired) is None, retired
+    assert registry.get_field_by_tag(65000) is None
 
 
 def _root_names(message: FixMsg) -> list[str]:
@@ -2192,15 +2448,15 @@ def _root_names(message: FixMsg) -> list[str]:
     return [child.name for child in message.field]
 
 
-def test_every_built_message_carries_its_version_and_its_clock(
+def test_every_built_message_carries_its_version_and_its_settled_bundle(
     seed: FixRegistry,
 ) -> None:
-    """A message the codec built opens with its version and closes with its clock."""
-    reader = FixCodec(seed)
+    """A message the codec built opens with its version and closes with the settled bundle."""
+    reader = _fixed(seed)
 
     # The header in rank order whatever the input order, the body, the
-    # version the read used, the trailer, and the crate's own `timestamp`
-    # closing the message.
+    # version the read used, the trailer, and the bundle the shared finalizer
+    # appends (``the_header_orders_first_and_the_trailer_last_whatever_the_input_order``).
     message = next(reader.parse_line(b"8=FIX.4.4|55=AAPL|35=D|9=100|10=000|"))
     assert _root_names(message) == [
         "beginstring",
@@ -2209,44 +2465,50 @@ def test_every_built_message_carries_its_version_and_its_clock(
         "symbol",
         "version",
         "checksum",
-        "timestamp",
+        *BUNDLE,
     ]
-    pairs = [(name, value.as_py()) for name, value in message]
+    pairs = [(name, value) for name, value in message]
     assert [name for name, _ in pairs] == _root_names(message)
-    assert pairs[0] == ("beginstring", "FIX.4.4")
-    assert pairs[-1][0] == "timestamp"
-    assert len(message) == 7
+    assert pairs[0][0] == "beginstring" and pairs[0][1].as_py() == "FIX.4.4"
+    assert pairs[-1][0] == "sendingtime"
+    assert len(message) == 13
     assert message.by_tag(65001).as_py() == "4.4"
     assert message.by_tag(8).as_py() == "FIX.4.4"
-    assert message.by_id(seed.field_by_tag(65003).fix.id) == message.by_name("timestamp")
-    assert message.by_tag(65003) == message.by_name("timestamp")
+    assert message.by_id(seed.field_by_tag(UPDATEDAT_TAG).fix.id) == message.by_name("updatedat")
+    assert message.by_tag(UPDATEDAT_TAG) == message.updatedat()
 
-    # A message with no clock is stamped with the epoch rather than left
-    # undated, and its partition follows.
-    epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
-    stamped = message.market_timestamp()
-    assert stamped is not None and stamped.as_py() == epoch
-    assert message.by_name("timestamp").as_py() == epoch
+    # A message with no clock of its own settles on the codec's default
+    # SendingTime, and every settled clock and the partition follow it.
+    assert message.updatedat() == CLOCK
+    assert message.updatedat().as_py() == CLOCK_INSTANT
+    assert message.createdat() == CLOCK
+    assert message.by_tag(SNAPSHOTAT_TAG) == CLOCK
+    assert message.by_tag(52) == CLOCK
+    assert message.by_tag(CODE_TAG).as_py() == ""
     partition = message.unix_partition()
-    assert partition is not None and partition.as_py() == 0
+    assert partition is not None and partition.as_py() == CLOCK_PARTITION
 
-    # The stamp is a child and never an entry: the wire re-emits byte for
+    # The bundle is children and never entries: the wire re-emits byte for
     # byte, and nothing the row added is in the arrival record.
     wire = b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|38=100|10=000|"
     order = next(reader.parse_line(wire))
     assert order.into_bytes(ord("|")) == wire
     assert {tag for tag, _, _ in order.entries()} == {8, 35, 11, 55, 54, 38, 10}
 
-    # The message's own clocks, in decreasing exactness: TransactTime(60)
-    # outranks SendingTime(52), and a sub-second clock still has a partition.
+    # The message's own clocks: SendingTime(52) is the stated one, and
+    # TransactTime(60) outranks it for the event, so the update, the creation
+    # and the snapshot are 60's; a sub-second clock still has a partition.
     clocked = next(
         reader.parse_line(
             b"8=FIX.4.4|35=8|52=20260102-09:30:00.500|60=20260102-09:29:59.250|10=0|"
         )
     )
     instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
-    stamped = clocked.market_timestamp()
-    assert stamped is not None and stamped.as_py() == instant
+    sent = dt.datetime(2026, 1, 2, 9, 30, 0, 500000, tzinfo=dt.timezone.utc)
+    assert clocked.by_tag(52).as_py() == sent
+    assert clocked.updatedat().as_py() == instant
+    assert clocked.createdat().as_py() == instant
+    assert clocked.by_tag(SNAPSHOTAT_TAG).as_py() == instant
     partition = clocked.unix_partition()
     assert partition is not None and partition.as_py() == 1767344400  # 09:00Z
     partition = clocked.unix_partition(60)
@@ -2256,7 +2518,7 @@ def test_every_built_message_carries_its_version_and_its_clock(
     # version it was read at is not sent: it is not an entry either.
     stated = reader.parse_pairs([("55", "AAPL")])
     assert _root_names(stated)[0] == "beginstring"
-    assert _root_names(stated)[-1] == "timestamp"
+    assert _root_names(stated)[-1] == "sendingtime"
     assert stated.by_tag(8).as_py().startswith("FIX.")
     assert {tag for tag, _, _ in stated.entries()} == {55}
     assert not stated.into_bytes(ord("|")).startswith(b"8=")
@@ -2264,12 +2526,95 @@ def test_every_built_message_carries_its_version_and_its_clock(
     # A bridge frame and a FIXML row are built the same way.
     bridge = reader.parse_ullink_line(b"|#SYMBOL=TTF|#SIDE=1|")
     assert _root_names(bridge)[0] == "beginstring"
-    assert _root_names(bridge)[-1] == "timestamp"
-    assert bridge.market_timestamp() is not None
+    assert _root_names(bridge)[-len(BUNDLE) :] == BUNDLE
+    assert bridge.updatedat() == CLOCK
+
+
+def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
+    seed: FixRegistry,
+) -> None:
+    """``updatedat``, ``createdat``, ``uuid`` and ``puuid`` always answer.
+
+    Pinned by ``rust/tests/fix/content_identity.rs``: code-only ``puuid``,
+    content ``uuid`` excluding the creation instant, and atomic refusals of a
+    mandatory null, a mandatory removal and a stated identity that disagrees.
+    """
+    reader = _fixed(seed)
+    message = next(reader.parse_line(b"8=FIX.4.4|35=D|11=A1|55=ALPHA|54=1|10=0|"))
+    for reader_name, tag in (
+        ("updatedat", UPDATEDAT_TAG),
+        ("createdat", CREATEDAT_TAG),
+        ("uuid", UUID_TAG),
+        ("puuid", PUUID_TAG),
+    ):
+        answered = getattr(message, reader_name)()
+        assert isinstance(answered, Scalar)
+        assert not answered.is_null(), reader_name
+        assert answered == message.by_tag(tag), reader_name
+        assert answered == message.by_name(reader_name), reader_name
+    assert message.updatedat().dtype == DataType('datetime64(ns,"UTC")')
+    assert message.createdat().dtype == DataType('datetime64(ns,"UTC")')
+    for identity in (message.uuid(), message.puuid()):
+        assert identity.dtype == DataType("uuid")
+        held = uuid_module.UUID(identity.as_py())
+        assert held.version == 8 and held.variant == uuid_module.RFC_4122
+    # The unknown code is the empty name, and every message naming no chain
+    # hashes that same empty name.
+    assert message.puuid() == next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|")).puuid()
+
+    # The creation instant is not content; the settled update instant and
+    # the named content are, and `puuid` hashes the code alone.
+    changed = copy.copy(message)
+    changed.set("createdat", Scalar.datetime(CLOCK_NS - 10, "ns", "UTC"))
+    assert changed.uuid() == message.uuid()
+    assert changed != message
+    changed.set("updatedat", Scalar.datetime(CLOCK_NS + 1, "ns", "UTC"))
+    assert changed.uuid() != message.uuid()
+    before = changed.uuid()
+    changed.set(55, "BETA")
+    assert changed.uuid() != before
+    assert changed.puuid() == message.puuid()
+    changed.set("code", "chain")
+    assert changed.puuid() != message.puuid()
+    # Writing SendingTime does not reread or reset the settled clocks.
+    settled = changed.updatedat()
+    changed.set(52, Scalar.datetime(CLOCK_NS + 2, "ns", "UTC"))
+    assert changed.updatedat() == settled
+
+    # A mandatory field refuses null and removal, and a stated identity the
+    # row does not hash to is refused; each leaves the message as it was.
+    for name in BUNDLE:
+        untouched = copy.copy(message)
+        with pytest.raises(ValueError, match=name):
+            untouched.set(name, None)
+        assert untouched == message, name
+        with pytest.raises(ValueError, match=name):
+            untouched.remove(name)
+        assert untouched == message, name
+    for name in ("uuid", "puuid"):
+        untouched = copy.copy(message)
+        with pytest.raises(ValueError, match=name):
+            untouched.set(name, "00000000-0000-0000-0000-000000000000")
+        assert untouched == message, name
+    # An ordinary child still leaves, and the content identity moves with it.
+    removed = copy.copy(message)
+    assert removed.remove(55) == Scalar("ALPHA")
+    assert removed.uuid() != message.uuid()
+    assert removed.remove("absent") is None
+
+    # Enrichment carries the settled clocks and is idempotent
+    # (``enrichment_keeps_settled_clocks_and_arrival_record_and_finalizes_once_per_result``).
+    enriched = reader.enrich_message(message)
+    assert enriched.updatedat() == message.updatedat()
+    assert enriched.createdat() == message.createdat()
+    assert enriched.by_tag(52) == message.by_tag(52)
+    assert enriched.entries() == message.entries()
+    assert enriched.digest() == message.digest()
+    assert reader.enrich_message(enriched) == enriched
 
 
 def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
-    """A capture's clock stamps the row; its other columns fill the fields their names reach."""
+    """A capture's clock is context; its other columns fill the fields their names reach."""
     clock = dt.datetime(2026, 1, 2, 10, 15, 30, 500000, tzinfo=dt.timezone.utc)
     source = pa.table(
         {
@@ -2285,26 +2630,30 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
             ),
         }
     )
-    parsed = FixCodec(seed).parse_text_arrow_reader(source).read_all()
+    parsed = _fixed(seed).parse_text_arrow_reader(source).read_all()
     names = parsed.schema.names
 
     # The capture's own columns lead the row and the fixed columns follow. A
     # capture whose folded name a fixed column takes is not carried in front,
-    # it fills that column: `timestamp` and `senderSessionId`. `seqNum` is carried,
-    # since no fixed column is spelled so, and fills `msgseqnum` besides.
-    assert names[:2] == ["seqNum", "body"]
-    assert names[2:5] == ["beginstring", "bodylength", "msgtype"]
+    # it fills that column: `senderSessionId`. No fixed column is named
+    # `timestamp` any more, so the capture's clock is carried as context like
+    # `seqNum`, which fills `msgseqnum` besides (decision 26).
+    assert names[:3] == ["timestamp", "seqNum", "body"]
+    assert names[3:6] == ["beginstring", "bodylength", "msgtype"]
     assert "senderSessionId" not in names
     for once in ("timestamp", "sendersessionid", "msgseqnum"):
         assert names.count(once) == 1, once
-    assert names[-2:] == ["nofixentries", "nounmappedfixentries"]
+    assert names[-2:] == ["msgdirection", "nofixentries"]
     assert parsed.column("seqNum").to_pylist() == [4507, None]
 
-    # The row's clock outranks the message's own; a row stating none falls
-    # back to the message's clock. Neither row is undated.
+    # The capture's clock stamps nothing: the wire's event clock settles the
+    # message, else the codec's default SendingTime, and the partition
+    # follows. The capture column keeps what the capture said.
     instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
-    assert parsed.column("timestamp").to_pylist() == [clock, instant]
-    assert parsed.column("unixpartition").to_pylist() == [1767348000, 1767344400]
+    assert parsed.column("timestamp").to_pylist() == [clock, None]
+    assert parsed.column("updatedat").to_pylist() == [CLOCK_INSTANT, instant]
+    assert parsed.column("sendingtime").to_pylist() == [CLOCK_INSTANT, instant]
+    assert parsed.column("unixpartition").to_pylist() == [CLOCK_PARTITION, 1767344400]
 
     # A column spelled `senderSessionId` is the crate's `sendersessionid` under the fold,
     # so it fills that column; the sequence fills `MsgSeqNum` where the frame
@@ -2327,7 +2676,7 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
     # A venue's field, stamped as the venue's, resolves for every row
     # whatever plugin logged it: membership is provenance, not a namespace.
     seed.insert(_field("VenueTag", "utf8", 5001, branches=["venue"]))
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     body = b"MSGTYPE=D|CLORDID=A|VENUETAG=dark"
     spellings = ["venue", "VNU", "OMS_X1_TradeCapture", None, ""]
     previous = ["ULFilter", None, None, None, None]
@@ -2353,16 +2702,15 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
 
     # The plugin selects nothing: the venue's key maps to its field on every
     # row - one whose plugin spells the venue's name, one that spells another
-    # plugin, a null, an empty string - and nothing is left unmapped.
+    # plugin, a null, an empty string - and no arrival is left unresolved,
+    # which the one arrival record would say with tag 0.
     entries = parsed.column("nofixentries").to_pylist()
-    unmapped = parsed.column("nounmappedfixentries").to_pylist()
     for row in range(len(spellings)):
-        assert {entry["tag"] for entry in entries[row]} == {35, 11, 5001}, row
-        assert unmapped[row] == [], row
+        assert [entry["tag"] for entry in entries[row]] == [35, 11, 5001], row
 
     # One line read alone answers exactly what the batch did, and a fill is
     # never an entry: neither plugin is one.
-    lined = FixCodec(seed, capture_names=["pluginid"])
+    lined = _fixed(seed, capture_names=["pluginid"])
     for spelled in spellings:
         message = next(lined.parse_text_line(TextLine(0, body, [spelled])))
         assert message.by_tag(5001).as_py() == "dark", spelled
@@ -2417,49 +2765,102 @@ LIFE = [
     b"8=FIX.4.4|35=8|41=A1|11=A2|37=O1|17=E3|150=5|39=5|55=AAPL|207=XNAS|15=USD|38=120|14=50|151=70|60=20260102-10:15:32.100|10=0|",
     b"8=FIX.4.4|35=8|11=A2|17=E4|150=F|39=2|55=AAPL|207=XNAS|15=USD|38=120|14=120|151=0|32=70|31=12.6|60=20260102-10:15:33.000|10=0|",
 ]
-INSTID_TAG = 65016
-ID_TAG = 65017
-PERSISTENTID_TAG = 65018
 
 
-def _identity(message: FixMsg, tag: int) -> bytes | None:
-    """The bytes one identity column holds, or ``None`` where it is null."""
+def _uuid_text(message: FixMsg, tag: int) -> str | None:
+    """The version-8 UUID one identity column holds, as text, or ``None`` where it is null."""
     held = message.get_by_tag(tag)
     if held is None or held.is_null():
         return None
-    value = held.as_py()
-    assert isinstance(value, bytes)
-    return value
+    text = held.as_py()
+    assert isinstance(text, str)
+    parsed = uuid_module.UUID(text)
+    assert parsed.version == 8 and parsed.variant == uuid_module.RFC_4122, text
+    return text
+
+
+def _ns(count: int) -> Scalar:
+    """One nanosecond UTC instant, the clock every settled field holds."""
+    return Scalar.datetime(count, "ns", "UTC")
+
+
+def _previous(message: FixMsg, expected: FixMsg | None) -> None:
+    """That a filled message's previous pair is ``expected``'s own, or null."""
+    if expected is None:
+        assert message.by_tag(PREVTIMESTAMP_TAG).is_null()
+        assert message.by_tag(PREVUUID_TAG).is_null()
+        return
+    assert message.by_tag(PREVTIMESTAMP_TAG) == expected.updatedat()
+    assert message.by_tag(PREVUUID_TAG) == expected.uuid()
+
+
+def _event(registry: FixRegistry, nanos: int, code: str) -> FixMsg:
+    """A message at one instant whose chain its code alone names, as ``lifecycle_grid.rs`` builds one."""
+    clock = _ns(nanos)
+    root = Field(
+        "event",
+        DataType.from_fields(
+            [
+                registry.field_by_tag(tag)
+                for tag in (52, UPDATEDAT_TAG, CREATEDAT_TAG, SNAPSHOTAT_TAG, CODE_TAG)
+            ]
+        ),
+        nullable=False,
+    )
+    return FixMsg(root, [clock, clock, clock, clock, code], registry)
 
 
 def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     seed: FixRegistry,
 ) -> None:
-    """The lifecycle pass is the core's; Python feeds it one message at a time."""
-    reader = FixCodec(seed)
+    """The lifecycle pass is the core's; Python feeds it one message at a time.
+
+    Pinned by ``every_message_of_one_order_carries_the_chains_identity_until_it_ends``
+    and ``instrument_payload_keeps_its_recipe_and_chain_payload_is_only_the_code``
+    in ``rust/tests/fix/lifecycle.rs``.
+    """
+    reader = _fixed(seed)
     life = FixLifecycle(seed)
+    assert life.interval_ns == FixLifecycle.DEFAULT_INTERVAL_NS
     stamped: list[FixMsg] = []
     for line in LIFE:
         stamped.append(life.fill(next(reader.parse_line(line))))
         # Alive from the first message to the fill that ends it.
         assert life.alive() == int(len(stamped) < len(LIFE))
 
-    # One instrument, one chain, six messages.
-    instruments = [_identity(held, INSTID_TAG) for held in stamped]
+    # One instrument, one chain, six messages: the replace's new identifier
+    # joined the chain the old one opened.
+    instruments = [_uuid_text(held, INSTUUID_TAG) for held in stamped]
+    assert instruments[0] is not None
     assert all(held == instruments[0] for held in instruments)
-    assert instruments[0] is not None and len(instruments[0]) == 16
-    chains = [_identity(held, PERSISTENTID_TAG) for held in stamped]
+    chains = [_uuid_text(held, PUUID_TAG) for held in stamped]
     assert chains[0] is not None
-    # The replace's new identifier joined the chain the old one opened.
     assert all(held == chains[0] for held in chains)
-    ids = [_identity(held, ID_TAG) for held in stamped]
-    assert all(held is not None for held in ids)
-    # Ids sort by the impact clock.
-    assert all(earlier < later for earlier, later in zip(ids, ids[1:]))
-    # The chain is dated by the order's own transaction time, in
-    # microseconds, and every id after it opens with a later instant.
-    assert int.from_bytes(chains[0][:8], "big") == 1_767_348_930_000_000
-    assert ids[0] is not None and ids[0][:8] == chains[0][:8]
+    # The chain is named by its instrument scope and its first identifier,
+    # and `puuid` hashes that name.
+    assert stamped[0].by_tag(CODE_TAG).as_py() == f"{instruments[0]}/A1"
+    assert all(held.by_tag(CODE_TAG) == stamped[0].by_tag(CODE_TAG) for held in stamped)
+    # The first creation instant survives the replacement and the terminal
+    # fill: the order's own transaction time.
+    assert all(held.createdat() == stamped[0].createdat() for held in stamped)
+    assert stamped[0].createdat() == stamped[0].by_tag(60)
+    assert stamped[0].by_tag(60).as_py() == dt.datetime(2026, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
+    # Every message has its own identity, and identities sort by the grid
+    # instant `updatedat` is floored to; `snapshotat` keeps the real one.
+    ids = [held.uuid() for held in stamped]
+    assert all(_uuid_text(held, UUID_TAG) is not None for held in stamped)
+    for earlier, later in zip(stamped, stamped[1:]):
+        assert earlier.uuid() != later.uuid()
+        if earlier.updatedat() < later.updatedat():
+            assert earlier.uuid() < later.uuid()
+    assert stamped[1].updatedat().as_py() == dt.datetime(2026, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
+    assert stamped[1].by_tag(SNAPSHOTAT_TAG).as_py() == dt.datetime(
+        2026, 1, 2, 10, 15, 30, 250000, tzinfo=dt.timezone.utc
+    )
+    # Each message carries its predecessor's settled instant and identity.
+    _previous(stamped[0], None)
+    for earlier, later in zip(stamped, stamped[1:]):
+        _previous(later, earlier)
     # A state column holds the ranked spelling, never the wire's code.
     assert stamped[1].by_tag(39).as_py() == "20NEW"
     assert stamped[5].by_tag(39).as_py() == "80FILLED"
@@ -2468,21 +2869,25 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     for line, message in zip(LIFE, stamped):
         assert message.into_bytes(ord("|")) == line
 
-    # The identifier a venue reuses tomorrow opens a new chain rather than
-    # joining yesterday's, which ended: dated by its own clock, it is another
-    # identity.
+    # Reusing the code tomorrow is the same chain identity but a fresh live
+    # incarnation: its own creation instant, and no previous message.
     tomorrow = LIFE[0].replace(b"20260102", b"20260103")
     again = life.fill(next(reader.parse_line(tomorrow)))
-    assert _identity(again, PERSISTENTID_TAG) != chains[0]
+    assert again.puuid() == stamped[0].puuid()
+    assert again.createdat() == again.by_tag(60)
+    assert again.createdat() != stamped[0].createdat()
+    assert again.by_tag(PREVUUID_TAG).is_null()
     assert life.alive() == 1
     life.clear()
     assert life.alive() == 0
+    assert life.interval_ns == FixLifecycle.DEFAULT_INTERVAL_NS
     assert repr(life) == "FixLifecycle(0 alive)"
     # The same line at the same instant is the same chain identity, which is
     # what makes two reads of one capture agree.
     replayed = life.fill(next(reader.parse_line(LIFE[0])))
-    assert _identity(replayed, PERSISTENTID_TAG) == chains[0]
-    assert _identity(replayed, ID_TAG) == ids[0]
+    assert replayed.puuid() == stamped[0].puuid()
+    assert replayed.uuid() == ids[0]
+    assert replayed.createdat() == stamped[0].createdat()
 
     # The state moves, so nothing about it hashes.
     with pytest.raises(TypeError):
@@ -2490,7 +2895,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
 
 
 def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> None:
-    reader = FixCodec(seed)
+    reader = _fixed(seed)
     heartbeat = next(reader.parse_line(b"8=FIX.4.4|35=0|34=7|52=20260102-10:15:30.000|10=0|"))
     # The codec runs one lifecycle over any iterable, a generator included,
     # and answers the stream lazily.
@@ -2499,18 +2904,19 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
     stamped = list(stream)
     assert len(stamped) == 1
     (held,) = stamped
-    # Every message has an id; no identifier, no chain; no instrument, no
-    # identity.
-    assert _identity(held, ID_TAG) is not None
-    assert _identity(held, PERSISTENTID_TAG) is None
-    assert _identity(held, INSTID_TAG) is None
-    # The impact clock is the sending time where no transaction time is
-    # stated, and the epoch where the message states no clock at all.
-    sent = _identity(held, ID_TAG)
-    assert sent is not None and int.from_bytes(sent[:8], "big") == 1_767_348_930_000_000
-    (undated,) = list(reader.lifecycle([next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|"))]))
-    undated_id = _identity(undated, ID_TAG)
-    assert undated_id is not None and undated_id[:8] == bytes(8)
+    # Every message has an id; no identifier, no chain name, and the empty
+    # name every unnamed message hashes; no instrument, no identity.
+    assert _uuid_text(held, UUID_TAG) is not None
+    assert held.by_tag(CODE_TAG).as_py() == ""
+    undated = next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|"))
+    assert held.puuid() == undated.puuid()
+    assert _uuid_text(held, INSTUUID_TAG) is None
+    _previous(held, None)
+    # The event clock is the sending time where no transaction time is
+    # stated, and the codec's default where the message states no clock.
+    assert held.updatedat() == held.by_tag(52)
+    (settled,) = list(reader.lifecycle([undated]))
+    assert settled.updatedat() == settled.by_tag(52) == CLOCK
 
     # An element that is not a message is refused where it is met: the first
     # message is answered, the stray line raises in its place.
@@ -2527,11 +2933,11 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
 def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     seed: FixRegistry,
 ) -> None:
-    reader = FixCodec(seed)
+    reader = _fixed(seed)
     life = FixLifecycle(seed)
 
-    def identity(line: bytes) -> bytes | None:
-        return _identity(life.fill(next(reader.parse_line(line))), INSTID_TAG)
+    def identity(line: bytes) -> str | None:
+        return _uuid_text(life.fill(next(reader.parse_line(line))), INSTUUID_TAG)
 
     # An ISIN outranks a symbol, so the same security under two symbols is
     # one instrument, and case is not a difference.
@@ -2553,49 +2959,396 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
 
 
 def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) -> None:
-    reader = FixCodec(seed)
+    reader = _fixed(seed)
     once = list(reader.lifecycle(next(reader.parse_line(line)) for line in LIFE))
     twice = list(reader.lifecycle(once))
+    assert len(once) == len(twice) == len(LIFE)
     for first, second in zip(once, twice):
-        for tag in (INSTID_TAG, ID_TAG, PERSISTENTID_TAG):
-            assert _identity(first, tag) == _identity(second, tag), tag
+        for tag in (INSTUUID_TAG, UUID_TAG, PUUID_TAG):
+            assert _uuid_text(first, tag) == _uuid_text(second, tag), tag
+        assert first.createdat() == second.createdat()
         assert len(first.entries()) == len(second.entries())
     assert once == twice
 
 
 def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistry) -> None:
     """A stage is a call: the lifecycle composes over the messages a batch holds."""
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     source = pa.table({"body": pa.array(LIFE, pa.binary())})
     read = codec.parse_text_arrow_reader(source)
     schema = Field.from_arrow_schema(read.schema, "fix")
     parsed = codec.arrow_reader(schema, codec.lifecycle(codec.messages(read))).read_all()
     assert parsed.schema.names == read.schema.names, "the same schema in and out"
-    chains = parsed.column("persistentid").to_pylist()
+    chains = parsed.column("puuid").to_pylist()
     assert len(chains) == len(LIFE)
     assert chains[0] is not None and all(held == chains[0] for held in chains)
-    ids = parsed.column("id").to_pylist()
-    assert all(earlier < later for earlier, later in zip(ids, ids[1:]))
+    codes = parsed.column("code").to_pylist()
+    assert codes[0] != "" and all(held == codes[0] for held in codes)
+    created = parsed.column("createdat").to_pylist()
+    assert all(held == created[0] for held in created)
+    assert len(set(parsed.column("uuid").to_pylist())) == len(LIFE)
+    previous = parsed.column("prevuuid").to_pylist()
+    assert previous[0] is None and all(held is not None for held in previous[1:])
     # A state column holds the ranked spelling, never the wire's code, in the
     # fixed width the datatype declares.
     states = [held.rstrip(b"\0") for held in parsed.column("ordstatus").to_pylist()[1:3]]
     assert states == [b"20NEW", b"40PARTFILL"]
-    # Not stamped unless asked: a stamped value is indistinguishable from a
-    # stated one.
+    # Not filled unless asked: every row names no chain, so every row hashes
+    # the one empty name, and none carries a previous message.
     bare = codec.parse_text_arrow_reader(source).read_all()
-    assert bare.column("persistentid").to_pylist() == [None] * len(LIFE)
-    assert bare.column("id").to_pylist() == [None] * len(LIFE)
+    assert bare.column("code").to_pylist() == [""] * len(LIFE)
+    assert len(set(bare.column("puuid").to_pylist())) == 1
+    assert bare.column("puuid").to_pylist()[0] != chains[0]
+    assert bare.column("prevuuid").to_pylist() == [None] * len(LIFE)
     # Enrichment is another call over the same stream, and the two compose.
     both = codec.arrow_reader(
         schema, codec.lifecycle(codec.enrich_messages(codec.messages(codec.parse_text_arrow_reader(source))))
     ).read_all()
-    assert both.column("persistentid").to_pylist() == chains
+    assert both.column("puuid").to_pylist() == chains
     assert both.column("state").to_pylist()[1].rstrip(b"\0") == b"20NEW"
+
+
+def test_a_stream_of_lines_through_enrichment_and_the_lifecycle_carries_its_chain(
+    seed: FixRegistry,
+) -> None:
+    """Pinned by ``composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion``."""
+    codec = _fixed(seed)
+    bodies = [
+        b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:30|10=0|",
+        b"8=FIX.4.4|35=D|11=A|65024=stream|52=20260102-10:15:31|10=0|",
+    ]
+    pulled = 0
+
+    def lines() -> Iterator[TextLine]:
+        nonlocal pulled
+        for index, body in enumerate(bodies):
+            pulled += 1
+            yield TextLine(index, body)
+
+    pipeline = codec.lifecycle(codec.enrich_messages(codec.parse_text_lines(lines())))
+    assert pulled == 0
+    first = next(pipeline)
+    assert pulled == 1
+    # A wire stating the crate's `code` names its chain itself.
+    assert first.by_tag(CODE_TAG).as_py() == "stream"
+    last = next(pipeline)
+    assert pulled == 2
+    assert last.by_tag(PREVUUID_TAG) == first.uuid()
+    assert last.createdat() == first.createdat()
+    assert last.puuid() == first.puuid()
+    assert next(pipeline, None) is None
+    assert next(pipeline, None) is None
+
+
+def test_the_lifecycle_cadence_is_positive_atomic_and_kept_by_clear() -> None:
+    """Pinned by ``cadence_is_positive_atomic_and_retained_by_clear`` in ``rust/tests/fix/lifecycle_grid.rs``."""
+    registry = FixRegistry()
+    assert FixLifecycle.DEFAULT_INTERVAL_NS == 1_000_000_000
+    life = FixLifecycle(registry)
+    assert life.interval_ns == FixLifecycle.DEFAULT_INTERVAL_NS
+    for invalid in (0, -1, -(2**63)):
+        with pytest.raises(ValueError, match="interval_ns"):
+            life.set_interval_ns(invalid)
+        assert life.interval_ns == FixLifecycle.DEFAULT_INTERVAL_NS
+        assert life.alive() == 0
+    life.set_interval_ns(10)
+    life.fill(_event(registry, 1, "A"))
+    # Repeating the interval changes nothing, even while a chain is live; a
+    # different one waits until none is.
+    life.set_interval_ns(10)
+    for invalid in (0, -1, 20):
+        with pytest.raises(ValueError, match="interval_ns"):
+            life.set_interval_ns(invalid)
+        assert life.interval_ns == 10
+        assert life.alive() == 1
+    life.clear()
+    assert life.interval_ns == 10
+    assert life.alive() == 0
+    life.set_interval_ns(2**63 - 1)
+    assert life.interval_ns == 2**63 - 1
+    assert FixLifecycle(registry, interval_ns=10).interval_ns == 10
+    with pytest.raises(ValueError, match="interval_ns"):
+        FixLifecycle(registry, interval_ns=0)
+
+
+@pytest.mark.parametrize(
+    "time, grid",
+    [(-11, -20), (-10, -10), (-1, -10), (0, 0), (9, 0), (10, 10), (11, 10)],
+)
+def test_a_message_takes_its_epoch_grid_instant_and_keeps_its_real_one(time: int, grid: int) -> None:
+    """Pinned by ``epoch_floor_uses_negative_buckets_and_boundary_belongs_to_the_bucket_it_opens``."""
+    registry = FixRegistry()
+    raw = _event(registry, time, "A")
+    filled = FixLifecycle(registry, interval_ns=10).fill(raw)
+    assert filled.updatedat() == _ns(grid)
+    assert filled.createdat() == _ns(time)
+    assert filled.by_tag(SNAPSHOTAT_TAG) == _ns(time)
+    # The message handed in is not the one answered.
+    assert raw.updatedat() == _ns(time)
+    # A snapshot is answered only for an arrival off its grid.
+    answered = FixLifecycle(registry, interval_ns=10).snapshot(raw)
+    if time == grid:
+        assert answered is None
+    else:
+        assert answered == filled
+
+
+def test_the_full_and_the_filtered_door_share_one_history_and_consume_aligned_buckets() -> None:
+    """Pinned by ``full_and_filtered_doors_share_finalized_history_and_consume_aligned_buckets``."""
+    registry = FixRegistry()
+    full = FixLifecycle(registry, interval_ns=10)
+    filtered = FixLifecycle(registry, interval_ns=10)
+    last: FixMsg | None = None
+    for time, grid, emit in ((1, 0, True), (7, 0, False), (10, 10, False), (11, 10, False), (21, 20, True)):
+        raw = _event(registry, time, "A")
+        filled = full.fill(raw)
+        _previous(filled, last)
+        assert filled.updatedat() == _ns(grid)
+        assert filled.createdat() == _ns(1)
+        assert filled.by_tag(SNAPSHOTAT_TAG) == _ns(time)
+        answered = filtered.snapshot(raw)
+        if emit:
+            assert answered == filled, time
+        else:
+            assert answered is None, time
+        last = filled
+    assert full.alive() == 1
+    assert filtered.alive() == 1
+
+    # An already-aligned first arrival emits nothing but consumes its bucket,
+    # and still establishes the chain's creation instant.
+    aligned = FixLifecycle(registry, interval_ns=10)
+    opening = _event(registry, 10, "B")
+    opening.set("createdat", _ns(77))
+    assert aligned.snapshot(opening) is None
+    assert aligned.snapshot(_event(registry, 19, "B")) is None
+    after = aligned.snapshot(_event(registry, 21, "B"))
+    assert after is not None
+    assert after.createdat() == _ns(77)
+
+
+def test_a_live_chain_keeps_its_first_arrivals_creation_instant() -> None:
+    """Pinned by ``creation_is_the_first_arrivals_statement_not_the_minimum_or_grid``."""
+    registry = FixRegistry()
+    life = FixLifecycle(registry, interval_ns=10)
+    other = FixLifecycle(registry, interval_ns=10)
+    last: FixMsg | None = None
+    for time, stated in ((21, 987), (1, -123), (31, 432)):
+        raw = _event(registry, time, "A")
+        raw.set("createdat", _ns(stated))
+        restated = copy.copy(raw)
+        restated.set("createdat", _ns(654))
+        comparison = other.fill(restated)
+        filled = life.fill(raw)
+        assert filled.createdat() == _ns(987)
+        assert comparison.createdat() == _ns(654)
+        assert filled.updatedat() == _ns(time // 10 * 10)
+        assert filled.by_tag(SNAPSHOTAT_TAG) == _ns(time)
+        # The creation instant is no part of either identity.
+        assert filled.uuid() == comparison.uuid()
+        assert filled.puuid() == comparison.puuid()
+        _previous(filled, last)
+        last = filled
+
+
+def test_snapshots_replay_exactly_and_an_already_filled_stream_emits_nothing() -> None:
+    """Pinned by ``fresh_replay_is_exact_and_preprocessed_snapshot_replay_emits_nothing``."""
+    registry = FixRegistry()
+    raw = [_event(registry, time, "A") for time in (1, 7, 11, 21)]
+    full = FixLifecycle(registry, interval_ns=10)
+    filled = [full.fill(message) for message in raw]
+    assert all(message.createdat() == _ns(1) for message in filled)
+    # A fresh lifecycle replays the raw stream, and the filled one, exactly.
+    fresh = FixLifecycle(registry, interval_ns=10)
+    assert [fresh.fill(message) for message in raw] == filled
+    fresh = FixLifecycle(registry, interval_ns=10)
+    assert [fresh.fill(message) for message in filled] == filled
+    assert fresh.alive() == full.alive()
+    full.clear()
+    assert [full.fill(message) for message in raw] == filled
+
+    first = list(FixLifecycle(registry, interval_ns=10).snapshots(raw))
+    assert len(first) == 3
+    assert list(FixLifecycle(registry, interval_ns=10).snapshots(iter(raw))) == first
+    filtered = FixLifecycle(registry, interval_ns=10)
+    answered = [filtered.snapshot(message) for message in raw]
+    assert [message for message in answered if message is not None] == first
+    # Already-filled messages sit on their grid: they rebuild the live state
+    # and emit nothing.
+    assert list(FixLifecycle(registry, interval_ns=10).snapshots(filled)) == []
+
+
+def test_a_snapshot_stream_owns_the_state_and_goes_on_past_a_refused_transition() -> None:
+    """Pinned by ``snapshot_stream_is_lazy_keeps_per_item_errors_and_fuses_only_exhaustion``
+    and ``grid_underflow_refuses_before_opening_attaching_advancing_or_closing``."""
+    registry = FixRegistry()
+    life = FixLifecycle(registry, interval_ns=10)
+    opened = life.fill(_event(registry, 1, "A"))
+    assert life.alive() == 1
+    pulled = 0
+
+    def source() -> Iterator[FixMsg]:
+        nonlocal pulled
+        for message in (
+            _event(registry, 12, "A"),
+            # Floored to the grid, the least instant underflows.
+            _event(registry, -(2**63), "A"),
+            _event(registry, 21, "A"),
+            _event(registry, 29, "A"),
+            _event(registry, 31, "A"),
+        ):
+            pulled += 1
+            yield message
+
+    stream = life.snapshots(source())
+    assert isinstance(stream, FixMessages)
+    # The stream took the live state with it: the lifecycle is left with
+    # none, at the same interval, and nothing was pulled yet.
+    assert life.alive() == 0
+    assert life.interval_ns == 10
+    assert pulled == 0
+    carried = next(stream)
+    assert pulled == 1
+    _previous(carried, opened)
+    assert carried.createdat() == opened.createdat()
+    assert carried.updatedat() == _ns(10)
+    # A refused transition raises where it is met, changes no chain, and the
+    # stream goes on.
+    with pytest.raises(ValueError, match="updatedat"):
+        next(stream)
+    assert pulled == 2
+    after = next(stream)
+    assert pulled == 3
+    _previous(after, carried)
+    assert after.updatedat() == _ns(20)
+    # A suppressed arrival is processed, not emitted.
+    last = next(stream)
+    assert pulled == 5
+    assert last.updatedat() == _ns(30)
+    assert next(stream, None) is None
+    assert next(stream, None) is None
+
+    # A failure of the iterable raises as itself; an item that is not a
+    # message is refused where it is met and ends the stream; something that
+    # is not iterable is refused before anything is pulled.
+    def failing() -> Iterator[FixMsg]:
+        yield _event(registry, 1, "B")
+        raise RuntimeError("the source broke")
+
+    broken = FixLifecycle(registry, interval_ns=10).snapshots(failing())
+    assert next(broken).updatedat() == _ns(0)
+    with pytest.raises(RuntimeError, match="the source broke"):
+        next(broken)
+    mixed = FixLifecycle(registry, interval_ns=10).snapshots([_event(registry, 1, "C"), b"not a message"])
+    assert next(mixed).by_tag(CODE_TAG).as_py() == "C"
+    with pytest.raises(TypeError):
+        next(mixed)
+    assert next(mixed, None) is None
+    kept = FixLifecycle(registry, interval_ns=10)
+    kept.fill(_event(registry, 1, "D"))
+    with pytest.raises(TypeError):
+        kept.snapshots(42)  # type: ignore[arg-type]
+    assert kept.alive() == 1
+
+
+def test_an_unresolved_arrival_records_tag_zero_and_keeps_its_raw_key(seed: FixRegistry) -> None:
+    """One arrival record, with zero reserved for a key nothing resolved.
+
+    Pinned by ``rust/tests/fix/zero_entries.rs``.
+    """
+    codec = _fixed(seed)
+    wire = b"35=D|999999=one|0999999=two|OwnThing=three|0=zero|2147483648=wide|55=SYNTH|10=0|"
+    message = next(codec.parse_line(wire))
+    entries = message.entries()
+    assert [tag for tag, _, _ in entries] == [35, 0, 0, 0, 0, 0, 55, 10]
+    unresolved = [
+        ("999999", "one"),
+        ("0999999", "two"),
+        ("OwnThing", "three"),
+        ("0", "zero"),
+        ("2147483648", "wide"),
+    ]
+    assert [(key, value) for _, key, value in entries[1:6]] == unresolved
+    for key, value in unresolved:
+        held = message.get_by_name(key)
+        assert held is not None and held.as_py() == value, key
+    assert message.by_tag(999_999).as_py() == "one"
+    assert message.into_bytes(ord("|")) == wire
+
+    # Neither sign makes a numeric tag of a key a caller split.
+    signed = codec.parse_pairs([("-1", "negative"), ("+35", "signed")])
+    assert signed.entries() == [(0, "-1", "negative"), (0, "+35", "signed")]
+    for key, value in (("-1", "negative"), ("+35", "signed")):
+        held = signed.get_by_name(key)
+        assert held is not None and held.as_py() == value, key
+    assert signed.into_bytes(ord("|")) == b"-1=negative|+35=signed|"
+
+    # An indexed unknown keeps each arrival; its value keeps its shape.
+    indexed = codec.parse_pairs([("999999[0]", "first"), ("999999[2]", "third")])
+    assert indexed.entries() == [(0, "999999[0]", "first"), (0, "999999[2]", "third")]
+    held = indexed.get_by_name("999999")
+    assert held is not None and held.as_py() == ["first", None, "third"]
+
+    # An unresolved counter heads what arrived under it, at the top and inside
+    # a resolved group, whose resolved member still follows on the wire.
+    top = codec.parse_pairs([("999999", "2"), ("999999[0].OwnThing", "a"), ("999999[1].999998", "b")])
+    assert top.entries() == [
+        (0, "999999", "2"),
+        (0, "999999[0].OwnThing", "a"),
+        (0, "999999[1].999998", "b"),
+    ]
+    assert top.into_bytes(ord("|")) == b"999999=2|999999[0].OwnThing=a|999999[1].999998=b|"
+    nested = codec.parse_pairs(
+        [
+            ("NoPartyIDs", "1"),
+            ("NoPartyIDs[0].999999", "1"),
+            ("NoPartyIDs[0].999999[0].999998", "A"),
+            ("NoPartyIDs[0].PartyRole", "3"),
+        ]
+    )
+    assert [(tag, key) for tag, key, _ in nested.entries()] == [
+        (453, "NoPartyIDs"),
+        (0, "NoPartyIDs[0].999999"),
+        (0, "NoPartyIDs[0].999999[0].999998"),
+        (452, "NoPartyIDs[0].PartyRole"),
+    ]
+
+    # The crate's Map has no numeric scalar wire spelling.
+    opaque = next(codec.parse_line(b"35=D|65020=opaque|10=0|"))
+    assert opaque.entries()[1] == (0, "65020", "opaque")
+    held = opaque.get_by_name("65020")
+    assert held is not None and held.as_py() == "opaque"
+    assert opaque.get_by_name("altids") is None
+    assert opaque.into_bytes(ord("|")) == b"35=D|65020=opaque|10=0|"
+
+    # A resolved key keeps its canonical positive tag however it was spelled.
+    registry = copy.copy(seed)
+    symbol = registry.field_by_tag(55)
+    symbol.fix.tags = [9_000_001]
+    symbol.fix.aliases = ["SyntheticSymbol"]
+    registry.insert(symbol)
+    respelled = _fixed(registry)
+    canonical = next(respelled.parse_line(b"35=D|55=SYNTH|10=0|"))
+    for key in ("55", "00055", "9000001", "SyntheticSymbol"):
+        line = f"35=D|{key}=SYNTH|10=0|".encode()
+        read = next(respelled.parse_line(line))
+        assert read.entries()[1] == (55, key, "SYNTH"), key
+        assert read.digest() == canonical.digest(), key
+        assert read.into_bytes(ord("|")) == line, key
+
+    # The digest leaves out a header tag only where a dictionary resolved it:
+    # under a bare registry `34` is an unresolved arrival, hashed by its key.
+    def digest(dictionary: FixRegistry, sequence: str) -> bytes:
+        return _fixed(dictionary).parse_pairs([("34", sequence), ("11", "A")]).digest()
+
+    assert digest(seed, "7") == digest(seed, "8")
+    bare = FixRegistry()
+    assert digest(bare, "7") != digest(bare, "8")
 
 
 def test_a_batch_read_lands_at_the_newest_version_when_asked(seed: FixRegistry) -> None:
     """A stage is a call: the enriching pass composes between the parse and the batch."""
-    codec = FixCodec(seed)
+    codec = _fixed(seed)
     source = pa.table({"body": pa.array([REPORT], pa.binary())})
     # Enriched as messages, before the row: the pass restates first, and the
     # fixed row has no column for a retired field such as `ExecTransType(20)`,

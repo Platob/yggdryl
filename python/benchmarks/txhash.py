@@ -19,7 +19,8 @@ import timeit
 
 import pyarrow as pa
 
-from yggdryl import Field, Scalar, txhash, xxhash
+from yggdryl import Field, Scalar
+from yggdryl.hashing import txhash, xxhash
 
 PAYLOAD = b'{"id": 1234567, "venue": "XNAS", "price": "150.2500"}\n' * 20_000
 INSTANT = 1_700_000_000_000_000
@@ -82,6 +83,7 @@ def main() -> int:
     _measure("bytes(value)", lambda: bytes(value), 16, arguments.min_time, arguments.repeat)
     _measure("TxHash.from_bytes", lambda: txhash.TxHash.from_bytes("us", "xxh3-64", raw), 16, arguments.min_time, arguments.repeat)
     _measure("TxHash(str)", lambda: txhash.TxHash(spelled), 16, arguments.min_time, arguments.repeat)
+    _measure("TxHash.into_uuid", lambda: value.into_uuid(), 16, arguments.min_time, arguments.repeat)
     _measure("unix_of(datetime)", lambda: txhash.unix_of(aware), 1, arguments.min_time, arguments.repeat)
 
     batch = pa.record_batch(

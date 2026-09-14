@@ -29,7 +29,8 @@ import timeit
 
 import pyarrow as pa
 
-from yggdryl import DataType, Field, Scalar, xxhash
+from yggdryl import DataType, Field, Scalar
+from yggdryl.hashing import xxhash
 
 try:
     import xxhash as xxhash_c

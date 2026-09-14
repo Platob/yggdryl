@@ -1393,13 +1393,17 @@ impl PyIOBase {
     /// one window rather than a copy. A resource that does not exist digests
     /// as empty, per the laziness contract; a container raises.
     #[pyo3(signature = (algorithm = "xxh3-64"))]
-    fn read_digest(&self, py: Python<'_>, algorithm: &str) -> PyResult<crate::xxhash::PyDigest> {
-        let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
+    fn read_digest(
+        &self,
+        py: Python<'_>,
+        algorithm: &str,
+    ) -> PyResult<crate::hashing::xxhash::PyDigest> {
+        let algorithm = crate::hashing::xxhash::algorithm_from_str(algorithm)?;
         let inner = self.inner()?;
         let digest = py
             .detach(|| inner.read_digest(algorithm))
             .map_err(crate::holder::fs::storage_error)?;
-        Ok(crate::xxhash::PyDigest::from_core(digest))
+        Ok(crate::hashing::xxhash::PyDigest::from_core(digest))
     }
 
     /// Digest `length` bytes from `offset`, streaming the window.
@@ -1410,13 +1414,13 @@ impl PyIOBase {
         offset: u64,
         length: usize,
         algorithm: &str,
-    ) -> PyResult<crate::xxhash::PyDigest> {
-        let algorithm = crate::xxhash::algorithm_from_str(algorithm)?;
+    ) -> PyResult<crate::hashing::xxhash::PyDigest> {
+        let algorithm = crate::hashing::xxhash::algorithm_from_str(algorithm)?;
         let inner = self.inner()?;
         let digest = py
             .detach(|| inner.read_range_digest(offset, length, algorithm))
             .map_err(crate::holder::fs::storage_error)?;
-        Ok(crate::xxhash::PyDigest::from_core(digest))
+        Ok(crate::hashing::xxhash::PyDigest::from_core(digest))
     }
 
     /// Read every byte here as text, as `Path.read_text`.

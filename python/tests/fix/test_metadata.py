@@ -58,8 +58,11 @@ def test_invalid_catalog_reference_preserves_the_complete_field(
     assert field.into_json() == before
 
 
+# A counter is a positive tag: 0 is what an unresolved arrival records, so it
+# is refused with a negative (``rust/tests/fix/zero_entries.rs``).
 @pytest.mark.parametrize(
-    "invalid,error", [(True, TypeError), (1.5, TypeError), (2**31, OverflowError), (-1, ValueError)]
+    "invalid,error",
+    [(True, TypeError), (1.5, TypeError), (2**31, OverflowError), (-1, ValueError), (0, ValueError)],
 )
 def test_counter_refuses_invalid_python_integers_atomically(
     invalid: object, error: type[Exception]
