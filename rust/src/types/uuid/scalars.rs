@@ -129,8 +129,8 @@ impl Uuid {
     ///
     /// Every rendering is exactly [`Self::TEXT_LEN`] bytes, so the caller
     /// holds the slot on the stack and nothing is allocated. This is what a
-    /// writer that wants a `&str` asks for; [`Self::to_string`] is the same
-    /// characters when an owned one is what the caller needs.
+    /// writer that wants a `&str` asks for; [`ToString::to_string`] is the
+    /// same characters when an owned one is what the caller needs.
     ///
     /// ```
     /// use yggdryl::types::Uuid;
