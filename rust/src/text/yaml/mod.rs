@@ -721,6 +721,9 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)
+            | Scalar::Timezone(_)
+            | Scalar::MimeType(_)
+            | Scalar::MediaType(_)
             | Scalar::Enum(_)
     )
 }
@@ -764,6 +767,9 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Code(value) => write_scalar_string(writer, value.as_str())?,
         Scalar::Version(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Url(value) => write_scalar_string(writer, &value.to_string())?,
+        Scalar::Timezone(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::MimeType(value) => write_scalar_string(writer, value.as_str())?,
+        Scalar::MediaType(value) => write_scalar_string(writer, &value.to_string())?,
         Scalar::Uuid(value) => {
             let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
             write_scalar_string(writer, value.render(&mut slot))?;

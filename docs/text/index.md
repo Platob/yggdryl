@@ -75,7 +75,7 @@
 
 ## Typed `Scalar` variants
 
-Every width is a direct [`Scalar`](../types/scalar.md) variant, with no family enum between (`Scalar::I32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`I32(7)` equals `U8(7)`). Width stays available for datatype and Arrow projection.
+Every width is a direct [`Scalar`](../types/scalar.md) variant, with no family enum between (`Scalar::Int32(Int32(2))`). Every `Scalar` is hashable and totally ordered; equal numeric or temporal values compare and hash equal across storage widths (`I32(7)` equals `U8(7)`). Width stays available for datatype and Arrow projection.
 
 | group | variants |
 | --- | --- |

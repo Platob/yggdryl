@@ -135,6 +135,12 @@ enum DataTypeRef<'a> {
     Uuid {},
     Version {},
     Url {},
+    Timezone {},
+    // One word on the wire, as `timeinforce` is.
+    #[serde(rename = "mimetype")]
+    MimeType {},
+    #[serde(rename = "mediatype")]
+    MediaType {},
     List {
         field: &'a Field,
     },
@@ -277,6 +283,9 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
             D::Url => Self::Url {},
+            D::Timezone => Self::Timezone {},
+            D::MimeType => Self::MimeType {},
+            D::MediaType => Self::MediaType {},
             D::List(field) => Self::List { field },
             D::ListView(field) => Self::ListView { field },
             D::FixedSizeList(field, length) => Self::FixedSizeList {
@@ -404,6 +413,12 @@ enum DataTypeValue {
     Uuid {},
     Version {},
     Url {},
+    Timezone {},
+    // One word on the wire, as `timeinforce` is.
+    #[serde(rename = "mimetype")]
+    MimeType {},
+    #[serde(rename = "mediatype")]
+    MediaType {},
     List {
         field: Field,
     },
@@ -520,6 +535,9 @@ impl TryFrom<DataTypeValue> for DataType {
             DataTypeValue::Uuid {} => Self::Uuid,
             DataTypeValue::Version {} => Self::Version,
             DataTypeValue::Url {} => Self::Url,
+            DataTypeValue::Timezone {} => Self::Timezone,
+            DataTypeValue::MimeType {} => Self::MimeType,
+            DataTypeValue::MediaType {} => Self::MediaType,
             DataTypeValue::List { field } => Self::list(field),
             DataTypeValue::ListView { field } => Self::list_view(field),
             DataTypeValue::FixedSizeList { field, length } => Self::fixed_size_list(field, length)?,
@@ -645,6 +663,9 @@ impl DataType {
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
             D::Url => tag("url"),
+            D::Timezone => tag("timezone"),
+            D::MimeType => tag("mimetype"),
+            D::MediaType => tag("mediatype"),
             D::DateTime64 { unit, timezone } => {
                 tag("datetime64");
                 entries.push((key("unit"), unit_value(*unit)));
@@ -917,6 +938,9 @@ impl DataType {
             "uuid" => Self::Uuid,
             "version" => Self::Version,
             "url" => Self::Url,
+            "timezone" => Self::Timezone,
+            "mimetype" => Self::MimeType,
+            "mediatype" => Self::MediaType,
             "datetime64" => {
                 let timezone = match at("timezone").filter(|held| !matches!(held, Scalar::Null)) {
                     Some(held) => {

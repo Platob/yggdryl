@@ -20,9 +20,12 @@ use crate::{Error, Field, Result};
 use super::bytes::BYTES_EXTENSION_NAME;
 use super::decimal::validate_decimal;
 use super::geospatial::{GEOARROW_WKB_EXTENSION_NAME, VARIANT_EXTENSION_NAME};
+use super::media_type::MEDIATYPE_EXTENSION_NAME;
+use super::mime_type::MIMETYPE_EXTENSION_NAME;
 use super::nested::{validate_dictionary_key, validate_map_entries, validate_run_ends};
 use super::string::{STRING_EXTENSION_NAME, code_extension_name, needs_extension};
 use super::temporal::{validate_duration_unit, validate_time32_unit, validate_time64_unit};
+use super::timezone::TIMEZONE_EXTENSION_NAME;
 use super::url::URL_EXTENSION_NAME;
 use super::uuid::UUID_EXTENSION_NAME;
 use super::version::VERSION_EXTENSION_NAME;
@@ -402,7 +405,10 @@ impl TryFrom<&DataType> for ArrowDataType {
             | R::State
             | R::TimeInForce
             | R::Version
-            | R::Url => Self::Utf8,
+            | R::Url
+            | R::Timezone
+            | R::MimeType
+            | R::MediaType => Self::Utf8,
             R::Uuid => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(field.as_ref().clone().into_arrow_ref()?),
             R::ListView(field) => Self::ListView(field.as_ref().clone().into_arrow_ref()?),
@@ -533,7 +539,10 @@ impl TryFrom<DataType> for ArrowDataType {
             | R::State
             | R::TimeInForce
             | R::Version
-            | R::Url => Self::Utf8,
+            | R::Url
+            | R::Timezone
+            | R::MimeType
+            | R::MediaType => Self::Utf8,
             R::Uuid => Self::FixedSizeBinary(16),
             R::List(field) => Self::List(into_arrow_field(field)?),
             R::ListView(field) => Self::ListView(into_arrow_field(field)?),
@@ -725,6 +734,9 @@ pub(crate) fn arrow_extension_parts(dtype: &DataType) -> Option<(&'static str, S
         DataType::Uuid => Some((UUID_EXTENSION_NAME, String::new())),
         DataType::Version => Some((VERSION_EXTENSION_NAME, String::new())),
         DataType::Url => Some((URL_EXTENSION_NAME, String::new())),
+        DataType::Timezone => Some((TIMEZONE_EXTENSION_NAME, String::new())),
+        DataType::MimeType => Some((MIMETYPE_EXTENSION_NAME, String::new())),
+        DataType::MediaType => Some((MEDIATYPE_EXTENSION_NAME, String::new())),
         // A code carries its own name, so the identity survives Arrow: three
         // bytes under `yggdryl.currency` read back a currency.
         code => code_extension_name(code).map(|name| (name, String::new())),

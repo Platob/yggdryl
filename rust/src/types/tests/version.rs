@@ -264,11 +264,11 @@ fn datatype_identity_naming_and_serde_are_total() {
     assert_eq!(DataTypeId::Version.as_str(), "version");
     assert_eq!(DataTypeId::Version.as_u8(), 54);
     assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
-    // `Version` is no longer last: the coded FIX datatypes, then `Url` and
-    // `Isin` were appended after it, which is what `as_u8` being a wire
-    // contract requires; the five string layouts took the slots the text
-    // variants they replaced held.
-    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Isin));
+    // `Version` is no longer last: the coded FIX datatypes, then `Url`,
+    // `Isin` and the three canonical text datatypes were appended after it,
+    // which is what `as_u8` being a wire contract requires; the five string
+    // layouts took the slots the text variants they replaced held.
+    assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::MediaType));
     assert_eq!(DataTypeId::LargeStringView.as_u8(), 31);
     assert!(!DataTypeId::Version.is_parameterized());
     assert!(DataTypeId::Version.is_string());

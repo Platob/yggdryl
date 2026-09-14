@@ -68,10 +68,13 @@ impl Scalar {
             | Self::Mapping(_)
             | Self::Record(_)
             | Self::Version(_)
-            | Self::Url(_) => return None,
+            | Self::Url(_)
+            | Self::MediaType(_) => return None,
             Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Code(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Enum(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
             Self::Geometry(value) => {
                 return Some(ValueBytes::borrowed(value.as_bytes()));
@@ -174,6 +177,9 @@ impl Scalar {
     /// | `Code` | the code's own id | length `u64` little-endian, then the trimmed text |
     /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
+    /// | `Timezone` | `timezone` | length `u64` little-endian, then the canonical name |
+    /// | `MimeType` | `mimetype` | length `u64` little-endian, then the canonical name |
+    /// | `MediaType` | `mediatype` | rendered length `u64` little-endian, then the canonical rendering |
     /// | `Enum` | `dictionary` | length-prefixed enum identity, then the member ordinal |
     /// | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
     /// | `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
@@ -296,6 +302,22 @@ impl Scalar {
             }
             Self::Url(value) => {
                 write_tag(sink, DataTypeId::Url);
+                let canonical = value.to_string();
+                write_len(sink, canonical.len());
+                sink.write(canonical.as_bytes());
+            }
+            Self::Timezone(value) => {
+                write_tag(sink, DataTypeId::Timezone);
+                write_text(sink, value.as_str());
+            }
+            Self::MimeType(value) => {
+                write_tag(sink, DataTypeId::MimeType);
+                write_text(sink, value.as_str());
+            }
+            // A media type renders its base, charset and codings as one
+            // canonical text, which is what a column of them holds.
+            Self::MediaType(value) => {
+                write_tag(sink, DataTypeId::MediaType);
                 let canonical = value.to_string();
                 write_len(sink, canonical.len());
                 sink.write(canonical.as_bytes());

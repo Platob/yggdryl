@@ -1702,7 +1702,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 31] = [
+    let seeds: [(DataTypeId, Scalar); 32] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1737,6 +1737,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
             Scalar::from("123e4567-e89b-12d3-a456-426614174000"),
         ),
         (DataTypeId::Version, Scalar::from("5.0.2")),
+        (DataTypeId::Timezone, Scalar::from("America/New_York")),
     ];
     let mut values: Vec<(DataTypeId, Scalar)> = seeds
         .into_iter()
@@ -1753,6 +1754,16 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         .scalar("https://example.com/a")
         .expect("the text is a URL");
     values.push((DataTypeId::Url, url));
+    // A MIME type and a media type are pinned outside the seed loop for the
+    // same reason a URL is: their canonical text is not what was written.
+    let mime = DataType::MimeType
+        .scalar("application/json")
+        .expect("the text is a MIME type");
+    values.push((DataTypeId::MimeType, mime));
+    let media = DataType::MediaType
+        .scalar("application/json; charset=utf-8")
+        .expect("the text is a media type");
+    values.push((DataTypeId::MediaType, media));
     // Every prebuilt id is either pinned here or the one that nothing names.
     let pinned: std::collections::HashSet<DataTypeId> = values.iter().map(|(id, _)| *id).collect();
     for id in DataTypeId::ALL {

@@ -793,6 +793,39 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 }),
             _ => canonicalization_failure(dtype),
         },
+        // A zone, a MIME type and a media type each canonicalize their own
+        // text - an alias, a case, a parameter order - so text on the way in
+        // crosses the same `from_str` every other spelling of them crosses.
+        D::Timezone => match value {
+            Scalar::Timezone(_) => Ok((value.clone(), false)),
+            Scalar::String(text) => crate::Timezone::from_str(text.as_str())
+                .map(|zone| (Scalar::Timezone(zone), true))
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected timezone text: {error}"),
+                }),
+            _ => canonicalization_failure(dtype),
+        },
+        D::MimeType => match value {
+            Scalar::MimeType(_) => Ok((value.clone(), false)),
+            Scalar::String(text) => crate::MimeType::from_str(text.as_str())
+                .map(|mime| (Scalar::MimeType(mime), true))
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected mimetype text: {error}"),
+                }),
+            _ => canonicalization_failure(dtype),
+        },
+        D::MediaType => match value {
+            Scalar::MediaType(_) => Ok((value.clone(), false)),
+            Scalar::String(text) => crate::MediaType::from_str(text.as_str())
+                .map(|media| (Scalar::from(media), true))
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("expected mediatype text: {error}"),
+                }),
+            _ => canonicalization_failure(dtype),
+        },
         D::List(field)
         | D::ListView(field)
         | D::FixedSizeList(field, _)
@@ -1421,6 +1454,27 @@ fn validate_dtype_value(
                 .map(|_| ())
                 .map_err(|_| expected("url", value)),
             _ => Err(expected("url", value)),
+        },
+        D::Timezone => match value {
+            Scalar::Timezone(_) => Ok(()),
+            Scalar::String(text) => crate::Timezone::from_str(text.as_str())
+                .map(|_| ())
+                .map_err(|_| expected("timezone", value)),
+            _ => Err(expected("timezone", value)),
+        },
+        D::MimeType => match value {
+            Scalar::MimeType(_) => Ok(()),
+            Scalar::String(text) => crate::MimeType::from_str(text.as_str())
+                .map(|_| ())
+                .map_err(|_| expected("mimetype", value)),
+            _ => Err(expected("mimetype", value)),
+        },
+        D::MediaType => match value {
+            Scalar::MediaType(_) => Ok(()),
+            Scalar::String(text) => crate::MediaType::from_str(text.as_str())
+                .map(|_| ())
+                .map_err(|_| expected("mediatype", value)),
+            _ => Err(expected("mediatype", value)),
         },
         D::List(field) | D::ListView(field) | D::LargeList(field) | D::LargeListView(field) => {
             validate_sequence(field, value, None, dtype.name(), depth + 1)

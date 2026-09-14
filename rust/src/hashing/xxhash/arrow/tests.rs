@@ -312,6 +312,32 @@ fn columns() -> Vec<(Field, Scalar)> {
             ]),
         ),
         (
+            Field::new("timezone", DataType::Timezone, true),
+            Scalar::from_sequence([
+                DataType::Timezone.scalar("America/New_York").unwrap(),
+                DataType::Timezone.scalar("+05:30").unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("mimetype", DataType::MimeType, true),
+            Scalar::from_sequence([
+                DataType::MimeType.scalar("application/json").unwrap(),
+                DataType::MimeType.scalar("text/csv").unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
+            Field::new("mediatype", DataType::MediaType, true),
+            Scalar::from_sequence([
+                DataType::MediaType
+                    .scalar("application/json; charset=utf-8")
+                    .unwrap(),
+                DataType::MediaType.scalar("text/csv").unwrap(),
+                Scalar::Null,
+            ]),
+        ),
+        (
             Field::new("binary", DataType::binary(), true),
             Scalar::from_sequence([
                 Scalar::from(Arc::from(b"".as_slice())),

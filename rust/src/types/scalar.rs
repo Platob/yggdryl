@@ -41,7 +41,10 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, TimeUnit, Timezone, i256};
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone,
+    i256,
+};
 
 use super::boolean::Boolean;
 use super::bytes::Bytes;
@@ -111,6 +114,75 @@ pub trait ScalarFamily: Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + H
     /// Narrow a dynamic scalar to this family without re-validating it.
     fn from_scalar(value: &Scalar) -> Option<&Self>;
 }
+
+/// Make one canonical text value a scalar leaf of its own.
+///
+/// A value that parses, canonicalizes and renders itself - a version, a time
+/// zone, a MIME type - is its own family: it holds no narrower leaf and no
+/// wider one holds it, so every method here is the same four lines under a
+/// different name. The wrapping variant is named because a value wider than
+/// the enum rides behind a shared pointer instead.
+macro_rules! text_scalar_value {
+    ($leaf:ty, $variant:ident, $id:expr, $dtype:expr) => {
+        impl ScalarFamily for $leaf {
+            const KIND: DataTypeKind = DataTypeKind::Text;
+
+            fn id(&self) -> DataTypeId {
+                $id
+            }
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok($dtype)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                match value {
+                    Scalar::$variant(value) => Some(value),
+                    _ => None,
+                }
+            }
+        }
+
+        impl ScalarValue for $leaf {
+            type Family = Self;
+
+            const ID: DataTypeId = $id;
+            const KIND: DataTypeKind = DataTypeKind::Text;
+
+            fn dtype(&self) -> Result<DataType> {
+                Ok($dtype)
+            }
+
+            fn into_family(self) -> Self::Family {
+                self
+            }
+
+            fn from_family(family: &Self::Family) -> Option<&Self> {
+                Some(family)
+            }
+
+            fn into_scalar(self) -> Scalar {
+                Scalar::$variant(self)
+            }
+
+            fn from_scalar(value: &Scalar) -> Option<&Self> {
+                <Self as ScalarFamily>::from_scalar(value)
+            }
+        }
+
+        impl From<$leaf> for Scalar {
+            fn from(value: $leaf) -> Self {
+                Self::$variant(value)
+            }
+        }
+    };
+}
+
+pub(crate) use text_scalar_value;
 
 /// The shared deterministic scalar spanning native and structured formats.
 #[derive(Clone, Debug)]
@@ -184,6 +256,16 @@ pub enum Scalar {
     /// Behind one shared pointer: a parsed [`crate::Url`] is far wider than
     /// this enum, and a column of them is cloned once per row.
     Url(Arc<crate::Url>),
+    /// A canonical time zone name, a fixed offset, or the zone-free marker.
+    Timezone(Timezone),
+    /// A validated, canonical MIME type.
+    MimeType(MimeType),
+    /// A MIME type with its charset and content codings.
+    ///
+    /// Behind one shared pointer: a media type carries a base, a charset and a
+    /// coding list, which is wider than this enum, and a column of them is
+    /// cloned once per row.
+    MediaType(Arc<MediaType>),
     /// One identity-preserving member of a shared static enum.
     Enum(Enum),
     /// Opaque bytes retaining their storage representation.
@@ -306,6 +388,9 @@ impl Serialize for Scalar {
                 tagged(serializer, "uuid", &value.render(&mut slot))
             }
             Self::Version(value) => tagged(serializer, "version", value),
+            Self::Timezone(value) => tagged(serializer, "timezone", &value.as_str()),
+            Self::MimeType(value) => tagged(serializer, "mimetype", &value.as_str()),
+            Self::MediaType(value) => tagged(serializer, "mediatype", &value.to_string()),
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Enum(value) => tagged(serializer, "enum", value),
             // One tag for every byte value: the ordinary payload writes its
@@ -500,6 +585,11 @@ impl<'de> Deserialize<'de> for Scalar {
             TimeInForce(SmolStr),
             Uuid(SmolStr),
             Version(Version),
+            Timezone(SmolStr),
+            #[serde(rename = "mimetype")]
+            MimeType(SmolStr),
+            #[serde(rename = "mediatype")]
+            MediaType(SmolStr),
             Url(SmolStr),
             Enum(Enum),
             Bytes(Bytes),
@@ -573,6 +663,15 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map(Self::Uuid)
                 .map_err(D::Error::custom),
             StructuralValue::Version(value) => Ok(Self::Version(value)),
+            StructuralValue::Timezone(value) => Timezone::from_str(value.as_str())
+                .map(Self::Timezone)
+                .map_err(D::Error::custom),
+            StructuralValue::MimeType(value) => MimeType::from_str(value.as_str())
+                .map(Self::MimeType)
+                .map_err(D::Error::custom),
+            StructuralValue::MediaType(value) => MediaType::from_str(value.as_str())
+                .map(|value| Self::MediaType(Arc::new(value)))
+                .map_err(D::Error::custom),
             StructuralValue::Url(value) => crate::Url::from_str(value.as_str())
                 .map(|value| Self::Url(Arc::new(value)))
                 .map_err(D::Error::custom),
@@ -773,6 +872,9 @@ impl Ord for Scalar {
             Self::Code(left) => same_kind!(Self::Code(right) => left.cmp(right)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
+            Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
+            Self::MimeType(left) => same_kind!(Self::MimeType(right) => left.cmp(right)),
+            Self::MediaType(left) => same_kind!(Self::MediaType(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
             Self::Enum(left) => same_kind!(Self::Enum(right) => left.cmp(right)),
             Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
@@ -845,6 +947,9 @@ impl Hash for Scalar {
             Self::Code(value) => value.hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
+            Self::Timezone(value) => value.hash(state),
+            Self::MimeType(value) => value.hash(state),
+            Self::MediaType(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
             Self::Enum(value) => value.hash(state),
             Self::Bytes(value) => value.hash(state),
@@ -942,6 +1047,9 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Code(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
+        Scalar::Timezone(_) => 21,
+        Scalar::MimeType(_) => 22,
+        Scalar::MediaType(_) => 23,
     }
 }
 
@@ -986,6 +1094,9 @@ impl Scalar {
             Self::Code(code) => code.identifier(),
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
+            Self::Timezone(_) => DataTypeId::Timezone,
+            Self::MimeType(_) => DataTypeId::MimeType,
+            Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
             Self::Enum(_) => DataTypeId::String,
             Self::Bytes(bytes) => bytes.layout().id(),
@@ -1032,6 +1143,9 @@ impl Scalar {
             Self::Code(code) => code.identifier().as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
+            Self::Timezone(_) => "timezone",
+            Self::MimeType(_) => "mimetype",
+            Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
             Self::Enum(_) => "enum",
             Self::Bytes(bytes) => match bytes.layout() {
@@ -1354,7 +1468,10 @@ impl Scalar {
             | Self::Enum(_)
             | Self::Bytes(_)
             | Self::Geometry(_)
-            | Self::Geography(_) => return None,
+            | Self::Geography(_)
+            | Self::Timezone(_)
+            | Self::MimeType(_)
+            | Self::MediaType(_) => return None,
         };
         Some(leaf)
     }

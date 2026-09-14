@@ -191,6 +191,38 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
+        // Each canonical text datatype writes the one spelling its value
+        // renders, so the column holds what the value says it is.
+        DataType::Timezone => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::Timezone(zone) => Ok(Some(zone.as_str().to_owned())),
+                    other => Err(invalid_value("timezone", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        DataType::MimeType => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::MimeType(mime) => Ok(Some(mime.as_str().to_owned())),
+                    other => Err(invalid_value("mimetype", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
+        DataType::MediaType => Arc::new(StringArray::from(
+            values
+                .iter()
+                .map(|value| match value {
+                    Scalar::Null => Ok(None),
+                    Scalar::MediaType(media) => Ok(Some(media.to_string())),
+                    other => Err(invalid_value("mediatype", other.kind())),
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )),
         DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
         DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
         DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
@@ -388,6 +420,18 @@ pub(crate) fn value_from_array(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
+        DataType::Timezone => Scalar::Timezone(
+            crate::Timezone::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        ),
+        DataType::MimeType => Scalar::MimeType(
+            crate::MimeType::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        ),
+        DataType::MediaType => Scalar::from(
+            crate::MediaType::from_str(downcast::<StringArray>(array)?.value(index))
+                .map_err(crate::arrow::Error::from)?,
+        ),
         DataType::String(parameters) => string_value(*parameters, array, index)?,
         // A code reads back as the text its column holds, checked once more
         // at the width its own standard fixes.

@@ -190,9 +190,16 @@ impl DataType {
             return Ok(self.clone());
         }
         // A version has numeric ordering semantics that a text or numeric
-        // merge cannot preserve, and a URL carries a validation a text merge
-        // would silently drop. Only the equal-type arm above may merge either.
-        if matches!(self, Self::Version | Self::Url) || matches!(other, Self::Version | Self::Url) {
+        // merge cannot preserve, and a URL, a zone, a MIME type and a media
+        // type each carry a validation and a canonical spelling a text merge
+        // would silently drop. Only the equal-type arm above may merge these.
+        let canonical_text = |dtype: &Self| {
+            matches!(
+                dtype,
+                Self::Version | Self::Url | Self::Timezone | Self::MimeType | Self::MediaType
+            )
+        };
+        if canonical_text(self) || canonical_text(other) {
             return Err(unmergeable(self, other));
         }
         if let Some(merged) = merge_encoded(self, other, how, recode)? {

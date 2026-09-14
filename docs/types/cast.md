@@ -243,7 +243,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 
     // Canonicalizing narrows every value into the representation the root declares.
     let canonical = schema.canonicalize_value(row)?;
-    assert!(matches!(canonical.get(0), Some(Scalar::I64(_))));
+    assert!(matches!(canonical.get(0), Some(Scalar::Int64(_))));
     assert_eq!(
         canonical.get(1).and_then(Scalar::as_f64),
         Some(f64::from(0.1f32))

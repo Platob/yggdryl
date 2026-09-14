@@ -1,32 +1,5 @@
-//! One way to name a time zone, everywhere in the project.
-//!
-//! Registered names, aliases, fixed offsets, and the explicit zone-free marker
-//! all resolve through this one value.
-//!
-//! [`Self::NAIVE`] gives every native temporal value and datatype a
-//! non-optional zone while Arrow projects that marker as an absent timezone. A
-//! zone is a process-lifetime interned handle; [`Self::offset_at`] applies the
-//! registry rules bundled by this build.
-//!
-//! ```
-//! use yggdryl::Timezone;
-//!
-//! # fn main() -> yggdryl::Result<()> {
-//! // Aliases and case both canonicalize, so two spellings compare equal.
-//! assert_eq!(Timezone::from_str("Asia/Calcutta")?, Timezone::from_str("Asia/Kolkata")?);
-//! assert_eq!(Timezone::from_str("Z")?, Timezone::UTC);
-//!
-//! // A registered zone knows its own rules.
-//! let new_york = Timezone::from_str("America/New_York")?;
-//! assert_eq!(new_york.offset_at(1_700_000_000), Some(-5 * 3600));  // November: EST
-//! assert_eq!(new_york.offset_at(1_688_000_000), Some(-4 * 3600));  // June: EDT
-//! assert_eq!(new_york.abbreviation_at(1_688_000_000), Some("EDT"));
-//!
-//! // A fixed offset needs no registry at all.
-//! assert_eq!(Timezone::from_str("+05:30")?.offset_at(0), Some(5 * 3600 + 1800));
-//! # Ok(())
-//! # }
-//! ```
+//! The time zone value: canonical names, fixed offsets, and the registry
+//! rules bundled by this build.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -37,11 +10,12 @@ use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
-use crate::{Error, Result, hashing::stable_hash_display};
+use crate::types::scalar::{ScalarFamily, ScalarValue, text_scalar_value};
+use crate::{
+    DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, hashing::stable_hash_display,
+};
 
-mod registry;
-
-use registry::{Basis, Edge, Zone};
+use super::registry::{self, Basis, Edge, Zone};
 
 /// Seconds in one day, the modulus every civil-time calculation turns on.
 const DAY: i64 = 86_400;
@@ -589,5 +563,4 @@ impl From<Timezone> for SmolStr {
     }
 }
 
-#[cfg(test)]
-mod tests;
+text_scalar_value!(Timezone, Timezone, DataTypeId::Timezone, DataType::Timezone);

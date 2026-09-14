@@ -157,11 +157,23 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Isin = 60,
+    /// A canonical time zone name, a fixed offset, or the zone-free marker.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    Timezone = 61,
+    /// A validated, canonical MIME type.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    MimeType = 62,
+    /// A MIME type with its charset and content codings.
+    ///
+    /// Appended because [`Self::as_u8`] is a wire contract.
+    MediaType = 63,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 60] = [
+    pub const ALL: [Self; 63] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -222,6 +234,9 @@ impl DataTypeId {
         Self::TimeInForce,
         Self::Url,
         Self::Isin,
+        Self::Timezone,
+        Self::MimeType,
+        Self::MediaType,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -296,6 +311,9 @@ impl DataTypeId {
             Self::Geography => "geography",
             Self::Version => "version",
             Self::Url => "url",
+            Self::Timezone => "timezone",
+            Self::MimeType => "mimetype",
+            Self::MediaType => "mediatype",
             Self::String => "string",
             Self::FixedString => "fixed_string",
             Self::StringView => "string_view",
@@ -360,7 +378,10 @@ impl DataTypeId {
             | Self::LargeString
             | Self::LargeStringView
             | Self::Version
-            | Self::Url => DataTypeKind::Text,
+            | Self::Url
+            | Self::Timezone
+            | Self::MimeType
+            | Self::MediaType => DataTypeKind::Text,
             // A registered code is fixed-width ASCII text with an identity;
             // the family is the identity, and every text behaviour - comparison,
             // casting to a variable layout, merging - is uniform over it too.
@@ -627,7 +648,7 @@ mod tests {
 
     #[test]
     fn the_strings_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 60);
+        assert_eq!(DataTypeId::ALL.len(), 63);
         for id in [
             DataTypeId::String,
             DataTypeId::FixedString,
@@ -753,6 +774,9 @@ mod tests {
             (DataTypeId::TimeInForce, 57),
             (DataTypeId::Url, 59),
             (DataTypeId::Isin, 60),
+            (DataTypeId::Timezone, 61),
+            (DataTypeId::MimeType, 62),
+            (DataTypeId::MediaType, 63),
         ];
         assert_eq!(pinned.len(), DataTypeId::ALL.len());
         for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {

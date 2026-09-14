@@ -35,6 +35,9 @@ enum DefaultPlan {
     /// The minimum canonical version.
     Version,
     Url,
+    Timezone,
+    MimeType,
+    MediaType,
 }
 
 struct Planned {
@@ -233,6 +236,9 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Uuid
             | DataType::Version
             | DataType::Url
+            | DataType::Timezone
+            | DataType::MimeType
+            | DataType::MediaType
             | DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
@@ -316,6 +322,13 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // A location has no zero, so the default is the shortest one the
         // validator accepts: the filesystem root.
         D::Url => scalar(DefaultPlan::Url, false),
+        // The explicit zone-free marker: the one zone every temporal already
+        // defaults to, so a zone column and a zone parameter agree.
+        D::Timezone => scalar(DefaultPlan::Timezone, false),
+        // Arbitrary bytes under no charset and no coding, which is what both
+        // values already answer `Default` with.
+        D::MimeType => scalar(DefaultPlan::MimeType, false),
+        D::MediaType => scalar(DefaultPlan::MediaType, false),
         // A string defaults to the empty one, restated under its parameters
         // by the value door; on a fixed layout storage pads it to all-NUL,
         // and a code, which stores as its text, holds the empty text itself.
@@ -629,6 +642,9 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         }
         DefaultPlan::Uuid => Ok(Scalar::Uuid(crate::types::Uuid::new(0))),
         DefaultPlan::Version => Ok(Scalar::Version(crate::Version::MIN)),
+        DefaultPlan::Timezone => Ok(Scalar::Timezone(crate::Timezone::NAIVE)),
+        DefaultPlan::MimeType => Ok(Scalar::MimeType(crate::MimeType::default())),
+        DefaultPlan::MediaType => Ok(Scalar::from(crate::MediaType::default())),
         DefaultPlan::Url => {
             crate::Url::from_str(DEFAULT_URL).map(|url| Scalar::Url(std::sync::Arc::new(url)))
         }
@@ -712,6 +728,15 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         },
         DefaultPlan::Version => {
             matches!(value, Scalar::Version(version) if version == &crate::Version::MIN)
+        }
+        DefaultPlan::Timezone => {
+            matches!(value, Scalar::Timezone(zone) if zone.is_naive())
+        }
+        DefaultPlan::MimeType => {
+            matches!(value, Scalar::MimeType(mime) if mime == &crate::MimeType::default())
+        }
+        DefaultPlan::MediaType => {
+            matches!(value, Scalar::MediaType(media) if media.as_ref() == &crate::MediaType::default())
         }
         DefaultPlan::Url => {
             matches!(value, Scalar::Url(url) if url.to_string() == DEFAULT_URL)

@@ -1215,6 +1215,9 @@ fn feed_cell(
         | DataType::Uuid
         | DataType::Version
         | DataType::Url
+        | DataType::Timezone
+        | DataType::MimeType
+        | DataType::MediaType
         | DataType::List(_)
         | DataType::ListView(_)
         | DataType::FixedSizeList(..)

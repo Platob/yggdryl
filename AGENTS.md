@@ -112,6 +112,8 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `<name>.rs` | one shared trait, enum, or value each, re-exported from the crate root |
 | `iobase.rs` | the single `IOBase` trait and its behavior modules |
 | `types/temporal/` | the calendar and clock datatypes, their units and zones, and `iso.rs` - the ISO 8601 spellings every text codec and the scalar renderer write through |
+| `types/timezone/` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
+| `types/{mime_type,media_type}/` | the `mimetype` and `mediatype` datatypes over the root values, which stay the media layer's routing vocabulary |
 | `types/` | `Scalar`; schema behavior by category: state, parser, serde, comparison, Arrow, casting, value validation, typed markers, field-borrowing values (`FieldScalar`, `FieldRecord`, the prebuilt shared fields), datatype families; `i256.rs` holds the `i256`/`u256` pair the exact decimals compute in |
 | `holder/` | `Buffer`, local handles, generic `fs` handles, `Buffered<H>`, `Counted<H>`, storage variants; each backend a sibling folder with a location/container/leaf trio - `Path`, `Folder`, `File` in `local/`, `fs/`, `object/`; `Path`, `Node`, `Leaf` in `zip/`, which indexes names and has no directories or files to name after. The root traits do not follow: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every backend |
 | `holder/local/` | memory-mapped local storage; remote backends change neither it nor the root traits |
@@ -158,7 +160,9 @@ with no variant-specific public vocabulary: `Codec` (coding), `DigestAlgorithm`
 - Shared and dispatch enums each live in their named root file, re-exported from
   the crate root: `Charset`, `Codec`, `DataTypeId`, `DataTypeKind`,
   `DigestAlgorithm`, `EdgeAlgorithm`, `IOKind`, `IOMode`, `Level`, `Magic`,
-  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `TimeZone`, `UnionMode`. No
+  `MediaType`, `MimeType`, `Scheme`, `TimeUnit`, `UnionMode`. `Timezone` is the
+  exception that moved: it is a datatype of its own, so it lives in
+  `types/timezone/` and is re-exported from the crate root like `Scalar`. No
   local copies, no `enums` module. `Digest`/`Digester` sit beside `DigestAlgorithm`, `Encoder` beside
   `Codec`; `Scalar` -> `types`, storage variants -> `holder`, record settings ->
   `media`, `FieldPath`/`FieldSegment` -> `expression`, whose grammar already

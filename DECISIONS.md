@@ -2736,3 +2736,61 @@ module and both structs.
 `every_width_leaf_round_trips_under_its_unchanged_tag` and the pinned stable
 hashes are unmoved; `types/i256/tests.rs` keeps every signed fixture and adds
 the unsigned boundaries, division identity, byte round trip and serde.
+
+## 34. A canonical text value the crate already owns is a datatype of its own
+
+A time zone, a MIME type and a media type were vocabularies the crate parsed,
+canonicalized and rendered for its own routing, and nothing else. A column of
+them had to be `utf8` - which is to say the validation, the canonical spelling
+and the identity were dropped at the column boundary and re-derived by whoever
+read it. `Url` and `Version` already answered this: a value that parses,
+canonicalizes and renders itself is its own datatype.
+
+- `DataType::Timezone`, `DataType::MimeType` and `DataType::MediaType`, each
+  parameter-free, each `DataTypeKind::Text`, each stored as Arrow `Utf8` under
+  its own extension name (`yggdryl.timezone`, `yggdryl.mimetype`,
+  `yggdryl.mediatype`), each with a typed field marker, a prebuilt shared
+  field, an ingest cast and a default. `Scalar::Timezone`, `Scalar::MimeType`
+  and `Scalar::MediaType` hold the crate's own value types, not a second
+  spelling of them: a zone read out of a column is the zone a `datetime64`
+  column declares, and a media type read out of one is what `RecordOptions`
+  routes a record read on.
+- `Scalar::MediaType` is behind an `Arc`, as `Scalar::Url` is, because a base,
+  a charset and a coding list are wider than the 48-byte scalar. The other two
+  ride inline.
+- Not registered codes. A code is at most twelve US-ASCII bytes so it never
+  touches the heap, and its identity is a published registry; an IANA zone name
+  and a parameterised media type are neither, and a media type has no
+  borrowable canonical text at all - it renders one.
+- They are appended, three ways, because three numberings are wire contracts:
+  `DataTypeId` takes 61, 62 and 63; `DataType` takes its three variants at the
+  end of the enum, because `Hash` is derived there and a stored schema digest
+  is over the derived discriminant; `Scalar::value_rank` takes 21, 22 and 23,
+  the next free numbers. `dtype_rank` takes 59, 60 and 61.
+- Intake follows each value, not a new rule. A zone takes an alias, a case and
+  a fixed offset; a MIME type refuses a name that is not `type/subtype`; a
+  media type infers, so its intake is total and unrecognized text answers the
+  default base rather than refusing - it is also the crate's filename and
+  content-negotiation reader, and a column of them holds what that answers.
+- Merging is the `Version`/`Url` rule extended: only with itself. Merging into
+  text would drop exactly the canonicalization that makes the column worth
+  declaring, and a MIME type and a media type never merge into each other.
+- `timezone.rs` moves from a root file into `types/timezone/`, beside the
+  temporal datatypes that declare a zone and the datatype that now holds one.
+  The value's crate-root export is unchanged. `MimeType` and `MediaType` keep
+  their root files, as `Url` keeps `uri/`: the value is the media layer's
+  routing vocabulary and `types/{mime_type,media_type}/` holds only what makes
+  it a datatype.
+
+**Written in:** `types/timezone/mod.rs`, `types/mime_type/mod.rs` and
+`types/media_type/mod.rs`, on each module; `types/scalar.rs`, on
+`text_scalar_value!`, which is the one shape `Version`, `Timezone` and
+`MimeType` now share instead of three copies of it.
+**Fixtures:** `types/tests/timezone.rs` and `types/tests/media.rs` - identity,
+canonicalization, ordering and hashing, the structural wire, the Arrow
+extension round trip, a text column ingested with a located bad row, defaults,
+merges and typed fields, and that the value is the one the rest of the crate
+already routes on; the digest corpus and the prebuilt-field allocation pin
+both name all three.
+**Rust-only:** no Python or JavaScript field factory yet, stated in
+`docs/types/text.md` beside each.

@@ -13,7 +13,7 @@
 | `Scheme`, `IOKind`, `IOMode` | Scheme, resource kind, intent: `overwrite`, `append`, `merge`, `readonly`, `random` |
 | `TimeUnit`, `Timezone`, `UnionMode`, `EdgeAlgorithm` | Resolution, zone, union layout, edge model |
 | `Enum` | Kind, spelling, ordinal; JSON, YAML, TOML, and host projections emit the spelling |
-| Widths | one flat enum: every width is its own variant (`Scalar::I32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
+| Widths | one flat enum: every width is its own variant (`Scalar::Int32`, `Scalar::Date32`, ...), matched directly and named by `kind()` |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_family`, `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
 | Bindings | `yggdryl.enums`, `enums`; `FieldScalar` and the `wkb` reader Rust only |
@@ -136,7 +136,7 @@ let held = FieldScalar::new(&price, 7_i64)?;
 assert_eq!(held.name(), "price");
 assert_eq!(held.dtype(), &DataType::Int32);
 // The value was narrowed to the width the field declares.
-assert!(matches!(held.value(), Scalar::I32(_)));
+assert!(matches!(held.value(), Scalar::Int32(_)));
 assert_eq!(held.as_i64(), Some(7));
 
 // Nullability is the field's rule, so a required column refuses a null.
@@ -153,7 +153,7 @@ assert_eq!(inferred.dtype(), &DataType::Int64);
 // Unchecked, the text is held as given and read on demand.
 let raw = UncheckedFieldScalar::from_str(&price, "42");
 assert_eq!(raw.as_i64(), Some(42));
-assert!(matches!(raw.checked()?.value(), Scalar::I32(_)));
+assert!(matches!(raw.checked()?.value(), Scalar::Int32(_)));
 ```
 
 ## Inferred fields

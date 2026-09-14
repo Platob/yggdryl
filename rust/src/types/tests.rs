@@ -601,6 +601,12 @@ mod url;
 /// One four-byte version with numeric ordering and canonical text storage.
 mod version;
 
+/// One canonical time zone name with canonical text storage.
+mod timezone;
+
+/// The two MIME-shaped datatypes with canonical text storage.
+mod media;
+
 /// The enum a field declares, and the codes its members name.
 mod string_enum;
 

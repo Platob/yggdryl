@@ -425,6 +425,9 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         Scalar::Code(held) => Some(held.storage().clone()),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::Timezone(held) => Some(SmolStr::new(held.as_str())),
+        Scalar::MimeType(held) => Some(SmolStr::new(held.as_str())),
+        Scalar::MediaType(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Uuid(held) => {
             let mut slot = [0_u8; crate::types::Uuid::TEXT_LEN];
             Some(SmolStr::new(held.render(&mut slot)))

@@ -333,6 +333,9 @@ enum ArrayCastKind {
     VersionIngest,
     /// Text entering a URL is parsed and rewritten to its canonical text.
     UrlIngest,
+    TimezoneIngest,
+    MimeTypeIngest,
+    MediaTypeIngest,
     /// Text entering a decimal: every exposed value is read at the declared
     /// scale, and a digit that scale cannot state stays refused rather than
     /// rounded away - dropping a digit off a price is a value change.
@@ -523,6 +526,18 @@ impl ArrayCastPlan {
                 Some(RecognizedExtension::Version)
             ),
             DataType::Url => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url)),
+            DataType::Timezone => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::Timezone)
+            ),
+            DataType::MimeType => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::MimeType)
+            ),
+            DataType::MediaType => !matches!(
+                source_extension.as_ref(),
+                Some(RecognizedExtension::MediaType)
+            ),
             _ => false,
         };
         let kind = if source_type == &expected
@@ -685,6 +700,20 @@ impl ArrayCastPlan {
             (DataType::Url, source) if is_text_layout(source) => ArrayCastKind::UrlIngest,
             (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
+            },
+            (DataType::Timezone, source) if is_text_layout(source) => ArrayCastKind::TimezoneIngest,
+            (DataType::Timezone, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to timezone is not supported"),
+            },
+            (DataType::MimeType, source) if is_text_layout(source) => ArrayCastKind::MimeTypeIngest,
+            (DataType::MimeType, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to mimetype is not supported"),
+            },
+            (DataType::MediaType, source) if is_text_layout(source) => {
+                ArrayCastKind::MediaTypeIngest
+            }
+            (DataType::MediaType, source) => ArrayCastKind::DeferredUnsupported {
+                reason: format!("casting {source:?} to mediatype is not supported"),
             },
             (DataType::String(parameters), source)
                 if is_text_storage(*parameters)
@@ -1169,6 +1198,28 @@ impl ArrayCastPlan {
             ArrayCastKind::UrlIngest => {
                 crate::types::url::casts::ingest_url_array(&array, &self.field, exposure, budget)?
             }
+            ArrayCastKind::TimezoneIngest => crate::types::timezone::casts::ingest_timezone_array(
+                &array,
+                &self.field,
+                exposure,
+                budget,
+            )?,
+            ArrayCastKind::MimeTypeIngest => {
+                crate::types::mime_type::casts::ingest_mime_type_array(
+                    &array,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?
+            }
+            ArrayCastKind::MediaTypeIngest => {
+                crate::types::media_type::casts::ingest_media_type_array(
+                    &array,
+                    &self.field,
+                    exposure,
+                    budget,
+                )?
+            }
             // One match per array selects the code's width; every row after
             // it runs against a constant.
             ArrayCastKind::CodeIngest => match self.field.dtype() {
@@ -1474,6 +1525,29 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         (other, RecognizedExtension::Url) => Err(Error::Unsupported {
             kind: "url",
             reason: format!("casting url to {} is not supported", other.name()),
+        }),
+        // A canonical text source crosses to its own target and to text; every
+        // other target would have to re-read a spelling it does not model.
+        (DataType::Timezone, RecognizedExtension::Timezone)
+        | (DataType::MimeType, RecognizedExtension::MimeType)
+        | (DataType::MediaType, RecognizedExtension::MediaType) => Ok(()),
+        (
+            DataType::String(parameters),
+            RecognizedExtension::Timezone
+            | RecognizedExtension::MimeType
+            | RecognizedExtension::MediaType,
+        ) if is_text_storage(*parameters) => Ok(()),
+        (other, RecognizedExtension::Timezone) => Err(Error::Unsupported {
+            kind: "timezone",
+            reason: format!("casting timezone to {} is not supported", other.name()),
+        }),
+        (other, RecognizedExtension::MimeType) => Err(Error::Unsupported {
+            kind: "mimetype",
+            reason: format!("casting mimetype to {} is not supported", other.name()),
+        }),
+        (other, RecognizedExtension::MediaType) => Err(Error::Unsupported {
+            kind: "mediatype",
+            reason: format!("casting mediatype to {} is not supported", other.name()),
         }),
         (other, RecognizedExtension::Variant) => Err(Error::Unsupported {
             kind: "variant",
