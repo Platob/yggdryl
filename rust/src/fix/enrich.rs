@@ -1028,7 +1028,10 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
         }
         // A stated value is never overwritten, which is what makes this
         // idempotent: the second pass finds the first pass's answer stated.
-        if held.get_by_tag(rule.tag).is_some_and(|value| !value.is_null()) {
+        if held
+            .get_by_tag(rule.tag)
+            .is_some_and(|value| !value.is_null())
+        {
             continue;
         }
         if !rule.when.iter().all(|when| when.holds(&held)) {

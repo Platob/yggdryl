@@ -8,11 +8,11 @@ use std::sync::Arc;
 use arrow_array::cast::AsArray as _;
 use arrow_array::{Array as _, RecordBatch};
 use arrow_schema::{DataType as ArrowDataType, Schema};
+use regex::bytes::CaptureLocations;
 use regex_automata::dfa::{
     Automaton,
     dense::{Builder as DfaBuilder, DFA},
 };
-use regex::bytes::CaptureLocations;
 use regex_automata::{Input, nfa::thompson, util::syntax};
 use smol_str::{SmolStr, format_smolstr};
 
@@ -874,8 +874,7 @@ impl<R: Read> RawRows<R> {
             }
             ScannedHeader::Unresolved => {
                 let scan = bytes.len();
-                if let Some(found) =
-                    header_match(options, &bytes, scan, capture_values, locations)?
+                if let Some(found) = header_match(options, &bytes, scan, capture_values, locations)?
                 {
                     let removed_size =
                         u64::try_from(found.range.len()).map_err(|_| Error::InvalidRecord {
@@ -1164,11 +1163,10 @@ impl RawRecord {
     fn new(line: ParsedLine, limit: Option<u64>) -> Self {
         let ParsedLine {
             index,
-            body:
-                Body {
-                    mut bytes,
-                    decoded_size,
-                },
+            body: Body {
+                mut bytes,
+                decoded_size,
+            },
             captures,
             ..
         } = line;

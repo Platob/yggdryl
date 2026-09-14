@@ -139,14 +139,12 @@ impl<R: Read> Lines<R> {
             self.searched = true;
         }
         loop {
-            if let Some(found) =
-                next_break(
-                    &self.page[self.cursor..self.filled],
-                    linesep,
-                    self.finder.as_ref(),
-                    self.drained,
-                )
-            {
+            if let Some(found) = next_break(
+                &self.page[self.cursor..self.filled],
+                linesep,
+                self.finder.as_ref(),
+                self.drained,
+            ) {
                 let start = self.cursor;
                 let end = start + found.at;
                 self.cursor = start + found.end();
@@ -192,11 +190,7 @@ impl<R: Read> Lines<R> {
                 // A configured terminator may itself exceed the ordinary
                 // window. Its length is explicit configuration, so retaining
                 // one such candidate is the bound needed to recognize it.
-                let size = self
-                    .page
-                    .len()
-                    .saturating_add(WINDOW_SIZE)
-                    .max(overlap + 1);
+                let size = self.page.len().saturating_add(WINDOW_SIZE).max(overlap + 1);
                 self.rewind(size);
                 continue;
             }
