@@ -1,9 +1,7 @@
 //! The datatype a value names, and what it refuses to name.
 
-use crate::{DataType, Field, Scalar, TimeUnit, Timezone, i256};
-
 mod scalars {
-    use super::{DataType, Scalar, TimeUnit, Timezone, i256};
+    use yggdryl::{DataType, Scalar, TimeUnit, Timezone, i256};
 
     #[test]
     fn each_integer_width_keeps_the_column_that_holds_it() {
@@ -124,14 +122,14 @@ mod scalars {
                 .unwrap(),
             DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
-                timezone: crate::Timezone::from_str("Asia/Kolkata").unwrap()
+                timezone: yggdryl::Timezone::from_str("Asia/Kolkata").unwrap()
             }
         );
     }
 }
 
 mod containers {
-    use super::{DataType, Field, Scalar};
+    use yggdryl::{DataType, Field, Scalar};
 
     #[test]
     fn a_sequence_names_the_list_of_what_its_children_agree_on() {
@@ -190,7 +188,7 @@ mod containers {
 }
 
 mod fields {
-    use super::{DataType, Scalar};
+    use yggdryl::{DataType, Scalar};
 
     #[test]
     fn shape_specific_fields_have_one_cross_language_name() {
@@ -241,7 +239,7 @@ mod fields {
 }
 
 mod refusals {
-    use super::{Scalar, TimeUnit, Timezone};
+    use yggdryl::{Scalar, TimeUnit, Timezone};
 
     #[test]
     fn children_that_disagree_are_an_error_and_not_a_guess() {
@@ -264,7 +262,11 @@ mod refusals {
 
         assert_eq!(
             widened.dtype().unwrap(),
-            crate::DataType::list(crate::Field::new("item", crate::DataType::Float64, false)),
+            yggdryl::DataType::list(yggdryl::Field::new(
+                "item",
+                yggdryl::DataType::Float64,
+                false
+            )),
         );
     }
 

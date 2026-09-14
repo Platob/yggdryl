@@ -351,6 +351,3 @@ fn unnameable(reason: SmolStr) -> Error {
         reason,
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -3,14 +3,14 @@
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use std::sync::Arc;
 
-use super::Media;
-use crate::holder::Buffer;
-use crate::holder::Holder;
-use crate::holder::buffered::BufferedOptions;
-use crate::media::text::TextOptions;
-use crate::media::{IORecordOptions, RecordOptions};
-use crate::{DataType, Field, MediaType, MimeType, Url};
-use crate::{IOBase, IOMedia};
+use yggdryl::holder::Buffer;
+use yggdryl::holder::Holder;
+use yggdryl::holder::buffered::BufferedOptions;
+use yggdryl::media::Media;
+use yggdryl::media::text::TextOptions;
+use yggdryl::media::{IORecordOptions, RecordOptions};
+use yggdryl::{DataType, Field, MediaType, MimeType, Url};
+use yggdryl::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
@@ -24,7 +24,7 @@ fn schema() -> Field {
 
 /// Two rows as one Arrow batch.
 fn batch() -> RecordBatch {
-    let arrow = crate::arrow::arrow_schema_from_field(&schema()).unwrap();
+    let arrow = schema().into_arrow_schema().unwrap();
     RecordBatch::try_new(
         arrow,
         vec![
@@ -36,11 +36,8 @@ fn batch() -> RecordBatch {
 }
 
 /// The batches a write takes: one reader over one two-row batch.
-fn reader() -> crate::arrow::BatchReader {
-    crate::arrow::batch_reader(
-        crate::arrow::arrow_schema_from_field(&schema()).unwrap(),
-        [batch()],
-    )
+fn reader() -> yggdryl::arrow::BatchReader {
+    yggdryl::arrow::batch_reader(schema().into_arrow_schema().unwrap(), [batch()])
 }
 
 /// A holder whose media type comes from a name, so the encoding is declared.

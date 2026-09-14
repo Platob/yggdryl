@@ -1,7 +1,7 @@
 //! What a structured text document carries into Arrow rows, and back out.
 
-use crate::holder::Buffer;
-use crate::{ArrowShape, ArrowValue, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
+use yggdryl::holder::Buffer;
+use yggdryl::{ArrowShape, ArrowValue, DataType, Field, IOBase, IOMedia, IOMode, Scalar, Url};
 
 fn handle(name: &str) -> Buffer {
     Buffer::new().with_media_type(

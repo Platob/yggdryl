@@ -1,14 +1,27 @@
 use arrow_array::{Array as _, Int64Array, StringArray, UInt64Array};
 
-use crate::holder::Buffer;
-use crate::media::text::{LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines};
-use crate::media::{IORecordOptions as _, RecordOptions};
-use crate::{Codec, DataType, Field, Timezone};
-use crate::{IOBase as _, IOMedia as _};
+/// One hash of any hashable value, for "equal values hash alike" and for a
+/// temporary name that does not collide. The crate's own stable hash is
+/// private, and neither use needs it to be stable across runs.
+pub(super) fn hash_of<T: std::hash::Hash>(value: &T) -> u64 {
+    use std::hash::Hasher as _;
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+use yggdryl::holder::Buffer;
+use yggdryl::media::text::{
+    LeadingFragment, LineSep, Text, TextLine, TextOptions, read_text_lines,
+};
+use yggdryl::media::{IORecordOptions as _, RecordOptions};
+use yggdryl::{Codec, DataType, Field, Timezone};
+use yggdryl::{IOBase as _, IOMedia as _};
 
 fn named(name: &str, bytes: &[u8]) -> Buffer {
     Buffer::from_bytes(bytes.to_vec()).with_media_type(
-        crate::Url::from_str(&format!("file:///{name}"))
+        yggdryl::Url::from_str(&format!("file:///{name}"))
             .unwrap()
             .media_type(),
     )
@@ -22,7 +35,7 @@ fn framed(rowheader: &str) -> TextOptions {
     options(rowheader).with_framing(true)
 }
 
-fn collect(source: &impl crate::IOBase, options: TextOptions) -> Vec<arrow_array::RecordBatch> {
+fn collect(source: &impl yggdryl::IOBase, options: TextOptions) -> Vec<arrow_array::RecordBatch> {
     source
         .read_arrow_reader(&options.into())
         .unwrap()
@@ -110,9 +123,9 @@ fn assert_text_buffer(_: &Text<Buffer>) {}
 #[test]
 fn a_read_fits_the_alignment_an_object_allocator_gives() {
     assert!(
-        align_of::<super::TextLines>() <= 16,
+        align_of::<yggdryl::media::text::TextLines>() <= 16,
         "a text read asks to be aligned to {} bytes, and an object allocator gives 16",
-        align_of::<super::TextLines>()
+        align_of::<yggdryl::media::text::TextLines>()
     );
 }
 
@@ -298,7 +311,7 @@ fn row_numbers_start_at_the_requested_i64_and_overflow_loudly() {
 
 #[test]
 fn url_column_is_rendered_from_the_handlers_real_url() {
-    use crate::holder::local::{File, Folder};
+    use yggdryl::holder::local::{File, Folder};
 
     let mut path = Folder::temporary().unwrap().path().unwrap();
     path.push(format!("yggdryl-text-url-{}.log", std::process::id()));
@@ -436,7 +449,7 @@ fn framing_carries_a_record_across_input_windows_and_output_batches() {
     let mut bytes = b"[A] first\n".to_vec();
     bytes.extend(std::iter::repeat_n(
         b'x',
-        crate::DEFAULT_STREAM_BATCH_SIZE + 17,
+        yggdryl::DEFAULT_STREAM_BATCH_SIZE + 17,
     ));
     bytes.extend_from_slice(b"\nlast continuation\n[B] next\nend\n");
     let source = named("windows.log", &bytes);
@@ -448,7 +461,7 @@ fn framing_carries_a_record_across_input_windows_and_output_batches() {
     let bodies = bodies(&batches);
     assert_eq!(
         bodies[0].len(),
-        6 + crate::DEFAULT_STREAM_BATCH_SIZE + 17 + 18
+        6 + yggdryl::DEFAULT_STREAM_BATCH_SIZE + 17 + 18
     );
     assert!(bodies[0].starts_with(b"first\nxxxxxxxx"));
     assert!(bodies[0].ends_with(b"\nlast continuation"));
@@ -648,7 +661,7 @@ fn record_byte_limit_reports_only_bytes_beyond_the_retained_prefix() {
 
 #[test]
 fn oversized_continuations_are_drained_before_the_following_record() {
-    let oversized = crate::DEFAULT_STREAM_BATCH_SIZE * 8 + 31;
+    let oversized = yggdryl::DEFAULT_STREAM_BATCH_SIZE * 8 + 31;
     let mut bytes = b"[A] begin\n".to_vec();
     bytes.extend(std::iter::repeat_n(b'x', oversized));
     bytes.extend_from_slice(b"\n[B] after\n");
@@ -665,7 +678,7 @@ fn oversized_continuations_are_drained_before_the_following_record() {
 
 #[test]
 fn an_oversized_matching_line_retains_only_its_body_prefix() {
-    let oversized = crate::DEFAULT_STREAM_BATCH_SIZE * 8 + 31;
+    let oversized = yggdryl::DEFAULT_STREAM_BATCH_SIZE * 8 + 31;
     let mut bytes = b"[A] ".to_vec();
     bytes.extend(std::iter::repeat_n(b'x', oversized));
     bytes.extend_from_slice(b"\n[B] after\n");
@@ -703,7 +716,7 @@ fn capped_header_scanning_matches_complete_regex_semantics() {
         assert!(dropped(&capped).iter().all(Option::is_none), "{rowheader}");
     }
 
-    let header_size = crate::DEFAULT_STREAM_BATCH_SIZE - 1;
+    let header_size = yggdryl::DEFAULT_STREAM_BATCH_SIZE - 1;
     let mut bytes = vec![b'H'; header_size];
     bytes.extend_from_slice(b" body\ncontinued");
     let source = named("window-header.log", &bytes);
@@ -743,7 +756,7 @@ fn gzip_and_zstd_framing_decode_the_same_logical_records() {
 
 #[test]
 fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
-    use crate::holder::local::File;
+    use yggdryl::holder::local::File;
 
     let options = framed(r"^\[(?<kind>[A-Z])\] ").with_max_record_byte_size(10);
     let record_options: RecordOptions = options.clone().into();
@@ -770,7 +783,7 @@ fn framed_schema_is_complete_before_empty_or_absent_input_is_pulled() {
         path.push(format!(
             "yggdryl-absent-framed-schema-{}-{}.{}",
             std::process::id(),
-            crate::hashing::stable_hash_of(&path),
+            hash_of(&path),
             suffix
         ));
         let mut absent = File::new(&path).unwrap();
@@ -815,7 +828,7 @@ fn framing_requires_a_rowheader_before_any_source_read() {
 
 #[test]
 fn folder_leaves_never_share_framing_state_and_restart_physical_rownums() {
-    use crate::holder::local::Folder;
+    use yggdryl::holder::local::Folder;
 
     let mut root = Folder::temporary().unwrap().path().unwrap();
     root.push(format!("yggdryl-framed-folder-{}", std::process::id()));
@@ -855,16 +868,16 @@ fn generic_record_writes_use_only_the_text_body() {
     .required_field("row");
     options.set_field(field);
     let rows = [
-        crate::Scalar::from_record([
-            ("url", crate::Scalar::from("input")),
-            ("rownum", crate::Scalar::from(1_i64)),
-            ("body", crate::Scalar::from("first")),
+        yggdryl::Scalar::from_record([
+            ("url", yggdryl::Scalar::from("input")),
+            ("rownum", yggdryl::Scalar::from(1_i64)),
+            ("body", yggdryl::Scalar::from("first")),
         ])
         .unwrap(),
-        crate::Scalar::from_record([
-            ("url", crate::Scalar::from("input")),
-            ("rownum", crate::Scalar::from(2_i64)),
-            ("body", crate::Scalar::from("second")),
+        yggdryl::Scalar::from_record([
+            ("url", yggdryl::Scalar::from("input")),
+            ("rownum", yggdryl::Scalar::from(2_i64)),
+            ("body", yggdryl::Scalar::from("second")),
         ])
         .unwrap(),
     ];
@@ -922,9 +935,9 @@ fn a_binary_body_is_refused_by_a_write_naming_what_it_expected() {
     .unwrap()
     .required_field("row");
     options.set_field(field);
-    let rows = [crate::Scalar::from_record([
-        ("url", crate::Scalar::from("input")),
-        ("body", crate::Scalar::from(&b"first"[..])),
+    let rows = [yggdryl::Scalar::from_record([
+        ("url", yggdryl::Scalar::from("input")),
+        ("body", yggdryl::Scalar::from(&b"first"[..])),
     ])
     .unwrap()];
     let error = target
@@ -1134,15 +1147,16 @@ fn adjacent_rows_repeating_a_body_are_dropped_only_when_asked() {
 /// tens of thousands of round trips for bytes it is going to read in order
 /// anyway.
 mod fetching {
+
     use std::any::Any;
     use std::sync::{Arc, Mutex};
+    use yggdryl::media::text::{Text, TextOptions};
 
-    use crate::holder::fs::{
+    use yggdryl::holder::fs::{
         BoundLocation, ByteReader, ByteWriter, FileInfo, FileInfos, FileSelector, FileSystem,
         MemoryFileSystem, OutputMetadata, RandomAccessReader,
     };
-    use crate::media::text::{Text, TextOptions};
-    use crate::{Codec, DEFAULT_FETCH_BYTE_SIZE, IOBase as _, IOMedia as _, Url};
+    use yggdryl::{Codec, DEFAULT_FETCH_BYTE_SIZE, IOBase as _, IOMedia as _, Url};
 
     const ROWHEADER: &str = r"^\[(?<level>[A-Z]+)\] ";
 
@@ -1159,7 +1173,7 @@ mod fetching {
     }
 
     impl ByteReader for CountingReader {
-        fn read(&mut self, buffer: &mut [u8]) -> crate::Result<usize> {
+        fn read(&mut self, buffer: &mut [u8]) -> yggdryl::Result<usize> {
             self.reads.lock().unwrap().push(buffer.len());
             self.inner.read(buffer)
         }
@@ -1168,7 +1182,7 @@ mod fetching {
             self.inner.tell()
         }
 
-        fn close(&mut self) -> crate::Result<()> {
+        fn close(&mut self) -> yggdryl::Result<()> {
             self.inner.close()
         }
 
@@ -1194,11 +1208,11 @@ mod fetching {
             other.as_any().downcast_ref::<Self>().is_some()
         }
 
-        fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        fn normalize_path(&self, path: &str) -> yggdryl::Result<String> {
             self.inner.normalize_path(path)
         }
 
-        fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
+        fn file_info(&self, path: &str) -> yggdryl::Result<FileInfo> {
             self.inner.file_info(path)
         }
 
@@ -1206,39 +1220,39 @@ mod fetching {
             self.inner.list(selector)
         }
 
-        fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        fn create_dir(&self, path: &str, recursive: bool) -> yggdryl::Result<()> {
             self.inner.create_dir(path, recursive)
         }
 
-        fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        fn delete_dir(&self, path: &str) -> yggdryl::Result<()> {
             self.inner.delete_dir(path)
         }
 
-        fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> yggdryl::Result<()> {
             self.inner.delete_dir_contents(path, missing_dir_ok)
         }
 
-        fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        fn delete_root_dir_contents(&self) -> yggdryl::Result<()> {
             self.inner.delete_root_dir_contents()
         }
 
-        fn delete_file(&self, path: &str) -> crate::Result<()> {
+        fn delete_file(&self, path: &str) -> yggdryl::Result<()> {
             self.inner.delete_file(path)
         }
 
-        fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        fn copy_file(&self, source: &str, target: &str) -> yggdryl::Result<()> {
             self.inner.copy_file(source, target)
         }
 
-        fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        fn move_file(&self, source: &str, target: &str) -> yggdryl::Result<()> {
             self.inner.move_file(source, target)
         }
 
-        fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        fn open_input_file(&self, path: &str) -> yggdryl::Result<Box<dyn RandomAccessReader>> {
             self.inner.open_input_file(path)
         }
 
-        fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        fn open_input_stream(&self, path: &str) -> yggdryl::Result<Box<dyn ByteReader>> {
             *self.opens.lock().unwrap() += 1;
             Ok(Box::new(CountingReader {
                 inner: self.inner.open_input_stream(path)?,
@@ -1250,7 +1264,7 @@ mod fetching {
             &self,
             path: &str,
             metadata: Option<&OutputMetadata>,
-        ) -> crate::Result<Box<dyn ByteWriter>> {
+        ) -> yggdryl::Result<Box<dyn ByteWriter>> {
             self.inner.open_output_stream(path, metadata)
         }
 
@@ -1258,7 +1272,7 @@ mod fetching {
             &self,
             path: &str,
             metadata: Option<&OutputMetadata>,
-        ) -> crate::Result<Box<dyn ByteWriter>> {
+        ) -> yggdryl::Result<Box<dyn ByteWriter>> {
             self.inner.open_append_stream(path, metadata)
         }
 
@@ -1297,7 +1311,7 @@ mod fetching {
             .with_framing(true)
     }
 
-    fn located(name: &str, bytes: &[u8]) -> (crate::holder::fs::File, Arc<Counting>) {
+    fn located(name: &str, bytes: &[u8]) -> (yggdryl::holder::fs::File, Arc<Counting>) {
         let filesystem = Arc::new(Counting {
             inner: MemoryFileSystem::new(),
             reads: Arc::new(Mutex::new(Vec::new())),
@@ -1311,7 +1325,7 @@ mod fetching {
             .unwrap();
         let bound =
             BoundLocation::new(Arc::clone(&filesystem) as Arc<dyn FileSystem>, name, None).unwrap();
-        let mut handle = crate::holder::fs::File::new(bound);
+        let mut handle = yggdryl::holder::fs::File::new(bound);
         handle.set_media_type(
             Url::from_str(&format!("file:///{name}"))
                 .unwrap()
@@ -1440,8 +1454,8 @@ fn a_handle_with_no_modification_time_leaves_the_mtime_column_null() {
 
 #[test]
 fn the_mtime_column_falls_back_to_the_handles_own_modification_time() {
-    use crate::holder::local::File;
     use arrow_array::TimestampNanosecondArray;
+    use yggdryl::holder::local::File;
 
     let directory = std::env::temp_dir().join("yggdryl_text_mtime");
     std::fs::create_dir_all(&directory).unwrap();
@@ -1510,10 +1524,11 @@ fn captures_are_typed_by_name_whatever_fixed_columns_precede_them() {
 // --- The decoded row value and its parts ---
 
 mod values {
+    use super::hash_of;
     use std::sync::Arc;
 
-    use crate::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
-    use crate::{FieldPath, FieldSegment};
+    use yggdryl::media::text::{TextBytes, TextEntries, TextEntry, TextLine};
+    use yggdryl::{FieldPath, FieldSegment};
 
     fn page(bytes: &[u8]) -> Arc<Vec<u8>> {
         Arc::new(bytes.to_vec())
@@ -1599,8 +1614,8 @@ mod values {
         let right = TextBytes::from_page(&page(b"beta"), 0, 4).expect("inside");
         assert_eq!(left, right, "same bytes, different pages");
         assert_eq!(
-            crate::hashing::stable_hash_of(&left),
-            crate::hashing::stable_hash_of(&right),
+            hash_of(&left),
+            hash_of(&right),
             "equal values must hash alike"
         );
         assert!(left <= right && right <= left);
@@ -1795,7 +1810,7 @@ mod values {
     /// Every pair a body declares, rendered as the line wrote it.
     fn read(body: &[u8]) -> Vec<String> {
         let body = TextBytes::from_bytes(body).expect("a body");
-        crate::media::text::TextEntries::from_bytes(&body)
+        yggdryl::media::text::TextEntries::from_bytes(&body)
             .as_ref()
             .map(TextEntries::as_slice)
             .unwrap_or_default()
@@ -1806,7 +1821,7 @@ mod values {
 
     fn tree(body: &[u8]) -> TextEntries {
         let body = TextBytes::from_bytes(body).expect("a body");
-        crate::media::text::TextEntries::from_bytes(&body).expect("the line states pairs")
+        yggdryl::media::text::TextEntries::from_bytes(&body).expect("the line states pairs")
     }
 
     #[test]
@@ -1868,7 +1883,7 @@ mod values {
     fn a_value_a_frame_bounded_is_still_a_range_of_the_page_it_came_from() {
         let page = page(b"8=FIX.4.4|58=a value with spaces|10=0|");
         let body = TextBytes::from_whole_page(Arc::clone(&page)).expect("the whole page");
-        let entries = crate::media::text::TextEntries::from_bytes(&body).expect("pairs");
+        let entries = yggdryl::media::text::TextEntries::from_bytes(&body).expect("pairs");
         let held = &entries.as_slice()[1];
         assert_eq!(held.value(), "a value with spaces");
         assert!(
@@ -1909,8 +1924,8 @@ mod values {
         assert_eq!(bare.value(), marked.value());
         assert_ne!(bare, marked, "the line wrote two different things");
         assert_ne!(
-            crate::hashing::stable_hash_of(bare),
-            crate::hashing::stable_hash_of(marked),
+            hash_of(bare),
+            hash_of(marked),
             "unequal values must not be forced to hash alike"
         );
         assert!(
@@ -1982,14 +1997,16 @@ mod values {
 // --- The one decode path, the plan, and the two new options ---
 
 mod decoding {
-    use arrow_array::{Array as _, StringArray};
 
-    use crate::FieldPath;
-    use crate::media::text::{TextOptions, into_arrow_batch, read_text_lines};
+    use arrow_array::{Array as _, StringArray};
+    use yggdryl::media::text::TextOptions;
+
+    use yggdryl::FieldPath;
+    use yggdryl::media::text::{into_arrow_batch, read_text_lines};
 
     use super::named;
 
-    fn lines(source: &[u8], options: &TextOptions) -> Vec<crate::media::text::TextLine> {
+    fn lines(source: &[u8], options: &TextOptions) -> Vec<yggdryl::media::text::TextLine> {
         read_text_lines(&named("app.log", source), options)
             .expect("the configuration is settled")
             .map(|line| line.expect("a line decodes"))
@@ -2151,7 +2168,7 @@ mod decoding {
             .expect("the paths parse");
         let field = options.source_field().expect("a schema");
         let children = field.dtype().as_fields().expect("a struct");
-        let names: Vec<&str> = children.iter().map(crate::Field::name).collect();
+        let names: Vec<&str> = children.iter().map(yggdryl::Field::name).collect();
         assert!(names.contains(&"left_id"));
         assert!(names.contains(&"right_id"));
     }
@@ -2206,7 +2223,7 @@ mod decoding {
             .map(|field| field.name().as_str())
             .collect();
         let declared_fields = declared.fields();
-        let expected: Vec<&str> = declared_fields.iter().map(crate::Field::name).collect();
+        let expected: Vec<&str> = declared_fields.iter().map(yggdryl::Field::name).collect();
         assert_eq!(
             names, expected,
             "the plan and the schema are one derivation"
@@ -2216,7 +2233,7 @@ mod decoding {
     #[test]
     fn an_empty_object_answers_its_columns_and_no_rows() {
         let options = TextOptions::new();
-        let batch = into_arrow_batch(Vec::<crate::media::text::TextLine>::new(), &options)
+        let batch = into_arrow_batch(Vec::<yggdryl::media::text::TextLine>::new(), &options)
             .expect("a batch");
         assert_eq!(batch.num_rows(), 0);
         assert!(batch.column_by_name("body").is_some());
@@ -2233,14 +2250,15 @@ mod decoding {
 // --- Reading Arrow back into lines ---
 
 mod intake {
-    use crate::FieldPath;
-    use crate::media::text::{
-        TextOptions, from_arrow_batch, from_arrow_reader, into_arrow_batch, read_text_lines,
-    };
+
+    use yggdryl::FieldPath;
+    use yggdryl::media::text::TextOptions;
+    use yggdryl::media::text::{from_arrow_batch, from_arrow_reader};
+    use yggdryl::media::text::{into_arrow_batch, read_text_lines};
 
     use super::named;
 
-    fn decode(source: &[u8], options: &TextOptions) -> Vec<crate::media::text::TextLine> {
+    fn decode(source: &[u8], options: &TextOptions) -> Vec<yggdryl::media::text::TextLine> {
         read_text_lines(&named("app.log", source), options)
             .expect("a settled configuration")
             .map(|line| line.expect("a line"))
@@ -2329,7 +2347,7 @@ mod intake {
         let mut options = TextOptions::new();
         options.batch_row_size = Some(1);
         let lines = decode(b"a\nb\nc\n", &options);
-        let reader = crate::media::text::into_arrow_reader(
+        let reader = yggdryl::media::text::into_arrow_reader(
             lines.into_iter().map(Ok).collect::<Vec<_>>(),
             &options,
         )

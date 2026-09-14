@@ -51,4 +51,5 @@ pub use single::{
 };
 
 #[cfg(test)]
+#[path = "tests.rs"]
 mod tests;

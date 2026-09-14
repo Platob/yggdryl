@@ -5,14 +5,14 @@ use std::path::{Path, PathBuf};
 use arrow_array::{Array, Int32Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::ArrowError;
 
-use crate::DataType;
-use crate::IOMedia;
-use crate::holder::Holder;
-use crate::media::IORecordOptions;
+use yggdryl::DataType;
+use yggdryl::IOMedia;
+use yggdryl::holder::Holder;
+use yggdryl::media::IORecordOptions;
 
 /// Build an empty `lake/` under the temp directory and hold it as a folder.
 fn lake(label: &str) -> (PathBuf, Holder) {
-    let mut root = crate::holder::local::Folder::temporary()
+    let mut root = yggdryl::holder::local::Folder::temporary()
         .unwrap()
         .path()
         .unwrap();
@@ -25,7 +25,7 @@ fn lake(label: &str) -> (PathBuf, Holder) {
 
 /// The options a partitioned Arrow IPC lake is read and written under.
 fn options(field: Option<Field>) -> RecordOptions {
-    let options = RecordOptions::for_mime_type(&crate::MimeType::ARROW_STREAM).unwrap();
+    let options = RecordOptions::for_mime_type(&yggdryl::MimeType::ARROW_STREAM).unwrap();
     match field {
         Some(field) => options.with_field(field),
         None => options,
@@ -39,7 +39,7 @@ fn seed(root: &Path, directory: &str, batch: &RecordBatch) {
         .child_by_path("part-0.arrows")
         .unwrap();
     leaf.overwrite_arrow_reader(
-        crate::arrow::batch_reader(batch.schema(), [batch.clone()]),
+        yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()]),
         &options(None),
     )
     .unwrap();
@@ -138,7 +138,7 @@ fn a_folder_write_routes_each_row_to_the_partition_it_belongs_to() {
 
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(incoming.schema(), [incoming]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -184,7 +184,7 @@ fn an_ascii_partition_column_is_spelled_as_text_in_the_path() {
 
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(incoming.schema(), [incoming]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -242,7 +242,7 @@ fn a_code_partition_column_keeps_its_identity_through_the_path() {
 
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(incoming.schema(), [incoming]),
+            yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -256,7 +256,7 @@ fn a_code_partition_column_keeps_its_identity_through_the_path() {
         let batch = batch.unwrap();
         // A code stores as the text it is, so the restored column holds the
         // path's own spelling and reads back a currency.
-        let restored = crate::Field::from_arrow(batch.schema().field(0)).unwrap();
+        let restored = yggdryl::Field::from_arrow(batch.schema().field(0)).unwrap();
         assert_eq!(restored.dtype(), &DataType::Currency);
         let ccy = batch
             .column_by_name("ccy")
@@ -319,13 +319,13 @@ fn an_empty_folder_overwrite_keeps_an_inferable_encoded_field() {
     let (root, mut handle) = lake("empty-overwrite-field");
     seed(&root, "year=2024/month=01", &prices());
     let field = schema();
-    let arrow = crate::arrow::arrow_schema_from_field(&field).unwrap();
+    let arrow = field.clone().into_arrow_schema().unwrap();
 
     // No declared field is available on either side of this call: the
     // empty reader's Arrow schema must remain discoverable from a real
     // encoded leaf rather than a zero-byte remnant.
     handle
-        .overwrite_arrow_reader(crate::arrow::batch_reader(arrow, []), &options(None))
+        .overwrite_arrow_reader(yggdryl::arrow::batch_reader(arrow, []), &options(None))
         .unwrap();
 
     let inferred = handle.read_arrow_field(&options(None)).unwrap();
@@ -365,7 +365,7 @@ fn merge_keys_that_exist_only_in_partition_paths_are_refused() {
 
         let message = handle
             .merge_arrow_reader(
-                crate::arrow::batch_reader(incoming.schema(), [incoming]),
+                yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
                 &merging,
             )
             .unwrap_err()
@@ -389,7 +389,7 @@ fn merge_keys_that_exist_only_in_partition_paths_are_refused() {
 
 #[test]
 fn a_partition_filter_prunes_leaves_and_filters_rows() {
-    use crate::media::IORecordOptions;
+    use yggdryl::media::IORecordOptions;
 
     let (root, handle) = lake("filtered");
     seed(&root, "year=2024/month=01", &prices());
@@ -440,7 +440,7 @@ fn an_overwrite_empties_a_partition_the_incoming_rows_no_longer_name() {
     let only_january = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(only_january.schema(), [only_january]),
+            yggdryl::arrow::batch_reader(only_january.schema(), [only_january]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -470,7 +470,7 @@ fn an_append_adds_to_one_partition_and_leaves_the_others_alone() {
     let january = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
     handle
         .append_arrow_reader(
-            crate::arrow::batch_reader(january.schema(), [january]),
+            yggdryl::arrow::batch_reader(january.schema(), [january]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -510,7 +510,7 @@ fn a_merge_across_a_folder_updates_inside_each_partition() {
 
     handle
         .merge_arrow_reader(
-            crate::arrow::batch_reader(updates.schema(), [updates]),
+            yggdryl::arrow::batch_reader(updates.schema(), [updates]),
             &options(Some(field.clone())).with_merge_by_names(["price"]),
         )
         .unwrap();
@@ -540,7 +540,7 @@ fn an_empty_partition_directory_is_enough_to_declare_the_layout() {
     let full = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(full.schema(), [full]),
+            yggdryl::arrow::batch_reader(full.schema(), [full]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -570,7 +570,7 @@ fn a_declared_schema_lays_an_empty_folder_out_by_its_partition_fields() {
 
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(full.schema(), [full]),
+            yggdryl::arrow::batch_reader(full.schema(), [full]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -626,7 +626,7 @@ fn a_declared_layout_that_contradicts_the_stored_one_is_refused_by_name() {
     let full = with_partitions(&prices(), &partitions(), Some(&field)).unwrap();
     let error = handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(full.schema(), [full]),
+            yggdryl::arrow::batch_reader(full.schema(), [full]),
             &options(Some(field)),
         )
         .expect_err("two layouts in one tree");
@@ -645,7 +645,7 @@ fn a_folder_with_no_partition_directories_is_one_table_in_one_leaf() {
 
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(full.schema(), [full]),
+            yggdryl::arrow::batch_reader(full.schema(), [full]),
             &options(Some(field.clone())),
         )
         .unwrap();
@@ -663,15 +663,15 @@ fn a_null_partition_value_is_spelled_out_in_the_path() {
     let (root, mut handle) = lake("null-partition");
     seed(&root, "year=2024/month=01", &prices());
 
-    let field = crate::DataType::from_fields([
-        crate::DataType::Int64.required_field("price"),
-        crate::DataType::Int32.nullable_field("year"),
-        crate::DataType::utf8().nullable_field("month"),
+    let field = yggdryl::DataType::from_fields([
+        yggdryl::DataType::Int64.required_field("price"),
+        yggdryl::DataType::Int32.nullable_field("year"),
+        yggdryl::DataType::utf8().nullable_field("month"),
     ])
     .unwrap()
     .required_field("row");
     let batch = RecordBatch::try_new(
-        crate::arrow::arrow_schema_from_field(&field).unwrap(),
+        field.clone().into_arrow_schema().unwrap(),
         vec![
             std::sync::Arc::new(arrow_array::Int64Array::from(vec![99])),
             std::sync::Arc::new(Int32Array::from(vec![None::<i32>])),
@@ -682,7 +682,7 @@ fn a_null_partition_value_is_spelled_out_in_the_path() {
 
     handle
         .overwrite_arrow_reader(
-            crate::arrow::batch_reader(batch.schema(), [batch]),
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
             &options(Some(field.clone())),
         )
         .unwrap();
