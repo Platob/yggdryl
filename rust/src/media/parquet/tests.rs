@@ -1155,9 +1155,10 @@ mod extensions {
     #[test]
     fn a_code_column_writes_parquet_string_and_keeps_its_identity() {
         // A code stores as text, so Parquet gives it the String logical type
-        // and the byte-array bounds that come with it - a column of three
-        // padded bytes had neither, and a reader outside this crate saw an
-        // opaque FIXED_LEN_BYTE_ARRAY where a currency is a string.
+        // and bounds over the codes themselves. A padded column had no
+        // logical type at all - a reader outside this crate saw an untyped
+        // FIXED_LEN_BYTE_ARRAY where a currency is a string - and its bounds
+        // carried the slot's NUL for every value short of the width.
         let media = written(
             "currency.parquet",
             vec![

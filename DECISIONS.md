@@ -2595,10 +2595,12 @@ registry that happens to be short ASCII. Storing it padded made the crate
 invent a layout - the same objection decision 14 raised against a packed
 datatype the crate invented - and every consumer outside Arrow already read it
 as text: Avro spelled it `string`, Iceberg spelled it `string`, a partition
-directory spelled it `USD`. Only Arrow disagreed, and it disagreed by handing
-a planner an opaque `FIXED_LEN_BYTE_ARRAY` with no statistics. `version` and
-`url` were already identities over text under their own extension names; a
-code is the same shape and now says so.
+directory spelled it `USD`. Only Arrow disagreed, and Parquet inherited the
+disagreement: a code column carried no logical type at all, so a reader
+outside this crate saw an untyped `FIXED_LEN_BYTE_ARRAY`, and its footer
+bounds carried the slot's NUL for every value short of the width. `version`
+and `url` were already identities over text under their own extension names;
+a code is the same shape and now says so.
 
 **What moves.**
 
