@@ -44,6 +44,10 @@ const SOH = '\u0001'
 // The corpus: one line per shape a session log holds, so the decoder shows
 // what the package answers. Each is read by the native codec below and the
 // page renders its field, value, and protocol-derived answers together.
+// An undated frame settles SendingTime from the codec's default, else the
+// clock at generation; one fixed instant keeps the manifest reproducible.
+const SENDING = '2024-01-02T10:15:30Z'
+
 const FRAMES = [
   [
     'order',
@@ -400,14 +404,14 @@ function frameCase(registry, reader, schema, key, label, line) {
     // The raw line rather than its escape, and the encoding `frameCase` itself
     // read it under: a snippet that does not reproduce the answer beside it is
     // not the call that answered.
-    call: `[...new fix.FixCodec(registry).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
+    call: `[...new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}') }).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
   }
 }
 
 /** Build the native catalog and recorded result manifest. */
 function manifest() {
   const registry = dictionary()
-  const reader = new fix.FixCodec(registry)
+  const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date(SENDING) })
   const schema = fix.schema(registry, 'FixMessage')
   const catalog = liveCatalog(registry)
   const provenance = JSON.parse(fs.readFileSync(path.join(CONFIG, 'provenance.json'), 'utf8'))
@@ -444,7 +448,7 @@ function manifest() {
     ),
     calls: {
       registry: "const registry = fix.FixRegistry.fromHandle('config/fix')",
-      reader: 'const reader = new fix.FixCodec(registry)',
+      reader: `const reader = new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}') })`,
     },
   }
   return index
