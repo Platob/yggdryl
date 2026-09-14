@@ -220,35 +220,60 @@ impl Term {
     /// structural. On anything else each step becomes the call that reads it -
     /// [`Function::Get`] for a child, a position or a key, [`Function::Slice`]
     /// for a run - because only a column has a place to push a path down to.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a predicate step after a computed value: a
+    /// [`FieldSegment::Where`] keeps the elements of the list a column holds,
+    /// and no call in the closed function set reads a predicate, so there is
+    /// no term to build. The parser refuses the spelling before it reaches
+    /// here, and [`Self::filter_elements`] is the builder that refuses it as
+    /// an error.
     #[must_use]
     pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Self {
-        match self {
+        segments.into_iter().fold(self, |base, segment| {
+            base.step(segment).unwrap_or_else(|error| panic!("{error}"))
+        })
+    }
+
+    /// Take one step, the way [`Self::path`] takes each of its steps.
+    fn step(self, segment: FieldSegment) -> Result<Self> {
+        Ok(match self {
             Self::Path(held) => {
                 let mut steps: Vec<FieldSegment> = held.iter().cloned().collect();
-                steps.extend(segments);
+                steps.push(segment);
                 Self::Path(Arc::from(steps))
             }
-            other => segments
-                .into_iter()
-                .fold(other, |base, segment| match segment {
-                    FieldSegment::Field(name) => Self::call(
-                        Function::Get,
-                        [base, Self::literal(Scalar::from(name.as_str()))],
-                    ),
-                    FieldSegment::Index(position) => {
-                        Self::call(Function::Get, [base, Self::literal(position)])
-                    }
-                    FieldSegment::Key(key) => Self::call(Function::Get, [base, Self::Literal(key)]),
-                    FieldSegment::Range { start, end } => Self::call(
-                        Function::Slice,
-                        [
-                            base,
-                            start.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
-                            end.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
-                        ],
-                    ),
-                }),
-        }
+            base => match segment {
+                FieldSegment::Field(name) => Self::call(
+                    Function::Get,
+                    [base, Self::literal(Scalar::from(name.as_str()))],
+                ),
+                FieldSegment::Index(position) => {
+                    Self::call(Function::Get, [base, Self::literal(position)])
+                }
+                FieldSegment::Key(key) => Self::call(Function::Get, [base, Self::Literal(key)]),
+                FieldSegment::Range { start, end } => Self::call(
+                    Function::Slice,
+                    [
+                        base,
+                        start.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
+                        end.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
+                    ],
+                ),
+                FieldSegment::Where(predicate) => {
+                    return Err(Error::Parse {
+                        target: "expression",
+                        position: 0,
+                        reason: format_smolstr!(
+                            "expected a column path to keep elements of by [{predicate}], got \
+                             the computed value {base}; a predicate segment reads the list a \
+                             column holds"
+                        ),
+                    });
+                }
+            },
+        })
     }
 
     /// Reach one struct child, or one string-keyed map entry.
@@ -267,6 +292,17 @@ impl Term {
     #[must_use]
     pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self {
         self.path([FieldSegment::Range { start, end }])
+    }
+
+    /// Keep the elements of the list this path reaches that `predicate`
+    /// answers true for, the predicate reading the element's own fields.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when this term is a computed value rather than a
+    /// path: a predicate segment reads the list a column holds.
+    pub fn filter_elements(self, predicate: Self) -> Result<Self> {
+        self.step(FieldSegment::filter(predicate))
     }
 
     /// Conjoin every term, flattening nested conjunctions.
@@ -605,10 +641,17 @@ impl Term {
     /// Visit every direct child of this node, in evaluation order.
     ///
     /// One traversal serves every walk in the module, so a variant added later
-    /// is wired into all of them by editing exactly one function.
+    /// is wired into all of them by editing exactly one function. A path's
+    /// children are the predicates its segments carry: they nest, they name
+    /// parameters and attributes, and they count against the budget, even
+    /// though the columns they read are the element's and not the row's.
     pub(crate) fn for_each_child<'node>(&'node self, mut visit: impl FnMut(&'node Self)) {
         match self {
-            Self::Literal(_) | Self::Path(_) | Self::Attribute(_) | Self::Parameter(_) => {}
+            Self::Literal(_) | Self::Attribute(_) | Self::Parameter(_) => {}
+            Self::Path(steps) => steps
+                .iter()
+                .filter_map(FieldSegment::as_predicate)
+                .for_each(visit),
             Self::And(operands) | Self::Or(operands) | Self::List(operands) => {
                 operands.iter().for_each(visit);
             }
@@ -727,17 +770,28 @@ impl Term {
     /// order.
     ///
     /// This is what drives projection pushdown: a read decodes exactly the
-    /// columns the predicate and the projection name, and no more.
+    /// columns the predicate and the projection name, and no more. A path
+    /// reads the column it starts at and nothing else: the names inside its
+    /// predicate segments are the element's fields, which the column already
+    /// carries.
     #[must_use]
     pub fn columns(&self) -> Vec<String> {
         let mut names: Vec<String> = Vec::new();
-        self.walk(&mut |node| {
-            if let Some(name) = node.root_column() {
-                if !names.iter().any(|held| held.eq_ignore_ascii_case(name)) {
-                    names.push(name.to_owned());
+        let mut pending: Vec<&Self> = vec![self];
+        let mut children: Vec<&Self> = Vec::new();
+        while let Some(node) = pending.pop() {
+            if let Self::Path(_) = node {
+                if let Some(name) = node.root_column() {
+                    if !names.iter().any(|held| held.eq_ignore_ascii_case(name)) {
+                        names.push(name.to_owned());
+                    }
                 }
+                continue;
             }
-        });
+            children.clear();
+            node.for_each_child(|child| children.push(child));
+            pending.extend(children.iter().rev().copied());
+        }
         names
     }
 
@@ -826,8 +880,21 @@ impl Term {
             return Ok(replaced);
         }
         Ok(match self {
-            Self::Literal(_) | Self::Path(_) | Self::Attribute(_) | Self::Parameter(_) => {
-                self.clone()
+            Self::Literal(_) | Self::Attribute(_) | Self::Parameter(_) => self.clone(),
+            Self::Path(steps) => {
+                if steps.iter().all(|step| step.as_predicate().is_none()) {
+                    return Ok(self.clone());
+                }
+                let mut mapped = Vec::with_capacity(steps.len());
+                for step in steps.iter() {
+                    mapped.push(match step {
+                        FieldSegment::Where(predicate) => {
+                            FieldSegment::Where(Box::new(predicate.map(replace)?))
+                        }
+                        other => other.clone(),
+                    });
+                }
+                Self::Path(Arc::from(mapped))
             }
             Self::And(operands) => Self::And(map_slice(operands, replace)?),
             Self::Or(operands) => Self::Or(map_slice(operands, replace)?),
@@ -1011,9 +1078,23 @@ impl Term {
                     .map(|(key, value)| (key.simplify(), value.simplify()))
                     .collect(),
             ),
-            Self::Literal(_) | Self::Path(_) | Self::Attribute(_) | Self::Parameter(_) => {
-                self.clone()
+            Self::Path(steps) => {
+                if steps.iter().all(|step| step.as_predicate().is_none()) {
+                    return self.clone();
+                }
+                Self::Path(
+                    steps
+                        .iter()
+                        .map(|step| match step {
+                            FieldSegment::Where(predicate) => {
+                                FieldSegment::Where(Box::new(predicate.simplify()))
+                            }
+                            other => other.clone(),
+                        })
+                        .collect(),
+                )
             }
+            Self::Literal(_) | Self::Attribute(_) | Self::Parameter(_) => self.clone(),
         }
     }
 }

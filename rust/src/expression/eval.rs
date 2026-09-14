@@ -28,11 +28,11 @@ use std::cmp::Ordering;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::attribute::Attributes;
-use super::bind::{Kind, Node};
-use super::path::{FieldSegment, resolve_range};
+use super::bind::{Kind, Node, StepKind};
+use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
 use super::{Comparison, Function, Literal, Operator, Safety};
-use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone, i256};
+use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
 /// One row's worth of context: its column values and its holder.
 ///
@@ -82,12 +82,19 @@ impl Node {
                     .ok_or_else(|| missing("a row with every bound column"))
             }
             Kind::Path(base, steps) => {
-                let mut field = base.field.clone();
+                let mut field = &base.field;
                 let mut value = base.eval(row)?;
-                for step in steps.iter() {
-                    let next = step.apply_field(&field)?;
-                    value = step.apply_scalar(&field, &value);
-                    field = next;
+                for step in steps {
+                    value = match &step.kind {
+                        StepKind::Segment(segment) => segment.apply_scalar(field, &value)?,
+                        StepKind::Where(predicate) => {
+                            let element = step
+                                .element()
+                                .ok_or_else(|| missing("a list of structs to keep elements of"))?;
+                            keep_elements(element, predicate, &value, row.holder)?
+                        }
+                    };
+                    field = &step.field;
                     if value.is_null() {
                         break;
                     }
@@ -264,6 +271,42 @@ impl Node {
             }
         }
     }
+}
+
+/// The elements of one list value a predicate over the element struct keeps.
+///
+/// The definition the vectorized tier is an optimization of: an element is
+/// kept when the predicate answers exactly `true` for it, so `false` and
+/// unknown both drop it; a null element is dropped, because there is no
+/// struct there to ask about; a null list stays null, and so does a value
+/// that is no list at all, the way a position past the end reads as null.
+///
+/// # Errors
+///
+/// Returns an error when the predicate refuses an element - a strict cast,
+/// checked arithmetic - or a holder attribute it reads cannot be answered.
+pub(crate) fn keep_elements(
+    element: &Field,
+    predicate: &Node,
+    list: &Scalar,
+    holder: Option<&dyn Attributes>,
+) -> Result<Scalar> {
+    let Some(items) = list.as_sequence() else {
+        return Ok(Scalar::Null);
+    };
+    let mut kept = Vec::new();
+    for item in items {
+        if item.is_null() {
+            continue;
+        }
+        let Some(values) = struct_values(element, item) else {
+            continue;
+        };
+        if predicate.eval(&Row::new(Some(&values), holder))?.as_bool() == Some(true) {
+            kept.push(item.clone());
+        }
+    }
+    Ok(Scalar::from_sequence(kept))
 }
 
 /// Kleene conjunction of two already-evaluated booleans.
@@ -653,7 +696,7 @@ fn call(
                 Some(index) if key.as_str().is_none() => FieldSegment::Index(index),
                 _ => FieldSegment::Key(Literal::infer(key)?),
             };
-            segment.apply_scalar(&container.field, first)
+            segment.apply_scalar(&container.field, first)?
         }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Slice => {

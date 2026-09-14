@@ -2008,11 +2008,13 @@ pub enum FieldSegment
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
   pub const fn range(start: Option<i64>, end: Option<i64>) -> Self
+  pub fn filter(predicate: Term) -> Self
+  pub fn as_predicate(&self) -> Option<&Term>
   pub fn key(value: Scalar) -> Result<Self>
   pub fn as_name(&self) -> Option<&str>
   pub const fn as_index(&self) -> Option<i64>
   pub fn apply_field(&self, field: &Field) -> Result<Field>
-  pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Scalar
+  pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Result<Scalar>
   pub struct FieldPath
   pub fn root() -> Self
   pub fn new(segments: impl IntoIterator<Item = FieldSegment>) -> Self
@@ -4123,6 +4125,7 @@ pub enum Term
   pub fn child(self, name: impl Into<SmolStr>) -> Self
   pub fn at(self, index: i64) -> Self
   pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self
+  pub fn filter_elements(self, predicate: Self) -> Result<Self>
   pub fn all(operands: impl IntoIterator<Item = Self>) -> Self
   pub fn any(operands: impl IntoIterator<Item = Self>) -> Self
   pub fn and(self, other: Self) -> Self

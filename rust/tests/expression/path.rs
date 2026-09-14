@@ -1,7 +1,7 @@
 //! Focused edge cases for the one path grammar.
 
-use yggdryl::Scalar;
-use yggdryl::{FieldPath, FieldSegment};
+use yggdryl::expression::Term;
+use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar};
 
 fn parse(text: &str) -> FieldPath {
     FieldPath::from_str(text).expect("path parses")
@@ -158,6 +158,8 @@ fn malformed_paths_name_where_they_stopped() {
         "order..price",
         "[",
         "order[1.5]",
+        "order[-1.5]",
+        "order[date32 '2024-01-01']",
     ] {
         let error = FieldPath::from_str(text).expect_err(&format!("{text} must be refused"));
         let rendered = error.to_string();
@@ -400,8 +402,6 @@ fn a_reserved_word_reached_after_a_dot_renders_quoted() {
 
 #[test]
 fn a_step_types_one_level_and_reads_one_value() {
-    use yggdryl::{DataType, Field};
-
     let root = DataType::from_fields([
         DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
         DataType::from_fields([DataType::utf8().nullable_field("ccy")])
@@ -430,21 +430,269 @@ fn a_step_types_one_level_and_reads_one_value() {
         Scalar::from_sequence([Scalar::from(10_i64), Scalar::from(20_i64)]),
         Scalar::from_sequence([Scalar::from("EUR")]),
     ]);
-    let held = FieldSegment::field("legs").apply_scalar(&root, &row);
+    let held = FieldSegment::field("legs")
+        .apply_scalar(&root, &row)
+        .unwrap();
     assert_eq!(
-        FieldSegment::index(-1).apply_scalar(&legs, &held),
+        FieldSegment::index(-1).apply_scalar(&legs, &held).unwrap(),
         Scalar::from(20_i64)
     );
     assert_eq!(
-        FieldSegment::index(5).apply_scalar(&legs, &held),
+        FieldSegment::index(5).apply_scalar(&legs, &held).unwrap(),
         Scalar::Null
     );
     assert_eq!(
-        FieldSegment::range(Some(1), None).apply_scalar(&legs, &held),
+        FieldSegment::range(Some(1), None)
+            .apply_scalar(&legs, &held)
+            .unwrap(),
         Scalar::from_sequence([Scalar::from(20_i64)])
     );
     let path = parse("trade.ccy");
     assert_eq!(path.apply_field(&root).unwrap().dtype(), &DataType::utf8());
     assert_eq!(path.apply_scalar(&root, &row).unwrap(), Scalar::from("EUR"));
     let _: &Field = &root;
+}
+
+// ---------------------------------------------------------------------------
+// The predicate segment
+// ---------------------------------------------------------------------------
+
+/// A row holding one list of structs, the shape a predicate keeps elements of.
+fn legs_root() -> Field {
+    DataType::from_fields([
+        DataType::list(
+            DataType::from_fields([
+                DataType::utf8().nullable_field("ccy"),
+                DataType::Int64.nullable_field("size"),
+                DataType::Boolean.nullable_field("active"),
+            ])
+            .unwrap()
+            .nullable_field("item"),
+        )
+        .nullable_field("legs"),
+        DataType::list(DataType::Int64.nullable_field("item")).nullable_field("xs"),
+        DataType::utf8().nullable_field("ccy"),
+    ])
+    .unwrap()
+    .required_field("row")
+}
+
+fn leg(ccy: Option<&str>, size: Option<i64>, active: Option<bool>) -> Scalar {
+    Scalar::from_sequence([
+        ccy.map_or(Scalar::Null, Scalar::from),
+        size.map_or(Scalar::Null, Scalar::from),
+        active.map_or(Scalar::Null, Scalar::from),
+    ])
+}
+
+#[test]
+fn inside_brackets_only_a_whole_number_a_text_and_a_colon_are_not_a_predicate() {
+    assert_eq!(parse("legs[1]").segments()[1], FieldSegment::index(1));
+    assert_eq!(parse("legs[-1]").segments()[1], FieldSegment::index(-1));
+    assert_eq!(
+        parse("legs['k']").segments()[1],
+        FieldSegment::key(Scalar::from("k")).unwrap()
+    );
+    assert_eq!(
+        parse("legs[1:2]").segments()[1],
+        FieldSegment::range(Some(1), Some(2))
+    );
+    for (text, predicate) in [
+        ("legs[ccy = 'EUR']", "ccy = 'EUR'"),
+        ("legs[active]", "active"),
+        ("legs[true]", "true"),
+        ("legs[null]", "null"),
+        ("legs[not active and size > 1]", "not active and size > 1"),
+        ("legs[1 = size]", "1 = size"),
+        ("legs[-size < 0]", "-size < 0"),
+        ("legs[1.5 < size]", "1.5 < size"),
+        ("legs[ccy in ('EUR', 'USD')]", "ccy in ('EUR', 'USD')"),
+        ("legs[tags[0] = 'x']", "tags[0] = 'x'"),
+        ("legs[notes[v > 1][0].k = 'b']", "notes[v > 1][0].k = 'b'"),
+    ] {
+        let path = parse(text);
+        let held = path
+            .last()
+            .and_then(FieldSegment::as_predicate)
+            .unwrap_or_else(|| panic!("{text} ends in a predicate"));
+        assert_eq!(held, &predicate.parse::<Term>().unwrap(), "{text}");
+        assert_eq!(path.last().and_then(FieldSegment::as_name), None);
+        assert_eq!(path.last().and_then(FieldSegment::as_index), None);
+    }
+    // A predicate reaches no one child, so a path ending in one names nothing
+    // and an alias is how it is called.
+    assert_eq!(parse("legs[active]").column_name(), None);
+    assert_eq!(parse("legs[active] as live").column_name(), Some("live"));
+}
+
+#[test]
+fn a_predicate_segment_renders_and_reparses_in_both_grammars() {
+    for text in [
+        "legs[ccy = 'EUR']",
+        "legs[ccy = 'EUR'][0].price",
+        "legs[active]",
+        "legs[not active and size > 1]",
+        "legs[ccy = 'EUR' or ccy = 'USD'][-1]",
+        "legs[size between 1 and 3][1:]",
+        "legs[notes[v > 1][0].k = 'b'].ccy",
+        "legs[ccy = 'EUR'][size >= 3]",
+        "legs[ccy = :ccy]",
+        "legs[ccy = 'EUR'] as eur",
+        "legs[cast(size as float64) > 1.5]",
+    ] {
+        let path = parse(text);
+        let rendered = path.to_string();
+        assert_eq!(rendered, text, "one canonical spelling");
+        assert_eq!(FieldPath::from_str(&rendered).unwrap(), path);
+        // The term grammar reads the same path as its one leaf.
+        let leaf: Term = text.trim_end_matches(" as eur").parse().unwrap();
+        assert_eq!(leaf.as_path(), Some(path.segments()));
+        assert_eq!(leaf.to_string().parse::<Term>().unwrap(), leaf);
+    }
+    let built = FieldPath::new([
+        FieldSegment::field("legs"),
+        FieldSegment::filter("ccy = 'EUR'".parse().unwrap()),
+        FieldSegment::index(0),
+    ]);
+    assert_eq!(built, parse("legs[ccy = 'EUR'][0]"));
+    assert_eq!(
+        built.stable_hash(),
+        parse("legs[ccy = 'EUR'][0]").stable_hash()
+    );
+    let json = serde_json::to_string(&built).unwrap();
+    assert_eq!(json, "\"legs[ccy = 'EUR'][0]\"");
+    assert_eq!(serde_json::from_str::<FieldPath>(&json).unwrap(), built);
+}
+
+#[test]
+fn a_predicate_segment_sorts_after_every_other_kind() {
+    let mut segments = [
+        FieldSegment::filter("b".parse().unwrap()),
+        FieldSegment::range(None, None),
+        FieldSegment::filter("a".parse().unwrap()),
+        FieldSegment::index(0),
+    ];
+    segments.sort();
+    assert_eq!(
+        segments,
+        [
+            FieldSegment::index(0),
+            FieldSegment::range(None, None),
+            FieldSegment::filter("a".parse().unwrap()),
+            FieldSegment::filter("b".parse().unwrap()),
+        ]
+    );
+}
+
+#[test]
+fn a_predicate_segment_types_as_the_list_it_keeps_elements_of() {
+    let root = legs_root();
+    let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
+    let kept = FieldSegment::filter("ccy = 'EUR'".parse().unwrap())
+        .apply_field(&legs)
+        .unwrap();
+    assert_eq!(kept.dtype(), legs.dtype(), "the same item type");
+    assert!(
+        kept.is_nullable(),
+        "the kept elements of a null list are null"
+    );
+    assert_eq!(
+        parse("legs[active][0].size")
+            .apply_field(&root)
+            .unwrap()
+            .dtype(),
+        &DataType::Int64
+    );
+    // The names inside resolve against the element struct, never the row: the
+    // row has a `ccy` column and the element does not have `xs`.
+    let unknown = parse("legs[xs = 1]").apply_field(&root).unwrap_err();
+    assert!(
+        unknown.to_string().contains("ccy, size, active"),
+        "{unknown}"
+    );
+    let not_boolean = parse("legs[size]").apply_field(&root).unwrap_err();
+    assert!(
+        not_boolean.to_string().contains("boolean predicate"),
+        "{not_boolean}"
+    );
+    let not_a_list = parse("ccy[size = 1]").apply_field(&root).unwrap_err();
+    assert!(
+        not_a_list.to_string().contains("list of structs"),
+        "{not_a_list}"
+    );
+    let not_structs = parse("xs[item > 1]").apply_field(&root).unwrap_err();
+    assert!(
+        not_structs.to_string().contains("list of structs"),
+        "{not_structs}"
+    );
+}
+
+#[test]
+fn a_predicate_segment_reads_the_elements_a_row_holds() {
+    let root = legs_root();
+    let row = |legs: Scalar| Scalar::from_sequence([legs, Scalar::Null, Scalar::from("EUR")]);
+    let full = row(Scalar::from_sequence([
+        leg(Some("EUR"), Some(1), Some(true)),
+        leg(Some("USD"), Some(2), Some(false)),
+        Scalar::Null,
+        leg(Some("EUR"), None, None),
+        leg(Some("GBP"), Some(4), Some(true)),
+    ]));
+    let read = |text: &str, row: &Scalar| parse(text).apply_scalar(&root, row).unwrap();
+    assert_eq!(
+        read("legs[ccy = 'EUR']", &full),
+        Scalar::from_sequence([
+            leg(Some("EUR"), Some(1), Some(true)),
+            leg(Some("EUR"), None, None),
+        ]),
+        "a null element is dropped, the rest keep their order"
+    );
+    assert_eq!(
+        read("legs[active]", &full),
+        Scalar::from_sequence([
+            leg(Some("EUR"), Some(1), Some(true)),
+            leg(Some("GBP"), Some(4), Some(true)),
+        ]),
+        "false and unknown both drop an element"
+    );
+    assert_eq!(
+        read("legs[size > 1][0].ccy", &full),
+        Scalar::from("USD"),
+        "a position and a name compose after a predicate"
+    );
+    assert_eq!(
+        read("legs[ccy = 'EUR'][size is null][-1].ccy", &full),
+        Scalar::from("EUR"),
+        "predicates chain"
+    );
+    assert_eq!(
+        read("legs[ccy = 'JPY']", &full),
+        Scalar::from_sequence([]),
+        "no match is the empty list, not null"
+    );
+    assert_eq!(read("legs[ccy = 'JPY'][0]", &full), Scalar::Null);
+    assert_eq!(
+        read("legs[true]", &row(Scalar::Null)),
+        Scalar::Null,
+        "a null list stays null"
+    );
+    assert_eq!(
+        read("legs[true]", &row(Scalar::from_sequence([]))),
+        Scalar::from_sequence([])
+    );
+    let segment = FieldSegment::filter("size >= 2".parse().unwrap());
+    let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
+    assert_eq!(
+        segment
+            .apply_scalar(&legs, &full.as_sequence().unwrap()[0])
+            .unwrap(),
+        Scalar::from_sequence([
+            leg(Some("USD"), Some(2), Some(false)),
+            leg(Some("GBP"), Some(4), Some(true)),
+        ])
+    );
+    let refused = segment
+        .apply_scalar(&root, &full)
+        .expect_err("a row is no list of structs");
+    assert!(refused.to_string().contains("list of structs"), "{refused}");
 }
