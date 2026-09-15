@@ -355,7 +355,7 @@ A key no dictionary explains is in the same record, with tag 0 beside its exact 
 
 ## The crate's own columns
 
-Twenty-four scalar fields and one Map group carry capture facts that no dictionary publishes. Every registry holds them from construction, and the [store](store.md) omits their definitions: `fix_crate_fields` lists all 25 in tag order, while scalar registry iteration counts the 24 scalars. Their tags run from 65001 - `CRATE_TAG_MIN` (65000) starts the reserved block, whose retired first slot is not reused - `SENDERSESSIONID_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `altids` is a group reached by `group_by_tag(65020)` or group definition name, not by the registry's scalar-field doors.
+Twenty-six scalar fields and one Map group carry capture facts that no dictionary publishes. Every registry holds them from construction, and the [store](store.md) omits their definitions: `fix_crate_fields` lists all 27 in tag order, while scalar registry iteration counts the 26 scalars. Their tags run from 65001 - `CRATE_TAG_MIN` (65000) starts the reserved block, whose retired first slot is not reused - `SENDERSESSIONID_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `altids` is a group reached by `group_by_tag(65020)` or group definition name, not by the registry's scalar-field doors.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |

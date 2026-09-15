@@ -217,7 +217,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,294,090 bytes. Loading it adds the 24 crate scalars, the `altids` group and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,265 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,294,090 bytes. Loading it adds the 26 crate scalars, the `altids` group and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,267 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
 
 It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
 

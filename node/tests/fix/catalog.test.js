@@ -91,7 +91,7 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
     assert.equal(registry.getDefinition(category, name), null)
     assert.equal(registry.removeDefinition(category, name), null)
   }
-  // Only what seeds every registry is left: the crate's own twenty-four
+  // Only what seeds every registry is left: the crate's own twenty-six
   // scalar fields and the standard SendingTime (52) and TransactTime (60)
   // clocks (`seeded_fields()` in `rust/tests/fix.rs`), all of them in the
   // fields category. The crate's twenty-seven definitions add the altids group.

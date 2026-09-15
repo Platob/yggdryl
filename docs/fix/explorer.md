@@ -18,7 +18,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,265 |
+| Scalar fields | 6,241 | 6,267 |
 | Groups | 580 | 581 |
 | Components, including messages | 928 | 929 |
 | Messages, a subset of components | 181 | 182 |

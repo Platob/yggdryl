@@ -4932,12 +4932,12 @@ class FixRegistry:
     raises ``ValueError`` while a message or the process default shares it.
 
     Every registry holds this crate's own definitions from construction.
-    ``fix_crate_fields`` lists twenty-four scalar fields - tags 65001 to
-    65019 and 65021 to 65025 - and the ``altids`` Map group at 65020; the
+    ``fix_crate_fields`` lists twenty-six scalar fields - tags 65001 to
+    65019 and 65021 to 65027 - and the ``altids`` Map group at 65020; the
     retired 65000 is not reused. ``FixRegistry()`` also seeds the standard
     clocks ``SendingTime`` (52) and ``TransactTime`` (60), each a nanosecond
     UTC ``datetime64``, as ordinary definitions a loaded dictionary may
-    supply itself, so a new registry's ``len`` is 26. ``len`` counts only
+    supply itself, so a new registry's ``len`` is 28. ``len`` counts only
     scalar fields, beside those inserted or loaded. The ``pluginconfig``
     component is also registered. A store never writes the crate's own
     definitions. What a dictionary contributed is ``fix:branches`` on each
