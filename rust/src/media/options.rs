@@ -971,6 +971,8 @@ pub enum RecordOptions {
     Avro(crate::media::avro::AvroOptions),
     /// Plain-text row options.
     Text(Box<crate::media::text::TextOptions>),
+    /// XML document options.
+    Xml(Box<crate::media::xml::XmlOptions>),
 }
 
 impl RecordOptions {
@@ -982,6 +984,7 @@ impl RecordOptions {
             #[cfg(feature = "parquet")]
             Self::Parquet(options) => crate::hashing::stable_hash_of(&("parquet", options)),
             Self::Avro(options) => crate::hashing::stable_hash_of(&("avro", options)),
+            Self::Xml(options) => crate::hashing::stable_hash_of(&("xml", options)),
             Self::Text(options) => crate::hashing::stable_hash_of(&("text", options)),
         }
     }
@@ -994,7 +997,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Text(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Avro(_) | Self::Xml(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected text options to set {setting}, got {media_type} options"
@@ -1014,7 +1017,7 @@ impl RecordOptions {
     pub const fn timezone(&self) -> Option<&crate::Timezone> {
         match self {
             Self::Text(options) => options.timezone(),
-            Self::Ipc(_) | Self::Avro(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Xml(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1035,7 +1038,7 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Avro(options) => Ok(options),
-            Self::Ipc(_) | Self::Text(_) => Err(Error::InvalidRecord {
+            Self::Ipc(_) | Self::Text(_) | Self::Xml(_) => Err(Error::InvalidRecord {
                 path: SmolStr::new_static(path),
                 reason: smol_str::format_smolstr!(
                     "expected Avro options to set {setting}, got {media_type} options"
@@ -1055,7 +1058,7 @@ impl RecordOptions {
     pub fn avro_block_codec(&self) -> Option<&str> {
         match self {
             Self::Avro(options) => Some(options.codec.as_str()),
-            Self::Ipc(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xml(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1086,7 +1089,7 @@ impl RecordOptions {
     pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]> {
         match self {
             Self::Avro(options) => options.sync_marker.as_ref(),
-            Self::Ipc(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Text(_) | Self::Xml(_) => None,
             #[cfg(feature = "parquet")]
             Self::Parquet(_) => None,
         }
@@ -1307,6 +1310,12 @@ impl RecordOptions {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(Box::default()));
         }
+        // XML states no schema of its own, so it reads as rows the way plain
+        // text does: the document is the encoding, and a `.xml` answers the
+        // record surface out of the box.
+        if base == &MimeType::XML {
+            return Ok(Self::Xml(Box::default()));
+        }
         Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: crate::text::expected_got(
@@ -1328,6 +1337,7 @@ impl RecordOptions {
             Self::Parquet(_) => MimeType::PARQUET,
             Self::Avro(_) => MimeType::AVRO,
             Self::Text(_) => MimeType::PLAIN_TEXT,
+            Self::Xml(_) => MimeType::XML,
         }
     }
 }

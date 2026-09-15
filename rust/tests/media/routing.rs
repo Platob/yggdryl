@@ -66,6 +66,10 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("events.log")).unwrap(),
         Media::Text(_)
     ));
+    assert!(matches!(
+        Media::open(handle("trades.xml")).unwrap(),
+        Media::Xml(_)
+    ));
 }
 
 #[test]
@@ -146,6 +150,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Parquet(parquet) => parquet.options_mut().set_commit_row_size(Some(1)),
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
+            Media::Xml(xml) => xml.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();

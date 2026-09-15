@@ -1,0 +1,180 @@
+//! Tests for the parts of the XML codec a caller cannot reach.
+//!
+//! The document walk and the row walk are `pub(crate)`: what a caller sees is
+//! the record surface over a handle, which `rust/tests/media/xml.rs` covers.
+//! These pin the mapping itself, where a refusal is cheapest to read.
+
+use crate::text::Limits;
+use crate::{Result, Scalar};
+
+use super::document::{read_document, read_rows};
+
+fn document(input: &str) -> Result<Scalar> {
+    read_document(input.as_bytes(), Limits::default())
+}
+
+fn rows(input: &str) -> Result<(smol_str::SmolStr, Vec<Scalar>)> {
+    read_rows(input.as_bytes(), Limits::default(), None)
+}
+
+#[test]
+fn an_attribute_and_a_child_element_are_one_namespace_of_columns() {
+    let value = document(r#"<Order id="1"><Px>9.5</Px></Order>"#).unwrap();
+    assert_eq!(value.get_key_str("id").and_then(Scalar::as_str), Some("1"));
+    assert_eq!(
+        value.get_key_str("Px").and_then(Scalar::as_str),
+        Some("9.5")
+    );
+}
+
+#[test]
+fn a_leaf_is_its_characters_and_an_empty_element_is_the_empty_string() {
+    assert_eq!(document("<a>text</a>").unwrap(), Scalar::from("text"));
+    assert_eq!(document("<a/>").unwrap(), Scalar::from(""));
+    assert_eq!(document("<a></a>").unwrap(), Scalar::from(""));
+}
+
+#[test]
+fn a_repeated_child_is_one_sequence_in_document_order() {
+    let value = document("<r><L>1</L><L>2</L></r>").unwrap();
+    assert_eq!(
+        value.get_key_str("L"),
+        Some(&Scalar::from_sequence([
+            Scalar::from("1"),
+            Scalar::from("2")
+        ]))
+    );
+}
+
+#[test]
+fn entities_and_cdata_are_content_and_a_run_is_accumulated_not_replaced() {
+    // A text run splits at every entity boundary, so keeping the last event
+    // would keep a fragment.
+    assert_eq!(document("<a>x &lt; y</a>").unwrap(), Scalar::from("x < y"));
+    assert_eq!(document("<a>&#65;&#x42;</a>").unwrap(), Scalar::from("AB"));
+    assert_eq!(
+        document("<a><![CDATA[<raw>]]></a>").unwrap(),
+        Scalar::from("<raw>")
+    );
+}
+
+#[test]
+fn an_attribute_value_is_normalized_rather_than_left_escaped() {
+    let value = document(r#"<a v="A&amp;B"/>"#).unwrap();
+    assert_eq!(value.get_key_str("v").and_then(Scalar::as_str), Some("A&B"));
+}
+
+#[test]
+fn a_namespace_declaration_is_a_binding_and_never_a_column() {
+    let value = document(r#"<a xmlns="u" xmlns:p="v" id="1"/>"#).unwrap();
+    assert_eq!(value.get_key_str("id").and_then(Scalar::as_str), Some("1"));
+    assert!(value.get_key_str("xmlns").is_none());
+    assert!(value.get_key_str("p").is_none());
+}
+
+#[test]
+fn xsi_nil_is_null_and_absence_is_null() {
+    let value = document(
+        r#"<r xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><a xsi:nil="true"/></r>"#,
+    )
+    .unwrap();
+    assert_eq!(value.get_key_str("a"), Some(&Scalar::Null));
+}
+
+#[test]
+fn the_shapes_the_row_model_cannot_hold_are_refused_by_name() {
+    for (input, expected) in [
+        ("<r>text<c/></r>", "got both"),
+        (r#"<r id="1"><id>2</id></r>"#, "to be spelled one way"),
+        ("<r/>after", "content after it"),
+        ("<r><a>", "expected every element to close"),
+        (
+            "<!DOCTYPE r [<!ENTITY x \"y\">]><r/>",
+            "internal DTD subset",
+        ),
+        ("<a>&unknown;</a>", "predefined entities"),
+    ] {
+        let error = document(input).unwrap_err().to_string();
+        assert!(error.contains(expected), "{input:?} gave {error}");
+    }
+}
+
+#[test]
+fn rows_are_the_document_elements_children_and_must_agree_on_one_name() {
+    let (name, values) = rows("<rows><Order id='1'/><Order id='2'/></rows>").unwrap();
+    assert_eq!(name, "Order");
+    assert_eq!(values.len(), 2);
+    assert_eq!(
+        values[1].get_key_str("id").and_then(Scalar::as_str),
+        Some("2")
+    );
+
+    let error = rows("<rows><A/><B/></rows>").unwrap_err().to_string();
+    assert!(error.contains("expected every row to be <A>"), "{error}");
+}
+
+#[test]
+fn the_budgets_bound_a_document_and_say_where_they_stopped() {
+    let deep = "<a>".repeat(40) + &"</a>".repeat(40);
+    let error = read_document(deep.as_bytes(), Limits::new(8, 4096, 1_000, 8))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("nesting depth limit exceeded"), "{error}");
+
+    let wide = format!("<r>{}</r>", "<c/>".repeat(40));
+    let error = read_document(wide.as_bytes(), Limits::new(64, 4096, 8, 8))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("decoded node limit exceeded"), "{error}");
+}
+
+use super::writer::{escape_text, write_document};
+use crate::text::{Formatting, Indent};
+
+fn written(rows: &[Scalar]) -> String {
+    let mut out = Vec::new();
+    write_document(
+        &mut out,
+        "rows",
+        "row",
+        rows,
+        Formatting::new().with_indent(Indent::None),
+    )
+    .unwrap();
+    String::from_utf8(out).unwrap()
+}
+
+#[test]
+fn the_characters_a_parser_would_rewrite_are_written_as_references() {
+    // Line-ending normalization turns a literal carriage return into a
+    // newline, so a reference is the only spelling that survives a round trip.
+    let mut out = String::new();
+    escape_text("a\rb&c<d>e", &mut out);
+    assert_eq!(out, "a&#xD;b&amp;c&lt;d&gt;e");
+}
+
+#[test]
+fn a_written_document_reads_back_to_the_value_that_was_written() {
+    let rows = vec![
+        Scalar::from_record([
+            ("id", Scalar::from("1")),
+            ("note", Scalar::from("x < y & z")),
+        ])
+        .unwrap(),
+        Scalar::from_record([("id", Scalar::from("2")), ("note", Scalar::from("\ttab"))]).unwrap(),
+    ];
+    let encoded = written(&rows);
+    let (name, read) = read_rows(encoded.as_bytes(), Limits::default(), None).unwrap();
+    assert_eq!(name, "row");
+    assert_eq!(read, rows, "{encoded}");
+}
+
+#[test]
+fn a_name_no_element_can_be_called_is_refused_rather_than_written() {
+    let rows = vec![Scalar::from_record([("not a name", Scalar::from("1"))]).unwrap()];
+    let mut out = Vec::new();
+    let error = write_document(&mut out, "rows", "row", &rows, Formatting::new())
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("an XML element can be called"), "{error}");
+}

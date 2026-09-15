@@ -24,3 +24,5 @@ mod routing;
 mod structured;
 #[path = "media/text.rs"]
 mod text;
+#[path = "media/xml.rs"]
+mod xml;

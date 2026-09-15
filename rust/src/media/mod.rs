@@ -66,6 +66,7 @@ pub mod partition;
 #[cfg(feature = "arrow")]
 pub(crate) mod structured;
 pub mod text;
+pub mod xml;
 
 pub use magic::MAGIC_PROBE_LEN;
 /// The root Field name a record surface uses when none is declared.
@@ -104,6 +105,8 @@ pub enum Media {
     Avro(crate::media::avro::Avro<Holder>),
     /// Plain-text rows under one retained flat configuration.
     Text(crate::media::text::Text<Holder>),
+    /// An XML document whose rows are its document element's children.
+    Xml(crate::media::xml::Xml<Holder>),
 }
 
 #[cfg(feature = "arrow")]
@@ -142,9 +145,13 @@ impl Media {
         if base == &MimeType::PLAIN_TEXT {
             return Ok(Self::Text(crate::media::text::Text::new(handle)));
         }
+        if base == &MimeType::XML {
+            return Ok(Self::Xml(crate::media::xml::Xml::new(handle)));
+        }
         Err(Error::IncompatibleSchema(format!(
             "expected a media type with an implementation in this build \
-             (application/vnd.apache.arrow.stream{}, application/avro, text/plain), got {base}",
+             (application/vnd.apache.arrow.stream{}, application/avro, application/xml, \
+             text/plain), got {base}",
             if cfg!(feature = "parquet") {
                 ", application/vnd.apache.parquet"
             } else {
@@ -174,6 +181,11 @@ impl Media {
         Self::Text(crate::media::text::Text::new(handle))
     }
 
+    /// Hold an XML document over a handle.
+    pub fn xml(handle: Holder) -> Self {
+        Self::Xml(crate::media::xml::Xml::new(handle))
+    }
+
     /// Return this media with an explicit canonical schema.
     #[must_use]
     pub fn with_field(self, field: Field) -> Self {
@@ -183,6 +195,7 @@ impl Media {
             Self::Parquet(parquet) => Self::Parquet(parquet.with_field(field)),
             Self::Avro(avro) => Self::Avro(avro.with_field(field)),
             Self::Text(text) => Self::Text(text.with_field(field)),
+            Self::Xml(xml) => Self::Xml(xml.with_field(field)),
         }
     }
 
@@ -198,6 +211,7 @@ impl Media {
             Self::Parquet(inner) => inner.handle(),
             Self::Avro(inner) => inner.handle(),
             Self::Text(inner) => inner.handle(),
+            Self::Xml(inner) => inner.handle(),
         }
     }
 
@@ -214,6 +228,7 @@ impl Media {
             Self::Parquet(inner) => inner.into_handle(),
             Self::Avro(inner) => inner.into_handle(),
             Self::Text(inner) => inner.into_handle(),
+            Self::Xml(inner) => inner.into_handle(),
         }
     }
 
@@ -225,6 +240,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xml(text) => text,
         }
     }
 
@@ -236,6 +252,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xml(text) => text,
         }
     }
 
@@ -252,6 +269,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xml(text) => text,
         }
     }
 
@@ -263,6 +281,7 @@ impl Media {
             Self::Parquet(parquet) => parquet,
             Self::Avro(avro) => avro,
             Self::Text(text) => text,
+            Self::Xml(text) => text,
         }
     }
 }
