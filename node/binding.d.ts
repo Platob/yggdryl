@@ -1961,6 +1961,56 @@ export interface Avro {
 /** Apache Avro operations backed entirely by the Rust core. */
 export declare const avro: Avro
 
+/** Native resource limits shared by every XML decode path. */
+export interface XmlDecodeLimits {
+  /** Maximum structural nesting in a document. */
+  maxDepth?: number | null
+  /** Maximum encoded bytes consumed by one decode. */
+  maxInputBytes?: number | null
+  /** Maximum decoded elements and attributes. */
+  maxNodes?: number | null
+}
+
+/** Decode options for an XML Schema, which may declare several roots. */
+export interface XmlSchemaOptions extends XmlDecodeLimits {
+  /** Which global element declaration to read; the only one by default. */
+  root?: string | null
+}
+
+/** Layout for one XML or XML Schema write. */
+export interface XmlWriteOptions {
+  /**
+   * Spaces per nesting level: omitted keeps the readable two-space default,
+   * and `0` writes the whole document on one line.
+   */
+  indent?: number | null
+}
+
+/** XML documents and XML Schema, backed entirely by the Rust core. */
+export interface Xml {
+  /** Decode one document; every leaf is text, because that is all it proves. */
+  loads<T = unknown>(input: CodecContent, options?: XmlDecodeLimits | null): T
+  /** Decode one document under a field, as the typed value it declares. */
+  loadsWithField(
+    input: CodecContent,
+    field: Field,
+    options?: XmlDecodeLimits | null,
+  ): Scalar
+  /** Encode one value as a whole document rooted at `name`. */
+  dumps(
+    value: unknown,
+    name: string,
+    options?: XmlWriteOptions | null,
+  ): Buffer
+  /** Read an XML Schema document as the field it declares. */
+  schema(input: CodecContent, options?: XmlSchemaOptions | null): Field
+  /** Write one field as the XML Schema that declares it. */
+  schemaDumps(field: Field, options?: XmlWriteOptions | null): Buffer
+}
+
+/** XML document and XML Schema operations backed entirely by the Rust core. */
+export declare const xml: Xml
+
 export interface CodecOptions {
   /** Explicit format; generic APIs otherwise infer a path suffix or content. */
   format?: SingleCodecFormat

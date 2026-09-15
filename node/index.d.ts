@@ -6125,3 +6125,13 @@ export interface TimezoneAlias {
   /** The canonical name it resolves to. */
   canonical: string
 }
+
+/** Resource limits shared by every XML decode entry point. */
+export interface XmlDecodeLimitsInput {
+  /** Maximum structural nesting in a document. */
+  maxDepth?: number
+  /** Maximum encoded bytes consumed by one decode. */
+  maxInputBytes?: number
+  /** Maximum decoded elements and attributes. */
+  maxNodes?: number
+}

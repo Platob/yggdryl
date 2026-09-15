@@ -251,6 +251,11 @@ const nativeAvroBlocksNext = NativeAvroBlocks.prototype.next
 const nativeAvroBlocks = binding.avroBlocksNative
 const nativeAvroLoads = binding.avroLoadsNative
 const nativeAvroDumps = binding.avroDumpsNative
+const nativeXmlLoads = binding.xmlLoadsNative
+const nativeXmlLoadsWithField = binding.xmlLoadsWithFieldNative
+const nativeXmlDumps = binding.xmlDumpsNative
+const nativeXmlSchema = binding.xmlSchemaNative
+const nativeXmlSchemaDumps = binding.xmlSchemaDumpsNative
 delete NativeScalar.prototype._asJsNative
 delete NativeScalar.prototype._iterNative
 delete NativeScalar.prototype._getNative
@@ -290,6 +295,11 @@ delete NativePartitionSpec.prototype._intoScalarNative
 delete binding.avroBlocksNative
 delete binding.avroLoadsNative
 delete binding.avroDumpsNative
+delete binding.xmlLoadsNative
+delete binding.xmlLoadsWithFieldNative
+delete binding.xmlDumpsNative
+delete binding.xmlSchemaNative
+delete binding.xmlSchemaDumpsNative
 delete binding.ScalarIterator
 
 function publicNativeClass(NativeClass, name, hiddenStatics) {
@@ -1553,6 +1563,147 @@ const avro = Object.freeze({
     return avroSchemaFrom(schema, false, options).fromSingleObject(
       input,
       options,
+    )
+  },
+})
+
+// XML carries text and shape, never type: a decode answers the document's own
+// names and leaves them all text, and a `Field` is what types them. These
+// option sets are the whole surface, so an unknown key is a refusal rather
+// than a silently ignored setting.
+const XML_DECODE_OPTION_NAMES = new Set(['maxDepth', 'maxInputBytes', 'maxNodes'])
+const XML_SCHEMA_OPTION_NAMES = new Set([
+  'maxDepth',
+  'maxInputBytes',
+  'maxNodes',
+  'root',
+])
+const XML_WRITE_OPTION_NAMES = new Set(['indent'])
+const XML_NO_OPTIONS = Object.freeze(Object.create(null))
+
+function checkedXmlOptions(options, names, label) {
+  if (options == null) return XML_NO_OPTIONS
+  if (
+    typeof options !== 'object' ||
+    Array.isArray(options) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(options))
+  ) {
+    throw new TypeError(`XML ${label} options must be a plain object`)
+  }
+  for (const key of Reflect.ownKeys(options)) {
+    if (typeof key !== 'string' || !names.has(key)) {
+      throw new TypeError(`unknown XML ${label} option ${String(key)}`)
+    }
+  }
+  return options
+}
+
+function xmlLimits(options) {
+  const limits = {}
+  for (const name of ['maxDepth', 'maxInputBytes', 'maxNodes']) {
+    if (!Object.hasOwn(options, name)) continue
+    const value = options[name]
+    if (value === undefined || value === null) continue
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new RangeError(`${name} must be a non-negative safe integer`)
+    }
+    limits[name] = value
+  }
+  return Object.keys(limits).length === 0 ? undefined : limits
+}
+
+// `indent: 0` is the one-line document; leaving it out keeps the core's own
+// readable default, which is two spaces per level.
+function xmlIndent(options) {
+  if (!Object.hasOwn(options, 'indent')) return undefined
+  const value = options.indent
+  if (value === undefined || value === null) return undefined
+  if (!Number.isSafeInteger(value) || value < 0 || value > 255) {
+    throw new RangeError('indent must be an integer between 0 and 255')
+  }
+  return value
+}
+
+function xmlRoot(options) {
+  if (!Object.hasOwn(options, 'root')) return undefined
+  const value = options.root
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string') {
+    throw new TypeError('root must name one global element declaration')
+  }
+  return value
+}
+
+function xmlBytes(input) {
+  try {
+    return toBytes(input)
+  } catch (cause) {
+    throw new TypeError(
+      'XML input must be a string, Buffer, ArrayBuffer, SharedArrayBuffer, ' +
+        'or array-buffer view',
+      { cause },
+    )
+  }
+}
+
+function xmlField(value, label) {
+  if (value instanceof NativeField) return value
+  throw new TypeError(`${label} must be a Field`)
+}
+
+function xmlName(name) {
+  if (typeof name !== 'string') {
+    throw new TypeError('the document element name must be a string')
+  }
+  return name
+}
+
+const xml = Object.freeze({
+  dumps(value, name, options) {
+    const checked = checkedXmlOptions(options, XML_WRITE_OPTION_NAMES, 'write')
+    return nativeXmlDumps(
+      Scalar.from(value),
+      xmlName(name),
+      xmlIndent(checked),
+    )
+  },
+  loads(input, options) {
+    const checked = checkedXmlOptions(
+      options,
+      XML_DECODE_OPTION_NAMES,
+      'decode',
+    )
+    return nativeXmlLoads(xmlBytes(input), xmlLimits(checked)).asJs()
+  },
+  loadsWithField(input, field, options) {
+    const checked = checkedXmlOptions(
+      options,
+      XML_DECODE_OPTION_NAMES,
+      'decode',
+    )
+    return nativeXmlLoadsWithField(
+      xmlBytes(input),
+      xmlField(field, 'the declared field'),
+      xmlLimits(checked),
+    )
+  },
+  schema(input, options) {
+    const checked = checkedXmlOptions(
+      options,
+      XML_SCHEMA_OPTION_NAMES,
+      'schema',
+    )
+    return nativeXmlSchema(
+      xmlBytes(input),
+      xmlRoot(checked),
+      xmlLimits(checked),
+    )
+  },
+  schemaDumps(field, options) {
+    const checked = checkedXmlOptions(options, XML_WRITE_OPTION_NAMES, 'write')
+    return nativeXmlSchemaDumps(
+      xmlField(field, 'the declared field'),
+      xmlIndent(checked),
     )
   },
 })
@@ -3991,6 +4142,7 @@ binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml
 binding.yaml = yaml
+binding.xml = xml
 
 // The core's static enum vocabularies, frozen: pure enums cross the boundary
 // as strings by convention, and this is the enumeration of what those strings

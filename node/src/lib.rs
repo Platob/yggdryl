@@ -69,6 +69,10 @@ pub use media::iceberg::{
 };
 pub use media::options::JsRecordOptions;
 pub use media::text::JsTextOptions;
+pub use media::xml::{
+    XmlDecodeLimitsInput, xml_dumps_native, xml_loads_native, xml_loads_with_field_native,
+    xml_schema_dumps_native, xml_schema_native,
+};
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,

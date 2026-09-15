@@ -452,7 +452,7 @@ fn leaf_text(value: &Scalar) -> Result<smol_str::SmolStr> {
             path: SmolStr::new_static("$"),
             reason: format_smolstr!(
                 "expected a value an element can hold, got {}",
-                quoted(&value.kind().to_string())
+                quoted(value.kind())
             ),
         });
     }

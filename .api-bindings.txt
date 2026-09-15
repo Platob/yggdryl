@@ -368,6 +368,16 @@
   avro
     statics: Schema, blocks, dumps, dumpsSingle, loads, loadsSingle
     decode limits: maxDepth, maxInputBytes, maxNodes; blocks is a fused lazy iterator
+  XmlDecodeLimits
+    fields: maxDepth, maxInputBytes, maxNodes
+  XmlSchemaOptions
+    fields: maxDepth, maxInputBytes, maxNodes, root
+  XmlWriteOptions
+    fields: indent
+  xml
+    statics: dumps, loads, loadsWithField, schema, schemaDumps
+    decode limits: maxDepth, maxInputBytes, maxNodes; schema takes root to pick one of several global elements; a write takes indent, where 0 is the one-line document
+    semantics: loads answers a natural value and every leaf is text; loadsWithField types them under a Field and answers the native Scalar; schema answers the Field an XML Schema declares and schemaDumps writes one back
   fix
     values: FixRegistry, FixMsg, FixCodec, FixLifecycle, MsgType, Plugin, Plugins, FixMessages
     functions: schema(registry?: FixRegistry | null, name?: string | null) -> Field; schemaCarrying(carrier: Field, read: Field) -> Field; schemaTags() -> number[]; crateFields()/pluginFields() -> Field[]; pluginMessage() -> Field, the pluginconfig component every registry holds from construction; genericMessage(registry?: FixRegistry | null, name?: string | null) -> Field, the crate's own format target - the fixed row's own columns under a fix:msgtype; globalRegistry() -> FixRegistry; installGlobalRegistry(registry: FixRegistry) -> void
