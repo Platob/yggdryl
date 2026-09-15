@@ -6,16 +6,16 @@ use super::{SoleMessage, identity_bytes, identity_scalar, numbered_identity, per
 use yggdryl::hashing::txhash::TxHash;
 use yggdryl::{
     CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, DigestAlgorithm, Error, Field, FixCodec, FixKey,
-    FixMsg, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
-    UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    FixMsg, FixRegistry, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
+    TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
 const CLOCK: i64 = 123_456_789;
 const BUNDLE: [i32; 7] = [
     UPDATEDAT_TAG_NAME.0,
     CREATEDAT_TAG_NAME.0,
-    UUID_TAG_NAME.0,
-    PUUID_TAG_NAME.0,
+    MSGHASH_TAG_NAME.0,
+    MSGPHASH_TAG_NAME.0,
     CODE_TAG_NAME.0,
     SNAPSHOTAT_TAG_NAME.0,
     52,
@@ -93,8 +93,8 @@ fn assert_mirrors(message: &FixMsg) {
     for (tag, hard) in [
         (UPDATEDAT_TAG_NAME.0, message.updatedat()),
         (CREATEDAT_TAG_NAME.0, message.createdat()),
-        (UUID_TAG_NAME.0, message.uuid()),
-        (PUUID_TAG_NAME.0, message.puuid()),
+        (MSGHASH_TAG_NAME.0, message.msghash()),
+        (MSGPHASH_TAG_NAME.0, message.msgphash()),
     ] {
         assert!(std::ptr::eq(message.get_by_tag(tag).unwrap(), hard));
         assert_eq!(message.as_value().get(position(message, tag)), Some(hard));
@@ -105,12 +105,12 @@ fn assert_mirrors(message: &FixMsg) {
             matches!(value.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC)
         );
     }
-    identity_bytes(message.uuid());
-    identity_bytes(message.puuid());
+    identity_bytes(message.msghash());
+    identity_bytes(message.msgphash());
 }
 
 /// The public Scalar record feed is the independent framing oracle.
-fn expected_uuid(message: &FixMsg) -> Scalar {
+fn expected_msghash(message: &FixMsg) -> Scalar {
     let content = Scalar::from_record(
         message
             .as_field()
@@ -120,7 +120,12 @@ fn expected_uuid(message: &FixMsg) -> Scalar {
             .filter(|(field, _)| {
                 field.name() != yggdryl::fix::FIXENTRIES_COLUMN
                     && !field.as_fix().tag().unwrap().is_some_and(|tag| {
-                        [UUID_TAG_NAME.0, UPDATEDAT_TAG_NAME.0, CREATEDAT_TAG_NAME.0].contains(&tag)
+                        [
+                            MSGHASH_TAG_NAME.0,
+                            UPDATEDAT_TAG_NAME.0,
+                            CREATEDAT_TAG_NAME.0,
+                        ]
+                        .contains(&tag)
                     })
             })
             .map(|(field, value)| (field.name(), value.clone())),
@@ -159,7 +164,7 @@ fn fixed_intake_clock_settles_native_hard_values_and_replays_exactly() {
     assert_eq!(first.into_bytes(b'|'), bytes);
     assert_eq!(first.digest(), second.digest());
     assert_mirrors(&first);
-    assert_eq!(first.uuid(), &expected_uuid(&first));
+    assert_eq!(first.msghash(), &expected_msghash(&first));
 }
 
 #[test]
@@ -245,12 +250,12 @@ fn the_persistent_identity_hashes_only_exact_code_bytes_including_the_empty_name
     for code in ["", " ", "alpha", "alpha ", "é"] {
         let mut held = message([(declared(&registry, CODE_TAG_NAME.0), Scalar::from(code))]);
         let expected = identity_scalar(persistent_identity(code));
-        assert_eq!(held.puuid(), &expected);
-        assert_ne!(held.puuid(), &identity_scalar(numbered_identity(0)));
+        assert_eq!(held.msgphash(), &expected);
+        assert_ne!(held.msgphash(), &identity_scalar(numbered_identity(0)));
         held.set(UPDATEDAT_TAG_NAME.0, clock(-1)).unwrap();
         held.set(7777, Scalar::from("different content")).unwrap();
-        assert_eq!(held.puuid(), &expected);
-        assert_eq!(held.uuid(), &expected_uuid(&held));
+        assert_eq!(held.msgphash(), &expected);
+        assert_eq!(held.msghash(), &expected_msghash(&held));
         identities.push(expected);
     }
     identities.sort();
@@ -274,15 +279,20 @@ fn canonical_named_content_ignores_root_order_and_metadata_not_names_or_nulls() 
             .unwrap();
     }
     let second = message(reversed);
-    assert_eq!(first.uuid(), second.uuid());
+    assert_eq!(first.msghash(), second.msghash());
     assert_ne!(first, second, "message equality still includes the schema");
-    assert_eq!(first.uuid(), &expected_uuid(&first));
-    assert_eq!(second.uuid(), &expected_uuid(&second));
+    assert_eq!(first.msghash(), &expected_msghash(&first));
+    assert_eq!(second.msghash(), &expected_msghash(&second));
     let absent = message([]);
     let null = message([payload(Scalar::Null)]);
     let empty = message([payload(Scalar::from(""))]);
     let renamed = message([(DataType::utf8().nullable_field("renamed"), Scalar::Null)]);
-    let mut identities = vec![absent.uuid(), null.uuid(), empty.uuid(), renamed.uuid()];
+    let mut identities = vec![
+        absent.msghash(),
+        null.msghash(),
+        empty.msghash(),
+        renamed.msghash(),
+    ];
     identities.sort();
     identities.dedup();
     assert_eq!(identities.len(), 4);
@@ -299,9 +309,9 @@ fn nested_sequence_order_is_content_and_uses_the_existing_scalar_feed() {
         field,
         Scalar::from_sequence([Scalar::from(2_i32), Scalar::from(1_i32)]),
     )]);
-    assert_ne!(first.uuid(), second.uuid());
-    assert_eq!(first.uuid(), &expected_uuid(&first));
-    assert_eq!(second.uuid(), &expected_uuid(&second));
+    assert_ne!(first.msghash(), second.msghash());
+    assert_eq!(first.msghash(), &expected_msghash(&first));
+    assert_eq!(second.msghash(), &expected_msghash(&second));
 }
 
 #[test]
@@ -309,35 +319,43 @@ fn ordinary_mutation_recomputes_identity_and_excludes_only_the_owned_clocks() {
     let mut held = message([payload(Scalar::from("first"))]);
     let before = held.clone();
     held.set(CREATEDAT_TAG_NAME.0, clock(-10)).unwrap();
-    assert_eq!(held.uuid(), before.uuid(), "creation time is excluded");
+    assert_eq!(
+        held.msghash(),
+        before.msghash(),
+        "creation time is excluded"
+    );
     assert_ne!(held, before);
     held.set(UPDATEDAT_TAG_NAME.0, clock(CLOCK + 1)).unwrap();
-    assert_ne!(held.uuid(), before.uuid(), "one nanosecond remains visible");
-    let old = held.uuid().clone();
+    assert_ne!(
+        held.msghash(),
+        before.msghash(),
+        "one nanosecond remains visible"
+    );
+    let old = held.msghash().clone();
     held.set("payload", Scalar::from("second")).unwrap();
-    assert_ne!(held.uuid(), &old);
+    assert_ne!(held.msghash(), &old);
     let settled = held.updatedat().clone();
-    let old = held.uuid().clone();
+    let old = held.msghash().clone();
     held.set(52, clock(CLOCK + 2)).unwrap();
-    assert_ne!(held.uuid(), &old);
+    assert_ne!(held.msghash(), &old);
     assert_eq!(
         held.updatedat(),
         &settled,
         "mutating SendingTime does not reread or reset clocks"
     );
-    let old = held.uuid().clone();
+    let old = held.msghash().clone();
     held.set(SNAPSHOTAT_TAG_NAME.0, clock(CLOCK + 3)).unwrap();
-    assert_ne!(held.uuid(), &old);
-    assert_eq!(held.puuid(), before.puuid());
+    assert_ne!(held.msghash(), &old);
+    assert_eq!(held.msgphash(), before.msgphash());
     assert_mirrors(&held);
-    assert_eq!(held.uuid(), &expected_uuid(&held));
+    assert_eq!(held.msghash(), &expected_msghash(&held));
 }
 
 #[test]
 fn explicit_identity_writes_assert_the_complete_candidate_atomically() {
     let mut held = message([payload(Scalar::from("first"))]);
     let before = held.clone();
-    for (tag, name) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
+    for (tag, name) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME] {
         located(
             held.set(tag, identity_scalar(numbered_identity(0)))
                 .unwrap_err(),
@@ -352,15 +370,15 @@ fn explicit_identity_writes_assert_the_complete_candidate_atomically() {
     located(
         held.set_many([
             (CODE_TAG_NAME.0, Scalar::from("chain")),
-            (PUUID_TAG_NAME.0, before.puuid().clone()),
+            (MSGPHASH_TAG_NAME.0, before.msgphash().clone()),
         ])
         .unwrap_err(),
-        "$.puuid",
+        "$.msgphash",
     );
     assert_eq!(held, before);
     held.set_many([
-        (UUID_TAG_NAME.0, expected.uuid().clone()),
-        (PUUID_TAG_NAME.0, expected.puuid().clone()),
+        (MSGHASH_TAG_NAME.0, expected.msghash().clone()),
+        (MSGPHASH_TAG_NAME.0, expected.msgphash().clone()),
         (CODE_TAG_NAME.0, Scalar::from("chain")),
     ])
     .unwrap();
@@ -388,9 +406,9 @@ fn mandatory_null_writes_and_removals_refuse_without_changing_any_state() {
         assert_eq!(held, before);
         assert_mirrors(&held);
     }
-    let old = held.uuid().clone();
+    let old = held.msghash().clone();
     assert_eq!(held.remove("payload").unwrap(), Some(Scalar::from("first")));
-    assert_ne!(held.uuid(), &old);
+    assert_ne!(held.msghash(), &old);
     let before = held.clone();
     assert_eq!(held.remove("absent").unwrap(), None);
     assert_eq!(held, before);
@@ -404,7 +422,7 @@ fn mandatory_names_numeric_spellings_and_renamed_tags_resolve_once_in_place() {
             let at = position(&original, tag);
             let mut fields = original.as_field().fields().to_vec();
             let mut values = original.as_value().as_sequence().unwrap().to_vec();
-            values[position(&original, UUID_TAG_NAME.0)] = Scalar::Null;
+            values[position(&original, MSGHASH_TAG_NAME.0)] = Scalar::Null;
             match style {
                 0 => {
                     fields[at].remove_metadata("fix:tag");
@@ -433,7 +451,7 @@ fn mandatory_names_numeric_spellings_and_renamed_tags_resolve_once_in_place() {
                 Some(tag)
             );
             assert_mirrors(&held);
-            assert_eq!(held.uuid(), &expected_uuid(&held));
+            assert_eq!(held.msghash(), &expected_msghash(&held));
         }
     }
 }
@@ -512,8 +530,8 @@ fn tagless_replay_holders_keep_resolved_roles_and_repeat_the_same_export() {
             held.updatedat()
         ));
         assert!(std::ptr::eq(
-            held.get_by_tag(UUID_TAG_NAME.0).unwrap(),
-            held.uuid()
+            held.get_by_tag(MSGHASH_TAG_NAME.0).unwrap(),
+            held.msghash()
         ));
         assert_eq!(held.into_row(&schema).unwrap(), row, "style={style}");
     }
@@ -529,7 +547,7 @@ fn every_key_spelling_keeps_a_renamed_mandatory_holder_and_refuses_its_removal()
         let mut fields = original.as_field().fields().to_vec();
         fields[at].set_name("holder");
         let mut values = original.as_value().as_sequence().unwrap().to_vec();
-        values[position(&original, UUID_TAG_NAME.0)] = Scalar::Null;
+        values[position(&original, MSGHASH_TAG_NAME.0)] = Scalar::Null;
         let original = FixMsg::with_registry(
             Arc::clone(original.registry()),
             root(fields),
@@ -571,9 +589,12 @@ fn every_key_spelling_keeps_a_renamed_mandatory_holder_and_refuses_its_removal()
 #[test]
 fn conflicting_malformed_duplicate_and_mistyped_mandatory_declarations_refuse() {
     let original = message([]);
-    let at = position(&original, UUID_TAG_NAME.0);
+    let at = position(&original, MSGHASH_TAG_NAME.0);
     let mut fields = original.as_field().fields().to_vec();
-    fields[at].as_fix_mut().set_tag(PUUID_TAG_NAME.0).unwrap();
+    fields[at]
+        .as_fix_mut()
+        .set_tag(MSGPHASH_TAG_NAME.0)
+        .unwrap();
     located(
         FixMsg::with_registry(
             Arc::clone(original.registry()),
@@ -581,7 +602,7 @@ fn conflicting_malformed_duplicate_and_mistyped_mandatory_declarations_refuse() 
             original.as_value().clone(),
         )
         .unwrap_err(),
-        "$.uuid",
+        "$.msghash",
     );
     let mut fields = original.as_field().fields().to_vec();
     fields[at].insert_metadata("fix:tag", "not-a-tag").unwrap();
@@ -701,7 +722,7 @@ fn replay_refuses_tampered_identity_and_non_native_mandatory_values() {
         let at = position(&original, tag);
         let mut values = original.as_value().as_sequence().unwrap().to_vec();
         values[at] = match tag {
-            tag if tag == UUID_TAG_NAME.0 || tag == PUUID_TAG_NAME.0 => {
+            tag if tag == MSGHASH_TAG_NAME.0 || tag == MSGPHASH_TAG_NAME.0 => {
                 identity_scalar(numbered_identity(0))
             }
             tag if tag == CODE_TAG_NAME.0 => Scalar::from(7_i32),
@@ -737,15 +758,15 @@ fn full_projection_preserves_identity_and_lossy_projection_stabilizes_on_second_
     );
     let first = original.into_row(&narrow).unwrap();
     let held = FixMsg::from_row(Arc::clone(original.registry()), &narrow, &first).unwrap();
-    assert_ne!(held.uuid(), original.uuid());
-    assert_eq!(held.puuid(), original.puuid());
+    assert_ne!(held.msghash(), original.msghash());
+    assert_eq!(held.msgphash(), original.msgphash());
     assert_eq!(held.into_row(&narrow).unwrap(), first);
     assert_eq!(
         original.into_row(original.as_field()).unwrap(),
         full,
         "source unchanged"
     );
-    assert_eq!(held.uuid(), &expected_uuid(&held));
+    assert_eq!(held.msghash(), &expected_msghash(&held));
     let padded = root(
         original
             .as_field()
@@ -756,7 +777,7 @@ fn full_projection_preserves_identity_and_lossy_projection_stabilizes_on_second_
     );
     let first = original.into_row(&padded).unwrap();
     let held = FixMsg::from_row(Arc::clone(original.registry()), &padded, &first).unwrap();
-    assert_ne!(held.uuid(), original.uuid());
+    assert_ne!(held.msghash(), original.msghash());
     assert_eq!(held.into_row(&padded).unwrap(), first);
 }
 
@@ -773,8 +794,8 @@ fn projection_canonicalizes_actual_values_and_propagates_unrepresentable_values(
     assert_eq!(row.get(at).unwrap().dtype().unwrap(), DataType::Int32);
     let held = FixMsg::from_row(Arc::clone(original.registry()), &schema, &row).unwrap();
     assert_eq!(
-        held.uuid(),
-        original.uuid(),
+        held.msghash(),
+        original.msghash(),
         "equal exact-width values share the canonical feed"
     );
     assert_eq!(held.into_row(&schema).unwrap(), row);
@@ -866,7 +887,7 @@ fn projection_restates_temporal_parameters_even_when_the_datatype_id_matches() {
         Some((2_000, TimeUnit::Microsecond, &Timezone::UTC))
     );
     let held = FixMsg::from_row(Arc::clone(original.registry()), &schema, &row).unwrap();
-    assert_eq!(held.uuid(), &expected_uuid(&held));
+    assert_eq!(held.msghash(), &expected_msghash(&held));
     assert_eq!(held.into_row(&schema).unwrap(), row);
 }
 
@@ -885,7 +906,7 @@ fn enrichment_keeps_settled_clocks_and_arrival_record_and_finalizes_once_per_res
     assert_eq!(enriched.entries(), raw.entries());
     assert_eq!(enriched.into_bytes(b'|'), raw.into_bytes(b'|'));
     assert_eq!(enriched.digest(), raw.digest());
-    assert_eq!(enriched.uuid(), &expected_uuid(&enriched));
+    assert_eq!(enriched.msghash(), &expected_msghash(&enriched));
     assert_eq!(codec.enrich_message(enriched.clone()).unwrap(), enriched);
     assert_mirrors(&enriched);
 }

@@ -85,7 +85,7 @@ fn a_set_value_replaces_an_existing_child_in_place_and_keeps_the_tag_index() {
         if tag == 55 || tag == 54 {
             continue;
         }
-        if tag == yggdryl::UUID_TAG_NAME.0 {
+        if tag == yggdryl::MSGHASH_TAG_NAME.0 {
             assert_ne!(message.by_tag(tag).unwrap(), &value);
             continue;
         }
@@ -225,7 +225,7 @@ fn remove_answers_the_value_and_the_other_tags_still_reach_their_children() {
         if *tag == 55 {
             continue;
         }
-        if *tag == yggdryl::UUID_TAG_NAME.0 {
+        if *tag == yggdryl::MSGHASH_TAG_NAME.0 {
             assert_ne!(message.by_tag(*tag).unwrap(), value);
             continue;
         }

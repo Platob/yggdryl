@@ -5,7 +5,7 @@
 //! its code; a new chain is named `<scope hex or ->/<first identifier>`.
 //! Identifiers come from stated `altids` or the registered compiled selector,
 //! never a second tag list. Occupied keys are not stolen, and empty code opens
-//! no chain. The message's identity owner hashes the settled code into `puuid`.
+//! no chain. The message's identity owner hashes the settled code into `msgphash`.
 //!
 //! Every accepted message has `updatedat` truncated to its epoch bucket; its
 //! real event instant remains `snapshotat`. One transition finalizes the whole
@@ -40,8 +40,8 @@ use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, INSTUUID_TAG_NAME,
-    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME,
-    STATE_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME,
+    PREVUPDATEDAT_TAG_NAME, STATE_TAG_NAME, UPDATEDAT_TAG_NAME,
 };
 
 /// The separator between the parts an instrument's identity digests.
@@ -60,7 +60,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PREVUPDATEDAT_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -74,11 +74,11 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// let later = event.with_value(CREATEDAT_TAG_NAME.0, first.updatedat().clone())?;
 /// assert_ne!(later.createdat(), first.createdat());
 /// let second = life.fill(later)?;
-/// assert_eq!(first.puuid(), second.puuid());
+/// assert_eq!(first.msgphash(), second.msgphash());
 /// assert_eq!(first.createdat(), second.createdat());
-/// assert!(first.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
+/// assert!(first.by_tag(PREVMSGHASH_TAG_NAME.0)?.is_null());
 /// assert!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0)?.is_null());
-/// assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0)?, first.uuid());
+/// assert_eq!(second.by_tag(PREVMSGHASH_TAG_NAME.0)?, first.msghash());
 /// assert_eq!(second.by_tag(PREVUPDATEDAT_TAG_NAME.0)?, first.updatedat());
 /// assert_eq!(life.alive(), 1);
 /// life.clear();
@@ -109,7 +109,7 @@ struct Chain {
     createdat: Scalar,
     /// Only the last successful message, under the shared clock datatype.
     timestamp: Scalar,
-    uuid: Identity,
+    msghash: Identity,
     /// Includes aligned and suppressed arrivals, never decreases while live.
     highest_bucket: i64,
 }
@@ -280,8 +280,8 @@ impl FixLifecycle {
             if terminal {
                 self.close(persistent);
             } else {
-                let uuid = identity::stated_identity(UUID_TAG_NAME.1, message.uuid())?;
-                self.join(persistent, code, keys, &message, uuid, grid);
+                let msghash = identity::stated_identity(MSGHASH_TAG_NAME.1, message.msghash())?;
+                self.join(persistent, code, keys, &message, msghash, grid);
             }
         }
         Ok((message, emitted))
@@ -306,7 +306,7 @@ impl FixLifecycle {
         let (code, persistent) = if !stated.as_str().is_empty() {
             (
                 stated.storage().clone(),
-                identity::stated_identity(PUUID_TAG_NAME.1, message.puuid())?,
+                identity::stated_identity(MSGPHASH_TAG_NAME.1, message.msgphash())?,
             )
         } else if let Some(persistent) = keys.iter().find_map(|key| self.keys.get(key)) {
             let chain = &self.chains[persistent];
@@ -326,7 +326,7 @@ impl FixLifecycle {
         if let Some(chain) = self.chains.get(&persistent) {
             if chain.code != code {
                 return Err(Error::InvalidRecord {
-                    path: Path::root().field(PUUID_TAG_NAME.1).render().into(),
+                    path: Path::root().field(MSGPHASH_TAG_NAME.1).render().into(),
                     reason: crate::text::expected_got(
                         format_args!("the live code {}", crate::text::elide_display(&chain.code)),
                         crate::text::elide_display(&code),
@@ -344,7 +344,7 @@ impl FixLifecycle {
         code: SmolStr,
         mut keys: Vec<(Option<Identity>, SmolStr)>,
         message: &FixMsg,
-        uuid: Identity,
+        msghash: Identity,
         bucket: i64,
     ) {
         keys.retain(|key| match self.keys.entry(key.clone()) {
@@ -364,7 +364,7 @@ impl FixLifecycle {
                     keys,
                     createdat: message.createdat().clone(),
                     timestamp: message.updatedat().clone(),
-                    uuid,
+                    msghash,
                     highest_bucket: bucket,
                 });
             }
@@ -372,7 +372,7 @@ impl FixLifecycle {
                 let chain = entry.get_mut();
                 chain.keys.extend(keys);
                 chain.timestamp = message.updatedat().clone();
-                chain.uuid = uuid;
+                chain.msghash = msghash;
                 chain.highest_bucket = chain.highest_bucket.max(bucket);
             }
         }
@@ -473,7 +473,7 @@ impl FixMsg {
         instrument: Option<Identity>,
         previous: Option<&Chain>,
     ) -> Result<()> {
-        let previous_id_stated = stated_identity_of(self, PREVUUID_TAG_NAME)?.is_some();
+        let previous_id_stated = stated_identity_of(self, PREVMSGHASH_TAG_NAME)?.is_some();
         let previous_clock_stated = stated_previous_clock(self)?.is_some();
         let created = previous.map(|chain| (CREATEDAT_TAG_NAME.0, chain.createdat.clone()));
         let previous = [
@@ -485,8 +485,10 @@ impl FixMsg {
             }),
             (!previous_id_stated).then(|| {
                 (
-                    PREVUUID_TAG_NAME.0,
-                    previous.map_or(Scalar::Null, |chain| identity::identity_scalar(chain.uuid)),
+                    PREVMSGHASH_TAG_NAME.0,
+                    previous.map_or(Scalar::Null, |chain| {
+                        identity::identity_scalar(chain.msghash)
+                    }),
                 )
             }),
         ];
@@ -718,10 +720,10 @@ mod tests {
             let Error::InvalidRecord { path, .. } = life.snapshot(message).unwrap_err() else {
                 panic!("a located code collision");
             };
-            assert_eq!(path, "$.puuid");
+            assert_eq!(path, "$.msgphash");
             let chain = &life.chains[&persistent];
             assert_eq!(chain.code, "a different live code");
-            assert_eq!(chain.uuid, numbered(7));
+            assert_eq!(chain.msghash, numbered(7));
             assert_eq!(chain.highest_bucket, 0);
             assert_eq!(chain.keys, [(None, SmolStr::new("OWNED"))]);
             assert_eq!(life.keys.len(), 1);

@@ -1092,8 +1092,8 @@ test('a message resolves through the registry it carries', () => {
   assert.equal(message.byTag(65024).asJs(), '')
   assert.ok(message.updatedat().equals(message.byTag(65003)))
   assert.ok(message.createdat().equals(message.byTag(65023)))
-  assert.ok(message.uuid().equals(message.byTag(65017)))
-  assert.ok(message.puuid().equals(message.byTag(65018)))
+  assert.ok(message.msghash().equals(message.byTag(65017)))
+  assert.ok(message.msgphash().equals(message.byTag(65018)))
 
   // A native Scalar names the same row under the field the message settled:
   // it states the replay fields, and the identities it states are the ones
@@ -1184,10 +1184,10 @@ test('a message is a value: equality, hash, clone and JSON', () => {
 
   // Two builds under one stated SendingTime settle one identity, and other
   // content is another identity under the same code.
-  assert.ok(message.uuid().equals(same.uuid()))
+  assert.ok(message.msghash().equals(same.msghash()))
   const other = new fix.FixMsg(root, { ...ORDER_VALUE, symbol: 'MSFT' }, registry)
-  assert.equal(other.uuid().equals(message.uuid()), false)
-  assert.ok(other.puuid().equals(message.puuid()))
+  assert.equal(other.msghash().equals(message.msghash()), false)
+  assert.ok(other.msgphash().equals(message.msgphash()))
 
   const copy = message.clone()
   assert.ok(copy.equals(message))
@@ -1313,8 +1313,8 @@ test('a reader parses every frame shape the core reads', () => {
   // What every built message has, whatever its line carried: it opens with
   // `beginstring` - the wire's own, else the version it was read at - states
   // the `version` the read used, and closes with the replay fields the line
-  // did not state, in the core's order: `updatedat`, `createdat`, `uuid`,
-  // `puuid`, `code`, `snapshotat`, `sendingtime` (`rust/tests/fix/codec.rs`).
+  // did not state, in the core's order: `updatedat`, `createdat`, `msghash`,
+  // `msgphash`, `code`, `snapshotat`, `sendingtime` (`rust/tests/fix/codec.rs`).
   // None is an entry unless the line carried it, so the wire re-emits byte
   // for byte.
   const pairs = fixedCodec(registry).parsePairs([['55', 'AAPL']])
@@ -1609,13 +1609,13 @@ function identity(message, tag) {
 }
 
 /**
- * The puuid the core computes for a message whose code is `code`: XXH3-128 of
+ * The msgphash the core computes for a message whose code is `code`: XXH3-128 of
  * the code bytes alone, so any message naming the code answers it.
  */
 function persistentOf(code) {
   const registry = new fix.FixRegistry()
   const root = fields.struct('coded', [registry.fieldByTag(CODE), registry.fieldByTag(52)], { nullable: false })
-  return new fix.FixMsg(root, { code, sendingtime: SENDING }, registry).puuid()
+  return new fix.FixMsg(root, { code, sendingtime: SENDING }, registry).msgphash()
 }
 
 test('every message of one order carries the chain identity until it ends', () => {
@@ -1657,14 +1657,14 @@ test('every message of one order carries the chain identity until it ends', () =
   for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(stamped[0].byTag(tag).kind, 'null')
   for (let at = 1; at < stamped.length; at += 1) {
     assert.ok(stamped[at].byTag(PREVUPDATEDAT).equals(stamped[at - 1].updatedat()), `message ${at}`)
-    assert.ok(stamped[at].byTag(PREVUUID).equals(stamped[at - 1].uuid()), `message ${at}`)
+    assert.ok(stamped[at].byTag(PREVUUID).equals(stamped[at - 1].msghash()), `message ${at}`)
   }
   // The chain is named by the instrument scope and the first identifier, and
-  // its puuid is the hash of that code alone.
+  // its msgphash is the hash of that code alone.
   const code = stamped[0].byTag(CODE).asJs()
   assert.equal(code, `${instruments[0]}/A1`)
-  assert.ok(stamped[0].puuid().equals(persistentOf(code)))
-  assert.ok(stamped[0].puuid().equals(stamped[0].byTag(PUUID)))
+  assert.ok(stamped[0].msgphash().equals(persistentOf(code)))
+  assert.ok(stamped[0].msgphash().equals(stamped[0].byTag(PUUID)))
   // A state a row holds is the ranked spelling, never the wire's code.
   assert.equal(stamped[1].byTag(39).toJSON(), '20NEW')
   assert.equal(stamped[5].byTag(39).toJSON(), '80FILLED')
@@ -1729,10 +1729,10 @@ test('a message naming no order has an id and no chain', () => {
   assert.equal(mixed.next().done, true)
   const sent = identity(heartbeat, UUID)
   assert.notEqual(sent, null, 'every message has an id')
-  // No identifier names no chain: the code stays the empty name, whose puuid
+  // No identifier names no chain: the code stays the empty name, whose msgphash
   // is the one deterministic hash of no bytes.
   assert.equal(heartbeat.byTag(CODE).asJs(), '')
-  assert.ok(heartbeat.puuid().equals(persistentOf('')))
+  assert.ok(heartbeat.msgphash().equals(persistentOf('')))
   assert.notEqual(identity(heartbeat, PUUID), null)
   assert.equal(identity(heartbeat, INSTUUID), null, 'no instrument, no identity')
   for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(heartbeat.byTag(tag).kind, 'null')
@@ -1797,7 +1797,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   for (let at = schema.fieldLen - 9; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
   assert.deepEqual(tail, [
     'prevupdatedat',
-    'prevuuid',
+    'prevmsghash',
     'createdat',
     'code',
     'snapshotat',
@@ -1866,14 +1866,14 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.ok(message.updatedat().equals(SENDING))
   assert.ok(message.timePartition().equals(Scalar.datetime(1_704_189_600_000_000_000n, 'ns', 'UTC')))
   assert.equal(native.at(schema.indexOf('uuid')).id, 'fixed_size_binary')
-  // The row's uuid names the row's own content: padding and derived columns
+  // The row's msghash names the row's own content: padding and derived columns
   // may move it (decision 26), the row read back verifies it, and projection
-  // leaves the message's own uuid alone. The chain name, puuid, keeps its code.
-  const before = message.uuid()
+  // leaves the message's own msghash alone. The chain name, msgphash, keeps its code.
+  const before = message.msghash()
   const replayed = fix.FixMsg.fromRow(schema, native, registry)
   assert.ok(native.at(schema.indexOf('uuid')).equals(replayed.uuid()))
-  assert.ok(message.uuid().equals(before))
-  assert.ok(native.at(schema.indexOf('puuid')).equals(message.puuid()))
+  assert.ok(message.msghash().equals(before))
+  assert.ok(native.at(schema.indexOf('msgphash')).equals(message.msgphash()))
   assert.equal(native.at(schema.indexOf('code')).asJs(), '')
   // The arrival record closes the row, all of it in arrival order, and a key
   // no dictionary explains is still there, recorded at tag 0 under its raw key.
@@ -1958,11 +1958,11 @@ test('the crate fields declare their own protocols', () => {
       'state',
       'instuuid',
       'uuid',
-      'puuid',
+      'msgphash',
       'targetsessionid',
       'altids',
       'prevupdatedat',
-      'prevuuid',
+      'prevmsghash',
       'createdat',
       'code',
       'snapshotat',
@@ -1989,12 +1989,12 @@ test('the crate fields declare their own protocols', () => {
       'MICCode',
       'State',
       'InstUuid',
-      'Uuid',
-      'PUuid',
+      'MsgHash',
+      'MsgPHash',
       'TargetSessionId',
       'AltIds',
       'PrevUpdatedAt',
-      'PrevUuid',
+      'PrevMsgHash',
       'CreatedAt',
       'Code',
       'SnapshotAt',
@@ -2039,7 +2039,7 @@ test('the crate fields declare their own protocols', () => {
   assert.ok(held[21].dtype.equals(DataType.fixedSizeBinary(16)))
   assert.ok(held[23].dtype.equals(DataType.from('utf8')))
   assert.ok(held.every((field) => field.description))
-  // No crate field holds a digest any more: uuid is the one stored message
+  // No crate field holds a digest any more: msghash is the one stored message
   // identity, and the arrival digest stays the message's own `digest()`.
   assert.ok(held.every((field) => field.getProperty('digest', 'role') === null))
 
@@ -2101,7 +2101,7 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
     [
       ['instuuid', 'InstUuid', 65016, 'fixed_size_binary(16)', true],
       ['uuid', 'Uuid', 65017, 'fixed_size_binary(16)', false],
-      ['puuid', 'PUuid', 65018, 'fixed_size_binary(16)', false],
+      ['msgphash', 'MsgPHash', 65018, 'fixed_size_binary(16)', false],
     ],
   )
   assert.ok(identities.every((field) => field.description))
@@ -2149,7 +2149,7 @@ test('a message says everything the core derives about it', () => {
   // the update to the hour. The SendingTime the line did not state closes
   // the root.
   assert.equal([...message].at(-1)[0], 'sendingtime')
-  for (const held of [message.updatedat(), message.createdat(), message.uuid(), message.puuid()]) {
+  for (const held of [message.updatedat(), message.createdat(), message.msghash(), message.msgphash()]) {
     assert.ok(held instanceof Scalar)
     assert.notEqual(held.kind, 'null')
   }
@@ -2157,12 +2157,12 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.updatedat().equals(message.byTag(60)))
   assert.ok(message.createdat().equals(message.byTag(60)))
   assert.ok(message.byTag(65025).equals(message.byTag(60)))
-  assert.ok(message.uuid().equals(message.byTag(65017)))
-  assert.ok(message.puuid().equals(message.byTag(65018)))
-  assert.equal(message.uuid().id, 'fixed_size_binary')
-  assert.equal(message.puuid().id, 'fixed_size_binary')
+  assert.ok(message.msghash().equals(message.byTag(65017)))
+  assert.ok(message.msgphash().equals(message.byTag(65018)))
+  assert.equal(message.msghash().id, 'fixed_size_binary')
+  assert.equal(message.msgphash().id, 'fixed_size_binary')
   // Sixteen bytes reach JavaScript as a Buffer, not as hyphenated text.
-  assert.equal(Buffer.from(message.uuid().asJs()).length, 16)
+  assert.equal(Buffer.from(message.msghash().asJs()).length, 16)
   assert.ok(message.timePartition().equals(Scalar.datetime(1_706_788_800_000_000_000n, 'ns', 'UTC')))
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.

@@ -523,11 +523,16 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// `fixed_size_binary(16)` rather than `uuid`. The last things to move this
 /// number are the crate's own `sourceurl` - where a line was read from is a
 /// column of the row, typed as the URL it is - and `nofixentries`, the
-/// counter the arrival record group is counted by.
+/// counter the arrival record group is counted by. It then reverses decision
+/// 26's retirement of the `msghash` spelling: the message identity is
+/// `msghash` (65017), the chain's is `msgphash` (65018) and the preceding
+/// message's is `prevmsghash` (65022). Only the name moves - the tags, the
+/// layouts and every identity recipe are what they were, and the 65000 that
+/// carried the original `msghash` stays retired and unreused.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 13_715_550_792_597_346_458);
+    assert_eq!(registry.stable_hash(), 12_555_908_207_454_409_528);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

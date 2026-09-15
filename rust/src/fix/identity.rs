@@ -8,8 +8,8 @@ use crate::{DataType, Digest, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::schema::{CLOCK_DATATYPE, FIXENTRIES_COLUMN};
 use super::{
-    CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME,
-    UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME,
+    SNAPSHOTAT_TAG_NAME, UPDATEDAT_TAG_NAME,
 };
 
 /// The bytes every FIX identity column holds.
@@ -83,7 +83,7 @@ impl std::fmt::Display for IdentityText {
 pub(super) enum Role {
     Updated,
     Created,
-    Uuid,
+    MsgHash,
     Persistent,
     Code,
     Snapshot,
@@ -94,7 +94,7 @@ impl Role {
     pub(super) const ALL: [Self; 7] = [
         Self::Updated,
         Self::Created,
-        Self::Uuid,
+        Self::MsgHash,
         Self::Persistent,
         Self::Code,
         Self::Snapshot,
@@ -105,8 +105,8 @@ impl Role {
         match self {
             Self::Updated => UPDATEDAT_TAG_NAME,
             Self::Created => CREATEDAT_TAG_NAME,
-            Self::Uuid => UUID_TAG_NAME,
-            Self::Persistent => PUUID_TAG_NAME,
+            Self::MsgHash => MSGHASH_TAG_NAME,
+            Self::Persistent => MSGPHASH_TAG_NAME,
             Self::Code => CODE_TAG_NAME,
             Self::Snapshot => SNAPSHOTAT_TAG_NAME,
             Self::Sending => (52, "sendingtime"),
@@ -119,7 +119,7 @@ impl Role {
 
     fn dtype(self) -> DataType {
         match self {
-            Self::Uuid | Self::Persistent => IDENTITY_DATATYPE,
+            Self::MsgHash | Self::Persistent => IDENTITY_DATATYPE,
             Self::Code => DataType::utf8(),
             _ => CLOCK_DATATYPE,
         }
@@ -180,7 +180,7 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 /// Whether a column stands outside the content a message is identified by.
 ///
 /// Three of them are the identity itself and would hash themselves:
-/// `uuid` is what is being computed, and `updatedat` and `createdat` are the
+/// `msghash` is what is being computed, and `updatedat` and `createdat` are the
 /// clocks it is computed against. `sourceurl` is outside for the opposite
 /// reason: where a line was read from is a fact about the capture, not about
 /// the message. The same message read out of a re-cut file, a replayed
@@ -193,7 +193,7 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 /// would otherwise identify differently from the row that carries it.
 fn outside_content(tag: i32) -> bool {
     [
-        UUID_TAG_NAME.0,
+        MSGHASH_TAG_NAME.0,
         UPDATEDAT_TAG_NAME.0,
         CREATEDAT_TAG_NAME.0,
         super::SOURCEURL_TAG_NAME.0,
@@ -316,7 +316,7 @@ impl Plan {
         }
         for role in Role::ALL {
             let at = self.index(role)?;
-            if matches!(role, Role::Uuid | Role::Persistent) && values[at].is_null() {
+            if matches!(role, Role::MsgHash | Role::Persistent) && values[at].is_null() {
                 continue;
             }
             validate_value(schema.fields()[at].name(), &role.dtype(), &values[at])?;
@@ -356,7 +356,7 @@ impl Plan {
                 .map(|at| (schema.fields()[*at].name(), &values[*at])),
             0,
         );
-        let uuid = identity_scalar(
+        let msghash = identity_scalar(
             TxHash::new_in(
                 nanos,
                 TimeUnit::Nanosecond,
@@ -364,32 +364,32 @@ impl Plan {
             )?
             .into_ordered_bytes()?,
         );
-        let uuid_at = self.index(Role::Uuid)?;
+        let msghash_at = self.index(Role::MsgHash)?;
         assert_identity(
-            &schema.fields()[uuid_at],
-            &values[uuid_at],
-            &uuid,
-            assertions.uuid,
+            &schema.fields()[msghash_at],
+            &values[msghash_at],
+            &msghash,
+            assertions.msghash,
         )?;
-        values[uuid_at] = uuid;
+        values[msghash_at] = msghash;
         Ok(Hard {
             updatedat: values[updated_at].clone(),
             createdat: values[self.index(Role::Created)?].clone(),
-            uuid: values[uuid_at].clone(),
-            puuid: values[persistent_at].clone(),
+            msghash: values[msghash_at].clone(),
+            msgphash: values[persistent_at].clone(),
         })
     }
 }
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct Assertions {
-    pub(super) uuid: bool,
+    pub(super) msghash: bool,
     pub(super) persistent: bool,
 }
 
 impl Assertions {
     pub(super) const STATED: Self = Self {
-        uuid: true,
+        msghash: true,
         persistent: true,
     };
 }
@@ -398,8 +398,8 @@ impl Assertions {
 pub(super) struct Hard {
     pub(super) updatedat: Scalar,
     pub(super) createdat: Scalar,
-    pub(super) uuid: Scalar,
-    pub(super) puuid: Scalar,
+    pub(super) msghash: Scalar,
+    pub(super) msgphash: Scalar,
 }
 
 /// The event chain's sixteen bytes: the XXH3-128 of the exact code bytes,

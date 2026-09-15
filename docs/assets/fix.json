@@ -222592,10 +222592,10 @@
         },
         "metadata": {
           "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-          "display": "Uuid",
+          "display": "MsgHash",
           "fix:tag": "65017"
         },
-        "name": "uuid",
+        "name": "msghash",
         "nullable": false
       },
       {
@@ -222606,10 +222606,10 @@
         },
         "metadata": {
           "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-          "display": "PUuid",
+          "display": "MsgPHash",
           "fix:tag": "65018"
         },
-        "name": "puuid",
+        "name": "msgphash",
         "nullable": false
       },
       {
@@ -222646,10 +222646,10 @@
         },
         "metadata": {
           "description": "The preceding message's sixteen identity bytes in the selected event chain.",
-          "display": "PrevUuid",
+          "display": "PrevMsgHash",
           "fix:tag": "65022"
         },
-        "name": "prevuuid",
+        "name": "prevmsghash",
         "nullable": true
       },
       {
@@ -237348,16 +237348,16 @@
         "x": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
       },
       {
-        "c": "uuid",
+        "c": "msghash",
         "t": 65017,
-        "n": "Uuid",
+        "n": "MsgHash",
         "y": "fixed_size_binary(16)",
         "x": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64."
       },
       {
-        "c": "puuid",
+        "c": "msgphash",
         "t": 65018,
-        "n": "PUuid",
+        "n": "MsgPHash",
         "y": "fixed_size_binary(16)",
         "x": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone."
       },
@@ -237383,9 +237383,9 @@
         "x": "The preceding message's updatedat in the selected event chain."
       },
       {
-        "c": "prevuuid",
+        "c": "prevmsghash",
         "t": 65022,
-        "n": "PrevUuid",
+        "n": "PrevMsgHash",
         "y": "fixed_size_binary(16)",
         "x": "The preceding message's sixteen identity bytes in the selected event chain."
       },
@@ -237746,10 +237746,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -237760,10 +237760,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -237821,7 +237821,7 @@
         "029",
         "2024-02-01T12:34:56.123000000Z",
         "2024-02-01T12:34:56.123000000Z",
-        "l6+9Ru1INMDVQL5u+Csaxw==",
+        "l6+9Ru1INMA3T80ntsFubg==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:34:56.123000000Z"
@@ -238389,10 +238389,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -238403,10 +238403,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -238466,7 +238466,7 @@
         "249",
         "2024-02-01T12:34:57.900000000Z",
         "2024-02-01T12:34:57.900000000Z",
-        "l6+9R1czEwAZzLDU8iIWkQ==",
+        "l6+9R1czEwBNW+1Pmidz5g==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:34:57.900000000Z"
@@ -239101,10 +239101,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -239115,10 +239115,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -239204,7 +239204,7 @@
         "055",
         "2024-02-01T12:35:02.000000000Z",
         "2024-02-01T12:35:02.000000000Z",
-        "l6+9SEuUHADAWT6mJ4tAww==",
+        "l6+9SEuUHAArehuj6yqNnQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:35:02.000000000Z",
@@ -242391,10 +242391,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -242405,10 +242405,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -242707,7 +242707,7 @@
         "026",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACQ0SudgIqa+w==",
+        "l6aAQgI8FABF0mUpoj1S+w==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -243043,10 +243043,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -243057,10 +243057,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -243125,7 +243125,7 @@
         "240",
         "2024-02-01T12:35:00.000000000Z",
         "2024-02-01T12:35:00.000000000Z",
-        "l6+9R9ReiABTJXuBhbyMgw==",
+        "l6+9R9ReiAB41juhqppwhA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:35:00.000000000Z",
@@ -243483,10 +243483,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -243497,10 +243497,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -243552,7 +243552,7 @@
         "228",
         "2024-02-01T12:00:00.000000000Z",
         "2024-02-01T12:00:00.000000000Z",
-        "l6+7XuKdgACMH4j9Y0ZgpA==",
+        "l6+7XuKdgAD3fBz3ROu7cg==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:00:00.000000000Z"
@@ -243848,10 +243848,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -243862,10 +243862,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -243913,7 +243913,7 @@
         "151",
         "2024-02-01T12:35:01.000000000Z",
         "2024-02-01T12:35:01.000000000Z",
-        "l6+9SA/5UgAitc4JfZyR5g==",
+        "l6+9SA/5UgD+IYeexqPz1w==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:35:01.000000000Z"
@@ -244241,10 +244241,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -244255,10 +244255,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -244325,7 +244325,7 @@
         "179",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABuh1z+h2hvZg==",
+        "l6aAQgI8FADfZtUhgBHYCQ==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -244729,10 +244729,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -244743,10 +244743,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -244816,7 +244816,7 @@
         "104",
         "2024-02-01T12:36:00.000000000Z",
         "2024-02-01T12:36:00.000000000Z",
-        "l6+9Vcyl4ADDoXkRqOX9Ig==",
+        "l6+9Vcyl4ABkRGMm2vqXtg==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:36:00.000000000Z",
@@ -245237,10 +245237,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -245251,10 +245251,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -245320,7 +245320,7 @@
         "045",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABk0hduK0MPgw==",
+        "l6aAQgI8FADmHoXWVboH+g==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -245771,10 +245771,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -245785,10 +245785,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -245859,7 +245859,7 @@
         "042",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FACrL1C7dZDsDg==",
+        "l6aAQgI8FACyGEnYTUFZ8g==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -246238,10 +246238,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -246252,10 +246252,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -246323,7 +246323,7 @@
         "5.0.2",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FAAniMGHYlXaBQ==",
+        "l6aAQgI8FAAHVNlFdlZhgw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -246598,10 +246598,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -246612,10 +246612,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -246678,7 +246678,7 @@
         "122",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABXOfH9ssmqjg==",
+        "l6aAQgI8FAAs2+qTX/ymOw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -246961,10 +246961,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -246975,10 +246975,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -247041,7 +247041,7 @@
         "204",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADG8T8GVoDv4w==",
+        "l6aAQgI8FAB+rwEpCLiD0g==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -247324,10 +247324,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -247338,10 +247338,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -247404,7 +247404,7 @@
         "029",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADVpn724BZzAA==",
+        "l6aAQgI8FACFzoH1l9ndcA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -247613,10 +247613,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -247627,10 +247627,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -247689,7 +247689,7 @@
         "5.0.2",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FADR5hJVzUGKDA==",
+        "l6aAQgI8FAC3RaFgzvqhVw==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
@@ -247902,10 +247902,10 @@
               },
               "metadata": {
                 "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
-                "display": "Uuid",
+                "display": "MsgHash",
                 "fix:tag": "65017"
               },
-              "name": "uuid",
+              "name": "msghash",
               "nullable": false
             },
             {
@@ -247916,10 +247916,10 @@
               },
               "metadata": {
                 "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
-                "display": "PUuid",
+                "display": "MsgPHash",
                 "fix:tag": "65018"
               },
-              "name": "puuid",
+              "name": "msgphash",
               "nullable": false
             },
             {
@@ -247982,7 +247982,7 @@
         "999",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "l6aAQgI8FABpc1mewUWVGg==",
+        "l6aAQgI8FADcvqVXmUYBFA==",
         "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",

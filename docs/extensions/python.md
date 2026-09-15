@@ -1275,7 +1275,7 @@ assert all(record.name.startswith("yggdryl") for record in records)
 | absence | a `KeyError` carrying the native message, while the `get_` twins answer `None` |
 | ingest | `from_cfb_file(location, dialect=None)` and `add_cfb_file(location, dialect=None)` stamp every field, group, component and message the file produces with the dialect, `add_cfb_file` taking the file's stem when none is given; the root element's version is read past, so `FixCodec(version=...)` dates a capture |
 | `FixMsg.entries()` | `(tag, key, value)` tuples, flattened pre-order, so a group's members follow the counter pair heading them; a key no field resolves, named or numeric, carries tag 0 with its raw key |
-| `FixMsg` | `FixMsg(field, value, registry=None)` appends each settled field the root lacks - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `uuid()` and `puuid()` answer those settled `Scalar` values; equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field is a `ValueError` that changes nothing; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row carrying the settled fields back, entries included |
+| `FixMsg` | `FixMsg(field, value, registry=None)` appends each settled field the root lacks - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `msghash()` and `msgphash()` answer those settled `Scalar` values; equality over schema, value and dictionary, `hash()`, `copy` / `deepcopy`, and a pickle carrying the registry; `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field is a `ValueError` that changes nothing; `FixMsg.from_row(schema, row, registry=None)` reads a fixed row carrying the settled fields back, entries included |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `get_msgtype` or lazy `msgtypes`; `field` answers a read-only `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifier_values(message)` | takes a `FixMsg` and answers `list[tuple[Field, Scalar]]` in declaration order, omitting absent or null values; each field is a read-only declaration clone, each scalar retains its native datatype and width, and binary values remain bytes until enrichment needs UTF-8 |
 | `FixCodec` | pins are keywords - `version`, `separator`, `payload_column`, `capture_names`, `null_values`, `direction` (any spelling of a code of tag 385's set; `""` is no pin), `batch_byte_size` - and no pin names a dialect; `default_sending_time` (a `Scalar`, a `datetime`, or `None`, read back as a nanosecond UTC `Scalar` or `None`) is the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; the version a row reads at is the row's own `beginstring` capture or the `version` pin, else what the wire states - `ApplVerID`, then `BeginString` - else the dictionary's newest, and a `pluginid` capture fills the crate's `pluginid` field and selects nothing; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parse_line`, `parse_text_line`, `parse_plugin_line` return lazy `FixMessages`, `parse_lines`, `parse_text_lines`, `enrich_messages` and `messages` lazy iterators of `FixMsg`; `parse_fix_line`, `parse_ullink_line`, `parse_fixml_line`, `parse_pairs` and `enrich_message` answer one `FixMsg`; no reader takes a flag |
@@ -1376,7 +1376,7 @@ with pytest.raises(ValueError, match="shared with a message"):
 
 # The root gained the settled fields every message holds, after its own.
 assert [name for name, _ in message] == [
-    "symbol", "updatedat", "createdat", "uuid", "puuid", "code", "snapshotat", "sendingtime",
+    "symbol", "updatedat", "createdat", "msghash", "msgphash", "code", "snapshotat", "sendingtime",
 ]
 
 # The message is a value: it hashes, copies and pickles, registry included,
@@ -1399,7 +1399,7 @@ assert next(messages, None) is None
 assert parsed.into_bytes(ord("|")) == wire
 assert parsed.updatedat() == parsed.createdat() == codec.default_sending_time
 with pytest.raises(ValueError, match="mandatory"):
-    parsed.remove("uuid")
+    parsed.remove("msghash")
 table_field = fix_schema(registry)
 assert len(parsed.into_row(table_field)) == len(table_field.dtype)
 ```

@@ -1413,8 +1413,8 @@ fix_message_digest: bytes = fix_message.digest()
 fix_message_ticker: Scalar | None = fix_message.symbol_ticker()
 fix_message_clock: Scalar = fix_message.updatedat()
 fix_message_created: Scalar = fix_message.createdat()
-fix_message_uuid: Scalar = fix_message.uuid()
-fix_message_puuid: Scalar = fix_message.puuid()
+fix_message_msghash: Scalar = fix_message.msghash()
+fix_message_msgphash: Scalar = fix_message.msgphash()
 fix_message_partition: Scalar | None = fix_message.time_partition()
 fix_message_lifted: Scalar | None = fix_message.lifted("bidpx")
 fix_message_lift_source: int | None = fix_message.lift_source("bidpx")
@@ -1644,7 +1644,7 @@ assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
 assert fix_message_ticker is None or fix_message_ticker
 assert isinstance(fix_message_clock, Scalar) and isinstance(fix_message_created, Scalar)
-assert isinstance(fix_message_uuid, Scalar) and isinstance(fix_message_puuid, Scalar)
+assert isinstance(fix_message_msghash, Scalar) and isinstance(fix_message_msgphash, Scalar)
 assert fix_default_interval == fix_life_interval
 assert fix_message_partition is None or fix_message_partition
 assert fix_message_lifted is None or fix_message_lifted

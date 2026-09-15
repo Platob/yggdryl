@@ -77,7 +77,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         &names[names.len() - 9..],
         [
             "prevupdatedat",
-            "prevuuid",
+            "prevmsghash",
             "createdat",
             "code",
             "snapshotat",
@@ -89,7 +89,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     );
     for tag in [
         yggdryl::PREVUPDATEDAT_TAG_NAME.0,
-        yggdryl::PREVUUID_TAG_NAME.0,
+        yggdryl::PREVMSGHASH_TAG_NAME.0,
     ] {
         assert_eq!(
             schema
@@ -135,7 +135,10 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         typed(yggdryl::PREVUPDATEDAT_TAG_NAME.0),
         typed(yggdryl::UPDATEDAT_TAG_NAME.0)
     );
-    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), super::identity_dtype());
+    assert_eq!(
+        typed(yggdryl::PREVMSGHASH_TAG_NAME.0),
+        super::identity_dtype()
+    );
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
@@ -157,10 +160,10 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::MICCODE_TAG_NAME.0, "MICCode"),
         (yggdryl::STATE_TAG_NAME.0, "State"),
         (yggdryl::INSTUUID_TAG_NAME.0, "InstUuid"),
-        (yggdryl::UUID_TAG_NAME.0, "Uuid"),
-        (yggdryl::PUUID_TAG_NAME.0, "PUuid"),
+        (yggdryl::MSGHASH_TAG_NAME.0, "MsgHash"),
+        (yggdryl::MSGPHASH_TAG_NAME.0, "MsgPHash"),
         (yggdryl::PREVUPDATEDAT_TAG_NAME.0, "PrevUpdatedAt"),
-        (yggdryl::PREVUUID_TAG_NAME.0, "PrevUuid"),
+        (yggdryl::PREVMSGHASH_TAG_NAME.0, "PrevMsgHash"),
     ] {
         let field = &fields[column_of(&schema, tag)];
         assert_eq!(field.display(), Some(display), "tag {tag}");
@@ -179,8 +182,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
             "sendingtime",
             "updatedat",
             "timepartition",
-            "uuid",
-            "puuid",
+            "msghash",
+            "msgphash",
             "createdat",
             "code",
             "snapshotat"
@@ -194,7 +197,8 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
     use yggdryl::{
-        FixMsg, INSTUUID_TAG_NAME, IOMedia, PREVUUID_TAG_NAME, PUUID_TAG_NAME, UUID_TAG_NAME,
+        FixMsg, INSTUUID_TAG_NAME, IOMedia, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME,
+        PREVMSGHASH_TAG_NAME,
     };
 
     let (registry, codec) = reader();
@@ -210,7 +214,7 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
                 0xee, 0xff,
             ],
         ),
-        (PREVUUID_TAG_NAME, [0xff; 16]),
+        (PREVMSGHASH_TAG_NAME, [0xff; 16]),
     ];
     message
         .set_many(
@@ -233,7 +237,7 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
 
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
-    for (tag, _) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
+    for (tag, _) in [MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME] {
         super::identity_bytes(at(&row, &schema, tag));
     }
     assert_eq!(
@@ -262,9 +266,9 @@ fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     );
     for (_, name) in [
         INSTUUID_TAG_NAME,
-        UUID_TAG_NAME,
-        PUUID_TAG_NAME,
-        PREVUUID_TAG_NAME,
+        MSGHASH_TAG_NAME,
+        MSGPHASH_TAG_NAME,
+        PREVMSGHASH_TAG_NAME,
     ] {
         // Plain sixteen bytes, with no extension name over them: a lake
         // engine reads the storage and nothing has to know the extension.
@@ -408,7 +412,7 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
         .unwrap();
     let row = order.into_row(&schema).unwrap();
 
-    super::identity_bytes(at(&row, &schema, yggdryl::UUID_TAG_NAME.0));
+    super::identity_bytes(at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0));
 
     // One ticker for one instrument, qualified by the venue that named it.
     assert_eq!(
@@ -448,7 +452,7 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
 
     // Hard identities and clocks are stored mirrors, never invented arrivals.
     assert!(order.get_by_tag(65_000).is_none());
-    assert!(order.get_by_tag(yggdryl::UUID_TAG_NAME.0).is_some());
+    assert!(order.get_by_tag(yggdryl::MSGHASH_TAG_NAME.0).is_some());
     assert!(order.get_by_tag(yggdryl::UPDATEDAT_TAG_NAME.0).is_some());
     assert!(
         order
@@ -708,7 +712,7 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     use yggdryl::media::iceberg::{
         FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
     };
-    use yggdryl::{INSTUUID_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, UUID_TAG_NAME};
+    use yggdryl::{INSTUUID_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME};
 
     let (registry, codec) = reader();
     let codec = codec.with_separator(b'|');
@@ -729,9 +733,9 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
         .collect();
     let identities = [
         INSTUUID_TAG_NAME,
-        UUID_TAG_NAME,
-        PUUID_TAG_NAME,
-        PREVUUID_TAG_NAME,
+        MSGHASH_TAG_NAME,
+        MSGPHASH_TAG_NAME,
+        PREVMSGHASH_TAG_NAME,
     ];
     // Read off the projected row, because the fixed schema is what the table
     // holds and a projection is content: `uuid` digests the row it lands in
@@ -862,7 +866,7 @@ fn a_value_a_column_will_not_hold_is_that_columns_null() {
     assert!(at(&row, &schema, yggdryl::ISINCODE_TAG_NAME.0).is_null());
     // The row is still a row: the columns beside the unreadable ones are
     // filled, and the identity bundle still settled.
-    assert!(!at(&row, &schema, yggdryl::UUID_TAG_NAME.0).is_null());
+    assert!(!at(&row, &schema, yggdryl::MSGHASH_TAG_NAME.0).is_null());
 }
 
 /// A market spelled wider than a MIC derives nothing rather than refusing.

@@ -82,7 +82,7 @@ function previous(message, expected) {
     return
   }
   assert.ok(held[0].equals(expected.updatedat()), 'prevupdatedat is the previous grid instant')
-  assert.ok(held[1].equals(expected.uuid()), 'prevuuid is the previous message identity')
+  assert.ok(held[1].equals(expected.msghash()), 'prevmsghash is the previous message identity')
 }
 
 /** Whether a snapshot answer is `expected`, or no answer where none is expected. */
@@ -95,9 +95,9 @@ function snapshotIs(answer, expected) {
   assert.ok(answer.equals(expected))
 }
 
-/** The one puuid any message naming `code` answers: the hash of the code alone. */
+/** The one msgphash any message naming `code` answers: the hash of the code alone. */
 function persistentOf(code) {
-  return event(new fix.FixRegistry(), 0, code).puuid()
+  return event(new fix.FixRegistry(), 0, code).msgphash()
 }
 
 /** A registry whose previous-message field at `tag` is declared under `dtype`. */
@@ -190,8 +190,8 @@ test("creation is the first arrival's statement, not the minimum or the grid", (
     assert.ok(filled.updatedat().equals(clock(grid)))
     assert.ok(filled.byTag(SNAPSHOTAT).equals(clock(time)))
     // Creation is not content: the identities agree whatever it says.
-    assert.ok(filled.uuid().equals(comparison.uuid()))
-    assert.ok(filled.puuid().equals(comparison.puuid()))
+    assert.ok(filled.msghash().equals(comparison.msghash()))
+    assert.ok(filled.msgphash().equals(comparison.msgphash()))
     previous(filled, last)
     last = filled
   }
@@ -231,7 +231,7 @@ test('explicit codes are global and never steal scoped identifier ownership', ()
   const scope = identityOf(1)
   const first = life.fill(event(registry, 1, 'A', scope, [['id', 'OWNED']]))
   const other = life.fill(event(registry, 2, 'B', scope, [['id', 'OWNED']]))
-  assert.equal(first.puuid().equals(other.puuid()), false)
+  assert.equal(first.msgphash().equals(other.msgphash()), false)
   assert.ok(first.createdat().equals(clock(1)))
   assert.ok(other.createdat().equals(clock(2)))
   previous(other, null)
@@ -245,7 +245,7 @@ test('explicit codes are global and never steal scoped identifier ownership', ()
   // An explicit code joins its chain across instrument scopes.
   const direct = life.fill(event(registry, 21, 'A', identityOf(2), [['id', 'NEW']]))
   previous(direct, alias)
-  assert.ok(direct.puuid().equals(first.puuid()))
+  assert.ok(direct.msgphash().equals(first.msgphash()))
   assert.ok(direct.createdat().equals(first.createdat()))
   const attached = life.fill(event(registry, 31, '', identityOf(2), [['id', 'NEW']]))
   previous(attached, direct)
@@ -257,7 +257,7 @@ test('explicit codes are global and never steal scoped identifier ownership', ()
   const b = life.fill(event(registry, 41, 'B', scope, [['id', 'OTHER']]))
   const joined = life.fill(event(registry, 51, '', scope, [['a', 'OTHER'], ['z', 'OWNED']]))
   previous(joined, b)
-  assert.ok(joined.puuid().equals(other.puuid()))
+  assert.ok(joined.msgphash().equals(other.msgphash()))
   assert.ok(b.createdat().equals(other.createdat()))
   assert.ok(joined.createdat().equals(other.createdat()))
   const stillA = life.fill(event(registry, 61, '', scope, [['id', 'OWNED']]))
@@ -276,24 +276,24 @@ test('derived codes keep the scope and identifier text, and empty is not whitesp
     const expected = scope === null ? `-/${text}` : `${scope.toString('hex')}/${text}`
     const value = life.fill(event(registry, time, '', scope, [['id', text]]))
     assert.equal(value.byTag(CODE).asJs(), expected)
-    assert.ok(value.puuid().equals(persistentOf(expected)))
+    assert.ok(value.msgphash().equals(persistentOf(expected)))
     previous(value, null)
     assert.ok(value.createdat().equals(clock(time)))
-    assert.ok(ids.every((held) => !held.equals(value.puuid())))
-    ids.push(value.puuid())
+    assert.ok(ids.every((held) => !held.equals(value.msgphash())))
+    ids.push(value.msgphash())
   }
   assert.equal(life.alive, 3)
   for (const [at, scope] of scopes.entries()) {
     const joined = life.fill(event(registry, 31, '', scope, [['id', text]]))
     assert.ok(joined.createdat().equals(clock(at + 1)))
-    assert.ok(joined.puuid().equals(ids[at]))
+    assert.ok(joined.msgphash().equals(ids[at]))
   }
 
-  // No name opens no chain and emits no snapshot; its puuid is still the one
+  // No name opens no chain and emits no snapshot; its msgphash is still the one
   // deterministic hash of the empty code.
   const unknown = event(registry, 1, '')
   const filled = life.fill(unknown)
-  assert.ok(filled.puuid().equals(persistentOf('')))
+  assert.ok(filled.msgphash().equals(persistentOf('')))
   assert.ok(filled.updatedat().equals(clock(0)))
   assert.ok(filled.createdat().equals(unknown.createdat()))
   previous(filled, null)
@@ -343,11 +343,11 @@ test('a suppressed terminal closes and a same-bucket reopening starts fresh', ()
   const reopened = life.snapshot(event(registry, 3, 'A'))
   assert.notEqual(reopened, null)
   previous(reopened, null)
-  assert.ok(reopened.puuid().equals(first.puuid()))
+  assert.ok(reopened.msgphash().equals(first.msgphash()))
   assert.ok(reopened.createdat().equals(clock(3)))
   // The closed chain's identifier is free again, for a chain of its own.
   const oldKey = life.fill(event(registry, 4, '', null, [['id', 'OLD']]))
-  assert.equal(oldKey.puuid().equals(reopened.puuid()), false)
+  assert.equal(oldKey.msgphash().equals(reopened.msgphash()), false)
   previous(oldKey, null)
   assert.ok(oldKey.createdat().equals(clock(4)))
   assert.equal(life.alive, 2)
@@ -379,16 +379,16 @@ test('grid underflow refuses before opening, attaching, advancing or closing', (
     const free = life.fill(event(registry, 12, '', null, [['id', 'NEW']]))
     previous(free, null)
     assert.ok(free.createdat().equals(clock(12)))
-    assert.equal(free.puuid().equals(accepted.puuid()), false)
+    assert.equal(free.msgphash().equals(accepted.msgphash()), false)
   }
 })
 
 test('a previous stamp its target cannot hold consumes no bucket, closes and attaches nothing', () => {
   const base = new fix.FixRegistry()
   for (const [tag, name, dtype] of [
-    [PREVUUID, 'prevuuid', DataType.from('utf8')],
-    [PREVUUID, 'prevuuid', DataType.from('binary')],
-    [PREVUUID, 'prevuuid', clock(0).dtype],
+    [PREVUUID, 'prevmsghash', DataType.from('utf8')],
+    [PREVUUID, 'prevmsghash', DataType.from('binary')],
+    [PREVUUID, 'prevmsghash', clock(0).dtype],
     [PREVUPDATEDAT, 'prevupdatedat', DataType.from('uuid')],
     [PREVUPDATEDAT, 'prevupdatedat', DataType.from('utf8')],
   ]) {
@@ -406,7 +406,7 @@ test('a previous stamp its target cannot hold consumes no bucket, closes and att
       const free = life.fill(event(base, 13, '', null, [['id', 'NEW']]))
       previous(free, null)
       assert.ok(free.createdat().equals(clock(13)))
-      assert.equal(free.puuid().equals(accepted.puuid()), false)
+      assert.equal(free.msgphash().equals(accepted.msgphash()), false)
     }
   }
 })
@@ -425,7 +425,7 @@ test('independently stated previous values are not the current history', () => {
     if (statedId) {
       assert.deepEqual(Buffer.from(second.byTag(PREVUUID).asJs()), statedIdentity)
     } else {
-      assert.ok(second.byTag(PREVUUID).equals(first.uuid()))
+      assert.ok(second.byTag(PREVUUID).equals(first.msghash()))
     }
     // The stored pair is the current message's own, never what it stated.
     previous(life.fill(event(registry, 21, 'A')), second)
@@ -463,7 +463,7 @@ test('the snapshot stream is lazy, throws a refused message where it is met and 
   assert.equal(pulls, 1)
   // A transition the core refuses throws where it is met, advances nothing,
   // and the stream goes on.
-  assert.throws(() => snapshots.next(), /\$\.prevuuid/)
+  assert.throws(() => snapshots.next(), /\$\.prevmsghash/)
   assert.equal(pulls, 2)
   const recovered = snapshots.next().value
   previous(recovered, first)

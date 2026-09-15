@@ -2,8 +2,8 @@
 
 // Settled clocks and named-content identity (decision 26): the default
 // SendingTime a codec settles undated messages with, the four readers every
-// message answers without a lookup - `updatedat`, `createdat`, `uuid`,
-// `puuid` - and the replay fields no write, removal or row can take away.
+// message answers without a lookup - `updatedat`, `createdat`, `msghash`,
+// `msgphash` - and the replay fields no write, removal or row can take away.
 //
 // Every rule is the core's, pinned in `rust/tests/fix/content_identity.rs`;
 // what these check is the crossing - a `Scalar` or a `Date` as the default,
@@ -61,8 +61,8 @@ function assertMirrors(held) {
   for (const [tag, hard] of [
     [65003, held.updatedat()],
     [65023, held.createdat()],
-    [65017, held.uuid()],
-    [65018, held.puuid()],
+    [65017, held.msghash()],
+    [65018, held.msgphash()],
   ]) {
     assert.ok(held.byTag(tag).equals(hard), `tag ${tag}`)
     assert.ok(held.value.at(position(held, tag)).equals(hard), `tag ${tag}`)
@@ -72,8 +72,8 @@ function assertMirrors(held) {
   for (const instant of [held.updatedat(), held.createdat()]) {
     assert.ok(instant.dtype.equals(clock(0).dtype), 'DateTime64(ns, UTC)')
   }
-  assert.equal(held.uuid().id, 'fixed_size_binary')
-  assert.equal(held.puuid().id, 'fixed_size_binary')
+  assert.equal(held.msghash().id, 'fixed_size_binary')
+  assert.equal(held.msgphash().id, 'fixed_size_binary')
 }
 
 test('a fixed default sending time settles every clock and replays exactly', () => {
@@ -89,7 +89,7 @@ test('a fixed default sending time settles every clock and replays exactly', () 
   assert.ok(first.byTag(65025).equals(clock(CLOCK)))
   assert.ok(first.byTag(52).equals(clock(CLOCK)))
   assert.equal(first.byTag(65024).asJs(), '')
-  assert.ok(first.uuid().equals(second.uuid()))
+  assert.ok(first.msghash().equals(second.msghash()))
   assert.deepEqual(first.intoBytes(124), bytes)
   assert.deepEqual(first.digest(), second.digest())
   assertMirrors(first)
@@ -148,18 +148,18 @@ test('explicitly stated event, grid and creation clocks are independent', () => 
   assertMirrors(held)
 })
 
-test('puuid hashes only the exact code bytes, the empty name included', () => {
+test('msgphash hashes only the exact code bytes, the empty name included', () => {
   const registry = new fix.FixRegistry()
   const identities = new Set()
   for (const code of ['', ' ', 'alpha', 'alpha ', 'é']) {
     const held = message([[registry.fieldByTag(65024), code]], registry)
-    const expected = held.puuid()
+    const expected = held.msgphash()
     assert.notEqual(expected.asJs(), NIL)
     held.set(65003, clock(-1))
     held.set(7777, 'different content')
-    assert.ok(held.puuid().equals(expected), JSON.stringify(code))
-    // Every message naming the same code answers the same puuid.
-    assert.ok(message([payload('other'), [registry.fieldByTag(65024), code]], registry).puuid().equals(expected))
+    assert.ok(held.msgphash().equals(expected), JSON.stringify(code))
+    // Every message naming the same code answers the same msgphash.
+    assert.ok(message([payload('other'), [registry.fieldByTag(65024), code]], registry).msgphash().equals(expected))
     identities.add(expected.asJs().toString('hex'))
   }
   assert.equal(identities.size, 5)
@@ -175,14 +175,14 @@ test('named content ignores root order and metadata, never names or nulls', () =
   const reversed = pairs().reverse()
   for (const [field] of reversed) field.set('example:note', 'not content')
   const second = message(reversed)
-  assert.ok(first.uuid().equals(second.uuid()))
+  assert.ok(first.msghash().equals(second.msghash()))
   assert.equal(first.equals(second), false, 'message equality still includes the schema')
   const absent = message()
   const nulled = message([payload(null)])
   const empty = message([payload('')])
   const renamed = message([[fields.utf8('renamed', { nullable: true }), null]])
   assert.equal(
-    new Set([absent, nulled, empty, renamed].map((held) => Buffer.from(held.uuid().asJs()).toString('hex'))).size,
+    new Set([absent, nulled, empty, renamed].map((held) => Buffer.from(held.msghash().asJs()).toString('hex'))).size,
     4,
   )
 })
@@ -191,22 +191,22 @@ test('ordinary mutation recomputes identity and excludes only the owned clocks',
   const held = message([payload('first')])
   const before = held.clone()
   held.set(65023, clock(-10))
-  assert.ok(held.uuid().equals(before.uuid()), 'creation time is excluded')
+  assert.ok(held.msghash().equals(before.msghash()), 'creation time is excluded')
   assert.equal(held.equals(before), false)
   held.set(65003, clock(CLOCK + 1n))
-  assert.equal(held.uuid().equals(before.uuid()), false, 'one nanosecond remains visible')
-  let old = held.uuid()
+  assert.equal(held.msghash().equals(before.msghash()), false, 'one nanosecond remains visible')
+  let old = held.msghash()
   held.set('payload', 'second')
-  assert.equal(held.uuid().equals(old), false)
+  assert.equal(held.msghash().equals(old), false)
   const settled = held.updatedat()
-  old = held.uuid()
+  old = held.msghash()
   held.set(52, clock(CLOCK + 2n))
-  assert.equal(held.uuid().equals(old), false)
+  assert.equal(held.msghash().equals(old), false)
   assert.ok(held.updatedat().equals(settled), 'mutating SendingTime does not reread or reset clocks')
-  old = held.uuid()
+  old = held.msghash()
   held.set(65025, clock(CLOCK + 3n))
-  assert.equal(held.uuid().equals(old), false)
-  assert.ok(held.puuid().equals(before.puuid()))
+  assert.equal(held.msghash().equals(old), false)
+  assert.ok(held.msgphash().equals(before.msgphash()))
   assertMirrors(held)
 })
 
@@ -221,9 +221,9 @@ test('an explicit identity write asserts the complete candidate atomically', () 
   // the identity the new content computes is accepted.
   const expected = held.clone()
   expected.set(65024, 'chain')
-  assert.equal(expected.puuid().equals(before.puuid()), false)
+  assert.equal(expected.msgphash().equals(before.msgphash()), false)
   const asserted = expected.clone()
-  asserted.set(65018, expected.puuid())
+  asserted.set(65018, expected.msgphash())
   assert.ok(asserted.equals(expected))
   assertMirrors(asserted)
 })
@@ -239,9 +239,9 @@ test('mandatory null writes and removals refuse without changing any state', () 
     assert.ok(held.equals(before), name)
     assertMirrors(held)
   }
-  const old = held.uuid()
+  const old = held.msghash()
   assert.equal(held.remove('payload').asJs(), 'first')
-  assert.equal(held.uuid().equals(old), false)
+  assert.equal(held.msghash().equals(old), false)
   const before = held.clone()
   assert.equal(held.remove('absent'), null)
   assert.ok(held.equals(before))
@@ -287,7 +287,7 @@ test('replay refuses tampered identity and non-native mandatory values', () => {
     // identity; an integer is no code; a microsecond instant is no replay
     // clock.
     cells[at] = tag === 65017 || tag === 65018
-      ? other.uuid()
+      ? other.msghash()
       : tag === 65024
         ? 7
         : Scalar.datetime(0n, 'us', 'UTC')
@@ -312,8 +312,8 @@ test('a full projection preserves identity and a lossy one stabilizes on the sec
   const narrow = fields.struct('event', narrowMembers, { nullable: false })
   const first = original.intoRow(narrow)
   const held = fix.FixMsg.fromRow(narrow, first, original.registry)
-  assert.equal(held.uuid().equals(original.uuid()), false)
-  assert.ok(held.puuid().equals(original.puuid()))
+  assert.equal(held.msghash().equals(original.msghash()), false)
+  assert.ok(held.msgphash().equals(original.msgphash()))
   assert.ok(held.intoRow(narrow).equals(first))
   assert.ok(original.intoRow(original.field).equals(full), 'source unchanged')
 
@@ -322,7 +322,7 @@ test('a full projection preserves identity and a lossy one stabilizes on the sec
   const padded = fields.struct('event', paddedMembers, { nullable: false })
   const once = original.intoRow(padded)
   const heldPadded = fix.FixMsg.fromRow(padded, once, original.registry)
-  assert.equal(heldPadded.uuid().equals(original.uuid()), false)
+  assert.equal(heldPadded.msghash().equals(original.msghash()), false)
   assert.ok(heldPadded.intoRow(padded).equals(once))
 })
 

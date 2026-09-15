@@ -36,7 +36,7 @@ const BUNDLE = [
   [65003, 'updatedat'],
   [65023, 'createdat'],
   [65017, 'uuid'],
-  [65018, 'puuid'],
+  [65018, 'msgphash'],
   [65024, 'code'],
   [65025, 'snapshotat'],
   [52, 'sendingtime'],
@@ -644,12 +644,12 @@ test('a set value replaces an existing child in place and keeps the tag index', 
   for (const [tag, value] of before) {
     if (tag === 55 || tag === 54) continue
     if (tag === 65017) {
-      assert.equal(message.byTag(tag).equals(value), false, 'uuid follows the content')
+      assert.equal(message.byTag(tag).equals(value), false, 'msghash follows the content')
       continue
     }
     assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
   }
-  assert.ok(message.uuid().equals(message.byTag(65017)))
+  assert.ok(message.msghash().equals(message.byTag(65017)))
 })
 
 test('a set leaves the entries, the wire and the digest untouched', () => {
@@ -713,7 +713,7 @@ test('remove answers the value and the other tags still reach their children', (
   for (const [tag, value] of before) {
     if (tag === 55) continue
     if (tag === 65017) {
-      assert.equal(message.byTag(tag).equals(value), false, 'uuid follows the content')
+      assert.equal(message.byTag(tag).equals(value), false, 'msghash follows the content')
       continue
     }
     assert.ok(message.byTag(tag).equals(value), `tag ${tag}`)
@@ -744,9 +744,9 @@ test('a mandatory replay field refuses removal and a null write, atomically', ()
     assert.notEqual(message.byTag(tag).kind, 'null', name)
   }
   // An ordinary field still leaves, and the content identity follows it.
-  const identity = message.uuid()
+  const identity = message.msghash()
   assert.equal(message.remove('VenueThing').asJs(), '7')
-  assert.equal(message.uuid().equals(identity), false)
+  assert.equal(message.msghash().equals(identity), false)
   const settled = message.clone()
   assert.equal(message.remove('absent'), null)
   assert.ok(message.equals(settled))
@@ -783,9 +783,9 @@ test('a row reads back into the message that made it', () => {
   const named = fix.FixMsg.fromRow(schema, plain, registry)
   assert.deepEqual(named.arrivals(), parsed.arrivals())
   assert.ok(named.byTag(55).equals(parsed.byTag(55)))
-  // The row's uuid names the row's content (decision 26), so it is the uuid
+  // The row's msghash names the row's content (decision 26), so it is the msghash
   // the native row read back as, not the parsed message's own.
-  assert.ok(named.uuid().equals(held.uuid()))
+  assert.ok(named.msghash().equals(held.msghash()))
   assert.notEqual(fix.FixMsg.fromRow(schema, row).registry, null)
 })
 

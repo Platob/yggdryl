@@ -535,7 +535,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // Every projected row carries its sixteen content identity bytes.
     // Distinct real messages remain distinct, independently of the separate
     // arrival digest.
-    let identities = tag_column(&read, yggdryl::UUID_TAG_NAME.0);
+    let identities = tag_column(&read, yggdryl::MSGHASH_TAG_NAME.0);
     for (row, held) in identities.iter().enumerate() {
         assert_eq!(
             super::identity_bytes(held).len(),

@@ -948,10 +948,13 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // `isincode`, `miccode` and `state` derive on the fields themselves -
     // `isincode` reading each identifier through `try_cast(... as isin)` -
     // and finally types the four identity columns as `fixed_size_binary(16)`
-    // rather than `uuid`. The crate's own `sourceurl` and `nofixentries`
-    // moved it last: where a line was read from is a column of the row, and
-    // the arrival record is a group with a counter of its own.
-    assert_eq!(carrying.stable_hash(), 16_480_440_802_188_505_214);
+    // rather than `uuid` - the Arrow type, which no two lake engines read
+    // alike. The crate's own `sourceurl` and `nofixentries` moved it after
+    // that: where a line was read from is a column of the row, and the
+    // arrival record is a group with a counter of its own. It moved last for
+    // the spellings, `msghash`/`msgphash`/`prevmsghash` replacing
+    // `uuid`/`puuid`/`prevuuid` on the same tags and layouts.
+    assert_eq!(carrying.stable_hash(), 9_695_065_054_344_126_607);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

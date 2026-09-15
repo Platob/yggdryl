@@ -402,8 +402,8 @@ const ticker: Scalar | null = fromText.symbolTicker()
 // The settled clocks and identities are never null.
 const clock: Scalar = fromText.updatedat()
 const created: Scalar = fromText.createdat()
-const messageUuid: Scalar = fromText.uuid()
-const chainUuid: Scalar = fromText.puuid()
+const messageUuid: Scalar = fromText.msghash()
+const chainUuid: Scalar = fromText.msgphash()
 // @ts-expect-error the market timestamp reader is retired: updatedat is the settled clock
 fromText.marketTimestamp()
 const partition: Scalar | null = fromText.timePartition()

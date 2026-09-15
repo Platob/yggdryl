@@ -1284,7 +1284,7 @@ export type JsFilter = Filter
  * fields: `SendingTime` is the message's valid tag 52, else the carrier's,
  * else `defaultSendingTime`, else UTC now read once for that new message;
  * `snapshotat` is `TransactTime` (60) else `SendingTime`; `updatedat` and
- * `createdat` default to that instant; `code`, `uuid` and `puuid` follow.
+ * `createdat` default to that instant; `code`, `msghash` and `msgphash` follow.
  * None of them is an entry unless the line carried it, so `intoBytes`
  * re-emits the line byte for byte. Parsing undated bytes without a default
  * sending time is deliberately not deterministic.
@@ -1497,12 +1497,12 @@ export type JsFixFieldIterator = FixFieldIterator
  * declared identifiers - reaching a live chain under the effective
  * `instuuid` scope supplies its code, and a new chain is named
  * `<scope hex or ->/<first identifier>`. Occupied identifiers are never
- * stolen, and an empty code opens no chain. `puuid` hashes the settled code.
+ * stolen, and an empty code opens no chain. `msgphash` hashes the settled code.
  *
  * Every accepted message has `updatedat` truncated to its epoch grid bucket
  * of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
  * carries its first message's `createdat` and hands each later message the
- * previous message's `prevupdatedat` and `prevuuid`. A terminal state closes
+ * previous message's `prevupdatedat` and `prevmsghash`. A terminal state closes
  * the chain; what is held is the live chains, their code, first creation
  * instant, last clock and identity, and highest consumed bucket - never pending
  * messages. `FixCodec.lifecycle` runs one at the default cadence over an
@@ -1534,7 +1534,7 @@ export declare class FixLifecycle {
    * The chain is selected by `code`, else by identifier; the message's
    * `updatedat` becomes its grid instant, it takes the live chain's first
    * `createdat`, each absent previous stamp comes from the chain's last
-   * message while a stated one is kept, and `uuid` is finalized after
+   * message while a stated one is kept, and `msghash` is finalized after
    * every stamp. A fresh or cleared lifecycle replaying the same stream
    * answers the same messages. Only the row is stamped: the arrival record
    * is what the wire carried, so `intoBytes` re-emits the received line.
@@ -1603,7 +1603,7 @@ export type JsFixMessages = FixMessages
  * against.
  *
  * Every message carries the settled replay fields, never null: `updatedat`,
- * `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime` (52).
+ * `createdat`, `msghash`, `msgphash`, `code`, `snapshotat` and `SendingTime` (52).
  * The four the readers of the same names answer are held beside the row, so
  * reading them costs no lookup.
  */
@@ -1616,8 +1616,8 @@ export declare class FixMsg {
    * against `field`. A mandatory replay field the root lacks is appended:
    * `SendingTime` reads UTC now when the value states none, `snapshotat`
    * is `TransactTime` (60) else `SendingTime`, `updatedat` and `createdat`
-   * default to that instant, `code` to the empty name, and `uuid` and
-   * `puuid` are computed. A stated identity must match what is computed.
+   * default to that instant, `code` to the empty name, and `msghash` and
+   * `msgphash` are computed. A stated identity must match what is computed.
    */
   constructor(field: JsField, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -1631,9 +1631,9 @@ export declare class FixMsg {
    * rebuilt from the `fixentries` column, so `intoBytes` re-emits the
    * line the row was read from; a row without that column has no entries.
    * Nothing is parsed again and no clock is read: the row must carry the
-   * seven non-null replay fields - `updatedat`, `createdat`, `uuid`,
-   * `puuid`, `code`, `snapshotat`, `SendingTime` - and its `uuid` and
-   * `puuid` must match what its content computes, or it throws the located
+   * seven non-null replay fields - `updatedat`, `createdat`, `msghash`,
+   * `msgphash`, `code`, `snapshotat`, `SendingTime` - and its `msghash` and
+   * `msgphash` must match what its content computes, or it throws the located
    * refusal. The process default is the registry when none is named.
    */
   static fromRow(schema: JsField, row: JsScalar, registry?: FixRegistry | undefined | null): FixMsg
@@ -1707,8 +1707,8 @@ export declare class FixMsg {
    * `null` is stored as a stated null. An existing child is replaced where
    * it stands and an absent one appended; a bare tag no dictionary explains
    * appends a text child named by its decimal. Only the row changes: the
-   * entries, the wire and the digest stay what they were, while `uuid` and
-   * `puuid` are recomputed from the new content. No clock is read.
+   * entries, the wire and the digest stay what they were, while `msghash` and
+   * `msgphash` are recomputed from the new content. No clock is read.
    *
    * A key reaching no field and no child, or a value the field refuses,
    * throws the core's refusal and leaves the message as it was.
@@ -1720,7 +1720,7 @@ export declare class FixMsg {
    * The key resolves as `set` resolves one, and a key reaching nothing
    * answers `null` and changes nothing. The entries are untouched.
    *
-   * A mandatory replay field - `updatedat`, `createdat`, `uuid`, `puuid`,
+   * A mandatory replay field - `updatedat`, `createdat`, `msghash`, `msgphash`,
    * `code`, `snapshotat` or `SendingTime` - refuses removal and throws,
    * leaving the message exactly as it was; so does any other refusal.
    */
@@ -1763,19 +1763,19 @@ export declare class FixMsg {
    * Sixteen `fixedbinary(16)` bytes - a `Buffer` in JavaScript:
    * `updatedat`'s signed nanoseconds with the sign bit flipped in bytes
    * 0..8, then all 64 bits of the canonical named content's XXH64;
-   * `updatedat`, `createdat`, `uuid` itself and the arrival record are not
-   * content. A stated `uuid` must match it.
+   * `updatedat`, `createdat`, `msghash` itself and the arrival record are not
+   * content. A stated `msghash` must match it.
    */
-  uuid(): JsScalar
+  msghash(): JsScalar
   /**
    * The event chain's identity, never null.
    *
    * The sixteen big-endian `fixedbinary(16)` bytes of the XXH3-128 of the
    * exact `code` bytes alone - a `Buffer` in JavaScript - so the empty
-   * (unknown) code has one deterministic `puuid` too. A stated `puuid`
+   * (unknown) code has one deterministic `msgphash` too. A stated `msgphash`
    * must match it.
    */
-  puuid(): JsScalar
+  msgphash(): JsScalar
   /**
    * The hour `updatedat` falls in, as an instant: the partition a row is
    * stored under.
@@ -5900,11 +5900,11 @@ export interface FixCodecOptions {
  * parent identifiers, the sessions the message states, the bridge's message
  * context, the plugin that logged the line and the one it came through
  * before that, the two session names the line spells, the ISIN, MIC and
- * order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
+ * order state a row derives, the `instuuid`, `msghash` and `msgphash` identities,
  * the direct identifiers enrichment records in `altids`, the previous
- * message's `prevupdatedat` and `prevuuid`, `createdat`, `code` and
+ * message's `prevupdatedat` and `prevmsghash`, `createdat`, `code` and
  * `snapshotat`, the `sourceurl` a line was read from and the
- * `nofixentries` that counts its arrival record. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+ * `nofixentries` that counts its arrival record. `updatedat`, `msghash`, `msgphash`, `createdat`, `code` and
  * `snapshotat` are non-null. Every registry already holds them in their
  * category, so this is the listing a schema or a document walks rather than
  * something a caller registers.
@@ -5964,8 +5964,8 @@ export declare function fixPluginMessage(): JsField
  * dictionary's folded canonical names - `msgtype`, never `35` - so a row
  * reads the way a message reads; the tag stays each column's identity, on
  * its `fix:tag`, and is what fills it. `beginstring`, `timepartition` and
- * the replay fields - `sendingtime`, `updatedat`, `createdat`, `uuid`,
- * `puuid`, `code`, `snapshotat` - are required.
+ * the replay fields - `sendingtime`, `updatedat`, `createdat`, `msghash`,
+ * `msgphash`, `code`, `snapshotat` - are required.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 

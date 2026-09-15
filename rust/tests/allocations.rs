@@ -973,8 +973,8 @@ fn settled_fix_identity_getters_borrow_without_allocating_at_every_row_width() {
             black_box((
                 held.updatedat(),
                 held.createdat(),
-                held.uuid(),
-                held.puuid(),
+                held.msghash(),
+                held.msgphash(),
             ));
         });
         free("four settled identity tag borrows", || {
@@ -982,8 +982,8 @@ fn settled_fix_identity_getters_borrow_without_allocating_at_every_row_width() {
             for tag in [
                 yggdryl::UPDATEDAT_TAG_NAME.0,
                 yggdryl::CREATEDAT_TAG_NAME.0,
-                yggdryl::UUID_TAG_NAME.0,
-                yggdryl::PUUID_TAG_NAME.0,
+                yggdryl::MSGHASH_TAG_NAME.0,
+                yggdryl::MSGPHASH_TAG_NAME.0,
             ] {
                 black_box(held.get_by_tag(black_box(tag)));
             }

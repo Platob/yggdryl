@@ -231,7 +231,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         454,
         768, // the groups
         10,  // the trailer
-        yggdryl::UUID_TAG_NAME.0,
+        yggdryl::MSGHASH_TAG_NAME.0,
         yggdryl::UPDATEDAT_TAG_NAME.0,
         yggdryl::TIMEPARTITION_TAG_NAME.0, // the digest, the clock, the partition
         yggdryl::SENDERSESSIONID_TAG_NAME.0,
@@ -347,7 +347,7 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     let symbol = tag_column(&batch, 55);
     assert!(symbol.is_valid(0));
     // The content identity's UUID storage is sixteen bytes, not a string.
-    let digest = tag_column(&batch, yggdryl::UUID_TAG_NAME.0);
+    let digest = tag_column(&batch, yggdryl::MSGHASH_TAG_NAME.0);
     assert_eq!(
         digest.data_type(),
         &arrow_schema::DataType::FixedSizeBinary(16)
@@ -760,8 +760,8 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
     let last = pipeline.next().unwrap().unwrap();
     assert_eq!(pulls.get(), 3);
     assert_eq!(
-        last.by_tag(yggdryl::PREVUUID_TAG_NAME.0).unwrap(),
-        first.uuid()
+        last.by_tag(yggdryl::PREVMSGHASH_TAG_NAME.0).unwrap(),
+        first.msghash()
     );
     assert_eq!(last.createdat(), first.createdat());
     assert!(pipeline.next().is_none());
@@ -1387,7 +1387,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
         ))
         .unwrap();
     let error = again.next().unwrap().unwrap_err();
-    assert!(error.to_string().contains("$.uuid"), "{error}");
+    assert!(error.to_string().contains("$.msghash"), "{error}");
     assert!(again.next().is_none());
     // An explicit body-only projection is a fresh capture, with no stale claim.
     let bodies = first.project(&[schema.index_of("body").unwrap()]).unwrap();

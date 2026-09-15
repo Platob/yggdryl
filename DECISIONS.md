@@ -3467,3 +3467,52 @@ byte for byte, and one differing byte of content is a different `uuid`;
 `python/tests/fix/test_fix.py` and `node/tests/fix/fix.test.js` - the four
 columns answer `fixedbinary(16)`, and the message identity's first eight
 bytes are the sign-flipped `updatedat` nanoseconds.
+
+## 39. The message identities are named for what they are: hashes
+
+Settled with the user's request to rename the two identity columns, and
+taken with the record of decision 26 in front of us rather than around it.
+
+**Rule.** Tag 65017 is `msghash` (`MsgHash`), tag 65018 is `msgphash`
+(`MsgPHash`), and tag 65022 is `prevmsghash` (`PrevMsgHash`). Only the
+spelling moves. The tags, the `fixed_size_binary(16)` layouts, the
+nullability, the stamps, the identity recipes and the replay bundle are
+exactly what decision 26 settled: `msghash` is still the sign-flipped
+`updatedat` nanoseconds in bytes 0..8 beside all sixty-four bits of the
+named content's XXH64 in bytes 8..16, and `msgphash` is still the
+big-endian XXH3-128 of the exact code bytes. No alias, no second spelling,
+no migration read: the Rust constants, both bindings, the CLI, the docs,
+both inventories and the equivalence snapshot carry one name each.
+
+### This reverses decision 26's retirement, and says so
+
+Decision 26 reads "The user retires msghash: uuid is the only stored
+message hash identity", and retired `msghash` from tag 65000. That entry
+stays where it is - these are historical records, never compatibility
+modes - and this one supersedes the naming half of it.
+
+Two things about the reversal are worth having written down. The first is
+that tag 65000 is *not* what comes back. Decision 26 said "Retire
+msghash/tag65000 without reusing the slot", and the slot stays unused:
+`CRATE_TAG_MIN` is still 65000 and still opens a reserved block whose first
+entry nothing occupies. What returns is the spelling, on 65017, where the
+value it names has always lived.
+
+The second is why the spelling is the better one. `uuid` was never an RFC
+9562 identifier and the crate had to say so everywhere it appeared -
+decision 38 had already stopped typing these columns as the Arrow `uuid`,
+because no two lake engines read that type alike, and typed them as the
+sixteen plain bytes they are. A column called `uuid` that is not a UUID is
+a name a reader has to be corrected about; `msghash` is what the bytes are.
+The `p` in `msgphash` is the chain's persistent identity, the same `p`
+`puuid` carried.
+
+**Tripwires.** The committed dictionary's pinned `stable_hash` and the
+plugin registry's move for the renamed definitions; the equivalence
+snapshot moves 309 `*.field.uuid` keys to `*.field.msghash` and 309
+`*.field.puuid` to `*.field.msgphash`, and nothing else - no arrival, wire,
+digest, line, type, count or refusal key moves, which is what makes it a
+rename rather than a change. The retired-name pins in
+`rust/tests/fix/digest.rs` and `python/tests/fix/test_fix.py` now read
+`uuid`, `puuid` and `prevuuid` as the retired spellings, and no longer
+`msghash`.

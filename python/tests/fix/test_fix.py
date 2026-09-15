@@ -73,7 +73,7 @@ CLOCK_PARTITION = dt.datetime(2024, 1, 2, 10, 0, tzinfo=dt.timezone.utc)
 
 # The seven members every message carries, non-null, in the order a message
 # built without them appends them.
-BUNDLE = ["updatedat", "createdat", "uuid", "puuid", "code", "snapshotat", "sendingtime"]
+BUNDLE = ["updatedat", "createdat", "msghash", "msgphash", "code", "snapshotat", "sendingtime"]
 UPDATEDAT_TAG = 65003
 INSTUUID_TAG = 65016
 UUID_TAG = 65017
@@ -1349,8 +1349,8 @@ def test_message_resolves_through_the_registry_it_carries(seed: FixRegistry) -> 
         *(child.name for child in root),
         "updatedat",
         "createdat",
-        "uuid",
-        "puuid",
+        "msghash",
+        "msgphash",
         "code",
         "snapshotat",
     ]
@@ -1687,7 +1687,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes() -> None:
     first = next(codec.parse_line(wire))
     second = next(codec.parse_line(wire))
     assert first == second
-    assert first.uuid() == second.uuid()
+    assert first.msghash() == second.msghash()
     assert first.digest() == second.digest()
     assert first.updatedat() == CLOCK
     assert first.createdat() == CLOCK
@@ -2163,7 +2163,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     ], "named by the dictionary's folded names, in message order"
     assert columns[-9:] == [
         "prevupdatedat",
-        "prevuuid",
+        "prevmsghash",
         "createdat",
         "code",
         "snapshotat",
@@ -2199,17 +2199,28 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     altids = schema[schema.index_of("altids")]
     assert altids.nullable and altids.fix.counter == 65020
     assert altids.into_arrow().type.equals(pa.map_(pa.string(), pa.string(), keys_sorted=True))
-    # The retired columns are gone rather than renamed.
-    for retired in ("msghash", "timestamp", "instid", "id", "persistentid", "nounmappedfixentries"):
+    # The retired columns are gone rather than renamed. ``msghash`` is a live
+    # column again - on 65017, not the 65000 it once had and this crate still
+    # does not reuse - so the spellings it replaced are the retired ones.
+    for retired in (
+        "uuid",
+        "puuid",
+        "prevuuid",
+        "timestamp",
+        "instid",
+        "id",
+        "persistentid",
+        "nounmappedfixentries",
+    ):
         assert schema.index_of(retired) is None, retired
     for name, display in (
         ("updatedat", "UpdatedAt"),
         ("sendersessionid", "SenderSessionId"),
         ("instuuid", "InstUuid"),
-        ("uuid", "Uuid"),
-        ("puuid", "PUuid"),
+        ("msghash", "MsgHash"),
+        ("msgphash", "MsgPHash"),
         ("prevupdatedat", "PrevUpdatedAt"),
-        ("prevuuid", "PrevUuid"),
+        ("prevmsghash", "PrevMsgHash"),
     ):
         assert schema[schema.index_of(name)].display == display, name
     # The three columns a row derives from what the message said are typed
@@ -2218,9 +2229,9 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema[schema.index_of("miccode")].dtype == DataType("mic")
     assert schema[schema.index_of("state")].dtype == DataType("state")
     assert schema[schema.index_of("prevupdatedat")].dtype == schema[schema.index_of("updatedat")].dtype
-    assert schema[schema.index_of("prevuuid")].dtype == DataType("fixedbinary(16)")
+    assert schema[schema.index_of("prevmsghash")].dtype == DataType("fixedbinary(16)")
     assert schema[schema.index_of("prevupdatedat")].nullable
-    assert schema[schema.index_of("prevuuid")].nullable
+    assert schema[schema.index_of("prevmsghash")].nullable
     # BeginString, the partition and the seven members of the settled bundle
     # are declared non-null; every other column is nullable, because a message
     # that carried nothing there answers null rather than shifting its
@@ -2230,8 +2241,8 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "sendingtime",
         "updatedat",
         "timepartition",
-        "uuid",
-        "puuid",
+        "msghash",
+        "msgphash",
         "createdat",
         "code",
         "snapshotat",
@@ -2252,21 +2263,21 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         assert row[schema.index_of(clock)] == CLOCK_INSTANT, clock
     assert row[schema.index_of("timepartition")] == CLOCK_PARTITION
     assert row[schema.index_of("code")] == ""
-    for identity in ("uuid", "puuid"):
+    for identity in ("msghash", "msgphash"):
         held = row[schema.index_of(identity)]
         assert isinstance(held, bytes) and len(held) == 16, identity
     # The message identity leads with `updatedat`'s signed nanoseconds, sign
     # bit flipped, so the bytes order as the instants do.
     ordered = (CLOCK_NS ^ (1 << 63)) & ((1 << 64) - 1)
-    assert row[schema.index_of("uuid")][:8] == ordered.to_bytes(8, "big")
-    # The projected row's uuid is recomputed over what the row holds; the
-    # retained code keeps the chain's puuid.
-    assert row[schema.index_of("puuid")] == message.puuid().as_py()
+    assert row[schema.index_of("msghash")][:8] == ordered.to_bytes(8, "big")
+    # The projected row's msghash is recomputed over what the row holds; the
+    # retained code keeps the chain's msgphash.
+    assert row[schema.index_of("msgphash")] == message.msgphash().as_py()
     assert row[schema.index_of("sendersessionid")] is None
     # A derived column a message gives nothing for is null, never a shift.
     assert row[schema.index_of("state")] is None
     assert row[schema.index_of("prevupdatedat")] is None
-    assert row[schema.index_of("prevuuid")] is None
+    assert row[schema.index_of("prevmsghash")] is None
 
     # The arrival record closes the row with everything that arrived, in
     # arrival order: a key no dictionary explains records tag 0 and its raw
@@ -2375,12 +2386,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "miccode",
         "state",
         "instuuid",
-        "uuid",
-        "puuid",
+        "msghash",
+        "msgphash",
         "targetsessionid",
         "altids",
         "prevupdatedat",
-        "prevuuid",
+        "prevmsghash",
         "createdat",
         "code",
         "snapshotat",
@@ -2404,12 +2415,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "MICCode",
         "State",
         "InstUuid",
-        "Uuid",
-        "PUuid",
+        "MsgHash",
+        "MsgPHash",
         "TargetSessionId",
         "AltIds",
         "PrevUpdatedAt",
-        "PrevUuid",
+        "PrevMsgHash",
         "CreatedAt",
         "Code",
         "SnapshotAt",
@@ -2425,8 +2436,8 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # one is nullable, and every one says what it holds.
     assert [name for name, field in fields.items() if not field.nullable] == [
         "updatedat",
-        "uuid",
-        "puuid",
+        "msghash",
+        "msgphash",
         "createdat",
         "code",
         "snapshotat",
@@ -2477,7 +2488,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # The instrument, the message, the chain and the previous message are
     # sixteen plain bytes - what every lake engine reads as `fixed[16]` -
     # and no alias reaches them.
-    for name in ("instuuid", "uuid", "puuid", "prevuuid"):
+    for name in ("instuuid", "msghash", "msgphash", "prevmsghash"):
         assert fields[name].dtype == DataType("fixedbinary(16)"), name
         assert fields[name].fix.aliases == [], name
 
@@ -2507,8 +2518,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         seeded = registry.field_by_tag(tag)
         assert (seeded.name, seeded.display) == (name, display)
         assert seeded.dtype == DataType('datetime64(ns,"UTC")')
-    # The retired names reach nothing, and 65000 is no field's tag.
-    for retired in ("instid", "id", "persistentid", "timestamp", "msghash"):
+    # The retired names reach nothing, and 65000 is no field's tag - the one
+    # the original ``msghash`` had, which this crate does not reuse even now
+    # that the spelling is back on 65017.
+    for retired in ("instid", "id", "persistentid", "timestamp", "uuid", "puuid"):
         assert registry.get_field_by_name(retired) is None, retired
     assert registry.get_field_by_tag(65000) is None
 
@@ -2602,10 +2615,10 @@ def test_every_built_message_carries_its_version_and_its_settled_bundle(
 def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
     seed: FixRegistry,
 ) -> None:
-    """``updatedat``, ``createdat``, ``uuid`` and ``puuid`` always answer.
+    """``updatedat``, ``createdat``, ``msghash`` and ``msgphash`` always answer.
 
-    Pinned by ``rust/tests/fix/content_identity.rs``: code-only ``puuid``,
-    content ``uuid`` excluding the creation instant, and atomic refusals of a
+    Pinned by ``rust/tests/fix/content_identity.rs``: code-only ``msgphash``,
+    content ``msghash`` excluding the creation instant, and atomic refusals of a
     mandatory null, a mandatory removal and a stated identity that disagrees.
     """
     reader = _fixed(seed)
@@ -2613,8 +2626,8 @@ def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
     for reader_name, tag in (
         ("updatedat", UPDATEDAT_TAG),
         ("createdat", CREATEDAT_TAG),
-        ("uuid", UUID_TAG),
-        ("puuid", PUUID_TAG),
+        ("msghash", UUID_TAG),
+        ("msgphash", PUUID_TAG),
     ):
         answered = getattr(message, reader_name)()
         assert isinstance(answered, Scalar)
@@ -2623,28 +2636,28 @@ def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
         assert answered == message.by_name(reader_name), reader_name
     assert message.updatedat().dtype == DataType('datetime64(ns,"UTC")')
     assert message.createdat().dtype == DataType('datetime64(ns,"UTC")')
-    for identity in (message.uuid(), message.puuid()):
+    for identity in (message.msghash(), message.msgphash()):
         assert identity.dtype == DataType("fixedbinary(16)")
         held = identity.as_py()
         assert isinstance(held, bytes) and len(held) == 16
     # The unknown code is the empty name, and every message naming no chain
     # hashes that same empty name.
-    assert message.puuid() == next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|")).puuid()
+    assert message.msgphash() == next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|")).msgphash()
 
     # The creation instant is not content; the settled update instant and
-    # the named content are, and `puuid` hashes the code alone.
+    # the named content are, and `msgphash` hashes the code alone.
     changed = copy.copy(message)
     changed.set("createdat", Scalar.datetime(CLOCK_NS - 10, "ns", "UTC"))
-    assert changed.uuid() == message.uuid()
+    assert changed.msghash() == message.msghash()
     assert changed != message
     changed.set("updatedat", Scalar.datetime(CLOCK_NS + 1, "ns", "UTC"))
-    assert changed.uuid() != message.uuid()
-    before = changed.uuid()
+    assert changed.msghash() != message.msghash()
+    before = changed.msghash()
     changed.set(55, "BETA")
-    assert changed.uuid() != before
-    assert changed.puuid() == message.puuid()
+    assert changed.msghash() != before
+    assert changed.msgphash() == message.msgphash()
     changed.set("code", "chain")
-    assert changed.puuid() != message.puuid()
+    assert changed.msgphash() != message.msgphash()
     # Writing SendingTime does not reread or reset the settled clocks.
     settled = changed.updatedat()
     changed.set(52, Scalar.datetime(CLOCK_NS + 2, "ns", "UTC"))
@@ -2660,7 +2673,7 @@ def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
         with pytest.raises(ValueError, match=name):
             untouched.remove(name)
         assert untouched == message, name
-    for name in ("uuid", "puuid"):
+    for name in ("msghash", "msgphash"):
         untouched = copy.copy(message)
         with pytest.raises(ValueError, match=name):
             untouched.set(name, "00000000-0000-0000-0000-000000000000")
@@ -2668,7 +2681,7 @@ def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
     # An ordinary child still leaves, and the content identity moves with it.
     removed = copy.copy(message)
     assert removed.remove(55) == Scalar("ALPHA")
-    assert removed.uuid() != message.uuid()
+    assert removed.msghash() != message.msghash()
     assert removed.remove("absent") is None
 
     # Enrichment carries the settled clocks and is idempotent
@@ -2861,7 +2874,7 @@ def _previous(message: FixMsg, expected: FixMsg | None) -> None:
         assert message.by_tag(PREVUUID_TAG).is_null()
         return
     assert message.by_tag(PREVUPDATEDAT_TAG) == expected.updatedat()
-    assert message.by_tag(PREVUUID_TAG) == expected.uuid()
+    assert message.by_tag(PREVUUID_TAG) == expected.msghash()
 
 
 def _event(registry: FixRegistry, nanos: int, code: str) -> FixMsg:
@@ -2907,7 +2920,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     assert chains[0] is not None
     assert all(held == chains[0] for held in chains)
     # The chain is named by its instrument scope and its first identifier,
-    # and `puuid` hashes that name.
+    # and `msgphash` hashes that name.
     assert stamped[0].by_tag(CODE_TAG).as_py() == f"{instruments[0].hex()}/A1"
     assert all(held.by_tag(CODE_TAG) == stamped[0].by_tag(CODE_TAG) for held in stamped)
     # The first creation instant survives the replacement and the terminal
@@ -2917,12 +2930,12 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     assert stamped[0].by_tag(60).as_py() == dt.datetime(2026, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
     # Every message has its own identity, and identities sort by the grid
     # instant `updatedat` is floored to; `snapshotat` keeps the real one.
-    ids = [held.uuid() for held in stamped]
+    ids = [held.msghash() for held in stamped]
     assert all(_identity_bytes(held, UUID_TAG) is not None for held in stamped)
     for earlier, later in zip(stamped, stamped[1:]):
-        assert earlier.uuid() != later.uuid()
+        assert earlier.msghash() != later.msghash()
         if earlier.updatedat() < later.updatedat():
-            assert earlier.uuid() < later.uuid()
+            assert earlier.msghash() < later.msghash()
     assert stamped[1].updatedat().as_py() == dt.datetime(2026, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
     assert stamped[1].by_tag(SNAPSHOTAT_TAG).as_py() == dt.datetime(
         2026, 1, 2, 10, 15, 30, 250000, tzinfo=dt.timezone.utc
@@ -2943,7 +2956,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     # incarnation: its own creation instant, and no previous message.
     tomorrow = LIFE[0].replace(b"20260102", b"20260103")
     again = life.fill(next(reader.parse_line(tomorrow)))
-    assert again.puuid() == stamped[0].puuid()
+    assert again.msgphash() == stamped[0].msgphash()
     assert again.createdat() == again.by_tag(60)
     assert again.createdat() != stamped[0].createdat()
     assert again.by_tag(PREVUUID_TAG).is_null()
@@ -2955,8 +2968,8 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     # The same line at the same instant is the same chain identity, which is
     # what makes two reads of one capture agree.
     replayed = life.fill(next(reader.parse_line(LIFE[0])))
-    assert replayed.puuid() == stamped[0].puuid()
-    assert replayed.uuid() == ids[0]
+    assert replayed.msgphash() == stamped[0].msgphash()
+    assert replayed.msghash() == ids[0]
     assert replayed.createdat() == stamped[0].createdat()
 
     # The state moves, so nothing about it hashes.
@@ -2979,7 +2992,7 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
     assert _identity_bytes(held, UUID_TAG) is not None
     assert held.by_tag(CODE_TAG).as_py() == ""
     undated = next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|"))
-    assert held.puuid() == undated.puuid()
+    assert held.msgphash() == undated.msgphash()
     assert _identity_bytes(held, INSTUUID_TAG) is None
     _previous(held, None)
     # The event clock is the sending time where no transaction time is
@@ -3049,15 +3062,15 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
     schema = Field.from_arrow_schema(read.schema, "fix")
     parsed = codec.arrow_reader(schema, codec.lifecycle(codec.messages(read))).read_all()
     assert parsed.schema.names == read.schema.names, "the same schema in and out"
-    chains = parsed.column("puuid").to_pylist()
+    chains = parsed.column("msgphash").to_pylist()
     assert len(chains) == len(LIFE)
     assert chains[0] is not None and all(held == chains[0] for held in chains)
     codes = parsed.column("code").to_pylist()
     assert codes[0] != "" and all(held == codes[0] for held in codes)
     created = parsed.column("createdat").to_pylist()
     assert all(held == created[0] for held in created)
-    assert len(set(parsed.column("uuid").to_pylist())) == len(LIFE)
-    previous = parsed.column("prevuuid").to_pylist()
+    assert len(set(parsed.column("msghash").to_pylist())) == len(LIFE)
+    previous = parsed.column("prevmsghash").to_pylist()
     assert previous[0] is None and all(held is not None for held in previous[1:])
     # A state column holds the ranked spelling, never the wire's code, as the
     # text its datatype stores.
@@ -3066,14 +3079,14 @@ def test_a_batch_read_runs_one_lifecycle_over_the_whole_capture(seed: FixRegistr
     # the one empty name, and none carries a previous message.
     bare = codec.parse_text_arrow_reader(source).read_all()
     assert bare.column("code").to_pylist() == [""] * len(LIFE)
-    assert len(set(bare.column("puuid").to_pylist())) == 1
-    assert bare.column("puuid").to_pylist()[0] != chains[0]
-    assert bare.column("prevuuid").to_pylist() == [None] * len(LIFE)
+    assert len(set(bare.column("msgphash").to_pylist())) == 1
+    assert bare.column("msgphash").to_pylist()[0] != chains[0]
+    assert bare.column("prevmsghash").to_pylist() == [None] * len(LIFE)
     # Enrichment is another call over the same stream, and the two compose.
     both = codec.arrow_reader(
         schema, codec.lifecycle(codec.enrich_messages(codec.messages(codec.parse_text_arrow_reader(source))))
     ).read_all()
-    assert both.column("puuid").to_pylist() == chains
+    assert both.column("msgphash").to_pylist() == chains
     assert both.column("state").to_pylist()[1] == "20NEW"
 
 
@@ -3102,9 +3115,9 @@ def test_a_stream_of_lines_through_enrichment_and_the_lifecycle_carries_its_chai
     assert first.by_tag(CODE_TAG).as_py() == "stream"
     last = next(pipeline)
     assert pulled == 2
-    assert last.by_tag(PREVUUID_TAG) == first.uuid()
+    assert last.by_tag(PREVUUID_TAG) == first.msghash()
     assert last.createdat() == first.createdat()
-    assert last.puuid() == first.puuid()
+    assert last.msgphash() == first.msgphash()
     assert next(pipeline, None) is None
     assert next(pipeline, None) is None
 
@@ -3214,8 +3227,8 @@ def test_a_live_chain_keeps_its_first_arrivals_creation_instant() -> None:
         assert filled.updatedat() == _ns(time // 10 * 10)
         assert filled.by_tag(SNAPSHOTAT_TAG) == _ns(time)
         # The creation instant is no part of either identity.
-        assert filled.uuid() == comparison.uuid()
-        assert filled.puuid() == comparison.puuid()
+        assert filled.msghash() == comparison.msghash()
+        assert filled.msgphash() == comparison.msgphash()
         _previous(filled, last)
         last = filled
 

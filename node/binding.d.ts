@@ -1066,7 +1066,7 @@ export interface FieldsNamespace {
     options?: FieldOptions,
   ): DenseUnionField
   variant(name: string, options?: FieldOptions): VariantField
-  uuid(name: string, options?: FieldOptions): UuidField
+  msghash(name: string, options?: FieldOptions): UuidField
   version(name: string, options?: FieldOptions): VersionField
   url(name: string, options?: FieldOptions): UrlField
   timezone(name: string, options?: FieldOptions): TimezoneField
@@ -1574,7 +1574,7 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'variant', unknown, N, O>
-  uuid<const N extends string, const O extends FieldOptionsInput = undefined>(
+  msghash<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
   ): NamedField<'uuid', string, N, O>
@@ -3139,7 +3139,7 @@ export interface FixMsgConstructor {
   /**
    * Build a message, linking the process default when none is named. A
    * mandatory replay field the root lacks is appended - `SendingTime` reads
-   * UTC now when the value states none - and `uuid`/`puuid` are computed.
+   * UTC now when the value states none - and `msghash`/`msgphash` are computed.
    */
   new (
     field: Field,
@@ -3195,7 +3195,7 @@ export interface Fix {
    * `fill` names each message's chain by `code` (else by identifier),
    * truncates `updatedat` to the `intervalNs` epoch grid while `snapshotat`
    * keeps the real instant, carries the chain's first `createdat` and the
-   * previous message's `prevupdatedat`/`prevuuid`, and finalizes `uuid`;
+   * previous message's `prevupdatedat`/`prevmsghash`, and finalizes `msghash`;
    * `snapshot` and `snapshots` answer only new grid snapshots; `alive`
    * counts the chains a terminal state has not closed, and `clear` forgets
    * them all.
@@ -3240,9 +3240,9 @@ export interface Fix {
    * at 65020 (65000 is retired) - the version, the ticker, `updatedat` and
    * its partition, the sessions a message states, the bridge's message
    * context, the plugins and plugin sessions a line moved between, the
-   * ISIN, MIC and order state a row derives, the `instuuid`, `uuid` and
-   * `puuid` identities, the direct identifiers enrichment records in
-   * `altids`, `prevupdatedat`/`prevuuid`, `createdat`, `code`, `snapshotat`,
+   * ISIN, MIC and order state a row derives, the `instuuid`, `msghash` and
+   * `msgphash` identities, the direct identifiers enrichment records in
+   * `altids`, `prevupdatedat`/`prevmsghash`, `createdat`, `code`, `snapshotat`,
    * the `sourceurl` a line was read from and the `nofixentries` counting its
    * arrival record. Every registry holds them in their category from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`

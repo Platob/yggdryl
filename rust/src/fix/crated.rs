@@ -113,10 +113,10 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
 /// The tag and name carrying the message's time/content identity bytes.
-pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
+pub const MSGHASH_TAG_NAME: (i32, &str) = (65_017, "msghash");
 
 /// The tag and name carrying the event chain's identity bytes.
-pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
+pub const MSGPHASH_TAG_NAME: (i32, &str) = (65_018, "msgphash");
 
 /// The tag and name carrying the session a message went to, as the message
 /// states it.
@@ -131,7 +131,7 @@ pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");
 
 /// The tag and name carrying the preceding message's identity bytes in its
 /// event chain.
-pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
+pub const PREVMSGHASH_TAG_NAME: (i32, &str) = (65_022, "prevmsghash");
 
 /// The tag and name carrying the message's creation instant.
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
@@ -495,16 +495,16 @@ fn build() -> Result<Vec<Field>> {
              its currency.",
         )?,
         crated(
-            UUID_TAG_NAME,
-            "Uuid",
+            MSGHASH_TAG_NAME,
+            "MsgHash",
             super::identity::IDENTITY_DATATYPE,
             "The message's sixteen bytes: signed updatedat nanoseconds with \
              the sign bit flipped, then all 64 bits of the canonical named \
              message content's XXH64.",
         )?,
         crated(
-            PUUID_TAG_NAME,
-            "PUuid",
+            MSGPHASH_TAG_NAME,
+            "MsgPHash",
             super::identity::IDENTITY_DATATYPE,
             "The event chain's sixteen bytes: the big-endian XXH3-128 of code \
              alone.",
@@ -525,8 +525,8 @@ fn build() -> Result<Vec<Field>> {
             "The preceding message's updatedat in the selected event chain.",
         )?,
         crated(
-            PREVUUID_TAG_NAME,
-            "PrevUuid",
+            PREVMSGHASH_TAG_NAME,
+            "PrevMsgHash",
             super::identity::IDENTITY_DATATYPE,
             "The preceding message's sixteen identity bytes in the selected \
              event chain.",

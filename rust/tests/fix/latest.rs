@@ -102,8 +102,8 @@ fn with_bundle<'a>(before: &[&'a str], after: &[&'a str]) -> Vec<&'a str> {
             "sendingtime",
             "updatedat",
             "createdat",
-            "uuid",
-            "puuid",
+            "msghash",
+            "msgphash",
             "code",
             "snapshotat",
         ])

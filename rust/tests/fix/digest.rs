@@ -234,12 +234,12 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "miccode",
             "state",
             "instuuid",
-            "uuid",
-            "puuid",
+            "msghash",
+            "msgphash",
             "targetsessionid",
             "altids",
             "prevupdatedat",
-            "prevuuid",
+            "prevmsghash",
             "createdat",
             "code",
             "snapshotat",
@@ -267,12 +267,12 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("MICCode"),
             Some("State"),
             Some("InstUuid"),
-            Some("Uuid"),
-            Some("PUuid"),
+            Some("MsgHash"),
+            Some("MsgPHash"),
             Some("TargetSessionId"),
             Some("AltIds"),
             Some("PrevUpdatedAt"),
-            Some("PrevUuid"),
+            Some("PrevMsgHash"),
             Some("CreatedAt"),
             Some("Code"),
             Some("SnapshotAt"),
@@ -372,14 +372,21 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(
         [
             yggdryl::INSTUUID_TAG_NAME,
-            yggdryl::UUID_TAG_NAME,
-            yggdryl::PUUID_TAG_NAME,
+            yggdryl::MSGHASH_TAG_NAME,
+            yggdryl::MSGPHASH_TAG_NAME,
         ],
-        [(65_016, "instuuid"), (65_017, "uuid"), (65_018, "puuid")]
+        [
+            (65_016, "instuuid"),
+            (65_017, "msghash"),
+            (65_018, "msgphash")
+        ]
     );
     assert_eq!(
-        [yggdryl::PREVUPDATEDAT_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
-        [(65_021, "prevupdatedat"), (65_022, "prevuuid")]
+        [
+            yggdryl::PREVUPDATEDAT_TAG_NAME,
+            yggdryl::PREVMSGHASH_TAG_NAME
+        ],
+        [(65_021, "prevupdatedat"), (65_022, "prevmsghash")]
     );
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     let sessions = &held[10..12];
@@ -406,7 +413,18 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);
-    for retired in ["instid", "id", "persistentid", "timestamp", "msghash"] {
+    // `msghash` is a live name again - on 65017, not on the 65000 decision 26
+    // retired and this crate still does not reuse - and the spellings it
+    // replaced are the retired ones now.
+    for retired in [
+        "instid",
+        "id",
+        "persistentid",
+        "timestamp",
+        "uuid",
+        "puuid",
+        "prevuuid",
+    ] {
         assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
     }
     for field in held {
@@ -454,7 +472,8 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
 
     let at =
         yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("a sourceurl column");
-    let uuid_at = yggdryl::fix_column_of(&schema, yggdryl::UUID_TAG_NAME.0).expect("a uuid column");
+    let msghash_at =
+        yggdryl::fix_column_of(&schema, yggdryl::MSGHASH_TAG_NAME.0).expect("a msghash column");
     let mut identities = Vec::new();
     for url in [
         "file:///capture/2026-08-14/part-0.txt.gz",
@@ -468,7 +487,7 @@ fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
         let row = message.into_row(&schema).unwrap();
         let held = row.as_sequence().expect("a row");
         assert_eq!(held[at], stated, "the column still states it");
-        identities.push(held[uuid_at].clone());
+        identities.push(held[msghash_at].clone());
     }
     assert_eq!(
         identities[0], identities[1],

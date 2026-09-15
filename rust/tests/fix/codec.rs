@@ -1500,8 +1500,8 @@ fn the_header_orders_first_and_the_trailer_last_whatever_the_input_order() {
             "checksum",
             "updatedat",
             "createdat",
-            "uuid",
-            "puuid",
+            "msghash",
+            "msgphash",
             "code",
             "snapshotat",
             "sendingtime"
@@ -1794,8 +1794,8 @@ fn a_group_addressed_by_its_tag_and_one_addressed_by_its_name_reach_one_column()
                 "version",
                 "updatedat",
                 "createdat",
-                "uuid",
-                "puuid",
+                "msghash",
+                "msgphash",
                 "code",
                 "snapshotat",
                 "sendingtime"
@@ -1870,8 +1870,8 @@ fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
             "version",
             "updatedat",
             "createdat",
-            "uuid",
-            "puuid",
+            "msghash",
+            "msgphash",
             "code",
             "snapshotat",
             "sendingtime"

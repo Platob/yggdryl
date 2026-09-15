@@ -10,7 +10,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
 | Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 26 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 107 tags from `fix_schema_tags`, 111 columns with the shipped registry, each List group adding its column beside its counter |
 | Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
-| Non-null | `beginstring`, `sendingtime`, `updatedat`, `timepartition`, `uuid`, `puuid`, `createdat`, `code`, `snapshotat`; `version` is populated at construction but its column remains nullable |
+| Non-null | `beginstring`, `sendingtime`, `updatedat`, `timepartition`, `msghash`, `msgphash`, `createdat`, `code`, `snapshotat`; `version` is populated at construction but its column remains nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
 | Lossless | `fixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a bulk configuration yields one per configuration a response named, and none for a response that named none - an error-only answer, a request-only document, an empty bulk or wildcard answer |
@@ -375,22 +375,22 @@ Twenty-six scalar fields and one Map group carry capture facts that no dictionar
 | `miccode` | `MICCode` | 65014 | the market the message names, as a `mic`: `SecurityExchange(207)`, else `ExDestination(100)`, else `LastMkt(30)` |
 | `state` | `State` | 65015 | the order's state, as a `state`: `OrdStatus(39)`, else `ExecType(150)` |
 | `instuuid` | `InstUuid` | 65016 | the instrument's sixteen bytes, `fixedbinary(16)`: the big-endian xxh128 digest of its market, classification, ISIN - else symbol - and currency, the same across venues that spell it alike; stamped by the lifecycle |
-| `uuid` | `Uuid` | 65017 | the message's identity, `fixedbinary(16)`: signed `updatedat` nanoseconds with the sign bit flipped in bytes 0..8, then all 64 bits of the XXH64 of its named content in bytes 8..16; non-null |
-| `puuid` | `PUuid` | 65018 | the chain's identity, `fixedbinary(16)`: the big-endian XXH3-128 of `code` alone; non-null |
+| `msghash` | `MsgHash` | 65017 | the message's identity, `fixedbinary(16)`: signed `updatedat` nanoseconds with the sign bit flipped in bytes 0..8, then all 64 bits of the XXH64 of its named content in bytes 8..16; non-null |
+| `msgphash` | `MsgPHash` | 65018 | the chain's identity, `fixedbinary(16)`: the big-endian XXH3-128 of `code` alone; non-null |
 | `targetsessionid` | `TargetSessionId` | 65019 | the session the message went to, as the message itself states it |
 | `altids` | `AltIds` | 65020 | a nullable sorted Map of this message's direct declared identifiers, keyed by canonical member name; group members are not flattened |
 | `prevupdatedat` | `PrevUpdatedAt` | 65021 | the previous message's `updatedat` in the selected chain; nullable |
-| `prevuuid` | `PrevUuid` | 65022 | the previous message's `uuid` in the selected chain, `fixedbinary(16)`; nullable |
+| `prevmsghash` | `PrevMsgHash` | 65022 | the previous message's `msghash` in the selected chain, `fixedbinary(16)`; nullable |
 | `createdat` | `CreatedAt` | 65023 | the creation instant: `snapshotat` at intake, the first accepted message's in a live chain; non-null |
 | `code` | `Code` | 65024 | the exact chain name, empty when unknown; non-null |
 | `snapshotat` | `SnapshotAt` | 65025 | the real event instant: a stated one, else `TransactTime(60)`, else `SendingTime(52)`; non-null |
-| `sourceurl` | `SourceUrl` | 65026 | the object the line was read from, typed as a `url`: filled from the text read's own `sourceurl` column, and left out of the content `uuid` hashes, because the same message read from a second copy of one day's log is the same message |
+| `sourceurl` | `SourceUrl` | 65026 | the object the line was read from, typed as a `url`: filled from the text read's own `sourceurl` column, and left out of the content `msghash` hashes, because the same message read from a second copy of one day's log is the same message |
 
 The four identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - are `fixedbinary(16)`, sixteen plain big-endian bytes with no version or variant bit and no Arrow extension over them, because every lake engine reads `fixed[16]` and none reads `uuid` the same way twice. Their names, tags, roles, nullability and every identity semantic are what they always were; only the type and the byte layout are stated outright.
 
-`uuid` is the one stored message identity and `puuid` the chain's; what each hashes, and why a projection that adds or renames columns may move `uuid` while unchanged named content keeps it, is the [message's identity](message.md#clocks-and-identity). `FixMsg::digest` is a separate contract: the XXH3-128 of the arrival record with the standard header, the standard trailer and the crate's own tags left out, `MsgType` excepted, so two identical orders sent a second apart, or relayed through two sessions, digest equal.
+`msghash` is the one stored message identity and `msgphash` the chain's; what each hashes, and why a projection that adds or renames columns may move `msghash` while unchanged named content keeps it, is the [message's identity](message.md#clocks-and-identity). `FixMsg::digest` is a separate contract: the XXH3-128 of the arrival record with the standard header, the standard trailer and the crate's own tags left out, `MsgType` excepted, so two identical orders sent a second apart, or relayed through two sessions, digest equal.
 
-Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. `isincode`, `miccode` and `state` are derived when a message becomes a row; `code`, `instuuid`, `prevupdatedat`, `prevuuid` and the grid `updatedat` are stamped by the [lifecycle](lifecycle.md). `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
+Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. `isincode`, `miccode` and `state` are derived when a message becomes a row; `code`, `instuuid`, `prevupdatedat`, `prevmsghash` and the grid `updatedat` are stamped by the [lifecycle](lifecycle.md). `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
 
 `timepartition` declares more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for: `field:partition` marks it as the column a layout is cut on and an Iceberg spec partitions by identity, `partition:sources` says it reads `updatedat`, and `transform:expression` says how - `truncate(updatedat, 'hour')`, the expression layer's own floor to the hour, which is what `time_partition()` answers for a row and what `Field::apply_arrow_batch` fills into a batch that lacks the column.
 
@@ -402,7 +402,7 @@ These columns are filled when a message is built, whatever its line carried, and
 
 `version` states that same answer outright, on every message the codec generates, because `BeginString` is what the message says about *itself* and a session that mislabels itself - or that carries a row written to a later FIX than it speaks - makes the two differ. `FixMsg::version()` answers the crate's column where a read stamped one and `BeginString` otherwise, so it always answers for a built message.
 
-Seven values close every message and are never null: `SendingTime(52)`, `snapshotat`, `updatedat`, `createdat`, `code`, `uuid` and `puuid`. Initial intake settles them once. `SendingTime` is the message's own, else a carrier row's, else the codec's `default_sending_time`, else one UTC-now read for that undated message; `snapshotat` is a stated one, else `TransactTime(60)`, else that `SendingTime`; `updatedat` and `createdat` default to `snapshotat`, and `code` to empty. A stated clock that is not an instant is a located refusal, never an absent clock a default overwrites. No wall clock is read after intake - enrichment, writes, row exchange and replay carry the settled values - so a read that must be reproducible pins `default_sending_time` or carries the settled rows. `updatedat()`, `createdat()`, `uuid()` and `puuid()` borrow theirs without a lookup, and `time_partition` floors `updatedat` to the partition width from its nanoseconds, so a clock stated to the millisecond has a partition.
+Seven values close every message and are never null: `SendingTime(52)`, `snapshotat`, `updatedat`, `createdat`, `code`, `msghash` and `msgphash`. Initial intake settles them once. `SendingTime` is the message's own, else a carrier row's, else the codec's `default_sending_time`, else one UTC-now read for that undated message; `snapshotat` is a stated one, else `TransactTime(60)`, else that `SendingTime`; `updatedat` and `createdat` default to `snapshotat`, and `code` to empty. A stated clock that is not an instant is a located refusal, never an absent clock a default overwrites. No wall clock is read after intake - enrichment, writes, row exchange and replay carry the settled values - so a read that must be reproducible pins `default_sending_time` or carries the settled rows. `updatedat()`, `createdat()`, `msghash()` and `msgphash()` borrow theirs without a lookup, and `time_partition` floors `updatedat` to the partition width from its nanoseconds, so a clock stated to the millisecond has a partition.
 
 The root's children are the standard header in its declared order, the body as it arrived, the standard trailer, then whichever of the seven the message did not state. The fixed schema declares those seven, `beginstring` and `timepartition` non-null, and every other column nullable. The crate's own definitions come first in the example, then two messages the codec dates.
 
@@ -424,7 +424,7 @@ The root's children are the standard header in its declared order, the body as i
 
     // The four identity columns are sixteen plain bytes, not a UUID.
     let identity = yggdryl::DataType::fixed_size_binary(16)?;
-    for name in ["instuuid", "uuid", "puuid", "prevuuid"] {
+    for name in ["instuuid", "msghash", "msgphash", "prevmsghash"] {
         let column = fields.iter().find(|field| field.name() == name).expect("a crate column");
         assert_eq!(column.dtype(), &identity);
         assert_eq!(column.dtype().to_string(), "fixed_size_binary(16)");
@@ -484,7 +484,7 @@ The root's children are the standard header in its declared order, the body as i
     # The four identity columns are sixteen plain bytes, not a UUID.
     identity = DataType("fixedbinary(16)")
     by_name = {field.name: field for field in fields}
-    for name in ("instuuid", "uuid", "puuid", "prevuuid"):
+    for name in ("instuuid", "msghash", "msgphash", "prevmsghash"):
         assert by_name[name].dtype == identity
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
@@ -1394,7 +1394,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 - A column whose field carries neither a `fix:tag` nor a `fix:counter`, and whose name spells no tag, is the capture's own, so `into_row` answers null there; whoever read the capture fills it.
 - `SendingTime(52)` and `TransactTime(60)` are typed by the registry's own declarations - `FixRegistry::new` seeds both where a dictionary defines neither - and a declaration that is not a nanosecond UTC instant is refused at intake; a stated clock that does not read as an instant is a located error item, never a default.
 - `timepartition` is floored from `updatedat`'s nanoseconds, so a clock stated to the microsecond has a partition rather than a null for not being a whole second.
-- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `updatedat` is an instant, `uuid` sixteen fixed bytes, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
+- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `updatedat` is an instant, `msghash` sixteen fixed bytes, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
 - A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column and never overrides the message's `TransactTime`, then `SendingTime`, reading.
 - `altids` is filled by enrichment, never derived by `into_row` alone. A known message with no stated identifiers gets an empty map; an unknown message remains null in the fixed row. Invalid UTF-8 in a selected binary identifier raises the core's located conversion error.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.

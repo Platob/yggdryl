@@ -7,7 +7,7 @@ use super::lifecycle_chains::{clock, row, try_row};
 use super::{identity_scalar, numbered_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
+    PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
     UPDATEDAT_TAG_NAME, arrow, fix_schema,
 };
 
@@ -53,8 +53,8 @@ fn assert_pair(message: &FixMsg, expected: Option<&FixMsg>) {
         expected.map_or(&Scalar::Null, FixMsg::updatedat)
     );
     assert_eq!(
-        message.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
-        expected.map_or(&Scalar::Null, FixMsg::uuid)
+        message.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(),
+        expected.map_or(&Scalar::Null, FixMsg::msghash)
     );
 }
 
@@ -78,7 +78,7 @@ fn three_messages_follow_arrival_order_without_sorting_their_clocks() {
         assert_pair(&message, previous.as_ref());
         assert_eq!(message.updatedat(), &clock(time));
         if let Some(previous) = previous.as_ref() {
-            assert_eq!(message.puuid(), previous.puuid());
+            assert_eq!(message.msgphash(), previous.msgphash());
         }
         previous = Some(message);
     }
@@ -88,7 +88,7 @@ fn three_messages_follow_arrival_order_without_sorting_their_clocks() {
 #[test]
 fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
     let registry = Arc::new(FixRegistry::new());
-    for (stated_time, stated_uuid) in [
+    for (stated_time, stated_msghash) in [
         (None, None),
         (Some(900), None),
         (None, Some(901)),
@@ -99,13 +99,16 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
         first
             .set_many([
                 (PREVUPDATEDAT_TAG_NAME.0, clock(800)),
-                (PREVUUID_TAG_NAME.0, identity_scalar(numbered_identity(801))),
+                (
+                    PREVMSGHASH_TAG_NAME.0,
+                    identity_scalar(numbered_identity(801)),
+                ),
             ])
             .unwrap();
         let first = life.fill(first).unwrap();
         assert_eq!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(), &clock(800));
         assert_eq!(
-            first.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
+            first.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(),
             &identity_scalar(numbered_identity(801))
         );
         let mut second = event(&registry, 20, Some("A"), None, &[]);
@@ -116,22 +119,26 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
                     stated_time.map_or(Scalar::Null, clock),
                 ),
                 (
-                    PREVUUID_TAG_NAME.0,
-                    stated_uuid.map_or(Scalar::Null, |id| identity_scalar(numbered_identity(id))),
+                    PREVMSGHASH_TAG_NAME.0,
+                    stated_msghash
+                        .map_or(Scalar::Null, |id| identity_scalar(numbered_identity(id))),
                 ),
             ])
             .unwrap();
         let second = life.fill(second).unwrap();
         let expected_clock = stated_time.map_or_else(|| first.updatedat().clone(), clock);
-        let expected_uuid = stated_uuid.map_or_else(
-            || first.uuid().clone(),
+        let expected_msghash = stated_msghash.map_or_else(
+            || first.msghash().clone(),
             |id| identity_scalar(numbered_identity(id)),
         );
         assert_eq!(
             second.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             &expected_clock
         );
-        assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &expected_uuid);
+        assert_eq!(
+            second.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(),
+            &expected_msghash
+        );
         let third = life
             .fill(event(&registry, 30, Some("A"), None, &[]))
             .unwrap();
@@ -155,7 +162,7 @@ fn absent_nil_and_distinct_scopes_keep_separate_previous_pairs() {
         let next = life
             .fill(event(&registry, time + 100, None, scope, &[("id", "SAME")]))
             .unwrap();
-        assert_eq!(next.puuid(), first.puuid());
+        assert_eq!(next.msgphash(), first.msgphash());
         assert_pair(&next, Some(&first));
     }
     assert_eq!(life.alive(), 4);
@@ -184,12 +191,12 @@ fn direct_code_and_scoped_identifier_join_read_only_the_selected_chains_history(
     let other = life
         .fill(event(&registry, 40, None, Some(2), &[("id", "B")]))
         .unwrap();
-    assert_eq!(other.puuid(), b.puuid());
+    assert_eq!(other.msgphash(), b.msgphash());
     assert_pair(&other, Some(&b));
     let attached = life
         .fill(event(&registry, 50, None, Some(2), &[("id", "ATTACHED")]))
         .unwrap();
-    assert_eq!(attached.puuid(), a.puuid());
+    assert_eq!(attached.msgphash(), a.msgphash());
     assert_pair(&attached, Some(&direct));
     assert_eq!(life.alive(), 2);
 }
@@ -273,7 +280,7 @@ fn terminal_clear_and_reopening_forget_every_scopes_previous_pair() {
     let mut terminal = event(&registry, 30, None, Some(2), &[("id", "B")]);
     terminal.set(39, Scalar::from("2")).unwrap();
     let terminal = life.fill(terminal).unwrap();
-    assert_eq!(terminal.puuid(), first.puuid());
+    assert_eq!(terminal.msgphash(), first.msgphash());
     assert_pair(&terminal, Some(&attached));
     assert_eq!(life.alive(), 0);
     let reopened = life
@@ -336,12 +343,12 @@ fn malformed_stated_previous_values_neither_advance_attach_nor_close() {
             Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
         (
-            PREVUUID_TAG_NAME,
+            PREVMSGHASH_TAG_NAME,
             Scalar::from("00000000-0000-0000-0000-000000000001"),
         ),
-        (PREVUUID_TAG_NAME, Scalar::from(vec![0_u8; 16])),
-        (PREVUUID_TAG_NAME, Scalar::from(1_i64)),
-        (PREVUUID_TAG_NAME, clock(0)),
+        (PREVMSGHASH_TAG_NAME, Scalar::from(vec![0_u8; 16])),
+        (PREVMSGHASH_TAG_NAME, Scalar::from(1_i64)),
+        (PREVMSGHASH_TAG_NAME, clock(0)),
     ];
     for ((tag, name), value) in invalid {
         for terminal in [false, true] {
@@ -367,12 +374,12 @@ fn malformed_stated_previous_values_neither_advance_attach_nor_close() {
                 .fill(event(&registry, 30, None, None, &[("id", "LIVE")]))
                 .unwrap();
             assert_pair(&retained, Some(&first));
-            assert_eq!(retained.puuid(), first.puuid());
+            assert_eq!(retained.msgphash(), first.msgphash());
             let independent = life
                 .fill(event(&registry, 40, None, None, &[("id", "NEW")]))
                 .unwrap();
             assert_pair(&independent, None);
-            assert_ne!(independent.puuid(), first.puuid());
+            assert_ne!(independent.msgphash(), first.msgphash());
             assert_eq!(life.alive(), 2);
         }
     }
@@ -409,7 +416,7 @@ fn an_unrepresentable_history_clock_refuses_at_intake_before_opening_or_advancin
             .fill(event(&registry, 40, None, None, &[("id", "NEW")]))
             .unwrap();
         assert_pair(&independent, None);
-        assert_ne!(independent.puuid(), retained.puuid());
+        assert_ne!(independent.msgphash(), retained.msgphash());
     }
 }
 
@@ -503,7 +510,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
             for (message, (original, alive)) in restored.into_iter().zip(&trace) {
                 let expected_row = original.into_row(&schema).unwrap();
                 assert_eq!(message.into_row(&schema).unwrap(), expected_row);
-                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVMSGHASH_TAG_NAME.0] {
                     assert_eq!(message.by_tag(tag).unwrap(), original.by_tag(tag).unwrap());
                 }
                 assert_eq!(message.entries(), original.entries());

@@ -690,7 +690,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             held[column(8)]
         );
         assert_eq!(
-            super::identity_bytes(&held[column(yggdryl::UUID_TAG_NAME.0)]).len(),
+            super::identity_bytes(&held[column(yggdryl::MSGHASH_TAG_NAME.0)]).len(),
             16,
             "row {row} has a sixteen-byte content identity"
         );

@@ -532,7 +532,7 @@ class Scalar:
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "fixed_string", "string_view", "large_string",
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
-        "cusip", "sedol", "side", "state", "timeinforce", "uuid", "version",
+        "cusip", "sedol", "side", "state", "timeinforce", "msghash", "version",
         "url", "enum", "bytes", "fixed_size_binary", "large_binary",
         "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
@@ -543,7 +543,7 @@ class Scalar:
     @property
     def family(self) -> Literal[
         "null", "boolean", "integer", "floating", "decimal", "temporal",
-        "text", "code", "bytes", "nested", "geospatial", "uuid",
+        "text", "code", "bytes", "nested", "geospatial", "msghash",
     ]: ...
     @property
     def enum_kind(self) -> str | None: ...
@@ -5038,16 +5038,16 @@ class FixMsg:
 
     A message ``FixCodec`` built opens with ``beginstring`` - the wire's own,
     else the version it was read at. Every message carries the settled
-    bundle, each non-null: ``updatedat``, ``createdat``, ``uuid``, ``puuid``,
+    bundle, each non-null: ``updatedat``, ``createdat``, ``msghash``, ``msgphash``,
     ``code``, ``snapshotat`` and ``SendingTime``. At intake ``SendingTime``
     is the stated one, else the carrier's, else the codec's
     ``default_sending_time``, else UTC now; ``snapshotat`` is the stated one,
     else ``TransactTime``, else ``SendingTime``; ``updatedat`` and
     ``createdat`` default to ``snapshotat``; ``code`` is the empty unknown
     name. No clock is read after intake. A message built here appends any
-    member its root lacks. ``updatedat()``, ``createdat()``, ``uuid()`` and
-    ``puuid()`` always answer: ``uuid`` is sixteen ``fixedbinary(16)`` bytes
-    over ``updatedat``'s nanoseconds and the named content, ``puuid`` sixteen
+    member its root lacks. ``updatedat()``, ``createdat()``, ``msghash()`` and
+    ``msgphash()`` always answer: ``msghash`` is sixteen ``fixedbinary(16)`` bytes
+    over ``updatedat``'s nanoseconds and the named content, ``msgphash`` sixteen
     bytes over ``code`` alone, both recomputed when the row changes, and a
     stated one that disagrees is a ``ValueError``. None of these is an entry
     unless the wire sent it, so ``into_bytes`` re-emits the line byte for byte.
@@ -5104,8 +5104,8 @@ class FixMsg:
     def symbol_ticker(self) -> Scalar | None: ...
     def updatedat(self) -> Scalar: ...
     def createdat(self) -> Scalar: ...
-    def uuid(self) -> Scalar: ...
-    def puuid(self) -> Scalar: ...
+    def msghash(self) -> Scalar: ...
+    def msgphash(self) -> Scalar: ...
     def time_partition(self) -> Scalar | None: ...
     def lifted(self, facet: str) -> Scalar | None: ...
     def lift_source(self, facet: str) -> int | None: ...
@@ -5252,10 +5252,10 @@ class FixLifecycle:
     live chain globally; otherwise the first identifier - stated ``altids``,
     else the message type's declared identifiers - reaching a live chain under
     the message's ``instuuid`` lends that chain's code, and a new chain is
-    named ``<scope hex or ->/<identifier>``. ``puuid`` hashes that code.
+    named ``<scope hex or ->/<identifier>``. ``msgphash`` hashes that code.
     Every accepted message has ``updatedat`` floored to its grid instant
     while ``snapshotat`` keeps the real one, takes its live chain's first
-    ``createdat``, and fills each absent ``prevupdatedat`` and ``prevuuid``
+    ``createdat``, and fills each absent ``prevupdatedat`` and ``prevmsghash``
     from the chain's last message; a stated non-null value is kept. A
     terminal state closes the chain, so ``alive`` counts the events still
     open and ``clear`` forgets them all, keeping the interval. A refusal is a

@@ -733,17 +733,17 @@ pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");  (nullable fixed_size_binary(16): the instrument digest's sixteen big-endian bytes)
-pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");  (non-null fixed_size_binary(16): the sign-flipped updatedat nanoseconds then the whole XXH64 of the named content)
-pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");  (non-null fixed_size_binary(16): the code's XXH3-128, big-endian)
+pub const MSGHASH_TAG_NAME: (i32, &str) = (65_017, "msghash");  (non-null fixed_size_binary(16): the sign-flipped updatedat nanoseconds then the whole XXH64 of the named content)
+pub const MSGPHASH_TAG_NAME: (i32, &str) = (65_018, "msgphash");  (non-null fixed_size_binary(16): the code's XXH3-128, big-endian)
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
 pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
-pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable fixed_size_binary(16): the preceding message's uuid bytes in the selected event chain)
+pub const PREVMSGHASH_TAG_NAME: (i32, &str) = (65_022, "prevmsghash");  (nullable fixed_size_binary(16): the preceding message's msghash bytes in the selected event chain)
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
 pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
 pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
-pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; filled from the text read's own sourceurl column, and outside the content uuid hashes)
-pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter; outside the content uuid hashes, because the record it counts is)
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; filled from the text read's own sourceurl column, and outside the content msghash hashes)
+pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter; outside the content msghash hashes, because the record it counts is)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
@@ -782,8 +782,8 @@ pub struct FixMsg
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (row only; mandatory fields refuse removal atomically)
   pub const fn updatedat(&self) -> &Scalar
   pub const fn createdat(&self) -> &Scalar
-  pub const fn uuid(&self) -> &Scalar  (fixed_size_binary(16), never null)
-  pub const fn puuid(&self) -> &Scalar  (fixed_size_binary(16), never null)
+  pub const fn msghash(&self) -> &Scalar  (fixed_size_binary(16), never null)
+  pub const fn msgphash(&self) -> &Scalar  (fixed_size_binary(16), never null)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
 
 ### yggdryl::fix::lift  [rust\src\fix\lift.rs]

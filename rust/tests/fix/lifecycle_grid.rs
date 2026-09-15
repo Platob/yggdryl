@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::{identity_scalar, identity_text, numbered_identity, persistent_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, Error, FixCodec, FixLifecycle,
-    FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME,
+    FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
     SNAPSHOTAT_TAG_NAME, STATE_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
@@ -81,8 +81,8 @@ fn previous(message: &FixMsg, expected: Option<&FixMsg>) {
         expected.map_or(&Scalar::Null, FixMsg::updatedat),
     );
     assert_eq!(
-        message.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
-        expected.map_or(&Scalar::Null, FixMsg::uuid),
+        message.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(),
+        expected.map_or(&Scalar::Null, FixMsg::msghash),
     );
 }
 
@@ -186,8 +186,8 @@ fn creation_is_the_first_arrivals_statement_not_the_minimum_or_grid() {
         assert_eq!(comparison.createdat(), &clock(654));
         assert_eq!(filled.updatedat(), &clock(time.div_euclid(10) * 10));
         assert_eq!(filled.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(), &clock(time));
-        assert_eq!(filled.uuid(), comparison.uuid());
-        assert_eq!(filled.puuid(), comparison.puuid());
+        assert_eq!(filled.msghash(), comparison.msghash());
+        assert_eq!(filled.msgphash(), comparison.msgphash());
         previous(&filled, last.as_ref());
         last = Some(filled);
     }
@@ -256,7 +256,7 @@ fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
     let other = life
         .fill(event(&registry, 2, "B", Some(scope), &[("id", "OWNED")]))
         .unwrap();
-    assert_ne!(first.puuid(), other.puuid());
+    assert_ne!(first.msgphash(), other.msgphash());
     assert_eq!(first.createdat(), &clock(1));
     assert_eq!(other.createdat(), &clock(2));
     previous(&other, None);
@@ -278,7 +278,7 @@ fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
         ))
         .unwrap();
     previous(&direct, Some(&alias));
-    assert_eq!(direct.puuid(), first.puuid());
+    assert_eq!(direct.msgphash(), first.msgphash());
     assert_eq!(direct.createdat(), first.createdat());
     let attached = life
         .fill(event(
@@ -307,7 +307,7 @@ fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
         ))
         .unwrap();
     previous(&joined, Some(&b));
-    assert_eq!(joined.puuid(), other.puuid());
+    assert_eq!(joined.msgphash(), other.msgphash());
     assert_eq!(b.createdat(), other.createdat());
     assert_eq!(joined.createdat(), other.createdat());
     let still_a = life
@@ -337,13 +337,13 @@ fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
             Some(expected.as_str())
         );
         assert_eq!(
-            value.puuid(),
+            value.msgphash(),
             &identity_scalar(persistent_identity(&expected))
         );
         previous(&value, None);
         assert_eq!(value.createdat(), &clock(time));
-        assert!(!ids.contains(value.puuid()));
-        ids.push(value.puuid().clone());
+        assert!(!ids.contains(value.msgphash()));
+        ids.push(value.msgphash().clone());
     }
     assert_eq!(life.alive(), 3);
     for ((creation, scope), persistent) in (1..).zip(scopes).zip(&ids) {
@@ -351,11 +351,11 @@ fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
             .fill(event(&registry, 31, "", scope, &[("id", text)]))
             .unwrap();
         assert_eq!(joined.createdat(), &clock(creation));
-        assert_eq!(joined.puuid(), persistent);
+        assert_eq!(joined.msgphash(), persistent);
     }
     let unknown = event(&registry, 1, "", None, &[]);
     let filled = life.fill(unknown.clone()).unwrap();
-    assert_eq!(filled.puuid(), &identity_scalar(persistent_identity("")));
+    assert_eq!(filled.msgphash(), &identity_scalar(persistent_identity("")));
     assert_eq!(filled.updatedat(), &clock(0));
     assert_eq!(filled.createdat(), unknown.createdat());
     previous(&filled, None);
@@ -415,12 +415,12 @@ fn suppressed_terminal_closes_and_same_bucket_reopening_starts_fresh() {
         .unwrap()
         .unwrap();
     previous(&reopened, None);
-    assert_eq!(reopened.puuid(), first.puuid());
+    assert_eq!(reopened.msgphash(), first.msgphash());
     assert_eq!(reopened.createdat(), &clock(3));
     let old_key = life
         .fill(event(&registry, 4, "", None, &[("id", "OLD")]))
         .unwrap();
-    assert_ne!(old_key.puuid(), reopened.puuid());
+    assert_ne!(old_key.msgphash(), reopened.msgphash());
     previous(&old_key, None);
     assert_eq!(old_key.createdat(), &clock(4));
     assert_eq!(life.alive(), 2);
@@ -466,7 +466,7 @@ fn grid_underflow_refuses_before_opening_attaching_advancing_or_closing() {
             .unwrap();
         previous(&free, None);
         assert_eq!(free.createdat(), &clock(12));
-        assert_ne!(free.puuid(), accepted.puuid());
+        assert_ne!(free.msgphash(), accepted.msgphash());
     }
 }
 
@@ -483,9 +483,9 @@ fn wrong_previous_registry(base: &FixRegistry, tag: i32, dtype: DataType) -> Arc
 fn native_previous_target_failures_cannot_consume_a_bucket_or_close_and_attach() {
     let registry = Arc::new(FixRegistry::new());
     for ((tag, name), dtype) in [
-        (PREVUUID_TAG_NAME, DataType::utf8()),
-        (PREVUUID_TAG_NAME, DataType::binary()),
-        (PREVUUID_TAG_NAME, clock(0).dtype().unwrap()),
+        (PREVMSGHASH_TAG_NAME, DataType::utf8()),
+        (PREVMSGHASH_TAG_NAME, DataType::binary()),
+        (PREVMSGHASH_TAG_NAME, clock(0).dtype().unwrap()),
         (PREVUPDATEDAT_TAG_NAME, super::identity_dtype()),
         (PREVUPDATEDAT_TAG_NAME, DataType::utf8()),
     ] {
@@ -518,7 +518,7 @@ fn native_previous_target_failures_cannot_consume_a_bucket_or_close_and_attach()
                 .unwrap();
             previous(&free, None);
             assert_eq!(free.createdat(), &clock(13));
-            assert_ne!(free.puuid(), accepted.puuid());
+            assert_ne!(free.msgphash(), accepted.msgphash());
         }
     }
 }
@@ -526,7 +526,8 @@ fn native_previous_target_failures_cannot_consume_a_bucket_or_close_and_attach()
 #[test]
 fn independently_stated_previous_values_are_not_used_as_current_history() {
     let registry = Arc::new(FixRegistry::new());
-    for (stated_clock, stated_uuid) in [(false, false), (true, false), (false, true), (true, true)]
+    for (stated_clock, stated_msghash) in
+        [(false, false), (true, false), (false, true), (true, true)]
     {
         let mut life = lifecycle(&registry);
         let first = life.fill(event(&registry, 1, "A", None, &[])).unwrap();
@@ -542,8 +543,8 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
                     },
                 ),
                 (
-                    PREVUUID_TAG_NAME.0,
-                    if stated_uuid {
+                    PREVMSGHASH_TAG_NAME.0,
+                    if stated_msghash {
                         identity_scalar(numbered_identity(987))
                     } else {
                         Scalar::Null
@@ -557,16 +558,19 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
         } else {
             first.updatedat().clone()
         };
-        let expected_uuid = if stated_uuid {
+        let expected_msghash = if stated_msghash {
             identity_scalar(numbered_identity(987))
         } else {
-            first.uuid().clone()
+            first.msghash().clone()
         };
         assert_eq!(
             second.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             &expected_clock,
         );
-        assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &expected_uuid,);
+        assert_eq!(
+            second.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(),
+            &expected_msghash,
+        );
         let third = life.fill(event(&registry, 21, "A", None, &[])).unwrap();
         previous(&third, Some(&second));
     }
@@ -575,9 +579,9 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
 #[test]
 fn snapshot_stream_is_lazy_keeps_per_item_errors_and_fuses_only_exhaustion() {
     let registry = Arc::new(FixRegistry::new());
-    let custom = wrong_previous_registry(&registry, PREVUUID_TAG_NAME.0, DataType::utf8());
+    let custom = wrong_previous_registry(&registry, PREVMSGHASH_TAG_NAME.0, DataType::utf8());
     let bad = event(&custom, 11, "A", None, &[])
-        .with_value(PREVUUID_TAG_NAME.0, Scalar::Null)
+        .with_value(PREVMSGHASH_TAG_NAME.0, Scalar::Null)
         .unwrap();
     let mut input = [
         Ok(event(&registry, 1, "A", None, &[])),
@@ -604,7 +608,7 @@ fn snapshot_stream_is_lazy_keeps_per_item_errors_and_fuses_only_exhaustion() {
     assert_eq!(pulls.get(), 1);
     located(snapshots.next().unwrap().unwrap_err(), "$.source");
     assert_eq!(pulls.get(), 2);
-    located(snapshots.next().unwrap().unwrap_err(), "$.prevuuid");
+    located(snapshots.next().unwrap().unwrap_err(), "$.prevmsghash");
     assert_eq!(pulls.get(), 3);
     let recovered = snapshots.next().unwrap().unwrap();
     previous(&recovered, Some(&first));

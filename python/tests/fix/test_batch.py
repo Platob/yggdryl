@@ -35,7 +35,7 @@ SEED = REPO / "config" / "fix"
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now (``fixed_codec`` in ``rust/tests/fix.rs``).
 CLOCK = Scalar.datetime(1_704_190_530_000_000_000, "ns", "UTC")
-# The tag of the crate's `uuid`: the one identity every write recomputes.
+# The tag of the crate's `msghash`: the one identity every write recomputes.
 UUID_TAG = 65017
 
 
@@ -268,7 +268,7 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     assert reader.schema.field("msgtype").metadata[b"display"] == b"MsgType"
     # The content identity's storage is sixteen plain bytes: `fixed[16]`
     # everywhere a lake reads it, with no extension over it.
-    assert reader.schema.field("uuid").type == pa.binary(16)
+    assert reader.schema.field("msghash").type == pa.binary(16)
     # And an empty capture yields no batch at all.
     assert reader.read_all().num_rows == 0
 
@@ -406,8 +406,8 @@ def test_altids_maps_cross_native_rows_and_arrow_without_changing_nullability(se
         "sendingtime",
         "updatedat",
         "createdat",
-        "uuid",
-        "puuid",
+        "msghash",
+        "msgphash",
         "code",
         "snapshotat",
     ]
@@ -675,7 +675,7 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
     assert held.into_row(schema) == row
     assert held.updatedat() == parsed.updatedat() == CLOCK
     assert held.by_tag(52) == parsed.by_tag(52)
-    assert held.puuid() == parsed.puuid()
+    assert held.msgphash() == parsed.msgphash()
     # A row read out of a batch is the same message again through the
     # native door, which reads the batch's own typed columns.
     table = codec.parse_text_arrow_reader(_capture([ORDER], 1)).read_all()
@@ -687,8 +687,8 @@ def test_a_row_reads_back_into_the_message_that_made_it(seed: FixRegistry) -> No
     # A schema missing a member of the settled bundle is no replayable row,
     # and the refusal names the member
     # (``replay_bundle_is_required_before_record_defaults_can_supply_a_value``).
-    partial = Field("fix", DataType.from_fields([column for column in schema if column.name != "puuid"]), nullable=False)
-    with pytest.raises(ValueError, match="puuid"):
+    partial = Field("fix", DataType.from_fields([column for column in schema if column.name != "msgphash"]), nullable=False)
+    with pytest.raises(ValueError, match="msgphash"):
         parsed.into_row(partial)
     # The process default is the registry when none is named.
     assert FixMsg.from_row(schema, row).registry is not None
@@ -809,8 +809,8 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegi
         "version",
         "updatedat",
         "timepartition",
-        "uuid",
-        "puuid",
+        "msghash",
+        "msgphash",
         "createdat",
         "code",
         "snapshotat",

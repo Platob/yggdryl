@@ -1,22 +1,22 @@
 # Lifecycle
 
-A message says what happened; it does not say which event it belongs to beyond the identifiers a venue chose. `FixLifecycle` reads a stream once, in arrival order, names the chain each message joins by its `code`, carries the chain's first creation instant and previous message, and lands every message on a deterministic time grid - so a monitor joins an order's whole life on `puuid` and reads one snapshot per bucket rather than rebuilding the chain from `ClOrdID`, `OrigClOrdID` and `OrderID` on its own.
+A message says what happened; it does not say which event it belongs to beyond the identifiers a venue chose. `FixLifecycle` reads a stream once, in arrival order, names the chain each message joins by its `code`, carries the chain's first creation instant and previous message, and lands every message on a deterministic time grid - so a monitor joins an order's whole life on `msgphash` and reads one snapshot per bucket rather than rebuilding the chain from `ClOrdID`, `OrigClOrdID` and `OrderID` on its own.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
 | Owns | `FixLifecycle` (`DEFAULT_INTERVAL_NS`, `interval_ns`, `set_interval_ns`, `try_with_interval_ns`, `fill`, `snapshot`, `snapshots`, `alive`, `clear`), `FixCodec::lifecycle` |
-| Columns | the [crate's own](capture.md#the-crates-own-columns) `code` (65024), `updatedat` (65003), `createdat` (65023), `prevupdatedat` (65021), `prevuuid` (65022) and `instuuid` (65016); `puuid` (65018) and `uuid` (65017) are recomputed by the message's identity owner after every stamp. The four identity columns are `fixedbinary(16)`, and a stated one of another width, layout or family is a located refusal naming its column |
+| Columns | the [crate's own](capture.md#the-crates-own-columns) `code` (65024), `updatedat` (65003), `createdat` (65023), `prevupdatedat` (65021), `prevmsghash` (65022) and `instuuid` (65016); `msgphash` (65018) and `msghash` (65017) are recomputed by the message's identity owner after every stamp. The four identity columns are `fixedbinary(16)`, and a stated one of another width, layout or family is a located refusal naming its column |
 | Chain name | a non-empty stated `code` selects its live chain globally; else the first identifier reaching a live chain supplies that chain's code; else the first identifier names a new chain `<scope>/<identifier>`, the scope rendered `-` when absent; no identifier leaves `code` empty and opens no chain |
 | Identifiers | a stated `altids` Map, else the message type's compiled [`fix:identifiers`](registry.md#component-identifiers) selection, in sorted member-name order; each keyed by the effective instrument scope: a stated `instuuid`, else the sixteen big-endian bytes of the xxh128 digest of market, CFI, ISIN - else symbol - and currency, else absent |
-| `puuid` | the sixteen big-endian bytes of the XXH3-128 over the exact `code` bytes, so a chain's identity is its name; empty code hashes empty bytes and never opens a chain |
+| `msgphash` | the sixteen big-endian bytes of the XXH3-128 over the exact `code` bytes, so a chain's identity is its name; empty code hashes empty bytes and never opens a chain |
 | Grid | `updatedat` becomes `floor(t / interval) * interval` of the settled event clock, Euclidean and checked; `snapshotat` keeps the real instant; the interval is positive nanoseconds, `DEFAULT_INTERVAL_NS` (one second) unless set, and changes only while no chain is live |
 | Creation | every message joining a live chain carries the `createdat` of that chain's first accepted message |
-| History | `prevupdatedat` and `prevuuid` are the previous accepted message's `updatedat` and `uuid` in the selected chain, null on a first message; a stated non-null value stays |
+| History | `prevupdatedat` and `prevmsghash` are the previous accepted message's `updatedat` and `msghash` in the selected chain, null on a first message; a stated non-null value stays |
 | Snapshots | `snapshot` answers the full message only for an off-grid arrival that opens a chain or lands above its live chain's highest consumed bucket; an aligned arrival consumes its bucket silently; `snapshots` filters a stream the same way |
 | Ends | a terminal [state](../types/codes.md#a-state-sorts-by-its-lifecycle) - the crate's `state`, else `OrdStatus(39)`, else `ExecType(150)` - is stamped, then closes the chain and forgets its identifiers |
-| State | live chains only: code, first `createdat`, last `updatedat` and `uuid`, highest bucket, attached identifiers; no pending message, timer or tombstone |
+| State | live chains only: code, first `createdat`, last `updatedat` and `msghash`, highest bucket, attached identifiers; no pending message, timer or tombstone |
 | Atomic | a refusal - an unrepresentable grid instant, a malformed stated `altids`, `instuuid` or previous value, a code-hash collision, a mistyped stamp target - is located and changes no chain, history, bucket or identifier |
 | Entries | untouched: entries, wire and arrival digest are what arrived |
 | Bindings | Rust; Python `FixLifecycle(registry, *, interval_ns)`, `FixCodec.lifecycle`; JavaScript `new fix.FixLifecycle(registry, { intervalNs })`, `FixCodec.lifecycle` |
@@ -33,7 +33,7 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     use yggdryl::holder::local::Folder;
     use yggdryl::{
         CODE_TAG_NAME, FixCodec, FixLifecycle, FixMsg, FixRegistry, PREVUPDATEDAT_TAG_NAME,
-        PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, TimeUnit,
+        PREVMSGHASH_TAG_NAME, SNAPSHOTAT_TAG_NAME, TimeUnit,
     };
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
@@ -57,13 +57,13 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     // whatever identifier each message chose.
     let code = stamped[0].by_tag(CODE_TAG_NAME.0)?.as_str().expect("a named chain");
     assert!(code.ends_with("/A1"), "{code}");
-    assert!(stamped.iter().all(|held| held.puuid() == stamped[0].puuid()));
+    assert!(stamped.iter().all(|held| held.msgphash() == stamped[0].msgphash()));
     // The first creation instant travels with the chain, and each message
     // names the one before it.
     let created = stamped[0].by_tag(60)?;
     assert!(stamped.iter().all(|held| held.createdat() == created));
-    assert!(stamped[0].by_tag(PREVUUID_TAG_NAME.0)?.is_null());
-    assert_eq!(stamped[1].by_tag(PREVUUID_TAG_NAME.0)?, stamped[0].uuid());
+    assert!(stamped[0].by_tag(PREVMSGHASH_TAG_NAME.0)?.is_null());
+    assert_eq!(stamped[1].by_tag(PREVMSGHASH_TAG_NAME.0)?, stamped[0].msghash());
     assert_eq!(stamped[1].by_tag(PREVUPDATEDAT_TAG_NAME.0)?, stamped[0].updatedat());
     // updatedat lands on the one-second grid; snapshotat keeps the event.
     assert_eq!(stamped[1].updatedat().temporal_count_at(TimeUnit::Millisecond), Some(1_767_348_930_000));
@@ -91,7 +91,7 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
 
     // The codec's stream door runs one default-cadence lifecycle.
     let again: Vec<FixMsg> = reader.lifecycle(reader.parse_lines(lines)).collect::<yggdryl::Result<_>>()?;
-    assert!(again.iter().all(|held| held.puuid() == stamped[0].puuid()));
+    assert!(again.iter().all(|held| held.msgphash() == stamped[0].msgphash()));
     // The interval is positive nanoseconds.
     assert_eq!(FixLifecycle::new(Arc::clone(&registry)).try_with_interval_ns(2_000_000_000)?.interval_ns(), 2_000_000_000);
     assert!(FixLifecycle::new(registry).try_with_interval_ns(0).is_err());
@@ -124,12 +124,12 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     # One chain, named by the first identifier under the instrument scope,
     # whatever identifier each message chose.
     assert stamped[0].by_tag(CODE).as_py().endswith("/A1")
-    assert all(held.puuid() == stamped[0].puuid() for held in stamped)
+    assert all(held.msgphash() == stamped[0].msgphash() for held in stamped)
     # The first creation instant travels with the chain, and each message
     # names the one before it.
     assert all(held.createdat() == stamped[0].by_tag(60) for held in stamped)
     assert stamped[0].by_tag(PREVUUID).as_py() is None
-    assert stamped[1].by_tag(PREVUUID) == stamped[0].uuid()
+    assert stamped[1].by_tag(PREVUUID) == stamped[0].msghash()
     assert stamped[1].by_tag(PREVUPDATEDAT) == stamped[0].updatedat()
     # updatedat lands on the one-second grid; snapshotat keeps the event.
     assert stamped[1].updatedat().as_py() == datetime(2026, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
@@ -149,7 +149,7 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     assert FixLifecycle(registry).snapshot(reader.parse_fix_line(lines[2])) is None
 
     # The codec's stream door runs one default-cadence lifecycle.
-    assert all(held.puuid() == stamped[0].puuid() for held in reader.lifecycle(reader.parse_lines(lines)))
+    assert all(held.msgphash() == stamped[0].msgphash() for held in reader.lifecycle(reader.parse_lines(lines)))
     # The interval is positive nanoseconds.
     assert FixLifecycle(registry, interval_ns=2_000_000_000).interval_ns == 2_000_000_000
     with pytest.raises(ValueError):
@@ -181,12 +181,12 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     // One chain, named by the first identifier under the instrument scope,
     // whatever identifier each message chose.
     assert.ok(stamped[0].byTag(CODE).asJs().endsWith('/A1'))
-    assert.ok(stamped.every((held) => held.puuid().equals(stamped[0].puuid())))
+    assert.ok(stamped.every((held) => held.msgphash().equals(stamped[0].msgphash())))
     // The first creation instant travels with the chain, and each message
     // names the one before it.
     assert.ok(stamped.every((held) => held.createdat().equals(stamped[0].byTag(60))))
     assert.equal(stamped[0].byTag(PREVUUID).asJs(), null)
-    assert.ok(stamped[1].byTag(PREVUUID).equals(stamped[0].uuid()))
+    assert.ok(stamped[1].byTag(PREVUUID).equals(stamped[0].msghash()))
     assert.ok(stamped[1].byTag(PREVUPDATEDAT).equals(stamped[0].updatedat()))
     // updatedat lands on the one-second grid; snapshotat keeps the event.
     assert.ok(stamped[1].updatedat().equals(stamped[0].updatedat()), 'bucket 10:15:30')
@@ -208,7 +208,7 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     assert.equal(new fix.FixLifecycle(registry).snapshot(reader.parseFixLine(lines[2])), null)
 
     // The codec's stream door runs one default-cadence lifecycle.
-    assert.ok([...reader.lifecycle(reader.parseLines(lines))].every((held) => held.puuid().equals(stamped[0].puuid())))
+    assert.ok([...reader.lifecycle(reader.parseLines(lines))].every((held) => held.msgphash().equals(stamped[0].msgphash())))
     // The interval is positive nanoseconds.
     assert.equal(new fix.FixLifecycle(registry, { intervalNs: 2_000_000_000n }).intervalNs, 2_000_000_000n)
     assert.throws(() => new fix.FixLifecycle(registry, { intervalNs: 0n }))
@@ -216,13 +216,13 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
 
 ## A chain is named by its code
 
-A stated non-empty `code` is the chain's name and selects it globally, across instrument scopes. A message stating none joins through its identifiers: the first one - in the sorted member-name order of `altids` - that a live chain already owns under the same instrument scope supplies that chain's code, so the replace's `OrigClOrdID` reaches the order its new `ClOrdID` does not, and every identifier the message carries then attaches to that chain unless another live chain already owns it. A message whose identifiers reach no chain names a new one after its first identifier, `<scope>/<identifier>`, the scope spelled as the thirty-two lowercase hex digits of its sixteen bytes; one with neither a code nor an identifier - a heartbeat, a logon - keeps an empty code, still gets its `uuid` and a `puuid` over empty bytes, and opens nothing.
+A stated non-empty `code` is the chain's name and selects it globally, across instrument scopes. A message stating none joins through its identifiers: the first one - in the sorted member-name order of `altids` - that a live chain already owns under the same instrument scope supplies that chain's code, so the replace's `OrigClOrdID` reaches the order its new `ClOrdID` does not, and every identifier the message carries then attaches to that chain unless another live chain already owns it. A message whose identifiers reach no chain names a new one after its first identifier, `<scope>/<identifier>`, the scope spelled as the thirty-two lowercase hex digits of its sixteen bytes; one with neither a code nor an identifier - a heartbeat, a logon - keeps an empty code, still gets its `msghash` and a `msgphash` over empty bytes, and opens nothing.
 
-Two explicit codes never merge and never steal each other's identifiers, and a generated code whose hash meets a live chain of another name is a located `$.puuid` refusal. These deterministic hashes are not collision-free; they are what makes two reads of one capture agree without a wall clock.
+Two explicit codes never merge and never steal each other's identifiers, and a generated code whose hash meets a live chain of another name is a located `$.msgphash` refusal. These deterministic hashes are not collision-free; they are what makes two reads of one capture agree without a wall clock.
 
 ## A chain carries its creation and its history
 
-The first accepted message of a live chain fixes its `createdat`: first by arrival, not the minimum or the grid, and a later statement does not replace it. Every later message selecting the chain - late, aligned, suppressed or terminal - carries it. `prevupdatedat` and `prevuuid` are the previous accepted message's `updatedat` and `uuid`, filled independently where null and kept where stated; they follow every accepted message, so a previous identity may name a message the snapshot stream filtered out. A late arrival moves history backward without lowering the chain's highest bucket.
+The first accepted message of a live chain fixes its `createdat`: first by arrival, not the minimum or the grid, and a later statement does not replace it. Every later message selecting the chain - late, aligned, suppressed or terminal - carries it. `prevupdatedat` and `prevmsghash` are the previous accepted message's `updatedat` and `msghash`, filled independently where null and kept where stated; they follow every accepted message, so a previous identity may name a message the snapshot stream filtered out. A late arrival moves history backward without lowering the chain's highest bucket.
 
 ## Snapshots are a grid, not a timer
 
@@ -232,7 +232,7 @@ The interval is settled before the stream: `set_interval_ns` refuses zero, a neg
 
 ## A chain ends when its state does
 
-A terminal state - filled, done for day, cancelled, rejected, expired - is stamped with the chain's creation and history, then closes the chain and forgets its identifiers, suppressed or not, so a venue reusing a `ClOrdID` tomorrow opens a new chain. Reopening a code keeps its `puuid` and starts a fresh incarnation, which may emit again in the same bucket. What is held is therefore the live chains; `alive()` counts them and `clear()` forgets them, as a new session or a new day would.
+A terminal state - filled, done for day, cancelled, rejected, expired - is stamped with the chain's creation and history, then closes the chain and forgets its identifiers, suppressed or not, so a venue reusing a `ClOrdID` tomorrow opens a new chain. Reopening a code keeps its `msgphash` and starts a fresh incarnation, which may emit again in the same bucket. What is held is therefore the live chains; `alive()` counts them and `clear()` forgets them, as a new session or a new day would.
 
 ## In a batch read
 
@@ -240,12 +240,12 @@ The lifecycle is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), an
 
 ## Edges
 
-- The same line at the same instant is the same `code` and `puuid`: the identities are digests of settled values, never sequence numbers, and a fresh or cleared lifecycle replaying a raw or an already-filled stream answers the same messages.
+- The same line at the same instant is the same `code` and `msgphash`: the identities are digests of settled values, never sequence numbers, and a fresh or cleared lifecycle replaying a raw or an already-filled stream answers the same messages.
 - Feeding an earlier message into an advanced lifecycle is a new arrival, not a rewind.
 - An ISIN outranks a symbol in the instrument scope, and case does not tell two instruments apart; another market does. A bridge row naming the same facts under its own keys reaches the same scope.
 - A stated `altids` is authoritative, an empty one included; its keys must be unique and ascending and its values text or null, else a located refusal. A null or empty identifier contributes nothing; text is neither trimmed nor case-folded.
 - A state a venue spells outside the vocabulary is not a state and ends nothing. A terminal message opening no live chain keeps its own `createdat`, may emit its off-grid snapshot, and leaves no chain behind.
-- A stated `uuid` or `puuid` must match what the finalized message computes; `code` is what a caller states to name a chain.
+- A stated `msghash` or `msgphash` must match what the finalized message computes; `code` is what a caller states to name a chain.
 
 ## Commands
 

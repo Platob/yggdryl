@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use yggdryl::{
     CODE_TAG_NAME, DataType, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
-    TimeUnit, Timezone, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
+    SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
 fn registry() -> Arc<FixRegistry> {
@@ -61,7 +61,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     assert_eq!(instruments[0].len(), 16);
     let chains: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, PUUID_TAG_NAME.0).expect("a chain"))
+        .map(|held| bytes(held, MSGPHASH_TAG_NAME.0).expect("a chain"))
         .collect();
     assert!(
         chains.iter().all(|held| *held == chains[0]),
@@ -76,7 +76,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     assert_eq!(stamped[0].createdat(), stamped[0].by_tag(60).unwrap());
     let ids: Vec<_> = stamped
         .iter()
-        .map(|held| bytes(held, UUID_TAG_NAME.0).expect("an id"))
+        .map(|held| bytes(held, MSGHASH_TAG_NAME.0).expect("an id"))
         .collect();
     for (pair, messages) in ids.windows(2).zip(stamped.windows(2)) {
         assert_ne!(pair[0], pair[1], "different finalized message content");
@@ -84,7 +84,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
             assert!(pair[0] < pair[1], "UUIDs sort by the full grid instant");
         }
     }
-    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVMSGHASH_TAG_NAME.0] {
         assert_eq!(stamped[0].by_tag(tag).unwrap(), &Scalar::Null);
     }
     for pair in stamped.windows(2) {
@@ -93,8 +93,8 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
             pair[0].by_tag(UPDATEDAT_TAG_NAME.0).unwrap(),
         );
         assert_eq!(
-            pair[1].by_tag(PREVUUID_TAG_NAME.0).unwrap(),
-            pair[0].by_tag(UUID_TAG_NAME.0).unwrap(),
+            pair[1].by_tag(PREVMSGHASH_TAG_NAME.0).unwrap(),
+            pair[0].by_tag(MSGHASH_TAG_NAME.0).unwrap(),
         );
     }
     let code = stamped[0]
@@ -124,10 +124,10 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     let again = life
         .fill(reader.sole_line(tomorrow.as_bytes(), false).unwrap())
         .unwrap();
-    assert_eq!(bytes(&again, PUUID_TAG_NAME.0).unwrap(), chains[0]);
+    assert_eq!(bytes(&again, MSGPHASH_TAG_NAME.0).unwrap(), chains[0]);
     assert_eq!(again.createdat(), again.by_tag(60).unwrap());
     assert_ne!(again.createdat(), stamped[0].createdat());
-    assert!(again.by_tag(PREVUUID_TAG_NAME.0).unwrap().is_null());
+    assert!(again.by_tag(PREVMSGHASH_TAG_NAME.0).unwrap().is_null());
     assert_eq!(life.alive(), 1);
     life.clear();
     assert_eq!(life.alive(), 0);
@@ -136,8 +136,8 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
     let replayed = life
         .fill(reader.sole_line(LIFE[0], false).unwrap())
         .unwrap();
-    assert_eq!(bytes(&replayed, PUUID_TAG_NAME.0).unwrap(), chains[0]);
-    assert_eq!(bytes(&replayed, UUID_TAG_NAME.0), Some(ids[0]));
+    assert_eq!(bytes(&replayed, MSGPHASH_TAG_NAME.0).unwrap(), chains[0]);
+    assert_eq!(bytes(&replayed, MSGHASH_TAG_NAME.0), Some(ids[0]));
     assert_eq!(replayed.createdat(), stamped[0].createdat());
 }
 
@@ -152,19 +152,19 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
     let held = stamped.next().unwrap().unwrap();
     assert!(stamped.next().is_none());
     assert!(
-        bytes(&held, UUID_TAG_NAME.0).is_some(),
+        bytes(&held, MSGHASH_TAG_NAME.0).is_some(),
         "every message has an id"
     );
     assert_eq!(held.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some(""));
     assert_eq!(
-        bytes(&held, PUUID_TAG_NAME.0),
+        bytes(&held, MSGPHASH_TAG_NAME.0),
         Some(persistent_identity(""))
     );
     assert!(
         bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
-    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVMSGHASH_TAG_NAME.0] {
         assert_eq!(held.by_tag(tag).unwrap(), &Scalar::Null);
     }
     assert_eq!(held.updatedat(), held.by_tag(52).unwrap());
@@ -230,7 +230,7 @@ fn a_stamped_stream_read_again_keeps_what_it_carries() {
         .collect();
     assert_eq!(twice.len(), LIFE.len());
     for (first, second) in once.iter().zip(&twice) {
-        for tag in [INSTUUID_TAG_NAME.0, UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
+        for tag in [INSTUUID_TAG_NAME.0, MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0] {
             assert_eq!(bytes(first, tag), bytes(second, tag), "tag {tag}");
         }
         assert_eq!(first.entries().len(), second.entries().len());
@@ -291,7 +291,7 @@ fn instrument_payload_keeps_its_recipe_and_chain_payload_is_only_the_code() {
         Some(code.as_str())
     );
     assert_eq!(
-        message.puuid(),
+        message.msgphash(),
         &identity_scalar(persistent_identity(&code))
     );
     assert_eq!(message.entries(), entries);
@@ -351,7 +351,7 @@ fn identity_bytes_lead_with_the_ordered_instant_and_carry_the_whole_digest() {
     for time in [i64::MIN, -1, 0, 1, i64::MAX] {
         let row = row_message(Arc::clone(&registry), [(60, clock(time))]).unwrap();
         let message = life.fill(row).unwrap();
-        let held = bytes(&message, UUID_TAG_NAME.0).unwrap();
+        let held = bytes(&message, MSGHASH_TAG_NAME.0).unwrap();
         let ordered = u64::from_be_bytes(time.to_be_bytes()) ^ (1 << 63);
         assert_eq!(&held[..8], &ordered.to_be_bytes(), "nanosecond {time}");
         // The instant is the whole front; the digest owns the whole back and
@@ -385,7 +385,7 @@ fn lifecycle_uuid_order_keeps_nanoseconds_across_negative_and_bit_boundaries() {
     ] {
         let row = row_message(Arc::clone(&registry), [(60, clock(time))]).unwrap();
         let message = life.fill(row).unwrap();
-        let current = bytes(&message, UUID_TAG_NAME.0).unwrap();
+        let current = bytes(&message, MSGHASH_TAG_NAME.0).unwrap();
         if let Some(previous) = previous {
             assert!(previous < current, "nanosecond {time}");
         }
@@ -426,7 +426,7 @@ fn negative_clock_keeps_stated_instrument_but_mismatching_message_identities_ref
         ],
     )
     .unwrap();
-    for tag in [UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
+    for tag in [MSGHASH_TAG_NAME.0, MSGPHASH_TAG_NAME.0] {
         let before = message.clone();
         assert!(
             message
@@ -495,8 +495,8 @@ fn a_stated_instrument_identity_of_another_width_or_layout_is_refused_by_name() 
         );
         assert_eq!(life.alive(), 1, "the live chain is untouched");
         assert_eq!(
-            life.fill(good.clone()).unwrap().puuid(),
-            live.puuid(),
+            life.fill(good.clone()).unwrap().msgphash(),
+            live.msgphash(),
             "and still answers for its own messages"
         );
     }
@@ -505,8 +505,8 @@ fn a_stated_instrument_identity_of_another_width_or_layout_is_refused_by_name() 
 #[test]
 fn a_refused_mandatory_column_never_becomes_a_message_or_a_planned_chain() {
     let registry = registry();
-    let mut field = DataType::Int32.nullable_field(UUID_TAG_NAME.1);
-    field.as_fix_mut().set_tag(UUID_TAG_NAME.0).unwrap();
+    let mut field = DataType::Int32.nullable_field(MSGHASH_TAG_NAME.1);
+    field.as_fix_mut().set_tag(MSGHASH_TAG_NAME.0).unwrap();
     let key = registry.get_field_by_tag(11).unwrap().clone();
     let msgtype = registry.get_field_by_tag(35).unwrap().clone();
     let row = DataType::from_fields([field, key, msgtype])
@@ -518,7 +518,7 @@ fn a_refused_mandatory_column_never_becomes_a_message_or_a_planned_chain() {
         Scalar::from_sequence([Scalar::Null, Scalar::from("NEW"), Scalar::from("D")]),
     )
     .unwrap_err();
-    assert!(matches!(error, Error::InvalidRecord { ref path, .. } if path == "$.uuid"));
+    assert!(matches!(error, Error::InvalidRecord { ref path, .. } if path == "$.msghash"));
     assert_eq!(FixLifecycle::new(registry).alive(), 0);
 }
 

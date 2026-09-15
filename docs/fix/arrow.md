@@ -184,7 +184,7 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 
 What happens to a message on its way into a row is a stage, and a stage is a call over the stream rather than a flag on the reader: [`enrich_messages_arrow_reader`](#filled-where-it-sits) fills batches - [restating](message.md#restated-at-the-dictionarys-newest-version) each message first, because that is the enriching pass's own first step and not a stage a caller composes - `lifecycle` [stamps](lifecycle.md#in-a-batch-read) a stream, `FixLifecycle::snapshots` keeps its grid snapshots, and `FixDedup` drops an adjacent republication; each is composed as `arrow_reader(schema, stage(messages(reader)))`, so the order stages run in is the order they are written in and nothing runs unasked. Every door takes owned messages or their `Result`s, so a stage never collects. Python spells the pins as keywords on `FixCodec(registry, *, version, separator, payload_column, capture_names, null_values, direction, batch_byte_size, default_sending_time)`, JavaScript as the options object of `new fix.FixCodec(registry, { ... })` in camelCase; `separator` is the byte's integer value, `direction` is any spelling of a code of tag 385's set, `""` pinning nothing, and `default_sending_time` a `Scalar` or a `datetime` / `Date`.
 
-Lines to batches, with one stage between them and nothing collected: the lifecycle names an order and its fill as one chain, and every row carries its `puuid`.
+Lines to batches, with one stage between them and nothing collected: the lifecycle names an order and its fill as one chain, and every row carries its `msgphash`.
 
 === "Rust"
 
@@ -208,10 +208,10 @@ Lines to batches, with one stage between them and nothing collected: the lifecyc
 
     let batch = read.into_iter().next().expect("one batch")?;
     assert_eq!(batch.num_rows(), 2);
-    let chain = batch.column_by_name("puuid").expect("the chain column");
+    let chain = batch.column_by_name("msgphash").expect("the chain column");
     assert_eq!(chain.null_count(), 0, "every message names its chain");
     let held = yggdryl::arrow::batch_to_value(&batch)?;
-    let at = batch.schema().index_of("puuid")?;
+    let at = batch.schema().index_of("msgphash")?;
     let chains: Vec<_> = held.as_sequence().expect("rows").iter().map(|row| row.get(at).cloned()).collect();
     assert_eq!(chains[0], chains[1], "one order, one chain");
     ```
@@ -235,7 +235,7 @@ Lines to batches, with one stage between them and nothing collected: the lifecyc
 
     held = read.read_all()
     assert held.num_rows == 2
-    chains = held.column("puuid").to_pylist()
+    chains = held.column("msgphash").to_pylist()
     assert None not in chains, "every message names its chain"
     assert chains[0] == chains[1], "one order, one chain"
     ```
@@ -259,7 +259,7 @@ Lines to batches, with one stage between them and nothing collected: the lifecyc
 
     const held = read.intoTable()
     assert.equal(held.numRows, 2)
-    const chain = held.getChild('puuid')
+    const chain = held.getChild('msgphash')
     assert.equal(chain.nullCount, 0, 'every message names its chain')
     assert.ok(Buffer.from(chain.get(0)).equals(Buffer.from(chain.get(1))), 'one order, one chain')
     ```
@@ -319,7 +319,7 @@ The plugin is a fill and nothing more: it lands in the crate's own `pluginid` co
 
 ## One row per message
 
-A source row is read for every message it carries, so a capture answers one row per message and never one per line. One ordinary frame is one row, and a line carrying two frames is two, each re-emitting only its own bytes. Bulk configuration arrays emit one row per configuration a response named, and wildcard responses one per ObjectName they selected, each repeating its source row's carried columns; each of those rows is a [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own), so a `msgtype` column holds `UCFG` wherever the dictionary defines tag 35. A response that named none emits zero rows - an error-only answer, a request with no value, an empty bulk or wildcard answer - and so does a line carrying no message at all: a bridge's own prose is a line and not a row. The one refusal that still yields a row is a payload that was there and would not parse: it holds an empty message, so malformed syntax never fails a batch; a stated mandatory clock or identity that does not read (`SendingTime`, `TransactTime`, `updatedat`, `createdat`, `uuid`, `puuid`, `snapshotat`) is a located error item. What a line carries is the codec's rule, stated in [decode](decode.md); a caller wanting one row per *line* reads the capture with the [text reader](../media/text/index.md#row-schema), which answers every line whether or not a message is in it. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_line` is the same reading of one line, and answers the iterator when expansion is wanted.
+A source row is read for every message it carries, so a capture answers one row per message and never one per line. One ordinary frame is one row, and a line carrying two frames is two, each re-emitting only its own bytes. Bulk configuration arrays emit one row per configuration a response named, and wildcard responses one per ObjectName they selected, each repeating its source row's carried columns; each of those rows is a [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own), so a `msgtype` column holds `UCFG` wherever the dictionary defines tag 35. A response that named none emits zero rows - an error-only answer, a request with no value, an empty bulk or wildcard answer - and so does a line carrying no message at all: a bridge's own prose is a line and not a row. The one refusal that still yields a row is a payload that was there and would not parse: it holds an empty message, so malformed syntax never fails a batch; a stated mandatory clock or identity that does not read (`SendingTime`, `TransactTime`, `updatedat`, `createdat`, `msghash`, `msgphash`, `snapshotat`) is a located error item. What a line carries is the codec's rule, stated in [decode](decode.md); a caller wanting one row per *line* reads the capture with the [text reader](../media/text/index.md#row-schema), which answers every line whether or not a message is in it. Join a parsed capture by its carried source identifier rather than assuming row positions still align. `parse_text_line` is the same reading of one line, and answers the iterator when expansion is wanted.
 
 === "Rust"
 
@@ -614,10 +614,10 @@ A source row is read for every message it carries, so a capture answers one row 
 - Ordinary unframed text produces no row, and an empty payload none either; a payload that was there and would not parse produces one row holding an empty message. Bulk parsing errors propagate, and output counts follow message expansion.
 - A carried column whose folded name a FIX column takes is dropped in front rather than renamed - two columns of one name is not a schema - and what it stated lands in that FIX column.
 - A `msgdirection` column is the row's stated direction, read as a parameter - any spelling of a code of tag 385's set, stored as the code - and it outranks the reading of the line and the codec's pin; the FIX column carries it and no second column repeats it.
-- A `timestamp` column is carried context: it leads the row, enters the carried row's `uuid` content like any other named cell, and never dates the message - `TransactTime`, else `SendingTime`, does.
+- A `timestamp` column is carried context: it leads the row, enters the carried row's `msghash` content like any other named cell, and never dates the message - `TransactTime`, else `SendingTime`, does.
 - A fill never overrides what the frame stated: a `seqNum` capture beside a frame carrying `34=` leaves `msgseqnum` to the frame.
 - A fill is row-only: never an entry, never in `fixentries`, never re-emitted by `write_arrow_reader`, never in the arrival digest.
-- `messages` reads a row carrying the seven settled values - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - as a replayable message and verifies its identities; a row missing one, or holding a `uuid` its content does not compute, is a located refusal, and nothing reads a clock back out of those sixteen bytes.
+- `messages` reads a row carrying the seven settled values - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - as a replayable message and verifies its identities; a row missing one, or holding a `msghash` its content does not compute, is a located refusal, and nothing reads a clock back out of those sixteen bytes.
 - A batch's bytes are read once from the payload column's offsets and spread evenly over its rows, so a large batch splits into equal row counts; a source row's whole charge rides on its first message, whether it answered one or many.
 - A `batch_byte_size` of `0` or `1` is a batch a row: the target is where a batch closes, never a bound a row must fit under.
 - `parse_text_arrow_reader` on a source with no column named as the payload column, or one holding neither text nor bytes under it -> refused before a row is read, naming the column. `parse_text_line` has no column to name: a line's body is a typed field, so a line whose body is empty answers no message at all and nothing else is refusable.
@@ -676,7 +676,7 @@ What a message costs after it is built, each pass over fresh clones of the 6,080
 | `lifecycle`, the stamp that joins a message to its order's life | 311 ms | 51.1 us |
 | `digest`, the arrival record's hash | 21 ms | 3.5 us |
 
-A row pays `into_row` and its share of the batch; it pays for enrichment and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection, and the three crate columns a message does not state - `isincode`, `miccode`, `state` - each one evaluation of its own compiled derivation over the columns it reads; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is every child resolved against the dictionary once and the replacements its fields carry read borrowed, then the registry's [derivations](registry.md#a-field-carries-how-it-is-derived) - compiled and bound once per registry, gathered into one working row per message by tag, swept to a fixpoint, most answers null on a message that stated everything, and one rebuild landing what derived; `enrich_messages_same_shape` is the same pass over one shape a thousand times, the stream a venue writes beside the stream a bridge writes; the lifecycle is an instrument digest, a chain lookup, one write of up to six stamps (`code`, `updatedat`, `createdat`, `instuuid`, `prevupdatedat`, `prevuuid`) and the `uuid`/`puuid` recompute. The digest is a hash over the arrival record and nothing else.
+A row pays `into_row` and its share of the batch; it pays for enrichment and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection, and the three crate columns a message does not state - `isincode`, `miccode`, `state` - each one evaluation of its own compiled derivation over the columns it reads; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is every child resolved against the dictionary once and the replacements its fields carry read borrowed, then the registry's [derivations](registry.md#a-field-carries-how-it-is-derived) - compiled and bound once per registry, gathered into one working row per message by tag, swept to a fixpoint, most answers null on a message that stated everything, and one rebuild landing what derived; `enrich_messages_same_shape` is the same pass over one shape a thousand times, the stream a venue writes beside the stream a bridge writes; the lifecycle is an instrument digest, a chain lookup, one write of up to six stamps (`code`, `updatedat`, `createdat`, `instuuid`, `prevupdatedat`, `prevmsghash`) and the `msghash`/`msgphash` recompute. The digest is a hash over the arrival record and nothing else.
 
 Regenerate with:
 
