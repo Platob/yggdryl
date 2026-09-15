@@ -1423,7 +1423,7 @@ direction.fix.directions = [
     {"code": "R", "patterns": ["(?i)^RX\\b"]},
 ]
 assert direction.fix.directions[0] == {"code": "S", "patterns": ["(?i)^TX\\b"]}
-assert direction.metadata["fix:directions"].startswith('{"directions":[{"code":"S"')
+assert direction.metadata["fix:directions"].startswith('[{"code":"S"')
 
 # The field is edited before the codec is built: the codec compiles what its
 # registry states, and a stated table replaces the defaults whole.

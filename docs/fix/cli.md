@@ -90,8 +90,8 @@ ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
 ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
 ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
 ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
-ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}'
-ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}' --directions '{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]}'
+ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
+ygg fix --root scratch/catalog fields create MsgDirection utf8 --tag 385 --codes '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]' --directions '[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]'
 ygg fix --root scratch/catalog fields create DeskValue int32 --tag 5001 --dialect venue --dialect Desk
 ygg fix --root scratch/catalog fields read Desk_Value
 ygg fix --root scratch/catalog fields list --dialect desk

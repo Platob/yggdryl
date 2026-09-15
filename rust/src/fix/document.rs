@@ -1,19 +1,27 @@
 //! The canonical JSON documents the `fix:` namespace stores, read borrowed.
 //!
-//! Three `fix:` properties hold more than one text can say as a list: the
-//! per-version [lineage](super::lineage), the [code set](super::codes) and
-//! the [replacements](super::replacements) a value is restated through. All
-//! are JSON, because a metadata value may hold no control character and so
+//! Four `fix:` properties hold more than one text can say as a list: the
+//! per-version [lineage](super::lineage), the [code set](super::codes), the
+//! [directions](super::directions) a line is read under and the
+//! [replacements](super::replacements) a value is restated through. All are
+//! JSON, because a metadata value may hold no control character and so
 //! cannot be separator-framed, and all are read on hot paths where building a
 //! parse tree per ask would cost more than the lookup.
 //!
-//! So one convention serves them. A document is rendered with its keys in a
-//! **declared order** rather than sorted, compactly, with one text per value;
+//! So one convention serves them. **A document is the array of its entries**,
+//! `[{...},{...}]`, and never an object wrapping one under a key that only
+//! repeats the property's own name. It is rendered with each entry's keys in
+//! a **declared order** rather than sorted, compactly, one text per value;
 //! the reader walks the bytes and hands back slices of them, allocating
 //! nothing. Declared order is what makes the walk safe *and* cheap: a reader
 //! knows which key can come next, so a hand-edited document with reordered or
 //! repeated keys is refused with its byte position rather than mis-read, and
 //! the key a lookup keys on is put first so a scan can stop at it.
+//!
+//! A store dumps one of these as the JSON it is rather than as the escaped
+//! text it is held as, and reads it back through the same renderer, so the
+//! stored text is canonical however the file spelled it;
+//! [`Kind`] is what names one document to that pair.
 //!
 //! A refusal is a `Copy` [`Refusal`] rather than an [`Error`], so an
 //! infallible read of a malformed document costs no allocation either; only
@@ -52,8 +60,6 @@ pub(super) enum Refusal {
     Together(&'static str, &'static str),
     /// A list held fewer elements than the grammar requires of it.
     Short(&'static str, usize),
-    /// The document did not open on the array it holds.
-    WrongRoot(&'static str),
     /// Bytes stood after the document ended.
     Trailing,
 }
@@ -94,9 +100,6 @@ impl Refusal {
             }
             Self::Short(what, least) => {
                 format_smolstr!("expected {what:?} to hold at least {least} elements")
-            }
-            Self::WrongRoot(what) => {
-                format_smolstr!("expected the document to hold {what:?}")
             }
             Self::Trailing => SmolStr::new_static("expected the document to end"),
         };
@@ -373,18 +376,11 @@ impl<'doc> Cursor<'doc> {
         Ok(index)
     }
 
-    /// Opens the document on the one array it holds.
+    /// Opens the document, which is the array of entries itself.
     ///
     /// Answers whether that array holds anything, so a caller stops without a
-    /// second probe.
-    pub(super) fn open_array(&mut self, key: &'static str) -> Scan<bool> {
-        self.expect(b'{')?;
-        let at = self.position;
-        if self.read_string()? != key {
-            self.position = at;
-            return Err(Refusal::WrongRoot(key));
-        }
-        self.expect(b':')?;
+    /// second probe, and steps over the closing bracket when it does not.
+    pub(super) fn open_array(&mut self) -> Scan<bool> {
         self.expect(b'[')?;
         if self.peek() == Some(b']') {
             self.position += 1;
@@ -412,6 +408,30 @@ impl<'doc> Cursor<'doc> {
                 self.position += 1;
             }
         }
+    }
+
+    /// Steps to the next entry of the document, answering whether one
+    /// follows.
+    ///
+    /// The prologue every reader shares: the first step opens the array the
+    /// document is, each later one takes the separator between two entries,
+    /// and either way the end of that array has to be the end of the
+    /// document. `started` is the reader's own flag, so a reader stays a
+    /// plain iterator over a borrowed cursor.
+    pub(super) fn next_entry(&mut self, started: &mut bool) -> Scan<bool> {
+        let more = if *started {
+            self.next_element()?
+        } else {
+            *started = true;
+            self.open_array()?
+        };
+        if more {
+            return Ok(true);
+        }
+        if !self.is_done() {
+            return Err(Refusal::Trailing);
+        }
+        Ok(false)
     }
 
     /// Steps to the next array element, answering whether one follows.
@@ -544,13 +564,12 @@ pub(super) struct Writer {
 }
 
 impl Writer {
-    /// Opens a document on the array it holds.
-    pub(super) fn open_array(key: &str) -> Self {
-        let mut text = String::new();
-        text.push_str("{\"");
-        text.push_str(key);
-        text.push_str("\":[");
-        Self { text, empty: true }
+    /// Opens a document, which is the array of its entries.
+    pub(super) fn open_array() -> Self {
+        Self {
+            text: String::from("["),
+            empty: true,
+        }
     }
 
     /// Opens one element of that array.
@@ -565,12 +584,6 @@ impl Writer {
     /// Closes one element.
     pub(super) fn close_element(&mut self) {
         self.text.push('}');
-    }
-
-    /// Closes the array, leaving the document open for its trailing keys.
-    pub(super) fn close_array(&mut self) {
-        self.text.push(']');
-        self.empty = false;
     }
 
     /// Opens one array-valued key whose elements are objects.
@@ -687,9 +700,9 @@ impl Writer {
         Ok(())
     }
 
-    /// Finishes the document.
+    /// Finishes the document, closing the array it is.
     pub(super) fn finish(mut self) -> String {
-        self.text.push('}');
+        self.text.push(']');
         self.text
     }
 
@@ -701,4 +714,429 @@ impl Writer {
         self.text.push_str(key);
         self.text.push_str("\":");
     }
+}
+
+// ---------------------------------------------------------------------------
+// One document, two representations: the canonical text a field's metadata
+// holds, and the JSON a store dumps it as.
+//
+// A metadata value is inert text, so a code set stored beside a field is one
+// escaped line however the file around it is indented. That is unreadable in
+// a store a person edits, and the text *is* JSON - so a store writes it as
+// the JSON it is and reads it back through here.
+//
+// Reading it back cannot trust the file's key order: a JSON object decodes
+// into a sorted `Scalar::Record`, while the stored text is ordered by the
+// grammar each reader walks. So both directions go through the one table
+// below, which is the same declared order the writers write, and a hand-
+// edited document is restated canonically rather than stored as it was
+// spelled.
+// ---------------------------------------------------------------------------
+
+/// What one key of an entry holds, where it is not an ordinary leaf.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Part {
+    /// A text, a number, a flag, or an array of those: carried as it arrived,
+    /// because a JSON array keeps the order it was written in.
+    Leaf,
+    /// One datatype document, restated through the datatype's own writer, so
+    /// its keys come back in the order that writer states them rather than
+    /// in the order a JSON reader sorted them into.
+    Datatype,
+    /// A list of fills, whose members are a list of fills again.
+    Fills,
+}
+
+/// What each key of a code holds. The order is [`super::codes::KEYS`]'s, which
+/// stays the one owner of it; this says only which keys are not leaves.
+const CODE_PARTS: [Part; 9] = [Part::Leaf; 9];
+
+/// The same for a lineage entry, whose `type` is a datatype document.
+const LINEAGE_PARTS: [Part; 7] = [
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Datatype,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+];
+
+/// The same for a direction.
+const DIRECTION_PARTS: [Part; 2] = [Part::Leaf; 2];
+
+/// The same for a replacement, whose `fills` is a list of fills.
+const REPLACEMENT_PARTS: [Part; 7] = [
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Fills,
+    Part::Leaf,
+];
+
+/// The same for one fill, whose `members` is a list of fills again.
+const FILL_PARTS: [Part; 6] = [
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Leaf,
+    Part::Fills,
+];
+
+// A parts table says what each of a reader's own keys holds, so the two are
+// one table read side by side and a key added to a reader without a part is a
+// build failure rather than a key this quietly stops carrying.
+const _: () = assert!(CODE_PARTS.len() == super::codes::KEYS.len());
+const _: () = assert!(LINEAGE_PARTS.len() == super::lineage::KEYS.len());
+const _: () = assert!(DIRECTION_PARTS.len() == super::directions::KEYS.len());
+const _: () = assert!(REPLACEMENT_PARTS.len() == super::replacements::KEYS.len());
+const _: () = assert!(FILL_PARTS.len() == super::replacements::FILL_KEYS.len());
+
+/// One `fix:` property whose stored value is a canonical document.
+///
+/// Four properties hold one, and this is what names one of them to the pair
+/// a store crosses: [`Self::into_value`] writes the document as the JSON it
+/// is, [`Self::from_value`] reads that JSON back as the canonical text.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum Kind {
+    /// [`super::codes`], under `fix:codes`.
+    Codes,
+    /// [`super::lineage`], under `fix:lineage`.
+    Lineage,
+    /// [`super::directions`], under `fix:directions`.
+    Directions,
+    /// [`super::replacements`], under `fix:replacements`.
+    Replacements,
+}
+
+impl Kind {
+    /// Every property a store crosses this way.
+    pub(super) const ALL: [Self; 4] = [
+        Self::Codes,
+        Self::Lineage,
+        Self::Directions,
+        Self::Replacements,
+    ];
+
+    /// The metadata key this document is stored under.
+    pub(super) const fn key(self) -> &'static str {
+        match self {
+            Self::Codes => "fix:codes",
+            Self::Lineage => "fix:lineage",
+            Self::Directions => "fix:directions",
+            Self::Replacements => "fix:replacements",
+        }
+    }
+
+    /// The one this metadata key names, or nothing for an ordinary property.
+    pub(super) fn of_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.key() == key)
+    }
+
+    /// What this document calls itself in a refusal, as its reader does.
+    const fn target(self) -> &'static str {
+        match self {
+            Self::Codes => "fix codes",
+            Self::Lineage => "fix lineage",
+            Self::Directions => "fix directions",
+            Self::Replacements => "fix replacements",
+        }
+    }
+
+    /// The keys one entry states, in the order its reader walks them, beside
+    /// what each of them holds.
+    const fn entry(self) -> (&'static [&'static str], &'static [Part]) {
+        match self {
+            Self::Codes => (&super::codes::KEYS, &CODE_PARTS),
+            Self::Lineage => (&super::lineage::KEYS, &LINEAGE_PARTS),
+            Self::Directions => (&super::directions::KEYS, &DIRECTION_PARTS),
+            Self::Replacements => (&super::replacements::KEYS, &REPLACEMENT_PARTS),
+        }
+    }
+
+    /// The JSON value this document's canonical text already is.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the text is not this document: not JSON
+    /// at all, not an array of objects, or an entry stating a key this
+    /// document does not declare.
+    pub(super) fn value_of(self, document: &str) -> Result<Scalar> {
+        let parsed = crate::from_json_scalar(document)
+            .map_err(|error| self.refused(format_args!("{error}")))?;
+        self.ordered(&parsed)
+    }
+
+    /// The canonical text one dumped value restates.
+    ///
+    /// The entries keep the order the file gave them - a code set is ordered
+    /// by wire value and a lineage by version, and both are the writer's
+    /// business rather than this one's - while each entry's own keys are put
+    /// back into the order the grammar declares, whatever order the file
+    /// spelled them in.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the value is not an array of objects or
+    /// an entry states a key this document does not declare, and whatever
+    /// the datatype reader returns for a `type` that is not one.
+    pub(super) fn text_of(self, value: &Scalar) -> Result<String> {
+        crate::into_json_scalar(&self.ordered(value)?)
+    }
+
+    /// The document with every entry's keys in the order this kind states
+    /// them: the one order its reader walks and its writer writes.
+    fn ordered(self, value: &Scalar) -> Result<Scalar> {
+        let entries = value.as_sequence().ok_or_else(|| {
+            self.refused(crate::text::expected_got(
+                "an array of entries",
+                value.kind(),
+            ))
+        })?;
+        let (keys, parts) = self.entry();
+        let ordered = entries
+            .iter()
+            .map(|entry| self.order_entry(keys, parts, entry))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Scalar::from_sequence(ordered))
+    }
+
+    /// One entry, its stated keys in the declared order and nothing else.
+    fn order_entry(
+        self,
+        keys: &'static [&'static str],
+        parts: &'static [Part],
+        entry: &Scalar,
+    ) -> Result<Scalar> {
+        if entry.as_record().is_none() && entry.as_mapping().is_none() {
+            return Err(self.refused(crate::text::expected_got("an entry object", entry.kind())));
+        }
+        let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
+        for (key, part) in keys.iter().zip(parts) {
+            let Some(value) = entry.get_key_str(key) else {
+                continue;
+            };
+            // A flag exists only when it is true, and a key a file spelled
+            // null states nothing: both leave the entry rather than being
+            // written back as something the reader would refuse.
+            if matches!(value, Scalar::Null) || value.as_bool() == Some(false) {
+                continue;
+            }
+            let value = match part {
+                Part::Leaf => value.clone(),
+                Part::Datatype => crate::DataType::from_value(value.clone())?.into_value(),
+                Part::Fills => {
+                    let fills = value.as_sequence().ok_or_else(|| {
+                        self.refused(crate::text::expected_got(
+                            format_args!("{key:?} to hold a list of fills"),
+                            value.kind(),
+                        ))
+                    })?;
+                    Scalar::from_sequence(
+                        fills
+                            .iter()
+                            .map(|fill| {
+                                self.order_entry(&super::replacements::FILL_KEYS, &FILL_PARTS, fill)
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    )
+                }
+            };
+            held.push((Scalar::from(*key), value));
+        }
+        if let Some(unknown) = entry.keys().into_iter().find(|key| !keys.contains(key)) {
+            return Err(self.refused(format_args!("unknown key {unknown:?}")));
+        }
+        // A mapping rather than a record, because a record sorts its keys and
+        // the order this just settled is the whole point.
+        Scalar::from_mapping(held)
+    }
+
+    /// The refusal a store raises, naming the property a caller has to fix.
+    fn invalid(self, reason: impl fmt::Display) -> Error {
+        Error::InvalidMetadataValue {
+            key: self.key().into(),
+            reason: format_smolstr!("{reason}"),
+        }
+    }
+
+    /// This document's own refusal, so a reader names the document a caller
+    /// has to fix rather than the JSON beneath it.
+    fn refused(self, reason: impl fmt::Display) -> Error {
+        Error::Parse {
+            target: self.target(),
+            position: 0,
+            reason: format_smolstr!("{reason}"),
+        }
+    }
+}
+
+/// One field as a FIX store spells it: a native `Field` document whose `fix:`
+/// document properties are the JSON they are rather than one escaped line.
+///
+/// The shape [`FixRegistry::write_into`](super::FixRegistry::write_into) and
+/// [`FixRegistry::into_json`](super::FixRegistry::into_json) write and
+/// [`from_fix_document`] reads, exposed on its own so a caller editing one
+/// document out of a store - what `ygg fix read --json` prints and
+/// `ygg fix ... --input` takes - writes the same shape the store does. It is
+/// the FIX spelling of [`Field::into_value`](crate::Field::into_value), and
+/// the only difference between
+/// them is those four properties.
+///
+/// ```
+/// use yggdryl::{DataType, FixCode, Scalar, fix};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let mut side = DataType::utf8().nullable_field("Side");
+/// side.as_fix_mut().set_tag(54)?;
+/// side.as_fix_mut().set_codes(&[FixCode::new("Buy", "1")])?;
+///
+/// let document = fix::into_fix_document(side.clone())?;
+/// let codes = document
+///     .get_key_str("metadata")
+///     .and_then(|metadata| metadata.get_key_str("fix:codes"))
+///     .expect("the code set");
+/// // The JSON it is, not the text it is stored as.
+/// assert_eq!(codes.len(), 1);
+/// assert_eq!(
+///     codes.get(0).and_then(|code| code.get_key_str("name")).and_then(Scalar::as_str),
+///     Some("Buy"),
+/// );
+/// assert_eq!(fix::from_fix_document(document)?, side);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidMetadataValue`] naming the property when a field
+/// holds text under one of the four keys that is not the document that key
+/// declares.
+pub fn into_fix_document(field: crate::Field) -> Result<Scalar> {
+    dump(field.into_value())
+}
+
+/// The field one such document restates.
+///
+/// The inverse of [`into_fix_document`], and the door a store reads through:
+/// each document property is restated as the canonical text a field's
+/// metadata holds, in the order the grammar declares, so a file may spell an
+/// entry's keys however it likes and the field still holds one text.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidMetadataValue`] naming the property when the
+/// document spells one of the four keys as anything but the array of entries
+/// it is, and what [`Field::from_value`](crate::Field::from_value) returns
+/// for a document that is not a field.
+pub fn from_fix_document(document: Scalar) -> Result<crate::Field> {
+    crate::Field::from_value(load(document)?)
+}
+
+/// One native Field document as a store writes it: every `fix:` document
+/// property expanded into the JSON it is.
+///
+/// Applied to the whole document rather than to one field, because a named
+/// definition carries its members' metadata inside its own datatype.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidMetadataValue`] naming the property when a field
+/// holds text under one of these keys that is not the document the key
+/// declares. There is no escaped fallback: a store writes one shape, and a
+/// value nothing can read is named where it is found rather than copied out
+/// for a reader to refuse later.
+pub(super) fn dump(value: Scalar) -> Result<Scalar> {
+    cross(value, &|kind, held| {
+        let text = held
+            .as_str()
+            .ok_or_else(|| kind.invalid(crate::text::expected_got("its text", held.kind())))?;
+        kind.value_of(text)
+            .map_err(|error| kind.invalid(format_args!("{error}")))
+    })
+}
+
+/// The inverse: one Field document a store read, every expanded property
+/// restated as the canonical text a field's metadata holds.
+///
+/// The entries keep the order the file gave them and each entry's own keys
+/// are put back into the order the grammar declares, so a person may edit the
+/// file and spell an entry's keys however they like.
+///
+/// # Errors
+///
+/// Returns [`Error::InvalidMetadataValue`] naming the property when the file
+/// spells one of these keys as anything but the array of entries it is - the
+/// escaped text an older writer wrote included, because a store reads one
+/// shape - or when an entry states a key the document does not declare.
+pub(super) fn load(value: Scalar) -> Result<Scalar> {
+    cross(value, &|kind, held| {
+        if let Some(text) = held.as_str() {
+            return Err(kind.invalid(crate::text::expected_got(
+                "the document itself",
+                format_args!("the text {:?}", crate::text::elide_to(text, 32)),
+            )));
+        }
+        kind.text_of(held)
+            .map(Scalar::from)
+            .map_err(|error| kind.invalid(format_args!("{error}")))
+    })
+}
+
+/// Rewrite every `metadata` map the document holds, at any depth.
+fn cross(value: Scalar, across: &dyn Fn(Kind, &Scalar) -> Result<Scalar>) -> Result<Scalar> {
+    if let Some(values) = value.as_sequence() {
+        return values
+            .iter()
+            .map(|held| cross(held.clone(), across))
+            .collect::<Result<Vec<_>>>()
+            .map(Scalar::from_sequence);
+    }
+    let Some(keys) = named(&value) else {
+        return Ok(value);
+    };
+    let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
+    for key in keys {
+        let Some(child) = value.get_key_str(&key) else {
+            continue;
+        };
+        let child = if key == "metadata" {
+            properties(child, across)?
+        } else {
+            cross(child.clone(), across)?
+        };
+        held.push((Scalar::from(key), child));
+    }
+    Scalar::from_mapping(held)
+}
+
+/// One `metadata` map with the four document properties crossed over.
+fn properties(value: &Scalar, across: &dyn Fn(Kind, &Scalar) -> Result<Scalar>) -> Result<Scalar> {
+    let Some(keys) = named(value) else {
+        return Ok(value.clone());
+    };
+    let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
+    for key in keys {
+        let Some(child) = value.get_key_str(&key) else {
+            continue;
+        };
+        let child = match Kind::of_key(&key) {
+            Some(kind) => across(kind, child)?,
+            None => child.clone(),
+        };
+        held.push((Scalar::from(key), child));
+    }
+    Scalar::from_mapping(held)
+}
+
+/// The keys of a named value, in the order it answers them, or nothing where
+/// it is not one.
+fn named(value: &Scalar) -> Option<Vec<String>> {
+    if value.as_record().is_none() && value.as_mapping().is_none() {
+        return None;
+    }
+    Some(value.keys().into_iter().map(str::to_owned).collect())
 }

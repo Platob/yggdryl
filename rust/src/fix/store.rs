@@ -39,7 +39,8 @@ fn shard_index(entry: &Holder) -> Option<i32> {
     stem.parse().ok()
 }
 
-fn located(error: Error, entry: &Holder) -> Error {
+/// The same refusal, naming the file it was read from.
+pub(super) fn located(error: Error, entry: &dyn IOBase) -> Error {
     let at = entry
         .url()
         .map_or_else(|| "FIX definition".into(), |url| format_smolstr!("{url}"));
@@ -371,6 +372,48 @@ impl FixRegistry {
         crate::into_json_scalar(&self.snapshot()?)
     }
 
+    /// Reads one JSON registry snapshot into this dictionary, whole.
+    ///
+    /// The lenient door beside [`Self::from_json`], which builds a dictionary
+    /// of its own: the file is read through exactly that parse - the same
+    /// three categories, the same bounded reference graph, the same refusals,
+    /// now naming the file they came from - and then folded in the way
+    /// [`Self::merge_with`] folds any dictionary, so what only the file
+    /// declares arrives and what both declare merges with the file winning a
+    /// shared key.
+    ///
+    /// No dialect is taken, and that is the point of the pair: a `CBlock`
+    /// states no membership, so [`Self::add_cfb_file`] has to be told one or
+    /// guess it from the file's stem, while a snapshot is this crate's own
+    /// format and every field and definition in it already carries the
+    /// `fix:branches` its writer meant. Naming one here would overwrite that.
+    ///
+    /// A snapshot restating one of this crate's own fields, or the
+    /// `pluginconfig` message, is read past rather than refused: every
+    /// registry holds those from construction, so the held definition stays
+    /// and the counts do not move.
+    ///
+    /// Answers the count added and the count merged, over the fields; the
+    /// two seeded clocks every parsed snapshot carries always merge, so a
+    /// file adding nothing else answers `(0, 2)`. Named definitions that
+    /// arrive or merge are not counted, exactly as [`Self::merge_with`] does
+    /// not count them.
+    ///
+    /// One mutation: a document that does not parse, a reference naming a
+    /// definition nothing holds, a cycle, or a datatype disagreeing with a
+    /// stored field leaves this dictionary exactly as it was.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::from_json`] returns, located at the handle's URL,
+    /// and what [`Self::merge_with`] returns for the fold.
+    pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)> {
+        let parsed = crate::from_json_scalar(handle.read_all_bytes()?)
+            .and_then(|document| Self::from_snapshot(&document))
+            .map_err(|error| located(error, handle))?;
+        self.merge_with(&parsed)
+    }
+
     fn snapshot(&self) -> Result<Scalar> {
         self.validate_catalog()?;
         let mut document = Vec::with_capacity(FixCategory::ALL.len());
@@ -384,8 +427,8 @@ impl FixRegistry {
                 self.iter()
                     .filter(|field| !is_crate_field(field))
                     .cloned()
-                    .map(Field::into_value)
-                    .collect()
+                    .map(|field| super::document::dump(field.into_value()))
+                    .collect::<Result<Vec<_>>>()?
             } else {
                 // And the crate's own message is not a store's to state,
                 // for the reason its own fields are not.
@@ -393,7 +436,10 @@ impl FixRegistry {
                     .iter(category)
                     .filter(|field| !is_crate_field(field) && !is_crate_message(field))
                     .cloned()
-                    .map(|field| compact(field, true).map(Field::into_value))
+                    .map(|field| {
+                        compact(field, true)
+                            .and_then(|field| super::document::dump(field.into_value()))
+                    })
                     .collect::<Result<Vec<_>>>()?
             };
             document.push((category.as_str(), Scalar::from_sequence(fields)));
@@ -428,7 +474,7 @@ impl FixRegistry {
                     reason: "expected an array of native Field documents".into(),
                 })?;
             for (index, value) in fields.iter().enumerate() {
-                let field = Field::from_value(value.clone())?;
+                let field = Field::from_value(super::document::load(value.clone())?)?;
                 if registry.is_crate_definition(category, &field) {
                     continue;
                 }
@@ -532,7 +578,7 @@ impl FixRegistry {
                 let entry = entry?;
                 registry
                     .load_entry(&entry, category, &mut raw)
-                    .map_err(|error| located(error, &entry))?;
+                    .map_err(|error| located(error, entry.as_io()))?;
             }
         }
         registry.seed_clocks()?;
@@ -560,7 +606,7 @@ impl FixRegistry {
                     return Err(error);
                 };
                 let path = format!("{}/{}.json", key.0, key.1);
-                return Err(located(error, &root.child_by_path(&path)?));
+                return Err(located(error, root.child_by_path(&path)?.as_io()));
             }
         }
         let resolved = resolver.resolved;
@@ -604,7 +650,7 @@ impl FixRegistry {
                 reason: "expected a JSON array of field documents".into(),
             })?;
             for value in fields {
-                let field = Field::from_value(value.clone())?;
+                let field = Field::from_value(super::document::load(value.clone())?)?;
                 let (tag, _) = super::registry::canonical_identity(&field)?;
                 // The crate's own tags are never a store's to define: every
                 // registry holds the crate's definition from construction, and
@@ -629,7 +675,8 @@ impl FixRegistry {
                 self.create_definition(FixCategory::Fields, field)?;
             }
         } else {
-            let field = Field::from_json_bytes(&entry.read_all_bytes()?)?;
+            let document = crate::from_json_scalar(entry.read_all_bytes()?)?;
+            let field = Field::from_value(super::document::load(document)?)?;
             if self.is_crate_definition(category, &field) {
                 return Ok(());
             }
@@ -674,7 +721,12 @@ impl FixRegistry {
         for (shard, fields) in shards {
             documents.insert(
                 format!("fields/{shard}.json"),
-                Scalar::from_sequence(fields.into_iter().map(Field::into_value)),
+                Scalar::from_sequence(
+                    fields
+                        .into_iter()
+                        .map(|field| super::document::dump(field.into_value()))
+                        .collect::<Result<Vec<_>>>()?,
+                ),
             );
         }
         for entry in self.catalog.all() {
@@ -686,7 +738,7 @@ impl FixRegistry {
             let path = format!("{}/{}.json", entry.category, entry.field.name());
             documents.insert(
                 path,
-                compact(entry.field.as_field().clone(), true)?.into_value(),
+                super::document::dump(compact(entry.field.as_field().clone(), true)?.into_value())?,
             );
         }
         for (path, document) in &documents {

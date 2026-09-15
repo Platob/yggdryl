@@ -1602,6 +1602,12 @@ fix_combined: tuple[int, int] = fix_registry_from_fields.merge_with(fix_registry
 fix_ingested: tuple[int, int] = fix_registry_from_fields.add_cfb_file(
     Path("cblocks") / "bloomberg.cfb", "bloomberg"
 )
+fix_globbed: tuple[int, int, int] = fix_registry_from_fields.add_cfb_files(
+    Path("cblocks"), "*.cfb"
+)
+fix_snapshot_folded: tuple[int, int] = fix_registry_from_fields.add_json_file(
+    Path("dictionaries") / "venue.json"
+)
 fix_read_cblock: tuple[fix.FixRegistry, list[Field]] = fix.FixRegistry.from_cfb_file(
     Path("cblocks") / "bloomberg.cfb", dialect="bloomberg"
 )

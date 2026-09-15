@@ -153,18 +153,28 @@
 //! one shared code set referenced by tag 35: the `message-types` listing states the type and
 //! the wording beside it, the two mapping tables spell the same type the way
 //! UlMessage does, and a `grammar-binding` binds one the listing sometimes
-//! omits. Each becomes one code - the file's own spelling as its name, the
-//! other spellings as aliases, the listing's wording as its description.
+//! omits. Each becomes one code - the wire value as its name, every spelling
+//! the file gave it as aliases, the listing's wording as its description.
 //!
 //! A CBlock spells a type as the wire value and a qualifier, and the value is
 //! the first word: `AR Inbound` and `AR Outbound` are tag 35 `AR` in the two
 //! directions, `J Report` is `J` used as a report, `c SDR` and `c SLR` are
 //! `c` used two ways. A FIX message type is alphanumeric and never holds a
-//! space, so two declarations of one wire type are one code answering to
-//! both spellings - and a message root keeps the whole spelling, because the
-//! qualifier is what says which grammar the file bound. Resolving a root's
-//! name through this code set is what joins the two: `AR Outbound` answers
-//! `AR`. The complete wire token is retained without a width limit.
+//! space, so **the qualified spelling is a spelling and never a name**: a
+//! file that binds `6 Inbound` has said that tag 35 `6` exists and what this
+//! dialect calls that use of it, not what the type is called. The code is
+//! therefore named after the value it is, which is a placeholder a real name
+//! displaces the moment this folds into a dictionary that has one - `6`
+//! becomes `ioi` and keeps `6 Inbound` among its spellings, rather than
+//! renaming the type after a direction.
+//!
+//! **One wire type is one message**, however many grammars the file binds
+//! under it: the second binding folds into the first, keeping its members in
+//! order and appending every member only the second declares, so a dialect
+//! that describes a type inbound and outbound holds one message carrying
+//! both. The roots the reader hands back are still one per binding, because
+//! that is what the file bound. The complete wire token is retained without
+//! a width limit.
 //!
 //! A message type is a code of tag 35 and never a field, so a file that
 //! declares no tag 35 keeps its types out of the dictionary rather than
@@ -519,7 +529,7 @@ impl<'doc> Parse<'doc> {
         let mut roots = Vec::with_capacity(self.roots.len());
         let held = std::mem::take(&mut self.roots);
         for root in held {
-            let wire = msgtype_value(root.name()).to_owned();
+            let wire = super::msgtype::wire_value(root.name()).to_owned();
             let named = SmolStr::new(root.name());
             match self.catalogued(&mut registry, root, &wire) {
                 Ok(root) => roots.push(root),
@@ -537,6 +547,16 @@ impl<'doc> Parse<'doc> {
 
     /// One root as the catalog holds it: its members registered, its name
     /// resolved through tag 35's own code set, and the entry itself written.
+    ///
+    /// **One wire type is one message, however many grammars the file binds
+    /// under it.** A name here is derived from the wire value alone, so `6
+    /// Inbound` and `6 Outbound` reach the same entry, and the second one
+    /// *folds* into the first rather than being qualified into a message of
+    /// its own: the members the first declared stay, in their order, and
+    /// every member only the second declares is appended. The two roots the
+    /// caller is handed are still one per binding - that is what the file
+    /// bound - but the dictionary holds the union, which is the message the
+    /// dialect actually speaks.
     fn catalogued(&self, registry: &mut FixRegistry, root: Field, wire: &str) -> Result<Field> {
         let scope = wire
             .bytes()
@@ -559,7 +579,18 @@ impl<'doc> Parse<'doc> {
             .map_or_else(|| format!("message{scope}"), str::to_ascii_lowercase);
         root.set_name(named);
         root.as_fix_mut().set_msgtype(wire)?;
-        catalog_entry(registry, crate::FixCategory::Components, root, &scope)?;
+        // A name derived from the wire value reaches the same entry for every
+        // grammar bound under one type, so a held one is this same message
+        // and folds; `catalog_entry`'s qualification stays where distinct
+        // contexts really do share a spelling, which is the members.
+        if registry
+            .get_definition(crate::FixCategory::Components, root.name())
+            .is_some()
+        {
+            registry.fold_definition(crate::FixCategory::Components, root)?;
+        } else {
+            catalog_entry(registry, crate::FixCategory::Components, root, &scope)?;
+        }
         Ok(held)
     }
 
@@ -1149,7 +1180,11 @@ impl<'doc> Parse<'doc> {
                     let spelling = self.attribute(&element, "value")?;
                     if let Some(spelling) = spelling.filter(|held| !held.trim().is_empty()) {
                         let spelled = spelling.trim();
-                        let Some(at) = self.values.get(msgtype_value(spelled)).copied() else {
+                        let Some(at) = self
+                            .values
+                            .get(super::msgtype::wire_value(spelled))
+                            .copied()
+                        else {
                             self.dropped(&self.refused_in(
                                 &element,
                                 "a message type this file's listing declares",
@@ -1183,14 +1218,18 @@ impl<'doc> Parse<'doc> {
 
     /// One message type as a code of tag 35, answering where it sits.
     ///
-    /// The value is [`msgtype_value`]'s and the name is the file's whole
-    /// spelling, so two declarations of one wire type - `AR Inbound` and
-    /// `AR Outbound` - are one code answering to both. A spelling the file
-    /// states twice is one code, and the first wording it gave is the one it
-    /// keeps.
+    /// **The wire value is the code's name and the qualified spelling is only
+    /// ever a spelling of it.** [`wire_value`](super::msgtype::wire_value)
+    /// splits the two, so `6 Inbound` declares tag 35 `6` and answers to `6
+    /// Inbound`; it never adds a code called `6 Inbound`, and where the
+    /// dictionary this folds into already names `6`, that name is the one the
+    /// merged set keeps. Two declarations of one wire type - `AR Inbound` and
+    /// `AR Outbound`, `c SDR` and `c SLR` - are therefore one code answering
+    /// to every spelling the file gave it, and the first wording it gave is
+    /// the description it keeps.
     fn push_msgtype(&mut self, spelling: &str, described: Option<&str>) -> Option<usize> {
         let spelling = spelling.trim();
-        let value = msgtype_value(spelling);
+        let value = super::msgtype::wire_value(spelling);
         let described = described.map(single_line).filter(|held| !held.is_empty());
         if let Some(at) = self.values.get(value).copied() {
             if self.msgtypes[at].description().is_none() {
@@ -1201,13 +1240,13 @@ impl<'doc> Parse<'doc> {
             self.alias_msgtype(at, spelling);
             return Some(at);
         }
-        // Two spellings hashing to one value is a collision and not something
+        // Two values hashing to one spelling is a collision and not something
         // to resolve by picking one, so the second names nothing and is
         // dropped - the rule every contended spelling in this file is read
         // under.
         if let Some(taken) = self
             .spellings
-            .get(&crate::types::normalized(spelling))
+            .get(&crate::types::normalized(value))
             .copied()
         {
             self.dropped(&self.refused(
@@ -1221,15 +1260,17 @@ impl<'doc> Parse<'doc> {
             ));
             return None;
         }
-        let mut code = FixCode::new(spelling, value);
+        let mut code = FixCode::new(value, value);
         if let Some(described) = described {
             code = code.with_description(described);
         }
         self.msgtypes.push(code);
         let at = self.msgtypes.len() - 1;
         self.values.insert(SmolStr::new(value), at);
-        self.spellings
-            .insert(crate::types::normalized(spelling), at);
+        self.spellings.insert(crate::types::normalized(value), at);
+        // The whole spelling, and only as a spelling: a qualifier says which
+        // grammar the file bound, never what the type is called.
+        self.alias_msgtype(at, spelling);
         Some(at)
     }
 
@@ -2085,21 +2126,6 @@ fn referenced(value: &str) -> Option<i32> {
         return None;
     }
     held.parse().ok()
-}
-
-/// The wire value one declared message type carries.
-///
-/// A CBlock spells a message type as the wire value and a qualifier: `AR
-/// Inbound` and `AR Outbound` are tag 35 `AR` in the two directions, `J
-/// Report` is `J` used as a report, `c SDR` and `c SLR` are `c` used two
-/// ways. The wire value is the first word - a FIX message type is
-/// alphanumeric and never holds a space - and the qualifier says which
-/// grammar the file binds under it, which is why a message root keeps the
-/// whole spelling while the code takes the value and answers to both.
-///
-/// The full first word is retained without a datatype width limit.
-fn msgtype_value(spelling: &str) -> &str {
-    spelling.split_whitespace().next().unwrap_or(spelling)
 }
 
 /// One description as a single line of prose.

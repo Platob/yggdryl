@@ -32,7 +32,40 @@
     "metadata": {
       "description": "Time unit associated with the relative stub start date offset.",
       "display": "PaymentStubStartDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42702"
     }
   },
@@ -45,7 +78,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative stub start date offset.",
       "display": "PaymentStubStartDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42703"
     }
   },
@@ -95,7 +176,47 @@
     "metadata": {
       "description": "Type of fee elected for the break provision.",
       "display": "ProvisionBreakFeeElection",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"FlatFee\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Flat fee\"},{\"value\":\"1\",\"name\":\"AmortizedFee\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Amortized fee\"},{\"value\":\"2\",\"name\":\"FundingFee\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Funding fee\"},{\"value\":\"3\",\"name\":\"FlatAndFundingFee\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"Flat fee and funding fee\"},{\"value\":\"4\",\"name\":\"AmortizedAndFundingFee\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":4,\"doc\":\"Amortized fee and funding fee\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "FlatFee",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Flat fee"
+        },
+        {
+          "value": "1",
+          "name": "AmortizedFee",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Amortized fee"
+        },
+        {
+          "value": "2",
+          "name": "FundingFee",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Funding fee"
+        },
+        {
+          "value": "3",
+          "name": "FlatAndFundingFee",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "Flat fee and funding fee"
+        },
+        {
+          "value": "4",
+          "name": "AmortizedAndFundingFee",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 4,
+          "doc": "Amortized fee and funding fee"
+        }
+      ],
       "fix:tag": "42707"
     }
   },
@@ -132,7 +253,23 @@
     "metadata": {
       "description": "Specifies the valuation type applicable to the return rate date.",
       "display": "ReturnRateDateMode",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PriceValuation\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Price valuation\"},{\"value\":\"1\",\"name\":\"DividendValuation\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Dividend valuation\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "PriceValuation",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Price valuation"
+        },
+        {
+          "value": "1",
+          "name": "DividendValuation",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Dividend valuation"
+        }
+      ],
       "fix:tag": "42710"
     }
   },
@@ -169,7 +306,40 @@
     "metadata": {
       "description": "Time unit associated with the relative return rate valuation date offset.",
       "display": "ReturnRateValuationDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42713"
     }
   },
@@ -182,7 +352,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative return rate valuation date offset.",
       "display": "ReturnRateValuationDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42714"
     }
   },
@@ -232,7 +450,40 @@
     "metadata": {
       "description": "Time unit associated with the relative return rate valuation start date offset.",
       "display": "ReturnRateValuationStartDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42718"
     }
   },
@@ -245,7 +496,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative return rate valuation start date offset.",
       "display": "ReturnRateValuationStartDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42719"
     }
   },
@@ -308,7 +607,40 @@
     "metadata": {
       "description": "Time unit associated with the relative return rate valuation end date offset.",
       "display": "ReturnRateValuationEndDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42724"
     }
   },
@@ -321,7 +653,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative return rate valuation end date offset.",
       "display": "ReturnRateValuationEndDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42725"
     }
   },
@@ -359,7 +739,72 @@
     "metadata": {
       "description": "Time unit associated with the frequency at which return rate valuation dates occur.",
       "display": "ReturnRateValuationFrequencyUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 5,
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 6,
+          "doc": "Minute"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 7,
+          "doc": "Second"
+        },
+        {
+          "value": "T",
+          "name": "Term",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 8,
+          "doc": "Term"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42728"
     }
   },
@@ -372,7 +817,376 @@
     "metadata": {
       "description": "The convention for determining the sequence of return rate valuation dates. It is used in conjunction with a specified frequency.",
       "display": "ReturnRateValuationFrequencyRollConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"FirstDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"1st day of the month\"},{\"value\":\"10\",\"name\":\"TenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":10,\"doc\":\"10th day of the month\"},{\"value\":\"11\",\"name\":\"EleventhDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":11,\"doc\":\"11th day of the month\"},{\"value\":\"12\",\"name\":\"TwelvthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":12,\"doc\":\"12th day of the month\"},{\"value\":\"13\",\"name\":\"ThirteenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":13,\"doc\":\"13th day of the month\"},{\"value\":\"14\",\"name\":\"ForteenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":14,\"doc\":\"14th day of the month\"},{\"value\":\"15\",\"name\":\"FifteenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":15,\"doc\":\"15th day of the month\"},{\"value\":\"16\",\"name\":\"SixteenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":16,\"doc\":\"16th day of the month\"},{\"value\":\"17\",\"name\":\"SeventeenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":17,\"doc\":\"17th day of the month\"},{\"value\":\"18\",\"name\":\"EighteenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":18,\"doc\":\"18th day of the month\"},{\"value\":\"19\",\"name\":\"NineteenthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":19,\"doc\":\"19th day of the month\"},{\"value\":\"2\",\"name\":\"SecondDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"2nd day of the month\"},{\"value\":\"20\",\"name\":\"TwentiethDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":20,\"doc\":\"20th day of the month\"},{\"value\":\"21\",\"name\":\"TwentyFirstDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":21,\"doc\":\"21st day of the month\"},{\"value\":\"22\",\"name\":\"TwentySecondDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":22,\"doc\":\"22nd day of the month\"},{\"value\":\"23\",\"name\":\"TwentyThirdDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":23,\"doc\":\"23rd day of the month\"},{\"value\":\"24\",\"name\":\"TwentyFourthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":24,\"doc\":\"24th day of the month\"},{\"value\":\"25\",\"name\":\"TwentyFifthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":25,\"doc\":\"25th day of the month\"},{\"value\":\"26\",\"name\":\"TwentySixthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":26,\"doc\":\"26th day of the month\"},{\"value\":\"27\",\"name\":\"TwentySeventhDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":27,\"doc\":\"27th day of the month\"},{\"value\":\"28\",\"name\":\"TwentyEigthDa28y\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"28th day of the month\"},{\"value\":\"29\",\"name\":\"TwentyNinthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":29,\"doc\":\"29th day of the month\"},{\"value\":\"3\",\"name\":\"ThirdDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"3rd day of the month\"},{\"value\":\"30\",\"name\":\"ThirtiethDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":30,\"doc\":\"30th day of the month\"},{\"value\":\"4\",\"name\":\"FourthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"4th day of the month\"},{\"value\":\"5\",\"name\":\"FifthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"5th day of the month\"},{\"value\":\"6\",\"name\":\"SixthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"6thd day of the month\"},{\"value\":\"7\",\"name\":\"SeventhDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"7th day of the month\"},{\"value\":\"8\",\"name\":\"EighthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":8,\"doc\":\"8th day of the month\"},{\"value\":\"9\",\"name\":\"NinthDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":9,\"doc\":\"9th day of the month\"},{\"value\":\"EOM\",\"name\":\"EOM\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":31,\"doc\":\"The end of the month.\"},{\"value\":\"FRI\",\"name\":\"FRI\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":44,\"doc\":\"Friday\"},{\"value\":\"FRN\",\"name\":\"FRN\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":32,\"doc\":\"The floating rate note convention or Eurodollar convention.\"},{\"value\":\"IMM\",\"name\":\"IMM\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":33,\"doc\":\"The International Money Market settlement date, i.e. the 3rd Wednesday of the month.\"},{\"value\":\"IMMAUD\",\"name\":\"IMMAUD\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":35,\"doc\":\"The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract.\"},{\"value\":\"IMMCAD\",\"name\":\"IMMCAD\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":34,\"doc\":\"The last trading day/expiration day of the Canadian Derivatives Exchange.\"},{\"value\":\"IMMNZD\",\"name\":\"IMMNZD\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":36,\"doc\":\"The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract.\"},{\"value\":\"MON\",\"name\":\"MON\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":40,\"doc\":\"Monday\"},{\"value\":\"NONE\",\"name\":\"NONE\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":38,\"doc\":\"No adjustment\"},{\"value\":\"SAT\",\"name\":\"SAT\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":45,\"doc\":\"Saturday\"},{\"value\":\"SFE\",\"name\":\"SFE\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":37,\"doc\":\"The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates.\"},{\"value\":\"SUN\",\"name\":\"SUN\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":46,\"doc\":\"Sunday\"},{\"value\":\"TBILL\",\"name\":\"TBILL\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":39,\"doc\":\"The 13-week and 26-week U.S. Treasury Bill auction dates.\"},{\"value\":\"THU\",\"name\":\"THU\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":43,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"TUE\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":41,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"WED\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":42,\"doc\":\"Wednesday\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "FirstDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "1st day of the month"
+        },
+        {
+          "value": "10",
+          "name": "TenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 10,
+          "doc": "10th day of the month"
+        },
+        {
+          "value": "11",
+          "name": "EleventhDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 11,
+          "doc": "11th day of the month"
+        },
+        {
+          "value": "12",
+          "name": "TwelvthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 12,
+          "doc": "12th day of the month"
+        },
+        {
+          "value": "13",
+          "name": "ThirteenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 13,
+          "doc": "13th day of the month"
+        },
+        {
+          "value": "14",
+          "name": "ForteenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 14,
+          "doc": "14th day of the month"
+        },
+        {
+          "value": "15",
+          "name": "FifteenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 15,
+          "doc": "15th day of the month"
+        },
+        {
+          "value": "16",
+          "name": "SixteenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 16,
+          "doc": "16th day of the month"
+        },
+        {
+          "value": "17",
+          "name": "SeventeenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 17,
+          "doc": "17th day of the month"
+        },
+        {
+          "value": "18",
+          "name": "EighteenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 18,
+          "doc": "18th day of the month"
+        },
+        {
+          "value": "19",
+          "name": "NineteenthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 19,
+          "doc": "19th day of the month"
+        },
+        {
+          "value": "2",
+          "name": "SecondDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "2nd day of the month"
+        },
+        {
+          "value": "20",
+          "name": "TwentiethDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 20,
+          "doc": "20th day of the month"
+        },
+        {
+          "value": "21",
+          "name": "TwentyFirstDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 21,
+          "doc": "21st day of the month"
+        },
+        {
+          "value": "22",
+          "name": "TwentySecondDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 22,
+          "doc": "22nd day of the month"
+        },
+        {
+          "value": "23",
+          "name": "TwentyThirdDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 23,
+          "doc": "23rd day of the month"
+        },
+        {
+          "value": "24",
+          "name": "TwentyFourthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 24,
+          "doc": "24th day of the month"
+        },
+        {
+          "value": "25",
+          "name": "TwentyFifthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 25,
+          "doc": "25th day of the month"
+        },
+        {
+          "value": "26",
+          "name": "TwentySixthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 26,
+          "doc": "26th day of the month"
+        },
+        {
+          "value": "27",
+          "name": "TwentySeventhDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 27,
+          "doc": "27th day of the month"
+        },
+        {
+          "value": "28",
+          "name": "TwentyEigthDa28y",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 28,
+          "doc": "28th day of the month"
+        },
+        {
+          "value": "29",
+          "name": "TwentyNinthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 29,
+          "doc": "29th day of the month"
+        },
+        {
+          "value": "3",
+          "name": "ThirdDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "3rd day of the month"
+        },
+        {
+          "value": "30",
+          "name": "ThirtiethDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 30,
+          "doc": "30th day of the month"
+        },
+        {
+          "value": "4",
+          "name": "FourthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "4th day of the month"
+        },
+        {
+          "value": "5",
+          "name": "FifthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "5th day of the month"
+        },
+        {
+          "value": "6",
+          "name": "SixthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "6thd day of the month"
+        },
+        {
+          "value": "7",
+          "name": "SeventhDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "7th day of the month"
+        },
+        {
+          "value": "8",
+          "name": "EighthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 8,
+          "doc": "8th day of the month"
+        },
+        {
+          "value": "9",
+          "name": "NinthDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 9,
+          "doc": "9th day of the month"
+        },
+        {
+          "value": "EOM",
+          "name": "EOM",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 31,
+          "doc": "The end of the month."
+        },
+        {
+          "value": "FRI",
+          "name": "FRI",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 44,
+          "doc": "Friday"
+        },
+        {
+          "value": "FRN",
+          "name": "FRN",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 32,
+          "doc": "The floating rate note convention or Eurodollar convention."
+        },
+        {
+          "value": "IMM",
+          "name": "IMM",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 33,
+          "doc": "The International Money Market settlement date, i.e. the 3rd Wednesday of the month."
+        },
+        {
+          "value": "IMMAUD",
+          "name": "IMMAUD",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 35,
+          "doc": "The last trading day of the Sydney Futures Exchange Australian 90-day bank accepted bill futures contract."
+        },
+        {
+          "value": "IMMCAD",
+          "name": "IMMCAD",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 34,
+          "doc": "The last trading day/expiration day of the Canadian Derivatives Exchange."
+        },
+        {
+          "value": "IMMNZD",
+          "name": "IMMNZD",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 36,
+          "doc": "The last trading day of the Sydney Futures Exchange New Zealand 90-day bank bill futures contract."
+        },
+        {
+          "value": "MON",
+          "name": "MON",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 40,
+          "doc": "Monday"
+        },
+        {
+          "value": "NONE",
+          "name": "NONE",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 38,
+          "doc": "No adjustment"
+        },
+        {
+          "value": "SAT",
+          "name": "SAT",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 45,
+          "doc": "Saturday"
+        },
+        {
+          "value": "SFE",
+          "name": "SFE",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 37,
+          "doc": "The Sydney Futures Exchange 90-day bank accepted bill futures settlement dates."
+        },
+        {
+          "value": "SUN",
+          "name": "SUN",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 46,
+          "doc": "Sunday"
+        },
+        {
+          "value": "TBILL",
+          "name": "TBILL",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 39,
+          "doc": "The 13-week and 26-week U.S. Treasury Bill auction dates."
+        },
+        {
+          "value": "THU",
+          "name": "THU",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 43,
+          "doc": "Thursday"
+        },
+        {
+          "value": "TUE",
+          "name": "TUE",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 41,
+          "doc": "Tuesday"
+        },
+        {
+          "value": "WED",
+          "name": "WED",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 42,
+          "doc": "Wednesday"
+        }
+      ],
       "fix:tag": "42729"
     }
   },
@@ -385,7 +1199,71 @@
     "metadata": {
       "description": "The return rate valuation dates business day convention.",
       "display": "ReturnRateValuationDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "42730"
     }
   },
@@ -434,7 +1312,24 @@
     "metadata": {
       "description": "Specifies whether ReturnRateFXRate(42733) should be multiplied or divided.",
       "display": "ReturnRateFXRateCalc",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Divide\",\"since\":\"4.4\",\"ep\":38,\"sort\":2,\"doc\":\"Divide\"},{\"value\":\"M\",\"name\":\"Multiply\",\"since\":\"4.4\",\"ep\":38,\"sort\":1,\"doc\":\"Multiply\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Divide",
+          "since": "4.4",
+          "ep": 38,
+          "sort": 2,
+          "doc": "Divide"
+        },
+        {
+          "value": "M",
+          "name": "Multiply",
+          "since": "4.4",
+          "ep": 38,
+          "sort": 1,
+          "doc": "Multiply"
+        }
+      ],
       "fix:tag": "42734"
     }
   },
@@ -459,7 +1354,31 @@
     "metadata": {
       "description": "Specifies the type of price sequence of the return rate.",
       "display": "ReturnRatePriceSequence",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Interim\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Interim\"},{\"value\":\"2\",\"name\":\"Final\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Final\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Initial",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Initial"
+        },
+        {
+          "value": "1",
+          "name": "Interim",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Interim"
+        },
+        {
+          "value": "2",
+          "name": "Final",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Final"
+        }
+      ],
       "fix:tag": "42736"
     }
   },
@@ -472,7 +1391,66 @@
     "metadata": {
       "description": "Specifies the basis or unit used to calculate the commission.",
       "display": "ReturnRateCommissionBasis",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"PerUnit\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Amount per unit\"},{\"value\":\"2\",\"name\":\"Percent\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Percent\"},{\"value\":\"3\",\"name\":\"Absolute\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Absolute\"},{\"value\":\"4\",\"name\":\"PercentageWaivedCashDiscount\",\"since\":\"4.3\",\"sort\":4,\"doc\":\"Percentage waived, cash discount basis\"},{\"value\":\"5\",\"name\":\"PercentageWaivedEnhancedUnits\",\"since\":\"4.3\",\"sort\":5,\"doc\":\"Percentage waived, enhanced units basis\"},{\"value\":\"6\",\"name\":\"PointsPerBondOrContract\",\"since\":\"4.3\",\"sort\":6,\"doc\":\"Points per bond or contract\"},{\"value\":\"7\",\"name\":\"BasisPoints\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":7,\"doc\":\"Basis points\"},{\"value\":\"8\",\"name\":\"AmountPerContract\",\"since\":\"5.0.2\",\"ep\":204,\"sort\":8,\"doc\":\"Amount per contract\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "PerUnit",
+          "since": "2.7",
+          "sort": 1,
+          "doc": "Amount per unit"
+        },
+        {
+          "value": "2",
+          "name": "Percent",
+          "since": "2.7",
+          "sort": 2,
+          "doc": "Percent"
+        },
+        {
+          "value": "3",
+          "name": "Absolute",
+          "since": "2.7",
+          "sort": 3,
+          "doc": "Absolute"
+        },
+        {
+          "value": "4",
+          "name": "PercentageWaivedCashDiscount",
+          "since": "4.3",
+          "sort": 4,
+          "doc": "Percentage waived, cash discount basis"
+        },
+        {
+          "value": "5",
+          "name": "PercentageWaivedEnhancedUnits",
+          "since": "4.3",
+          "sort": 5,
+          "doc": "Percentage waived, enhanced units basis"
+        },
+        {
+          "value": "6",
+          "name": "PointsPerBondOrContract",
+          "since": "4.3",
+          "sort": 6,
+          "doc": "Points per bond or contract"
+        },
+        {
+          "value": "7",
+          "name": "BasisPoints",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 7,
+          "doc": "Basis points"
+        },
+        {
+          "value": "8",
+          "name": "AmountPerContract",
+          "since": "5.0.2",
+          "ep": 204,
+          "sort": 8,
+          "doc": "Amount per contract"
+        }
+      ],
       "fix:tag": "42737"
     }
   },
@@ -569,7 +1547,31 @@
     "metadata": {
       "description": "Specifies the type of quote used to determine the return rate of the swap.",
       "display": "ReturnRateQuoteMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Offer\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bid",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Bid"
+        },
+        {
+          "value": "1",
+          "name": "Mid",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Mid"
+        },
+        {
+          "value": "2",
+          "name": "Offer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Offer"
+        }
+      ],
       "fix:tag": "42745"
     }
   },
@@ -606,7 +1608,71 @@
     "metadata": {
       "description": "Specifies how or the timing when the quote is to be obtained.",
       "display": "ReturnRateQuoteTimeType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Open\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Open\"},{\"value\":\"1\",\"name\":\"OfficialSettlPx\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Official settlement price time\"},{\"value\":\"2\",\"name\":\"Xetra\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"XETRA\"},{\"value\":\"3\",\"name\":\"Close\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"Close\"},{\"value\":\"4\",\"name\":\"DerivativesClose\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":4,\"doc\":\"Derivatives close\"},{\"value\":\"5\",\"name\":\"High\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":5,\"doc\":\"High\"},{\"value\":\"6\",\"name\":\"Low\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":6,\"doc\":\"Low\"},{\"value\":\"7\",\"name\":\"AsSpecifiedInMasterConfirmation\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":7,\"doc\":\"As specified in the master confirmation\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Open",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Open"
+        },
+        {
+          "value": "1",
+          "name": "OfficialSettlPx",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Official settlement price time"
+        },
+        {
+          "value": "2",
+          "name": "Xetra",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "XETRA"
+        },
+        {
+          "value": "3",
+          "name": "Close",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "Close"
+        },
+        {
+          "value": "4",
+          "name": "DerivativesClose",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 4,
+          "doc": "Derivatives close"
+        },
+        {
+          "value": "5",
+          "name": "High",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 5,
+          "doc": "High"
+        },
+        {
+          "value": "6",
+          "name": "Low",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 6,
+          "doc": "Low"
+        },
+        {
+          "value": "7",
+          "name": "AsSpecifiedInMasterConfirmation",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 7,
+          "doc": "As specified in the master confirmation"
+        }
+      ],
       "fix:tag": "42748"
     }
   },
@@ -620,7 +1686,16 @@
     "metadata": {
       "description": "The time when the quote is to be generated.",
       "display": "ReturnRateQuoteTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"returnratequotetime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
+      "fix:lineage": [
+        {
+          "since": "5.0.2",
+          "name": "returnratequotetime",
+          "type": {
+            "type": "time64",
+            "unit": "nanosecond"
+          }
+        }
+      ],
       "fix:tag": "42749"
     }
   },
@@ -647,7 +1722,16 @@
     "metadata": {
       "description": "The time when the quote ceases to be valid.",
       "display": "ReturnRateQuoteExpirationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"returnratequoteexpirationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
+      "fix:lineage": [
+        {
+          "since": "5.0.2",
+          "name": "returnratequoteexpirationtime",
+          "type": {
+            "type": "time64",
+            "unit": "nanosecond"
+          }
+        }
+      ],
       "fix:tag": "42751"
     }
   },
@@ -708,7 +1792,71 @@
     "metadata": {
       "description": "Specifies the timing at which the calculation agent values the underlying.",
       "display": "ReturnRateValuationTimeType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Open\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Open\"},{\"value\":\"1\",\"name\":\"OfficialSettlPx\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Official settlement price time\"},{\"value\":\"2\",\"name\":\"Xetra\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"XETRA\"},{\"value\":\"3\",\"name\":\"Close\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"Close\"},{\"value\":\"4\",\"name\":\"DerivativesClose\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":4,\"doc\":\"Derivatives close\"},{\"value\":\"5\",\"name\":\"High\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":5,\"doc\":\"High\"},{\"value\":\"6\",\"name\":\"Low\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":6,\"doc\":\"Low\"},{\"value\":\"7\",\"name\":\"AsSpecifiedInMasterConfirmation\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":7,\"doc\":\"As specified in the master confirmation\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Open",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Open"
+        },
+        {
+          "value": "1",
+          "name": "OfficialSettlPx",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Official settlement price time"
+        },
+        {
+          "value": "2",
+          "name": "Xetra",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "XETRA"
+        },
+        {
+          "value": "3",
+          "name": "Close",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "Close"
+        },
+        {
+          "value": "4",
+          "name": "DerivativesClose",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 4,
+          "doc": "Derivatives close"
+        },
+        {
+          "value": "5",
+          "name": "High",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 5,
+          "doc": "High"
+        },
+        {
+          "value": "6",
+          "name": "Low",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 6,
+          "doc": "Low"
+        },
+        {
+          "value": "7",
+          "name": "AsSpecifiedInMasterConfirmation",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 7,
+          "doc": "As specified in the master confirmation"
+        }
+      ],
       "fix:tag": "42756"
     }
   },
@@ -722,7 +1870,16 @@
     "metadata": {
       "description": "The time at which the calculation agent values the underlying asset.",
       "display": "ReturnRateValuationTime",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"returnratevaluationtime\",\"type\":{\"type\":\"time64\",\"unit\":\"nanosecond\"}}]}",
+      "fix:lineage": [
+        {
+          "since": "5.0.2",
+          "name": "returnratevaluationtime",
+          "type": {
+            "type": "time64",
+            "unit": "nanosecond"
+          }
+        }
+      ],
       "fix:tag": "42757"
     }
   },
@@ -747,7 +1904,31 @@
     "metadata": {
       "description": "Indicates whether an ISDA price option applies, and if applicable which type of price.",
       "display": "ReturnRateValuationPriceOption",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"None (the default)\"},{\"value\":\"1\",\"name\":\"FuturesPrice\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Futures price\"},{\"value\":\"2\",\"name\":\"OptionsPrice\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Options price\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "None (the default)"
+        },
+        {
+          "value": "1",
+          "name": "FuturesPrice",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Futures price"
+        },
+        {
+          "value": "2",
+          "name": "OptionsPrice",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Options price"
+        }
+      ],
       "fix:tag": "42759"
     }
   },
@@ -760,7 +1941,23 @@
     "metadata": {
       "description": "Specifies the fallback provision for the hedging party in the determination of the final price.",
       "display": "ReturnRateFinalPriceFallback",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"HedgeElection\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge election\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Close",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Close"
+        },
+        {
+          "value": "1",
+          "name": "HedgeElection",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Hedge election"
+        }
+      ],
       "fix:tag": "42760"
     }
   },
@@ -785,7 +1982,47 @@
     "metadata": {
       "description": "Identifies the source of rate information. For FX the references source to be used for the FX spot rate.",
       "display": "ReturnRateInformationSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "since": "5.0.1",
+          "ep": 82,
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 1,
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 2,
+          "doc": "Telerate"
+        },
+        {
+          "value": "3",
+          "name": "ISDARateOption",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "ISDA Settlement Rate Option"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 99,
+          "doc": "Other"
+        }
+      ],
       "fix:tag": "42762"
     }
   },
@@ -834,7 +2071,39 @@
     "metadata": {
       "description": "The basis of the return price.",
       "display": "ReturnRatePriceBasis",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Gross\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Gross\"},{\"value\":\"1\",\"name\":\"Net\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Net\"},{\"value\":\"2\",\"name\":\"Accrued\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Accrued\"},{\"value\":\"3\",\"name\":\"CleanNet\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"Clean net\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Gross",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Gross"
+        },
+        {
+          "value": "1",
+          "name": "Net",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Net"
+        },
+        {
+          "value": "2",
+          "name": "Accrued",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Accrued"
+        },
+        {
+          "value": "3",
+          "name": "CleanNet",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "Clean net"
+        }
+      ],
       "fix:tag": "42766"
     }
   },
@@ -871,7 +2140,23 @@
     "metadata": {
       "description": "Specifies whether the ReturnRatePrice(42767) is expressed in absolute or relative terms.",
       "display": "ReturnRatePriceType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"AbsoluteTerms\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Absolute terms\"},{\"value\":\"1\",\"name\":\"PercentageOfNotional\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Percentage of notional\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "AbsoluteTerms",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Absolute terms"
+        },
+        {
+          "value": "1",
+          "name": "PercentageOfNotional",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Percentage of notional"
+        }
+      ],
       "fix:tag": "42769"
     }
   },
@@ -933,7 +2218,23 @@
     "metadata": {
       "description": "Specifies the type of return rate valuation date (e.g. adjusted for holidays).",
       "display": "ReturnRateValuationDateType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Adjusted\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Unadjusted"
+        },
+        {
+          "value": "1",
+          "name": "Adjusted",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Adjusted"
+        }
+      ],
       "fix:tag": "42774"
     }
   },
@@ -983,7 +2284,71 @@
     "metadata": {
       "description": "The settlement method election date adjustment business day convention.",
       "display": "SettlMethodElectionDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "42778"
     }
   },
@@ -1020,7 +2385,40 @@
     "metadata": {
       "description": "Time unit associated with the relative settlement method election date offset.",
       "display": "SettlMethodElectionDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42781"
     }
   },
@@ -1033,7 +2431,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative settlement method election date offset.",
       "display": "SettlMethodElectionDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42782"
     }
   },
@@ -1096,7 +2542,31 @@
     "metadata": {
       "description": "For equity swaps this specifies the conditions that govern the adjustment to the number of units of the swap.",
       "display": "StreamNotionalAdjustments",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Execution\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Execution\"},{\"value\":\"1\",\"name\":\"PortfolioRebalancing\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Portfolio rebalancing\"},{\"value\":\"2\",\"name\":\"Standard\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Standard\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Execution",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Execution"
+        },
+        {
+          "value": "1",
+          "name": "PortfolioRebalancing",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Portfolio rebalancing"
+        },
+        {
+          "value": "2",
+          "name": "Standard",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Standard"
+        }
+      ],
       "fix:tag": "42787"
     }
   },
@@ -1146,7 +2616,71 @@
     "metadata": {
       "description": "The business day convention used to adjust the cash settlement provision's date. Used only to override the business day convention defined in the UnderlyingInstrument component.",
       "display": "UnderlyingCashSettlDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "42791"
     }
   },
@@ -1183,7 +2717,40 @@
     "metadata": {
       "description": "Time unit associated with the relative cash settlement date offset.",
       "display": "UnderlyingCashSettlDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42794"
     }
   },
@@ -1196,7 +2763,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative cash settlement date offset.",
       "display": "UnderlyingCashSettlDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42795"
     }
   },
@@ -1234,7 +2849,23 @@
     "metadata": {
       "description": "The default election for determining settlement price.",
       "display": "UnderlyingCashSettlPriceDefault",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Close\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Close\"},{\"value\":\"1\",\"name\":\"Hedge\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Hedge\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Close",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Close"
+        },
+        {
+          "value": "1",
+          "name": "Hedge",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Hedge"
+        }
+      ],
       "fix:tag": "42798"
     }
   },

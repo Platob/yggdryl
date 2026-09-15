@@ -195,7 +195,7 @@ pub use crated::{
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
 pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns};
-pub use document::{Numbers, Words};
+pub use document::{Numbers, Words, from_fix_document, into_fix_document};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
 pub use generic::{GENERICMESSAGE_CODE_NAME, fix_generic_message};

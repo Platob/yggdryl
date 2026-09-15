@@ -20,7 +20,40 @@
     "metadata": {
       "description": "Time unit associated with the relative payment date offset.",
       "display": "LegPaymentStreamPaymentDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40301"
     }
   },
@@ -33,7 +66,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative payment date offset.",
       "display": "LegPaymentStreamPaymentDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "40302"
     }
   },
@@ -58,7 +139,71 @@
     "metadata": {
       "description": "The business day convention used to adjust the payment stream's reset date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentStreamResetDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "40304"
     }
   },
@@ -95,7 +240,72 @@
     "metadata": {
       "description": "Time unit associated with frequency of resets.",
       "display": "LegPaymentStreamResetFrequencyUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 5,
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 6,
+          "doc": "Minute"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 7,
+          "doc": "Second"
+        },
+        {
+          "value": "T",
+          "name": "Term",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 8,
+          "doc": "Term"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40307"
     }
   },
@@ -108,7 +318,64 @@
     "metadata": {
       "description": "Used to specify the day of the week in which the reset occurs for payments that reset on a weekly basis.",
       "display": "LegPaymentStreamResetWeeklyRollConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"FRI\",\"name\":\"Friday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Friday\"},{\"value\":\"MON\",\"name\":\"Monday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Monday\"},{\"value\":\"SAT\",\"name\":\"Saturday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Saturday\"},{\"value\":\"SUN\",\"name\":\"Sunday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Sunday\"},{\"value\":\"THU\",\"name\":\"Thursday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Thursday\"},{\"value\":\"TUE\",\"name\":\"Tuesday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Tuesday\"},{\"value\":\"WED\",\"name\":\"Wednesday\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Wednesday\"}]}",
+      "fix:codes": [
+        {
+          "value": "FRI",
+          "name": "Friday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Friday"
+        },
+        {
+          "value": "MON",
+          "name": "Monday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Monday"
+        },
+        {
+          "value": "SAT",
+          "name": "Saturday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Saturday"
+        },
+        {
+          "value": "SUN",
+          "name": "Sunday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Sunday"
+        },
+        {
+          "value": "THU",
+          "name": "Thursday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Thursday"
+        },
+        {
+          "value": "TUE",
+          "name": "Tuesday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Tuesday"
+        },
+        {
+          "value": "WED",
+          "name": "Wednesday",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Wednesday"
+        }
+      ],
       "fix:tag": "40308"
     }
   },
@@ -133,7 +400,71 @@
     "metadata": {
       "description": "The business day convention used to adjust the payment stream's initial fixing date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentStreamInitialFixingDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "40310"
     }
   },
@@ -170,7 +501,40 @@
     "metadata": {
       "description": "Time unit associated with the relative initial fixing date offset.",
       "display": "LegPaymentStreamInitialFixingDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40313"
     }
   },
@@ -183,7 +547,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative initial fixing date offset.",
       "display": "LegPaymentStreamInitialFixingDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "40314"
     }
   },
@@ -221,7 +633,71 @@
     "metadata": {
       "description": "The business day convention used to adjust the payment stream's fixing date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentStreamFixingDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "40317"
     }
   },
@@ -258,7 +734,40 @@
     "metadata": {
       "description": "Time unit associated with the relative fixing date offset.",
       "display": "LegPaymentStreamFixingDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40320"
     }
   },
@@ -271,7 +780,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative fixing date offset.",
       "display": "LegPaymentStreamFixingDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "40321"
     }
   },
@@ -309,7 +866,40 @@
     "metadata": {
       "description": "Time unit associated with the relative rate cut-off date offset.",
       "display": "LegPaymentStreamRateCutoffDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40324"
     }
   },
@@ -322,7 +912,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative rate cut-off date offset.",
       "display": "LegPaymentStreamRateCutoffDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "40325"
     }
   },
@@ -408,7 +1046,39 @@
     "metadata": {
       "description": "The source of the payment stream floating rate index.",
       "display": "LegPaymentStreamRateIndexSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Telerate"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 99,
+          "doc": "Other"
+        }
+      ],
       "fix:tag": "40332"
     }
   },
@@ -421,7 +1091,40 @@
     "metadata": {
       "description": "Time unit associated with the payment stream's floating rate index curve period.",
       "display": "LegPaymentStreamRateIndexCurveUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40333"
     }
   },
@@ -470,7 +1173,23 @@
     "metadata": {
       "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "LegPaymentStreamRateSpreadPositionType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Short",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Short"
+        },
+        {
+          "value": "1",
+          "name": "Long",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Long"
+        }
+      ],
       "fix:tag": "40337"
     }
   },
@@ -483,7 +1202,23 @@
     "metadata": {
       "description": "Specifies the yield calculation treatment for the index.",
       "display": "LegPaymentStreamRateTreatment",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Bond equivalent yield"
+        },
+        {
+          "value": "1",
+          "name": "MoneyMarketYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Money market yield"
+        }
+      ],
       "fix:tag": "40338"
     }
   },
@@ -508,7 +1243,24 @@
     "metadata": {
       "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "LegPaymentStreamCapRateBuySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "40340"
     }
   },
@@ -521,7 +1273,24 @@
     "metadata": {
       "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "LegPaymentStreamCapRateSellSide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "40341"
     }
   },
@@ -546,7 +1315,24 @@
     "metadata": {
       "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "LegPaymentStreamFloorRateBuySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "40343"
     }
   },
@@ -559,7 +1345,24 @@
     "metadata": {
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "LegPaymentStreamFloorRateSellSide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "40344"
     }
   },
@@ -584,7 +1387,29 @@
     "metadata": {
       "description": "Specifies the rounding direction.",
       "display": "LegPaymentStreamFinalRateRoundingDirection",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RoundToNearest\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Round to nearest\"},{\"value\":\"1\",\"name\":\"RoundDown\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Round down\"},{\"value\":\"2\",\"name\":\"RoundUp\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Round up\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RoundToNearest",
+          "since": "4.3",
+          "sort": 1,
+          "doc": "Round to nearest"
+        },
+        {
+          "value": "1",
+          "name": "RoundDown",
+          "since": "4.3",
+          "sort": 2,
+          "doc": "Round down"
+        },
+        {
+          "value": "2",
+          "name": "RoundUp",
+          "since": "4.3",
+          "sort": 3,
+          "doc": "Round up"
+        }
+      ],
       "fix:tag": "40346"
     }
   },
@@ -609,7 +1434,23 @@
     "metadata": {
       "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
       "display": "LegPaymentStreamAveragingMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unweighted\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Unweighted\"},{\"value\":\"1\",\"name\":\"Weighted\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Weighted\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unweighted",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Unweighted"
+        },
+        {
+          "value": "1",
+          "name": "Weighted",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Weighted"
+        }
+      ],
       "fix:tag": "40348"
     }
   },
@@ -622,7 +1463,23 @@
     "metadata": {
       "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "LegPaymentStreamNegativeRateTreatment",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ZeroInterestRateMethod\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Zero interest rate method\"},{\"value\":\"1\",\"name\":\"NegativeInterestRateMethod\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Negative interest rate method\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ZeroInterestRateMethod",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Zero interest rate method"
+        },
+        {
+          "value": "1",
+          "name": "NegativeInterestRateMethod",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Negative interest rate method"
+        }
+      ],
       "fix:tag": "40349"
     }
   },
@@ -647,7 +1504,40 @@
     "metadata": {
       "description": "Time unit associated with the inflation lag period.",
       "display": "LegPaymentStreamInflationLagUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40351"
     }
   },
@@ -660,7 +1550,55 @@
     "metadata": {
       "description": "The inflation lag period day type.",
       "display": "LegPaymentStreamInflationLagDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "40352"
     }
   },
@@ -673,7 +1611,23 @@
     "metadata": {
       "description": "The method used when calculating the inflation index level from multiple points. The most common is linear method.",
       "display": "LegPaymentStreamInflationInterpolationMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"LinearZeroYield\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Linear zero yield\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "None"
+        },
+        {
+          "value": "1",
+          "name": "LinearZeroYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Linear zero yield"
+        }
+      ],
       "fix:tag": "40353"
     }
   },
@@ -686,7 +1640,39 @@
     "metadata": {
       "description": "The inflation index reference source.",
       "display": "LegPaymentStreamInflationIndexSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Telerate"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 99,
+          "doc": "Other"
+        }
+      ],
       "fix:tag": "40354"
     }
   },
@@ -735,7 +1721,31 @@
     "metadata": {
       "description": "The method of Forward Rate Agreement (FRA) discounting, if any, that will apply.",
       "display": "LegPaymentStreamFRADiscounting",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"ISDA\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"International Swaps and Derivatives Association (ISDA)\"},{\"value\":\"2\",\"name\":\"AFMA\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Australian Financial Markets Association (AFMA)\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "None"
+        },
+        {
+          "value": "1",
+          "name": "ISDA",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "International Swaps and Derivatives Association (ISDA)"
+        },
+        {
+          "value": "2",
+          "name": "AFMA",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Australian Financial Markets Association (AFMA)"
+        }
+      ],
       "fix:tag": "40358"
     }
   },
@@ -760,7 +1770,71 @@
     "metadata": {
       "description": "The business day convention used to adjust the payment stream's fixing date for the non-deliverable settlement terms. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentStreamNonDeliverableFixingDatesBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "40360"
     }
   },
@@ -809,7 +1883,40 @@
     "metadata": {
       "description": "Time unit associated with the relative non-deliverable fixing date offset.",
       "display": "LegPaymentStreamNonDeliverableFixingDatesOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40364"
     }
   },
@@ -822,7 +1929,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative non-deliverable fixing date offset.",
       "display": "LegPaymentStreamNonDeliverableFixingDatesOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "40365"
     }
   },
@@ -835,7 +1990,47 @@
     "metadata": {
       "description": "Identifies the source of rate information.",
       "display": "LegSettlRateFallbackRateSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "since": "5.0.1",
+          "ep": 82,
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 1,
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 2,
+          "doc": "Telerate"
+        },
+        {
+          "value": "3",
+          "name": "ISDARateOption",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "ISDA Settlement Rate Option"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 99,
+          "doc": "Other"
+        }
+      ],
       "fix:tag": "40366"
     }
   },
@@ -873,7 +2068,23 @@
     "metadata": {
       "description": "Specifies the type of date (e.g. adjusted for holidays).",
       "display": "LegNonDeliverableFixingDateType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unadjusted\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Unadjusted\"},{\"value\":\"1\",\"name\":\"Adjusted\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Adjusted\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unadjusted",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Unadjusted"
+        },
+        {
+          "value": "1",
+          "name": "Adjusted",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Adjusted"
+        }
+      ],
       "fix:tag": "40369"
     }
   },
@@ -898,7 +2109,47 @@
     "metadata": {
       "description": "Identifies the source of rate information.",
       "display": "PaymentStreamNonDeliverableSettlRateSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "since": "5.0.1",
+          "ep": 82,
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 1,
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 2,
+          "doc": "Telerate"
+        },
+        {
+          "value": "3",
+          "name": "ISDARateOption",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "ISDA Settlement Rate Option"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 99,
+          "doc": "Other"
+        }
+      ],
       "fix:tag": "40371"
     }
   },
@@ -923,7 +2174,47 @@
     "metadata": {
       "description": "Identifies the source of rate information.",
       "display": "SettlRateFallbackRateSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bloomberg\",\"since\":\"5.0.1\",\"ep\":82,\"doc\":\"Bloomberg\"},{\"value\":\"1\",\"name\":\"Reuters\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":1,\"doc\":\"Reuters\"},{\"value\":\"2\",\"name\":\"Telerate\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":2,\"doc\":\"Telerate\"},{\"value\":\"3\",\"name\":\"ISDARateOption\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"ISDA Settlement Rate Option\"},{\"value\":\"99\",\"name\":\"Other\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":99,\"doc\":\"Other\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bloomberg",
+          "since": "5.0.1",
+          "ep": 82,
+          "doc": "Bloomberg"
+        },
+        {
+          "value": "1",
+          "name": "Reuters",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 1,
+          "doc": "Reuters"
+        },
+        {
+          "value": "2",
+          "name": "Telerate",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 2,
+          "doc": "Telerate"
+        },
+        {
+          "value": "3",
+          "name": "ISDARateOption",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "ISDA Settlement Rate Option"
+        },
+        {
+          "value": "99",
+          "name": "Other",
+          "since": "5.0.1",
+          "ep": 82,
+          "sort": 99,
+          "doc": "Other"
+        }
+      ],
       "fix:tag": "40373"
     }
   },
@@ -948,7 +2239,199 @@
     "metadata": {
       "description": "Specifies the type of schedule.",
       "display": "LegPaymentScheduleType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Notional\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Notional\"},{\"value\":\"1\",\"name\":\"CashFlow\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Cash flow\"},{\"value\":\"10\",\"name\":\"NonDeliverableSettlPaymentDates\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":10,\"doc\":\"Non-deliverable settlement payment dates\"},{\"value\":\"11\",\"name\":\"NonDeliverableSettlCalculationDates\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":11,\"doc\":\"Non-deliverable settlement calculation dates\"},{\"value\":\"12\",\"name\":\"NonDeliverableFXFixingDates\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":12,\"doc\":\"Non-deliverable fixing dates.\"},{\"value\":\"13\",\"name\":\"SettlPeriodNotnl\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":13,\"doc\":\"Settlement period notional\"},{\"value\":\"14\",\"name\":\"SettlPeriodPx\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":14,\"doc\":\"Settlement period price\"},{\"value\":\"15\",\"name\":\"CalcPeriod\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":15,\"doc\":\"Calculation period\"},{\"value\":\"16\",\"name\":\"DividendAccrualRateMultiplier\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":16,\"doc\":\"Dividend accrual rate multiplier\"},{\"value\":\"17\",\"name\":\"DividendAccrualRateSpread\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":17,\"doc\":\"Dividend accrual rate spread\"},{\"value\":\"18\",\"name\":\"DividendAccrualCapRate\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":18,\"doc\":\"Dividend accrual cap rate\"},{\"value\":\"19\",\"name\":\"DividendAccrualFloorRate\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":19,\"doc\":\"Dividend accrual floor rate\"},{\"value\":\"2\",\"name\":\"FXLinkedNotional\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"FX linked notional\"},{\"value\":\"20\",\"name\":\"CompoundingRateMultiplier\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":20,\"doc\":\"Compounding rate multiplier\"},{\"value\":\"21\",\"name\":\"CompoundingRateSpread\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":21,\"doc\":\"Compounding rate spread\"},{\"value\":\"22\",\"name\":\"CompoundingCapRate\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":22,\"doc\":\"Compounding cap rate\"},{\"value\":\"23\",\"name\":\"CompoundingFloorRate\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":23,\"doc\":\"Compounding floor rate\"},{\"value\":\"3\",\"name\":\"FixedRate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Fixed rate\"},{\"value\":\"4\",\"name\":\"FutureValueNotional\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Future value notional\"},{\"value\":\"5\",\"name\":\"KnownAmount\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Known amount\"},{\"value\":\"6\",\"name\":\"FloatingRateMultiplier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Floating rate multiplier\"},{\"value\":\"7\",\"name\":\"Spread\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Spread\"},{\"value\":\"8\",\"name\":\"CapRate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":8,\"doc\":\"Cap rate\"},{\"value\":\"9\",\"name\":\"FloorRate\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":9,\"doc\":\"Floor rate\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Notional",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Notional"
+        },
+        {
+          "value": "1",
+          "name": "CashFlow",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Cash flow"
+        },
+        {
+          "value": "10",
+          "name": "NonDeliverableSettlPaymentDates",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 10,
+          "doc": "Non-deliverable settlement payment dates"
+        },
+        {
+          "value": "11",
+          "name": "NonDeliverableSettlCalculationDates",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 11,
+          "doc": "Non-deliverable settlement calculation dates"
+        },
+        {
+          "value": "12",
+          "name": "NonDeliverableFXFixingDates",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 12,
+          "doc": "Non-deliverable fixing dates."
+        },
+        {
+          "value": "13",
+          "name": "SettlPeriodNotnl",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 13,
+          "doc": "Settlement period notional"
+        },
+        {
+          "value": "14",
+          "name": "SettlPeriodPx",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 14,
+          "doc": "Settlement period price"
+        },
+        {
+          "value": "15",
+          "name": "CalcPeriod",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 15,
+          "doc": "Calculation period"
+        },
+        {
+          "value": "16",
+          "name": "DividendAccrualRateMultiplier",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 16,
+          "doc": "Dividend accrual rate multiplier"
+        },
+        {
+          "value": "17",
+          "name": "DividendAccrualRateSpread",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 17,
+          "doc": "Dividend accrual rate spread"
+        },
+        {
+          "value": "18",
+          "name": "DividendAccrualCapRate",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 18,
+          "doc": "Dividend accrual cap rate"
+        },
+        {
+          "value": "19",
+          "name": "DividendAccrualFloorRate",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 19,
+          "doc": "Dividend accrual floor rate"
+        },
+        {
+          "value": "2",
+          "name": "FXLinkedNotional",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "FX linked notional"
+        },
+        {
+          "value": "20",
+          "name": "CompoundingRateMultiplier",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 20,
+          "doc": "Compounding rate multiplier"
+        },
+        {
+          "value": "21",
+          "name": "CompoundingRateSpread",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 21,
+          "doc": "Compounding rate spread"
+        },
+        {
+          "value": "22",
+          "name": "CompoundingCapRate",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 22,
+          "doc": "Compounding cap rate"
+        },
+        {
+          "value": "23",
+          "name": "CompoundingFloorRate",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 23,
+          "doc": "Compounding floor rate"
+        },
+        {
+          "value": "3",
+          "name": "FixedRate",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Fixed rate"
+        },
+        {
+          "value": "4",
+          "name": "FutureValueNotional",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Future value notional"
+        },
+        {
+          "value": "5",
+          "name": "KnownAmount",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Known amount"
+        },
+        {
+          "value": "6",
+          "name": "FloatingRateMultiplier",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Floating rate multiplier"
+        },
+        {
+          "value": "7",
+          "name": "Spread",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Spread"
+        },
+        {
+          "value": "8",
+          "name": "CapRate",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 8,
+          "doc": "Cap rate"
+        },
+        {
+          "value": "9",
+          "name": "FloorRate",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 9,
+          "doc": "Floor rate"
+        }
+      ],
       "fix:tag": "40375"
     }
   },
@@ -961,7 +2444,39 @@
     "metadata": {
       "description": "Indicates to which stub this schedule applies.",
       "display": "LegPaymentScheduleStubType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Final\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Final\"},{\"value\":\"2\",\"name\":\"CompoundingInitial\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Compounding initial\"},{\"value\":\"3\",\"name\":\"CompoundingFinal\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"Compounding final\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Initial",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Initial"
+        },
+        {
+          "value": "1",
+          "name": "Final",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Final"
+        },
+        {
+          "value": "2",
+          "name": "CompoundingInitial",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Compounding initial"
+        },
+        {
+          "value": "3",
+          "name": "CompoundingFinal",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "Compounding final"
+        }
+      ],
       "fix:tag": "40376"
     }
   },
@@ -1000,7 +2515,24 @@
     "metadata": {
       "description": "The side of the party paying the step schedule.",
       "display": "LegPaymentSchedulePaySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Sell"
+        }
+      ],
       "fix:tag": "40379"
     }
   },
@@ -1013,7 +2545,24 @@
     "metadata": {
       "description": "The side of the party receiving the step schedule.",
       "display": "LegPaymentScheduleReceiveSide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Sell"
+        }
+      ],
       "fix:tag": "40380"
     }
   },
@@ -1086,7 +2635,23 @@
     "metadata": {
       "description": "Identifies whether the rate spread is applied to a long or a short position.",
       "display": "LegPaymentScheduleRateSpreadPositionType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Short",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Short"
+        },
+        {
+          "value": "1",
+          "name": "Long",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Long"
+        }
+      ],
       "fix:tag": "40386"
     }
   },
@@ -1099,7 +2664,23 @@
     "metadata": {
       "description": "Specifies the yield calculation treatment for the step schedule.",
       "display": "LegPaymentScheduleRateTreatment",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Bond equivalent yield"
+        },
+        {
+          "value": "1",
+          "name": "MoneyMarketYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Money market yield"
+        }
+      ],
       "fix:tag": "40387"
     }
   },
@@ -1148,7 +2729,72 @@
     "metadata": {
       "description": "Time unit associated with the step frequency.",
       "display": "LegPaymentScheduleStepFrequencyUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":5,\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":7,\"doc\":\"Second\"},{\"value\":\"T\",\"name\":\"Term\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":8,\"doc\":\"Term\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 5,
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 6,
+          "doc": "Minute"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 7,
+          "doc": "Second"
+        },
+        {
+          "value": "T",
+          "name": "Term",
+          "since": "5.0.2",
+          "ep": 169,
+          "sort": 8,
+          "doc": "Term"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "40391"
     }
   },
@@ -1197,7 +2843,23 @@
     "metadata": {
       "description": "Specifies whether the LegPaymentScheduleStepRate(40393) or LegPaymentScheduleStepOffsetValue(40392) should be applied to the initial notional or the previous notional in order to calculate the notional step change amount.",
       "display": "LegPaymentScheduleStepRelativeTo",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"Previous\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Previous\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Initial",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Initial"
+        },
+        {
+          "value": "1",
+          "name": "Previous",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Previous"
+        }
+      ],
       "fix:tag": "40395"
     }
   },
@@ -1247,7 +2909,71 @@
     "metadata": {
       "description": "The business day convention used to adjust the payment schedule's fixing date. Used only to override the business day convention specified in the LegDateAdjustment component within the InstrumentLeg component.",
       "display": "LegPaymentScheduleFixingDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "40399"
     }
   }

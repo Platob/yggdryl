@@ -13,7 +13,7 @@ use crate::{diff, quality, registry, schema, shell, style};
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]}' --directions '{\"directions\":[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]}'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document.\nTag 385's direction rules live in fix:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
+    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]' --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nField enums live in fix:codes metadata; --codes accepts that JSON document.\nTag 385's direction rules live in fix:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
 )]
 pub enum Command {
     /// Tagged scalar fields, including int32 repeating-group counters.
@@ -126,7 +126,7 @@ pub enum CategoryCommand {
 /// Native Field intake; category semantics remain in the core registry.
 #[derive(Args)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '{\"codes\":[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]}' --directions '{\"directions\":[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]}'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example {\"codes\":[{\"value\":\"1\",\"name\":\"Buy\"}]}.\nTag 385's direction rules belong to fix:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example {\"directions\":[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]}; an empty list removes the property so the crate's defaults read again."
+    after_help = "Examples:\n  ygg fix fields create NoPartyIDs int32 --tag 453\n  ygg fix fields create --input Side.json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix components create Order 'struct<ClOrdID: utf8>' --msgtype D\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]' --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nQuote datatype expressions containing spaces or shell metacharacters.\n--input accepts one complete native Field JSON document, including metadata and children.\nField enum records belong to fix:codes metadata. --codes accepts compact JSON with value before name, for example [{\"value\":\"1\",\"name\":\"Buy\"}].\nTag 385's direction rules belong to fix:directions metadata. --directions accepts compact JSON with one entry per code of the set, each pattern a regex read against the prose in front of a payload, for example [{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]}]; an empty list removes the property so the crate's defaults read again."
 )]
 pub struct DefinitionArgs {
     /// Canonical definition name, preserving its spelling.
@@ -153,10 +153,10 @@ pub struct DefinitionArgs {
     /// Existing component defining one occurrence of this group.
     #[arg(long)]
     component: Option<String>,
-    /// Compact inline enum JSON, with value before name: {"codes":[{"value":"1","name":"Buy"}]}.
+    /// Compact inline enum JSON, with value before name: [{"value":"1","name":"Buy"}].
     #[arg(long)]
     codes: Option<String>,
-    /// Direction rules JSON for tag 385: {"directions":[{"code":"S","patterns":["(?i)^TX\\b"]}]}.
+    /// Direction rules JSON for tag 385: [{"code":"S","patterns":["(?i)^TX\\b"]}].
     #[arg(long)]
     directions: Option<String>,
     /// Direct scalar identifier member; repeat for several, in any input order.
@@ -173,7 +173,7 @@ pub struct DefinitionArgs {
 impl DefinitionArgs {
     fn field(&self) -> Result<Field> {
         if let Some(path) = &self.input {
-            return Field::from_json_bytes(&std::fs::read(path)?);
+            return yggdryl::from_fix_document(yggdryl::from_json_scalar(std::fs::read(path)?)?);
         }
         let name = self.name.as_deref().ok_or_else(|| yggdryl::Error::Absent {
             expected: "a definition name or --input",

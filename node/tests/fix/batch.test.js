@@ -81,7 +81,7 @@ function configRegistry() {
   // Tag 385 as the dictionary types it: text carrying its code set.
   const direction = Field.from('MsgDirection: utf8')
   direction.fix.tag = 385
-  direction.set('fix:codes', '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}')
+  direction.set('fix:codes', '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]')
   registry.insert(direction)
   return registry
 }

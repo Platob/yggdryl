@@ -34,9 +34,6 @@ use crate::{Error, Result, Version};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix replacements";
 
-/// The one array the document holds.
-const REPLACEMENTS: &str = "replacements";
-
 /// The version the specification replaced the feature at; required.
 const SINCE: &str = "since";
 /// The extension pack that dated the replacement.
@@ -70,14 +67,14 @@ const MEMBERS: &str = "members";
 /// `since` leads because it is what a future version filter keys on, and
 /// `fills` sits after every condition so a reader that finds the entry does
 /// not apply can stop before the one key that costs a nested walk.
-const KEYS: [&str; 7] = [SINCE, EP, MSGTYPES, IN, WHEN, FILLS, DOC];
+pub(super) const KEYS: [&str; 7] = [SINCE, EP, MSGTYPES, IN, WHEN, FILLS, DOC];
 
 /// The keys one fill may state, in the order it states them.
 ///
 /// Exactly one of `tag` and `group` is stated; `value`, `from` and `join`
 /// travel only with `tag` and at most one of them, `members` only with
 /// `group`.
-const FILL_KEYS: [&str; 6] = [TAG, VALUE, FROM, JOIN, GROUP, MEMBERS];
+pub(super) const FILL_KEYS: [&str; 6] = [TAG, VALUE, FROM, JOIN, GROUP, MEMBERS];
 
 /// Where a filled field's value comes from, as a caller states it.
 ///
@@ -811,30 +808,16 @@ impl<'field> FixReplacements<'field> {
     /// not a word the reader reads back.
     pub(super) fn render(entries: &[FixReplacement]) -> Result<String> {
         entries.iter().try_for_each(FixReplacement::validate)?;
-        let mut writer = Writer::open_array(REPLACEMENTS);
+        let mut writer = Writer::open_array();
         for entry in entries {
             entry.write_into(&mut writer)?;
         }
-        writer.close_array();
         Ok(writer.finish())
     }
 
     /// Advances one step: the next entry, the document's end, or a refusal.
     fn step(&mut self) -> Scan<Option<FixReplacementEntry<'field>>> {
-        if !self.started {
-            self.started = true;
-            if !self.cursor.open_array(REPLACEMENTS)? {
-                self.cursor.expect(b'}')?;
-                if !self.cursor.is_done() {
-                    return Err(Refusal::Trailing);
-                }
-                return Ok(None);
-            }
-        } else if !self.cursor.next_element()? {
-            self.cursor.expect(b'}')?;
-            if !self.cursor.is_done() {
-                return Err(Refusal::Trailing);
-            }
+        if !self.cursor.next_entry(&mut self.started)? {
             return Ok(None);
         }
         self.read_entry().map(Some)
@@ -897,7 +880,7 @@ impl<'field> FixReplacements<'field> {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut field = DataType::utf8().nullable_field("rule80a");
-    /// field.set_metadata([("fix:replacements", r#"{"replacements":[{"fills":[{"tag":528}]}]}"#)])?;
+    /// field.set_metadata([("fix:replacements", r#"[{"fills":[{"tag":528}]}]"#)])?;
     /// // The entry states no `since`, which the grammar requires.
     /// assert!(field.as_fix().replacements().next_ok().is_none());
     /// assert!(field.as_fix().replacements().next().expect("a refusal").is_err());
