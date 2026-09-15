@@ -144,6 +144,46 @@ fn fraction_separators_group_digits_without_changing_the_count() {
 }
 
 #[test]
+fn either_decimal_sign_opens_the_same_fraction() {
+    // ISO 8601 names the comma and the full stop alike and prefers the comma,
+    // which is what a log4j line and a European locale write; the count, the
+    // unit and the grouping rule are the ones the full stop already had.
+    assert_eq!(
+        parse_time("10:00:01,500").unwrap(),
+        parse_time("10:00:01.500").unwrap()
+    );
+    assert_eq!(
+        parse_time("00:00:00,5").unwrap(),
+        (500, TimeUnit::Millisecond)
+    );
+    assert_eq!(
+        parse_time("00:00:00,000_001").unwrap(),
+        (1, TimeUnit::Microsecond)
+    );
+    assert_eq!(
+        parse_datetime("2026-08-14 00:05:01,148").unwrap(),
+        parse_datetime("2026-08-14T00:05:01.148").unwrap()
+    );
+    let (count, unit, zone) = parse_timestamp("2024-02-01T10:00:00,500_000Z").unwrap();
+    assert_eq!(
+        (count, unit),
+        (1_706_781_600_500_000, TimeUnit::Microsecond)
+    );
+    assert!(zone.is_utc());
+
+    // The sign is read, never written: a comma comes back as the full stop
+    // RFC 3339 allows, so a spelling normalizes on the way out.
+    assert_eq!(
+        format_time(parse_time("00:00:00,5").unwrap().0, TimeUnit::Millisecond).as_deref(),
+        Some("00:00:00.500")
+    );
+
+    // One sign, not two: the second is trailing text, not more fraction.
+    assert!(parse_time("00:00:00,5.5").is_err());
+    assert!(parse_time("00:00:00.5,5").is_err());
+}
+
+#[test]
 fn malformed_fraction_separators_are_rejected_with_their_byte_position() {
     let position = |text: &str| match parse_time(text).unwrap_err() {
         Error::Parse {
@@ -163,6 +203,12 @@ fn malformed_fraction_separators_are_rejected_with_their_byte_position() {
     assert_eq!(position("00:00:00.5__5"), 10);
     assert_eq!(position("00:00:00._"), 9);
     assert_eq!(position("00:00:00.1_2_"), 12);
+
+    // The comma opens a fraction exactly where the full stop does, so a
+    // malformed one names the same byte.
+    assert_eq!(position("00:00:00,"), 9);
+    assert_eq!(position("00:00:00,_5"), 9);
+    assert_eq!(position("00:00:00,1_2_"), 12);
 
     // The same clock feeds the datetime and timestamp parsers.
     assert!(parse_datetime("2024-02-01T10:00:00._5").is_err());
@@ -268,6 +314,14 @@ fn durations_spell_seconds_and_read_any_decomposition() {
     );
     assert!(parse_duration("P").is_err());
     assert!(parse_duration("PT1.5M").is_err());
+
+    // The shared fraction reader means the duration spellings take the comma
+    // too, as ISO 8601 says they do.
+    assert_eq!(
+        parse_duration("PT1,5S").unwrap(),
+        parse_duration("PT1.5S").unwrap()
+    );
+    assert!(parse_duration("PT1,5M").is_err());
 }
 
 #[test]
@@ -311,6 +365,10 @@ fn durations_also_read_a_plain_clock_whose_hours_never_fold() {
         parse_duration("00:00:00.5").unwrap(),
         parse_duration("PT0.5S").unwrap()
     );
+    assert_eq!(
+        parse_duration("25:30:00,5").unwrap(),
+        parse_duration("25:30:00.5").unwrap()
+    );
     // Both spellings of the same elapsed time read the same count.
     assert_eq!(
         parse_duration("26:03:04").unwrap(),
@@ -346,6 +404,10 @@ fn malformed_durations_name_the_byte_that_breaks_them() {
     // Positions are byte offsets into the text as written, sign included.
     assert_eq!(position("-PT1.5M"), 6);
     assert_eq!(position("PT1.5M"), 5);
+    // The comma reaches the component labels through the same fraction, so
+    // the byte a fraction on the wrong component names moves with it.
+    assert_eq!(position("PT1,5M"), 5);
+    assert_eq!(position("P1,5D"), 4);
     assert_eq!(position("P1Y"), 2);
     assert_eq!(position("PT1"), 3);
     assert_eq!(position("-01:60:00"), 4);

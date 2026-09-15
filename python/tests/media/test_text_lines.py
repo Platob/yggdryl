@@ -412,6 +412,64 @@ def test_retained_text_options_parse_the_real_execution_row(
     assert row["mtime"] == MTIME
 
 
+def test_a_comma_fraction_is_a_timestamp_column_and_not_a_string(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = handle(
+        tmp_path,
+        b"2026-08-14 00:05:01,148 [main] (INFO) started\n",
+        "log4j.log",
+    )
+    options = TextOptions()
+    options.rowheader = (
+        r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) "
+        r"\[(?<thread>[^]]+)\] \((?<level>[A-Z]+)\) "
+    )
+    options.timezone = Timezone.UTC
+
+    # ISO 8601 names the comma a decimal sign, so a log4j clock is a clock: the
+    # column is the instant the fraction's width declares, not the string a
+    # capture falls back to when nothing recognizes its syntax. The line names
+    # no zone, and the one `timezone` configures dates it.
+    reader = source.read_arrow_reader(options=options)
+    assert reader.schema.field("stamp").type == pa.timestamp("ms", "UTC")
+    assert reader.read_all().column("stamp").to_pylist() == [
+        datetime.datetime(2026, 8, 14, 0, 5, 1, 148_000, tzinfo=datetime.timezone.utc)
+    ]
+
+    # The same row reaches a record the same way round.
+    [row] = list(source.read_records(options=options))
+    assert row["stamp"] == datetime.datetime(
+        2026, 8, 14, 0, 5, 1, 148_000, tzinfo=datetime.timezone.utc
+    )
+    assert row["level"] == "INFO"
+
+
+def test_a_variable_width_fraction_takes_the_widest_unit_it_admits(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = handle(
+        tmp_path,
+        b"2026-08-14 00:05:01.148 short\n2026-08-14 00:05:01.12345 long\n",
+        "variable.log",
+    )
+    options = TextOptions()
+    options.rowheader = r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,5}) "
+    options.timezone = Timezone.UTC
+
+    # A capture admitting several widths publishes the widest, because no
+    # coarser one could hold a five-digit row: at milliseconds `.12345` is no
+    # exact count and the reader would refuse the row the pattern promised. A
+    # three-digit row still reads as three digits and restates into the unit
+    # the column publishes.
+    reader = source.read_arrow_reader(options=options)
+    assert reader.schema.field("stamp").type == pa.timestamp("us", "UTC")
+    assert reader.read_all().column("stamp").to_pylist() == [
+        datetime.datetime(2026, 8, 14, 0, 5, 1, 148_000, tzinfo=datetime.timezone.utc),
+        datetime.datetime(2026, 8, 14, 0, 5, 1, 123_450, tzinfo=datetime.timezone.utc),
+    ]
+
+
 def test_generic_record_writes_encode_only_text_body(tmp_path: pathlib.Path) -> None:
     target = IOBase(tmp_path / "out.txt")
     options = text_options()

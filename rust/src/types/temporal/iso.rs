@@ -264,6 +264,14 @@ fn parse_date_at(text: &str, position: usize) -> Result<(i32, usize)> {
 /// unit's full width, that unit, and the end position. A clock with no
 /// fraction reads zero at second resolution and does not move the position.
 ///
+/// Either decimal sign opens the fraction. ISO 8601 divides the fraction from
+/// the integer part with the decimal sign of ISO 31-0 - the comma or the full
+/// stop - and names the comma the preferred one, which is what log4j and the
+/// European locales write, so `00:05:01,148` is a clock and not a clock
+/// followed by a list. RFC 3339 allows only the full stop, and that is the one
+/// this crate writes back: a comma is read here and spelled as a dot, so a
+/// reading normalizes on the way out and no formatter needs a sign to choose.
+///
 /// The fraction accepts `_` digit-group separators - `.000_000` reads exactly
 /// as `.000000` - because that is how a log emitter that groups microseconds
 /// spells a clock. A separator is legal only *between* digits; the digit count
@@ -274,7 +282,7 @@ fn parse_fraction_at(
     position: usize,
     target: &'static str,
 ) -> Result<(i64, TimeUnit, usize)> {
-    if text.as_bytes().get(position) != Some(&b'.') {
+    if !matches!(text.as_bytes().get(position), Some(b'.' | b',')) {
         return Ok((0, TimeUnit::Second, position));
     }
     let start = position + 1;

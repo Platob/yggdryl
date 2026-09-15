@@ -2213,6 +2213,16 @@ fn every_fix_datatype_that_is_an_instant_decodes_to_one() {
         read("8=FIX.4.4", "20240102-10:15:30.000", 60),
         instant(1_704_190_530_000_000_000),
     );
+
+    // FIX spells a fraction with the full stop and nothing else, but the wire
+    // spelling is handed to this crate's shared ISO reader rather than to a
+    // second parser of FIX's own, and that reader takes either decimal sign.
+    // So a bridge writing the comma its locale writes reads the same instant
+    // where it used to be Null, without FIX itself gaining a spelling.
+    assert_eq!(
+        read("8=FIX.4.4", "20240102-10:15:30,000", 60),
+        instant(1_704_190_530_000_000_000),
+    );
 }
 
 /// Critical clocks are typed at intake; no text-typed interior fallback remains.

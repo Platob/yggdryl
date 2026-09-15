@@ -37,6 +37,15 @@
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
 /// assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "pluginid", "level"]));
 /// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
+/// // The bridge's own millisecond fraction is what types its stamp, so a
+/// // widened probe must leave this capture exactly where it was.
+/// assert_eq!(
+///     captures.field("timestamp")?.dtype(),
+///     &yggdryl::DataType::DateTime64 {
+///         unit: yggdryl::TimeUnit::Millisecond,
+///         timezone: yggdryl::Timezone::NAIVE,
+///     },
+/// );
 /// # Ok(())
 /// # }
 /// ```

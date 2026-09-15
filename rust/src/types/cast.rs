@@ -816,9 +816,10 @@ impl ArrayCastPlan {
                 ArrayCastKind::BytesIngest
             }
             // A temporal reads text with this crate's spellings rather than
-            // Arrow's: a grouped fraction, an hour past the end of the day, a
-            // bracketed zone name, and a duration in either spelling all read
-            // here, and Arrow reads nothing into a duration at all. An
+            // Arrow's: a comma decimal sign, a grouped fraction, an hour past
+            // the end of the day, a bracketed zone name, and a duration in
+            // either spelling all read here, and Arrow reads nothing into a
+            // duration at all. An
             // encoded column reads its values the same way and is encoded
             // afterwards, because the encoding is a layout, not a reading.
             (target, source) if holds_temporal(target) && holds_text(source) => {
