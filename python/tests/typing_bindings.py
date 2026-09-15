@@ -940,6 +940,7 @@ iceberg_resolved: iceberg.IcebergOptions = iceberg_table.options()
 iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
     options=iceberg.IcebergOptions(read_parallelism=2)
 )
+iceberg_write_parallelism: int = iceberg.IcebergOptions(write_parallelism=2).write_parallelism
 
 assert iceberg_retries >= 0
 assert iceberg_timeout >= 0

@@ -95,7 +95,9 @@ pub fn schema_from_json(name: &str, schema: &Scalar) -> Result<Field> {
 /// # Errors
 ///
 /// Returns an error when the field is not a non-null struct root, when a
-/// column has no field id, or when a datatype has no Iceberg spelling.
+/// column has no field id, when a datatype has no Iceberg spelling, or when
+/// a required column is `unknown` - the spec makes an `unknown` column
+/// optional, because every value it holds is null.
 pub fn schema_into_json(root: &Field) -> Result<Scalar> {
     root.validate_struct_root()?;
 
@@ -302,6 +304,13 @@ fn fields_to_json(root: &Field) -> Result<Vec<Scalar>> {
                 field.name()
             ))
         })?;
+        if field.dtype() == &DataType::Null && !field.is_nullable() {
+            return Err(invalid(format_smolstr!(
+                "expected the unknown column {:?} to be optional (an unknown column is always \
+                 null), got a required column",
+                field.name()
+            )));
+        }
         let mut object = vec![
             (Scalar::from("id"), json_integer(i64::from(id))),
             (Scalar::from("name"), Scalar::from(field.name())),

@@ -162,7 +162,8 @@ fn fold_encoded(current: &mut Option<Vec<u8>>, candidate: &[u8], dtype: &DataTyp
 /// Nested columns are skipped: a Parquet leaf below a struct has a dotted path
 /// and its own field id, and matching the two up is a mapping this module does
 /// not need in order to be correct. A missing statistic costs a planner a file
-/// read; a wrong one costs correctness.
+/// read; a wrong one costs correctness. An `unknown` column is skipped too:
+/// the spec keeps it out of data files, so there is nothing to count.
 fn leaf_columns(schema: &Field) -> Result<Vec<(String, i32, DataType)>> {
     let mut columns = Vec::with_capacity(schema.field_len());
     for field in schema.fields() {
@@ -172,7 +173,7 @@ fn leaf_columns(schema: &Field) -> Result<Vec<(String, i32, DataType)>> {
                 field.name()
             ))
         })?;
-        if field.dtype().as_fields().is_some() {
+        if field.dtype().as_fields().is_some() || field.dtype() == &DataType::Null {
             continue;
         }
         columns.push((field.name().to_owned(), id, field.dtype().clone()));

@@ -848,9 +848,9 @@ fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
         super::PrimitiveType::Uuid => OfficialPrimitiveType::Uuid,
         super::PrimitiveType::Fixed(width) => OfficialPrimitiveType::Fixed(u64::from(width)),
         super::PrimitiveType::Binary => OfficialPrimitiveType::Binary,
-        super::PrimitiveType::Unknown => {
-            return Err(invalid(SmolStr::new_static(
-                "expected a concrete Iceberg partition source type, got unknown",
+        primitive @ (super::PrimitiveType::Unknown | super::PrimitiveType::Variant) => {
+            return Err(invalid(format_smolstr!(
+                "expected a concrete Iceberg partition source type, got {primitive}"
             )));
         }
     })
@@ -920,7 +920,7 @@ fn source_column(schema: &Field, source_id: i32) -> Result<&Field> {
 }
 
 /// Return a primitive source and its top-level/struct child path.
-fn source_path(schema: &Field, source_id: i32) -> Result<(Vec<SmolStr>, &Field)> {
+pub(super) fn source_path(schema: &Field, source_id: i32) -> Result<(Vec<SmolStr>, &Field)> {
     fn find<'a>(field: &'a Field, source_id: i32, path: &mut Vec<SmolStr>) -> Option<&'a Field> {
         for child in field.fields() {
             path.push(SmolStr::new(child.name()));

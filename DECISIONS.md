@@ -2958,3 +2958,77 @@ a user function, its defaults filled and its null rule kept; a signature
 round-tripping through its field; a stored call reading back as its function
 and sources; an unregistered name refused where it is typed; a text read
 shaped by a select over the row header's captures and a where over an alias.
+
+## 38. Partition keys are primary keys, files are sorted, and two v3 types are two things
+
+### Iceberg defaults
+
+A merge into an Iceberg table joins on the identity partition columns first
+and the caller's `merge_by` after them, each named once, so a row can only
+update a row of its own partition and a merge into one partition of a
+thousand reads that partition's files and no other: the incoming rows are
+grouped by partition tuple - the grouping an append lays files out by - the
+plan opens the manifests and files of those partitions alone, the key bounds
+narrow them within the partition, and every other file is carried under its
+own path. A merge naming no key is keyed by the partition alone and replaces
+the partitions its rows fall in; an unpartitioned table refuses that by name,
+because with no partition and no key there is nothing to match on. Within
+one write the last of the rows arriving with one key wins. A live file under
+another partition spec belongs to no partition of the current one, so a merge
+the key bounds cannot keep away from it is refused naming the file and both
+spec ids rather than joined across partitions.
+
+Every data file holds one partition group in the table's default sort order.
+A table created without declaring one takes `SortOrder::for_spec`: the spec's
+source columns, in spec order, ascending, nulls first, recorded as order 1
+and made the default; an unpartitioned spec derives from nothing, so order 0
+stays. `Table::create_sorted` declares another, `SortOrder::unsorted()`
+included. A sort field is honoured through its source column, so a bucket
+orders by its source value and every other transform exactly as its source
+does. A group is sorted once and cut into files of about the target size by
+its Arrow bytes per row, which is what makes the bounds a file records tight.
+
+Partition groups are written on `write.parallelism` threads
+(`IcebergOptions::write_parallelism`, default the resolved
+`read.parallelism`, minimum 1); the manifest lists a commit's files in group
+order whatever order the threads finished in, so its bytes do not depend on
+scheduling, and a failing group fails the commit before any metadata is
+written. Each writer resolves its files against its own handle on the table
+folder; the table's root handle never crosses a thread.
+
+A `where` on a record read of a table is pushed into the scan plan whole -
+`in`, `between`, `is null` and `&holder.*` prune manifests and files as an
+equality pair does - the `select` and the `where` decide which columns each
+file decodes, and the pair spellings (`scan_where`, `plan`, the located
+partition directory) are sugar over the one predicate form. A `where` naming
+a column only the `select` publishes runs after the projection over an
+unfiltered scan, as DuckDB lets a `where` read an alias.
+
+### unknown is Null, variant is Variant, and they are not the same thing
+
+Iceberg v3 `unknown` is the absence of a type: a column whose every value is
+null, which the spec keeps optional and out of every data file. It is
+`DataType::Null` in both directions, the column is omitted when a data file
+is written and restored as null when one is read, and in v3 it promotes to
+any type. Iceberg v3 `variant` is semi-structured data whose every value
+carries its own type in the Parquet Variant binary encoding: it is
+`DataType::Variant`, the `metadata`/`value` binary pair the Arrow extension
+lays out, stored in a Parquet data file under the `VARIANT` logical type. A
+v1 or v2 table refuses either by name. Official Iceberg 0.10.1 models neither
+spelling, so at its boundary each such column crosses as `binary` under its
+own field identifier - in metadata documents and in manifest headers alike -
+and comes back as itself; the crate's own schema serde spells the two names.
+
+Pins: a range, a membership and a null test on a partition column skipping
+manifests as the equality does, and a record read opening only the surviving
+files; a merge into one partition of three resolving no other partition's
+data file and leaving their paths untouched; the same key in another
+partition appended rather than updated; a keyless merge replacing a
+partition and refused on an unpartitioned table; duplicate keys in one write
+keeping the last row; the default order recorded in metadata, explicit
+orders laying monotone bounds across files, an unsorted table keeping arrival
+order; `write.parallelism` resolving explicit, property, then the read
+parallelism, a four-thread commit listing eight groups in order, a failing
+writer leaving the version and snapshot untouched; `unknown` and `variant`
+round-tripping through schema JSON, a data file, a reopened table and the
+official validation, and refused by name in v2.

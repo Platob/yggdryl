@@ -520,13 +520,27 @@ pub fn read_manifest_spec<H: IOBase + ?Sized>(handle: &H) -> Result<PartitionSpe
 }
 
 /// Read the original manifest metadata without applying a data-parser repair.
+///
+/// The one rewrite is the schema's: a header spelling the v3 `unknown` or
+/// `variant` reaches the official parser as the placeholder it models, so
+/// the partition type and the spec it answers are read off the same header
+/// every other manifest has.
 fn manifest_metadata<H: IOBase + ?Sized>(handle: &H) -> Result<OfficialManifestMetadata> {
     let blocks = crate::media::avro::read_blocks(handle)?;
-    let metadata = blocks
+    let mut metadata: std::collections::HashMap<String, Vec<u8>> = blocks
         .metadata_bytes()
         .iter()
         .map(|(key, value)| (key.to_string(), value.clone()))
         .collect();
+    // A header that is not JSON at all is left for the official parser to
+    // report, so a malformed manifest fails the way it always has.
+    if let Some(schema) = metadata.get_mut("schema") {
+        if let Ok(document) = crate::text::json::from_bytes(schema) {
+            if let Some(bridged) = super::official::bridged_schema(&document)? {
+                *schema = crate::text::json::into_bytes(&bridged)?;
+            }
+        }
+    }
     OfficialManifestMetadata::parse(&metadata).map_err(Error::from_iceberg)
 }
 
@@ -716,6 +730,11 @@ fn manifest_bytes<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
 /// Validate collection semantics the official reader projects into maps.
 fn parse_manifest(bytes: &[u8]) -> Result<OfficialManifest> {
     preflight_manifest_entries(bytes)?;
+    // A header spelling `unknown` or `variant` is rewritten for the official
+    // reader before anything is parsed; the UUID repair below then runs on
+    // the same view, so the two never compete.
+    let view = v3_types_official_reader_view(bytes)?;
+    let bytes = view.as_deref().unwrap_or(bytes);
     match OfficialManifest::parse_avro(bytes) {
         Ok(manifest) => Ok(manifest),
         Err(error) => {
@@ -757,22 +776,58 @@ fn fixed_uuid_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
     *encoded_schema = SmolStr::new(crate::text::json::into_utf8(&uuid_as_fixed(
         &iceberg_schema,
     )?)?);
+    official_reader_view(&schema, &metadata, &container.rows, "UUID").map(Some)
+}
 
+/// Build an in-memory official-reader view of a manifest whose header schema
+/// spells a v3 type the official model lacks.
+///
+/// Only the header's `schema` text changes - the placeholder goes in where
+/// `unknown` or `variant` was - and a manifest with neither is answered
+/// `None` without being re-encoded.
+fn v3_types_official_reader_view(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+    let source = crate::holder::Buffer::from(bytes);
+    let container = crate::media::avro::read_container(&source)?;
+    let mut metadata = container.metadata;
+    let Some(encoded_schema) = metadata
+        .iter_mut()
+        .find_map(|(name, value)| (name == "schema").then_some(value))
+    else {
+        return Ok(None);
+    };
+    let Ok(document) = crate::text::json::from_utf8(encoded_schema) else {
+        return Ok(None);
+    };
+    let Some(bridged) = super::official::bridged_schema(&document)? else {
+        return Ok(None);
+    };
+    *encoded_schema = SmolStr::new(crate::text::json::into_utf8(&bridged)?);
+    let schema = container.schema.into_json();
+    official_reader_view(&schema, &metadata, &container.rows, "v3-type").map(Some)
+}
+
+/// Re-encode one manifest with rewritten header metadata, bounded as a read.
+fn official_reader_view(
+    schema: &Scalar,
+    metadata: &[(SmolStr, SmolStr)],
+    rows: &[Scalar],
+    kind: &str,
+) -> Result<Vec<u8>> {
     let metadata_refs = metadata
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<Vec<_>>();
     let mut output = crate::holder::Buffer::new();
-    crate::media::avro::write_container(&mut output, &schema, &metadata_refs, &container.rows)?;
+    crate::media::avro::write_container(&mut output, schema, &metadata_refs, rows)?;
     let output = output.into_bytes();
     let limit = crate::Limits::default().max_input_bytes();
     if output.len() > limit {
         return Err(invalid(format_smolstr!(
-            "expected a UUID official-reader view of at most {limit} bytes, got {}",
+            "expected a {kind} official-reader view of at most {limit} bytes, got {}",
             output.len()
         )));
     }
-    Ok(Some(output))
+    Ok(output)
 }
 
 /// Return whether an Avro schema contains Iceberg's fixed UUID wire node.
@@ -1686,7 +1741,8 @@ fn partition_record(partition: &Field, name: &str) -> Result<Scalar> {
 
 /// Render one Iceberg partition primitive as its required Avro wire schema.
 fn partition_avro_type(field: &Field, id: i32) -> Result<Scalar> {
-    Ok(match super::PrimitiveType::from_dtype(field.dtype())? {
+    let primitive = super::PrimitiveType::from_dtype(field.dtype())?;
+    Ok(match primitive {
         super::PrimitiveType::Boolean => Scalar::from("boolean"),
         super::PrimitiveType::Int => Scalar::from("int"),
         super::PrimitiveType::Long => Scalar::from("long"),
@@ -1715,9 +1771,9 @@ fn partition_avro_type(field: &Field, id: i32) -> Result<Scalar> {
                 Some((precision, scale)),
             )?
         }
-        super::PrimitiveType::Unknown => {
+        super::PrimitiveType::Unknown | super::PrimitiveType::Variant => {
             return Err(invalid(format_smolstr!(
-                "expected an Avro-encodable partition type on {:?}, got unknown",
+                "expected an Avro-encodable partition type on {:?}, got {primitive}",
                 field.name()
             )));
         }

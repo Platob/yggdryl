@@ -161,7 +161,7 @@
     instance: count, rows, size
     protocol: intentionally unhashable lazy block with resolution context
   media.iceberg.IcebergOptions
-    instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size
+    instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock
   media.iceberg.Compaction
     instance: bytes_rewritten, files_after, files_before, stable_hash
@@ -424,7 +424,7 @@
   iceberg
     statics: Table, Catalog, Compaction, IcebergOptions, ManifestFile, PartitionField, PartitionSpec, DataFile, ScanPlan, Snapshot, SnapshotRef, assignFieldIds, canPromote, schemaFromJson, schemaIntoJson
   iceberg.IcebergOptions
-    instance: clone, compactAfterCommits, commitMaxBackoffMs, commitMinBackoffMs, commitRetries, compare, dataMimeType, equals, readParallelism, readParallelMinFileSize, readParallelMinFiles, stableHash, targetFileSize
+    instance: clone, compactAfterCommits, commitMaxBackoffMs, commitMinBackoffMs, commitRetries, compare, dataMimeType, equals, readParallelism, readParallelMinFileSize, readParallelMinFiles, stableHash, targetFileSize, writeParallelism
   iceberg.Catalog
     instance: append, namespace, namespaces, overwrite, properties, table, tables, updateProperties
   iceberg.Namespace

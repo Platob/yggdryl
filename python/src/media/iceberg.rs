@@ -248,7 +248,7 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
 }
 
 /// The keyword fields accepted by the `IcebergOptions` constructor.
-const ICEBERG_OPTION_FIELDS: [&str; 10] = [
+const ICEBERG_OPTION_FIELDS: [&str; 11] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
@@ -257,6 +257,7 @@ const ICEBERG_OPTION_FIELDS: [&str; 10] = [
     "read_parallelism",
     "read_parallel_min_files",
     "read_parallel_min_file_size",
+    "write_parallelism",
     "compact_after_commits",
     "data_mime_type",
 ];
@@ -286,6 +287,9 @@ fn set_iceberg_option(
         "read_parallel_min_file_size" => {
             options.set_read_parallel_min_file_size_bytes(value.extract::<u64>()?);
         }
+        "write_parallelism" => options
+            .set_write_parallelism(value.extract::<usize>()?)
+            .map_err(value_error)?,
         "compact_after_commits" => options.set_compact_after_commits(value.extract::<u32>()?),
         "data_mime_type" => options
             .set_data_mime_type(core_mime_type_from_value(value)?)
@@ -486,6 +490,9 @@ impl PyIcebergOptions {
         if let Some(value) = self.inner.read_parallel_min_file_size_bytes_option() {
             state.set_item("read_parallel_min_file_size", value)?;
         }
+        if let Some(value) = self.inner.write_parallelism_option() {
+            state.set_item("write_parallelism", value)?;
+        }
         if let Some(value) = self.inner.compact_after_commits_option() {
             state.set_item("compact_after_commits", value)?;
         }
@@ -621,6 +628,23 @@ impl PyIcebergOptions {
         self.require_mutable()?;
         self.inner.set_read_parallel_min_file_size_bytes(bytes);
         Ok(())
+    }
+
+    /// How many partition groups a commit writes at once. Default: the
+    /// resolved `read_parallelism`; 1 writes them one after another. The
+    /// manifest lists a commit's files in partition-group order whatever the
+    /// value.
+    #[getter]
+    fn write_parallelism(&self) -> usize {
+        self.inner.write_parallelism()
+    }
+
+    #[setter]
+    fn set_write_parallelism(&mut self, threads: usize) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_write_parallelism(threads)
+            .map_err(value_error)
     }
 
     /// After how many data commits an automatic compaction runs; `None` - the

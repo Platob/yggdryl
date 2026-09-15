@@ -2194,6 +2194,22 @@ export declare class IcebergOptions {
    * which would read nothing at all.
    */
   set readParallelism(threads: number)
+  /**
+   * How many partition groups a commit writes at once. Default: the
+   * resolved `readParallelism`; 1 writes them one after another. The
+   * manifest lists a commit's files in partition-group order whatever the
+   * value.
+   */
+  get writeParallelism(): number
+  /**
+   * Set how many partition groups a commit writes at once.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the value when the count is zero,
+   * which would write nothing at all.
+   */
+  set writeParallelism(threads: number)
   /** How many large-enough files justify a parallel scan. Default: 16. */
   get readParallelMinFiles(): number
   /** Set how many large-enough files justify a parallel scan. */
@@ -5922,7 +5938,7 @@ export declare function fixSchemaTags(): Array<number>
  * Every field is optional because an options value records only what was set
  * on it: a field left out is not "the default" but unresolved, and a table
  * still answers it from its own properties. The names are the ones the
- * getters carry, so the object and the setters spell the same ten things.
+ * getters carry, so the object and the setters spell the same eleven things.
  */
 export interface IcebergOptionsInput {
   /** How many beaten commit attempts are retried. */
@@ -5944,6 +5960,8 @@ export interface IcebergOptionsInput {
    * justification, in bytes.
    */
   readParallelMinFileSize?: number
+  /** How many partition groups a commit writes at once. */
+  writeParallelism?: number
   /** After how many data commits an automatic compaction runs. */
   compactAfterCommits?: number
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */

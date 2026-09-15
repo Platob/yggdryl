@@ -39,8 +39,10 @@ use crate::{Error, MimeType, Result};
 ///     .try_with_read_parallelism(4)?;
 /// assert_eq!(options.commit_retries(), 2);
 /// assert_eq!(options.read_parallelism(), 4);
-/// // An untouched field answers its default.
+/// // An untouched field answers its default; the write parallelism's
+/// // default is the read parallelism.
 /// assert_eq!(options.commit_min_backoff_ms(), 100);
+/// assert_eq!(options.write_parallelism(), 4);
 /// # Ok(())
 /// # }
 /// ```
@@ -62,6 +64,8 @@ pub struct IcebergOptions {
     read_parallel_min_files: Option<usize>,
     /// The recorded size below which a file does not justify one, when set.
     read_parallel_min_file_size_bytes: Option<u64>,
+    /// How many partition groups a commit writes at once, when set.
+    write_parallelism: Option<usize>,
     /// After how many data commits an automatic compaction runs, when set.
     compact_after_commits: Option<u32>,
     /// The MIME type new data files are written with, when set.
@@ -104,6 +108,8 @@ impl IcebergOptions {
     pub const READ_PARALLEL_MIN_FILES_KEY: &'static str = "read.parallel.min-files";
     /// The property naming the size below which a file does not count.
     pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
+    /// The property naming how many partition groups a commit writes at once.
+    pub const WRITE_PARALLELISM_KEY: &'static str = "write.parallelism";
 
     /// The retry count nothing configures: Iceberg's own default of 4.
     pub const DEFAULT_COMMIT_RETRIES: u32 =
@@ -252,6 +258,23 @@ impl IcebergOptions {
     /// Return the explicitly configured parallel-scan size threshold.
     pub const fn read_parallel_min_file_size_bytes_option(&self) -> Option<u64> {
         self.read_parallel_min_file_size_bytes
+    }
+
+    /// Return how many partition groups a commit writes at once.
+    ///
+    /// Default: [`Self::read_parallelism`] as this value resolves it, so a
+    /// table that reads with four threads writes with four unless told
+    /// otherwise. A value of 1 writes the groups one after another on the
+    /// calling thread. Whatever the value, a commit's manifest lists the
+    /// files in partition-group order, never in completion order.
+    pub fn write_parallelism(&self) -> usize {
+        self.write_parallelism
+            .unwrap_or_else(|| self.read_parallelism())
+    }
+
+    /// Return the explicitly configured write parallelism.
+    pub const fn write_parallelism_option(&self) -> Option<usize> {
+        self.write_parallelism
     }
 
     /// Return the MIME type new data files are written with. Default: Parquet.
@@ -411,6 +434,33 @@ impl IcebergOptions {
         Ok(self)
     }
 
+    /// Set how many partition groups a commit writes at once; 1 is sequential.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error naming the key when `threads` is zero; the value
+    /// is unchanged.
+    pub fn set_write_parallelism(&mut self, threads: usize) -> Result<()> {
+        if threads == 0 {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(Self::WRITE_PARALLELISM_KEY),
+                reason: SmolStr::new_static("expected at least one writer thread, got 0"),
+            });
+        }
+        self.write_parallelism = Some(threads);
+        Ok(())
+    }
+
+    /// Set how many partition groups a commit writes at once, persistently.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Self::set_write_parallelism`] failure.
+    pub fn try_with_write_parallelism(mut self, threads: usize) -> Result<Self> {
+        self.set_write_parallelism(threads)?;
+        Ok(self)
+    }
+
     /// Set how many large-enough files justify a parallel scan.
     pub fn set_read_parallel_min_files(&mut self, files: usize) {
         self.read_parallel_min_files = Some(files);
@@ -492,6 +542,7 @@ impl IcebergOptions {
             read_parallel_min_file_size_bytes: read_parallel_min_file_size_layer(
                 explicit, metadata,
             )?,
+            write_parallelism: write_parallelism_layer(explicit, metadata)?,
             compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
             data_mime_type: data_mime_type_layer(explicit, metadata)?,
         })
@@ -530,6 +581,24 @@ impl IcebergOptions {
         })
     }
 
+    /// Resolve only what a commit's data-file writes consult.
+    ///
+    /// The write parallelism falls back to the read parallelism *as resolved
+    /// here* - explicit, then property, then the host's own - so the two
+    /// keys agree on what "the default" is.
+    pub(super) fn write_settings(
+        explicit: Option<&Self>,
+        metadata: &TableMetadata,
+    ) -> Result<WriteSettings> {
+        let read = Self::read_settings(explicit, metadata)?;
+        Ok(WriteSettings {
+            parallelism: write_parallelism_layer(explicit, metadata)?.unwrap_or(read.parallelism),
+            target_file_size_bytes: Self::target_size(explicit, metadata)?,
+            mime_type: Self::write_mime_type(explicit, metadata)?,
+            read,
+        })
+    }
+
     /// Resolve only the target file size, the field a write sizes files by.
     pub(super) fn target_size(explicit: Option<&Self>, metadata: &TableMetadata) -> Result<u64> {
         Ok(target_file_size_layer(explicit, metadata)?
@@ -556,6 +625,19 @@ pub(super) struct CommitSettings {
     pub(super) max_backoff_ms: u64,
     /// The cumulative backoff budget, in milliseconds.
     pub(super) total_timeout_ms: u64,
+}
+
+/// What a commit's data-file writes run with, fully resolved.
+#[derive(Clone, Debug)]
+pub(super) struct WriteSettings {
+    /// How many partition groups are written at once; 1 is the calling thread.
+    pub(super) parallelism: usize,
+    /// The size a data file aims for, in bytes.
+    pub(super) target_file_size_bytes: u64,
+    /// The format every data file of the commit is encoded in.
+    pub(super) mime_type: MimeType,
+    /// What a merge's stored-side reads run with.
+    pub(super) read: ReadSettings,
 }
 
 /// What a scan's parallel-read decision runs with, fully resolved.
@@ -677,6 +759,20 @@ fn read_parallelism_layer(
         metadata,
         IcebergOptions::READ_PARALLELISM_KEY,
         "a positive reader-thread count",
+        |threads| *threads >= 1,
+    )
+}
+
+/// The one resolver for [`IcebergOptions::WRITE_PARALLELISM_KEY`].
+fn write_parallelism_layer(
+    explicit: Option<&IcebergOptions>,
+    metadata: &TableMetadata,
+) -> Result<Option<usize>> {
+    layered(
+        explicit.and_then(|options| options.write_parallelism),
+        metadata,
+        IcebergOptions::WRITE_PARALLELISM_KEY,
+        "a positive writer-thread count",
         |threads| *threads >= 1,
     )
 }

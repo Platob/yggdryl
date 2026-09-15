@@ -255,8 +255,9 @@ pub trait IOMedia: Send {
         let reader = if handle.is_container() {
             #[cfg(feature = "iceberg")]
             if let Some(table) = crate::media::iceberg::located(handle)? {
-                let read = table.read(options)?;
-                return options.limit_arrow_reader(options.apply_arrow_expressions(read)?);
+                // The table pushes the clauses into its scan plan and wraps
+                // the selector and the limit itself: the reader is complete.
+                return table.read(options);
             }
             crate::media::partition::folder_reader(handle, options)?
         } else {

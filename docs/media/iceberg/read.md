@@ -7,7 +7,7 @@ Scans, plans, time travel, the inspection readers, the filtered writes that shar
 | Item | Behavior |
 | --- | --- |
 | Projection | `scan(Some(&field))` gives each file its own projection mask; `None` reads every column |
-| Filter | `(column, value)` pairs, text parsed through the column's datatype; `*_matching` takes a whole [expression](../../expression/index.md) |
+| Filter | `(column, value)` pairs, text parsed through the column's datatype, are sugar over `*_matching`, which takes a whole [expression](../../expression/index.md); a `where` on the record options is pushed into the plan whole, and the read decodes only the columns the `select` and `where` name |
 | `ScanPlan` | `record_count`, `files_planned`, `files_skipped`, `manifests_read`, `manifests_skipped`, decided before any data file opens |
 | Bindings | Python and JavaScript plans keep only those five counts; JavaScript `equals`, `compare`, `stableHash`, `clone` cover that tuple, never a path |
 | Rust identity | `ScanTask` and `ScanPlan` are immutable; `stable_hash` covers tasks, exclusions, skips, counters, no handle |
@@ -139,6 +139,135 @@ The target names the columns to keep; the cast to the scan's root reads an evolv
     ```
 
 [`IOMedia::read_arrow_reader`](../../holder/iobase/records.md) reads each file under the target, minus the partition columns the file does not store.
+
+## A `where` prunes with the whole expression language
+
+The `where` clause a record read carries is the scan's plan: ranges, `in` lists, null tests and `&holder.*` attributes on partition and statistics columns skip manifests and files exactly as an equality pair does, and the `select` narrows what each file decodes. `scan_where` and `plan` keep the pair spelling as sugar over the same predicate. A `where` naming a column only the `select` publishes cannot prune - the scan does not know the name - so it runs after the projection.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{arrow, DataType, IOMedia};
+
+    let mut schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let root = Folder::temporary()?.path()?.join("yggdryl-doc-where-pushdown");
+    let _ = std::fs::remove_dir_all(&root);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&root)?, FormatVersion::V2, schema.clone(), spec)?;
+    let arrow_schema = schema.into_arrow_schema()?;
+    for (id, venue) in [(1_i64, "XNAS"), (2, "XNYS"), (3, "XLON")] {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![Arc::new(Int64Array::from(vec![id])), Arc::new(StringArray::from(vec![venue]))],
+        )?;
+        table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+    }
+
+    // A membership and a range skip manifests exactly as an equality does.
+    assert_eq!(table.plan_matching("venue = 'XNAS'")?.manifests_skipped(), 2);
+    assert_eq!(table.plan_matching("venue in ('XNAS', 'XLON')")?.manifests_skipped(), 1);
+    assert_eq!(table.plan_matching("venue between 'XLON' and 'XNAS'")?.manifests_skipped(), 1);
+
+    // The record options' where is that plan; the select narrows the decode.
+    let options = table
+        .record_options()?
+        .with_filter("venue in ('XNAS', 'XLON') and id > 0")?
+        .with_select("id")?;
+    let mut reader = table.read_arrow_reader(&options)?;
+    let batch = reader.next().expect("a batch")?;
+    assert_eq!(batch.schema().fields().len(), 1);
+    assert_eq!(reader.map(|batch| batch.unwrap().num_rows()).sum::<usize>() + batch.num_rows(), 2);
+
+    let _ = std::fs::remove_dir_all(&root);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns, ["venue"])
+    for id_, venue in [(1, "XNAS"), (2, "XNYS"), (3, "XLON")]:
+        table.append(pa.record_batch({"id": [id_], "venue": [venue]}, schema=columns))
+
+    # A membership and a range skip manifests exactly as an equality does.
+    assert table.plan_matching("venue = 'XNAS'")["manifests_skipped"] == 2
+    assert table.plan_matching("venue in ('XNAS', 'XLON')")["manifests_skipped"] == 1
+    assert table.plan_matching("venue between 'XLON' and 'XNAS'")["manifests_skipped"] == 1
+
+    # The record options' where is that plan; the select narrows the decode.
+    folder = IOBase(path)
+    options = folder.record_options()
+    options.filter = "venue in ('XNAS', 'XLON') and id > 0"
+    options.select = ["id"]
+    read = folder.read_arrow_reader(options=options).read_all()
+    assert read.column_names == ["id"]
+    assert read.num_rows == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, IOBase, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+    for (const [id, venue] of [[1n, 'XNAS'], [2n, 'XNYS'], [3n, 'XLON']]) {
+      table.append(
+        new arrow.Table({
+          id: arrow.vectorFromArray([id], new arrow.Int64()),
+          venue: arrow.vectorFromArray([venue], new arrow.Utf8()),
+        }),
+      )
+    }
+
+    // A membership and a range skip manifests exactly as an equality does.
+    assert.equal(table.planMatching("venue = 'XNAS'").manifestsSkipped, 2)
+    assert.equal(table.planMatching("venue in ('XNAS', 'XLON')").manifestsSkipped, 1)
+    assert.equal(table.planMatching("venue between 'XLON' and 'XNAS'").manifestsSkipped, 1)
+
+    // The record options' where is that plan; the select narrows the decode.
+    const folder = IOBase.from(root)
+    const options = folder
+      .recordOptions()
+      .withFilter("venue in ('XNAS', 'XLON') and id > 0")
+      .withSelect(['id'])
+    const read = folder.readArrowReader(options).intoTable()
+    assert.deepEqual(read.schema.fields.map((field) => field.name), ['id'])
+    assert.equal(read.numRows, 2)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
 
 ## Planning a scan from the metadata
 
@@ -620,6 +749,9 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 ## Edges
 
 - Conjunct a file's partition tuple proves -> dropped, never re-tested per row; what no level settles is filtered row by row.
+- `where` on the record options -> pushed into the plan whole; `venue in (...)`, `ts between ... and ...`, `venue is null` and `&holder.partition['venue']` prune as the equality pair does, and nothing is re-filtered after the scan.
+- `where` naming a column only the `select` publishes -> runs after the projection over an unfiltered scan.
+- `select` on the record options -> each data file decodes only the selected columns and the columns the `where` reads.
 - Filter on a non-partition column -> prunes on per-file bounds only; scattered values exclude nothing, and a plan that skips nothing says so.
 - `scan_at` -> a column added later is absent; a column dropped later is still present.
 - `commit_metadata_changes` (a property, a new ref, an evolved schema) -> one new metadata document; a failed change or write leaves the table untouched.
@@ -637,6 +769,8 @@ Each worker decodes one file end to end: the cast, the partition restore and the
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::planning
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::manifest_planning
+    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^plan/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^read/'
     ```

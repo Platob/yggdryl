@@ -774,8 +774,10 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.ok(untouched.dataMimeType.equals(MimeType.PARQUET))
   // Nothing compacts on its own until a cadence says so.
   assert.equal(untouched.compactAfterCommits, null)
-  // Read parallelism defaults to what the host offers, kept inside 1..=8.
+  // Read parallelism defaults to what the host offers, kept inside 1..=8,
+  // and the write parallelism defaults to it.
   assert.ok(untouched.readParallelism >= 1 && untouched.readParallelism <= 8)
+  assert.equal(untouched.writeParallelism, untouched.readParallelism)
 
   const given = new iceberg.IcebergOptions({
     commitRetries: 9,
@@ -786,6 +788,7 @@ test('an options value answers the fields it was given and defaults the rest', (
     readParallelism: 2,
     readParallelMinFiles: 3,
     readParallelMinFileSize: 1024,
+    writeParallelism: 5,
     compactAfterCommits: 7,
     dataMimeType: MimeType.AVRO,
   })
@@ -797,6 +800,7 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(given.readParallelism, 2)
   assert.equal(given.readParallelMinFiles, 3)
   assert.equal(given.readParallelMinFileSize, 1024)
+  assert.equal(given.writeParallelism, 5)
   assert.equal(given.compactAfterCommits, 7)
   assert.ok(given.dataMimeType.equals(MimeType.AVRO))
   const cloned = given.clone()
@@ -881,6 +885,10 @@ test('a zero file size and a zero read parallelism are refused by property name'
     () => new iceberg.IcebergOptions({ readParallelism: 0 }),
     /read\.parallelism.*expected at least one reader thread, got 0/,
   )
+  assert.throws(
+    () => new iceberg.IcebergOptions({ writeParallelism: 0 }),
+    /write\.parallelism.*expected at least one writer thread, got 0/,
+  )
 
   const options = new iceberg.IcebergOptions({ targetFileSize: 4096, readParallelism: 2 })
   assert.throws(() => {
@@ -889,8 +897,12 @@ test('a zero file size and a zero read parallelism are refused by property name'
   assert.throws(() => {
     options.readParallelism = 0
   }, /expected at least one reader thread, got 0/)
+  assert.throws(() => {
+    options.writeParallelism = 0
+  }, /expected at least one writer thread, got 0/)
   assert.equal(options.targetFileSize, 4096)
   assert.equal(options.readParallelism, 2)
+  assert.equal(options.writeParallelism, 2, 'the write default follows the read parallelism')
 })
 
 test('a per-call data MIME type writes AVRO files beside the PARQUET ones', (t) => {

@@ -1632,10 +1632,13 @@ pub enum FormatVersion
   pub struct SortField
   pub struct SortOrder
   pub const fn unsorted() -> Self
+  pub fn for_spec(spec: &PartitionSpec) -> Self
   pub fn from_json(document: &Scalar) -> Result<Self>
   pub fn into_json(self) -> Result<Scalar>
   pub struct TableMetadata
   pub fn new(format_version: FormatVersion, location: impl Into<SmolStr>, schema: Field, spec: PartitionSpec) -> Result<Self>
+  pub fn new_sorted(format_version: FormatVersion, location: impl Into<SmolStr>, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
+  pub fn default_sort_order(&self) -> Result<&SortOrder>
   pub fn stable_hash(&self) -> u64
   pub fn current_schema(&self) -> Result<&Field>
   pub fn schema_by_id(&self, schema_id: i32) -> Option<&Field>
@@ -1682,6 +1685,7 @@ pub struct IcebergOptions
   pub const READ_PARALLELISM_KEY: &'static str = "read.parallelism";
   pub const READ_PARALLEL_MIN_FILES_KEY: &'static str = "read.parallel.min-files";
   pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
+  pub const WRITE_PARALLELISM_KEY: &'static str = "write.parallelism";
   pub const DATA_MIME_TYPE_KEY: &'static str = "write.format.default";
   pub const DEFAULT_COMMIT_RETRIES: u32 = 4;
   pub const DEFAULT_COMMIT_MIN_BACKOFF_MS: u64 = 100;
@@ -1699,6 +1703,8 @@ pub struct IcebergOptions
   pub fn read_parallelism(&self) -> usize
   pub fn read_parallel_min_files(&self) -> usize
   pub fn read_parallel_min_file_size_bytes(&self) -> u64
+  pub fn write_parallelism(&self) -> usize
+  pub const fn write_parallelism_option(&self) -> Option<usize>
   pub fn data_mime_type(&self) -> MimeType
   pub const fn data_mime_type_option(&self) -> Option<&MimeType>
   pub fn set_data_mime_type(&mut self, mime_type: MimeType) -> Result<()>
@@ -1717,6 +1723,8 @@ pub struct IcebergOptions
   pub fn with_read_parallel_min_files(mut self, files: usize) -> Self
   pub fn set_read_parallel_min_file_size_bytes(&mut self, bytes: u64)
   pub fn with_read_parallel_min_file_size_bytes(mut self, bytes: u64) -> Self
+  pub fn set_write_parallelism(&mut self, threads: usize) -> Result<()>
+  pub fn try_with_write_parallelism(mut self, threads: usize) -> Result<Self>
   pub fn from_metadata(metadata: &TableMetadata) -> Result<Self>
 
 ### yggdryl::media::iceberg::partition  [rust\src\media\iceberg\partition.rs]
@@ -1783,6 +1791,7 @@ pub fn tag(snapshot_id: i64) -> Self
 ### yggdryl::media::iceberg::table  [rust\src\media\iceberg\table.rs]
 pub struct Table<H: IOBase>
   pub fn create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
+  pub fn create_sorted(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec, order: SortOrder) -> Result<Self>
   pub fn open(root: H) -> Result<Self>
   pub fn open_or_create(root: H, format_version: FormatVersion, schema: Field, spec: PartitionSpec) -> Result<Self>
   pub const fn root(&self) -> &H

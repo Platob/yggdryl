@@ -1176,6 +1176,20 @@ class TestIcebergOptions:
         with pytest.raises(TypeError, match="commit_retres"):
             IcebergOptions(commit_retres=2)
 
+        # The write parallelism defaults to the read parallelism, resolves on
+        # its own once set, and refuses zero naming its key.
+        assert options.write_parallelism == options.read_parallelism
+        options.read_parallelism = 3
+        assert options.write_parallelism == 3
+        options.write_parallelism = 5
+        assert options.write_parallelism == 5
+        assert IcebergOptions(write_parallelism=2).write_parallelism == 2
+        with pytest.raises(ValueError, match=r"write\.parallelism"):
+            IcebergOptions(write_parallelism=0)
+        with pytest.raises(ValueError, match=r"write\.parallelism"):
+            options.write_parallelism = 0
+        assert options.write_parallelism == 5
+
     def test_puffin_is_a_native_format_but_not_a_table_data_writer(
         self, table: Table
     ) -> None:
@@ -1221,6 +1235,7 @@ class TestIcebergOptions:
             ("read_parallelism", 1),
             ("read_parallel_min_files", 1),
             ("read_parallel_min_file_size", 1),
+            ("write_parallelism", 1),
             ("compact_after_commits", 1),
             ("data_mime_type", "avro"),
         ]:

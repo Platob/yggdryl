@@ -145,7 +145,7 @@ fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
 /// Every field is optional because an options value records only what was set
 /// on it: a field left out is not "the default" but unresolved, and a table
 /// still answers it from its own properties. The names are the ones the
-/// getters carry, so the object and the setters spell the same ten things.
+/// getters carry, so the object and the setters spell the same eleven things.
 #[napi(object)]
 pub struct IcebergOptionsInput<'env> {
     /// How many beaten commit attempts are retried.
@@ -165,6 +165,8 @@ pub struct IcebergOptionsInput<'env> {
     /// The recorded size below which a file does not count toward that
     /// justification, in bytes.
     pub read_parallel_min_file_size: Option<f64>,
+    /// How many partition groups a commit writes at once.
+    pub write_parallelism: Option<u32>,
     /// After how many data commits an automatic compaction runs.
     pub compact_after_commits: Option<u32>,
     /// The MIME type for new data files. Table writes encode Parquet and Avro.
@@ -214,6 +216,11 @@ fn apply_options_input(
             bytes,
             "readParallelMinFileSize",
         )?);
+    }
+    if let Some(threads) = input.write_parallelism {
+        options
+            .set_write_parallelism(threads as usize)
+            .map_err(napi_error)?;
     }
     if let Some(commits) = input.compact_after_commits {
         options.set_compact_after_commits(commits);
@@ -381,6 +388,29 @@ impl JsIcebergOptions {
     #[napi(setter)]
     pub fn set_read_parallel_min_files(&mut self, files: u32) {
         self.inner.set_read_parallel_min_files(files as usize);
+    }
+
+    /// How many partition groups a commit writes at once. Default: the
+    /// resolved `readParallelism`; 1 writes them one after another. The
+    /// manifest lists a commit's files in partition-group order whatever the
+    /// value.
+    #[napi(getter)]
+    pub fn write_parallelism(&self) -> Result<u32> {
+        u32::try_from(self.inner.write_parallelism())
+            .map_err(|_| napi::Error::from_reason("writeParallelism exceeds a JavaScript u32"))
+    }
+
+    /// Set how many partition groups a commit writes at once.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error naming the value when the count is zero,
+    /// which would write nothing at all.
+    #[napi(setter)]
+    pub fn set_write_parallelism(&mut self, threads: u32) -> Result<()> {
+        self.inner
+            .set_write_parallelism(threads as usize)
+            .map_err(napi_error)
     }
 
     /// The recorded size below which a file does not count toward justifying a

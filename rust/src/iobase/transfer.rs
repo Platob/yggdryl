@@ -826,9 +826,7 @@ impl ArrowWriteSession {
             },
             #[cfg(feature = "iceberg")]
             ArrowWriteTarget::Iceberg { located, .. } => match mode {
-                crate::IOMode::Overwrite => {
-                    located.overwrite_prepared(batches, self.delegated.safe())?
-                }
+                crate::IOMode::Overwrite => located.overwrite_prepared(batches)?,
                 crate::IOMode::Append => located.append_prepared(batches)?,
                 crate::IOMode::Merge => located.merge_prepared(
                     batches,

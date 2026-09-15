@@ -713,6 +713,8 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 - `days(at)` or `bucket(4, id)` partition -> restores no column; only `identity` values come from the manifest.
 - `uuid`, `fixed`, `time` in Spark -> no DDL spelling, so the exchange covers only the direction that exists.
 - `uuid` -> preserved as `uuid` through a metadata round trip, never demoted to `fixed[16]`.
+- `unknown` and `variant` columns -> spelled by the crate's own schema serde; the official model sees `binary` under their field ids and never the names, in documents and manifest headers alike.
+- A manifest whose header spells `unknown` or `variant` -> re-encoded in memory for the official reader once per read; every other manifest is read as it is.
 - Remote catalog -> none; `Catalog` is an `IOBase` warehouse view, and commits publish through the supplied handle.
 - Writing delete files, and applying deletes on read -> not implemented.
 - Live position or equality delete manifests -> scans return a typed unsupported error, never undeleted rows; proven-inert manifests pass.

@@ -45,18 +45,25 @@ const MANIFEST_SCALES: [usize; 3] = [
 const READ_FILES: usize = 32;
 const READ_ROWS_PER_FILE: usize = bench_profile::corpus(100_000, 512);
 const READ_ROWS: usize = READ_FILES * READ_ROWS_PER_FILE;
+/// Partitions of the isolated-merge table; the measured merge touches one.
+const MERGE_PARTITIONS: usize = bench_profile::corpus(64, 8);
+/// Partitions one parallel commit lays out, and the rows each one holds.
+const COMMIT_PARTITIONS: usize = bench_profile::corpus(32, 8);
+const COMMIT_ROWS_PER_PARTITION: usize = bench_profile::corpus(2_000, 50);
 
 /// The filter the pruned plan asks for: one of the eight venue values.
 const PRUNED_FILTER: (&str, &str) = ("venue", "venue-2");
 
 /// The scratch labels the benchmark tables live under, cleaned at exit.
-const SCRATCH_LABELS: [&str; 6] = [
+const SCRATCH_LABELS: [&str; 8] = [
     "files-10",
     "files-200",
     "compact-200",
     "merge-50",
     "read-parallel-32",
     "commit-contended",
+    "merge-partitions",
+    "commit-parallel",
 ];
 
 /// Spell one of the [`VENUES`] partition values.
@@ -669,6 +676,174 @@ fn merge_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// Build a venue-partitioned table of `partitions` single-row data files.
+///
+/// One append per partition is one commit is one file, and every file holds
+/// the same id, so the id bounds cannot tell the partitions apart: only the
+/// partition isolation can keep the measured merge from reading them all.
+fn partitioned_merge_table(label: &str, partitions: usize) -> Table<Folder> {
+    let path = scratch(label);
+    let _ = std::fs::remove_dir_all(&path);
+    let schema = plan_schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
+    let mut table = Table::create(
+        Folder::new(&path).expect("the scratch directory is addressable"),
+        FormatVersion::V2,
+        schema.clone(),
+        spec,
+    )
+    .expect("the scratch table creates");
+    let arrow = schema
+        .into_arrow_schema()
+        .expect("the schema projects to Arrow");
+    for index in 0..partitions {
+        let batch = RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![1_i64])),
+                Arc::new(StringArray::from(vec![Some(venue(index))])),
+            ],
+        )
+        .expect("the batch matches the schema");
+        table
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .expect("the append commits");
+    }
+    table
+}
+
+/// Upserting into one partition of many: the merge reads that partition's
+/// file and carries every other one under its own path.
+fn isolated_merge_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("merge");
+    let mut table = partitioned_merge_table(SCRATCH_LABELS[6], MERGE_PARTITIONS);
+    let arrow = plan_schema()
+        .into_arrow_schema()
+        .expect("the schema projects to Arrow");
+    let upsert = RecordBatch::try_new(
+        arrow,
+        vec![
+            Arc::new(Int64Array::from_iter_values(0..10)),
+            Arc::new(StringArray::from(vec![Some(venue(0)); 10])),
+        ],
+    )
+    .expect("the upsert batch matches the schema");
+    let merge_by = yggdryl::Selector::from_columns(["id"]);
+
+    // Proven once outside the timer: every file of every other partition
+    // keeps its exact path, so the merge rewrote one partition of many.
+    let before: std::collections::BTreeSet<SmolStr> = table
+        .data_files()
+        .expect("the table lists its files")
+        .into_iter()
+        .map(|(file, _)| file.file_path)
+        .collect();
+    table
+        .commit_merge(
+            yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
+            &merge_by,
+            true,
+        )
+        .expect("the priming merge commits");
+    let after: std::collections::BTreeSet<SmolStr> = table
+        .data_files()
+        .expect("the table lists its files")
+        .into_iter()
+        .map(|(file, _)| file.file_path)
+        .collect();
+    assert_eq!(
+        before.intersection(&after).count(),
+        MERGE_PARTITIONS - 1,
+        "every other partition's file is carried under its own path"
+    );
+
+    group.throughput(Throughput::Elements(10));
+    group.bench_function(format!("one_partition_of_{MERGE_PARTITIONS}"), |bencher| {
+        bencher.iter(|| {
+            table
+                .commit_merge(
+                    yggdryl::arrow::batch_reader(upsert.schema(), [upsert.clone()]),
+                    black_box(&merge_by),
+                    true,
+                )
+                .expect("the merge commits");
+        });
+    });
+    group.finish();
+}
+
+/// One batch spanning many partitions, written as one commit.
+fn partitioned_commit_batch(partitions: usize, rows_per_partition: usize) -> RecordBatch {
+    let arrow = plan_schema()
+        .into_arrow_schema()
+        .expect("the schema projects to Arrow");
+    let rows = partitions * rows_per_partition;
+    RecordBatch::try_new(
+        arrow,
+        vec![
+            Arc::new(Int64Array::from_iter_values(
+                (0..rows).map(|row| i64::try_from(row).expect("the row fits an id")),
+            )),
+            Arc::new(StringArray::from_iter_values(
+                (0..rows).map(|row| venue(row % partitions)),
+            )),
+        ],
+    )
+    .expect("the batch matches the schema")
+}
+
+/// One partitioned commit on one thread against four: the partition groups
+/// are independent, so their files are written concurrently and the
+/// manifest still lists them in group order.
+fn parallel_commit_benchmarks(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("commit");
+    group.sample_size(10);
+    let path = scratch(SCRATCH_LABELS[7]);
+    let schema = plan_schema();
+    let batch = partitioned_commit_batch(COMMIT_PARTITIONS, COMMIT_ROWS_PER_PARTITION);
+    group.throughput(Throughput::Elements(batch.num_rows() as u64));
+    for parallelism in [1_usize, 4] {
+        group.bench_function(
+            format!("parallel_partitions_{COMMIT_PARTITIONS}/parallelism-{parallelism}"),
+            |bencher| {
+                bencher.iter_batched(
+                    || {
+                        let _ = std::fs::remove_dir_all(&path);
+                        let mut table = Table::create(
+                            Folder::new(&path).expect("the scratch directory is addressable"),
+                            FormatVersion::V2,
+                            schema.clone(),
+                            PartitionSpec::identity(1, &schema, &["venue"])
+                                .expect("venue is a schema column"),
+                        )
+                        .expect("the scratch table creates");
+                        table.set_options(
+                            IcebergOptions::new()
+                                .try_with_write_parallelism(parallelism)
+                                .expect("a positive parallelism is valid"),
+                        );
+                        table
+                    },
+                    |mut table| {
+                        table
+                            .commit_append(yggdryl::arrow::batch_reader(
+                                batch.schema(),
+                                [batch.clone()],
+                            ))
+                            .expect("the partitioned append commits");
+                        assert_eq!(
+                            table.data_files().expect("the table lists its files").len(),
+                            COMMIT_PARTITIONS
+                        );
+                    },
+                    BatchSize::PerIteration,
+                );
+            },
+        );
+    }
+    group.finish();
+}
+
 /// The four-column trade schema the read benchmark scans.
 fn read_schema() -> Field {
     let mut schema = DataType::from_fields([
@@ -1103,8 +1278,10 @@ pub(crate) fn benchmarks(criterion: &mut Criterion) {
     identity_benchmarks(criterion);
     compact_benchmarks(criterion);
     merge_benchmarks(criterion);
+    isolated_merge_benchmarks(criterion);
     read_benchmarks(criterion);
     contended_commit_benchmarks(criterion);
+    parallel_commit_benchmarks(criterion);
     catalog_resolve_benchmarks(criterion);
 }
 

@@ -164,7 +164,7 @@ pub(super) fn conjuncts(schema: &Field, filter: &Filter) -> Result<Vec<Bound>> {
 /// holds it holds it. A bucket, a truncation, or a calendar transform stores
 /// something else, so a predicate on its source column falls through to the
 /// file's own statistics and then to the rows themselves.
-fn identity_column<'schema>(
+pub(super) fn identity_column<'schema>(
     spec: &PartitionSpec,
     position: usize,
     schema: &'schema Field,
