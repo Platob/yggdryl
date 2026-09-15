@@ -1109,13 +1109,6 @@ impl JsFixMsg {
         JsScalar::from_core(self.inner.msgphash().clone())
     }
 
-    /// The hour `updatedat` falls in, as an instant: the partition a row is
-    /// stored under.
-    #[napi]
-    pub fn time_partition(&self) -> Option<JsScalar> {
-        answered(&self.inner.time_partition())
-    }
-
     /// One lifted facet's value, or `null` where nothing carries it.
     #[napi]
     pub fn lifted(&self, facet: String) -> Option<JsScalar> {

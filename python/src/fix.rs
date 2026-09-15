@@ -1647,12 +1647,6 @@ impl PyFixMsg {
         PyScalar::from_inner(self.inner.msgphash().clone())
     }
 
-    /// The hour `updatedat` falls in, as an instant: the partition a row is
-    /// stored under.
-    fn time_partition(&self) -> Option<PyScalar> {
-        Self::answered(Some(&self.inner.time_partition()))
-    }
-
     /// The one value a facet names, or `None` where it is not unambiguous.
     fn lifted(&self, facet: &str) -> Option<PyScalar> {
         Self::answered(self.inner.lifted(facet))

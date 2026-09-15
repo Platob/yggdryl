@@ -60,6 +60,8 @@ mod pipeline;
 mod schema;
 #[path = "fix/store.rs"]
 mod store;
+#[path = "fix/transient.rs"]
+mod transient;
 #[path = "fix/zero_entries.rs"]
 mod zero_entries;
 

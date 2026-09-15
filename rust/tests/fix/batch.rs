@@ -205,10 +205,10 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         [
             "body",
             "updatedat",
-            "timepartition",
             "prevupdatedat",
             "createdat",
-            "snapshotat"
+            "snapshotat",
+            "recordedat"
         ],
         "{names:?}"
     );
@@ -233,7 +233,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         10,  // the trailer
         yggdryl::MSGHASH_TAG_NAME.0,
         yggdryl::UPDATEDAT_TAG_NAME.0,
-        yggdryl::TIMEPARTITION_TAG_NAME.0, // the digest, the clock, the partition
+        yggdryl::CREATEDAT_TAG_NAME.0, // the digest and the clocks
         yggdryl::SENDERSESSIONID_TAG_NAME.0,
         yggdryl::MSGCTXID_TAG_NAME.0, // what a bridge's own log states
         yggdryl::MSGDIRECTION_TAG_NAME.0, // which way the line moved

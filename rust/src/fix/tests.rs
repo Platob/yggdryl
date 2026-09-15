@@ -955,8 +955,11 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // the spellings, `msghash`/`msgphash`/`prevmsghash` replacing
     // `uuid`/`puuid`/`prevuuid` on the same tags and layouts, and then the
     // four columns after them: `recordedat`, `expiredat` and the two lane
-    // currencies, each declaring how it fills on the field itself.
-    assert_eq!(carrying.stable_hash(), 16_269_254_218_448_512_109);
+    // currencies, each declaring how it fills on the field itself. It moved
+    // last when `timepartition` went - how a layout is cut is the target's -
+    // and when the columns settled to one message said so with
+    // `fix:transient`.
+    assert_eq!(carrying.stable_hash(), 11_531_988_328_019_777_117);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

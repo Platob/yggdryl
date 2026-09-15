@@ -408,9 +408,9 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus updatedat, timepartition, createdat,
-    // snapshotat, prevupdatedat, recordedat and expiredat.
-    assert_eq!(utc, 75, "instants stated in UTC");
+    // Sixty-eight shipped fields, plus updatedat, createdat, snapshotat,
+    // prevupdatedat, recordedat and expiredat.
+    assert_eq!(utc, 74, "instants stated in UTC");
 }
 
 #[test]
@@ -531,11 +531,14 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// carried the original `msghash` stays retired and unreused. It then adds
 /// four columns after them - `recordedat`, `expiredat` and the two lane
 /// currencies - each declaring on the field itself how it fills, and reorders
-/// the fixed row so the crate's own clocks and identities lead it.
+/// the fixed row so the crate's own clocks and identities lead it. It then
+/// retires `timepartition` - how a layout is cut is the target's, and an
+/// Iceberg table takes an `hour` transform over `updatedat` - and marks the
+/// columns settled to one message with `fix:transient`.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 10_951_265_905_427_059_570);
+    assert_eq!(registry.stable_hash(), 16_943_954_268_509_475_520);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

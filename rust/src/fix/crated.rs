@@ -65,10 +65,6 @@ pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 /// The tag and name carrying the settled message or snapshot grid instant.
 pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");
 
-/// The tag and name carrying the hour updatedat falls in, which is the
-/// partition a row is stored under.
-pub const TIMEPARTITION_TAG_NAME: (i32, &str) = (65_004, "timepartition");
-
 /// The tag and name carrying the client order identifier this one descends
 /// from.
 pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
@@ -186,24 +182,6 @@ pub const fn is_crate_tag(tag: i32) -> bool {
 /// since 4.4, and a field it already declares is never given a second tag.
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 
-/// How wide a partition is, in seconds: the one width `timepartition` has.
-///
-/// An hour. A day is too coarse to prune a capture with - a session's whole
-/// traffic lands in one partition - and a minute makes a day of capture
-/// fourteen hundred of them, which is more files than rows in the quiet ones.
-/// The `timepartition` field's `transform:expression`,
-/// `truncate(updatedat, 'hour')`, spells the same hour for the expression
-/// layer, and [`FixMsg::time_partition`](super::FixMsg::time_partition)
-/// floors by this constant, so the declared derivation and the value a row
-/// carries never say different things.
-pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
-
-/// How `timepartition` derives from `updatedat`, as the crate field declares
-/// it in its `transform:expression`: the expression layer's own
-/// `truncate(temporal, 'hour')`, which floors an instant to the hour that
-/// contains it - before the epoch as after it.
-const TIMEPARTITION_DERIVATION: &str = "truncate(updatedat, 'hour')";
-
 /// How `isincode` derives from the message where it states none, as the
 /// crate field declares it in its `fix:derivation` (decision 38): the
 /// primary identifier under the ISIN source, else the alternate identifier
@@ -284,6 +262,36 @@ pub(super) fn version_field() -> Option<&'static Field> {
     VERSION_FIELD.as_ref()
 }
 
+/// The crate's own columns that are about *this message* rather than about
+/// the instrument its chain follows, and so never carry forward.
+///
+/// The clocks, because a later message has its own; the identities, because
+/// they are computed from the message that carries them; `code`, because the
+/// lifecycle stamps it from the chain rather than from the message before;
+/// `state`, because carrying an order's last state onto a message that did
+/// not state one would report a life the venue never described;
+/// `nofixentries` and `sourceurl` and `version`, because they are facts about
+/// the line this row was read from.
+///
+/// Everything else the crate owns is about the instrument or the session -
+/// `isincode`, `miccode`, `symbolticker`, `altids`, the lane currencies,
+/// `expiredat`, the session names and ids - and carries.
+const SETTLED_TO_ONE_MESSAGE: [i32; 13] = [
+    UPDATEDAT_TAG_NAME.0,
+    CREATEDAT_TAG_NAME.0,
+    SNAPSHOTAT_TAG_NAME.0,
+    RECORDEDAT_TAG_NAME.0,
+    PREVUPDATEDAT_TAG_NAME.0,
+    INSTUUID_TAG_NAME.0,
+    MSGHASH_TAG_NAME.0,
+    MSGPHASH_TAG_NAME.0,
+    PREVMSGHASH_TAG_NAME.0,
+    CODE_TAG_NAME.0,
+    STATE_TAG_NAME.0,
+    NOFIXENTRIES_TAG_NAME.0,
+    SOURCEURL_TAG_NAME.0,
+];
+
 /// One field of the crate's own, from its tag and name, with a FIX-style
 /// display.
 ///
@@ -299,6 +307,9 @@ fn crated(
     field.as_fix_mut().set_tag(tag)?;
     field.set_display(display)?;
     field.set_description(description)?;
+    if SETTLED_TO_ONE_MESSAGE.contains(&tag) || tag == VERSION_TAG_NAME.0 {
+        field.as_fix_mut().set_transient(false)?;
+    }
     Ok(field)
 }
 
@@ -359,44 +370,6 @@ fn build() -> Result<Vec<Field>> {
          field name in sorted order; repeating-group members are not flattened.",
     )?;
     altids.as_fix_mut().set_counter(ALTIDS_TAG_NAME.0)?;
-    // The hour that updatedat falls in, as the same instant type updatedat
-    // has: a partition value is compared and ranged over, and an instant
-    // floored to its hour ranges exactly as the clock it was cut from.
-    let mut timepartition = crated(
-        TIMEPARTITION_TAG_NAME,
-        "TimePartition",
-        super::schema::CLOCK_DATATYPE,
-        "The hour updatedat falls in: updatedat floored to the partition \
-         width, as an instant.",
-    )?;
-    // A column a path spells out and an Iceberg spec partitions by identity:
-    // the value *is* the partition, so a reader prunes on its bounds and a
-    // writer lays rows out by it without a transform between them.
-    timepartition.set_partition(true);
-    // Named by the column it reads, because that is what the column is
-    // called in a row.
-    //
-    // Written through the protocol view rather than through
-    // `PartitionFieldMut::set_sources`, because that half of the partition
-    // layer is built only with Arrow and these fields exist whether or not it
-    // is. The rendering is the crate's one canonical spelling either way, and
-    // the metadata write validates it exactly as the setter's would.
-    let sources = crate::metadata::render_source_list(
-        crate::metadata::PARTITION_SOURCES_KEY,
-        [UPDATEDAT_TAG_NAME.1.to_owned()],
-    )?;
-    timepartition
-        .as_partition_mut()
-        .insert("sources", sources)?;
-    // How it derives, in the expression layer's own vocabulary: a batch
-    // missing the column, or holding its default there, is filled by
-    // `Field::apply_arrow_batch` with exactly what `FixMsg::time_partition`
-    // answers for a row. A `truncate` over a column and a unit literal is
-    // not a call over plain columns, so it is stored as the expression text.
-    timepartition
-        .as_transform_mut()
-        .set_term(&TIMEPARTITION_DERIVATION.parse()?)?;
-
     Ok(vec![
         // The version the message was *read* at, which is not always the one
         // its `BeginString` claims: a venue that mislabels its session still
@@ -423,7 +396,6 @@ fn build() -> Result<Vec<Field>> {
             super::schema::CLOCK_DATATYPE,
             "The settled message instant, truncated to the snapshot grid by the lifecycle.",
         )?,
-        timepartition,
         // Where an order came from. FIX threads a replace chain through
         // `OrigClOrdID(41)`, which says what this message *replaces* - not
         // what it descends from. A slice of a parent order, or a leg of a
@@ -695,26 +667,18 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 31);
+/// assert_eq!(held.len(), 30);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
-/// assert_eq!(held[20].dtype(), held[2].dtype());
-/// assert_eq!(held[21].dtype(), &yggdryl::DataType::fixed_size_binary(16)?);
-/// assert!(held[20].is_nullable() && held[21].is_nullable());
-/// // The partition is the hour `updatedat` falls in, typed as that clock is,
-/// // marked as the column a layout is cut on, and derived by the expression
-/// // layer's own `truncate`.
-/// assert_eq!(held[3].name(), "timepartition");
-/// assert_eq!(held[3].dtype(), held[2].dtype());
-/// assert!(held[3].is_partition());
+/// // No partition column: how a layout is cut is the target's to decide -
+/// // an Iceberg table takes an `hour` transform over `updatedat` - and a
+/// // materialized copy of that instant was a second owner of it.
+/// assert!(held.iter().all(|field| !field.is_partition()));
+/// assert!(held.iter().all(|field| field.name() != "timepartition"));
+/// // The columns a message implies declare how, on the field itself.
+/// let state = held.iter().find(|field| field.name() == "state").expect("state");
 /// assert_eq!(
-///     held[3].as_transform().term()?.map(|term| term.to_string()),
-///     Some("truncate(updatedat, 'hour')".to_owned()),
-/// );
-/// // The three columns a message implies declare how, on the field itself.
-/// assert_eq!(held[14].name(), "state");
-/// assert_eq!(
-///     held[14].as_fix().derivation()?.map(|term| term.to_string()),
+///     state.as_fix().derivation()?.map(|term| term.to_string()),
 ///     Some("coalesce(ordstatus, exectype)".to_owned()),
 /// );
 /// // Above every tag FIX or a venue publishes, and its tag and name are

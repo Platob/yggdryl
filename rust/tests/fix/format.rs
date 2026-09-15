@@ -98,7 +98,6 @@ fn a_format_target_is_any_message_field_a_caller_names() {
         "code",
         "snapshotat",
         "sendingtime",
-        "timepartition",
         "beginstring",
     ];
     let columns: Vec<Field> = wanted
@@ -135,7 +134,6 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
         "msgtype",
         "version",
         "updatedat",
-        "timepartition",
         "msghash",
         "msgphash",
         "createdat",
@@ -191,7 +189,6 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         "msgtype",
         "version",
         "updatedat",
-        "timepartition",
         "msghash",
         "msgphash",
         "createdat",

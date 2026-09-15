@@ -679,10 +679,6 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         assert_eq!(&held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)], event);
         assert_eq!(&held[column(yggdryl::CREATEDAT_TAG_NAME.0)], event);
         assert!(
-            !held[column(yggdryl::TIMEPARTITION_TAG_NAME.0)].is_null(),
-            "row {row} has a partition"
-        );
-        assert!(
             held[column(8)]
                 .as_str()
                 .is_some_and(|held| held.starts_with("FIX")),

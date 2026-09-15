@@ -221,7 +221,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "version",
             "symbolticker",
             "updatedat",
-            "timepartition",
             "parentclordid",
             "parentorderid",
             "sendersessionid",
@@ -258,7 +257,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Version"),
             Some("SymbolTicker"),
             Some("UpdatedAt"),
-            Some("TimePartition"),
             Some("ParentClOrdID"),
             Some("ParentOrderID"),
             Some("SenderSessionId"),
@@ -292,63 +290,63 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // The columns a message answers from what it said are typed as the thing
     // they hold, not as the text a venue spelled it in; the three lifecycle
     // identities are sixteen fixed bytes, which is what a lake engine reads.
-    assert_eq!(held[12].dtype(), &DataType::Isin);
-    assert_eq!(held[13].dtype(), &DataType::Mic);
-    assert_eq!(held[14].dtype(), &DataType::State);
-    for identity in &held[15..18] {
+    let typed = |name: &str| {
+        held.iter()
+            .find(|field| field.name() == name)
+            .unwrap_or_else(|| panic!("{name}"))
+            .dtype()
+    };
+    assert_eq!(typed("isincode"), &DataType::Isin);
+    assert_eq!(typed("miccode"), &DataType::Mic);
+    assert_eq!(typed("state"), &DataType::State);
+    let identities = held
+        .iter()
+        .position(|field| field.name() == "instuuid")
+        .expect("instuuid");
+    for identity in &held[identities..identities + 3] {
         assert_eq!(identity.dtype(), &super::identity_dtype());
         assert_eq!(identity.as_fix().aliases().count(), 0);
     }
-    assert_eq!(held[20].dtype(), held[2].dtype());
+    assert_eq!(typed("prevupdatedat"), typed("updatedat"));
     assert_eq!(
-        held[20].dtype(),
+        typed("prevupdatedat"),
         &DataType::DateTime64 {
             unit: yggdryl::TimeUnit::Nanosecond,
             timezone: yggdryl::Timezone::UTC,
         }
     );
-    assert_eq!(held[21].dtype(), &super::identity_dtype());
-    for previous in &held[20..22] {
+    assert_eq!(typed("prevmsghash"), &super::identity_dtype());
+    let previous_at = held
+        .iter()
+        .position(|field| field.name() == "prevupdatedat")
+        .expect("prevupdatedat");
+    for previous in &held[previous_at..previous_at + 2] {
         assert!(previous.is_nullable());
         assert_eq!(previous.as_fix().aliases().count(), 0);
     }
-    for at in [2, 22, 24] {
-        assert_eq!(held[at].dtype(), held[20].dtype());
-        assert!(!held[at].is_nullable());
+    let field = |name: &str| {
+        held.iter()
+            .find(|field| field.name() == name)
+            .unwrap_or_else(|| panic!("{name}"))
+    };
+    for name in ["updatedat", "createdat", "snapshotat"] {
+        assert_eq!(typed(name), typed("prevupdatedat"), "{name}");
+        assert!(!field(name).is_nullable(), "{name}");
     }
-    assert_eq!(held[23].dtype(), &DataType::utf8());
-    assert!(!held[23].is_nullable());
+    assert_eq!(typed("code"), &DataType::utf8());
+    assert!(!field("code").is_nullable());
     // Where a line was read from is the URL it is, so a row joins on it and
     // a reader resolves it rather than parsing text back into one.
-    assert_eq!(held[25].name(), yggdryl::SOURCEURL_TAG_NAME.1);
-    assert_eq!(held[25].dtype(), &DataType::Url);
-    assert!(held[25].is_nullable());
+    assert_eq!(typed(yggdryl::SOURCEURL_TAG_NAME.1), &DataType::Url);
+    assert!(field(yggdryl::SOURCEURL_TAG_NAME.1).is_nullable());
     // The arrival record is a group, so it has a counter like any other.
-    assert_eq!(held[26].name(), yggdryl::NOFIXENTRIES_TAG_NAME.1);
-    assert_eq!(held[26].dtype(), &DataType::Int32);
-    assert!(held[26].is_nullable());
-    // The partition is the hour `updatedat` falls in, typed as that clock
-    // is; it is marked as the column a layout is cut on, names the clock it
-    // reads, and declares its derivation in the expression layer's own
-    // vocabulary rather than in an Iceberg transform of its own.
-    assert_eq!(held[3].dtype(), held[2].dtype());
-    assert!(held[3].is_partition());
-    assert_eq!(
-        held[3].as_partition().sources().unwrap(),
-        Some(vec!["updatedat".to_owned()])
-    );
-    assert_eq!(
-        held[3].get_metadata("transform:expression"),
-        Some("truncate(updatedat, 'hour')")
-    );
-    assert_eq!(
-        held[3]
-            .as_transform()
-            .term()
-            .unwrap()
-            .map(|term| term.to_string()),
-        Some("truncate(updatedat, 'hour')".to_owned())
-    );
+    assert_eq!(typed(yggdryl::NOFIXENTRIES_TAG_NAME.1), &DataType::Int32);
+    assert!(field(yggdryl::NOFIXENTRIES_TAG_NAME.1).is_nullable());
+    // No partition column: how a layout is cut is the target's - an Iceberg
+    // table takes an `hour` transform over `updatedat` - and a materialized
+    // copy of that instant was a second owner of it.
+    assert!(held.iter().all(|field| !field.is_partition()));
+    assert!(held.iter().all(|field| field.name() != "timepartition"));
     assert_eq!(held[3].get_metadata("iceberg:transform"), None);
     assert_eq!(held[3].get_metadata("partition:transform"), None);
 
@@ -356,11 +354,25 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // every dictionary resolves through, so a bridge row spelling `SESSIONID`
     // or `ULFROMSESSIONNAME` reaches it by name; its identity is its tag and
     // its name, and a dictionary member it is not.
-    for (at, field) in held.iter().enumerate() {
+    // Strictly increasing rather than contiguous: a retired slot is never
+    // reused, so the block has holes where one was. 65000 held the original
+    // `msghash` (decision 26) and 65004 held `timepartition`, which went when
+    // how a layout is cut became the target's.
+    let tags: Vec<i32> = held
+        .iter()
+        .filter_map(|field| field.as_fix().tag().ok().flatten())
+        .collect();
+    for retired in [65_000, 65_004] {
+        assert!(!tags.contains(&retired), "{retired} stays retired");
+    }
+    let mut last = yggdryl::CRATE_TAG_MIN;
+    for field in held {
         let view = field.as_fix();
         let tag = view.tag().unwrap().expect("a tag");
         let id = view.id().unwrap().expect("an identity");
-        assert_eq!(tag, yggdryl::CRATE_TAG_MIN + 1 + i32::try_from(at).unwrap());
+        assert!(tag > last, "{tag} follows {last}");
+        assert!(tag <= yggdryl::CRATE_TAG_MAX, "{tag} is in the block");
+        last = tag;
         assert_eq!(id, FixId::of(tag, field.name()).unwrap(), "tag and name");
         assert!(yggdryl::is_crate_tag(tag));
         assert_eq!(
@@ -397,12 +409,9 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [(65_021, "prevupdatedat"), (65_022, "prevmsghash")]
     );
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
-    let sessions = &held[10..12];
     assert_eq!(
-        sessions
-            .iter()
-            .map(|field| field.as_fix().aliases().collect::<Vec<_>>())
-            .collect::<Vec<_>>(),
+        ["sendersessionname", "targetsessionname"]
+            .map(|name| field(name).as_fix().aliases().collect::<Vec<_>>()),
         [vec!["ULFromSessionName"], vec!["ULToSessionName"]]
     );
 
@@ -416,8 +425,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 31);
-    assert_eq!(scalar_count, 30);
+    assert_eq!(held.len(), 30);
+    assert_eq!(scalar_count, 29);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);
