@@ -1127,12 +1127,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Parquet options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected Parquet options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
         }
     }
 
@@ -1141,7 +1143,7 @@ impl RecordOptions {
     pub fn parquet_compression_name(&self) -> Option<String> {
         match self {
             Self::Parquet(options) => Some(options.compression_name()),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => None,
         }
     }
 
@@ -1161,7 +1163,7 @@ impl RecordOptions {
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
         match self {
             Self::Parquet(options) => Some(options.max_row_group_size),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => None,
         }
     }
 
@@ -1182,7 +1184,7 @@ impl RecordOptions {
     pub fn parquet_key_value_metadata(&self) -> Option<&[(String, String)]> {
         match self {
             Self::Parquet(options) => Some(&options.key_value_metadata),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xml(_) => None,
         }
     }
 
