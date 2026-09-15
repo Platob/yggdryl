@@ -51,8 +51,22 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 107);
-    let (message, crated) = tags.split_at(tags.len() - 28);
+    assert_eq!(tags.len(), 111);
+    // The crate's own lead the row in three groups - clocks, identities,
+    // then the rest - and the protocol's own follow them.
+    let (crated, message) = tags.split_at(30);
+    assert_eq!(
+        crated,
+        [
+            65_003, 65_004, 65_021, 65_023, 65_025, 65_028, 65_029, // clocks
+            65_016, 65_017, 65_018, 65_022, 65_024, // identities, and the code
+            65_001, 65_002, 65_005, 65_006, 65_007, 65_008, 65_009, 65_010, 65_011, 65_012, 65_013,
+            65_014, 65_015, 65_019, 65_020, 65_026, 65_030, 65_031,
+        ]
+    );
+    // The arrival record closes the row, so its counter waits for the end
+    // with it rather than standing among the crate's other columns, and
+    // `MsgDirection` waits with it.
     assert_eq!(
         message,
         [
@@ -60,28 +74,25 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             BODY_TAGS.as_slice(),
             GROUP_TAGS.as_slice(),
             TRAILER_TAGS.as_slice(),
+            &[385, 65_027],
         ]
         .concat()
-    );
-    // The arrival record closes the row, so its counter waits for the end
-    // with it rather than standing among the crate's other columns.
-    assert_eq!(
-        crated,
-        (65_001..=65_026).chain([385, 65_027]).collect::<Vec<_>>()
     );
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
+    // The protocol's own close the row now that the crate's lead it, and the
+    // arrival record still closes everything.
     assert_eq!(
         &names[names.len() - 9..],
         [
-            "prevupdatedat",
-            "prevmsghash",
-            "createdat",
-            "code",
-            "snapshotat",
-            "sourceurl",
+            "secaltidgrp",
+            "notrdregtimestamps",
+            "trdregtimestamps",
+            "signaturelength",
+            "signature",
+            "checksum",
             "msgdirection",
             "nofixentries",
             "fixentries",
@@ -112,9 +123,16 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // A column is spelled by the dictionary's folded name and found by the
     // tag its field carries: 32 is `LastShares` in 4.2 and `LastQty` in a
     // newest one, and the column is the dictionary's one `lastqty` in both.
-    assert_eq!(&names[..3], ["beginstring", "bodylength", "msgtype"]);
-    assert_eq!(schema.index_of("msgtype"), Some(2));
-    assert_eq!(column_of(&schema, 35), 2);
+    // The crate's own clocks lead the row, then its identities, then the
+    // standard header - a table is read by time and joined by identity.
+    assert_eq!(&names[..3], ["updatedat", "timepartition", "prevupdatedat"]);
+    let header = schema.index_of("beginstring").expect("the header opens");
+    assert_eq!(
+        &names[header..header + 3],
+        ["beginstring", "bodylength", "msgtype"]
+    );
+    assert_eq!(schema.index_of("msgtype"), Some(header + 2));
+    assert_eq!(column_of(&schema, 35), header + 2);
     assert_eq!(names[column_of(&schema, 32)], "lastqty");
     assert_eq!(names.last(), Some(&"fixentries"));
 
@@ -178,15 +196,15 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(
         required,
         [
-            "beginstring",
-            "sendingtime",
             "updatedat",
             "timepartition",
+            "createdat",
+            "snapshotat",
             "msghash",
             "msgphash",
-            "createdat",
             "code",
-            "snapshotat"
+            "beginstring",
+            "sendingtime"
         ]
     );
 }

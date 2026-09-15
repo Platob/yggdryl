@@ -245,6 +245,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "snapshotat",
             "sourceurl",
             "nofixentries",
+            "recordedat",
+            "expiredat",
+            "bidcurrency",
+            "offercurrency",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -278,6 +282,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("SnapshotAt"),
             Some("SourceUrl"),
             Some("NoFixEntries"),
+            Some("RecordedAt"),
+            Some("ExpiredAt"),
+            Some("BidCurrency"),
+            Some("OfferCurrency"),
         ],
     );
 
@@ -408,8 +416,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 27);
-    assert_eq!(scalar_count, 26);
+    assert_eq!(held.len(), 31);
+    assert_eq!(scalar_count, 30);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);

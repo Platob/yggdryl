@@ -110,6 +110,7 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 
 /// The tag and name carrying the instrument's sixteen identity bytes.
+/// The tag and name carrying the instrument's identity bytes.
 pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
 /// The tag and name carrying the message's time/content identity bytes.
@@ -172,9 +173,6 @@ pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");
 
 /// The tag and name carrying the currency the offer lane is denominated in.
 pub const OFFERCURRENCY_TAG_NAME: (i32, &str) = (65_031, "offercurrency");
-
-/// The tag and name carrying the instrument's ISO 10962 classification.
-pub const CFICODE_TAG_NAME: (i32, &str) = (65_032, "cficode");
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
@@ -375,20 +373,6 @@ fn build() -> Result<Vec<Field>> {
     // the value *is* the partition, so a reader prunes on its bounds and a
     // writer lays rows out by it without a transform between them.
     timepartition.set_partition(true);
-    // The second column a layout is cut on, and the one that cuts it into
-    // sub-products: a lake reading only listed options reads only the `O`
-    // partitions. Identity rather than a transform, exactly as the hour is -
-    // the six characters *are* the partition.
-    let mut cficode = aliased(
-        CFICODE_TAG_NAME,
-        "CFICode",
-        DataType::Cfi,
-        "The instrument's ISO 10962 classification, filled to the maximum the \
-         message licenses: a stated CFICode, then SecurityType, Product, the \
-         identifier's own scheme, and PutOrCall.",
-        &["detailedcficode"],
-    )?;
-    cficode.set_partition(true);
     // Named by the column it reads, because that is what the column is
     // called in a row.
     //
@@ -661,7 +645,13 @@ fn build() -> Result<Vec<Field>> {
             super::schema::CLOCK_DATATYPE,
             "The instant the capture recorded this line: the line's own text \
              timestamp, else SendingTime.",
-            &["mtime", "written_at", "event_time"],
+            // `mtime` only. The text reader accepts `timestamp`, `time`,
+            // `ts`, `written_at` and `event_time` for that column too, but
+            // those are its *intake* spellings and this is a dictionary: an
+            // alias here is a name the registry answers for, and
+            // `event_time` folds onto the shipped `EventTime(1145)`, which
+            // is that field's name and not this one's to take.
+            &["mtime"],
             RECORDEDAT_DERIVATION,
         )?,
         derived(
@@ -693,7 +683,6 @@ fn build() -> Result<Vec<Field>> {
         // for the same reason: what the message said about the instrument,
         // read once into one typed column a table partitions and joins on.
         // `detailedcficode` is the spelling a bridge writes it under.
-        cficode,
     ])
 }
 
@@ -706,7 +695,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 32);
+/// assert_eq!(held.len(), 31);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// assert_eq!(held[20].dtype(), held[2].dtype());

@@ -120,10 +120,17 @@ fn expected_msghash(message: &FixMsg) -> Scalar {
             .filter(|(field, _)| {
                 field.name() != yggdryl::fix::FIXENTRIES_COLUMN
                     && !field.as_fix().tag().unwrap().is_some_and(|tag| {
+                        // What `identity::outside_content` leaves out: the
+                        // identity and the clocks it is computed against,
+                        // and the three facts about the *capture* rather
+                        // than the message.
                         [
                             MSGHASH_TAG_NAME.0,
                             UPDATEDAT_TAG_NAME.0,
                             CREATEDAT_TAG_NAME.0,
+                            yggdryl::SOURCEURL_TAG_NAME.0,
+                            yggdryl::RECORDEDAT_TAG_NAME.0,
+                            yggdryl::NOFIXENTRIES_TAG_NAME.0,
                         ]
                         .contains(&tag)
                     })

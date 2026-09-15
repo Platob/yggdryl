@@ -48,6 +48,7 @@ mod arrow;
 #[cfg(feature = "arrow")]
 pub(crate) mod casts;
 /// The ten registered codes' values.
+mod cfi;
 mod code;
 mod codes;
 mod dictionary;
@@ -59,6 +60,7 @@ mod registries;
 mod scalars;
 
 pub(crate) use arrow::{arrow_storage, describes_storage, is_text_storage, needs_extension};
+pub use cfi::{CFI_CATEGORIES, CfiCategory, CfiGroup};
 pub use code::{
     Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce,
 };

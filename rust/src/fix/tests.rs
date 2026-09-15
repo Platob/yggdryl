@@ -953,8 +953,10 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // that: where a line was read from is a column of the row, and the
     // arrival record is a group with a counter of its own. It moved last for
     // the spellings, `msghash`/`msgphash`/`prevmsghash` replacing
-    // `uuid`/`puuid`/`prevuuid` on the same tags and layouts.
-    assert_eq!(carrying.stable_hash(), 9_695_065_054_344_126_607);
+    // `uuid`/`puuid`/`prevuuid` on the same tags and layouts, and then the
+    // four columns after them: `recordedat`, `expiredat` and the two lane
+    // currencies, each declaring how it fills on the field itself.
+    assert_eq!(carrying.stable_hash(), 16_269_254_218_448_512_109);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -5784,7 +5786,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 54, "{names:?}");
+    assert_eq!(names.len(), 62, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
@@ -5805,8 +5807,8 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let derived: Vec<(i32, bool)> = compiled.derived().collect();
     assert_eq!(
         derived.len(),
-        32,
-        "29 shipped fields and the crate's three columns"
+        36,
+        "29 shipped fields and the crate's seven columns"
     );
     assert!(
         derived.iter().all(|(_, bound)| *bound),
@@ -5848,7 +5850,10 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
         .map(|field| field.name().to_owned())
         .collect();
     assert!(names.iter().any(|held| held == "settlcurrfxrate"));
-    assert_eq!(names.len(), 54, "the edit reads a column another rule read");
+    // The four columns added after `state` read eight sources between them -
+    // the expiry chain's four tags, the lane currencies' two, and the two
+    // clocks - so the working schema is that much wider.
+    assert_eq!(names.len(), 62, "the edit reads a column another rule read");
 }
 
 #[test]
@@ -5865,7 +5870,11 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
         [
             super::ISINCODE_TAG_NAME.0,
             super::MICCODE_TAG_NAME.0,
-            super::STATE_TAG_NAME.0
+            super::STATE_TAG_NAME.0,
+            super::RECORDEDAT_TAG_NAME.0,
+            super::EXPIREDAT_TAG_NAME.0,
+            super::BIDCURRENCY_TAG_NAME.0,
+            super::OFFERCURRENCY_TAG_NAME.0,
         ]
     );
     // A stated crate column is never overwritten and never re-derived, and

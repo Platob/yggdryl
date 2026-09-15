@@ -409,8 +409,8 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
     // Sixty-eight shipped fields, plus updatedat, timepartition, createdat,
-    // snapshotat and prevupdatedat.
-    assert_eq!(utc, 73, "instants stated in UTC");
+    // snapshotat, prevupdatedat, recordedat and expiredat.
+    assert_eq!(utc, 75, "instants stated in UTC");
 }
 
 #[test]
@@ -528,11 +528,14 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// `msghash` (65017), the chain's is `msgphash` (65018) and the preceding
 /// message's is `prevmsghash` (65022). Only the name moves - the tags, the
 /// layouts and every identity recipe are what they were, and the 65000 that
-/// carried the original `msghash` stays retired and unreused.
+/// carried the original `msghash` stays retired and unreused. It then adds
+/// four columns after them - `recordedat`, `expiredat` and the two lane
+/// currencies - each declaring on the field itself how it fills, and reorders
+/// the fixed row so the crate's own clocks and identities lead it.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 12_555_908_207_454_409_528);
+    assert_eq!(registry.stable_hash(), 10_951_265_905_427_059_570);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

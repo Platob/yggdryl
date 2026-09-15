@@ -197,18 +197,18 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         .map(|held| held.name().as_str())
         .collect();
 
-    // The capture's own column leads; the fixed columns follow, named by
-    // their folded names, each carrying its tag on the field - which is what
-    // the row is filled by.
+    // The capture's own column leads, then the crate's own clocks; the rest
+    // of the fixed columns follow, named by their folded names, each
+    // carrying its tag on the field - which is what the row is filled by.
     assert_eq!(
         &names[..6],
         [
             "body",
-            "beginstring",
-            "bodylength",
-            "msgtype",
-            "sendercompid",
-            "targetcompid"
+            "updatedat",
+            "timepartition",
+            "prevupdatedat",
+            "createdat",
+            "snapshotat"
         ],
         "{names:?}"
     );

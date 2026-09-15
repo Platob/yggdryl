@@ -155,7 +155,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     // among the clocks by being one.
     let crate_tag = |field: &Field| field.as_fix().tag().ok().flatten();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
-    let mut push_group = |tags: &mut Vec<i32>, keep: &dyn Fn(&Field) -> bool| {
+    let push_group = |tags: &mut Vec<i32>, keep: &dyn Fn(&Field) -> bool| {
         for field in crated {
             // The arrival record closes the row, so its counter waits for the
             // end with it rather than standing among the crate's own.
@@ -1122,10 +1122,17 @@ impl super::FixMsg {
             self.symbol_ticker()
         } else if is(super::TIMEPARTITION_TAG_NAME) {
             partition_of(self.updatedat())
-        } else if is(super::CFICODE_TAG_NAME) {
-            // The chain is a positional merge over five sources rather than
-            // anything the expression grammar spells, so it is code and it
-            // lives with the standard it implements.
+        } else if tag == super::cfi::CFICODE_TAG {
+            // FIX's own tag rather than a column of this crate's: 461 is
+            // already where a message states its classification, so filling
+            // it to the maximum the message licenses is the whole job and a
+            // second column would be a second owner of one fact.
+            //
+            // Only reached when the message stated nothing there - a stated
+            // value returned above, because a stated value is never
+            // overwritten. `classification` merges a partial stated code with
+            // what the rest of the message says; this is the other half of it,
+            // where there was nothing stated to merge with.
             self.classification()
                 .map_or(crate::Scalar::Null, crate::Scalar::from)
         } else if super::is_crate_tag(tag) {

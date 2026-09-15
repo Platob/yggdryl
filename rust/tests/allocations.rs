@@ -2582,15 +2582,19 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
     );
     // What a message costs after that, exactly: the clone (2, the row's
     // value list and the arrival record); restatement's rebuild of the row
-    // at the dictionary's newest version and the working row of the 54
+    // at the dictionary's newest version and the working row of the 62
     // columns the derivations read or fill (44 together, what a settled
-    // message pays below less its clone); and the nine derivations landing
-    // (100): their evaluations, the landed list sized once, the nine writes
+    // message pays below less its clone); and the derivations landing
+    // (109): their evaluations, the landed list sized once, the writes
     // staged and the one rebuild that lands them through `set_each`, and
     // the `altids` Map with the rebuild that lands it. Nothing in it is a
     // parse, a bind or a shape: the terms were bound at compile and are
     // read borrowed from the registry.
-    assert_eq!(warm, 146, "a warm same-shaped message");
+    //
+    // Nine more than before the crate grew `recordedat`, `expiredat` and
+    // the two lane currencies: the wider working row and the evaluations
+    // and writes those four add.
+    assert_eq!(warm, 155, "a warm same-shaped message");
     let (thousand, _) = counted(|| {
         for _ in 0..1_000 {
             black_box(codec.enrich_message(message.clone()).expect("enriches"));
@@ -2615,8 +2619,12 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
             .enrich_message(enriched.clone())
             .expect("a second pass")
     });
+    // Three more than before the crate grew its four new columns: the
+    // working row is eight columns wider and gathering it costs that much,
+    // while the derivations themselves still land nothing on a message that
+    // already states everything.
     assert_eq!(
-        settled, 46,
+        settled, 49,
         "a settled message pays restatement, the working row and nothing per derivation"
     );
     // For scale: one clone, and one `set` on the same message - the clone
@@ -2647,10 +2655,14 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
     black_box(codec.enrich_message(mapped.clone()).expect("a second pass"));
     let (mapped_settled, _) =
         counted(|| codec.enrich_message(mapped.clone()).expect("a second pass"));
-    assert_eq!(mapped_settled, 71, "a settled two-field report");
+    assert_eq!(mapped_settled, 74, "a settled two-field report");
+    // The altids Map and the rebuild that lands it, and now also the four
+    // columns the crate grew: a report that states a currency and a clock
+    // lands `recordedat`, `expiredat` and both lane currencies on the warm
+    // pass, and finds them stated on the settled one.
     assert_eq!(
         mapped_warm - mapped_settled,
-        19,
+        79,
         "the altids Map and the rebuild that lands it"
     );
 
@@ -2691,16 +2703,22 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
         second, third,
         "a pass over every shape costs the same every time"
     );
+    // Four more crate terms to compile, each with its sources bound against
+    // the working schema, so the one-off compile is that much larger; it is
+    // still paid exactly once, which is what the equality above pins.
     assert_eq!(
         first - second,
-        13_523,
+        13_760,
         "the first pass pays the bridge registry's compile and nothing else"
     );
-    // 224 per message on average, the 451 allocations of cloning the 95
+    // 238 per message on average, the 451 allocations of cloning the 95
     // messages included: the clone, the working row, the sweeps and the
     // rebuilds of each, and the `Remembered` plugin memory of the stream.
+    // Fourteen more per message than before the crate grew `recordedat`,
+    // `expiredat` and the two lane currencies - a wider working row and
+    // four more terms swept over it.
     assert_eq!(
-        second, 21_330,
+        second, 22_642,
         "95 messages of 54 shapes, each its own working row"
     );
     let (clones, _) = counted(|| black_box(messages.clone()));
@@ -2748,13 +2766,14 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
     // The row door refuses the same way and compiles nothing either: the
     // first fill pays the clone (2), the fixed schema's column plan (4,
     // resolved once per thread and kept), the row's values up to the first
-    // crate column (2) and the refusal; the next fill finds the plan kept
-    // and pays 8.
+    // crate column (1, one fewer now that the crate's own columns lead the
+    // row and the refusing column is reached sooner) and the refusal; the
+    // next fill finds the plan kept and pays 7.
     let (row, refused) = counted(|| message.clone().into_row(&schema).expect_err("refused"));
     assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
     let (row_again, _) = counted(|| message.clone().into_row(&schema).expect_err("refused"));
     assert_eq!(row - row_again, 4, "the fixed schema's column plan, once");
-    assert_eq!(row_again, 8, "a refused row fill reads the kept refusal");
+    assert_eq!(row_again, 7, "a refused row fill reads the kept refusal");
 }
 
 /// The bodies the text reader hands the codec for the bridge's capture,

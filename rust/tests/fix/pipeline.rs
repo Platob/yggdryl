@@ -249,8 +249,19 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         ],
         "{names:?}"
     );
+    // The crate's own clocks open the fixed columns; the standard header
+    // follows them.
     assert_eq!(
         &names[8..11],
+        ["updatedat", "timepartition", "prevupdatedat"],
+        "{names:?}"
+    );
+    let header = names
+        .iter()
+        .position(|held| *held == "beginstring")
+        .expect("the header opens");
+    assert_eq!(
+        &names[header..header + 3],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
