@@ -623,8 +623,8 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
 /// column is indistinguishable from a stated one and carries the same
 /// display, description and `fix:tag` a reader resolves it by - and a value
 /// it refuses, such as an identifier whose check digit does not close, is
-/// silence. Identifier Map construction propagates the shared text
-/// conversion's typed refusal if a declared member cannot spell text.
+/// silence. A declared identifier that cannot spell text is silence too: it
+/// is left out of the Map rather than allowed to refuse the message.
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
     // What the row's projection dropped comes back off the arrival record
     // first, because restatement reads what the document stated and a row

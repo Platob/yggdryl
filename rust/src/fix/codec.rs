@@ -1671,9 +1671,10 @@ impl FixCodec {
     /// # Errors
     ///
     /// Returns the schema grammar's refusal where the restated children do
-    /// not make a root. Ordinary derived values a column refuses are silence;
-    /// a declared identifier that cannot spell UTF-8 propagates the value
-    /// contract's refusal at that identifier's field path.
+    /// not make a root, and the dictionary's own refusal where its
+    /// `fix:derivation` rules do not compile. No value refuses: a derived
+    /// value a column will not hold, and a declared identifier that cannot
+    /// spell UTF-8, are both silence.
     pub fn enrich_message(&self, message: FixMsg) -> Result<FixMsg> {
         super::enrich::enrich(&self.registry, message)
     }

@@ -696,10 +696,18 @@ impl super::FixMsg {
     /// # Ok(())
     /// # }
     /// ```
+    /// A value a column will not hold is that column's null rather than a
+    /// refusal - a five-byte MIC under a four-byte column, an identifier
+    /// whose check digit does not close - because the arrival record carries
+    /// what arrived and a capture of ten million rows must not end on one of
+    /// them. A column that cannot be null keeps the refusal, which is what
+    /// separates an unreadable value from a broken contract.
+    ///
     /// # Errors
     ///
-    /// Refuses a missing or mistyped mandatory replay holder, a cell the target
-    /// field cannot represent, or an unrenderable truncated arrival subtree.
+    /// Refuses a missing or mistyped mandatory replay holder, a value a
+    /// column that cannot be null will not hold, or an unrenderable truncated
+    /// arrival subtree.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
         let plan = column_plan_of(schema, self.registry())?;
         let mut values = self.row_values(schema, &plan, Vec::new())?;
@@ -738,7 +746,7 @@ impl super::FixMsg {
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
         for (column, planned) in columns.iter().zip(plan.iter()) {
             if let Some(value) = front.next() {
-                values.push(column.scalar(value)?);
+                values.push(fitted(column, value)?);
                 continue;
             }
             let value = match column.name() {
@@ -776,7 +784,7 @@ impl super::FixMsg {
                     }
                 }
             };
-            values.push(column.scalar(value)?);
+            values.push(fitted(column, value)?);
         }
         Ok(values)
     }
@@ -914,6 +922,121 @@ impl super::FixMsg {
         } else {
             crate::Scalar::Null
         })
+    }
+}
+
+/// One column's value as that column holds it, leaf by leaf, best effort.
+///
+/// A capture is written by systems that disagree with the dictionary about
+/// what a field is: a five-byte MIC where the standard says four, an
+/// identifier whose check digit does not close, a quantity spelled as a
+/// word. A table of ten million rows must not end on one of them. A leaf the
+/// column refuses is that leaf's null, which is the honest answer for a value
+/// nothing could read as the field it landed under, and nothing is lost by
+/// it, because the arrival record beside it carries what arrived verbatim.
+///
+/// A nested column keeps everything that does read. The whole value is tried
+/// first, so an ordinary row costs one call and nothing else; only when that
+/// refuses is the value taken apart and put back together member by member,
+/// so one unreadable `PartyID` costs that member, not the party around it and
+/// not the parties beside it. An occurrence that cannot be formed at all,
+/// because a member can hold neither its value nor a null, is dropped from
+/// the list rather than taking the list with it.
+///
+/// Every null this puts in a value's place is reported through `log` at warn
+/// level, naming the column and what the value could not be read as: a null
+/// nobody can tell from a stated one is how a capture quietly loses a field,
+/// and the log is where an operator sees that a venue and a dictionary
+/// disagree.
+///
+/// Only a column that cannot be null keeps the refusal, and the two kinds of
+/// failure stay apart because of it: an unreadable value is a null, and a
+/// required column holding nothing is a broken contract that names itself.
+/// The identity bundle is exactly such a contract, and
+/// [`Plan::finalize`](super::identity::Plan) is where it is stated.
+fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
+    // Kept for the retry only where a retry has members to work on, and a
+    // `Scalar`'s clone is a refcount rather than a copy of what it names.
+    let retry = column.dtype().is_nested().then(|| value.clone());
+    let refusal = match column.scalar(value) {
+        Ok(held) => return Ok(held),
+        Err(refusal) => refusal,
+    };
+    if let Some(value) = retry {
+        if let Some(held) = refit(column, value) {
+            log::warn!(
+                "FIX column {}: kept what reads and nulled the rest ({refusal})",
+                column.name()
+            );
+            return Ok(held);
+        }
+    }
+    // The null is asked of the column rather than assumed, so a column that
+    // refuses one answers with the refusal the value earned.
+    match column.scalar(crate::Scalar::Null) {
+        Ok(null) => {
+            log::warn!("FIX column {}: null, {refusal}", column.name());
+            Ok(null)
+        }
+        Err(_) => Err(refusal),
+    }
+}
+
+/// One value rebuilt under one field with every leaf that will not fit nulled.
+///
+/// `None` where the field can hold neither the value nor a null in its place,
+/// which is what drops one occurrence of a group rather than the group around
+/// it. Reached only from [`fitted`]'s refusal path, so no row that reads pays
+/// for it.
+fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
+    let rebuilt = match field.dtype() {
+        DataType::Struct(members) => value.as_sequence().map(|stated| {
+            // A member the value never reached is the null the column would
+            // have held anyway; one it reached is refitted in place.
+            let held: Option<Vec<crate::Scalar>> = members
+                .iter()
+                .enumerate()
+                .map(|(at, member)| match stated.get(at) {
+                    Some(value) => refit(member, value.clone()),
+                    None => member.scalar(crate::Scalar::Null).ok(),
+                })
+                .collect();
+            held.map(crate::Scalar::from_sequence)
+        }),
+        DataType::List(item)
+        | DataType::LargeList(item)
+        | DataType::ListView(item)
+        | DataType::LargeListView(item)
+        | DataType::FixedSizeList(item, _) => value.as_sequence().map(|stated| {
+            Some(crate::Scalar::from_sequence(
+                stated
+                    .iter()
+                    .filter_map(|held| refit(item, held.clone()))
+                    .collect::<Vec<_>>(),
+            ))
+        }),
+        DataType::Map(map) => value.as_mapping().map(|stated| {
+            // A pair whose key will not read names nothing, so it is left
+            // out; one whose value will not read keeps its name and loses
+            // the value, which is what every other column does.
+            let entries = map.entries().dtype().as_fields()?;
+            let [key, held] = entries else {
+                return None;
+            };
+            crate::Scalar::from_mapping(stated.iter().filter_map(|(name, value)| {
+                Some((refit(key, name.clone())?, refit(held, value.clone())?))
+            }))
+            .ok()
+        }),
+        // A leaf has no members to keep, so it is the value or the null.
+        _ => None,
+    };
+    match rebuilt.flatten() {
+        Some(held) => field.scalar(held).ok(),
+        None => field
+            .scalar(value)
+            .ok()
+            .or_else(|| field.scalar(crate::Scalar::Null).ok()),
     }
 }
 

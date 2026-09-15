@@ -35,6 +35,17 @@ fn column_of(schema: &Field, tag: i32) -> usize {
     fix_column_of(schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
 }
 
+/// The `parties` occurrences out of a fixed row.
+///
+/// The group is reached by its name and not by tag 453, which is the
+/// counter's column: a List group and its counter are two columns.
+fn group<'row>(row: &'row Scalar, schema: &Field) -> &'row [Scalar] {
+    let at = schema.index_of("parties").expect("a parties column");
+    row.as_sequence().expect("a row")[at]
+        .as_sequence()
+        .expect("the parties")
+}
+
 #[test]
 fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields() {
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
@@ -783,4 +794,120 @@ fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
     }
     assert_eq!(rows, expected, "the bytes come back exactly as they went");
     let _ = std::fs::remove_dir_all(&path);
+}
+
+/// A value no column could read is that column's null, never the row's end.
+///
+/// A capture is written by systems that disagree with the dictionary about
+/// what a field is, and the disagreement arrives one row in ten million: a
+/// five-byte MIC under a four-byte column, an ISIN whose check digit does not
+/// close. A row that refused would end a run over a day of traffic, and the
+/// arrival record already carries what arrived, so nothing is lost by the
+/// null and everything is lost by the refusal.
+#[test]
+fn a_value_a_column_will_not_hold_is_that_columns_null() {
+    let (registry, _) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+
+    // A message spelling a crate column's name with a value its datatype
+    // cannot hold: five bytes under `miccode`, which is a four-byte MIC, and
+    // a spelling no ISIN check digit closes under `isincode`.
+    let root = DataType::from_fields([
+        DataType::utf8().nullable_field("miccode"),
+        DataType::utf8().nullable_field("isincode"),
+    ])
+    .unwrap()
+    .required_field("NewOrderSingle");
+    let message = yggdryl::FixMsg::with_registry(
+        Arc::clone(&registry),
+        root,
+        Scalar::from_record([
+            ("miccode", Scalar::from("XLONX")),
+            ("isincode", Scalar::from("NOTANISIN12")),
+        ])
+        .unwrap(),
+    )
+    .unwrap();
+
+    let row = message.into_row(&schema).unwrap();
+    assert!(at(&row, &schema, yggdryl::MICCODE_TAG_NAME.0).is_null());
+    assert!(at(&row, &schema, yggdryl::ISINCODE_TAG_NAME.0).is_null());
+    // The row is still a row: the columns beside the unreadable ones are
+    // filled, and the identity bundle still settled.
+    assert!(!at(&row, &schema, yggdryl::UUID_TAG_NAME.0).is_null());
+}
+
+/// A market spelled wider than a MIC derives nothing rather than refusing.
+///
+/// `miccode` derives from `SecurityExchange`, which FIX types as free text:
+/// a venue writing more than four bytes there has not named a MIC, and the
+/// honest column is empty.
+#[test]
+fn a_derivation_wider_than_its_column_stays_silent() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+
+    let narrow = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|207=XLON|10=0|", false)
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    assert_eq!(
+        at(&narrow, &schema, yggdryl::MICCODE_TAG_NAME.0).as_str(),
+        Some("XLON"),
+    );
+
+    let wide = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A|55=AAPL|54=1|207=XLONX|10=0|", false)
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    assert!(at(&wide, &schema, yggdryl::MICCODE_TAG_NAME.0).is_null());
+}
+
+/// A group keeps every member that reads, whatever one of them turned out to be.
+///
+/// A bridge packs an occurrence into one value and a venue writes a member
+/// the dictionary does not declare, so a group arrives one member short or
+/// one member long often enough to matter. Nulling the whole group over it
+/// would throw away the parties that did read, and refusing would throw away
+/// the capture, so the row keeps what reads and says the rest is absent.
+#[test]
+fn a_group_keeps_the_members_that_read() {
+    let (registry, reader) = reader();
+    let schema = fix_schema(&registry, "fix").unwrap();
+
+    // A packed occurrence stating only the identifier: the members it never
+    // wrote are null and the identifier it did write is kept.
+    let packed = reader
+        .sole_line(
+            b"MSGTYPE=D|453=2|453[0]=448=BUYSIDE|453[1]=448=VENUE",
+            false,
+        )
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    let occurrences = group(&packed, &schema);
+    let identifiers: Vec<Option<&str>> = occurrences
+        .iter()
+        .map(|party| party.as_sequence().expect("a party")[0].as_str())
+        .collect();
+    assert_eq!(identifiers, [Some("BUYSIDE"), Some("VENUE")]);
+    assert!(occurrences[0].as_sequence().unwrap()[1].is_null());
+    // The counter column is the group's own tag and still counts them.
+    assert_eq!(at(&packed, &schema, 453).as_i128(), Some(2));
+
+    // And one member the row cannot read costs that member alone: the
+    // occurrence around it and the occurrences beside it stay.
+    let marked = reader
+        .sole_line(
+            b"MSGTYPE=ZMIN|#453=1|#453[0]=PARTYID=BUYSIDEPARTYROLE=1",
+            false,
+        )
+        .unwrap()
+        .into_row(&schema)
+        .unwrap();
+    let members = group(&marked, &schema)[0].as_sequence().expect("a party");
+    assert_eq!(members[0].as_str(), Some("BUYSIDE"));
+    assert_eq!(members[2].as_i128(), Some(1));
 }

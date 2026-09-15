@@ -18377,6 +18377,18 @@ frames[028]:0.wire	MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\x0
 frames[028]:0.entry[0]	t35 MSGTYPE=D
 frames[028]:0.entry[1]	t0 NOPARTYIDS[0]=whole
 frames[028]:0.entry[2]	t0 #NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1
+frames[028]:0.field.beginstring	"FIX.5.0.2"
+frames[028]:0.field.msgtype	"D"
+frames[028]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+frames[028]:0.field.parties	[]
+frames[028]:0.field.version	"5.0.2"
+frames[028]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
+frames[028]:0.field.timepartition	"2024-01-02T10:00:00.000000000Z"
+frames[028]:0.field.uuid	"l6aAQgI8FAAWfFZ/63VeLw=="
+frames[028]:0.field.puuid	"maoG0wFHmNhgAcMkRo1Jfw=="
+frames[028]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
+frames[028]:0.field.code	""
+frames[028]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 frames[028].messages	1
 frames[029].line	MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3
 frames[029]:0.type	D
@@ -18433,6 +18445,19 @@ frames[031]:0.entry[0]	t35 MSGTYPE=D
 frames[031]:0.entry[1]	t453 NOPARTYIDS=2
 frames[031]:0.entry[1.0]	t0 NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03
 frames[031]:0.entry[1.1]	t0 NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03
+frames[031]:0.field.beginstring	"FIX.5.0.2"
+frames[031]:0.field.msgtype	"D"
+frames[031]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+frames[031]:0.field.nopartyids	2
+frames[031]:0.field.parties	[["X",null,1,null,null,[["a",1]]],["Y",null,3,null,null,null]]
+frames[031]:0.field.version	"5.0.2"
+frames[031]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
+frames[031]:0.field.timepartition	"2024-01-02T10:00:00.000000000Z"
+frames[031]:0.field.uuid	"l6aAQgI8FABfdKC0enScyA=="
+frames[031]:0.field.puuid	"maoG0wFHmNhgAcMkRo1Jfw=="
+frames[031]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
+frames[031]:0.field.code	""
+frames[031]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 frames[031].messages	1
 frames[032].line	MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03
 frames[032]:0.type	D
@@ -19564,6 +19589,19 @@ lift[012]:0.entry[2]	t11 11=A
 lift[012]:0.entry[3]	t55 Symbol[0]=AAPL
 lift[012]:0.entry[4]	t55 Symbol[1]=MSFT
 lift[012]:0.entry[5]	t10 10=0
+lift[012]:0.field.beginstring	"FIX.4.4"
+lift[012]:0.field.msgtype	"D"
+lift[012]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+lift[012]:0.field.clordid	"A"
+lift[012]:0.field.checksum	"0"
+lift[012]:0.field.version	"4.4"
+lift[012]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
+lift[012]:0.field.timepartition	"2024-01-02T10:00:00.000000000Z"
+lift[012]:0.field.uuid	"l6aAQgI8FAD4Lsjt5BxomA=="
+lift[012]:0.field.puuid	"maoG0wFHmNhgAcMkRo1Jfw=="
+lift[012]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
+lift[012]:0.field.code	""
+lift[012]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 lift[012].messages	1
 lift[013].line	8=FIX.4.4|35=D|9=abc|11=A|10=0|
 lift[013]:0.type	D
@@ -20999,6 +21037,18 @@ verbatim[028]:0.wire	MSGTYPE=D|NOPARTYIDS[0]=whole|#NOPARTYIDS[0]=PARTYID=A\x04\
 verbatim[028]:0.entry[0]	t35 MSGTYPE=D
 verbatim[028]:0.entry[1]	t0 NOPARTYIDS[0]=whole
 verbatim[028]:0.entry[2]	t0 #NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1
+verbatim[028]:0.field.beginstring	"FIX.5.0.2"
+verbatim[028]:0.field.msgtype	"D"
+verbatim[028]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+verbatim[028]:0.field.parties	[]
+verbatim[028]:0.field.version	"5.0.2"
+verbatim[028]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
+verbatim[028]:0.field.timepartition	"2024-01-02T10:00:00.000000000Z"
+verbatim[028]:0.field.uuid	"l6aAQgI8FAAWfFZ/63VeLw=="
+verbatim[028]:0.field.puuid	"maoG0wFHmNhgAcMkRo1Jfw=="
+verbatim[028]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
+verbatim[028]:0.field.code	""
+verbatim[028]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 verbatim[028].messages	1
 verbatim[029].line	MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=BARE\x04\x03PARTYROLE=1|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=A\x04\x03PARTYROLE=1|#NOPARTYIDS[1]=PARTYID=B\x04\x03PARTYROLE=3
 verbatim[029]:0.type	D
@@ -21055,6 +21105,19 @@ verbatim[031]:0.entry[0]	t35 MSGTYPE=D
 verbatim[031]:0.entry[1]	t453 NOPARTYIDS=2
 verbatim[031]:0.entry[1.0]	t0 NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03
 verbatim[031]:0.entry[1.1]	t0 NOPARTYIDS[1]=PARTYID=Y\x04\x03PARTYROLE=3\x04\x03
+verbatim[031]:0.field.beginstring	"FIX.5.0.2"
+verbatim[031]:0.field.msgtype	"D"
+verbatim[031]:0.field.sendingtime	"2024-01-02T10:15:30.000000000Z"
+verbatim[031]:0.field.nopartyids	2
+verbatim[031]:0.field.parties	[["X",null,1,null,null,[["a",1]]],["Y",null,3,null,null,null]]
+verbatim[031]:0.field.version	"5.0.2"
+verbatim[031]:0.field.updatedat	"2024-01-02T10:15:30.000000000Z"
+verbatim[031]:0.field.timepartition	"2024-01-02T10:00:00.000000000Z"
+verbatim[031]:0.field.uuid	"l6aAQgI8FABfdKC0enScyA=="
+verbatim[031]:0.field.puuid	"maoG0wFHmNhgAcMkRo1Jfw=="
+verbatim[031]:0.field.createdat	"2024-01-02T10:15:30.000000000Z"
+verbatim[031]:0.field.code	""
+verbatim[031]:0.field.snapshotat	"2024-01-02T10:15:30.000000000Z"
 verbatim[031].messages	1
 verbatim[032].line	MSGTYPE=D|NOPARTYIDS=1|NOPARTYIDS[0]=NOPARTYSUBIDS=1\x04\x03NOPARTYSUBIDS[0]=PARTYSUBID=a\x04\x03PARTYSUBIDTYPE=1\x04\x03VENUE_SEQ=7\x04\x03PARTYID=X\x04\x03PARTYROLE=1\x04\x03
 verbatim[032]:0.type	D

@@ -526,24 +526,58 @@ fn scalar_identifiers_render_through_the_existing_utf8_value_contract() {
 }
 
 #[test]
-fn binary_identifier_invalid_utf8_propagates_the_typed_located_refusal() {
+fn a_binary_identifier_that_will_not_spell_text_names_nothing() {
     let value = Scalar::from(vec![b'A', 0xff]);
-    let expected = DataType::utf8()
-        .nullable_field("customid")
-        .scalar(value.clone())
-        .unwrap_err();
-    let (codec, message) = custom_identifier_message(DataType::binary(), value);
-    let error = codec.enrich_message(message).unwrap_err();
-    assert!(
-        matches!(&error, Error::InvalidRecord { path, reason }
-        if path == "$.customid"
-            && reason == "invalid utf-8 data at byte 1: expected a byte this charset assigns, got 0xff"),
-        "{error}"
-    );
+    let (codec, message) = custom_identifier_message(DataType::binary(), value.clone());
+    let enriched = codec.enrich_message(message).unwrap();
+    // The declared identifier is unreadable as text, so it names nothing and
+    // is left out of the map. It does not take the message with it: the
+    // message enriches, and the bytes it stated are still its own.
+    assert_eq!(enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap(), &mapping(&[]));
+    assert_eq!(enriched.by_tag(9001).unwrap(), &value);
+    assert_eq!(codec.enrich_message(enriched.clone()).unwrap(), enriched);
+}
+
+/// One unreadable identifier costs that identifier and not the ones beside it.
+#[test]
+fn a_readable_identifier_beside_an_unreadable_one_still_names_itself() {
+    let mut registry = FixRegistry::new();
+    let mut readable = DataType::utf8().nullable_field("readableid");
+    readable.as_fix_mut().set_tag(9002).unwrap();
+    registry.insert(readable.clone()).unwrap();
+    let mut binary = DataType::binary().nullable_field("customid");
+    binary.as_fix_mut().set_tag(9001).unwrap();
+    registry.insert(binary.clone()).unwrap();
+    let mut msgtype = DataType::utf8().nullable_field("msgtype");
+    msgtype.as_fix_mut().set_tag(35).unwrap();
+    let mut field = DataType::from_fields([msgtype, binary, readable])
+        .unwrap()
+        .required_field("zmessage");
+    field.as_fix_mut().set_msgtype("Z9").unwrap();
+    field
+        .as_fix_mut()
+        .set_identifiers(["customid", "readableid"])
+        .unwrap();
+    registry
+        .create_definition(FixCategory::Components, field.clone())
+        .unwrap();
+    let registry = Arc::new(registry);
+    let message = FixMsg::with_registry(
+        Arc::clone(&registry),
+        field,
+        Scalar::from_sequence([
+            Scalar::from("Z9"),
+            Scalar::from(vec![b'A', 0xff]),
+            Scalar::from("R-1"),
+        ]),
+    )
+    .unwrap();
+    let enriched = super::fixed_codec(registry)
+        .enrich_message(message)
+        .unwrap();
     assert_eq!(
-        error.to_string(),
-        expected.to_string(),
-        "the existing conversion owns the refusal"
+        enriched.by_tag(ALTIDS_TAG_NAME.0).unwrap(),
+        &mapping(&[("readableid", "R-1")]),
     );
 }
 

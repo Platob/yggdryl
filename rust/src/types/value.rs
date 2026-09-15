@@ -385,7 +385,7 @@ pub(crate) fn canonicalize_row(root: &Field, value: Scalar) -> Result<Scalar> {
 }
 
 /// Re-root one value refusal at the field that refused it.
-pub(crate) fn rooted_at_field(error: Error, name: &str) -> Error {
+fn rooted_at_field(error: Error, name: &str) -> Error {
     prepend_canonical_error(error, PathSegment::Field(SmolStr::new(name)))
 }
 

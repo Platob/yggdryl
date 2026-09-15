@@ -181,19 +181,22 @@ impl MsgType {
     /// Canonical identifier text in ascending member-name order.
     ///
     /// Enrichment stores this Map; lifecycle uses the same answer when the
-    /// message states none. Text conversion retains the member's error path.
+    /// message states none. An identifier whose value will not spell text is
+    /// left out, so one unreadable member costs that member and never the
+    /// message.
     pub(super) fn identifier_mapping(&self, message: &FixMsg) -> Result<Scalar> {
-        let mut entries = self
+        let mut entries: Vec<(Scalar, Scalar)> = self
             .identifier_values(message)
-            .map(|(field, value)| {
-                Ok((
-                    Scalar::from(field.name()),
-                    DataType::utf8()
-                        .scalar(value.clone())
-                        .map_err(|error| crate::types::rooted_at_field(error, field.name()))?,
-                ))
+            // An identifier whose value will not spell text names nothing, so
+            // it is left out rather than taken as the empty name or allowed
+            // to refuse the message around it: the arrival record still
+            // carries the bytes, and every identifier that does spell text
+            // still reaches the map.
+            .filter_map(|(field, value)| {
+                let held = DataType::utf8().scalar(value.clone()).ok()?;
+                Some((Scalar::from(field.name()), held))
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect();
         // `schema::fitted` trusts a matching Map datatype ID. The
         // producer must therefore establish sortedness before storage.
         entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
