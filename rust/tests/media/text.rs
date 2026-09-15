@@ -423,6 +423,75 @@ fn a_real_log_row_captures_a_microsecond_timestamp_and_binary_body() {
 }
 
 #[test]
+fn a_comma_fraction_and_a_variable_width_one_are_timestamp_columns() {
+    // ISO 8601 names the comma a decimal sign, so a log4j clock is a clock:
+    // the capture's own syntax types the column at the width it spells, and
+    // the row reads through the header's own match rather than through a cast
+    // that would demand a zone the line never carries.
+    let source = named("log4j.log", b"2026-08-14 00:05:01,148 [main] started\n");
+    let text = TextOptions::new()
+        .try_with_rowheader(
+            r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \[(?<thread>[^]]+)\] ",
+        )
+        .unwrap();
+    let mut options: RecordOptions = text.into();
+    options.set_timezone(Some(Timezone::UTC)).unwrap();
+
+    let batch = source
+        .read_arrow_reader(&options)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field(3).data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Millisecond, Some("UTC".into()))
+    );
+    assert_eq!(
+        batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<arrow_array::TimestampMillisecondArray>()
+            .unwrap()
+            .value(0),
+        1_786_665_901_148
+    );
+
+    // A capture admitting several widths publishes the widest, and a row
+    // spelling fewer digits restates into it exactly.
+    let source = named(
+        "variable.log",
+        b"2026-08-14 00:05:01.148 short\n2026-08-14 00:05:01.12345 long\n",
+    );
+    let text = TextOptions::new()
+        .try_with_rowheader(r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,5}) ")
+        .unwrap();
+    let mut options: RecordOptions = text.into();
+    options.set_timezone(Some(Timezone::UTC)).unwrap();
+
+    let batch = source
+        .read_arrow_reader(&options)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        batch.schema().field(3).data_type(),
+        &arrow_schema::DataType::Timestamp(arrow_schema::TimeUnit::Microsecond, Some("UTC".into()))
+    );
+    assert_eq!(
+        batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<arrow_array::TimestampMicrosecondArray>()
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        [Some(1_786_665_901_148_000), Some(1_786_665_901_123_450)]
+    );
+}
+
+#[test]
 fn framing_normalizes_every_physical_terminator_and_keeps_start_rownums() {
     let source = named(
         "mixed.log",

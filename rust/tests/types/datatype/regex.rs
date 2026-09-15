@@ -1,0 +1,71 @@
+use yggdryl::{DataType, TimeUnit, Timezone};
+
+#[test]
+fn a_fraction_names_its_unit_at_either_decimal_sign_and_any_width() {
+    let dtype = DataType::from_regex(
+        concat!(
+            r"(?<comma>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) ",
+            r"(?<either>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}[.,]\d{3}) ",
+            r"(?<grouped>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}_\d{3}) ",
+            r"(?<variable>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,9}) ",
+            r"(?<narrow>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,5}) ",
+            r"(?<four>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{4}) ",
+            r"(?<clock>\d{2}:\d{2}:\d{2},\d{3}) ",
+            r"(?<grouping>\d{1,3}(?:,\d{3})*) ",
+            r"(?<decimal>\d+,\d+)"
+        ),
+        true,
+    )
+    .unwrap();
+    let naive = |unit| DataType::DateTime64 {
+        unit,
+        timezone: Timezone::NAIVE,
+    };
+
+    // ISO 8601 names the comma and the full stop alike, so a log4j rowheader
+    // is a timestamp column and not the string a capture falls back to when
+    // nothing recognizes its syntax. A class over the two signs is the same
+    // clock, and grouping widens the unit exactly as the full stop's does.
+    assert_eq!(
+        dtype.field("comma").unwrap().dtype(),
+        &naive(TimeUnit::Millisecond)
+    );
+    assert_eq!(
+        dtype.field("either").unwrap().dtype(),
+        &naive(TimeUnit::Millisecond)
+    );
+    assert_eq!(
+        dtype.field("grouped").unwrap().dtype(),
+        &naive(TimeUnit::Microsecond)
+    );
+
+    // A capture admitting several widths publishes the widest, which is the
+    // only resolution that holds every row it admits: at milliseconds a
+    // five-digit row is no exact count and the reader would refuse it.
+    assert_eq!(
+        dtype.field("variable").unwrap().dtype(),
+        &naive(TimeUnit::Nanosecond)
+    );
+    assert_eq!(
+        dtype.field("narrow").unwrap().dtype(),
+        &naive(TimeUnit::Microsecond)
+    );
+
+    // Every width between one and nine names a unit; the probe is no longer a
+    // handful of spellings a pattern has to match exactly.
+    assert_eq!(
+        dtype.field("four").unwrap().dtype(),
+        &naive(TimeUnit::Microsecond)
+    );
+    assert_eq!(
+        dtype.field("clock").unwrap().dtype(),
+        &DataType::time(TimeUnit::Millisecond).unwrap()
+    );
+
+    // The comma is a decimal sign inside a clock and nothing outside one: a
+    // thousands group and a European decimal carry no calendar and no clock,
+    // so they match no temporal spelling and stay text. Reading either as a
+    // number is a separate decision this one does not make.
+    assert_eq!(dtype.field("grouping").unwrap().dtype(), &DataType::utf8());
+    assert_eq!(dtype.field("decimal").unwrap().dtype(), &DataType::utf8());
+}

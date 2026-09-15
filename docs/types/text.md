@@ -756,6 +756,8 @@ bare text or bytes under the default parameters and an object otherwise.
 | Nullability | every capture field is nullable |
 | Autotyping argument | required in Rust, defaults to `true` in Python and JavaScript |
 | Typed captures | boolean, integer, finite float, ISO date, time, datetime |
+| Fraction sign | either decimal sign ISO 8601 names, `.` or `,` |
+| Fraction width | a capture admitting several widths takes the widest spelling it matches, the only resolution that holds every row it admits |
 | Broad captures | a capture such as `\S+` stays `utf8` |
 | Rows read | none, so [plain-text records](../media/text/index.md) publish a schema before opening a source |
 
@@ -1067,6 +1069,8 @@ intake is total by construction and unrecognized text answers the default base.
 - Avro and Iceberg -> a string with text storage (UTF-8 or US-ASCII) crosses as `string`, a fixed one trimmed of padding; any other charset is refused by name; a bounded byte column crosses unbounded, the bound enforced where values enter.
 - Merging follows [Field](field.md): two strings and two byte types meet parameter by parameter.
 - `from_regex(pattern, false)` -> every capture stays `utf8`; invalid regex syntax or an expression past the recursion limit -> datatype error.
+- `\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}` -> a millisecond datetime and `\d{2}:\d{2}:\d{2},\d{3}` -> a millisecond time: the comma is a decimal sign inside a clock. Outside one it is not, so `\d+,\d+` and `\d{1,3}(?:,\d{3})*` stay `utf8` and a bare fraction such as `,\d{3}` carries no clock to be part of.
+- A capture admitting several widths takes the widest: `\.\d{1,5}` -> microseconds, and an optional or variable fraction publishes the widest unit it admits even where every row spells none, so `\d{2}:\d{2}:\d{2}(?:\.\d{2})?` -> `time32(ms)`. A capture spelling one width it once had no candidate for - two, four, seven or eight digits - is now that width's datetime rather than `utf8`, and a row the reader refuses in such a column is null under `safe` rather than the text it used to stay.
 - `005.0.000` -> the canonical `5`; a version whose major or minor exceeds `255`, or whose major is not a decimal number -> refused at the first bad byte; a fourth component, an empty component, a qualifier, or a patch above `65535` -> folded into the patch.
 - Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing.
 

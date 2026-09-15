@@ -16,6 +16,11 @@ const MULTILINE_ROWS: usize = crate::bench_profile::corpus(4_000, 200);
 const OVERSIZED_BODY_BYTES: usize = crate::bench_profile::corpus(2 * 1024 * 1024, 64 * 1024);
 const RECORD_BYTE_LIMIT: u64 = 4 * 1024;
 const ROWHEADER: &str = r"^\[(?<level>[A-Z]+)\] id=(?<id>\d+)";
+/// A rowheader whose stamp carries a fraction, so inference pays the clock
+/// probe the plain `ROWHEADER` never reaches: `id=(?<id>\d+)` spells no `:`
+/// and no `-`, so it is offered no temporal candidate at all.
+const FRACTION_ROWHEADER: &str =
+    r"^(?<stamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) \[(?<level>[A-Z]+)\] ";
 
 fn corpus() -> Vec<u8> {
     let mut bytes = Vec::with_capacity(ROWS * 40);
@@ -98,6 +103,12 @@ pub(crate) fn text_options_benchmarks(criterion: &mut Criterion) {
     group.bench_function("datatype_from_regex", |bencher| {
         bencher.iter(|| {
             yggdryl::DataType::from_regex(black_box(ROWHEADER), true).expect("a capture Struct")
+        });
+    });
+    group.bench_function("datatype_from_regex_fraction", |bencher| {
+        bencher.iter(|| {
+            yggdryl::DataType::from_regex(black_box(FRACTION_ROWHEADER), true)
+                .expect("a capture Struct")
         });
     });
     group.bench_function("stable_hash", |bencher| {

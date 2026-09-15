@@ -142,3 +142,56 @@ fn a_temporal_reads_the_compact_spelling_and_the_extended_one_alike() {
         assert!(naive.scalar(Scalar::from(held)).is_err(), "{held}");
     }
 }
+
+#[test]
+fn either_decimal_sign_reads_the_same_fraction() {
+    use yggdryl::{Scalar, Timezone};
+
+    let naive = DataType::DateTime64 {
+        unit: TimeUnit::Millisecond,
+        timezone: Timezone::NAIVE,
+    };
+
+    // ISO 8601 divides a fraction from its integer part with either decimal
+    // sign and names the comma the preferred one, so a log4j row and a
+    // European locale's clock read the instant their dotted twin reads - in
+    // every spelling of the datetime that carries them.
+    let stated = naive
+        .scalar(Scalar::from("2026-08-14T00:05:01.148"))
+        .expect("the full stop");
+    for held in [
+        "2026-08-14T00:05:01,148",
+        "2026-08-14 00:05:01,148",
+        "20260814-00:05:01,148",
+    ] {
+        assert_eq!(naive.scalar(Scalar::from(held)).unwrap(), stated, "{held}");
+    }
+
+    // A comma closes a zoned reading too, where the zone follows the fraction.
+    let utc = DataType::DateTime64 {
+        unit: TimeUnit::Millisecond,
+        timezone: Timezone::UTC,
+    };
+    assert_eq!(
+        utc.scalar(Scalar::from("2026-08-14T00:05:01,148Z"))
+            .unwrap(),
+        utc.scalar(Scalar::from("2026-08-14T00:05:01.148Z"))
+            .unwrap(),
+    );
+
+    // A comma still needs its digits, and a grouped fraction reads at the
+    // width the grouping spells.
+    assert!(naive.scalar(Scalar::from("2026-08-14T00:05:01,")).is_err());
+    let micros = DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: Timezone::NAIVE,
+    };
+    assert_eq!(
+        micros
+            .scalar(Scalar::from("2026-08-14 00:05:01,147_250"))
+            .unwrap(),
+        micros
+            .scalar(Scalar::from("2026-08-14 00:05:01.147250"))
+            .unwrap(),
+    );
+}

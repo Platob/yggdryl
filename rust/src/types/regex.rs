@@ -14,7 +14,10 @@ impl DataType {
     /// complete expression may miss a row, and a capture may sit in an
     /// optional branch. With `autotype`, a capture whose regex constrains its
     /// complete language to a supported scalar format becomes Boolean, Int64,
-    /// Float64, Date32, Time32/Time64, or DateTime64. Broad captures such as
+    /// Float64, Date32, Time32/Time64, or DateTime64. A clock's fraction is
+    /// read at either decimal sign ISO 8601 names, and a capture admitting
+    /// several widths takes the widest spelling it matches, the only
+    /// resolution that holds every row it admits. Broad captures such as
     /// `\S+` remain `utf8`. Disabling `autotype` makes every capture `utf8`.
     ///
     /// Inference examines syntax only. It never reads a value, so callers can
@@ -23,7 +26,7 @@ impl DataType {
     /// identity rather than through a second datatype table.
     ///
     /// ```
-    /// use yggdryl::DataType;
+    /// use yggdryl::{DataType, TimeUnit, Timezone};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let dtype = DataType::from_regex(
@@ -33,6 +36,24 @@ impl DataType {
     /// assert_eq!(dtype.field("level")?.dtype(), &DataType::utf8());
     /// assert_eq!(dtype.field("id")?.dtype(), &DataType::Int64);
     /// assert!(dtype.field("id")?.is_nullable());
+    ///
+    /// // A clock reads at either decimal sign, and a capture admitting
+    /// // several fraction widths publishes the widest of them.
+    /// let stamps = DataType::from_regex(
+    ///     concat!(
+    ///         r"(?<comma>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) ",
+    ///         r"(?<wide>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{1,5})",
+    ///     ),
+    ///     true,
+    /// )?;
+    /// assert_eq!(
+    ///     stamps.field("comma")?.dtype(),
+    ///     &DataType::DateTime64 { unit: TimeUnit::Millisecond, timezone: Timezone::NAIVE },
+    /// );
+    /// assert_eq!(
+    ///     stamps.field("wide")?.dtype(),
+    ///     &DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE },
+    /// );
     /// # Ok(())
     /// # }
     /// ```
@@ -111,7 +132,7 @@ fn inferred_capture(capture: &Hir, unicode_digits: &Class) -> Result<DataType> {
     let expression =
         Regex::new(&format!(r"\A(?:{capture})\z")).map_err(|error| regex_error(&error))?;
     if allowed(capture, unicode_digits, temporal_byte) && contains_digit(capture, unicode_digits) {
-        if let Some(dtype) = temporal_dtype(&expression) {
+        if let Some(dtype) = temporal_dtype(capture, &expression) {
             return Ok(dtype);
         }
     }
@@ -233,15 +254,39 @@ fn class_contains(class: &Class, start: u8, end: u8) -> bool {
     }
 }
 
+/// Whether a capture's language can spell `byte`.
+///
+/// A capture emits a byte only where a literal or a class holds it, so a
+/// `false` here is exact rather than a guess: no candidate carrying that byte
+/// can match, and the probe never builds it. `\d+` spells neither `:` nor
+/// `-`, so it is offered no clock and no calendar at all.
+fn contains_byte(hir: &Hir, byte: u8) -> bool {
+    let mut pending = vec![hir];
+    while let Some(node) = pending.pop() {
+        match node.kind() {
+            HirKind::Literal(literal) if literal.0.contains(&byte) => return true,
+            HirKind::Class(class) if class_contains(class, byte, byte) => return true,
+            _ => pending.extend(node.kind().subs()),
+        }
+    }
+    false
+}
+
 const fn numeric_byte(byte: u8) -> bool {
     byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.' | b'e' | b'E')
 }
 
+/// The bytes a temporal spelling is made of.
+///
+/// The comma is here as ISO 8601's other decimal sign, so a log4j clock is
+/// offered to the ISO reader at all. It is deliberately absent from
+/// [`numeric_byte`]: a comma outside a clock groups thousands or separates a
+/// list, and nothing here should read `1,234` as a number.
 const fn temporal_byte(byte: u8) -> bool {
     byte.is_ascii_digit()
         || matches!(
             byte,
-            b'+' | b'-' | b':' | b'.' | b'_' | b' ' | b'T' | b't' | b'Z' | b'z'
+            b'+' | b'-' | b':' | b'.' | b',' | b'_' | b' ' | b'T' | b't' | b'Z' | b'z'
         )
 }
 
@@ -279,58 +324,150 @@ fn numeric_dtype(expression: &Regex) -> Result<Option<DataType>> {
     Scalar::from(value).dtype().map(Some)
 }
 
-fn temporal_dtype(expression: &Regex) -> Option<DataType> {
-    const FRACTIONS: &[(&str, TimeUnit)] = &[
-        (".123456789", TimeUnit::Nanosecond),
-        (".123_456_789", TimeUnit::Nanosecond),
-        (".123456", TimeUnit::Microsecond),
-        (".123_456", TimeUnit::Microsecond),
-        (".123", TimeUnit::Millisecond),
-        ("", TimeUnit::Second),
+/// The temporal datatype a capture's language names, or `None`.
+///
+/// Candidate spellings are offered to the compiled capture and the first one
+/// it matches whole is read through [`Scalar`], so the unit and zone a capture
+/// publishes are the ones this crate's own reader will answer with on the rows
+/// that follow. Nothing here decides what a fraction width means; the reader
+/// is asked, in [`resolved_dtype`].
+///
+/// The capture's own alphabet decides which candidates are built at all. A
+/// datetime carries `-` and `:`, a date carries `-`, a clock carries `:`, and
+/// every fraction opens with a decimal sign, so a capture that cannot spell
+/// those bytes cannot match those candidates and is never offered them. That
+/// is why `(?<id>\d+)` costs no probe at all, where it once cost every one.
+fn temporal_dtype(capture: &Hir, expression: &Regex) -> Option<DataType> {
+    /// The fraction spellings a clock is probed with, widest width first.
+    ///
+    /// A capture admitting several widths names the widest spelling it
+    /// matches: every coarser unit restates exactly into a finer one, so only
+    /// the widest width holds every count the capture can spell. `\.\d{1,5}`
+    /// is therefore microseconds, and calling it milliseconds would publish a
+    /// schema this crate's own reader refuses on a five-digit row. The empty
+    /// fraction sorts last for the same reason, or `(?:\.\d{3})?` would read
+    /// as seconds and drop the milliseconds it admits.
+    ///
+    /// ISO 8601 names both the full stop and the comma the decimal sign, so
+    /// each width is spelled both ways; the full stop leads only because it is
+    /// the one this crate writes back. `_` groups the digits a log emitter
+    /// groups, which is microseconds and nanoseconds and nothing narrower.
+    const FRACTIONS: &[&str] = &[
+        ".123456789",
+        ".123_456_789",
+        ",123456789",
+        ",123_456_789",
+        ".12345678",
+        ",12345678",
+        ".1234567",
+        ",1234567",
+        ".123456",
+        ".123_456",
+        ",123456",
+        ",123_456",
+        ".12345",
+        ",12345",
+        ".1234",
+        ",1234",
+        ".123",
+        ",123",
+        ".12",
+        ",12",
+        ".1",
+        ",1",
+        "",
     ];
     const ZONES: &[&str] = &["Z", "+00:00", "+02:00", "-05:00"];
 
-    for (fraction, unit) in FRACTIONS {
-        for separator in ['T', ' '] {
-            for zone in ZONES {
-                let value = format!("2024-02-01{separator}12:34:56{fraction}{zone}");
-                if expression.is_match(value.as_bytes()) {
-                    return temporal_scalar_dtype(
-                        &value,
-                        DataType::DateTime64 {
-                            unit: *unit,
-                            timezone: Timezone::UTC,
-                        },
-                    );
+    let clock = contains_byte(capture, b':');
+    let calendar = contains_byte(capture, b'-');
+    let signed = contains_byte(capture, b'.') || contains_byte(capture, b',');
+    let grouped = contains_byte(capture, b'_');
+    let fractions = FRACTIONS
+        .iter()
+        .copied()
+        .filter(|fraction| fraction.is_empty() || (signed && (grouped || !fraction.contains('_'))))
+        .collect::<Vec<_>>();
+
+    if clock && calendar {
+        for fraction in &fractions {
+            for separator in ['T', ' '] {
+                for zone in ZONES {
+                    let value = format!("2024-02-01{separator}12:34:56{fraction}{zone}");
+                    if expression.is_match(value.as_bytes()) {
+                        if let Some(dtype) = resolved_dtype(&value, |unit| {
+                            Some(DataType::DateTime64 {
+                                unit,
+                                timezone: Timezone::UTC,
+                            })
+                        }) {
+                            return Some(dtype);
+                        }
+                    }
                 }
-            }
-            let value = format!("2024-02-01{separator}12:34:56{fraction}");
-            if expression.is_match(value.as_bytes()) {
-                return temporal_scalar_dtype(
-                    &value,
-                    DataType::DateTime64 {
-                        unit: *unit,
-                        timezone: Timezone::NAIVE,
-                    },
-                );
+                let value = format!("2024-02-01{separator}12:34:56{fraction}");
+                if expression.is_match(value.as_bytes()) {
+                    if let Some(dtype) = resolved_dtype(&value, |unit| {
+                        Some(DataType::DateTime64 {
+                            unit,
+                            timezone: Timezone::NAIVE,
+                        })
+                    }) {
+                        return Some(dtype);
+                    }
+                }
             }
         }
     }
 
-    let date = "2024-02-01";
-    if expression.is_match(date.as_bytes()) {
-        return temporal_scalar_dtype(date, DataType::Date32);
+    if calendar {
+        let date = "2024-02-01";
+        if expression.is_match(date.as_bytes()) {
+            if let Some(dtype) = temporal_scalar_dtype(date, DataType::Date32) {
+                return Some(dtype);
+            }
+        }
     }
 
-    for (fraction, unit) in FRACTIONS {
-        let value = format!("12:34:56{fraction}");
-        if expression.is_match(value.as_bytes()) {
-            return temporal_scalar_dtype(&value, DataType::time(*unit).ok()?);
+    if clock {
+        for fraction in &fractions {
+            let value = format!("12:34:56{fraction}");
+            if expression.is_match(value.as_bytes()) {
+                if let Some(dtype) = resolved_dtype(&value, |unit| DataType::time(unit).ok()) {
+                    return Some(dtype);
+                }
+            }
         }
     }
     None
 }
 
+/// The datatype a matched clock candidate materializes into, at the coarsest
+/// resolution that reads its spelling exactly.
+///
+/// What unit a fraction width names is the ISO reader's rule, not this
+/// module's, so the width is never counted here. The candidate is offered at
+/// each resolution from seconds down and [`Scalar::from_temporal_text`]
+/// refuses every unit too coarse to hold the count it read - `12:34:56.123` is
+/// no exact second - while every finer unit would accept. The first resolution
+/// that reads is therefore the one the spelling names, and the width-to-unit
+/// table stays where it belongs.
+fn resolved_dtype(value: &str, dtype: impl Fn(TimeUnit) -> Option<DataType>) -> Option<DataType> {
+    const RESOLUTIONS: &[TimeUnit] = &[
+        TimeUnit::Second,
+        TimeUnit::Millisecond,
+        TimeUnit::Microsecond,
+        TimeUnit::Nanosecond,
+    ];
+    RESOLUTIONS
+        .iter()
+        .copied()
+        .filter_map(dtype)
+        .find_map(|dtype| temporal_scalar_dtype(value, dtype))
+}
+
+/// The datatype `value` reads as when offered as `dtype`, or `None` where this
+/// crate's own reader refuses the spelling.
 fn temporal_scalar_dtype(value: &str, dtype: DataType) -> Option<DataType> {
     Scalar::from_temporal_text(&dtype, value).ok()?.dtype().ok()
 }

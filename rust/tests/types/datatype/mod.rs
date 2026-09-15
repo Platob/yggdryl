@@ -8,6 +8,7 @@ mod floating;
 mod logical;
 mod nested;
 mod parser;
+mod regex;
 mod scalar;
 mod securities;
 mod serde;

@@ -205,6 +205,8 @@ A document has no frame to read a prefix of, so a read holds the parsed document
 - `2026-08-17T24:00:00` as a datetime -> the 18th at midnight.
 - `26:03:04`, `P1DT2H3M4S`, `PT93784S` as a duration -> one count; written back as `PT<seconds>S`.
 - Minutes and seconds in any clock spelling -> always under sixty; only hours fold, up to `99`.
+- `00:05:01,148` -> the same clock as `00:05:01.148`; ISO 8601 names the comma and the full stop alike and prefers the comma, and both are read. The duration spellings take it too, so `PT1,5S` and `25:30:00,5` read. A fraction is written back with the full stop RFC 3339 allows, at the unit's full width.
+- `.000_000` -> exactly `.000000`; `_` groups fraction digits between digits only, and the count with separators removed keeps the 1-to-9 rule, so grouping never changes the unit a width names.
 - A time of day or duration with a zone -> refused; both must be naive.
 - Empty or positional rows without a `Field` -> ambiguous; an explicit `Field` is required.
 - Text naming an existing file, given to `from_json_scalar` -> parsed as content, never read.
