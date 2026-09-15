@@ -1203,6 +1203,28 @@ impl PyRecordOptions {
         }
     }
 
+    /// Replace one bound of the XML decode budget, keeping the others.
+    ///
+    /// The budget is one core value, so a caller setting one of its names
+    /// reads the rest back off the options rather than resetting them to a
+    /// default nobody asked for.
+    fn replace_xml_limits(
+        &mut self,
+        max_depth: Option<usize>,
+        max_input_bytes: Option<usize>,
+        max_nodes: Option<usize>,
+    ) -> PyResult<()> {
+        self.require_mutable()?;
+        let current = self.inner.xml_limits().unwrap_or_default();
+        let limits = yggdryl::text::Limits::new(
+            max_depth.unwrap_or_else(|| current.max_depth()),
+            max_input_bytes.unwrap_or_else(|| current.max_input_bytes()),
+            max_nodes.unwrap_or_else(|| current.max_nodes()),
+            current.max_documents(),
+        );
+        self.inner.set_xml_limits(limits).map_err(value_error)
+    }
+
     fn pickle_state<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let state = PyDict::new(py);
         state.set_item("media_type", self.inner.mime_type().as_str())?;
@@ -1246,6 +1268,17 @@ impl PyRecordOptions {
         }
         if let Some(marker) = self.inner.avro_sync_marker() {
             state.set_item("sync_marker", PyBytes::new(py, marker))?;
+        }
+        if let Some(document) = self.inner.xml_document() {
+            state.set_item("document", document)?;
+        }
+        if let Some(row_element) = self.inner.xml_row_element() {
+            state.set_item("row_element", row_element)?;
+        }
+        if let Some(limits) = self.inner.xml_limits() {
+            state.set_item("max_depth", limits.max_depth())?;
+            state.set_item("max_input_bytes", limits.max_input_bytes())?;
+            state.set_item("max_nodes", limits.max_nodes())?;
         }
         if let Some(compression) = self.inner.parquet_compression_name() {
             state.set_item("compression", compression)?;
@@ -1375,6 +1408,21 @@ impl PyRecordOptions {
         }
         if let Some(value) = state.get_item("sync_marker")? {
             options.set_sync_marker(Some(&value))?;
+        }
+        if let Some(value) = state.get_item("document")? {
+            options.set_document(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("row_element")? {
+            options.set_row_element(Some(value.extract()?))?;
+        }
+        if let Some(value) = state.get_item("max_depth")? {
+            options.set_max_depth(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("max_input_bytes")? {
+            options.set_max_input_bytes(value.extract()?)?;
+        }
+        if let Some(value) = state.get_item("max_nodes")? {
+            options.set_max_nodes(value.extract()?)?;
         }
         if let Some(value) = state.get_item("compression")? {
             options.set_compression(value.extract()?)?;
@@ -1654,6 +1702,70 @@ impl PyRecordOptions {
         self.inner
             .set_avro_sync_marker(marker.as_deref())
             .map_err(value_error)
+    }
+
+    /// The element an XML write wraps its rows in, or `None` for another
+    /// encoding.
+    #[getter]
+    fn document(&self) -> Option<&str> {
+        self.inner.xml_document()
+    }
+
+    #[setter]
+    fn set_document(&mut self, document: &str) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_xml_document(document).map_err(value_error)
+    }
+
+    /// The element an XML read takes its rows from.
+    ///
+    /// `None` means either that a read takes the name every row element agrees
+    /// on or that these options describe another encoding; naming one reads a
+    /// wrapper that holds more than rows.
+    #[getter]
+    fn row_element(&self) -> Option<&str> {
+        self.inner.xml_row_element()
+    }
+
+    #[setter]
+    fn set_row_element(&mut self, row: Option<&str>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_xml_row_element(row).map_err(value_error)
+    }
+
+    /// The structural nesting an XML read will decode, if this is one.
+    #[getter]
+    fn max_depth(&self) -> Option<usize> {
+        self.inner.xml_limits().map(yggdryl::Limits::max_depth)
+    }
+
+    #[setter]
+    fn set_max_depth(&mut self, max_depth: usize) -> PyResult<()> {
+        self.replace_xml_limits(Some(max_depth), None, None)
+    }
+
+    /// The encoded bytes one XML read will consume, if this is one.
+    #[getter]
+    fn max_input_bytes(&self) -> Option<usize> {
+        self.inner
+            .xml_limits()
+            .map(yggdryl::Limits::max_input_bytes)
+    }
+
+    #[setter]
+    fn set_max_input_bytes(&mut self, max_input_bytes: usize) -> PyResult<()> {
+        self.replace_xml_limits(None, Some(max_input_bytes), None)
+    }
+
+    /// The elements and attributes one XML read will decode, if this is one.
+    #[getter]
+    fn max_nodes(&self) -> Option<usize> {
+        self.inner.xml_limits().map(yggdryl::Limits::max_nodes)
+    }
+
+    #[setter]
+    fn set_max_nodes(&mut self, max_nodes: usize) -> PyResult<()> {
+        self.replace_xml_limits(None, None, Some(max_nodes))
     }
 
     /// The page compression applied inside a Parquet file, if this is one.

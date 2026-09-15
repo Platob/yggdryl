@@ -1716,7 +1716,7 @@ fn checked_limits(input: Option<CodecLimitsInput>) -> Result<Limits> {
     ))
 }
 
-fn checked_formatting(indent: &str) -> Result<Formatting> {
+pub(crate) fn checked_formatting(indent: &str) -> Result<Formatting> {
     match indent {
         "default" => Ok(Formatting::default()),
         "none" => Ok(Formatting::compact()),

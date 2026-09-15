@@ -7,9 +7,12 @@ the binding refuses too.
 
 from __future__ import annotations
 
+import pickle
+from pathlib import Path
+
 import pytest
 
-from yggdryl import Field, RecordOptions
+from yggdryl import Field, IOBase, RecordOptions
 from yggdryl.media import xml
 
 ROWSET_SCHEMA = b"""<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
@@ -97,6 +100,91 @@ def test_a_declared_field_types_the_text_a_document_carries() -> None:
 def test_a_handle_named_xml_answers_the_record_surface() -> None:
     options = RecordOptions("trades.xml")
     assert str(options.mime_type) == "application/xml"
+
+
+def test_a_write_takes_the_layout_every_other_codec_takes() -> None:
+    value = {"symbol": "AAPL"}
+    # Omitted is XML's own readable layout; None puts it all on one line.
+    assert b"\n  <symbol>" in xml.dumps(value, "Order")
+    assert b"\n" not in xml.dumps(value, "Order", indent=None).removeprefix(
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+    )
+    assert b"\n    <symbol>" in xml.dumps(value, "Order", indent=4)
+    assert b"\n\t<symbol>" in xml.dumps(value, "Order", indent="\t")
+    assert b"?><xs:schema" in xml.schema_dumps(
+        xml.schema(ROWSET_SCHEMA), indent=None
+    )
+    with pytest.raises(TypeError):
+        xml.dumps(value, "Order", indent="wide")
+
+
+def test_an_xml_record_read_is_configured_through_its_options() -> None:
+    options = RecordOptions("feed.xml")
+
+    assert options.document == "rows"
+    assert options.row_element is None
+    assert options.max_nodes == RecordOptions("other.xml").max_nodes
+
+    options.document = "channel"
+    options.row_element = "item"
+    options.max_nodes = 1_000
+
+    assert options.document == "channel"
+    assert options.row_element == "item"
+    assert options.max_nodes == 1_000
+    # One bound of the budget is set without resetting the others.
+    assert options.max_input_bytes == RecordOptions("other.xml").max_input_bytes
+
+    options.row_element = None
+    assert options.row_element is None
+
+    # A name no element can be called is refused where it was set.
+    with pytest.raises(ValueError, match="an XML element can be called"):
+        options.document = "1st"
+    assert options.document == "channel"
+
+
+def test_a_setting_one_encoding_has_is_absent_on_the_others() -> None:
+    options = RecordOptions("trades.avro")
+
+    assert options.document is None
+    assert options.row_element is None
+    assert options.max_nodes is None
+    with pytest.raises(ValueError, match="expected XML options"):
+        options.row_element = "item"
+
+
+def test_a_named_row_element_reads_a_wrapper_holding_more_than_rows(
+    tmp_path: Path,
+) -> None:
+    feed = tmp_path / "feed.xml"
+    feed.write_bytes(
+        b"<rss><channel><title>Example</title>"
+        b"<item><guid>1</guid></item><item><guid>2</guid></item>"
+        b"</channel></rss>"
+    )
+    handle = IOBase(feed)
+
+    # The wrapper is the row when nothing names one: one channel, holding a
+    # title beside the items it nests.
+    assert handle.read_arrow_reader().read_all().num_rows == 1
+
+    rows = handle.read_arrow_reader(row_element="item").read_all()
+    assert rows.num_rows == 2
+    assert rows.column_names == ["guid"]
+
+
+def test_the_xml_options_survive_a_pickle_round_trip() -> None:
+    options = RecordOptions("feed.xml")
+    options.document = "channel"
+    options.row_element = "item"
+    options.max_nodes = 1_000
+
+    restored = pickle.loads(pickle.dumps(options))
+    assert restored.document == "channel"
+    assert restored.row_element == "item"
+    assert restored.max_nodes == 1_000
+    assert restored == options
 
 
 def test_what_the_core_refuses_the_binding_refuses() -> None:

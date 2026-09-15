@@ -9,7 +9,7 @@ use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyByteArray, PyBytes};
 use yggdryl::media::xml;
-use yggdryl::text::{Formatting, Indent, Limits};
+use yggdryl::text::Limits;
 
 use crate::types::field::PyField;
 use crate::types::scalar::{PyScalar, from_py};
@@ -45,19 +45,15 @@ pub(crate) fn xml_loads(
 /// XML has no anonymous document, so the root's name is an argument rather
 /// than a default nobody chose.
 #[pyfunction]
-#[pyo3(name = "xml_dumps", signature = (value, name, *, indent = None))]
+#[pyo3(name = "xml_dumps", signature = (value, name, *, indent = -2))]
 pub(crate) fn xml_dumps<'py>(
     py: Python<'py>,
     value: &Bound<'_, PyAny>,
     name: &str,
-    indent: Option<u8>,
+    indent: i16,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let value = from_py(value)?;
-    let formatting = Formatting::new().with_indent(match indent {
-        Some(0) => Indent::None,
-        Some(width) => Indent::Spaces(width),
-        None => Indent::Default,
-    });
+    let formatting = crate::text::codec::formatting_from_code(indent)?;
     let encoded = py
         .detach(|| xml::into_bytes_with_formatting(name, &value, formatting))
         .map_err(value_error)?;
@@ -91,18 +87,14 @@ pub(crate) fn xml_schema(
 
 /// Write one field as the XML Schema that declares it.
 #[pyfunction]
-#[pyo3(name = "xml_schema_dumps", signature = (field, *, indent = None))]
+#[pyo3(name = "xml_schema_dumps", signature = (field, *, indent = -2))]
 pub(crate) fn xml_schema_dumps<'py>(
     py: Python<'py>,
     field: &Bound<'_, PyAny>,
-    indent: Option<u8>,
+    indent: i16,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let field = crate::types::field::core_field_from_value(field)?;
-    let formatting = Formatting::new().with_indent(match indent {
-        Some(0) => Indent::None,
-        Some(width) => Indent::Spaces(width),
-        None => Indent::Default,
-    });
+    let formatting = crate::text::codec::formatting_from_code(indent)?;
     let encoded = py
         .detach(|| xml::field_into_xsd(&field, formatting))
         .map_err(value_error)?;

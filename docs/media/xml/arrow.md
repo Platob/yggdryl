@@ -25,6 +25,42 @@ The record surface: a handle whose media type says XML answers [`IOMedia`](../..
     assert_eq!(rows, 2);
     ```
 
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.xml")
+    handle.write_bytes(
+        b"<rows><Trade><id>1</id></Trade><Trade><id>2</id></Trade></rows>"
+    )
+
+    # The name picked the encoding; nothing else in the call changes.
+    assert handle.read_arrow_reader().read_all().num_rows == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'trades.xml'))
+    handle.writeBytes(
+      Buffer.from('<rows><Trade><id>1</id></Trade><Trade><id>2</id></Trade></rows>'),
+    )
+
+    // The name picked the encoding; nothing else in the call changes.
+    assert.equal(handle.readArrowReader().intoTable().numRows, 2)
+    ```
+
 Rows are the document element's element children, and they must agree on one name. A document whose children disagree is a shape this cannot publish one field for, and it says so rather than picking the first.
 
 ## A wrapper that holds more than rows
@@ -57,6 +93,54 @@ It is a read setting, so it travels in the options a read takes. [`IOMedia::row_
     assert_eq!(rows, 2);
     ```
 
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "feed.xml")
+    handle.write_bytes(
+        b"<rss><channel><title>Example</title>"
+        b"<item><guid>1</guid></item><item><guid>2</guid></item>"
+        b"</channel></rss>"
+    )
+
+    # Without one, the wrapper is the row: one channel holding its title
+    # beside the items it nests.
+    assert handle.read_arrow_reader().read_all().num_rows == 1
+    assert handle.read_arrow_reader(row_element="item").read_all().num_rows == 2
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'feed.xml'))
+    handle.writeBytes(
+      Buffer.from(
+        '<rss><channel><title>Example</title>' +
+          '<item><guid>1</guid></item><item><guid>2</guid></item>' +
+          '</channel></rss>',
+      ),
+    )
+
+    // Without one, the wrapper is the row: one channel holding its title
+    // beside the items it nests.
+    assert.equal(handle.readArrowReader().intoTable().numRows, 1)
+    const options = handle.recordOptions()
+    options.rowElement = 'item'
+    assert.equal(handle.readArrowReader(options).intoTable().numRows, 2)
+    ```
+
 ## Structure is inferred; type never is
 
 Every leaf on the wire is text. A read given no field infers the shape a document proves and types every leaf `utf8`. A read given a [`Field`](../../types/field.md) crosses each leaf through that field's own value contract - the same contract every other codec uses - so `9.50` becomes a decimal at the scale the column declares.
@@ -78,6 +162,45 @@ Every leaf on the wire is text. A read given no field infers the shape a documen
     assert_eq!(handle.read_arrow_reader(&options)?.count(), 1);
     ```
 
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase, types
+
+    schema = types.struct("Trade", [types.int64("id")], nullable=False)
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "typed.xml")
+    handle.write_bytes(b"<rows><Trade id='7'/></rows>")
+
+    rows = handle.read_arrow_reader(field=schema).read_all()
+    assert rows.column("id").to_pylist() == [7]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { Field, IOBase } = require('yggdryl')
+
+    const schema = Field.fromString(
+      'field("Trade",struct(field("id",int64,nullable=false)),nullable=false)',
+    )
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'typed.xml'))
+    handle.writeBytes(Buffer.from("<rows><Trade id='7'/></rows>"))
+
+    const options = handle.recordOptions()
+    options.field = schema
+    assert.equal(handle.readArrowReader(options).intoTable().numRows, 1)
+    ```
+
 ## A schema is where the types come from
 
 An XML Schema answers a `Field`, and the declared-field path above does the rest. There is no schema-shaped option and no second reader.
@@ -96,6 +219,47 @@ An XML Schema answers a `Field`, and the declared-field path above does the rest
     let field = xml::field_from_xsd(schema, Limits::default(), None)?;
     let children = field.dtype().as_fields().unwrap_or_default();
     assert_eq!(children[0].dtype(), &DataType::UInt32);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl.media import xml
+
+    schema = b"""<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+      <xsd:element name="row"><xsd:complexType><xsd:sequence>
+        <xsd:element name="size" type="xsd:unsignedInt"/>
+      </xsd:sequence></xsd:complexType></xsd:element>
+    </xsd:schema>"""
+
+    field = xml.schema(schema)
+
+    assert str(field.field("size").dtype) == "uint32"
+    # The field a schema answers is the field a record read already takes.
+    assert xml.loads_with_field("<row><size>9</size></row>", field).as_py() == [9]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { xml } = require('yggdryl')
+
+    const schema =
+      '<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">' +
+      '<xsd:element name="row"><xsd:complexType><xsd:sequence>' +
+      '<xsd:element name="size" type="xsd:unsignedInt"/>' +
+      '</xsd:sequence></xsd:complexType></xsd:element>' +
+      '</xsd:schema>'
+
+    const field = xml.schema(schema)
+
+    assert.equal(String(field.field('size').dtype), 'uint32')
+    // The field a schema answers is the field a record read already takes.
+    assert.deepEqual(
+      xml.loadsWithField('<row><size>9</size></row>', field).asJs(),
+      [9],
+    )
     ```
 
 This is exactly how an XMLA rowset is read: the response carries its own `xsd:schema` inline, so the schema and the rows arrive in one document.

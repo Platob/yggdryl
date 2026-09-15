@@ -15,7 +15,12 @@ def loads(
     max_input_bytes: int | None = None,
     max_nodes: int | None = None,
 ) -> object: ...
-def dumps(value: object, name: str, *, indent: int | None = None) -> bytes: ...
+def dumps(
+    value: object,
+    name: str,
+    *,
+    indent: int | str | None | object = ...,
+) -> bytes: ...
 def loads_with_field(
     data: str | bytes | bytearray | memoryview,
     field: object,
@@ -32,4 +37,8 @@ def schema(
     max_input_bytes: int | None = None,
     max_nodes: int | None = None,
 ) -> Field: ...
-def schema_dumps(field: object, *, indent: int | None = None) -> bytes: ...
+def schema_dumps(
+    field: object,
+    *,
+    indent: int | str | None | object = ...,
+) -> bytes: ...

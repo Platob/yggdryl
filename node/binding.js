@@ -1571,7 +1571,11 @@ const avro = Object.freeze({
 // names and leaves them all text, and a `Field` is what types them. These
 // option sets are the whole surface, so an unknown key is a refusal rather
 // than a silently ignored setting.
-const XML_DECODE_OPTION_NAMES = new Set(['maxDepth', 'maxInputBytes', 'maxNodes'])
+const XML_DECODE_OPTION_NAMES = new Set([
+  'maxDepth',
+  'maxInputBytes',
+  'maxNodes',
+])
 const XML_SCHEMA_OPTION_NAMES = new Set([
   'maxDepth',
   'maxInputBytes',
@@ -1612,16 +1616,20 @@ function xmlLimits(options) {
   return Object.keys(limits).length === 0 ? undefined : limits
 }
 
-// `indent: 0` is the one-line document; leaving it out keeps the core's own
-// readable default, which is two spaces per level.
+// The layout spelling every codec takes: omitted is the format's own, `null`
+// puts the whole document on one line, a number is spaces per level, and a tab
+// is one tab. It crosses as the boundary code `codecIndent` already writes.
 function xmlIndent(options) {
-  if (!Object.hasOwn(options, 'indent')) return undefined
   const value = options.indent
-  if (value === undefined || value === null) return undefined
+  if (value === undefined) return 'default'
+  if (value === null) return 'none'
+  if (value === '\t') return 'tabs'
   if (!Number.isSafeInteger(value) || value < 0 || value > 255) {
-    throw new RangeError('indent must be an integer between 0 and 255')
+    throw new RangeError(
+      "indent must be null, '\\t', or an integer between 0 and 255",
+    )
   }
-  return value
+  return `spaces:${value}`
 }
 
 function xmlRoot(options) {

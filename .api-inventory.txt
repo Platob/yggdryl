@@ -1990,6 +1990,14 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   pub fn set_avro_block_codec(&mut self, codec: &str) -> Result<()>
   pub const fn avro_sync_marker(&self) -> Option<&[u8; 16]>
   pub fn set_avro_sync_marker(&mut self, marker: Option<&[u8]>) -> Result<()>
+  pub fn xml_document(&self) -> Option<&str>
+  pub fn set_xml_document(&mut self, document: &str) -> Result<()>
+  pub fn xml_row_element(&self) -> Option<&str>
+  pub fn set_xml_row_element(&mut self, row: Option<&str>) -> Result<()>
+  pub const fn xml_indent(&self) -> Option<crate::text::Indent>
+  pub fn set_xml_indent(&mut self, indent: crate::text::Indent) -> Result<()>
+  pub const fn xml_limits(&self) -> Option<crate::text::Limits>
+  pub fn set_xml_limits(&mut self, limits: crate::text::Limits) -> Result<()>
   pub fn parquet_compression_name(&self) -> Option<String>
   pub fn set_parquet_compression_name(&mut self, compression: &str) -> Result<()>
   pub const fn parquet_max_row_group_size(&self) -> Option<usize>

@@ -1118,6 +1118,121 @@ impl RecordOptions {
         Ok(())
     }
 
+    fn xml_mut(
+        &mut self,
+        path: &'static str,
+        setting: &'static str,
+    ) -> Result<&mut crate::media::xml::XmlOptions> {
+        let media_type = self.mime_type();
+        match self {
+            Self::Xml(options) => Ok(options),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected XML options to set {setting}, got {media_type} options"
+                ),
+            }),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => Err(Error::InvalidRecord {
+                path: SmolStr::new_static(path),
+                reason: smol_str::format_smolstr!(
+                    "expected XML options to set {setting}, got {media_type} options"
+                ),
+            }),
+        }
+    }
+
+    /// Return the element a write wraps its rows in, or `None` for another
+    /// encoding.
+    pub fn xml_document(&self) -> Option<&str> {
+        match self {
+            Self::Xml(options) => Some(options.document.as_str()),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Set the element a write wraps its rows in.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-XML variant or a name XML cannot spell.
+    pub fn set_xml_document(&mut self, document: &str) -> Result<()> {
+        crate::media::xml::check_element_name(document, "$.document")?;
+        self.xml_mut("$.document", "a document element")?.document = SmolStr::new(document);
+        Ok(())
+    }
+
+    /// Return the element a read takes its rows from.
+    ///
+    /// `None` means either that a read takes the name every row element agrees
+    /// on or that these options describe another encoding. A setter remains
+    /// encoding-checked, so the two cases cannot be confused while mutating.
+    pub fn xml_row_element(&self) -> Option<&str> {
+        match self {
+            Self::Xml(options) => options.row_element.as_deref(),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Name the element a read takes its rows from, or clear it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a non-XML variant or a name XML cannot spell.
+    pub fn set_xml_row_element(&mut self, row: Option<&str>) -> Result<()> {
+        if let Some(row) = row {
+            crate::media::xml::check_element_name(row, "$.row_element")?;
+        }
+        self.xml_mut("$.row_element", "a row element")?.row_element = row.map(SmolStr::new);
+        Ok(())
+    }
+
+    /// Return the indentation an XML write renders with, or `None` for another
+    /// encoding.
+    pub const fn xml_indent(&self) -> Option<crate::text::Indent> {
+        match self {
+            Self::Xml(options) => Some(options.indent),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Set the indentation an XML write renders with.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when these are not XML options.
+    pub fn set_xml_indent(&mut self, indent: crate::text::Indent) -> Result<()> {
+        self.xml_mut("$.indent", "an indentation")?.indent = indent;
+        Ok(())
+    }
+
+    /// Return the budget an XML read decodes within, or `None` for another
+    /// encoding.
+    pub const fn xml_limits(&self) -> Option<crate::text::Limits> {
+        match self {
+            Self::Xml(options) => Some(options.limits),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) => None,
+            #[cfg(feature = "parquet")]
+            Self::Parquet(_) => None,
+        }
+    }
+
+    /// Set the budget an XML read decodes within.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when these are not XML options.
+    pub fn set_xml_limits(&mut self, limits: crate::text::Limits) -> Result<()> {
+        self.xml_mut("$.limits", "decode limits")?.limits = limits;
+        Ok(())
+    }
+
     #[cfg(feature = "parquet")]
     fn parquet_mut(
         &mut self,

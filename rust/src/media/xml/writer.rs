@@ -107,6 +107,24 @@ fn is_name(value: &str) -> bool {
     characters.next().is_some_and(is_name_start) && characters.all(is_name_char)
 }
 
+/// Refuse a configured element name no document can spell.
+///
+/// A column's name arrives with the data, so its refusal names the column.
+/// A document element and a row element arrive from options, so theirs names
+/// the setting instead.
+pub(crate) fn check_element_name(name: &str, path: &'static str) -> Result<()> {
+    if is_name(name) {
+        return Ok(());
+    }
+    Err(Error::InvalidRecord {
+        path: SmolStr::new_static(path),
+        reason: format_smolstr!(
+            "expected a name an XML element can be called, got {}",
+            quoted(name)
+        ),
+    })
+}
+
 /// Refuse a column whose name no document can spell.
 fn check_name(name: &str) -> Result<()> {
     if is_name(name) {

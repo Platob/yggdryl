@@ -563,6 +563,25 @@ mod records {
     }
 
     #[test]
+    fn xml_costs() {
+        // A document states no schema and carries no index: there is no
+        // header to read a field out of and no footer to count rows in, so
+        // every one of these reads the document once. That is the encoding
+        // rather than a shortcut missed here - and once is the number that
+        // matters, because a dimension that read it twice would still answer.
+        // The two dimensions ask `size` or `media_type` first, which is how
+        // an empty document answers without being decoded at all.
+        surfaces(
+            "xml",
+            "file:///lake/part.xml",
+            "read_all_bytes=1 is_container=1",
+            "read_all_bytes=1 is_container=1",
+            "read_all_bytes=1 size=1 media_type=1 is_container=2",
+            "read_all_bytes=1 media_type=1 is_container=2",
+        );
+    }
+
+    #[test]
     fn text_costs() {
         // Plain-text rows are `url`, `mtime` and `body`, so this one is read
         // rather than written from a batch. The one `mtime` call per read is

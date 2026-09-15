@@ -3,7 +3,11 @@
 const assert = require('node:assert/strict')
 const test = require('node:test')
 
-const { Field, Scalar, xml } = require('yggdryl')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+
+const { Field, IOBase, RecordOptions, Scalar, xml } = require('yggdryl')
 
 const ORDER = '<Order id="7"><symbol>AAPL</symbol><qty>100</qty></Order>'
 const BOOK_SCHEMA = `<?xml version="1.0" encoding="UTF-8"?>
@@ -61,8 +65,9 @@ test('every documented input spelling decodes the same document', () => {
 
   assert.deepEqual(xml.loads(bytes), expected)
   assert.deepEqual(xml.loads(new Uint8Array(bytes)), expected)
+  const start = bytes.byteOffset
   assert.deepEqual(
-    xml.loads(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+    xml.loads(bytes.buffer.slice(start, start + bytes.byteLength)),
     expected,
   )
 })
@@ -70,8 +75,9 @@ test('every documented input spelling decodes the same document', () => {
 test('a write names its document element and chooses its layout', () => {
   const value = { symbol: 'AAPL', qty: 100 }
   const pretty = xml.dumps(value, 'Order').toString('utf8')
-  const flat = xml.dumps(value, 'Order', { indent: 0 }).toString('utf8')
+  const flat = xml.dumps(value, 'Order', { indent: null }).toString('utf8')
   const wide = xml.dumps(value, 'Order', { indent: 4 }).toString('utf8')
+  const tabs = xml.dumps(value, 'Order', { indent: '\t' }).toString('utf8')
 
   assert.ok(Buffer.isBuffer(xml.dumps(value, 'Order')))
   assert.equal(
@@ -85,6 +91,14 @@ test('a write names its document element and chooses its layout', () => {
       '<Order><qty>100</qty><symbol>AAPL</symbol></Order>',
   )
   assert.ok(wide.includes('\n    <qty>100</qty>\n'))
+  assert.ok(tabs.includes('\n\t<qty>100</qty>\n'))
+  // Zero spaces still breaks lines; only `null` puts it all on one.
+  assert.ok(
+    xml
+      .dumps(value, 'Order', { indent: 0 })
+      .toString('utf8')
+      .includes('\n<qty>100</qty>\n'),
+  )
   // Text that would change the parse is escaped, never emitted raw.
   assert.ok(
     xml
@@ -123,7 +137,8 @@ test('an XML Schema is the field it declares, and writes back as itself', () => 
   assert.equal(String(note.dtype), 'utf8')
   assert.ok(written.includes('<xs:element name="title" type="xs:string"/>'))
   assert.ok(written.includes('<xs:attribute name="isbn" type="xs:string"'))
-  assert.ok(xml.schemaDumps(book, { indent: 0 }).toString('utf8').includes('?><xs:schema'))
+  const flat = xml.schemaDumps(book, { indent: null }).toString('utf8')
+  assert.ok(flat.includes('?><xs:schema'))
   // The written schema declares the same field it was read from.
   assert.ok(xml.schema(written).equals(book))
 })
@@ -159,6 +174,7 @@ test('the XML surface names what it will not take', () => {
   assert.throws(() => xml.loads('<a/>', { maxNodes: 1.5 }), RangeError)
   assert.throws(() => xml.dumps({}, 1), TypeError)
   assert.throws(() => xml.dumps({}, 'a', { indent: 256 }), RangeError)
+  assert.throws(() => xml.dumps({}, 'a', { indent: 'wide' }), RangeError)
   assert.throws(() => xml.schema(BOOK_SCHEMA, { root: 7 }), TypeError)
   assert.throws(() => xml.schema(BOOK_SCHEMA), /expected one global element/)
   assert.throws(() => xml.schemaDumps({}), {
@@ -169,4 +185,63 @@ test('the XML surface names what it will not take', () => {
     name: 'TypeError',
     message: 'the declared field must be a Field',
   })
+})
+
+test('an XML record read is configured through the options every read takes', () => {
+  const options = RecordOptions.from('feed.xml')
+
+  assert.equal(options.document, 'rows')
+  assert.equal(options.rowElement, null)
+  assert.equal(typeof options.maxDepth, 'number')
+
+  options.document = 'channel'
+  options.rowElement = 'item'
+  options.maxNodes = 1_000
+
+  assert.equal(options.document, 'channel')
+  assert.equal(options.rowElement, 'item')
+  assert.equal(options.maxNodes, 1_000)
+  // One bound of the budget is set without resetting the others.
+  assert.equal(options.maxInputBytes, RecordOptions.from('a.xml').maxInputBytes)
+
+  options.rowElement = null
+  assert.equal(options.rowElement, null)
+
+  assert.throws(() => {
+    options.document = '1st'
+  }, /an XML element can be called/)
+
+  // A setting one encoding has is absent on the others rather than invented.
+  const avro = RecordOptions.from('trades.avro')
+  assert.equal(avro.document, null)
+  assert.equal(avro.rowElement, null)
+  assert.equal(avro.maxNodes, null)
+  assert.throws(() => {
+    avro.rowElement = 'item'
+  }, /expected XML options/)
+})
+
+test('a named row element reads a wrapper that holds more than rows', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-xml-'))
+  const file = path.join(root, 'feed.xml')
+  fs.writeFileSync(
+    file,
+    '<rss><channel><title>Example</title>' +
+      '<item><guid>1</guid></item><item><guid>2</guid></item>' +
+      '</channel></rss>',
+  )
+  const handle = new IOBase(file)
+
+  // The wrapper is the row when nothing names one: one channel, holding a
+  // title beside the items it nests.
+  assert.equal(handle.readArrowReader().intoTable().numRows, 1)
+  assert.ok(String(handle.readArrowField()).includes('"title"'))
+
+  const options = handle.recordOptions()
+  options.rowElement = 'item'
+  assert.equal(handle.readArrowReader(options).intoTable().numRows, 2)
+  assert.deepEqual(
+    handle.readArrowField(options).explodeFields().map((child) => child.name),
+    ['guid'],
+  )
 })

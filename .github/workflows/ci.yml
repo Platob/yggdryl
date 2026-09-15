@@ -281,6 +281,40 @@ jobs:
       - name: Exchange archives with zipfile
         run: python scripts/check_zip_interop.py
 
+  xml-interop:
+    # The XML exchange with Python's own XML stack: `xml.etree.ElementTree`
+    # from the standard library for the document, and `xmlschema` for the
+    # schema written beside it.
+    #
+    # `rust/tests/interop/xml.rs` is not feature-gated, so every Rust lane
+    # already runs it - and its reading half reports `ok` having asserted
+    # nothing, because the document Python writes is not there and the half
+    # prints `SKIPPED` and returns. Only this driver produces that document,
+    # and only it fails on the word.
+    #
+    # xmlschema is a checking tool of the script, never a dependency of the
+    # crate: it is what says the schema this crate writes beside a document
+    # describes that document to an outside processor.
+    name: XML exchange
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal
+      # The driver builds the `interop` target on default features, which is
+      # what the default lane warms.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: stable-default
+          save-if: false
+      - name: Install the reference schema processor
+        run: python -m pip install xmlschema
+      - name: Exchange documents with ElementTree and xmlschema
+        run: python scripts/check_xml_interop.py
+
   avro-interop:
     # The Avro exchange with fastavro, and - when the probe builds - with the
     # `apache-avro` crate. Same shape as the ZIP job and the same reason:

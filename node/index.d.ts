@@ -3755,6 +3755,35 @@ export declare class RecordOptions {
   /** Set or clear the fixed Avro synchronization marker. */
   set syncMarker(marker: Buffer | undefined | null)
   /**
+   * The element an XML write wraps its rows in, or `null` for another
+   * encoding.
+   */
+  get document(): string | null
+  /** Set the element an XML write wraps its rows in. */
+  set document(document: string)
+  /**
+   * The element an XML read takes its rows from.
+   *
+   * `null` means either that a read takes the name every row element agrees
+   * on or that these options describe another encoding; naming one reads a
+   * wrapper that holds more than rows.
+   */
+  get rowElement(): string | null
+  /** Name the element an XML read takes its rows from, or clear it. */
+  set rowElement(row: string | undefined | null)
+  /** The structural nesting an XML read will decode, if this is one. */
+  get maxDepth(): number | null
+  /** Set the structural nesting an XML read will decode. */
+  set maxDepth(maxDepth: number)
+  /** The encoded bytes one XML read will consume, if this is one. */
+  get maxInputBytes(): number | null
+  /** Set the encoded bytes one XML read will consume. */
+  set maxInputBytes(maxInputBytes: number)
+  /** The elements and attributes one XML read will decode, if this is one. */
+  get maxNodes(): number | null
+  /** Set the elements and attributes one XML read will decode. */
+  set maxNodes(maxNodes: number)
+  /**
    * The page compression applied inside a Parquet file, if this is one.
    *
    * A setting one encoding has is absent on the others rather than invented,

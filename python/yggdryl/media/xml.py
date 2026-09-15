@@ -12,17 +12,21 @@ rather than through a surface of its own.
 
 Decode entry points accept ``max_depth``, ``max_input_bytes`` and
 ``max_nodes`` so an untrusted document uses the core's decoding budget.
+Writes take the ``indent`` every other codec takes: omitted is the format's
+own layout, ``None`` puts the document on one line, an integer is that many
+spaces per level, and ``"\\t"`` is one tab.
 """
 
 from __future__ import annotations
 
 from .._native import (
-    xml_dumps as dumps,
+    xml_dumps as _dumps,
     xml_loads as loads,
     xml_loads_with_field as loads_with_field,
     xml_schema as schema,
-    xml_schema_dumps as schema_dumps,
+    xml_schema_dumps as _schema_dumps,
 )
+from ..text._codec import _DEFAULT_INDENT, _indent_code
 
 __all__ = [
     "dumps",
@@ -31,3 +35,24 @@ __all__ = [
     "schema",
     "schema_dumps",
 ]
+
+
+def dumps(
+    value: object,
+    name: str,
+    *,
+    indent: int | str | None | object = _DEFAULT_INDENT,
+) -> bytes:
+    """Encode one value as a whole XML document rooted at ``name``."""
+
+    return _dumps(value, name, indent=_indent_code(indent))
+
+
+def schema_dumps(
+    field: object,
+    *,
+    indent: int | str | None | object = _DEFAULT_INDENT,
+) -> bytes:
+    """Write one field as the XML Schema that declares it."""
+
+    return _schema_dumps(field, indent=_indent_code(indent))

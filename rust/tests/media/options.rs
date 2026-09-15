@@ -5,12 +5,12 @@ use std::sync::Arc;
 use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
 use arrow_schema::{ArrowError, SchemaRef};
 
-use yggdryl::IOMedia;
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::ipc::IpcOptions;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{DataType, Field, Url};
+use yggdryl::{IOBase, IOMedia};
 
 /// A struct field is the schema of the batches it describes.
 fn schema() -> Field {
@@ -456,6 +456,81 @@ fn avro_only_setters_reject_another_inferred_encoding() {
         assert!(matches!(error, yggdryl::Error::InvalidRecord { .. }));
         let message = error.to_string();
         assert!(message.contains("Avro"), "{message}");
+        assert!(message.contains("arrow.stream"), "{message}");
+    }
+}
+
+#[test]
+fn xml_only_options_are_owned_by_the_generic_core_variant() {
+    let media_type = Url::from_str("file:///feed.xml").unwrap().media_type();
+    let mut options = RecordOptions::for_media_type(&media_type).unwrap();
+
+    assert_eq!(options.xml_document(), Some("rows"));
+    assert_eq!(options.xml_row_element(), None);
+    assert_eq!(options.xml_indent(), Some(yggdryl::text::Indent::Default));
+    assert_eq!(options.xml_limits(), Some(yggdryl::text::Limits::default()));
+
+    options.set_xml_document("channel").unwrap();
+    options.set_xml_row_element(Some("item")).unwrap();
+    options
+        .set_xml_indent(yggdryl::text::Indent::Spaces(4))
+        .unwrap();
+    let bounded = yggdryl::text::Limits::new(8, 4096, 1_000, 1);
+    options.set_xml_limits(bounded).unwrap();
+
+    assert_eq!(options.xml_document(), Some("channel"));
+    assert_eq!(options.xml_row_element(), Some("item"));
+    assert_eq!(options.xml_indent(), Some(yggdryl::text::Indent::Spaces(4)));
+    assert_eq!(options.xml_limits(), Some(bounded));
+
+    // The named row element reads a wrapper holding more than rows.
+    let mut handle = Buffer::new().with_media_type(media_type);
+    handle
+        .write_all_bytes(
+            b"<rss><channel><title>Example</title>\
+              <item><id>1</id></item><item><id>2</id></item></channel></rss>",
+        )
+        .unwrap();
+    assert_eq!(rows(handle.read_arrow_reader(&options).unwrap()), 2);
+
+    options.set_xml_row_element(None).unwrap();
+    assert_eq!(options.xml_row_element(), None);
+
+    // A name no element can be called is refused where it was set, not on the
+    // write that would have emitted it.
+    let refusal = options.set_xml_document("1st").unwrap_err();
+    assert!(matches!(refusal, yggdryl::Error::InvalidRecord { .. }));
+    let message = refusal.to_string();
+    assert!(message.contains("$.document"), "{message}");
+    assert!(message.contains("1st"), "{message}");
+    assert_eq!(options.xml_document(), Some("channel"));
+
+    let refusal = options.set_xml_row_element(Some("a b")).unwrap_err();
+    assert!(refusal.to_string().contains("$.row_element"));
+}
+
+#[test]
+fn xml_only_setters_reject_another_inferred_encoding() {
+    let media_type = Url::from_str("file:///t.arrows").unwrap().media_type();
+    let mut options = RecordOptions::for_media_type(&media_type).unwrap();
+
+    assert_eq!(options.xml_document(), None);
+    assert_eq!(options.xml_row_element(), None);
+    assert_eq!(options.xml_indent(), None);
+    assert_eq!(options.xml_limits(), None);
+    for error in [
+        options.set_xml_document("rows").unwrap_err(),
+        options.set_xml_row_element(Some("item")).unwrap_err(),
+        options
+            .set_xml_indent(yggdryl::text::Indent::None)
+            .unwrap_err(),
+        options
+            .set_xml_limits(yggdryl::text::Limits::default())
+            .unwrap_err(),
+    ] {
+        assert!(matches!(error, yggdryl::Error::InvalidRecord { .. }));
+        let message = error.to_string();
+        assert!(message.contains("XML"), "{message}");
         assert!(message.contains("arrow.stream"), "{message}");
     }
 }

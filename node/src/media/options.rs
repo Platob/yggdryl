@@ -52,6 +52,33 @@ impl JsRecordOptions {
             None => handle.record_options().map_err(napi_error),
         }
     }
+
+    /// Replace one bound of the XML decode budget, keeping the others.
+    ///
+    /// The budget is one core value, so a caller setting one of its names
+    /// reads the rest back off the options rather than resetting them to a
+    /// default nobody asked for.
+    fn replace_xml_limits(
+        &mut self,
+        max_depth: Option<usize>,
+        max_input_bytes: Option<usize>,
+        max_nodes: Option<usize>,
+    ) -> Result<()> {
+        let current = self.inner.xml_limits().unwrap_or_default();
+        let limits = yggdryl::text::Limits::new(
+            max_depth.unwrap_or_else(|| current.max_depth()),
+            max_input_bytes.unwrap_or_else(|| current.max_input_bytes()),
+            max_nodes.unwrap_or_else(|| current.max_nodes()),
+            current.max_documents(),
+        );
+        self.inner.set_xml_limits(limits).map_err(napi_error)
+    }
+}
+
+/// Read one decode bound a caller spelled as a JavaScript number.
+fn exact_limit(value: f64, name: &str) -> Result<usize> {
+    usize::try_from(crate::exact_u64(value, name)?)
+        .map_err(|_| napi_error(format!("{name} does not fit this platform's usize")))
 }
 
 #[napi]
@@ -409,6 +436,85 @@ impl JsRecordOptions {
         self.inner
             .set_avro_sync_marker(marker.as_deref())
             .map_err(napi_error)
+    }
+
+    /// The element an XML write wraps its rows in, or `null` for another
+    /// encoding.
+    #[napi(getter)]
+    pub fn document(&self) -> Option<String> {
+        self.inner.xml_document().map(ToOwned::to_owned)
+    }
+
+    /// Set the element an XML write wraps its rows in.
+    #[napi(setter)]
+    pub fn set_document(&mut self, document: String) -> Result<()> {
+        self.inner.set_xml_document(&document).map_err(napi_error)
+    }
+
+    /// The element an XML read takes its rows from.
+    ///
+    /// `null` means either that a read takes the name every row element agrees
+    /// on or that these options describe another encoding; naming one reads a
+    /// wrapper that holds more than rows.
+    #[napi(getter)]
+    pub fn row_element(&self) -> Option<String> {
+        self.inner.xml_row_element().map(ToOwned::to_owned)
+    }
+
+    /// Name the element an XML read takes its rows from, or clear it.
+    #[napi(setter)]
+    pub fn set_row_element(&mut self, row: Option<String>) -> Result<()> {
+        self.inner
+            .set_xml_row_element(row.as_deref())
+            .map_err(napi_error)
+    }
+
+    /// The structural nesting an XML read will decode, if this is one.
+    #[napi(getter)]
+    pub fn max_depth(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner
+            .xml_limits()
+            .map(|limits| limits.max_depth() as f64)
+    }
+
+    /// Set the structural nesting an XML read will decode.
+    #[napi(setter)]
+    pub fn set_max_depth(&mut self, max_depth: f64) -> Result<()> {
+        let max_depth = exact_limit(max_depth, "maxDepth")?;
+        self.replace_xml_limits(Some(max_depth), None, None)
+    }
+
+    /// The encoded bytes one XML read will consume, if this is one.
+    #[napi(getter)]
+    pub fn max_input_bytes(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner
+            .xml_limits()
+            .map(|limits| limits.max_input_bytes() as f64)
+    }
+
+    /// Set the encoded bytes one XML read will consume.
+    #[napi(setter)]
+    pub fn set_max_input_bytes(&mut self, max_input_bytes: f64) -> Result<()> {
+        let max_input_bytes = exact_limit(max_input_bytes, "maxInputBytes")?;
+        self.replace_xml_limits(None, Some(max_input_bytes), None)
+    }
+
+    /// The elements and attributes one XML read will decode, if this is one.
+    #[napi(getter)]
+    pub fn max_nodes(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner
+            .xml_limits()
+            .map(|limits| limits.max_nodes() as f64)
+    }
+
+    /// Set the elements and attributes one XML read will decode.
+    #[napi(setter)]
+    pub fn set_max_nodes(&mut self, max_nodes: f64) -> Result<()> {
+        let max_nodes = exact_limit(max_nodes, "maxNodes")?;
+        self.replace_xml_limits(None, None, Some(max_nodes))
     }
 
     /// The page compression applied inside a Parquet file, if this is one.

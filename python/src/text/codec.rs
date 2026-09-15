@@ -58,7 +58,7 @@ fn format_from_str(value: &str) -> PyResult<Format> {
 ///
 /// `-2` is omitted/default, `-1` is explicitly unindented, `-3` is tabs,
 /// and non-negative values are spaces per nesting level.
-fn formatting_from_code(indent: i16) -> PyResult<Formatting> {
+pub(crate) fn formatting_from_code(indent: i16) -> PyResult<Formatting> {
     let indent = match indent {
         -2 => Indent::Default,
         -1 => Indent::None,

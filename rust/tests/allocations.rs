@@ -1130,6 +1130,57 @@ fn an_iceberg_read_costs_only_a_key_the_inline_buffer_cannot_hold() {
     });
 }
 
+/// One fully spelled XML column, surrounded by `extra` unrelated entries.
+fn xml_field(extra: usize) -> Field {
+    use yggdryl::types::protocol::XmlKind;
+
+    let mut field = DataType::utf8().required_field("currency");
+    let mut view = field.as_xml_mut();
+    view.set_namespace(Some("urn:iso:std:iso:20022:tech:xsd:pain.001.001.09"))
+        .expect("a static namespace URI");
+    view.set_kind(XmlKind::Attribute)
+        .expect("a static spelling");
+    view.set_name(Some("Ccy")).expect("a static wire name");
+    view.set_declared_type(Some("xs:string"))
+        .expect("a static declared type");
+    field
+        .update_metadata((0..extra).map(|index| (format!("zz-key-{index:04}"), index.to_string())))
+        .expect("the generated metadata keys are valid");
+    field
+}
+
+#[test]
+fn an_xml_read_borrows_every_spelling_a_document_was_written_with() {
+    let field = xml_field(256);
+
+    // Every `xml:` key is shorter than `SmolStr`'s 23-byte inline buffer -
+    // `xml:namespace` is the longest at 13 - so no assembled lookup key ever
+    // reaches the heap, however long the URI it finds turns out to be.
+    free("namespace", || {
+        black_box(field.as_xml().namespace());
+    });
+    free("kind", || {
+        let _ = black_box(field.as_xml().kind());
+    });
+    free("name", || {
+        black_box(field.as_xml().name());
+    });
+    free("declared_type", || {
+        black_box(field.as_xml().declared_type());
+    });
+
+    // A writer asks one question per column, and the answer is borrowed
+    // whether the document spelled the column its own way or not.
+    free("wire_name", || {
+        black_box(field.as_xml().wire_name());
+    });
+    let mut plain = xml_field(0);
+    plain.as_xml_mut().set_name(None).expect("no wire name");
+    free("wire_name without one retained", || {
+        black_box(plain.as_xml().wire_name());
+    });
+}
+
 #[test]
 fn a_python_read_costs_only_the_declaration_it_hands_back() {
     let field = python_field("trading.book", 256);

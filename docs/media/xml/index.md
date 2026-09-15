@@ -7,7 +7,7 @@
 | | |
 | --- | --- |
 | Owns | `xml::Xml` (stateful handle form), `xml::XmlOptions`, `from_bytes`/`into_bytes` over `Scalar`, `field_from_xsd`/`field_into_xsd`, the `xml:` field vocabulary |
-| Bindings | Rust only; a handle composes to `yggdryl._native.Xml` in Python and `Xml` in JavaScript |
+| Bindings | `yggdryl.media.xml` in Python and `xml` in JavaScript carry the document and schema pair; a handle composes to `yggdryl._native.Xml` and `Xml`, and `document`, `row_element` and the decode budget are record options in every language |
 | Selects | A name whose media type says `application/xml` or `text/xml`, on any handle, with no format argument |
 | Rows | The document element's element children, which must agree on one name unless `row_element` names one |
 | Columns | An element's attributes and its child elements, in one namespace of local names |

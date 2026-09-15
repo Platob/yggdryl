@@ -41,7 +41,8 @@
     FIX derivation: derivation: str | None, the fix:derivation term in its canonical text - how the field's value is derived from the message where the message states none, evaluated by the enriching pass to a fixpoint (decision 38); assignable from text, parsed through the expression grammar and stored canonical, a text that is not a term or one past the budget is ValueError leaving the field unchanged; assigning None removes the property
   MimeType: ARROW_FILE, ARROW_STREAM, AVRO, BROTLI, BZIP2, CBOR, COMPRESS, CSS, CSV, DIRECTORY, DOC, DOCX, FILE, FIX, FIXML, FIXUL, FLAC, GIF, GZIP, HTML, JAVASCRIPT, JPEG, JSON, JSON_LINES, LZ4, MARKDOWN, MESSAGE_PACK, MP3, MP4, OCTET_STREAM, ODS, OGG, ORC, OTF, PARQUET, PDF, PLAIN_TEXT, PNG, PROTOBUF, PUFFIN, RAR, SEVEN_ZIP, SNAPPY, SQLITE3, SVG, TAR, TOML, TSV, TTF, ULLINK, WAV, WEBM, WEBP, WOFF, WOFF2, XLS, XLSX, XML, XZ, YAML, ZIP, ZLIB, ZSTD, content_coding, extension, format, from_content_coding, from_content_type, from_extension, from_json, from_local_path, from_path, from_str, from_value, into_json, is_application, is_archive, is_audio, is_binary, is_directory, is_encoding, is_filesystem, is_font, is_haptics, is_image, is_io, is_known, is_message, is_model, is_multipart, is_structured, is_tabular, is_text, is_textual, is_video, stable_hash, structured_suffix, subtype, top_level
   PythonMetadata: __copy__, __deepcopy__, __eq__, __ge__, __gt__, __hash__, __le__, __lt__, __ne__, __reduce__, __repr__, __str__, class_name, from_type, import_path, is_importable, is_keyword_constructed, kind, module, properties, qualname, stable_hash
-  RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, commit_row_size, compression, field, filter, for_media_type, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_row_group_size, max_row_size, merge_by, mime_type, name, partition_pairs, plan, remove_field, require_field, safe, select, stable_hash, sync_marker, timezone, write_batch_row_size
+  RecordOptions: apply_arrow_batch, apply_arrow_reader, batch_row_size, block_codec, commit_row_size, compression, document, field, filter, for_media_type, key_value_metadata, level, limit_arrow_reader, max_byte_size, max_depth, max_input_bytes, max_nodes, max_row_group_size, max_row_size, merge_by, mime_type, name, partition_pairs, plan, remove_field, require_field, row_element, safe, select, stable_hash, sync_marker, timezone, write_batch_row_size
+    per-encoding settings: a setting one encoding has reads None on the others and its setter refuses them by name - block_codec/sync_marker are Avro's, compression/max_row_group_size/key_value_metadata Parquet's, and document/row_element/max_depth/max_input_bytes/max_nodes XML's
     sections: field, filter, select, merge_by and plan setters take any value Scalar.from_ reads - a native value, text, a list of projections or conditions, a dict of aliases, None - and the core reads it with from_scalar
   Statement: all, bind, from_json, into_json, is_all, limit, ordering, predicate, projections, select, stable_hash, with_limit, with_ordering, with_predicate
   TextOptions: apply_arrow_batch, apply_arrow_reader, autotype, batch_row_size, capture_names, commit_row_size, field, filter, framing, leading_fragment, level, lift_names, limit_arrow_reader, linesep, lstrip, max_byte_size, max_record_byte_size, max_row_size, merge_by, mime_type, name, parse_mtime, partition_pairs, plan, remove_field, rename_columns, require_field, rowheader, rstrip, safe, select, source_field, stable_hash, start_rownum, timezone, write_batch_row_size
@@ -165,6 +166,7 @@
   media.xml
     exports: dumps, loads, loads_with_field, schema, schema_dumps
     decode limits: max_depth, max_input_bytes, max_nodes; schema takes root to pick one of several global elements
+    layout: dumps and schema_dumps take the codec's own indent - omitted is XML's readable two-space layout, None writes one line, an int is that many spaces, '\t' is tabs
     semantics: loads answers a natural value and every leaf is text; loads_with_field types them under a Field; schema answers the Field an XML Schema declares and schema_dumps writes one back
   media.iceberg.IcebergOptions
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism, write_staging
@@ -296,7 +298,8 @@
     instance: combined, consumed, field, intoIpc, intoTable
   RecordOptions
     statics: forMediaType, forMimeType, from
-    instance: batchRowSize, blockCodec, clone, commitRowSize, compare, compression, equals, field, filter, keyValueMetadata, level, maxByteSize, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, partitionPairs, plan, safe, select, stableHash, syncMarker, timezone, toString, withBatchRowSize, withBlockCodec, withCommitRowSize, withCompression, withField, withFilter, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withPlan, withSafe, withSelect, withSyncMarker
+    instance: batchRowSize, blockCodec, clone, commitRowSize, compare, compression, document, equals, field, filter, keyValueMetadata, level, maxByteSize, maxDepth, maxInputBytes, maxNodes, maxRowGroupSize, maxRowSize, mergeBy, mimeType, name, partitionPairs, plan, rowElement, safe, select, stableHash, syncMarker, timezone, toString, withBatchRowSize, withBlockCodec, withCommitRowSize, withCompression, withField, withFilter, withKeyValue, withLevel, withMaxByteSize, withMaxRowGroupSize, withMaxRowSize, withMergeBy, withName, withPlan, withSafe, withSelect, withSyncMarker
+    per-encoding settings: a setting one encoding has reads null on the others and its setter refuses them by name - blockCodec/syncMarker are Avro's, compression/maxRowGroupSize/keyValueMetadata Parquet's, and document/rowElement/maxDepth/maxInputBytes/maxNodes XML's
     sections: field, filter, select, mergeBy and plan are read/write properties, the setters taking a Selector | Term | string | Array<Term | string> (filter: Filter | Term | string; plan: Plan | Selector | Filter | Field | string); partitionPairs() answers the equalities the filter pins
   TextOptions
     instance: autotype, batchRowSize, clone, commitRowSize, compare, equals, field, filter, framing, leadingFragment, level, liftNames, linesep, lstrip, maxByteSize, maxRecordByteSize, maxRowSize, mergeBy, mimeType, name, parseMtime, partitionPairs, plan, renameColumns, rowheader, rstrip, safe, select, sourceField, stableHash, startRownum, timezone, toString, withBatchRowSize, withCommitRowSize, withField, withFilter, withLevel, withMaxByteSize, withMaxRowSize, withMergeBy, withName, withPlan, withSafe, withSelect
@@ -373,10 +376,10 @@
   XmlSchemaOptions
     fields: maxDepth, maxInputBytes, maxNodes, root
   XmlWriteOptions
-    fields: indent
+    fields: indent (number | '\t' | null)
   xml
     statics: dumps, loads, loadsWithField, schema, schemaDumps
-    decode limits: maxDepth, maxInputBytes, maxNodes; schema takes root to pick one of several global elements; a write takes indent, where 0 is the one-line document
+    decode limits: maxDepth, maxInputBytes, maxNodes; schema takes root to pick one of several global elements; a write takes the codec's own indent - omitted is XML's readable two-space layout, null writes one line, a number is that many spaces, '\t' is tabs
     semantics: loads answers a natural value and every leaf is text; loadsWithField types them under a Field and answers the native Scalar; schema answers the Field an XML Schema declares and schemaDumps writes one back
   fix
     values: FixRegistry, FixMsg, FixCodec, FixLifecycle, MsgType, Plugin, Plugins, FixMessages

@@ -3621,16 +3621,38 @@ outside a flat row model - cells are keyed by a sparse ordinal over an axis
 cross product - and refusing it by namespace is the right answer rather than
 flattening it.
 
+**The bindings reach the whole surface, in one spelling each.** Python and
+JavaScript get the document and schema pair - `loads`, `dumps`,
+`loads_with_field`, `schema`, `schema_dumps` - and the settings a record read
+takes are properties on the one `RecordOptions` every encoding shares, beside
+Avro's block codec and Parquet's compression: `document`, `row_element`, and
+the three names of the decode budget. A setting one encoding has reads `None`
+on the others and its setter refuses them by name, which is the rule those
+already follow. `indent` is the exception that proves the rule about one
+spelling per verb: a write takes the *codec's* indent - omitted is the
+format's own layout, `None`/`null` is one line, an integer is spaces, `"\t"`
+is tabs - rather than a second vocabulary invented for XML. It is not a
+`RecordOptions` property, because a property has no "omitted" and a fourth
+spelling of a layout is worse than a record write that uses the readable
+default.
+
 **Written in:** `media/xml/` (`reader.rs` the one event loop, `document.rs` the
 mapping, `writer.rs` the escaping and the declaration-aware write, `xsd.rs`
 both schema directions, `batch.rs` and `handle.rs` the record surface),
 `scheme.rs` and `metadata.rs` (`Scheme::XML` and the registered view),
 `types/protocol/xml.rs` (the vocabulary), `media/{mod,options}.rs` and
-`iobase/transfer.rs` (the dispatch).
+`iobase/transfer.rs` (the dispatch), `python/src/media/xml.rs` and
+`node/src/media/xml.rs` (the two bindings).
 **Fixtures:** `rust/tests/media/xml.rs` - the record surface, the byte budget,
 the list round trip and the spelling a document arrived in.
 `rust/tests/media/xsd.rs` - the mapping, the refusals, and a field that writes
 back the schema it was read from. `rust/tests/media/xml_corpora.rs` - an XMLA
 rowset read under its own inline schema, a SOAP envelope under either prefix
 convention, an ISO 20022 amount, a feed, and the prose documents a row model
-refuses.
+refuses. `rust/tests/interop/xml.rs` with
+`scripts/check_xml_interop.py` - the exchange, both directions, against
+`xml.etree.ElementTree` and against `xmlschema`, which is what says the schema
+this crate writes beside a document describes that document to a processor
+that is not this one. `rust/tests/iobase_calls.rs` and
+`rust/tests/allocations.rs` - one read of the document per dimension, and a
+borrowed `xml:` view.

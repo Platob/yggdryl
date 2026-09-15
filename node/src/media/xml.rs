@@ -7,7 +7,7 @@
 use napi::bindgen_prelude::{Buffer, Result};
 use napi_derive::napi;
 use yggdryl::media::xml;
-use yggdryl::text::{Formatting, Indent, Limits};
+use yggdryl::text::Limits;
 
 use crate::exact_u64;
 use crate::napi_error;
@@ -53,24 +53,6 @@ fn exact_limit(value: Option<f64>, name: &str, default: usize) -> Result<usize> 
     })
 }
 
-/// The indentation a write renders with.
-fn formatting(indent: Option<f64>) -> Result<Formatting> {
-    let indent = match indent {
-        None => Indent::Default,
-        Some(width) => {
-            let width = exact_u64(width, "indent")?;
-            if width == 0 {
-                Indent::None
-            } else {
-                Indent::Spaces(u8::try_from(width).map_err(|_| {
-                    napi::Error::from_reason("indent must be at most 255 spaces".to_owned())
-                })?)
-            }
-        }
-    };
-    Ok(Formatting::new().with_indent(indent))
-}
-
 /// Decode one XML document into the shared native `Scalar`.
 #[napi(js_name = "xmlLoadsNative", skip_typescript)]
 pub fn xml_loads_native(input: Buffer, limits: Option<XmlDecodeLimitsInput>) -> Result<JsScalar> {
@@ -82,8 +64,8 @@ pub fn xml_loads_native(input: Buffer, limits: Option<XmlDecodeLimitsInput>) -> 
 
 /// Encode one native `Scalar` as a whole XML document rooted at `name`.
 #[napi(js_name = "xmlDumpsNative", skip_typescript)]
-pub fn xml_dumps_native(value: &JsScalar, name: String, indent: Option<f64>) -> Result<Buffer> {
-    let formatting = formatting(indent)?;
+pub fn xml_dumps_native(value: &JsScalar, name: String, indent: String) -> Result<Buffer> {
+    let formatting = crate::text::codec::checked_formatting(&indent)?;
     xml::into_bytes_with_formatting(&name, &value.inner, formatting)
         .map(Buffer::from)
         .map_err(napi_error)
@@ -118,8 +100,8 @@ pub fn xml_schema_native(
 
 /// Write one field as the XML Schema that declares it.
 #[napi(js_name = "xmlSchemaDumpsNative", skip_typescript)]
-pub fn xml_schema_dumps_native(field: &JsField, indent: Option<f64>) -> Result<Buffer> {
-    let formatting = formatting(indent)?;
+pub fn xml_schema_dumps_native(field: &JsField, indent: String) -> Result<Buffer> {
+    let formatting = crate::text::codec::checked_formatting(&indent)?;
     xml::field_into_xsd(&field.inner, formatting)
         .map(Buffer::from)
         .map_err(napi_error)

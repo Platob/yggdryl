@@ -1980,10 +1980,11 @@ export interface XmlSchemaOptions extends XmlDecodeLimits {
 /** Layout for one XML or XML Schema write. */
 export interface XmlWriteOptions {
   /**
-   * Spaces per nesting level: omitted keeps the readable two-space default,
-   * and `0` writes the whole document on one line.
+   * Output indentation: omitted uses XML's own readable two-space layout,
+   * `null` writes the whole document on one line, a number requests spaces
+   * per level, and `"\t"` requests tabs.
    */
-  indent?: number | null
+  indent?: number | '\t' | null
 }
 
 /** XML documents and XML Schema, backed entirely by the Rust core. */
