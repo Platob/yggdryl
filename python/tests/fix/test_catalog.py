@@ -86,10 +86,10 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
         assert registry.get_definition(category, name) is None
         assert registry.remove_definition(category, name) is None
     # Only what every registry is built with is left: the crate's own
-    # twenty-four scalar fields, which are never a definition a caller can
+    # twenty-six scalar fields, which are never a definition a caller can
     # remove, and the two seeded standard clocks, SendingTime (52) and
     # TransactTime (60). The crate also lists its `altids` Map group.
-    assert len(registry) == len(list(registry.definitions("fields"))) == 26
+    assert len(registry) == len(list(registry.definitions("fields"))) == 28
     assert len(fix_crate_fields()) == 27
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
     assert registry.group_by_tag(65020).name == "altids"

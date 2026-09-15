@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 26 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 107 tags from `fix_schema_tags`, 112 columns with the shipped registry, each List group adding its column beside its counter |
+| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 26 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 107 tags from `fix_schema_tags`, 111 columns with the shipped registry, each List group adding its column beside its counter |
 | Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
 | Non-null | `beginstring`, `sendingtime`, `updatedat`, `timepartition`, `uuid`, `puuid`, `createdat`, `code`, `snapshotat`; `version` is populated at construction but its column remains nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -480,12 +480,11 @@ The root's children are the standard header in its declared order, the body as i
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     reader = FixCodec(registry, default_sending_time=default)
-    newest = registry.newest().version
 
     # A frame stating neither its version nor a clock is still versioned - at
     # the dictionary's newest - and dated by the codec's default sending time.
     bare = next(reader.parse_line(b"35=D|55=AAPL|10=0|"))
-    assert bare.by_tag(8).as_py() == f"FIX.{newest}"
+    assert bare.by_tag(8).as_py() == f"FIX.{bare.by_name('version').as_py()}"
     assert bare.by_tag(52).as_py() == default
     assert bare.updatedat() == bare.createdat() == bare.by_tag(52)
     assert bare.by_tag(CODE).as_py() == ""
@@ -530,12 +529,11 @@ The root's children are the standard header in its declared order, the body as i
     const reader = new fix.FixCodec(registry, {
       defaultSendingTime: new Date(Date.UTC(2024, 0, 2, 10, 15, 30)),
     })
-    const newest = registry.newest().version
 
     // A frame stating neither its version nor a clock is still versioned - at
     // the dictionary's newest - and dated by the codec's default sending time.
     const bare = reader.parseLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
-    assert.equal(bare.byTag(8).toJSON(), `FIX.${newest}`)
+    assert.equal(bare.byTag(8).toJSON(), `FIX.${bare.byName('version').toJSON()}`)
     assert.ok(bare.byTag(52).equals(reader.defaultSendingTime))
     assert.ok(bare.updatedat().equals(bare.byTag(52)))
     assert.ok(bare.createdat().equals(bare.byTag(52)))

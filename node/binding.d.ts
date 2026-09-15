@@ -577,9 +577,22 @@ declare module './index' {
      * the raw bytes of each message's arrival record.
      */
     arrowReader(schema: Field, messages: Iterable<FixMsg>): BatchReader
+    /**
+     * A stream of messages as the rows one message field holds them.
+     *
+     * The third verb, and the one a consumer reads by: `parse*` turns a
+     * capture into messages, `enrich*` fills what each implies, and this
+     * answers them under a message field the registry names -
+     * `fix.genericMessage` for the crate's own, a venue's own type, or any
+     * Struct root a caller built. A column the message does not carry is
+     * read off its arrival record first, which is what lets a narrow row be
+     * formatted into a wider field.
+     */
+    formatMessages(messages: Iterable<FixMsg>, field: Field): Scalar[]
     /** The batch twins take whatever `BatchReader.from` accepts. */
     parseTextArrowReader(source: BatchSource): BatchReader
     enrichMessagesArrowReader(source: BatchSource): BatchReader
+    formatArrowReader(source: BatchSource, field: Field): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
   }
@@ -3197,6 +3210,14 @@ export interface Fix {
    */
   schema(registry?: FixRegistry | null, name?: string | null): Field
   /**
+   * The crate's own `GenericMessage`, built against one dictionary.
+   *
+   * The target `formatMessages` and `formatArrowReader` use when a caller
+   * names no message of its own: the fixed row's own columns, carrying the
+   * `fix:msgtype` that makes them a message, under the code `UGEN`.
+   */
+  genericMessage(registry?: FixRegistry | null, name?: string | null): Field
+  /**
    * The fixed root behind a capture's own columns, which lead the row.
    *
    * A carried column whose folded name a FIX column already takes -
@@ -3209,22 +3230,23 @@ export interface Fix {
    */
   schemaCarrying(carrier: Field, read: Field): Field
   /**
-   * One row's tagged columns, in order, ending `..., 65025, 385`; the
-   * `fixentries` list that closes the row has no tag.
+   * One row's tagged columns, in order, ending `..., 65026, 385, 65027`; the
+   * `fixentries` group that closes the row is counted by that last one.
    */
   schemaTags(): number[]
   /**
-   * The twenty-five crate definitions in tag order: twenty-four scalar
-   * fields at 65001-65019 and 65021-65025 and the sorted `altids` Map group
+   * The twenty-seven crate definitions in tag order: twenty-six scalar
+   * fields at 65001-65019 and 65021-65027 and the sorted `altids` Map group
    * at 65020 (65000 is retired) - the version, the ticker, `updatedat` and
    * its partition, the sessions a message states, the bridge's message
    * context, the plugins and plugin sessions a line moved between, the
    * ISIN, MIC and order state a row derives, the `instuuid`, `uuid` and
    * `puuid` identities, the direct identifiers enrichment records in
-   * `altids`, `prevupdatedat`/`prevuuid`, and `createdat`, `code` and
-   * `snapshotat`. Every registry holds them in their category from
+   * `altids`, `prevupdatedat`/`prevuuid`, `createdat`, `code`, `snapshotat`,
+   * the `sourceurl` a line was read from and the `nofixentries` counting its
+   * arrival record. Every registry holds them in their category from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
-   * (60) clocks, so a new registry's `size` is 26.
+   * (60) clocks, so a new registry's `size` is 28.
    */
   crateFields(): Field[]
   /** The native ULBridge scalar definitions. */

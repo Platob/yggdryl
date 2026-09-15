@@ -3533,6 +3533,13 @@ function asLine(value) {
   binding.FixCodec.prototype.arrowReader = function arrowReader(schema, messages) {
     return nativeArrowReader.call(this, intoField(schema), pullOf(messages, asMessage, 'messages'))
   }
+  // A format answers rows rather than a stream, so the pull is drained here
+  // and the failure a bad item raises is that call's own.
+  const nativeFormat = binding.FixCodec.prototype._formatMessagesNative
+  delete binding.FixCodec.prototype._formatMessagesNative
+  binding.FixCodec.prototype.formatMessages = function formatMessages(messages, field) {
+    return nativeFormat.call(this, intoField(field), pullOf(messages, asMessage, 'messages'))
+  }
 }
 
 // The grid interval a lifecycle truncates `updatedat` to when none is
@@ -3593,6 +3600,7 @@ const fix = Object.freeze({
   FixMessages: binding.FixMessages,
   FixLifecycle: binding.FixLifecycle,
   schema: binding.fixSchema,
+  genericMessage: binding.fixGenericMessage,
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,

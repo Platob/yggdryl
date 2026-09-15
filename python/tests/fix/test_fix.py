@@ -2476,7 +2476,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     # `ULFROMSESSIONNAME` reaches them by name. The listing is the very
     # definition a registry answers.
     registry = FixRegistry()
-    assert len(registry) == SEEDED == 26
+    assert len(registry) == SEEDED == 28
     assert registry.dialects() == []
     for name, field in fields.items():
         if name == "altids":

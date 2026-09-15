@@ -19,7 +19,15 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, Scalar, TextLine
-from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, fix_schema, fix_schema_carrying
+from yggdryl.fix import (
+    FixCodec,
+    FixMessages,
+    FixMsg,
+    FixRegistry,
+    fix_generic_message,
+    fix_schema,
+    fix_schema_carrying,
+)
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -734,3 +742,92 @@ def test_a_row_without_the_entries_column_has_no_entries(seed: FixRegistry) -> N
     # A row that does not fit the schema is refused.
     with pytest.raises(ValueError):
         FixMsg.from_row(narrow, {"nosuchcolumn": 1}, seed)
+
+
+def test_format_answers_the_rows_one_message_field_holds(seed: FixRegistry) -> None:
+    """The third verb, both doors: messages in, rows under a message field out.
+
+    Pinned by ``format_messages_answers_one_row_per_message_under_the_field``
+    and ``format_arrow_reader_answers_the_batches_format_messages_answers_rows``
+    in ``rust/tests/fix/format.rs``.
+    """
+    codec = _fixed(seed)
+    generic = fix_generic_message(seed)
+    # The crate's own target is the fixed row registered as a message, so a
+    # formatted row is still a FIX row.
+    assert [column.name for column in generic] == [column.name for column in fix_schema(seed)]
+    assert generic.metadata["fix:msgtype"] == "UGEN"
+
+    messages = list(codec.parse_line(ORDER))
+    rows = codec.format_messages(messages, generic)
+    assert len(rows) == 1
+    held = rows[0].as_py()
+    assert held[generic.index_of("symbol")] == "AAPL"
+    # The record closes a formatted row exactly as it closes a parsed one.
+    assert held[generic.index_of("fixentries")]
+
+    # The Arrow twin answers the same row, one batch at a time, and decides
+    # its schema before a row is read.
+    source = codec.arrow_reader(fix_schema(seed), messages)
+    formatted = codec.format_arrow_reader(source, generic)
+    assert [field.name for field in formatted.schema] == [column.name for column in generic]
+    batched = formatted.read_all()
+    assert batched.num_rows == 1
+    assert batched.column("symbol").to_pylist() == ["AAPL"]
+
+
+def test_a_registry_takes_the_generic_message_by_code(seed: FixRegistry) -> None:
+    """The default format target is reachable as a registered message.
+
+    Pinned by ``the_generic_message_is_the_row_registered_as_a_message`` in
+    ``rust/tests/fix/format.rs``. Registration adds a component, so the
+    scalar length a registry answers does not move.
+    """
+    registry = copy.copy(seed)
+    before = len(registry)
+    registry.with_generic_message()
+    assert len(registry) == before
+    # Idempotent: a registry already answering the code keeps what it has, and
+    # a second call is not the refusal a shared registry answers with.
+    registry.with_generic_message()
+    held = registry.msgtype("UGEN")
+    assert held.name == "genericmessage"
+    assert held.field.index_of("symbol") is not None
+
+
+def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegistry) -> None:
+    """Formatting a narrow row into a wider field reads the arrival record.
+
+    Pinned by ``a_column_the_source_row_dropped_is_lifted_out_of_the_record``
+    in ``rust/tests/fix/format.rs``.
+    """
+    codec = _fixed(seed)
+    wide = fix_schema(seed)
+    keep = (
+        "beginstring",
+        "msgtype",
+        "version",
+        "updatedat",
+        "timepartition",
+        "uuid",
+        "puuid",
+        "createdat",
+        "code",
+        "snapshotat",
+        "sendingtime",
+        "fixentries",
+        "nofixentries",
+    )
+    narrow = Field(
+        "fix",
+        DataType.from_fields([wide[wide.index_of(name)] for name in keep]),
+        nullable=False,
+    )
+    assert narrow.index_of("symbol") is None
+
+    parsed = _one(codec, ORDER)
+    stored = parsed.into_row(narrow)
+    held = FixMsg.from_row(narrow, stored, seed)
+    row = codec.format_messages([held], fix_generic_message(seed)).pop().as_py()
+    generic = fix_generic_message(seed)
+    assert row[generic.index_of("symbol")] == "AAPL"

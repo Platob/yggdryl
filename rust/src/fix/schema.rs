@@ -100,8 +100,8 @@ pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 ///
 /// It is the one group the registry does not define. A `fixentry` contains
 /// `fixentries`, and a catalog definition that referenced itself would be the
-/// cyclic reference the store refuses to load; the shape is bounded by
-/// [`ENTRY_DEPTH`] instead, here, where the bound can be read.
+/// cyclic reference the store refuses to load; the shape is bounded to three
+/// levels of occurrence instead, here, where the bound can be read.
 pub const FIXENTRIES_COLUMN: &str = "fixentries";
 
 /// What one arrival record is called wherever it is materialized.

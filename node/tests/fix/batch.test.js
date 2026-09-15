@@ -836,3 +836,54 @@ test('a row without the entries column has no entries', () => {
   // A row that does not fit the schema is refused.
   assert.throws(() => fix.FixMsg.fromRow(narrow, { nosuchcolumn: 1 }, registry))
 })
+
+test('a registry takes the generic message by code', () => {
+  // Pinned by `the_generic_message_is_the_row_registered_as_a_message` in
+  // `rust/tests/fix/format.rs`. Registration adds a component, so the scalar
+  // length a registry answers does not move.
+  const registry = seed()
+  const before = registry.size
+  registry.withGenericMessage()
+  assert.equal(registry.size, before)
+  // Idempotent: a registry already answering the code keeps what it has.
+  registry.withGenericMessage()
+  const held = registry.msgtype('UGEN')
+  assert.equal(held.name, 'genericmessage')
+  assert.ok(held.asField().indexOf('symbol') !== null)
+})
+
+test('format answers the rows one message field holds, both doors', () => {
+  // Pinned by `format_messages_answers_one_row_per_message_under_the_field`
+  // and `format_arrow_reader_answers_the_batches_format_messages_answers_rows`
+  // in `rust/tests/fix/format.rs`.
+  const registry = seed()
+  const codec = new fix.FixCodec(registry)
+  const generic = fix.genericMessage(registry)
+  const schema = fix.schema(registry)
+
+  // The crate's own target is the fixed row registered as a message, so a
+  // formatted row is still a FIX row.
+  const names = (held) => Array.from({ length: held.fieldLen }, (_, at) => held.fieldAt(at).name)
+  assert.deepEqual(names(generic), names(schema))
+  assert.equal(generic.fix.msgtype, 'UGEN')
+
+  const messages = [...codec.parseLine(Buffer.from(ORDER))]
+  const rows = codec.formatMessages(messages, generic)
+  assert.equal(rows.length, 1)
+  const held = rows[0].asJs()
+  assert.equal(held[generic.indexOf('symbol')], 'AAPL')
+  // The record closes a formatted row exactly as it closes a parsed one.
+  assert.ok(held[generic.indexOf('fixentries')].length > 0)
+
+  // The Arrow twin answers the same row, one batch at a time, and decides its
+  // schema before a row is read.
+  const source = codec.arrowReader(schema, messages)
+  const formatted = codec.formatArrowReader(source, generic)
+  const table = formatted.intoTable()
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    names(generic),
+  )
+  assert.equal(table.numRows, 1)
+  assert.deepEqual(column(table, 'symbol'), ['AAPL'])
+})

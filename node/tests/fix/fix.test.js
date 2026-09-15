@@ -1239,6 +1239,7 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'Plugin',
       'Plugins',
       'crateFields',
+      'genericMessage',
       'globalRegistry',
       'installGlobalRegistry',
       'pluginFields',
@@ -1934,7 +1935,7 @@ test("a capture's own columns lead the row", () => {
 
 test('the crate fields declare their own protocols', () => {
   const held = fix.crateFields()
-  // Twenty-four scalar fields and the altids group (`rust/tests/fix/digest.rs`).
+  // Twenty-six scalar fields and the altids group (`rust/tests/fix/digest.rs`).
   assert.equal(held.length, CRATED + 1)
   assert.equal(held.filter((field) => field.fix.counter === null).length, CRATED)
   assert.deepEqual(
@@ -1965,6 +1966,8 @@ test('the crate fields declare their own protocols', () => {
       'createdat',
       'code',
       'snapshotat',
+      'sourceurl',
+      'nofixentries',
     ],
   )
   assert.deepEqual(
@@ -1995,6 +1998,8 @@ test('the crate fields declare their own protocols', () => {
       'CreatedAt',
       'Code',
       'SnapshotAt',
+      'SourceUrl',
+      'NoFixEntries',
     ],
   )
   // In tag order from 65001 up: above every tag FIX or a venue publishes, so

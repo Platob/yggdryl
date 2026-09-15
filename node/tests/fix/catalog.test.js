@@ -94,9 +94,9 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   // Only what seeds every registry is left: the crate's own twenty-four
   // scalar fields and the standard SendingTime (52) and TransactTime (60)
   // clocks (`seeded_fields()` in `rust/tests/fix.rs`), all of them in the
-  // fields category. The crate's twenty-five definitions add the altids group.
-  assert.equal(registry.size, 26)
-  assert.equal([...registry.definitions('fields')].length, 26)
+  // fields category. The crate's twenty-seven definitions add the altids group.
+  assert.equal(registry.size, 28)
+  assert.equal([...registry.definitions('fields')].length, 28)
   assert.equal(registry.fieldByTag(52).name, 'sendingtime')
   assert.equal(registry.fieldByTag(60).name, 'transacttime')
   assert.equal(fix.crateFields().length, 27)
@@ -323,7 +323,7 @@ test('compiled identifier selection returns independent declarations and native 
   assert.throws(() => singleton.identifierValues('not a message'))
 })
 
-test('binary identifiers stay native until enrichment reports the located invalid UTF-8 byte', () => {
+test('binary identifiers stay native and name nothing when they will not spell text', () => {
   const code = tagged('msgtype', 35)
   const identifier = tagged('customid', 9001, 'binary')
   const declaration = message('custom', 'Z9', [code, identifier])
@@ -340,11 +340,11 @@ test('binary identifiers stay native until enrichment reports the located invali
   assert.ok(selected[0][1].equals(value.byTag(9001)))
   assert.ok(selected[0][1].asJs() instanceof Uint8Array)
   assert.deepEqual(Buffer.from(selected[0][1].asJs()), raw)
+  // An identifier whose value will not spell text names nothing, so it is
+  // left out of the map rather than refusing the message around it.
   const codec = new fix.FixCodec(registry)
-  assert.throws(() => codec.enrichMessage(value), {
-    name: 'Error',
-    message: /\$\.customid.*invalid utf-8 data at byte 1: expected a byte this charset assigns, got 0xff/,
-  })
+  const enriched = codec.enrichMessage(value)
+  assert.ok(enriched.byTag(9001).equals(value.byTag(9001)))
   assert.ok(value.equals(before))
 })
 

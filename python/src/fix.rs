@@ -214,11 +214,11 @@ impl PyFixRegistry {
 
     /// A registry holding this crate's own definitions and the standard clocks.
     ///
-    /// `fix_crate_fields` lists twenty-four scalar fields - tags 65001 to
-    /// 65019 and 65021 to 65025 - and the `altids` Map group at 65020; the
+    /// `fix_crate_fields` lists twenty-six scalar fields - tags 65001 to
+    /// 65019 and 65021 to 65027 - and the `altids` Map group at 65020; the
     /// retired 65000 is not reused. Beside them sit two seeded standard
     /// clocks, `SendingTime` (52) and `TransactTime` (60), each a
-    /// nanosecond UTC `datetime64`, so a new registry holds twenty-six
+    /// nanosecond UTC `datetime64`, so a new registry holds twenty-eight
     /// scalar fields. The seeds are ordinary definitions a loaded dictionary
     /// supplies its own metadata for; the crate's fields are held by every
     /// dictionary alike. `len` counts only scalar fields. The crate's
@@ -376,6 +376,22 @@ impl PyFixRegistry {
     fn with_plugin_fields(&mut self) -> PyResult<()> {
         let registry = self.inner_mut()?;
         *registry = registry.clone().with_plugin_fields().map_err(value_error)?;
+        Ok(())
+    }
+
+    /// Register the crate's own `GenericMessage`, the default format target.
+    ///
+    /// The fixed row's own columns under a `fix:msgtype`, so a
+    /// `format_messages` with no message type of its own has one to name.
+    /// Built against this dictionary rather than declared once, because the
+    /// columns are the dictionary's; idempotent, so a registry that already
+    /// answers the code keeps what it has.
+    fn with_generic_message(&mut self) -> PyResult<()> {
+        let registry = self.inner_mut()?;
+        *registry = registry
+            .clone()
+            .with_generic_message()
+            .map_err(value_error)?;
         Ok(())
     }
 
@@ -2145,6 +2161,61 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, self.inner.arrow_reader(schema, messages))
     }
 
+    /// A stream of messages as the rows one message field holds them.
+    ///
+    /// The third verb, and the one a consumer reads by: `parse_*` turns a
+    /// capture into messages, `enrich_*` fills what each implies, and this
+    /// answers them under a message field the registry names -
+    /// `fix_generic_message` for the crate's own, a venue's own type, or any
+    /// Struct root a caller built for the table it is writing.
+    ///
+    /// `messages` is any iterable of `FixMsg`, pulled one at a time; `field`
+    /// is anything `Field` accepts, read once here rather than per message.
+    /// Each row is `FixMsg.into_row` under it, so a column the message did
+    /// not state is derived where the crate derives it and a value the column
+    /// will not hold is that column's null. A column the message does not
+    /// carry at all is read off its arrival record first, which is what lets
+    /// a narrow row be formatted into a wider field.
+    ///
+    /// An item that is not a message raises `TypeError` where it is met.
+    fn format_messages(
+        &self,
+        messages: &Bound<'_, PyAny>,
+        field: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<PyScalar>> {
+        let field = core_field_from_value(field)?;
+        let mut rows = Vec::new();
+        for message in Pulled::new(messages, message_of)? {
+            rows.push(PyScalar::from_inner(
+                self.inner
+                    .format_messages([Ok(message)], &field)
+                    .next()
+                    .expect("one message answers one row")
+                    .map_err(value_error)?,
+            ));
+        }
+        Ok(rows)
+    }
+
+    /// A stream of batches of FIX rows as batches under one message field.
+    ///
+    /// The Arrow twin of `format_messages`, and the last stage of the
+    /// pipeline a capture runs. The schema is answered before a row is read,
+    /// from the source's carried columns and `field`, and the capture's own
+    /// columns still lead the row. A source carrying no arrival record is a
+    /// projection already and is cast batch by batch instead of read back as
+    /// messages.
+    fn format_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+        field: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let field = core_field_from_value(field)?;
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.format_arrow_reader(source, &field))
+    }
+
     /// Fills a stream of messages with the chains it implies, in order,
     /// lazily.
     ///
@@ -2388,6 +2459,25 @@ pub(crate) fn fix_schema(
         .map_err(value_error)
 }
 
+/// The crate's own `GenericMessage`, built against one dictionary.
+///
+/// The target a `format_messages` or `format_arrow_reader` uses when a caller
+/// names no message of its own: the fixed row's own columns, carrying the
+/// `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
+/// what FIX reserves for a counterparty's own types. `name` is the root's
+/// name, which a caller spells for the table it is writing.
+#[pyfunction]
+#[pyo3(name = "fix_generic_message", signature = (registry=None, name="fix"))]
+pub(crate) fn fix_generic_message(
+    registry: Option<PyRef<'_, PyFixRegistry>>,
+    name: &str,
+) -> PyResult<PyField> {
+    let registry = registry_or_global(registry)?;
+    yggdryl::fix_generic_message(&registry, name.to_owned())
+        .map(PyField::from_inner)
+        .map_err(value_error)
+}
+
 /// The fixed root behind a capture's own columns.
 ///
 /// `carrier` is a capture's own root - where a line was read from, which line
@@ -2416,8 +2506,8 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The twenty-five definitions this crate lists in tag order: twenty-four
-/// scalar fields at tags 65001 to 65019 and 65021 to 65025, and the `altids`
+/// The twenty-seven definitions this crate lists in tag order: twenty-six
+/// scalar fields at tags 65001 to 65019 and 65021 to 65027, and the `altids`
 /// Map group at 65020. The retired 65000 is not reused.
 ///
 /// The version read, the cross-venue symbol, the settled `updatedat` clock
@@ -2428,8 +2518,9 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// names the line spells - the three facts a row derives from what the
 /// message said: its ISIN, its market and the order's state - the
 /// instrument's `instuuid`, the message's `uuid` and the chain's `puuid`,
-/// the previous message's `prevupdatedat` and `prevuuid`, and `createdat`,
-/// `code` and `snapshotat`. The Map holds the message's own-level
+/// the previous message's `prevupdatedat` and `prevuuid`, `createdat`,
+/// `code` and `snapshotat`, the `sourceurl` a line was read from, and the
+/// `nofixentries` that counts its arrival record. The Map holds the message's own-level
 /// identifiers. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
 /// `snapshotat` are non-null; every other definition is nullable. Every
 /// registry holds these definitions from construction beside the seeded
