@@ -642,6 +642,8 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         ("mic", 4),
         ("cfi", 6),
         ("isin", 12),
+        ("cusip", 9),
+        ("sedol", 7),
     ]:
         dtype = DataType(name)
         assert (dtype.id, dtype.code_width, dtype.kind) == (name, width, "code")
@@ -655,7 +657,7 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
     with pytest.raises(ValueError, match="unknown datatype"):
-        DataType("sedol")
+        DataType("figi")
 
     # An ISIN is closed by its own check digit: a spelling one digit off is a
     # typo and is refused rather than stored as a security, and lower case
@@ -671,6 +673,33 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         isin.scalar("US0378331006")
     with pytest.raises(ValueError, match="expected twelve characters"):
         isin.scalar("US037833100")
+
+    # A CUSIP and a SEDOL are closed by their own check digits the same way:
+    # nine and seven characters, a typo refused, lower case folded.
+    cusip = DataType("cusip")
+    apple_cusip = cusip.scalar("037833100")
+    assert apple_cusip.as_py() == "037833100"
+    assert apple_cusip.kind == "cusip"
+    assert cusip.scalar("38259p508").as_py() == "38259P508"
+    assert pickle.loads(pickle.dumps(apple_cusip)) == apple_cusip
+    assert cusip.ascii_packed("037833100") == DataType.fixed_ascii(9).ascii_packed("037833100")
+    with pytest.raises(ValueError, match="check digit does not close"):
+        cusip.scalar("037833101")
+    with pytest.raises(ValueError, match="expected nine characters"):
+        cusip.scalar("03783310")
+    sedol = DataType("sedol")
+    shell = sedol.scalar("b0ybkj7")
+    assert shell.as_py() == "B0YBKJ7"
+    assert shell.kind == "sedol"
+    assert pickle.loads(pickle.dumps(shell)) == shell
+    assert sedol.ascii_packed("B0YBKJ7") == DataType.fixed_ascii(7).ascii_packed("B0YBKJ7")
+    with pytest.raises(ValueError, match="check digit does not close"):
+        sedol.scalar("B0YBKJ8")
+    with pytest.raises(ValueError, match="expected seven characters"):
+        sedol.scalar("B0YBKJ")
+    # Two identifiers are two values, and neither is the string it spells.
+    assert cusip.scalar("037833100") != DataType("utf8").scalar("037833100")
+    assert cusip.scalar("037833100") != sedol.scalar("B0YBKJ7")
 
 
 def test_a_code_and_a_uuid_read_into_every_string_and_byte_datatype() -> None:
@@ -936,8 +965,10 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     assert len(StringEnum.from_logical_name("tenor")) == 0
     # An open identifier space has no listing to prebuild either.
     assert len(StringEnum.from_logical_name("isin")) == 0
+    assert len(StringEnum.from_logical_name("cusip")) == 0
+    assert len(StringEnum.from_logical_name("sedol")) == 0
     with pytest.raises(ValueError, match="currency"):
-        StringEnum.from_logical_name("sedol")
+        StringEnum.from_logical_name("figi")
 
 
 def test_an_enum_member_name_is_the_one_rule_both_runtimes_apply() -> None:

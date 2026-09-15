@@ -108,7 +108,7 @@ spelled by the dictionary's folded canonical names, ``msgtype`` and never
 to be resolved per row; the tag stays on each column's ``fix:tag``. Its tags
 end with the crate's own and ``MsgDirection`` (385), and one ``nofixentries``
 list closes the row with the whole arrival record, where an unresolved key has
-tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``unixpartition``,
+tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``timepartition``,
 ``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are its non-null
 columns. A replayable row carries the whole settled bundle, and
 :meth:`FixMsg.from_row` refuses one that lacks a member.
@@ -119,16 +119,16 @@ specification: 25 definitions in tag order, twenty-four scalar fields at tags
 65001 to 65019 and 65021 to 65025 and the nullable sorted-key
 ``map<utf8, utf8>`` group ``altids`` at 65020; the retired 65000 is not reused.
 The scalar fields are ``version``, ``symbolticker``, ``updatedat``,
-``unixpartition``, ``parentclordid`` and ``parentorderid``; what a bridge's own
+``timepartition``, ``parentclordid`` and ``parentorderid``; what a bridge's own
 log states about a line - ``sendersessionid`` and ``targetsessionid``, the
 sessions the message itself names, ``msgctxid``, the plugin ``pluginid`` that
 logged it and the ``prevpluginid`` it came through before that, and the session
 names ``sendersessionname`` and ``targetsessionname`` the line spells; the three
 facts a row derives from what the message said - ``isincode``, ``miccode`` and
 ``state``; the ``uuid``-typed ``instuuid``, ``uuid`` and ``puuid``; the previous
-message's ``prevtimestamp`` and ``prevuuid``; and ``createdat``, ``code`` and
+message's ``prevupdatedat`` and ``prevuuid``; and ``createdat``, ``code`` and
 ``snapshotat``. ``updatedat``, ``uuid``, ``puuid``, ``createdat``, ``code`` and
-``snapshotat`` are non-null, and ``unixpartition`` partitions ``updatedat``. The
+``snapshotat`` are non-null, and ``timepartition`` partitions ``updatedat``. The
 separate ``pluginconfig`` component/message and the seeded clocks are not part
 of this tag listing.
 
@@ -142,7 +142,7 @@ chain holds. ``puuid`` hashes that code. Every accepted message has
 ``updatedat`` floored to its epoch grid - :attr:`FixLifecycle.DEFAULT_INTERVAL_NS`,
 one second, unless ``interval_ns`` says otherwise - while ``snapshotat`` keeps
 the real instant; takes its live chain's first accepted ``createdat``; and fills
-each absent ``prevtimestamp`` and ``prevuuid`` from the chain's last message. A
+each absent ``prevupdatedat`` and ``prevuuid`` from the chain's last message. A
 terminal state closes the chain, so :meth:`FixLifecycle.alive` counts the events
 still open and :meth:`FixLifecycle.clear` forgets them, keeping the interval,
 which :meth:`FixLifecycle.set_interval_ns` changes only while none is live.

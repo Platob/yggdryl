@@ -5,7 +5,7 @@ use std::sync::Arc;
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
     UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
@@ -249,7 +249,7 @@ fn previous(message: &FixMsg, expected: Option<(i64, Uuid)>) {
         (clock(instant), Scalar::Uuid(uuid))
     });
     assert_eq!(
-        message.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+        message.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
         &timestamp
     );
     assert_eq!(message.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &uuid);
@@ -258,7 +258,7 @@ fn previous(message: &FixMsg, expected: Option<(i64, Uuid)>) {
 fn invalid_previous_targets() -> impl Iterator<Item = ((i32, &'static str), DataType)> {
     [
         (
-            PREVTIMESTAMP_TAG_NAME,
+            PREVUPDATEDAT_TAG_NAME,
             vec![
                 DataType::Uuid,
                 DataType::utf8(),
@@ -292,7 +292,7 @@ fn invalid_previous_targets() -> impl Iterator<Item = ((i32, &'static str), Data
 fn first_null_previous_stamps_refuse_wrong_layouts_before_opening_a_chain() {
     let registry = Arc::new(FixRegistry::new());
     for (identity, dtype) in invalid_previous_targets() {
-        let expected = if identity == PREVTIMESTAMP_TAG_NAME {
+        let expected = if identity == PREVUPDATEDAT_TAG_NAME {
             clock_type()
         } else {
             DataType::Uuid
@@ -338,7 +338,7 @@ fn first_null_previous_stamps_refuse_wrong_layouts_before_opening_a_chain() {
 fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
     let registry = Arc::new(FixRegistry::new());
     for (identity, dtype) in invalid_previous_targets() {
-        let expected = if identity == PREVTIMESTAMP_TAG_NAME {
+        let expected = if identity == PREVUPDATEDAT_TAG_NAME {
             clock_type()
         } else {
             DataType::Uuid
@@ -408,7 +408,7 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
 fn previous_stamps_use_the_input_tag_role_not_the_resolved_columns_name() {
     let registry = Arc::new(FixRegistry::new());
     for (identity, dtype) in [
-        (PREVTIMESTAMP_TAG_NAME, clock_type()),
+        (PREVUPDATEDAT_TAG_NAME, clock_type()),
         (PREVUUID_TAG_NAME, DataType::Uuid),
     ] {
         let target = field((identity.0, "custom_previous"), dtype.clone());

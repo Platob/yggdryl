@@ -7,7 +7,7 @@ use std::sync::Arc;
 use yggdryl::types::Uuid;
 use yggdryl::{
     CODE_TAG_NAME, DataType, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
     TimeUnit, Timezone, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
@@ -87,12 +87,12 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
             assert!(pair[0] < pair[1], "UUIDs sort by the full grid instant");
         }
     }
-    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
         assert_eq!(stamped[0].by_tag(tag).unwrap(), &Scalar::Null);
     }
     for pair in stamped.windows(2) {
         assert_eq!(
-            pair[1].by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            pair[1].by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             pair[0].by_tag(UPDATEDAT_TAG_NAME.0).unwrap(),
         );
         assert_eq!(
@@ -170,7 +170,7 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
         bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
-    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
         assert_eq!(held.by_tag(tag).unwrap(), &Scalar::Null);
     }
     assert_eq!(held.updatedat(), held.by_tag(52).unwrap());
@@ -447,7 +447,7 @@ fn a_refused_mandatory_column_never_becomes_a_message_or_a_planned_chain() {
 fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
     let codec = super::dataset::codec();
     let lines = super::dataset::text_lines();
-    assert_eq!(lines.len(), 129);
+    assert_eq!(lines.len(), 144);
     let mut direct_life = FixLifecycle::new(Arc::clone(codec.registry()));
     let mut enriched_life = FixLifecycle::new(Arc::clone(codec.registry()));
     let mut direct_trace = Vec::new();
@@ -479,15 +479,22 @@ fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
             messages += 1;
         }
     }
-    assert_eq!(messages, 83);
-    assert_eq!(direct_life.alive(), 4);
+    assert_eq!(messages, 95);
+    // Four of the first 129 lines' chains, and the MEDIATEK order the
+    // cancel/reject flow the capture ends on is about: the cancel request at
+    // line 130 opens it under the instrument its `22=4|48=` names, and the
+    // reject at line 131 names the order but no instrument, so its keys fall
+    // under no scope, never meet the request's chain, and its `39=8` ends
+    // nothing that was open. The bridge rows and the `35=UL` frame after it
+    // resolve to no message declaring identifiers, and open nothing.
+    assert_eq!(direct_life.alive(), 5);
     // Line 73's derived terminal state closes ABBN.S. The untyped FIXML
     // at line 101 no longer reopens it through a hard-tag fallback.
-    assert_eq!(enriched_life.alive(), 3);
+    assert_eq!(enriched_life.alive(), 4);
     // Each door replays its own projection: enrichment may end a chain at a
     // different message and the untyped FIXML supplies no identifiers.
-    for (trace, expected) in [(direct_trace, 4), (enriched_trace, 3)] {
-        assert_eq!(trace.len(), 83);
+    for (trace, expected) in [(direct_trace, 5), (enriched_trace, 4)] {
+        assert_eq!(trace.len(), 95);
         let mut replay = FixLifecycle::new(Arc::clone(codec.registry()));
         for (message, alive) in trace {
             let stamped = replay

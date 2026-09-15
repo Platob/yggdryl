@@ -818,7 +818,9 @@ impl PyTerm {
         for step in segments.try_iter()? {
             steps.push(segment_from_value(&step?)?);
         }
-        Ok(Self::from_core(self.inner.clone().path(steps)))
+        Ok(Self::from_core(
+            self.inner.clone().path(steps).map_err(value_error)?,
+        ))
     }
 
     /// Whether this node is a constant.

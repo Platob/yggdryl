@@ -458,6 +458,8 @@ impl PyDataType {
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
             "isin" => CoreDataType::Isin,
+            "cusip" => CoreDataType::Cusip,
+            "sedol" => CoreDataType::Sedol,
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
@@ -1321,7 +1323,7 @@ impl PyDataType {
 
     /// Whether this is a string, in any layout and charset.
     ///
-    /// The eight registered codes are not strings: a currency is an identity
+    /// The ten registered codes are not strings: a currency is an identity
     /// over ISO 4217 that stores as text, and answers ``is_code`` instead.
     #[getter]
     fn is_string(&self) -> bool {
@@ -1381,7 +1383,7 @@ impl PyDataType {
         self.inner.fixed_byte_width()
     }
 
-    /// Whether this is one of the eight registered code vocabularies.
+    /// Whether this is one of the ten registered code vocabularies.
     #[getter]
     fn is_code(&self) -> bool {
         self.inner.is_code()

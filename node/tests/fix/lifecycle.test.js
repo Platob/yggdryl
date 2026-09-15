@@ -22,7 +22,7 @@ const UPDATEDAT = 65003
 const INSTUUID = 65016
 const STATE = 65015
 const ALTIDS = 65020
-const PREVTIMESTAMP = 65021
+const PREVUPDATEDAT = 65021
 const PREVUUID = 65022
 const CREATEDAT = 65023
 const CODE = 65024
@@ -73,12 +73,12 @@ function lifecycle(registry, intervalNs = 10n) {
 
 /** The previous stamps `message` carries: `expected`'s grid clock and UUID, or null. */
 function previous(message, expected) {
-  const held = [message.byTag(PREVTIMESTAMP), message.byTag(PREVUUID)]
+  const held = [message.byTag(PREVUPDATEDAT), message.byTag(PREVUUID)]
   if (expected === null) {
     assert.deepEqual(held.map((value) => value.kind), ['null', 'null'])
     return
   }
-  assert.ok(held[0].equals(expected.updatedat()), 'prevtimestamp is the previous grid instant')
+  assert.ok(held[0].equals(expected.updatedat()), 'prevupdatedat is the previous grid instant')
   assert.ok(held[1].equals(expected.uuid()), 'prevuuid is the previous message identity')
 }
 
@@ -386,8 +386,8 @@ test('a previous stamp its target cannot hold consumes no bucket, closes and att
     [PREVUUID, 'prevuuid', DataType.from('utf8')],
     [PREVUUID, 'prevuuid', DataType.from('binary')],
     [PREVUUID, 'prevuuid', clock(0).dtype],
-    [PREVTIMESTAMP, 'prevtimestamp', DataType.from('uuid')],
-    [PREVTIMESTAMP, 'prevtimestamp', DataType.from('utf8')],
+    [PREVUPDATEDAT, 'prevupdatedat', DataType.from('uuid')],
+    [PREVUPDATEDAT, 'prevupdatedat', DataType.from('utf8')],
   ]) {
     const custom = wrongPrevious(tag, dtype)
     for (const existing of [false, true]) {
@@ -415,10 +415,10 @@ test('independently stated previous values are not the current history', () => {
     const life = lifecycle(registry)
     const first = life.fill(event(registry, 1, 'A'))
     let second = event(registry, 11, 'A')
-    second = withValue(second, PREVTIMESTAMP, statedClock ? clock(987) : null)
+    second = withValue(second, PREVUPDATEDAT, statedClock ? clock(987) : null)
     second = withValue(second, PREVUUID, statedId ? statedUuid : null)
     second = life.fill(second)
-    assert.ok(second.byTag(PREVTIMESTAMP).equals(statedClock ? clock(987) : first.updatedat()))
+    assert.ok(second.byTag(PREVUPDATEDAT).equals(statedClock ? clock(987) : first.updatedat()))
     if (statedId) {
       assert.equal(second.byTag(PREVUUID).asJs(), statedUuid)
     } else {

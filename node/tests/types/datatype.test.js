@@ -352,6 +352,9 @@ test('a registered code is its own datatype over its standard width', () => {
     ['cfi', 6],
     // Twelve: two letters of prefix, nine of national number, one check digit.
     ['isin', 12],
+    // Nine and seven, each closed by its own check digit too.
+    ['cusip', 9],
+    ['sedol', 7],
     // The FIX codes are held to the width their standard fixes.
     ['side', 4],
     ['state', 10],
@@ -371,7 +374,7 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(currency.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
   assert.equal(currency.asciiValue(0x555344n), 'USD')
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
-  assert.throws(() => DataType.fromString('sedol'), /unknown datatype/)
+  assert.throws(() => DataType.fromString('figi'), /unknown datatype/)
 })
 
 test('the uuid is sixteen bytes spelled as one identifier', () => {
@@ -530,7 +533,9 @@ test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   assert.equal(StringEnum.fromLogicalName('tenor').length, 0)
   // An open identifier space has no listing to prebuild either.
   assert.equal(StringEnum.fromLogicalName('isin').length, 0)
-  assert.throws(() => StringEnum.fromLogicalName('sedol'), /currency/)
+  assert.equal(StringEnum.fromLogicalName('cusip').length, 0)
+  assert.equal(StringEnum.fromLogicalName('sedol').length, 0)
+  assert.throws(() => StringEnum.fromLogicalName('figi'), /currency/)
 })
 
 test('the generated enum names each value by the integer it packs into', () => {

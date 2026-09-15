@@ -8,7 +8,7 @@ use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, CREATEDAT_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
     UPDATEDAT_TAG_NAME,
 };
 
@@ -100,10 +100,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
             assert_eq!(stamped.createdat(), created, "{name}");
             if expected_chains != 0 && index % 2 == 1 {
                 let (timestamp, uuid) = previous.as_ref().expect("the scope's first message");
-                assert_eq!(stamped.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(), timestamp);
+                assert_eq!(stamped.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(), timestamp);
                 assert_eq!(stamped.by_tag(PREVUUID_TAG_NAME.0).unwrap(), uuid);
             } else {
-                for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
                     assert_eq!(stamped.by_tag(tag).unwrap(), &Scalar::Null, "{name}");
                 }
             }

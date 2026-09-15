@@ -76,6 +76,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "mic": types.mic("value"),
         "cfi": types.cfi("value"),
         "isin": types.isin("value"),
+        "cusip": types.cusip("value"),
+        "sedol": types.sedol("value"),
         "uuid": types.uuid("value"),
         "version": types.version("value"),
         "url": types.url("value"),

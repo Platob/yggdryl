@@ -10,10 +10,11 @@
 //!
 //! One grammar answers all of it: `.name` for a struct child, `[0]` and `[-1]`
 //! for a list element, `['key']` for a map entry, `[1:3]` for a run of list
-//! elements. A name the bare spelling cannot carry is quoted, so `a.b` has
-//! exactly one spelling and it is not two levels. A trailing `as name`, spelled
-//! the way SQL spells it, says what to call what the path reached - the one
-//! thing a selector cannot say by itself.
+//! elements, `[ccy = 'EUR']` for the elements of a list of structs a predicate
+//! over the element's own fields keeps. A name the bare spelling cannot carry
+//! is quoted, so `a.b` has exactly one spelling and it is not two levels. A
+//! trailing `as name`, spelled the way SQL spells it, says what to call what
+//! the path reached - the one thing a selector cannot say by itself.
 //!
 //! The grammar is the expression grammar's own: a path is what a
 //! [`Term`](super::Term) reads at its leaf and what a [`Selector`](super::Selector)
@@ -28,14 +29,15 @@
 //! failure happened. The two never merge - one is caller input resolved once,
 //! the other is walker state rendered only on error.
 
+use std::borrow::Cow;
 use std::fmt::{self, Write as _};
 use std::str::FromStr;
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::Literal;
 use super::typing::{common_type, unwrap_dictionary};
+use super::{Literal, Term};
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What a parse failure names itself as.
@@ -69,6 +71,17 @@ pub enum FieldSegment {
         /// The first position not kept; absent means the end of the list.
         end: Option<i64>,
     },
+    /// `[ccy = 'EUR']` - the elements of a list of structs a predicate keeps,
+    /// JSONPath's `[?(...)]` without the `?`. The term is a boolean over the
+    /// element's own fields: a name inside it resolves against the element
+    /// struct, never against the row. The result is a list of the same item
+    /// type; an element the predicate answers false or unknown for is
+    /// dropped, a null element is dropped, and a null list stays null.
+    ///
+    /// Inside brackets an integer is a position, a text literal a key, a
+    /// colon a run, and anything else - a bare boolean column included - is
+    /// this.
+    Where(Box<Term>),
 }
 
 impl FieldSegment {
@@ -88,6 +101,24 @@ impl FieldSegment {
     #[must_use]
     pub const fn range(start: Option<i64>, end: Option<i64>) -> Self {
         Self::Range { start, end }
+    }
+
+    /// Keep the elements of a list of structs a predicate answers true for.
+    ///
+    /// The predicate is typed and bound against the element struct when the
+    /// segment is applied, so the names it reads are the element's fields.
+    #[must_use]
+    pub fn filter(predicate: Term) -> Self {
+        Self::Where(Box::new(predicate))
+    }
+
+    /// The predicate this segment keeps elements by, when it is one.
+    #[must_use]
+    pub fn as_predicate(&self) -> Option<&Term> {
+        match self {
+            Self::Where(predicate) => Some(predicate),
+            Self::Field(_) | Self::Index(_) | Self::Key(_) | Self::Range { .. } => None,
+        }
     }
 
     /// Name a map entry by text key.
@@ -123,7 +154,7 @@ impl FieldSegment {
         match self {
             Self::Field(name) => Some(name.as_str()),
             Self::Key(key) => key.value().as_str(),
-            Self::Index(_) | Self::Range { .. } => None,
+            Self::Index(_) | Self::Range { .. } | Self::Where(_) => None,
         }
     }
 
@@ -137,7 +168,7 @@ impl FieldSegment {
     pub const fn as_index(&self) -> Option<i64> {
         match self {
             Self::Index(position) => Some(*position),
-            Self::Field(_) | Self::Key(_) | Self::Range { .. } => None,
+            Self::Field(_) | Self::Key(_) | Self::Range { .. } | Self::Where(_) => None,
         }
     }
 
@@ -170,14 +201,16 @@ impl FieldSegment {
                 ))),
             },
             Self::Range { .. } => match list_item(dtype) {
-                // A run keeps the list's own item type and stays a list; the
-                // clipped run of a null list is null, so the result is
-                // nullable whatever the list was.
-                Some(item) => Ok(Field::new(field.name(), DataType::list(item.clone()), true)),
+                Some(item) => Ok(kept_list_field(field, item)),
                 None => Err(typing_error(format_smolstr!(
                     "expected a list to take a range of, got {dtype}"
                 ))),
             },
+            Self::Where(predicate) => {
+                let element = element_field(field)?;
+                require_predicate(&predicate.field(&element)?, predicate)?;
+                Ok(kept_list_field(field, &element))
+            }
             Self::Key(key) => match dtype {
                 DataType::Map(map) => {
                     let keys = map_key_field(map)?;
@@ -209,16 +242,25 @@ impl FieldSegment {
     /// Absence is null rather than an error on the read path: a position past
     /// the end, a key no entry holds, and a null container all answer null,
     /// the way a missing map key answers everywhere else in this crate.
-    #[must_use]
-    pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Scalar {
+    ///
+    /// A predicate segment binds its term against the element struct here,
+    /// once per call; a caller with many rows [binds](Term::bind) the whole
+    /// path once instead, and the bound path carries the bound predicate.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a predicate segment is applied to anything but
+    /// a list of structs, its term does not bind against the element struct
+    /// or answers no boolean, or its evaluation refuses an element.
+    pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Result<Scalar> {
         if value.is_null() {
-            return Scalar::Null;
+            return Ok(Scalar::Null);
         }
-        match self {
+        Ok(match self {
             Self::Field(name) => struct_child(field, value, name),
             Self::Index(position) => {
                 let Some(items) = value.as_sequence() else {
-                    return Scalar::Null;
+                    return Ok(Scalar::Null);
                 };
                 resolve_index(*position, items.len())
                     .and_then(|index| items.get(index))
@@ -227,7 +269,7 @@ impl FieldSegment {
             }
             Self::Range { start, end } => {
                 let Some(items) = value.as_sequence() else {
-                    return Scalar::Null;
+                    return Ok(Scalar::Null);
                 };
                 let (from, until) = resolve_range(*start, *end, items.len());
                 Scalar::from_sequence(items[from..until].iter().cloned())
@@ -235,7 +277,7 @@ impl FieldSegment {
             Self::Key(key) => {
                 if let Some(entries) = value.as_mapping() {
                     let dtype = key.dtype();
-                    return entries
+                    return Ok(entries
                         .iter()
                         .find(|(held, _)| {
                             super::eval::compare(
@@ -247,15 +289,85 @@ impl FieldSegment {
                             .as_bool()
                                 == Some(true)
                         })
-                        .map_or(Scalar::Null, |(_, held)| held.clone());
+                        .map_or(Scalar::Null, |(_, held)| held.clone()));
                 }
                 match key.value().as_str() {
                     Some(name) => struct_child(field, value, name),
                     None => Scalar::Null,
                 }
             }
-        }
+            Self::Where(predicate) => {
+                let element = element_field(field)?;
+                let bound = predicate.bind(&element)?;
+                require_predicate(bound.field(), predicate)?;
+                super::eval::keep_elements(&element, bound.node(), value, None)?
+            }
+        })
     }
+}
+
+/// The element struct a predicate segment binds against.
+///
+/// # Errors
+///
+/// Returns an error naming the datatype when it is not a list of structs.
+pub(crate) fn element_field(field: &Field) -> Result<Field> {
+    let dtype = unwrap_dictionary(field.dtype());
+    match list_item(dtype) {
+        Some(item) if item.is_struct() => Ok(item.clone()),
+        _ => Err(typing_error(format_smolstr!(
+            "expected a list of structs to keep elements of by a predicate, got {dtype}"
+        ))),
+    }
+}
+
+/// Refuse a predicate segment whose term answers anything but a boolean.
+pub(crate) fn require_predicate(answer: &Field, predicate: &Term) -> Result<()> {
+    if matches!(answer.dtype(), DataType::Boolean | DataType::Null) {
+        return Ok(());
+    }
+    Err(typing_error(format_smolstr!(
+        "expected a boolean predicate to keep list elements by, got [{predicate}] of {}",
+        answer.dtype()
+    )))
+}
+
+/// The list a run or a predicate leaves: the same item type, and nullable,
+/// because the run or the kept elements of a null list are null.
+pub(crate) fn kept_list_field(field: &Field, item: &Field) -> Field {
+    Field::new(field.name(), DataType::list(item.clone()), true)
+}
+
+/// One struct value as the column values its field orders, whichever spelling
+/// holds it.
+///
+/// A schema-ordered sequence is borrowed; a record or a mapping is read child
+/// by child; a spelling that is no struct at all answers nothing.
+pub(crate) fn struct_values<'value>(
+    field: &Field,
+    value: &'value Scalar,
+) -> Option<Cow<'value, [Scalar]>> {
+    let width = field.field_len();
+    if let Some(values) = value.as_sequence() {
+        if values.len() == width {
+            return Some(Cow::Borrowed(values));
+        }
+        // A short or long sequence still reads in schema order: what is
+        // missing is null, and what is past the schema is not there to read.
+        let mut padded: Vec<Scalar> = values.iter().take(width).cloned().collect();
+        padded.resize(width, Scalar::Null);
+        return Some(Cow::Owned(padded));
+    }
+    if value.as_record().is_none() && value.as_mapping().is_none() {
+        return None;
+    }
+    Some(Cow::Owned(
+        field
+            .fields()
+            .iter()
+            .map(|child| struct_child(field, value, child.name()))
+            .collect(),
+    ))
 }
 
 /// The position a possibly negative index names in a run of `length`.
@@ -386,6 +498,7 @@ impl Ord for FieldSegment {
             ) => left_start
                 .cmp(right_start)
                 .then_with(|| left_end.cmp(right_end)),
+            (Self::Where(left), Self::Where(right)) => left.cmp(right),
             (left, right) => left.rank().cmp(&right.rank()),
         }
     }
@@ -405,6 +518,7 @@ impl FieldSegment {
             Self::Index(_) => 1,
             Self::Key(_) => 2,
             Self::Range { .. } => 3,
+            Self::Where(_) => 4,
         }
     }
 }
@@ -431,6 +545,17 @@ impl fmt::Display for FieldSegment {
             Self::Key(key) => {
                 formatter.write_char('[')?;
                 write_key(formatter, key)?;
+                formatter.write_char(']')
+            }
+            Self::Where(predicate) => {
+                // The brackets already delimit the term, so it starts at the
+                // loosest level and never grows braces of its own.
+                formatter.write_char('[')?;
+                super::display::write_at(
+                    formatter,
+                    predicate,
+                    super::display::Precedence::Disjunction,
+                )?;
                 formatter.write_char(']')
             }
         }
@@ -658,7 +783,7 @@ impl FieldPath {
         let mut held = value.clone();
         for segment in self.segments.iter() {
             let next = segment.apply_field(&field)?;
-            held = segment.apply_scalar(&field, &held);
+            held = segment.apply_scalar(&field, &held)?;
             field = next;
             if held.is_null() {
                 break;

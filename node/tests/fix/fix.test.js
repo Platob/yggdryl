@@ -1545,7 +1545,7 @@ const LIFE = [
 const INSTUUID = 65016
 const UUID = 65017
 const PUUID = 65018
-const PREVTIMESTAMP = 65021
+const PREVUPDATEDAT = 65021
 const PREVUUID = 65022
 const CODE = 65024
 const PIPE = '|'.charCodeAt(0)
@@ -1612,9 +1612,9 @@ test('every message of one order carries the chain identity until it ends', () =
   }
   // A chain carries only its previous message's clock and UUID: none before
   // the first message, then each message's predecessor.
-  for (const tag of [PREVTIMESTAMP, PREVUUID]) assert.equal(stamped[0].byTag(tag).kind, 'null')
+  for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(stamped[0].byTag(tag).kind, 'null')
   for (let at = 1; at < stamped.length; at += 1) {
-    assert.ok(stamped[at].byTag(PREVTIMESTAMP).equals(stamped[at - 1].updatedat()), `message ${at}`)
+    assert.ok(stamped[at].byTag(PREVUPDATEDAT).equals(stamped[at - 1].updatedat()), `message ${at}`)
     assert.ok(stamped[at].byTag(PREVUUID).equals(stamped[at - 1].uuid()), `message ${at}`)
   }
   // The chain is named by the instrument scope and the first identifier, and
@@ -1693,7 +1693,7 @@ test('a message naming no order has an id and no chain', () => {
   assert.ok(heartbeat.puuid().equals(persistentOf('')))
   assert.notEqual(identity(heartbeat, PUUID), null)
   assert.equal(identity(heartbeat, INSTUUID), null, 'no instrument, no identity')
-  for (const tag of [PREVTIMESTAMP, PREVUUID]) assert.equal(heartbeat.byTag(tag).kind, 'null')
+  for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(heartbeat.byTag(tag).kind, 'null')
   // The event is the stated sending time, already on the one-second grid.
   assert.ok(heartbeat.updatedat().equals(heartbeat.byTag(52)))
   // An undated message takes the configured intake clock, settled once.
@@ -1752,7 +1752,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   // FIX's own `MsgDirection` and the settled chain facts before it.
   const tail = []
   for (let at = schema.fieldLen - 7; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
-  assert.deepEqual(tail, ['prevtimestamp', 'prevuuid', 'createdat', 'code', 'snapshotat', 'msgdirection', 'nofixentries'])
+  assert.deepEqual(tail, ['prevupdatedat', 'prevuuid', 'createdat', 'code', 'snapshotat', 'msgdirection', 'nofixentries'])
   assert.equal(schema.indexOf('nounmappedfixentries'), null)
   assert.equal(schema.indexOf('timestamp'), null)
   assert.equal(schema.indexOf('msghash'), null)
@@ -1788,7 +1788,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
     if (!column.nullable) required.push(column.name)
   }
   assert.deepEqual(required, [
-    'beginstring', 'sendingtime', 'updatedat', 'unixpartition', 'uuid', 'puuid', 'createdat', 'code', 'snapshotat',
+    'beginstring', 'sendingtime', 'updatedat', 'timepartition', 'uuid', 'puuid', 'createdat', 'code', 'snapshotat',
   ])
 
   const reader = fixedCodec(registry)
@@ -1809,7 +1809,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   }
   assert.ok(message.updatedat().equals(message.getByTag(65003)))
   assert.ok(message.updatedat().equals(SENDING))
-  assert.ok(message.unixPartition(3600).equals(Scalar.from(1_704_189_600n)))
+  assert.ok(message.timePartition().equals(Scalar.datetime(1_704_189_600_000_000_000n, 'ns', 'UTC')))
   assert.equal(native.at(schema.indexOf('uuid')).id, 'uuid')
   // The row's uuid names the row's own content: padding and derived columns
   // may move it (decision 26), the row read back verifies it, and projection
@@ -1889,7 +1889,7 @@ test('the crate fields declare their own protocols', () => {
       'version',
       'symbolticker',
       'updatedat',
-      'unixpartition',
+      'timepartition',
       'parentclordid',
       'parentorderid',
       'sendersessionid',
@@ -1906,7 +1906,7 @@ test('the crate fields declare their own protocols', () => {
       'puuid',
       'targetsessionid',
       'altids',
-      'prevtimestamp',
+      'prevupdatedat',
       'prevuuid',
       'createdat',
       'code',
@@ -1919,7 +1919,7 @@ test('the crate fields declare their own protocols', () => {
       'Version',
       'SymbolTicker',
       'UpdatedAt',
-      'UnixPartition',
+      'TimePartition',
       'ParentClOrdID',
       'ParentOrderID',
       'SenderSessionId',
@@ -1936,7 +1936,7 @@ test('the crate fields declare their own protocols', () => {
       'PUuid',
       'TargetSessionId',
       'AltIds',
-      'PrevTimestamp',
+      'PrevUpdatedAt',
       'PrevUuid',
       'CreatedAt',
       'Code',
@@ -1986,7 +1986,7 @@ test('the crate fields declare their own protocols', () => {
 
   // The partition names the column it reads, which is the clock's own name.
   const partition = held[3]
-  assert.equal(partition.name, 'unixpartition')
+  assert.equal(partition.name, 'timepartition')
   assert.equal(partition.getProperty('partition', 'sources'), '["updatedat"]')
   assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
 })
@@ -2084,7 +2084,7 @@ test('a message says everything the core derives about it', () => {
 
   assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
   assert.equal('marketTimestamp' in message, false, 'the retired reader is gone')
-  assert.ok(message.unixPartition(3600) !== null)
+  assert.ok(message.timePartition() !== null)
   // The settled clocks are never null. TransactTime is the event, so the
   // update and creation instants are that event, and the partition floors
   // the update to the hour. The SendingTime the line did not state closes
@@ -2102,7 +2102,7 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.puuid().equals(message.byTag(65018)))
   assert.equal(message.uuid().id, 'uuid')
   assert.equal(message.puuid().id, 'uuid')
-  assert.ok(message.unixPartition(3600).equals(Scalar.from(1706788800n)))
+  assert.ok(message.timePartition().equals(Scalar.datetime(1_706_788_800_000_000_000n, 'ns', 'UTC')))
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.
   const schema = fix.schema(registry, 'FixMessage')

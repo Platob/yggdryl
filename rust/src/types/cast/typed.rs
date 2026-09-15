@@ -111,6 +111,8 @@ typed_array!(crate::types::string::CurrencyType, arrow_array::StringArray);
 typed_array!(crate::types::string::MicType, arrow_array::StringArray);
 typed_array!(crate::types::string::CfiType, arrow_array::StringArray);
 typed_array!(crate::types::string::IsinType, arrow_array::StringArray);
+typed_array!(crate::types::string::CusipType, arrow_array::StringArray);
+typed_array!(crate::types::string::SedolType, arrow_array::StringArray);
 typed_array!(crate::types::string::SideType, arrow_array::StringArray);
 typed_array!(crate::types::string::StateType, arrow_array::StringArray);
 typed_array!(

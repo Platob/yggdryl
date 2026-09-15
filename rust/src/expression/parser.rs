@@ -24,7 +24,7 @@
 //! product    := unary (("*" | "/" | "%") unary)*
 //! unary      := "-" unary | accessor
 //! accessor   := atom ("." identifier | "[" segment "]")*
-//! segment    := integer | "'key'" | [integer] ":" [integer]
+//! segment    := integer | "'key'" | [integer] ":" [integer] | term
 //! atom       := literal | "(" term ")" | column | "&holder." attribute | ":" parameter
 //!             | "cast" "(" term "as" datatype ")" | "case" .. "end"
 //!             | function "(" term,* ")" | "[" term,* "]" | "{" term ":" term,* "}"
@@ -1151,25 +1151,33 @@ impl<'input> Parser<'input> {
             if self.at_symbol("[") {
                 // A `[` after a value is a path step; a `[` that starts a value
                 // was already consumed by `atom`.
+                let position = self.position();
                 self.cursor += 1;
                 let segment = self.segment()?;
                 self.expect_symbol("]")?;
-                base = base.path([segment]);
+                if !matches!(base, Term::Path(_)) && segment.as_predicate().is_some() {
+                    return Err(parse_error(
+                        position,
+                        "expected a column path before a predicate segment, got a computed \
+                         value; a predicate keeps the elements of the list a column holds",
+                    ));
+                }
+                base = base.path([segment])?;
                 continue;
             }
             return Ok(base);
         }
     }
 
-    /// Read one path step: an integer position, a run of positions, or a
-    /// constant key.
+    /// Read one path step: an integer position, a run of positions, a text
+    /// key, or - anything else - a predicate over the elements.
     fn segment(&mut self) -> Result<FieldSegment> {
-        let position = self.position();
         // A run: `[:]`, `[:3]`, `[1:]`, `[1:3]`, either bound negative.
         if self.eat_symbol(":") {
             let end = self.optional_position()?;
             return Ok(FieldSegment::Range { start: None, end });
         }
+        let opened = self.cursor;
         if let Some(start) = self.optional_position()? {
             if self.eat_symbol(":") {
                 let end = self.optional_position()?;
@@ -1178,22 +1186,33 @@ impl<'input> Parser<'input> {
                     end,
                 });
             }
-            return Ok(FieldSegment::Index(start));
+            if self.at_symbol("]") {
+                return Ok(FieldSegment::Index(start));
+            }
+            // A whole number that opens a longer term is that term's first
+            // operand, so the term is read from where the bracket opened.
+            self.cursor = opened;
         }
-        if self.at_symbol("-") {
-            return Err(parse_error(
-                position,
-                "expected a whole list position after `-`",
-            ));
-        }
-        let key = self.term()?;
-        let Term::Literal(held) = key else {
-            return Err(parse_error(
-                position,
-                "expected a constant key; use get(container, key) for a computed one",
-            ));
-        };
-        Ok(FieldSegment::Key(held))
+        let position = self.position();
+        let term = self.term()?;
+        Ok(match term {
+            // A text constant names a map entry or a struct child; every
+            // other term - a bare boolean column included - is a predicate.
+            Term::Literal(held) if held.value().as_str().is_some() => FieldSegment::Key(held),
+            // A bare constant that is no boolean can never keep an element,
+            // so it is refused here, where the position is still known.
+            Term::Literal(held)
+                if !held.is_null() && !matches!(held.dtype(), DataType::Boolean) =>
+            {
+                return Err(parse_error(
+                    position,
+                    format_smolstr!(
+                        "expected a whole list position, a text key, or a predicate, got {held}"
+                    ),
+                ));
+            }
+            predicate => FieldSegment::filter(predicate),
+        })
     }
 
     /// Read one optionally negative whole position, when one is here.
@@ -1207,11 +1226,10 @@ impl<'input> Parser<'input> {
         let Some(Token::Number(text)) = self.peek().cloned() else {
             return Ok(None);
         };
+        // A number that is not whole is no position; it is read as the
+        // term it opens, and refused there when it opens none.
         if text.contains(['.', 'e', 'E']) {
-            return Err(parse_error(
-                position,
-                format_smolstr!("expected a whole list position, got {text}"),
-            ));
+            return Ok(None);
         }
         self.cursor += 1;
         let magnitude = text.parse::<i64>().map_err(|_| {

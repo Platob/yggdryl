@@ -39,7 +39,7 @@ use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, INSTUUID_TAG_NAME,
-    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME,
+    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME,
     STATE_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
@@ -59,7 +59,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PREVUPDATEDAT_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -76,9 +76,9 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// assert_eq!(first.puuid(), second.puuid());
 /// assert_eq!(first.createdat(), second.createdat());
 /// assert!(first.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
-/// assert!(first.by_tag(PREVTIMESTAMP_TAG_NAME.0)?.is_null());
+/// assert!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0)?.is_null());
 /// assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0)?, first.uuid());
-/// assert_eq!(second.by_tag(PREVTIMESTAMP_TAG_NAME.0)?, first.updatedat());
+/// assert_eq!(second.by_tag(PREVUPDATEDAT_TAG_NAME.0)?, first.updatedat());
 /// assert_eq!(life.alive(), 1);
 /// life.clear();
 /// assert_eq!(life.alive(), 0);
@@ -476,7 +476,7 @@ impl FixMsg {
         let previous = [
             (!previous_clock_stated).then(|| {
                 (
-                    PREVTIMESTAMP_TAG_NAME.0,
+                    PREVUPDATEDAT_TAG_NAME.0,
                     previous.map_or(Scalar::Null, |chain| chain.timestamp.clone()),
                 )
             }),
@@ -502,7 +502,7 @@ impl FixMsg {
                     FixKey::Tag(tag)
                         if *tag == UPDATEDAT_TAG_NAME.0
                             || *tag == CREATEDAT_TAG_NAME.0
-                            || *tag == PREVTIMESTAMP_TAG_NAME.0 =>
+                            || *tag == PREVUPDATEDAT_TAG_NAME.0 =>
                     {
                         &CLOCK_DATATYPE
                     }
@@ -550,7 +550,7 @@ fn native_uuid(held: &Scalar, name: &str) -> Result<Uuid> {
 /// A previous clock is a statement in the declared layout, not a coercion.
 fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
     let held = message
-        .get_by_tag(PREVTIMESTAMP_TAG_NAME.0)
+        .get_by_tag(PREVUPDATEDAT_TAG_NAME.0)
         .filter(|held| !held.is_null());
     match held {
         None => Ok(None),
@@ -558,7 +558,7 @@ fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
             Ok(Some(held))
         }
         Some(held) => Err(Error::InvalidRecord {
-            path: Path::root().field(PREVTIMESTAMP_TAG_NAME.1).render().into(),
+            path: Path::root().field(PREVUPDATEDAT_TAG_NAME.1).render().into(),
             reason: crate::text::expected_got(
                 &CLOCK_DATATYPE,
                 crate::text::elide_display(&format_args!("{held:?}")),

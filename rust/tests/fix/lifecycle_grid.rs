@@ -8,7 +8,7 @@ use yggdryl::hashing::xxhash::xxh128;
 use yggdryl::types::Uuid;
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, Error, FixCodec, FixLifecycle,
-    FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME,
+    FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME,
     SNAPSHOTAT_TAG_NAME, STATE_TAG_NAME, Scalar, TimeUnit, Timezone, UPDATEDAT_TAG_NAME,
 };
 
@@ -78,7 +78,7 @@ fn lifecycle(registry: &Arc<FixRegistry>) -> FixLifecycle {
 
 fn previous(message: &FixMsg, expected: Option<&FixMsg>) {
     assert_eq!(
-        message.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+        message.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
         expected.map_or(&Scalar::Null, FixMsg::updatedat),
     );
     assert_eq!(
@@ -484,8 +484,8 @@ fn native_previous_target_failures_cannot_consume_a_bucket_or_close_and_attach()
         (PREVUUID_TAG_NAME, DataType::utf8()),
         (PREVUUID_TAG_NAME, DataType::binary()),
         (PREVUUID_TAG_NAME, clock(0).dtype().unwrap()),
-        (PREVTIMESTAMP_TAG_NAME, DataType::Uuid),
-        (PREVTIMESTAMP_TAG_NAME, DataType::utf8()),
+        (PREVUPDATEDAT_TAG_NAME, DataType::Uuid),
+        (PREVUPDATEDAT_TAG_NAME, DataType::utf8()),
     ] {
         let custom = wrong_previous_registry(&registry, tag, dtype);
         for existing in [false, true] {
@@ -532,7 +532,7 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
         second
             .set_many([
                 (
-                    PREVTIMESTAMP_TAG_NAME.0,
+                    PREVUPDATEDAT_TAG_NAME.0,
                     if stated_clock {
                         clock(987)
                     } else {
@@ -561,7 +561,7 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
             first.uuid().clone()
         };
         assert_eq!(
-            second.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            second.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             &expected_clock,
         );
         assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &expected_uuid,);

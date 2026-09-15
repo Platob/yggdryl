@@ -222388,12 +222388,12 @@
         },
         "metadata": {
           "description": "The partition updatedat falls in, as whole seconds since the epoch floored to the partition width.",
-          "display": "UnixPartition",
+          "display": "TimePartition",
           "fix:tag": "65004",
           "iceberg:transform": "truncate[3600]",
           "partition:sources": "[\"updatedat\"]"
         },
-        "name": "unixpartition",
+        "name": "timepartition",
         "nullable": true
       },
       {
@@ -222587,10 +222587,10 @@
         },
         "metadata": {
           "description": "The preceding message's timestamp in the selected event chain.",
-          "display": "PrevTimestamp",
+          "display": "PrevUpdatedAt",
           "fix:tag": "65021"
         },
-        "name": "prevtimestamp",
+        "name": "prevupdatedat",
         "nullable": true
       },
       {
@@ -237186,9 +237186,9 @@
         "x": "The settled message instant, truncated to the snapshot grid by the lifecycle."
       },
       {
-        "c": "unixpartition",
+        "c": "timepartition",
         "t": 65004,
-        "n": "UnixPartition",
+        "n": "TimePartition",
         "y": "int64",
         "x": "The partition updatedat falls in, as whole seconds since the epoch floored to the partition width."
       },
@@ -237305,9 +237305,9 @@
         "x": "The identifiers this message states at its own level, keyed by canonical field name in sorted order; repeating-group members are not flattened."
       },
       {
-        "c": "prevtimestamp",
+        "c": "prevupdatedat",
         "t": 65021,
-        "n": "PrevTimestamp",
+        "n": "PrevUpdatedAt",
         "y": "datetime64(ns,\"UTC\")",
         "x": "The preceding message's timestamp in the selected event chain."
       },

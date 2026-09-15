@@ -532,7 +532,7 @@ class Scalar:
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "fixed_string", "string_view", "large_string",
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
-        "side", "state", "timeinforce", "uuid", "version",
+        "cusip", "sedol", "side", "state", "timeinforce", "uuid", "version",
         "url", "enum", "bytes", "fixed_size_binary", "large_binary",
         "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
@@ -5096,7 +5096,7 @@ class FixMsg:
     def createdat(self) -> Scalar: ...
     def uuid(self) -> Scalar: ...
     def puuid(self) -> Scalar: ...
-    def unix_partition(self, seconds: int = 3600) -> Scalar | None: ...
+    def time_partition(self) -> Scalar | None: ...
     def lifted(self, facet: str) -> Scalar | None: ...
     def lift_source(self, facet: str) -> int | None: ...
     def lift(self) -> list[tuple[str, Scalar]]: ...
@@ -5242,7 +5242,7 @@ class FixLifecycle:
     named ``<scope uuid or ->/<identifier>``. ``puuid`` hashes that code.
     Every accepted message has ``updatedat`` floored to its grid instant
     while ``snapshotat`` keeps the real one, takes its live chain's first
-    ``createdat``, and fills each absent ``prevtimestamp`` and ``prevuuid``
+    ``createdat``, and fills each absent ``prevupdatedat`` and ``prevuuid``
     from the chain's last message; a stated non-null value is kept. A
     terminal state closes the chain, so ``alive`` counts the events still
     open and ``clear`` forgets them all, keeping the interval. A refusal is a

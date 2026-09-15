@@ -1090,11 +1090,11 @@ impl JsFixMsg {
         JsScalar::from_core(self.inner.puuid().clone())
     }
 
-    /// The partition `updatedat` falls in, in whole seconds.
+    /// The hour `updatedat` falls in, as an instant: the partition a row is
+    /// stored under.
     #[napi]
-    pub fn unix_partition(&self, seconds: f64) -> Result<Option<JsScalar>> {
-        let seconds = exact_i64(seconds, "seconds")?;
-        Ok(answered(&self.inner.unix_partition(seconds)))
+    pub fn time_partition(&self) -> Option<JsScalar> {
+        answered(&self.inner.time_partition())
     }
 
     /// One lifted facet's value, or `null` where nothing carries it.
@@ -1902,7 +1902,7 @@ impl JsFixCodec {
     /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
     /// iterable, answering every message as `FixLifecycle.fill` does: its
     /// chain `code`, `updatedat` truncated to the grid, the live chain's first
-    /// `createdat`, the previous message's `prevtimestamp` and `prevuuid`,
+    /// `createdat`, the previous message's `prevupdatedat` and `prevuuid`,
     /// then `uuid` and `puuid` finalized; a terminal state closes the chain.
     /// The iterable is pulled once, in order, so the chain a message joins
     /// depends on the messages before it.
@@ -2026,7 +2026,7 @@ fn version_from_js(text: &str) -> Result<CoreVersion> {
 /// Every accepted message has `updatedat` truncated to its epoch grid bucket
 /// of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
 /// carries its first message's `createdat` and hands each later message the
-/// previous message's `prevtimestamp` and `prevuuid`. A terminal state closes
+/// previous message's `prevupdatedat` and `prevuuid`. A terminal state closes
 /// the chain; what is held is the live chains, their code, first creation
 /// instant, last clock and UUID, and highest consumed bucket - never pending
 /// messages. `FixCodec.lifecycle` runs one at the default cadence over an
@@ -2221,7 +2221,7 @@ pub fn fix_lifecycle_default_interval_ns_native() -> BigInt {
 /// arrival record, unresolved keys at tag 0. Columns are spelled by the
 /// dictionary's folded canonical names - `msgtype`, never `35` - so a row
 /// reads the way a message reads; the tag stays each column's identity, on
-/// its `fix:tag`, and is what fills it. `beginstring`, `unixpartition` and
+/// its `fix:tag`, and is what fills it. `beginstring`, `timepartition` and
 /// the replay fields - `sendingtime`, `updatedat`, `createdat`, `uuid`,
 /// `puuid`, `code`, `snapshotat` - are required.
 #[napi(js_name = "fixSchema")]
@@ -2275,7 +2275,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// before that, the two session names the line spells, the ISIN, MIC and
 /// order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
 /// the direct identifiers enrichment records in `altids`, the previous
-/// message's `prevtimestamp` and `prevuuid`, and `createdat`, `code` and
+/// message's `prevupdatedat` and `prevuuid`, and `createdat`, `code` and
 /// `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
 /// `snapshotat` are non-null. Every registry already holds them in their
 /// category, so this is the listing a schema or a document walks rather than

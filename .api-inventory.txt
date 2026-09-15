@@ -233,7 +233,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 60] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, ];  (every discriminant explicit; 58 was msgdirection, retired; decision 14)
+  pub const ALL: [Self; 65] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, ];  (every discriminant explicit; 58 was msgdirection, retired; decision 14; Cusip = 64 and Sedol = 65 appended)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -250,7 +250,7 @@ pub enum DataTypeId
   pub const fn is_nested(self) -> bool
   pub const fn is_wrapper(self) -> bool
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
-  pub const fn code_width(self) -> Option<usize>  (the eight registered codes; the most bytes one value may be)
+  pub const fn code_width(self) -> Option<usize>  (the ten registered codes; the most bytes one value may be: cusip 9, sedol 7)
 
 ### yggdryl::root::datatype_kind  [rust\src\datatype_kind.rs]
 pub enum DataTypeKind
@@ -717,7 +717,7 @@ pub const CRATE_TAG_MAX: i32 = 65_100;
 pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");  (settled event or lifecycle grid instant)
-pub const UNIXPARTITION_TAG_NAME: (i32, &str) = (65_004, "unixpartition");
+pub const TIMEPARTITION_TAG_NAME: (i32, &str) = (65_004, "timepartition");
 pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
 pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_006, "parentorderid");
 pub const SENDERSESSIONID_TAG_NAME: (i32, &str) = (65_007, "sendersessionid");
@@ -734,7 +734,7 @@ pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
-pub const PREVTIMESTAMP_TAG_NAME: (i32, &str) = (65_021, "prevtimestamp");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
+pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable native UUID of the preceding message in the selected event chain)
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
 pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
@@ -926,7 +926,7 @@ impl FixMsg
   pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `nofixentries`; a row without that column has no entries)
   pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null)
   pub fn symbol_ticker(&self) -> Scalar
-  pub fn unix_partition(&self, seconds: i64) -> Scalar
+  pub fn time_partition(&self, seconds: i64) -> Scalar
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry
@@ -2017,11 +2017,13 @@ pub enum FieldSegment
   pub fn field(name: impl Into<SmolStr>) -> Self
   pub const fn index(position: i64) -> Self
   pub const fn range(start: Option<i64>, end: Option<i64>) -> Self
+  pub fn filter(predicate: Term) -> Self
+  pub fn as_predicate(&self) -> Option<&Term>
   pub fn key(value: Scalar) -> Result<Self>
   pub fn as_name(&self) -> Option<&str>
   pub const fn as_index(&self) -> Option<i64>
   pub fn apply_field(&self, field: &Field) -> Result<Field>
-  pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Scalar
+  pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Result<Scalar>
   pub struct FieldPath
   pub fn root() -> Self
   pub fn new(segments: impl IntoIterator<Item = FieldSegment>) -> Self
@@ -3574,7 +3576,7 @@ pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, Larg
   pub const fn is_fixed(self) -> bool
   pub const fn is_view(self) -> bool
   pub const fn is_large(self) -> bool
-pub use code::{Cfi, Code, CodeValue, Country, Currency, Isin, Mic, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
+pub use code::{Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
 
 ### yggdryl::types::string::parameters  [rust\src\types\string\parameters.rs]
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
@@ -3639,16 +3641,18 @@ pub trait CodeValue: ScalarValue
   const WIDTH: usize;
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
-pub struct Country  // and Currency, Mic, Cfi, Isin, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent
+pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; Isin, Cusip and Sedol fold lower case and refuse a check digit that does not close them
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
   pub fn prefix(&self) -> &str  // Isin only
   pub fn nsin(&self) -> &str  // Isin only
-  pub fn check_digit(&self) -> u8  // Isin only
-  pub fn is_valid(text: &str) -> bool  // Isin only
-  pub fn is_canonical(text: &str) -> bool  // Isin only
-  pub fn closing_digit(body: &str) -> Option<u8>  // Isin only
+  pub fn issuer(&self) -> &str  // Cusip only
+  pub fn issue(&self) -> &str  // Cusip only
+  pub fn check_digit(&self) -> u8  // Isin, Cusip and Sedol
+  pub fn is_valid(text: &str) -> bool  // Isin, Cusip and Sedol
+  pub fn is_canonical(text: &str) -> bool  // Isin, Cusip and Sedol
+  pub fn closing_digit(body: &str) -> Option<u8>  // Isin, Cusip and Sedol
   pub fn rank(&self) -> Option<u8>  // State only
   pub fn is_live(&self) -> bool  // State only
   pub fn is_done(&self) -> bool  // State only
@@ -3656,7 +3660,7 @@ pub struct Country  // and Currency, Mic, Cfi, Isin, Side, State, TimeInForce: o
   pub fn is_failed(&self) -> bool  // State only
   pub fn read(spelling: &str) -> Result<Self>  // State only
   pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
-pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Side, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
+pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sedol, Side, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> usize
@@ -3665,12 +3669,14 @@ pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Side, Stat
 
 ### yggdryl::types::string::codes  [rust\src\types\string\codes.rs]
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("side", DataType::Side, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self
   pub const fn cfi() -> Self
   pub const fn isin() -> Self
+  pub const fn cusip() -> Self
+  pub const fn sedol() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn code_width(&self) -> Option<usize>  (the most bytes one value may be; a maximum, so fixed_byte_width is None)
   pub const fn is_code(&self) -> bool
@@ -3709,12 +3715,14 @@ impl StringEnum
 ### yggdryl::types::string::fields  [rust\src\types\string\fields.rs]
 pub struct StringType  (field marker "string" over DataType::String(_); re-exported at the crate root)
   pub type StringField = TypedField<StringType>;
-pub struct CountryType  // and CurrencyType, MicType, CfiType, IsinType, SideType, StateType, TimeInForceType: the eight code markers (country, currency, mic, cfi, isin, side, state, timeinforce)
+pub struct CountryType  // and CurrencyType, MicType, CfiType, IsinType, CusipType, SedolType, SideType, StateType, TimeInForceType: the ten code markers (country, currency, mic, cfi, isin, cusip, sedol, side, state, timeinforce)
   pub type CountryField = TypedField<CountryType>;
   pub type CurrencyField = TypedField<CurrencyType>;
   pub type MicField = TypedField<MicType>;
   pub type CfiField = TypedField<CfiType>;
   pub type IsinField = TypedField<IsinType>;
+  pub type CusipField = TypedField<CusipType>;
+  pub type SedolField = TypedField<SedolType>;
   pub type SideField = TypedField<SideType>;
   pub type StateField = TypedField<StateType>;
   pub type TimeInForceField = TypedField<TimeInForceType>;
@@ -4128,10 +4136,11 @@ pub enum Term
   pub fn column(name: impl Into<SmolStr>) -> Self
   pub const fn attribute(attribute: Attribute) -> Self
   pub fn parameter(name: impl Into<SmolStr>) -> Self
-  pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Self
+  pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Result<Self>
   pub fn child(self, name: impl Into<SmolStr>) -> Self
   pub fn at(self, index: i64) -> Self
   pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self
+  pub fn filter_elements(self, predicate: Self) -> Result<Self>
   pub fn all(operands: impl IntoIterator<Item = Self>) -> Self
   pub fn any(operands: impl IntoIterator<Item = Self>) -> Self
   pub fn and(self, other: Self) -> Self

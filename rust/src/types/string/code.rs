@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::codes::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, ISIN_WIDTH, MIC_WIDTH, SIDE_WIDTH, STATE_WIDTH,
-    TIMEINFORCE_WIDTH,
+    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH,
+    SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
@@ -251,6 +251,308 @@ impl Isin {
 }
 
 impl fmt::Display for Isin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// The value one character of a securities identifier reads as: a digit as
+/// itself, a letter as ten plus its position in the alphabet, from `A` at
+/// ten to `Z` at thirty-five.
+///
+/// The one reading CUSIP and SEDOL share, over an upper-cased byte; anything
+/// else is not part of an identifier.
+const fn identifier_value(byte: u8) -> Option<u32> {
+    match byte {
+        b'0'..=b'9' => Some((byte - b'0') as u32),
+        b'A'..=b'Z' => Some((byte - b'A') as u32 + 10),
+        _ => None,
+    }
+}
+
+/// One validated CUSIP securities identifier.
+///
+/// Nine bytes: six of issuer, two of issue and one check digit, which is
+/// the modulus-10 "double-add-double" digit of the eight before it read
+/// with each letter as ten plus its alphabet position - every second
+/// character doubled, the digits of each product summed. A spelling whose
+/// check digit does not close it is refused for the reason an ISIN's is: an
+/// identifier that fails its own checksum is a typo, and a typo typed as a
+/// security joins to the wrong one.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Cusip(SmolStr);
+
+impl Cusip {
+    /// Validate and construct a CUSIP.
+    ///
+    /// Lower case is read as the upper case it spells, because the
+    /// identifier is case-insensitive by construction: the check digit
+    /// reads a letter by its position, which case does not change.
+    ///
+    /// ```
+    /// use yggdryl::types::Cusip;
+    ///
+    /// let apple = Cusip::new("037833100").unwrap();
+    /// assert_eq!(apple.as_str(), "037833100");
+    /// assert_eq!(apple.issuer(), "037833");
+    /// assert_eq!(apple.issue(), "10");
+    /// assert_eq!(apple.check_digit(), 0);
+    /// assert_eq!(Cusip::new("38259p508").unwrap().as_str(), "38259P508");
+    /// // One digit off is a typo, not a security.
+    /// assert!(Cusip::new("037833101").is_err());
+    /// assert!(Cusip::new("03783310").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the text is not nine ASCII bytes of the
+    /// identifier's shape, or when its check digit does not close it.
+    pub fn new(value: impl AsRef<str>) -> Result<Self> {
+        let value = types::ascii_text(CUSIP_WIDTH, value.as_ref().as_bytes())?;
+        let folded = value.to_ascii_uppercase();
+        if let Some(reason) = Self::refusal(&folded) {
+            return Err(crate::Error::InvalidDataType {
+                kind: "cusip",
+                reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
+            });
+        }
+        Ok(Self(SmolStr::new(folded)))
+    }
+
+    /// Borrow the validated identifier.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Borrow the shared storage without copying the identifier.
+    #[must_use]
+    pub const fn storage(&self) -> &SmolStr {
+        &self.0
+    }
+
+    /// The six-character issuer number.
+    #[must_use]
+    pub fn issuer(&self) -> &str {
+        &self.as_str()[..6]
+    }
+
+    /// The two-character issue number.
+    #[must_use]
+    pub fn issue(&self) -> &str {
+        &self.as_str()[6..8]
+    }
+
+    /// The check digit that closes the identifier.
+    #[must_use]
+    pub fn check_digit(&self) -> u8 {
+        self.as_str().as_bytes()[8] - b'0'
+    }
+
+    /// Whether `text` spells an identifier this type would accept, in
+    /// either case.
+    #[must_use]
+    pub fn is_valid(text: &str) -> bool {
+        text.len() == CUSIP_WIDTH
+            && text.is_ascii()
+            && Self::refusal(&text.to_ascii_uppercase()).is_none()
+    }
+
+    /// Whether `text` is an identifier exactly as this type stores it:
+    /// upper case, and closed by its check digit.
+    ///
+    /// What a column holds is the canonical spelling, so bytes arriving
+    /// through a cast are held to it rather than folded on every read.
+    #[must_use]
+    pub fn is_canonical(text: &str) -> bool {
+        text.len() == CUSIP_WIDTH
+            && text.is_ascii()
+            && !text.bytes().any(|byte| byte.is_ascii_lowercase())
+            && Self::refusal(text).is_none()
+    }
+
+    /// The check digit that closes eight leading characters, or `None`
+    /// where they are not eight upper-case alphanumerics.
+    ///
+    /// Each character reads as a digit or as ten plus its alphabet
+    /// position; every second value is doubled, the digits of every value
+    /// are summed, and the digit is what closes that sum to a multiple of
+    /// ten.
+    #[must_use]
+    pub fn closing_digit(body: &str) -> Option<u8> {
+        let bytes = body.as_bytes();
+        if bytes.len() != CUSIP_WIDTH - 1 {
+            return None;
+        }
+        let mut sum = 0_u32;
+        for (index, byte) in bytes.iter().enumerate() {
+            let mut value = identifier_value(*byte)?;
+            if index % 2 == 1 {
+                value *= 2;
+            }
+            sum += value / 10 + value % 10;
+        }
+        u8::try_from((10 - sum % 10) % 10).ok()
+    }
+
+    /// Why an upper-cased, nine-byte spelling is not an identifier, or
+    /// nothing.
+    fn refusal(folded: &str) -> Option<&'static str> {
+        let bytes = folded.as_bytes();
+        if bytes.len() != CUSIP_WIDTH {
+            return Some("expected nine characters");
+        }
+        if !bytes[..8].iter().all(u8::is_ascii_alphanumeric) {
+            return Some("expected eight alphanumerics before the check digit");
+        }
+        if !bytes[8].is_ascii_digit() {
+            return Some("expected a closing check digit");
+        }
+        match Self::closing_digit(&folded[..8]) {
+            Some(digit) if digit == bytes[8] - b'0' => None,
+            _ => Some("the check digit does not close the identifier"),
+        }
+    }
+}
+
+impl fmt::Display for Cusip {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// One validated SEDOL securities identifier.
+///
+/// Seven bytes: six alphanumerics and one check digit, the modulus-10
+/// digit of the six before it read with each letter as ten plus its
+/// alphabet position and weighted `1, 3, 1, 7, 3, 9` in turn. A spelling
+/// whose check digit does not close it is refused, as an ISIN's and a
+/// CUSIP's are: an identifier that fails its own checksum is a typo.
+#[repr(transparent)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct Sedol(SmolStr);
+
+impl Sedol {
+    /// The weight each of the six leading characters carries.
+    const WEIGHTS: [u32; SEDOL_WIDTH - 1] = [1, 3, 1, 7, 3, 9];
+
+    /// Validate and construct a SEDOL.
+    ///
+    /// Lower case is read as the upper case it spells, because the
+    /// identifier is case-insensitive by construction: the check digit
+    /// reads a letter by its position, which case does not change.
+    ///
+    /// ```
+    /// use yggdryl::types::Sedol;
+    ///
+    /// let shell = Sedol::new("B0YBKJ7").unwrap();
+    /// assert_eq!(shell.as_str(), "B0YBKJ7");
+    /// assert_eq!(shell.check_digit(), 7);
+    /// assert_eq!(Sedol::new("b0ybkj7").unwrap(), shell);
+    /// // One digit off is a typo, not a security.
+    /// assert!(Sedol::new("B0YBKJ8").is_err());
+    /// assert!(Sedol::new("B0YBKJ").is_err());
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the text is not seven ASCII bytes of the
+    /// identifier's shape, or when its check digit does not close it.
+    pub fn new(value: impl AsRef<str>) -> Result<Self> {
+        let value = types::ascii_text(SEDOL_WIDTH, value.as_ref().as_bytes())?;
+        let folded = value.to_ascii_uppercase();
+        if let Some(reason) = Self::refusal(&folded) {
+            return Err(crate::Error::InvalidDataType {
+                kind: "sedol",
+                reason: smol_str::format_smolstr!("{reason}, got {value:?}"),
+            });
+        }
+        Ok(Self(SmolStr::new(folded)))
+    }
+
+    /// Borrow the validated identifier.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Borrow the shared storage without copying the identifier.
+    #[must_use]
+    pub const fn storage(&self) -> &SmolStr {
+        &self.0
+    }
+
+    /// The check digit that closes the identifier.
+    #[must_use]
+    pub fn check_digit(&self) -> u8 {
+        self.as_str().as_bytes()[6] - b'0'
+    }
+
+    /// Whether `text` spells an identifier this type would accept, in
+    /// either case.
+    #[must_use]
+    pub fn is_valid(text: &str) -> bool {
+        text.len() == SEDOL_WIDTH
+            && text.is_ascii()
+            && Self::refusal(&text.to_ascii_uppercase()).is_none()
+    }
+
+    /// Whether `text` is an identifier exactly as this type stores it:
+    /// upper case, and closed by its check digit.
+    ///
+    /// What a column holds is the canonical spelling, so bytes arriving
+    /// through a cast are held to it rather than folded on every read.
+    #[must_use]
+    pub fn is_canonical(text: &str) -> bool {
+        text.len() == SEDOL_WIDTH
+            && text.is_ascii()
+            && !text.bytes().any(|byte| byte.is_ascii_lowercase())
+            && Self::refusal(text).is_none()
+    }
+
+    /// The check digit that closes six leading characters, or `None` where
+    /// they are not six upper-case alphanumerics.
+    ///
+    /// Each character reads as a digit or as ten plus its alphabet
+    /// position, weighted `1, 3, 1, 7, 3, 9` in turn, and the digit is what
+    /// closes the weighted sum to a multiple of ten.
+    #[must_use]
+    pub fn closing_digit(body: &str) -> Option<u8> {
+        let bytes = body.as_bytes();
+        if bytes.len() != SEDOL_WIDTH - 1 {
+            return None;
+        }
+        let mut sum = 0_u32;
+        for (byte, weight) in bytes.iter().zip(Self::WEIGHTS) {
+            sum += identifier_value(*byte)? * weight;
+        }
+        u8::try_from((10 - sum % 10) % 10).ok()
+    }
+
+    /// Why an upper-cased, seven-byte spelling is not an identifier, or
+    /// nothing.
+    fn refusal(folded: &str) -> Option<&'static str> {
+        let bytes = folded.as_bytes();
+        if bytes.len() != SEDOL_WIDTH {
+            return Some("expected seven characters");
+        }
+        if !bytes[..6].iter().all(u8::is_ascii_alphanumeric) {
+            return Some("expected six alphanumerics before the check digit");
+        }
+        if !bytes[6].is_ascii_digit() {
+            return Some("expected a closing check digit");
+        }
+        match Self::closing_digit(&folded[..6]) {
+            Some(digit) if digit == bytes[6] - b'0' => None,
+            _ => Some("the check digit does not close the identifier"),
+        }
+    }
+}
+
+impl fmt::Display for Sedol {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
@@ -494,6 +796,10 @@ pub enum Code {
     Cfi(Cfi),
     /// ISO 6166 securities identification number.
     Isin(Isin),
+    /// CUSIP securities identifier.
+    Cusip(Cusip),
+    /// SEDOL securities identifier.
+    Sedol(Sedol),
     /// FIX's side of a trade.
     Side(Side),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
@@ -523,6 +829,8 @@ impl Code {
             Self::Mic(value) => value.storage(),
             Self::Cfi(value) => value.storage(),
             Self::Isin(value) => value.storage(),
+            Self::Cusip(value) => value.storage(),
+            Self::Sedol(value) => value.storage(),
             Self::Side(value) => value.storage(),
             Self::State(value) => value.storage(),
             Self::TimeInForce(value) => value.storage(),
@@ -538,6 +846,8 @@ impl Code {
             Self::Mic(_) => MIC_WIDTH,
             Self::Cfi(_) => CFI_WIDTH,
             Self::Isin(_) => ISIN_WIDTH,
+            Self::Cusip(_) => CUSIP_WIDTH,
+            Self::Sedol(_) => SEDOL_WIDTH,
             Self::Side(_) => SIDE_WIDTH,
             Self::State(_) => STATE_WIDTH,
             Self::TimeInForce(_) => TIMEINFORCE_WIDTH,
@@ -553,6 +863,8 @@ impl Code {
             Self::Mic(_) => DataTypeId::Mic,
             Self::Cfi(_) => DataTypeId::Cfi,
             Self::Isin(_) => DataTypeId::Isin,
+            Self::Cusip(_) => DataTypeId::Cusip,
+            Self::Sedol(_) => DataTypeId::Sedol,
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
@@ -568,6 +880,8 @@ impl Code {
             Self::Mic(_) => DataType::Mic,
             Self::Cfi(_) => DataType::Cfi,
             Self::Isin(_) => DataType::Isin,
+            Self::Cusip(_) => DataType::Cusip,
+            Self::Sedol(_) => DataType::Sedol,
             Self::Side(_) => DataType::Side,
             Self::State(_) => DataType::State,
             Self::TimeInForce(_) => DataType::TimeInForce,
@@ -641,6 +955,8 @@ code_value!(Currency, Currency, CURRENCY_WIDTH);
 code_value!(Mic, Mic, MIC_WIDTH);
 code_value!(Cfi, Cfi, CFI_WIDTH);
 code_value!(Isin, Isin, ISIN_WIDTH);
+code_value!(Cusip, Cusip, CUSIP_WIDTH);
+code_value!(Sedol, Sedol, SEDOL_WIDTH);
 code_value!(Side, Side, SIDE_WIDTH);
 code_value!(State, State, STATE_WIDTH);
 code_value!(TimeInForce, TimeInForce, TIMEINFORCE_WIDTH);

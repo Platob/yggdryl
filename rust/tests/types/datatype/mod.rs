@@ -9,6 +9,7 @@ mod logical;
 mod nested;
 mod parser;
 mod scalar;
+mod securities;
 mod serde;
 mod string;
 mod temporal;

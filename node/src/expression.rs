@@ -684,7 +684,9 @@ impl JsTerm {
     #[napi]
     pub fn key(&self, key: &JsScalar) -> Result<Self> {
         let segment = CoreSegment::key(key.inner.clone()).map_err(napi_error)?;
-        Ok(Self::from_core(self.inner.clone().path([segment])))
+        Ok(Self::from_core(
+            self.inner.clone().path([segment]).map_err(napi_error)?,
+        ))
     }
 
     /// Build `this + other` after the loader has inferred the public input.
