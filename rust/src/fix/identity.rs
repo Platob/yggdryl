@@ -177,6 +177,25 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
     Ok(explicit.or(named))
 }
 
+/// Whether a column stands outside the content a message is identified by.
+///
+/// Three of them are the identity itself and would hash themselves:
+/// `uuid` is what is being computed, and `updatedat` and `createdat` are the
+/// clocks it is computed against. The fourth is `sourceurl`, and it is
+/// outside for the opposite reason: where a line was read from is a fact
+/// about the capture, not about the message. The same message read out of a
+/// re-cut file, a replayed archive or a second copy of one day's log is the
+/// same message, and it must digest to the same sixteen bytes in all of them.
+fn outside_content(tag: i32) -> bool {
+    [
+        UUID_TAG_NAME.0,
+        UPDATEDAT_TAG_NAME.0,
+        CREATEDAT_TAG_NAME.0,
+        super::SOURCEURL_TAG_NAME.0,
+    ]
+    .contains(&tag)
+}
+
 /// Part of the shared FIX column plan, never a second schema.
 pub(super) struct Plan {
     roles: [Option<usize>; 7],
@@ -215,11 +234,7 @@ impl Plan {
                     }
                 }
             }
-            if field.name() != ENTRIES_COLUMN
-                && !tag.is_some_and(|tag| {
-                    [UUID_TAG_NAME.0, UPDATEDAT_TAG_NAME.0, CREATEDAT_TAG_NAME.0].contains(&tag)
-                })
-            {
+            if field.name() != ENTRIES_COLUMN && !tag.is_some_and(outside_content) {
                 order.push(index);
             }
         }

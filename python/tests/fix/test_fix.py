@@ -50,12 +50,12 @@ from yggdryl.fix import (
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# The crate's own scalar fields: tags 65001 to 65019 and 65021 to 65025, the
+# The crate's own scalar fields: tags 65001 to 65019 and 65021 to 65026, the
 # retired 65000 never reused. ``fix_crate_fields`` also lists the ``altids``
 # Map group at 65020, which registry length and scalar iteration never count
 # (``rust/tests/fix/digest.rs``).
-CRATED = 24
-CRATE_TAGS = [*range(65001, 65020), *range(65021, 65026)]
+CRATED = 25
+CRATE_TAGS = [*range(65001, 65020), *range(65021, 65027)]
 # What ``FixRegistry()`` holds before anything is inserted: the crate's own
 # scalar fields and the two seeded standard clocks, SendingTime (52) and
 # TransactTime (60). A loaded dictionary states its own 52 and 60, so it holds
@@ -83,6 +83,7 @@ PREVUUID_TAG = 65022
 CREATEDAT_TAG = 65023
 CODE_TAG = 65024
 SNAPSHOTAT_TAG = 65025
+SOURCEURL_TAG = 65026
 
 
 def _fixed(registry: FixRegistry, **pins: Any) -> FixCodec:
@@ -799,7 +800,7 @@ def test_seed_iterates_in_canonical_tag_order(seed: FixRegistry) -> None:
 
     tags = [field.fix.tag for field in seed]
     assert tags == sorted(tags)
-    # The crate's own twenty-four close the walk, above every tag the
+    # The crate's own twenty-five close the walk, above every tag the
     # specification publishes; the store's own SendingTime and TransactTime
     # stand where their tags put them.
     assert tags[-CRATED:] == CRATE_TAGS
@@ -2155,12 +2156,13 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
         "bodylength",
         "msgtype",
     ], "named by the dictionary's folded names, in message order"
-    assert columns[-7:] == [
+    assert columns[-8:] == [
         "prevupdatedat",
         "prevuuid",
         "createdat",
         "code",
         "snapshotat",
+        "sourceurl",
         "msgdirection",
         "nofixentries",
     ], "and the one arrival record closes it"
@@ -2174,14 +2176,14 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema.index_of("999999") is None
     assert schema.name == "FixMessage"
     # The crate's own columns are spelled the same way, with the FIX-style
-    # spelling kept as the display: twenty-five definitions after the trailer,
-    # tags 65001 to 65025 with the `altids` Map at 65020, then FIX's own
+    # spelling kept as the display: twenty-six definitions after the trailer,
+    # tags 65001 to 65026 with the `altids` Map at 65020, then FIX's own
     # `msgdirection`, read from the line where the wire states none, then the
     # arrival record (``rust/tests/fix/schema.rs``).
-    assert len(fix_schema_tags()) == 105
-    assert fix_schema_tags()[-26:] == [*range(65001, 65026), 385]
-    assert [child.fix.tag for child in schema][-27:] == [*range(65001, 65026), 385, None]
-    assert columns[-27:-2] == [field.name for field in fix_crate_fields()]
+    assert len(fix_schema_tags()) == 106
+    assert fix_schema_tags()[-27:] == [*range(65001, 65027), 385]
+    assert [child.fix.tag for child in schema][-28:] == [*range(65001, 65027), 385, None]
+    assert columns[-28:-2] == [field.name for field in fix_crate_fields()]
     assert columns.count("altids") == 1
     altids = schema[schema.index_of("altids")]
     assert altids.nullable and altids.fix.counter == 65020
@@ -2331,7 +2333,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     in ``rust/tests/fix/digest.rs``.
     """
     fields = {field.name: field for field in fix_crate_fields()}
-    assert len(fields) == CRATED + 1 == 25
+    assert len(fields) == CRATED + 1 == 26
     # In tag order, one block from 65001, above every tag FIX or a venue
     # publishes, and none is a dictionary's contribution. The retired 65000
     # is not reused.
@@ -2361,6 +2363,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "createdat",
         "code",
         "snapshotat",
+        "sourceurl",
     ]
     assert [field.display for field in fields.values()] == [
         "Version",
@@ -2388,11 +2391,12 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "CreatedAt",
         "Code",
         "SnapshotAt",
+        "SourceUrl",
     ]
-    assert [field.fix.tag for field in fields.values()] == list(range(65001, 65026))
+    assert [field.fix.tag for field in fields.values()] == list(range(65001, 65027))
     assert all(field.fix.branches == [] for field in fields.values())
     assert [field.fix.id for field in fields.values()] == [
-        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, range(65001, 65026))
+        _field(name, "utf8", tag).fix.id for name, tag in zip(fields, range(65001, 65027))
     ]
     # The settled bundle's crate members are non-null as fields; every other
     # one is nullable, and every one says what it holds.
@@ -2410,6 +2414,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     for name in ("updatedat", "prevupdatedat", "createdat", "snapshotat"):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["code"].dtype == DataType("utf8")
+    # Where a line was read from is the URL it is, so a row joins on it.
+    assert fields["sourceurl"].fix.tag == SOURCEURL_TAG
+    assert fields["sourceurl"].dtype == DataType("url")
     # The partition names the column it reads by that column's name.
     held = fields["timepartition"]
     assert held.dtype == DataType('datetime64(ns,"UTC")')

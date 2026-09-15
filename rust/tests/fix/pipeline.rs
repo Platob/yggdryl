@@ -226,19 +226,17 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .map(|held| held.name().as_str())
         .collect();
 
-    // The text reader's own columns lead the row - where the line came from,
-    // which line it was, when it was written, what it was, the line itself
-    // and the header's
-    // captures - and the fixed columns follow. A capture whose folded name a
-    // fixed column takes is not carried in front, it fills that column: the
-    // reader's `msgtype`, and the header's `msgCtxId` and
+    // The text reader's own columns lead the row - which line it was, when it
+    // was written, what it was, the line itself and the header's captures -
+    // and the fixed columns follow. A capture whose folded name a fixed
+    // column takes is not carried in front, it fills that column: the
+    // reader's `msgtype` and `sourceurl`, and the header's `msgCtxId` and
     // `pluginid`. `senderSessionId` names a fixed column too, so it is not
     // carried either. `seqNum` is, since no fixed column is spelled so, and
     // it fills `msgseqnum` besides.
     assert_eq!(
-        &names[..9],
+        &names[..8],
         [
-            "sourceurl",
             "rownum",
             "mtime",
             "mimetype",
@@ -251,12 +249,13 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "{names:?}"
     );
     assert_eq!(
-        &names[9..12],
+        &names[8..11],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
     for once in [
         "msgtype",
+        "sourceurl",
         "timestamp",
         "sendersessionid",
         "msgctxid",

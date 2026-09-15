@@ -51,8 +51,8 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 105);
-    let (message, crated) = tags.split_at(tags.len() - 26);
+    assert_eq!(tags.len(), 106);
+    let (message, crated) = tags.split_at(tags.len() - 27);
     assert_eq!(
         message,
         [
@@ -63,19 +63,20 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         ]
         .concat()
     );
-    assert_eq!(crated, (65_001..=65_025).chain([385]).collect::<Vec<_>>());
+    assert_eq!(crated, (65_001..=65_026).chain([385]).collect::<Vec<_>>());
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     assert_eq!(
-        &names[names.len() - 7..],
+        &names[names.len() - 8..],
         [
             "prevupdatedat",
             "prevuuid",
             "createdat",
             "code",
             "snapshotat",
+            "sourceurl",
             "msgdirection",
             "nofixentries",
         ]

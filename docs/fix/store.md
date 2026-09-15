@@ -251,7 +251,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
     // Live counts include the builtins omitted from persistence.
-    assert_eq!(fix_crate_fields()?.len(), 25);
+    assert_eq!(fix_crate_fields()?.len(), 26);
     assert_eq!(registry.len(), 6_265);
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
     assert_eq!(registry.definitions(FixCategory::Components).count(), 929);
@@ -284,7 +284,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert registry.dialects() == []
     assert all(field.fix.branches == [] for field in registry)
     # Live counts include the builtins omitted from persistence.
-    assert len(fix_crate_fields()) == 25
+    assert len(fix_crate_fields()) == 26
     assert len(registry) == 6_265
     assert len(list(registry.definitions("groups"))) == 581
     assert len(list(registry.definitions("components"))) == 929
@@ -316,7 +316,7 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert.deepEqual(registry.dialects(), [])
     assert.ok([...registry].every((field) => field.fix.branches.length === 0))
     // Live counts include the builtins omitted from persistence.
-    assert.equal(fix.crateFields().length, 25)
+    assert.equal(fix.crateFields().length, 26)
     assert.equal(registry.size, 6265)
     assert.equal([...registry.definitions('groups')].length, 581)
     assert.equal([...registry.definitions('components')].length, 929)

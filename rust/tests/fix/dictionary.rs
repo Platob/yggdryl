@@ -520,12 +520,13 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// `OrderQty` reading a canceled quantity outright, `isincode` reading each
 /// identifier through `try_cast(... as isin)`. It then types the four
 /// identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - as
-/// `fixed_size_binary(16)` rather than `uuid`, which is the last thing to
-/// move this number.
+/// `fixed_size_binary(16)` rather than `uuid`. The last thing to move this
+/// number is the crate's own `sourceurl`: where a line was read from is a
+/// column of the row, typed as the URL it is.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 2_559_683_158_366_975_942);
+    assert_eq!(registry.stable_hash(), 10_911_102_061_168_533_837);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

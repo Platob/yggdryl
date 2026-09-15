@@ -473,6 +473,8 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
     assert!(fixed.len() > 80, "{} fixed columns", fixed.len());
     let direction =
         yggdryl::fix_column_of(&schema, yggdryl::MSGDIRECTION_TAG_NAME.0).expect("the direction");
+    let source =
+        yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("the source url");
     let mut next = 0;
     let mut unread: Vec<(usize, i32)> = Vec::new();
     for (line, held) in lines.iter().enumerate() {
@@ -494,6 +496,12 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
                 if index == direction {
                     // The batch door fills the codec's pin where a line states
                     // no direction; the line door leaves it unsaid (decision 14).
+                    continue;
+                }
+                if index == source {
+                    // Where a line was read from is the capture's answer, not
+                    // the line's: the batch door has an object to name and a
+                    // line handed over on its own does not.
                     continue;
                 }
                 let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);

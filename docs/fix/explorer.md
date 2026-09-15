@@ -23,7 +23,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 | Components, including messages | 928 | 929 |
 | Messages, a subset of components | 181 | 182 |
 
-The live additions are the crate's 24 scalar fields, the `altids` group and the `pluginconfig` message component; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 109 columns.
+The live additions are the crate's 25 scalar fields, the `altids` group and the `pluginconfig` message component; the shipped dictionary already defines `SendingTime` and `TransactTime`, so no standard clock is seeded beside them. The native fixed capture schema has 110 columns.
 
 === "Rust"
 
@@ -126,7 +126,7 @@ Codes and `fix:identifiers` appear inside their owning field's detail panel. Lis
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 109 fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
+The [Capture](capture.md#find-a-column) page searches the 110 fixed columns projected by the native schema. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar`, raw arrivals, facets and anomalies.
 
 ## Where it came from
 

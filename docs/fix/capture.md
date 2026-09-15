@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 24 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `nofixentries` record: 105 tags from `fix_schema_tags`, 109 columns with the shipped registry, each List group adding its column beside its counter |
+| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 25 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `nofixentries` record: 106 tags from `fix_schema_tags`, 110 columns with the shipped registry, each List group adding its column beside its counter |
 | Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
 | Non-null | `beginstring`, `sendingtime`, `updatedat`, `timepartition`, `uuid`, `puuid`, `createdat`, `code`, `snapshotat`; `version` is populated at construction but its column remains nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -280,7 +280,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     let columns: Vec<&str> = schema.fields().iter().map(yggdryl::Field::name).collect();
     assert_eq!(&columns[..3], ["beginstring", "bodylength", "msgtype"]);
     assert_eq!(columns.last(), Some(&"nofixentries"));
-    assert_eq!(fix_schema_tags().len(), 105);
+    assert_eq!(fix_schema_tags().len(), 106);
     assert_eq!(&fix_schema_tags()[..3], [8, 9, 35]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -304,7 +304,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     columns = [child.name for child in schema]
     assert columns[:3] == ["beginstring", "bodylength", "msgtype"]
     assert columns[-1] == "nofixentries"
-    assert len(fix_schema_tags()) == 105
+    assert len(fix_schema_tags()) == 106
     assert fix_schema_tags()[:3] == [8, 9, 35]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -325,7 +325,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     assert.equal(schema.fieldAt(0).name, 'beginstring')
     assert.equal(schema.fieldAt(2).name, 'msgtype')
     assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'nofixentries')
-    assert.equal(fix.schemaTags().length, 105)
+    assert.equal(fix.schemaTags().length, 106)
     assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -374,6 +374,7 @@ Twenty-four scalar fields and one Map group carry capture facts that no dictiona
 | `createdat` | `CreatedAt` | 65023 | the creation instant: `snapshotat` at intake, the first accepted message's in a live chain; non-null |
 | `code` | `Code` | 65024 | the exact chain name, empty when unknown; non-null |
 | `snapshotat` | `SnapshotAt` | 65025 | the real event instant: a stated one, else `TransactTime(60)`, else `SendingTime(52)`; non-null |
+| `sourceurl` | `SourceUrl` | 65026 | the object the line was read from, typed as a `url`: filled from the text read's own `sourceurl` column, and left out of the content `uuid` hashes, because the same message read from a second copy of one day's log is the same message |
 
 The four identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - are `fixedbinary(16)`, sixteen plain big-endian bytes with no version or variant bit and no Arrow extension over them, because every lake engine reads `fixed[16]` and none reads `uuid` the same way twice. Their names, tags, roles, nullability and every identity semantic are what they always were; only the type and the byte layout are stated outright.
 
@@ -403,7 +404,7 @@ The root's children are the standard header in its declared order, the body as i
     use yggdryl::{CODE_TAG_NAME, FixCodec, FixRegistry, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 25);
+    assert_eq!(fields.len(), 26);
     let partition = &fields[3];
     assert_eq!(partition.name(), "timepartition");
     assert_eq!(partition.display(), Some("TimePartition"));
@@ -462,7 +463,7 @@ The root's children are the standard header in its declared order, the body as i
 
     CODE, SNAPSHOTAT = 65024, 65025
     fields = list(fix_crate_fields())
-    assert len(fields) == 25
+    assert len(fields) == 26
     partition = fields[3]
     assert partition.name == "timepartition"
     assert partition.metadata["display"] == "TimePartition"
@@ -512,7 +513,7 @@ The root's children are the standard header in its declared order, the body as i
 
     const [CODE, SNAPSHOTAT] = [65024, 65025]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 25)
+    assert.equal(fields.length, 26)
     const partition = fields[3]
     assert.equal(partition.name, 'timepartition')
     assert.equal(partition.display, 'TimePartition')

@@ -90,7 +90,7 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
     # remove, and the two seeded standard clocks, SendingTime (52) and
     # TransactTime (60). The crate also lists its `altids` Map group.
     assert len(registry) == len(list(registry.definitions("fields"))) == 26
-    assert len(fix_crate_fields()) == 25
+    assert len(fix_crate_fields()) == 26
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
     assert registry.group_by_tag(65020).name == "altids"
 

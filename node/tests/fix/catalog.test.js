@@ -99,7 +99,7 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   assert.equal([...registry.definitions('fields')].length, 26)
   assert.equal(registry.fieldByTag(52).name, 'sendingtime')
   assert.equal(registry.fieldByTag(60).name, 'transacttime')
-  assert.equal(fix.crateFields().length, 25)
+  assert.equal(fix.crateFields().length, 26)
   assert.equal(registry.groupByTag(65020).name, 'altids')
 })
 

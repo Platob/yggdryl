@@ -949,8 +949,9 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // `isincode`, `miccode` and `state` derive on the fields themselves -
     // `isincode` reading each identifier through `try_cast(... as isin)` -
     // and finally types the four identity columns as `fixed_size_binary(16)`
-    // rather than `uuid`.
-    assert_eq!(carrying.stable_hash(), 10_038_847_448_497_322_741);
+    // rather than `uuid`. The crate's own `sourceurl` moved it last: where a
+    // line was read from is a column of the row.
+    assert_eq!(carrying.stable_hash(), 17_490_854_726_421_900_252);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

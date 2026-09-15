@@ -243,6 +243,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "createdat",
             "code",
             "snapshotat",
+            "sourceurl",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -274,6 +275,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("CreatedAt"),
             Some("Code"),
             Some("SnapshotAt"),
+            Some("SourceUrl"),
         ],
     );
 
@@ -306,6 +308,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(held[23].dtype(), &DataType::utf8());
     assert!(!held[23].is_nullable());
+    // Where a line was read from is the URL it is, so a row joins on it and
+    // a reader resolves it rather than parsing text back into one.
+    assert_eq!(held[25].name(), yggdryl::SOURCEURL_TAG_NAME.1);
+    assert_eq!(held[25].dtype(), &DataType::Url);
+    assert!(held[25].is_nullable());
     // The partition is the hour `updatedat` falls in, typed as that clock
     // is; it is marked as the column a layout is cut on, names the clock it
     // reads, and declares its derivation in the expression layer's own
@@ -388,8 +395,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 25);
-    assert_eq!(scalar_count, 24);
+    assert_eq!(held.len(), 26);
+    assert_eq!(scalar_count, 25);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);
@@ -422,5 +429,43 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         registry
             .get_field_by_tag(yggdryl::ALTIDS_TAG_NAME.0)
             .is_none()
+    );
+}
+
+/// Where a line was read from is not what the message says.
+///
+/// A capture is re-cut, replayed and copied, and the same message comes back
+/// out of a different object every time. Its sixteen identity bytes are the
+/// message's content, so they must not move when only the object does -
+/// otherwise a replay deduplicates against nothing and every archived day
+/// re-enters a table as new rows.
+#[test]
+fn the_object_a_line_was_read_from_is_not_part_of_the_message() {
+    let registry = super::committed_registry();
+    let reader = super::fixed_codec(std::sync::Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").unwrap();
+    let line = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|10=0|";
+
+    let at =
+        yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("a sourceurl column");
+    let uuid_at = yggdryl::fix_column_of(&schema, yggdryl::UUID_TAG_NAME.0).expect("a uuid column");
+    let mut identities = Vec::new();
+    for url in [
+        "file:///capture/2026-08-14/part-0.txt.gz",
+        "s3://replay/2026-08-14/part-0.txt.gz",
+    ] {
+        let stated = yggdryl::Scalar::from(yggdryl::Url::from_str(url).unwrap());
+        let mut message = reader.sole_line(line, false).unwrap();
+        message
+            .set(yggdryl::SOURCEURL_TAG_NAME.0, stated.clone())
+            .unwrap();
+        let row = message.into_row(&schema).unwrap();
+        let held = row.as_sequence().expect("a row");
+        assert_eq!(held[at], stated, "the column still states it");
+        identities.push(held[uuid_at].clone());
+    }
+    assert_eq!(
+        identities[0], identities[1],
+        "one message read from two objects is one message",
     );
 }
