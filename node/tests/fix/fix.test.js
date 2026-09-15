@@ -1316,10 +1316,12 @@ test('a reader parses every frame shape the core reads', () => {
   // `puuid`, `code`, `snapshotat`, `sendingtime` (`rust/tests/fix/codec.rs`).
   // None is an entry unless the line carried it, so the wire re-emits byte
   // for byte.
-  const pairs = fixedCodec(registry, { version: '4.2' }).parsePairs([['55', 'AAPL']])
+  const pairs = fixedCodec(registry).parsePairs([['55', 'AAPL']])
   assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'version', ...REPLAY])
-  assert.equal(pairs.byTag(65001).toJSON(), '4.2')
-  assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.2')
+  // Pairs state no frame, so the read is at the dictionary's newest.
+  const newest = '5.0.2'
+  assert.equal(pairs.byTag(65001).toJSON(), newest)
+  assert.equal(pairs.byTag(8).toJSON(), `FIX.${newest}`)
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
   assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
   // An undated message takes the codec's default SendingTime, and its event,
@@ -1359,15 +1361,18 @@ test('a reader parses every frame shape the core reads', () => {
 test('a reader takes the pins the core takes', () => {
   const registry = seed()
 
-  // Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A pin settles how
-  // a value is read, never what a field is called: the column is the
-  // dictionary's own whatever version read the row, and the 4.2 spelling still
-  // reaches it as an alias.
-  const dated = new fix.FixCodec(registry, { version: '4.2' })
-  const named = dated.parseLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).next().value
+  // Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A version
+  // settles how a value is read, never what a field is called: the column is
+  // the dictionary's own whatever version read the row, and the 4.2 spelling
+  // still reaches it as an alias.
+  const dated = new fix.FixCodec(registry)
+  const named = dated.parseLine(Buffer.from('8=FIX.4.2|35=8|32=100|10=0|')).next().value
   assert.ok(named.field.indexOf('lastqty') !== null)
   assert.ok(named.getByName('lastshares') !== null)
   assert.ok(named.getByName('lastqty') !== null)
+
+  // A codec pins no version: a row states one, or the line implies it.
+  assert.equal(dated.version, undefined)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })

@@ -655,7 +655,6 @@ pub struct FixCodec
   pub const DEFAULT_BATCH_BYTE_SIZE: u64 = 128 * 1024 * 1024;  (the raw bytes one Arrow batch targets; a target, not a ceiling, and a batch always holds one row)
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn registry(&self) -> &Arc<FixRegistry>
-  pub const fn version(&self) -> Option<Version>
   pub const fn default_sending_time(&self) -> Option<&Scalar>
   pub fn set_default_sending_time(&mut self, value: Option<Scalar>) -> Result<()>
   pub fn try_with_default_sending_time(self, value: Option<Scalar>) -> Result<Self>  (exact ns/UTC or None; initial intake only)
@@ -665,7 +664,6 @@ pub struct FixCodec
   pub fn payload_column(&self) -> &str
   pub const fn separator(&self) -> Option<u8>
   pub fn null_values(&self) -> &[String]
-  pub const fn with_version(mut self, version: Version) -> Self  (unpinned, a row reads at `ApplVerID`, else `BeginString`, else the dictionary's newest)
   pub const fn with_separator(mut self, separator: u8) -> Self
   pub fn with_payload_column(mut self, column: impl Into<SmolStr>) -> Self
   pub fn with_capture_names<I, S>(mut self, names: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (what a run's row-header captures are called, resolved once and read by position)
@@ -694,7 +692,9 @@ impl FixCodec
   pub fn enrich_messages_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, restated and filled FIX rows out under the same schema; no re-parse; the same pass `enrich_message` runs; one memory of the configurations passed crosses every batch, because a capture split into batches is one capture; decisions 19 and 20)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema)
   pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row`; batches close on the arrival record's raw bytes; completed prefix then error and fusion)
-  pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `nofixentries`)
+  pub fn format_messages<'codec, 'field, I>(&'codec self, messages: I, field: &'field Field) -> impl Iterator<Item = Result<Scalar>> + use<'codec, 'field, I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (each message through `FixMsg::into_row` under one message field of the registry; a column the message does not carry is lifted off its arrival record; a packed occurrence, a composed key and a row-header capture are the codec's readings and are not in the record to lift)
+  pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader>  (the Arrow twin; the capture's own columns still lead the row; a source carrying no arrival record is cast through `arrow::cast_reader` instead of read back as messages)
+  pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `fixentries`)
 
 ### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
 pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each chain retains code, first accepted createdat, last full-message clock/UUID and highest consumed grid bucket; capacity bounded by peak live state)
@@ -742,6 +742,8 @@ pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable fixe
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
 pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
 pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; filled from the text read's own sourceurl column, and outside the content uuid hashes)
+pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter; outside the content uuid hashes, because the record it counts is)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
 pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
@@ -921,15 +923,22 @@ pub const HEADER_TAGS: [i32; 24]
 pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 49]
 pub const GROUP_TAGS: [i32; 3]
-pub const ENTRIES_COLUMN: &str = "nofixentries";
+pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries)
 pub fn fix_schema_tags() -> Vec<i32>
+pub fn fix_generic_tags() -> Vec<i32>  (the columns the crate's own GenericMessage holds: the fixed row's own)
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
 impl FixMsg
-  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `nofixentries`; a row without that column has no entries)
-  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null)
+  pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `fixentries`; a row without that column has no entries)
+  pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null; a value a column will not hold is that column's null, reported through `log` at warn level, and a nested column keeps every leaf that does read)
   pub fn symbol_ticker(&self) -> Scalar
   pub fn time_partition(&self, seconds: i64) -> Scalar
+
+### yggdryl::fix::generic  [rust\src\fix\generic.rs]
+pub const GENERICMESSAGE_CODE_NAME: (&str, &str) = ("UGEN", "genericmessage");  (the crate's own generic message: `U` opens every type FIX reserves for a counterparty's own, as `UCFG` did for pluginconfig)
+pub fn fix_generic_message(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row's own columns carrying fix:msgtype, so a format has a target to name when a caller names none)
+impl FixRegistry
+  pub fn with_generic_message(self) -> Result<Self>  (registers it under Components, idempotent under the guard with_plugin_fields uses)
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry

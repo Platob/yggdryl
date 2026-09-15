@@ -396,7 +396,6 @@ impl CaptureRole {
 #[derive(Clone)]
 pub struct FixCodec {
     registry: Arc<FixRegistry>,
-    version: Option<Version>,
     /// Already validated; absence defers the one now read until intake.
     default_sending_time: Option<Scalar>,
     separator: Option<u8>,
@@ -465,7 +464,6 @@ impl FixCodec {
         let direction = Some(SmolStr::new(msgdirection.sent()));
         Self {
             registry,
-            version: None,
             default_sending_time: None,
             separator: None,
             payload_column: SmolStr::new_static(DEFAULT_PAYLOAD_COLUMN),
@@ -486,12 +484,6 @@ impl FixCodec {
     #[must_use]
     pub const fn registry(&self) -> &Arc<FixRegistry> {
         &self.registry
-    }
-
-    /// The version messages are built at, where the caller pinned one.
-    #[must_use]
-    pub const fn version(&self) -> Option<Version> {
-        self.version
     }
 
     /// The exact nanosecond/UTC clock used when neither message nor carrier
@@ -564,21 +556,6 @@ impl FixCodec {
     #[must_use]
     pub fn null_values(&self) -> &[String] {
         &self.null_values
-    }
-
-    /// Pins the version the built messages are read at.
-    ///
-    /// A value is translated through the code spellings that version declares,
-    /// and nothing else changes: a tag is one column under the name the
-    /// dictionary holds it by, whatever version read it. Unpinned, each row
-    /// answers for itself:
-    /// `ApplVerID(1128)` first, then `BeginString(8)`, then the dictionary's
-    /// newest - which is what a capture carrying more than one application
-    /// version needs.
-    #[must_use]
-    pub const fn with_version(mut self, version: Version) -> Self {
-        self.version = Some(version);
-        self
     }
 
     /// Pins the byte a re-emitted line separates its fields with.
@@ -1786,9 +1763,11 @@ impl FixCodec {
         nested: &[TextBytes],
         extras: RowExtras<'_>,
     ) -> Result<FixMsg> {
-        // The version is the row's, else the pin, else what the line implies.
-        let pinned = extras.version.or(self.version);
-        let version = pinned.or_else(|| self.infer_version(pairs));
+        // The version is the row's own, else what the line implies. A row
+        // states one where the transport knew it and the frame did not, which
+        // is what a bridge log carries in its `beginstring` capture.
+        let stated_version = extras.version;
+        let version = stated_version.or_else(|| self.infer_version(pairs));
         // What the payload spelled, else the code the reader supplies for a
         // payload that states none of its own (decision 19). A stated one
         // wins, as a stated value always does.
@@ -1813,7 +1792,7 @@ impl FixCodec {
         // nothing tries to read `<null>` as a price and file the failure.
         builder.push_pairs(pairs, |key, value| self.is_absent(key, value));
         for row in nested {
-            self.push_nested(&mut builder, row, pinned);
+            self.push_nested(&mut builder, row, stated_version);
         }
         for fill in extras.fills {
             if fill.tag != 52 {
@@ -2779,17 +2758,15 @@ mod clock_intake_tests {
             .with_capture_names([BEGINSTRING_COLUMN, "SendingTime"]);
         let old = clock(1_704_190_530_000_000_000);
         let new = clock(1_704_190_531_000_000_000);
-        for (pin, row_version, frame, expected) in [
-            (None, None, "4.2", &old),
-            (None, None, "4.4", &new),
-            (Some("4.4"), None, "4.2", &new),
-            (Some("4.4"), Some("4.2"), "4.4", &old),
-            (Some("4.2"), Some("4.4"), "4.2", &new),
+        // The row's own version outranks the frame's, and the frame's answers
+        // where the row states none: those are the two ranks there are.
+        for (row_version, frame, expected) in [
+            (None, "4.2", &old),
+            (None, "4.4", &new),
+            (Some("4.4"), "4.2", &new),
+            (Some("4.2"), "4.4", &old),
         ] {
-            let reader = pin.map_or_else(
-                || codec.clone(),
-                |pin| codec.clone().with_version(version(pin)),
-            );
+            let reader = codec.clone();
             for source in ["52=Clock|", "scope.SendingTime=Clock|", ""] {
                 let body = format!("8=FIX.{frame}|35=D|{source}");
                 let line = text_line(body.as_bytes())
@@ -2807,45 +2784,57 @@ mod clock_intake_tests {
                 assert_eq!(
                     message.by_tag(52).unwrap(),
                     expected,
-                    "{pin:?} {row_version:?} {frame} {source}"
+                    "{row_version:?} {frame} {source}"
                 );
                 assert_eq!(message.updatedat(), expected);
             }
         }
         // A lifted namespace is typed at the nested row's resolved version,
-        // not the outer frame's restored version. An explicit pin dates both.
-        for (reader, expected) in [
-            (codec.clone(), &new),
-            (codec.clone().with_version(version("4.2")), &old),
-        ] {
+        // not the outer frame's restored version - and a version the row
+        // itself stated dates the nested row too.
+        for (row_version, expected) in [(None, &new), (Some("4.2"), &old)] {
             for nested in ["SendingTime=Clock", "scope.SendingTime=Clock"] {
-                let frame = format!("8=FIX.4.2|35=UL|212={}|213={nested}|10=0|", nested.len());
-                let message = reader.parse_fix_line(frame.as_bytes()).unwrap();
+                let body = format!("8=FIX.4.2|35=UL|212={}|213={nested}|10=0|", nested.len());
+                let line = text_line(body.as_bytes())
+                    .with_captures(vec![
+                        row_version.map(|held| TextBytes::from_bytes(held.as_bytes()).unwrap()),
+                        None,
+                    ])
+                    .unwrap();
+                let message = codec
+                    .parse_text_line(&line)
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap();
                 assert_eq!(message.by_tag(52).unwrap(), expected, "{nested}");
             }
         }
         // Raw consensus also needs semantic consensus across source versions.
         // The duplicate nested voice exercises one conversion per version.
-        for (reader, spelling, expected) in [
-            (codec.clone(), "Clock", clock(17)),
-            (codec.clone(), "20240102-10:15:30", old.clone()),
-            (
-                codec.clone().with_version(version("4.2")),
-                "Clock",
-                old.clone(),
-            ),
-            (
-                codec.clone().with_version(version("4.4")),
-                "Clock",
-                new.clone(),
-            ),
+        for (row_version, spelling, expected) in [
+            (None, "Clock", clock(17)),
+            (None, "20240102-10:15:30", old.clone()),
+            (Some("4.2"), "Clock", old.clone()),
+            (Some("4.4"), "Clock", new.clone()),
         ] {
             let nested = format!("right.SendingTime={spelling}|also.SendingTime={spelling}");
-            let frame = format!(
+            let body = format!(
                 "8=FIX.4.2|35=UL|left.SendingTime={spelling}|212={}|213={nested}|10=0|",
                 nested.len()
             );
-            let message = reader.parse_fix_line(frame.as_bytes()).unwrap();
+            let line = text_line(body.as_bytes())
+                .with_captures(vec![
+                    row_version.map(|held| TextBytes::from_bytes(held.as_bytes()).unwrap()),
+                    None,
+                ])
+                .unwrap();
+            let message = codec
+                .parse_text_line(&line)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap();
             assert_eq!(message.by_tag(52).unwrap(), &expected, "{spelling}");
         }
         let frame = |direct: &str, left: &str, right: &str| {

@@ -1313,14 +1313,6 @@ export declare class FixCodec {
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
   get registry(): FixRegistry
-  /**
-   * The version values are read at, or `null` where each line states its
-   * own.
-   *
-   * A row reads at `ApplVerID`, then `BeginString`, then this pin, then
-   * the registry's newest.
-   */
-  get version(): string | null
   /** The byte a numeric frame splits on, or `null` where the line decides. */
   get separator(): number | null
   /** The record column a line is read from. */
@@ -5850,8 +5842,6 @@ export interface FileSelector {
 
 /** How a codec is pinned, where a caller pins it at all. */
 export interface FixCodecOptions {
-  /** The version built messages are expressed in. */
-  version?: string
   /** The byte a numeric frame splits on where the line does not say. */
   separator?: number
   /** The batch column a line is read from; `body` when unstated. */

@@ -5166,8 +5166,8 @@ class FixCodec:
     ``write_arrow_reader`` re-emits the wire. ``lifecycle`` fills a stream of
     messages through one ``FixLifecycle`` at its default interval. Batches
     close on raw bytes against ``batch_byte_size``. A pin is on the codec; a
-    stage is a call. A version crosses as ``str`` and is parsed once at the
-    boundary.
+    stage is a call. A codec pins no version: a row states one in its
+    ``beginstring`` capture, else the line implies it.
 
     ``default_sending_time`` is the ``SendingTime`` a genuinely new message
     takes when neither it nor its carrier states a valid one: a ``Scalar``
@@ -5182,7 +5182,6 @@ class FixCodec:
         self,
         registry: FixRegistry | None = None,
         *,
-        version: str | None = None,
         default_sending_time: Scalar | datetime.datetime | None = None,
         separator: int | None = None,
         payload_column: str = "body",
@@ -5193,8 +5192,6 @@ class FixCodec:
     ) -> None: ...
     @property
     def registry(self) -> FixRegistry: ...
-    @property
-    def version(self) -> str | None: ...
     @property
     def default_sending_time(self) -> Scalar | None: ...
     @property

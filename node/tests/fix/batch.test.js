@@ -262,7 +262,8 @@ test("a row's pluginid fills its own column and selects nothing", () => {
 test('the codec answers the pins it was given', () => {
   const registry = seed()
   const bare = new fix.FixCodec(registry)
-  assert.equal(bare.version, null)
+  // A codec pins no version: a row states one, or the line implies it.
+  assert.equal(bare.version, undefined)
   assert.equal(bare.separator, null)
   assert.equal(bare.payloadColumn, 'body')
   assert.deepEqual(bare.nullValues, ['', 'null', '<null>'])
@@ -271,14 +272,12 @@ test('the codec answers the pins it was given', () => {
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
 
   const pinned = new fix.FixCodec(registry, {
-    version: 'FIX.4.2',
     separator: PIPE,
     payloadColumn: 'line',
     nullValues: ['<none>'],
     direction: 'Receive',
     batchByteSize: 4096,
   })
-  assert.equal(pinned.version, '4.2')
   // No pin names a dialect: the dictionary is one namespace.
   assert.equal('branch' in pinned, false)
   assert.equal(pinned.separator, PIPE)

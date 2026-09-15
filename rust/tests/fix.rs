@@ -167,6 +167,25 @@ fn plugin_fields_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
     }))
 }
 
+/// One line read at a version the row itself states.
+///
+/// A codec pins no version: the two ranks are what the row states and what
+/// the line implies, so a fixture that wants a version of its own says it
+/// the way a bridge log says it - in the `beginstring` the transport wrote
+/// around the body.
+fn dated_line(
+    codec: &yggdryl::FixCodec,
+    body: &[u8],
+    version: &str,
+) -> yggdryl::Result<yggdryl::FixMsg> {
+    use yggdryl::media::text::{TextBytes, TextLine};
+
+    let codec = codec.clone().with_capture_names(["beginstring"]);
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(body)?)?
+        .with_captures(vec![Some(TextBytes::from_bytes(version.as_bytes())?)])?;
+    sole_message(codec.parse_text_line(&line)?)
+}
+
 /// The sole message a fixture carrying one is read into.
 ///
 /// A row yields none, one or many (decision 16), so a fixture that carries

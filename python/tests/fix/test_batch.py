@@ -208,7 +208,8 @@ def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
 
 def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     bare = FixCodec(seed)
-    assert bare.version is None
+    # A codec pins no version: a row states one, or the line implies it.
+    assert not hasattr(bare, "version")
     assert bare.separator is None
     assert bare.payload_column == "body"
     assert bare.null_values == ["", "null", "<null>"]
@@ -220,7 +221,6 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
 
     pinned = FixCodec(
         seed,
-        version="FIX.4.2",
         default_sending_time=CLOCK,
         separator=124,
         payload_column="line",
@@ -228,7 +228,6 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
         direction="Receive",
         batch_byte_size=4096,
     )
-    assert pinned.version == "4.2"
     assert pinned.default_sending_time == CLOCK
     assert pinned.separator == 124
     assert pinned.payload_column == "line"

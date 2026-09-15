@@ -1638,18 +1638,22 @@ def test_arrow_reader_uses_separatorless_group_inference(seed: FixRegistry) -> N
 
 
 def test_reader_takes_the_pins_the_core_takes(seed: FixRegistry) -> None:
-    """A version and the spellings that mean nothing was sent."""
+    """The spellings that mean nothing was sent, and no version pin at all."""
     assert FixCodec(seed).registry == seed
 
-    # Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A pin settles how
-    # a value is read, never what a field is called: the column is the
-    # dictionary's own whatever version read the row, and the 4.2 spelling
+    # Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A version
+    # settles how a value is read, never what a field is called: the column is
+    # the dictionary's own whatever version read the row, and the 4.2 spelling
     # still reaches it as an alias.
-    dated = _fixed(seed, version="4.2")
-    named = next(dated.parse_line(b"8=FIX.4.4|35=8|32=100|10=0|"))
+    named = next(_fixed(seed).parse_line(b"8=FIX.4.2|35=8|32=100|10=0|"))
     assert named.field.index_of("lastqty") is not None
     assert named.get_by_name("lastshares") is not None
     assert named.get_by_name("lastqty") is not None
+
+    # A codec pins no version: a row states one, or the line implies it.
+    with pytest.raises(TypeError):
+        FixCodec(seed, version="4.2")  # type: ignore[call-arg]
+    assert not hasattr(FixCodec(seed), "version")
 
     # A stated absence produces no field at all.
     silent = _fixed(seed, null_values=["<none>"])

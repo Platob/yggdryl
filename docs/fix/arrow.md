@@ -13,7 +13,7 @@ A capture already in Arrow is read where it sits: `FixCodec::parse_text_arrow_re
 | Clash | a carried column whose folded name a FIX column takes is dropped in front and lands in that column, never renamed and never duplicated |
 | Rows | one row per message, never one per line: a line carrying two frames is two rows, bulk and wildcard bodies expand, a payload that would not parse is one row holding an empty message, and a line carrying no message at all is no row - [what a line carries](decode.md) is the codec's rule; a row's carried source columns repeat over every message it answers |
 | Batches | closed by raw bytes against the codec's `batch_byte_size`, `DEFAULT_BATCH_BYTE_SIZE` (128 MiB) unless pinned: several small input batches accumulate into one, one larger than the target splits by rows in proportion, and a batch always holds at least one row |
-| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_version`, `with_null_values`, `try_with_direction`, `try_with_default_sending_time`, `with_batch_byte_size`; no dialect pin, because the registry is one namespace |
+| Pins | on the codec, for the whole run: `with_payload_column`, `with_capture_names`, `with_separator`, `with_null_values`, `try_with_direction`, `try_with_default_sending_time`, `with_batch_byte_size`; no dialect pin, because the registry is one namespace, and no version pin, because a version is what a line or the transport around it said |
 | Stages | a call, never a flag: `enrich_messages`, `FixCodec::lifecycle`, `FixLifecycle::snapshots` and `FixDedup` compose over `messages` and `arrow_reader`, and `enrich_messages_arrow_reader` is the first composed for you; restatement is the [first step of the enriching pass](capture.md#what-a-message-implied-is-filled-in) rather than a stage of its own |
 | Doors | `enrich_messages`, `lifecycle` and `arrow_reader` take owned messages or their `Result`s, so stages compose without collecting; an error item keeps its type, and every door fuses exhaustion |
 | Per row | `beginstring` and `msgdirection` are parameters read from the row; any other column named after a field - `pluginid` among them - fills it where the message did not state it; a capture `timestamp` is carried context, never a FIX clock |
@@ -105,7 +105,7 @@ One column of frames in, batches out, the capture's own columns still in front o
         }
     )
 
-    codec = FixCodec(registry, version="FIX.4.4")
+    codec = FixCodec(registry)
     read = codec.parse_text_arrow_reader(capture.to_reader())
 
     # The schema is answered before a row is read: the capture leads it, less
@@ -176,7 +176,6 @@ What holds for a whole run is pinned on the codec once, and each pin is the per-
 | --- | --- | --- | --- |
 | `payload_column` | `with_payload_column` | `body` (`DEFAULT_PAYLOAD_COLUMN`) | which column carries the frames: `utf8`, as the [text reader emits its rows](../media/text/index.md#row-schema), and `binary` accepted too on intake, for a capture another producer landed as bytes |
 | `separator` | `with_separator` | `SOH` (`0x01`) | the separator a re-emitted line is written with, which is what `write_arrow_reader` writes; reading takes none, because a line already said which byte separated its fields |
-| `version` | `with_version` | none | the version values are translated at, never what a column is called; unpinned, each row answers for itself: `ApplVerID(1128)`, then `BeginString(8)`, then the dictionary's newest |
 | `null_values` | `with_null_values` | the crate's spellings | what means "nothing was sent" |
 | `direction` | `try_with_direction` | the set's `Send` code, `S` | the code of tag 385's set a line that states none of its own takes on the batch door - no `msgdirection` column stating one, and no [rule of tag 385's `fix:directions`](registry.md#a-direction-is-what-the-rules-on-tag-385-read-in-front-of-the-payload) matching the prose in front of its payload; any spelling of a code of the set, resolved once, and `None` or `""` pins nothing |
 | `batch_byte_size` | `with_batch_byte_size` | `DEFAULT_BATCH_BYTE_SIZE`, 128 MiB | the raw bytes one output batch targets |

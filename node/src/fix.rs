@@ -36,7 +36,6 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCategory,
     FixCodec as CoreFixCodec, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, TimeUnit, Timezone,
-    Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -1525,8 +1524,8 @@ pub struct JsFixCodec {
 impl JsFixCodec {
     /// Open a codec over one dictionary, or over the process default.
     ///
-    /// Every pin is the core's, spelled once here. `version` crosses as
-    /// text; `separator` is the byte a numeric frame splits on where
+    /// Every pin is the core's, spelled once here. `separator` is the byte a
+    /// numeric frame splits on where
     /// the line does not say; `payloadColumn` names the batch column a line
     /// is read from; `captureNames` are what a run's row-header captures are
     /// called, in the order a line answers them, which is what lets
@@ -1549,9 +1548,6 @@ impl JsFixCodec {
         let registry = registry_or_global(registry)?;
         let options = options.unwrap_or_default();
         let mut inner = CoreFixCodec::new(Arc::clone(&registry));
-        if let Some(held) = &options.version {
-            inner = inner.with_version(version_from_js(held)?);
-        }
         if let Some(held) = options.separator {
             inner = inner.with_separator(separator_byte(Some(held))?);
         }
@@ -1591,16 +1587,6 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn registry(&self) -> JsFixRegistry {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
-    }
-
-    /// The version values are read at, or `null` where each line states its
-    /// own.
-    ///
-    /// A row reads at `ApplVerID`, then `BeginString`, then this pin, then
-    /// the registry's newest.
-    #[napi(getter)]
-    pub fn version(&self) -> Option<String> {
-        self.inner.version().map(|version| version.to_string())
     }
 
     /// The byte a numeric frame splits on, or `null` where the line decides.
@@ -1967,8 +1953,6 @@ impl JsFixCodec {
 #[napi(object, object_to_js = false)]
 #[derive(Default)]
 pub struct FixCodecOptions<'env> {
-    /// The version built messages are expressed in.
-    pub version: Option<String>,
     /// The byte a numeric frame splits on where the line does not say.
     pub separator: Option<f64>,
     /// The batch column a line is read from; `body` when unstated.
@@ -2007,12 +1991,6 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
                 .map_err(napi_error)
         }
     }
-}
-
-/// Read one FIX version, or report the native parse failure.
-fn version_from_js(text: &str) -> Result<CoreVersion> {
-    let spelling = text.strip_prefix("FIX.").unwrap_or(text);
-    spelling.parse::<CoreVersion>().map_err(napi_error)
 }
 
 /// The state a stream of messages has reached, one chain per live event.

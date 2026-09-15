@@ -257,7 +257,7 @@ A group packed inside an occurrence is packed behind the same separator, at the 
 - A bridge key's `#` is judged against the row's bare spellings, in a bridge row and in the name keys a bridge writes into a numeric frame alike. Alone, it drops: `#ORDERID=123` is the dictionary's `OrderID`. Restating a bare pair's bytes, the marked pair is a second spelling of one pair and goes, row and entries alike: `ORDERID=123|#ORDERID=123` is `OrderID` once, and `into_bytes` re-emits the one pair. Beside a bare twin stating other bytes it stays verbatim, because collapsing the two would merge two values under one name: `ORDERID=123|#ORDERID=345` is `OrderID` 123 beside `#ORDERID` 345 - its own column, its own entry - whichever arrived first. The twin is matched by the fold every key resolves under, so `OrderId` and `ORDER_ID` twin it too, and by its stem, so a bare `NOPARTYIDS` group claims every `#NOPARTYIDS[n]` however many the two state - each stays whole under its own name, the count beside them, and none lands in the dictionary's group. A marked group goes only whole: a marked count restating the bare one beside occurrences the bare group never numbered stays with them, and only a marked group restating the bare group pair for pair goes. A bare pair whose value is a stated absence is no twin, because a key that said nothing was sent is not a key that was sent; a value is compared as its bytes, because `abc` is not `ABC`; and the twin is a spelling, never an identity, so a tag and a marked name - `55=AAPL|#SYMBOL=AAPL` - state two values exactly as a tag and a bare name do. In a numeric frame the marks are judged and the keys kept as they are: a packed occurrence there is one value, as a bare one always was. A key marked twice is judged one mark at a time: `##ORDERID` twins `#ORDERID` as `#ORDERID` twins `ORDERID` - restating it goes, beside other bytes it stays, alone it loses one mark.
 - A row's message type resolves the way every key does, in the one namespace: a name reaches the message of that name, and a bare code the message tag 35's code set names, else the first in name order. A bridge row calling itself `tradecapturereport` reads against the message of that name, which is what places a counter half the dictionary shares - `NoLegs`, `NoSides` - under the group that message declares.
 - A stated absence - one of `null_values` - produces no field and no entry, because a key that said nothing was sent is not a key that was sent.
-- A pinned `version` decides which code spelling a value translates through, never what a field is called: a tag is one column under the name the dictionary holds it by, and what each version called it stays readable through the field's lineage.
+- The `version` a row was read at decides which code spelling a value translates through, never what a field is called: a tag is one column under the name the dictionary holds it by, and what each version called it stays readable through the field's lineage.
 
 ## The columns are the folded names
 
@@ -388,7 +388,7 @@ Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridg
 
 These columns are filled when a message is built, whatever its line carried, and none of them becomes an entry unless the wire sent it - so `into_bytes` still re-emits the wire byte for byte.
 
-`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the row's own `beginstring` [column or capture](arrow.md#a-column-is-the-caller-speaking-per-row), else the pinned `version`, else the one `ApplVerID(1128)` or `BeginString(8)` implied, else the dictionary's newest, else 4.4. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
+`beginstring` is the wire's own `BeginString(8)` when stated, else `FIX.<version>` for the version the message was read at: the row's own `beginstring` [column or capture](arrow.md#a-column-is-the-caller-speaking-per-row), else the one `ApplVerID(1128)` or `BeginString(8)` implied, else the dictionary's newest, else 4.4. A codec pins none - a version is what a line or the transport around it said, never a caller's statement about a whole run. A bridge row and a configuration document therefore say which FIX they were read as exactly as a frame does.
 
 `version` states that same answer outright, on every message the codec generates, because `BeginString` is what the message says about *itself* and a session that mislabels itself - or that carries a row written to a later FIX than it speaks - makes the two differ. `FixMsg::version()` answers the crate's column where a read stamped one and `BeginString` otherwise, so it always answers for a built message.
 
@@ -423,15 +423,15 @@ The root's children are the standard header in its declared order, the body as i
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     let default = Scalar::datetime64(1_704_190_530_000_000_000, TimeUnit::Nanosecond, Timezone::UTC)?;
-    let reader = FixCodec::new(registry)
-        .with_version("4.4".parse()?)
+    let reader = FixCodec::new(Arc::clone(&registry))
         .try_with_default_sending_time(Some(default.clone()))?;
+    let newest = registry.newest().expect("the seed's newest").version().to_string();
 
-    // A frame stating neither its version nor a clock is still versioned,
-    // and dated by the codec's default sending time.
+    // A frame stating neither its version nor a clock is still versioned - at
+    // the dictionary's newest - and dated by the codec's default sending time.
     let bare = reader.parse_line(b"35=D|55=AAPL|10=0|")?.next().expect("one frame")?;
-    assert_eq!(bare.by_tag(8)?.as_str(), Some("FIX.4.4"));
-    assert_eq!(bare.version().map(|version| version.to_string()), Some("4.4".to_owned()));
+    assert_eq!(bare.by_tag(8)?.as_str(), Some(format!("FIX.{newest}").as_str()));
+    assert_eq!(bare.version().map(|version| version.to_string()), Some(newest));
     assert_eq!(bare.by_tag(52)?, &default);
     assert_eq!(bare.updatedat(), &default);
     assert_eq!(bare.createdat(), &default);
@@ -478,16 +478,14 @@ The root's children are the standard header in its declared order, the body as i
         assert by_name[name].dtype == identity
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
-    reader = FixCodec(
-        FixRegistry.from_handle(Path("config/fix").resolve()),
-        version="FIX.4.4",
-        default_sending_time=default,
-    )
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    reader = FixCodec(registry, default_sending_time=default)
+    newest = registry.newest().version
 
-    # A frame stating neither its version nor a clock is still versioned,
-    # and dated by the codec's default sending time.
+    # A frame stating neither its version nor a clock is still versioned - at
+    # the dictionary's newest - and dated by the codec's default sending time.
     bare = next(reader.parse_line(b"35=D|55=AAPL|10=0|"))
-    assert bare.by_tag(8).as_py() == "FIX.4.4"
+    assert bare.by_tag(8).as_py() == f"FIX.{newest}"
     assert bare.by_tag(52).as_py() == default
     assert bare.updatedat() == bare.createdat() == bare.by_tag(52)
     assert bare.by_tag(CODE).as_py() == ""
@@ -530,14 +528,14 @@ The root's children are the standard header in its declared order, the body as i
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry, {
-      version: 'FIX.4.4',
       defaultSendingTime: new Date(Date.UTC(2024, 0, 2, 10, 15, 30)),
     })
+    const newest = registry.newest().version
 
-    // A frame stating neither its version nor a clock is still versioned,
-    // and dated by the codec's default sending time.
+    // A frame stating neither its version nor a clock is still versioned - at
+    // the dictionary's newest - and dated by the codec's default sending time.
     const bare = reader.parseLine(Buffer.from('35=D|55=AAPL|10=0|')).next().value
-    assert.equal(bare.byTag(8).toJSON(), 'FIX.4.4')
+    assert.equal(bare.byTag(8).toJSON(), `FIX.${newest}`)
     assert.ok(bare.byTag(52).equals(reader.defaultSendingTime))
     assert.ok(bare.updatedat().equals(bare.byTag(52)))
     assert.ok(bare.createdat().equals(bare.byTag(52)))

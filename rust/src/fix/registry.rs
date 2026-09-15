@@ -1134,9 +1134,10 @@ impl FixRegistry {
     ///
     /// `dialect` names the dictionary, and the file names it when the caller
     /// does not: with none supplied the handle's own stem stands in, where it
-    /// reads as a name: non-empty and opening with a letter. The FIX version the
-    /// file's root declares is not carried - a caller reading a capture under
-    /// it pins it with [`FixCodec::with_version`](crate::FixCodec::with_version).
+    /// reads as a name: non-empty and opening with a letter. The FIX version
+    /// the file's root declares is not carried: the version a capture is read
+    /// at is the row's own `beginstring` where the transport states one, else
+    /// what the line implies.
     ///
     /// Answers the count added and the count merged. The message roots are
     /// dropped; take [`Self::from_cfb_file`] when they matter.

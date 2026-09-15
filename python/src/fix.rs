@@ -25,7 +25,7 @@ use yggdryl::{
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
     FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType,
     Plugin as CorePlugin, Plugins as CorePlugins, Scalar, TimeUnit, Timezone,
-    Version as CoreVersion, from_json_scalar_with_field, into_json_scalar,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -1819,7 +1819,6 @@ impl PyFixCodec {
     #[pyo3(signature = (
         registry=None,
         *,
-        version=None,
         default_sending_time=None,
         separator=None,
         payload_column="body",
@@ -1831,7 +1830,6 @@ impl PyFixCodec {
     #[allow(clippy::too_many_arguments)]
     fn new(
         registry: Option<PyRef<'_, PyFixRegistry>>,
-        version: Option<&str>,
         default_sending_time: Option<&Bound<'_, PyAny>>,
         separator: Option<u8>,
         payload_column: &str,
@@ -1845,9 +1843,6 @@ impl PyFixCodec {
             CoreFixCodec::new(Arc::clone(&registry)).with_payload_column(payload_column);
         if let Some(held) = direction {
             inner = inner.try_with_direction(Some(held)).map_err(value_error)?;
-        }
-        if let Some(held) = version {
-            inner = inner.with_version(version_from_py(held)?);
         }
         if let Some(held) = default_sending_time {
             inner = inner
@@ -1873,13 +1868,6 @@ impl PyFixCodec {
     #[getter]
     fn registry(&self) -> PyFixRegistry {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
-    }
-
-    /// The version values are read at, or `None` where each line states its
-    /// own.
-    #[getter]
-    fn version(&self) -> Option<String> {
-        self.inner.version().map(|version| version.to_string())
     }
 
     /// The nanosecond UTC `SendingTime` an undated new message takes, or
@@ -2374,14 +2362,6 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
             .map_err(value_error);
     }
     Ok(held)
-}
-
-/// Read one FIX version, or report the native parse failure as a `ValueError`.
-///
-/// A protocol prefix is removed before the numeric version parser runs.
-fn version_from_py(text: &str) -> PyResult<CoreVersion> {
-    let spelling = text.strip_prefix("FIX.").unwrap_or(text);
-    spelling.parse::<CoreVersion>().map_err(value_error)
 }
 
 /// The fixed root every message answers as, built from one dictionary.
