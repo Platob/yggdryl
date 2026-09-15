@@ -1258,15 +1258,24 @@ impl FixRegistry {
         if category != FixCategory::Fields {
             validate_name(field)?;
             if let Some(tag) = field.as_fix().tag()? {
-                if !map_group && !FixId::is_definition_tag(tag) {
+                // A definition nobody published a tag for is identified by a
+                // derived one, which is what the block above `CRATE_TAG_MAX`
+                // is for. This crate's own definitions are the exception: a
+                // crate tag is reserved, unique and already the identity the
+                // fixed row reaches the column by, so `instids` answers to
+                // 65036 the way `altids` answers to 65020 rather than to a
+                // second identity nothing else spells.
+                if !map_group && !FixId::is_definition_tag(tag) && !super::is_crate_tag(tag) {
                     return Err(Error::InvalidRecord {
                         path: field.name().into(),
                         reason: crate::text::expected_got(
-                            "a named FIX definition's derived tag",
+                            "a named FIX definition's derived tag, or one of this crate's own",
                             format_args!(
-                                "tag {tag} outside [{}, {})",
+                                "tag {tag} outside [{}, {}) and [{}, {}]",
                                 FixId::DEFINITION_TAG_MIN,
-                                FixId::DEFINITION_TAG_MAX
+                                FixId::DEFINITION_TAG_MAX,
+                                super::CRATE_TAG_MIN,
+                                super::CRATE_TAG_MAX,
                             ),
                         ),
                     });

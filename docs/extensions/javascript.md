@@ -803,13 +803,13 @@ enumeration, which is written as the raw `fix:codes` metadata.
 | `FixCodec.lifecycle`, `FixLifecycle` | take and answer `FixMsg` - any iterable in and a lazy `FixMessages` out for the codec and `snapshots(messages)`, one at a time for `fill(message)`, and a `FixMsg` or `null` for `snapshot(message)`, which answers only a chain's first off-grid arrival in a new bucket; `new FixLifecycle(registry?, { intervalNs })` sets the grid, `FixLifecycle.DEFAULT_INTERVAL_NS` (one second) by default, read back as the `bigint` `intervalNs`; `setIntervalNs` repeating it is a no-op, while a nonpositive interval or a change while a chain is live throws and changes nothing; `FixLifecycle.alive` is a read-only number and `clear()` forgets every chain |
 | iteration | registry tag-major, the tag's holder first, then by identifier; message in the root's declared order |
 | categories | `fields`, `components`, `groups`, a message being a component carrying `fix:msgtype`; repeating List-of-Struct and Map definitions are groups, never scalar fields; enums stay inline in `fix:codes`, and definition identities and references follow the [registry contract](../fix/registry.md) |
-| crate inventory | `fix.crateFields()` answers 25 definitions: 24 scalar fields on tags 65001-65019 and 65021-65025, plus the `altids` Map group at 65020; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 26; `registry.size` and registry iteration count scalar fields only, while `definitions('groups')` includes `altids` |
+| crate inventory | `fix.crateFields()` answers 37 definitions: 35 scalar fields on tags 65001-65003, 65005-65019, 65021-65035 and 65037-65038, plus the `altids` Map group at 65020 and the `instids` Struct at 65036; `new FixRegistry()` also seeds `sendingtime` (52) and `transacttime` (60), so its `size` is 37; `registry.size` and registry iteration count scalar fields only, while `definitions('groups')` includes `altids` and `definitions('components')` includes `instids` |
 | CRUD | `createDefinition`, `definition`, `updateDefinition`, `removeDefinition`; `definitions` iterates one category lazily; `addField` and `addDefinition` are the lenient twins, answering `true` when the field or definition arrived and `false` when it folded into a stored one |
 | `MsgType` | immutable registry-owned message Struct, borrowed through `msgtype` / `getMsgtype` or lazy `msgtypes`; `asField()` answers an independent mutable `Field` clone, and its wire code remains complete UTF-8 text |
 | `MsgType.identifierValues(message)` | takes a `FixMsg` and answers `Array<[Field, Scalar]>` in declaration order, omitting absent or null values; each field is an independent mutable declaration clone, each scalar retains its native datatype and width, and `asJs()` preserves integers outside the safe-number range as exact `bigint` values; binary scalars remain bytes until enrichment needs UTF-8 |
 | `FixCodec` | pins cross in the options object - `version`, `separator`, `payloadColumn`, `captureNames`, `nullValues`, `direction` (any spelling of a code of tag 385's set; `''` is no pin), `batchByteSize`, and `defaultSendingTime` (a `Scalar`, a `Date`, or `null`, read back as a nanosecond UTC `Scalar` or `null`), the SendingTime a message stating none takes instead of the clock, which is what keeps a replay of undated bytes deterministic; an unmarked line's tag 385 is read off the prose in front of its payload by the `fix:directions` the registry's tag-385 field carries, compiled once when the codec takes its registry, so the field is edited before the codec is built; `parseLine`, `parseTextLine`, `parsePluginLine` return lazy `FixMessages`, `parseLines`, `parseTextLines`, `enrichMessages` and `messages` lazy `FixMsg` iterators; `parseFixLine`, `parseUllinkLine`, `parseFixmlLine`, `parsePairs` and `enrichMessage` answer one `FixMsg`; no reader takes a flag |
 | Arrow twins | `parseTextArrowReader`, `enrichMessagesArrowReader` and `arrowReader(schema, messages)` take and answer a native `BatchReader`, so `BatchReader.from` widens an Arrow JS table on the way in and `intoTable` drains the answer; `writeArrowReader(reader, sink)` writes lines into anything with `write(chunk: Uint8Array)` and answers their count |
-| `FixMsg` | `new FixMsg(field, value, registry)` appends each settled field the root lacks - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `uuid()` and `puuid()` answer those settled `Scalar` values |
+| `FixMsg` | `new FixMsg(field, value, registry)` appends each settled field the root lacks - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - reading the clock once only for a SendingTime nothing states; `updatedat()`, `createdat()`, `msghash()` and `msgphash()` answer those settled `Scalar` values |
 | `FixMsg` writes | `set(key, value)` and `remove(key)` change the row in place and never the entries, and removing a settled field throws and changes nothing; `FixMsg.fromRow(schema, row, registry)` reads a fixed row carrying the settled fields back, entries included |
 | output | `FixMsg.intoRow(field)` projects a table row; `intoBytes(separator = 1)` re-emits ordered arrival pairs, empty for a message built without arrivals |
 | Plugin | `Plugin.fromJsonBytes` / `fromJsonScalar` return lazy `Plugins`, the latter reading an array or object document; each selection converts to one flat message with `intoFixmsg`; `parsePluginLine` answers one message per configuration a response named, and none for an error-only answer or a body that is not a Jolokia answer |
@@ -921,10 +921,11 @@ assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
 assert.equal(venue.remove('TradeID').name, 'TradeID')
-// Symbol remains beside what every registry holds: the crate's 26 scalar
-// fields and the seeded SendingTime and TransactTime; altids is a group.
-assert.equal(new fix.FixRegistry().size, 28)
-assert.equal(venue.size, 29)
+// Symbol remains beside what every registry holds: the crate's 35 scalar
+// fields and the seeded SendingTime and TransactTime; `altids` is a group and
+// `instids` a component, so neither is a field.
+assert.equal(new fix.FixRegistry().size, 37)
+assert.equal(venue.size, 38)
 assert.deepEqual(venue.dialects(), [])
 
 // Both collections are lazy native iterators the loader gives the protocol,
@@ -932,7 +933,7 @@ assert.deepEqual(venue.dialects(), [])
 assert.equal([...registry].length, registry.size)
 assert.deepEqual(
   [...message].map(([name]) => name),
-  ['symbol', 'updatedat', 'createdat', 'uuid', 'puuid', 'code', 'snapshotat', 'sendingtime'],
+  ['symbol', 'updatedat', 'createdat', 'msghash', 'msgphash', 'code', 'snapshotat', 'sendingtime'],
 )
 assert.equal(message.at('SYMBOL').asJs(), 'AAPL')
 assert.equal(message.byId(symbolId).asJs(), 'AAPL')
@@ -948,7 +949,7 @@ assert.equal(messages.next().done, true)
 assert.deepEqual(parsed.intoBytes('|'.charCodeAt(0)), wire)
 assert.ok(parsed.updatedat().equals(codec.defaultSendingTime))
 assert.ok(parsed.createdat().equals(parsed.updatedat()))
-assert.throws(() => parsed.remove('uuid'), /mandatory/)
+assert.throws(() => parsed.remove('msghash'), /mandatory/)
 // A message root the codec builds is not a dictionary member.
 assert.deepEqual(parsed.field.fix.branches, [])
 const tableField = fix.schema(registry)

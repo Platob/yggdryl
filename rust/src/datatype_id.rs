@@ -178,11 +178,12 @@ pub enum DataTypeId {
     ///
     /// Appended because [`Self::as_u8`] is a wire contract.
     Sedol = 65,
+    Bloomberg = 66,
 }
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 65] = [
+    pub const ALL: [Self; 66] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -248,6 +249,7 @@ impl DataTypeId {
         Self::MediaType,
         Self::Cusip,
         Self::Sedol,
+        Self::Bloomberg,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -301,6 +303,7 @@ impl DataTypeId {
             Self::Isin => "isin",
             Self::Cusip => "cusip",
             Self::Sedol => "sedol",
+            Self::Bloomberg => "bloomberg",
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
@@ -405,6 +408,7 @@ impl DataTypeId {
             | Self::Isin
             | Self::Cusip
             | Self::Sedol
+            | Self::Bloomberg
             | Self::Side
             | Self::State
             | Self::TimeInForce => DataTypeKind::Code,
@@ -566,7 +570,10 @@ impl DataTypeId {
     /// The number each standard fixes: two for a country, three for a
     /// currency, four for a market identifier or a side, six for a
     /// classification, seven for a SEDOL, eight for a time in force, nine
-    /// for a CUSIP, ten for a state, and twelve for an ISIN. It is a
+    /// for a CUSIP, ten for a state, twelve for an ISIN, and thirty-two for
+    /// a Bloomberg identifier - the one whose width is only a bound, because
+    /// a ticker, a market and a yellow key have no fixed length between
+    /// them. It is a
     /// maximum, not a layout - a code stores as the text it is - and it is
     /// what the value rule holds a cell to and what
     /// [`crate::DataType::ascii_packed`] pads into.
@@ -583,6 +590,7 @@ impl DataTypeId {
             Self::Cusip => Some(9),
             Self::State => Some(10),
             Self::Isin => Some(12),
+            Self::Bloomberg => Some(32),
             _ => None,
         }
     }
@@ -666,7 +674,7 @@ mod tests {
 
     #[test]
     fn the_strings_and_the_codes_are_text() {
-        assert_eq!(DataTypeId::ALL.len(), 65);
+        assert_eq!(DataTypeId::ALL.len(), 66);
         for id in [
             DataTypeId::String,
             DataTypeId::FixedString,
@@ -797,6 +805,7 @@ mod tests {
             (DataTypeId::MediaType, 63),
             (DataTypeId::Cusip, 64),
             (DataTypeId::Sedol, 65),
+            (DataTypeId::Bloomberg, 66),
         ];
         assert_eq!(pinned.len(), DataTypeId::ALL.len());
         for ((id, byte), held) in pinned.into_iter().zip(DataTypeId::ALL) {

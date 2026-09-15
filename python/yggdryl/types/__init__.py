@@ -29,6 +29,7 @@ from .bytes import (
     large_binary,
 )
 from .codes import (
+    BloombergField,
     CfiField,
     CountryField,
     CurrencyField,
@@ -39,6 +40,7 @@ from .codes import (
     SideField,
     StateField,
     TimeInForceField,
+    bloomberg,
     cfi,
     country,
     currency,
@@ -184,6 +186,7 @@ __all__ = [
     "IsinField",
     "MicField",
     "SedolField",
+    "BloombergField",
     "BytesField",
     "BooleanField",
     "Date32Field",
@@ -286,6 +289,7 @@ __all__ = [
     "run_end_encoded",
     "scalar",
     "sedol",
+    "bloomberg",
     "side",
     "string",
     "struct",

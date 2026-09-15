@@ -62,8 +62,8 @@ pub fn benchmarks(criterion: &mut Criterion) {
             black_box((
                 held.updatedat(),
                 held.createdat(),
-                held.uuid(),
-                held.puuid(),
+                held.msghash(),
+                held.msgphash(),
             ))
         });
     });

@@ -6,6 +6,9 @@ mod batch;
 mod capture;
 #[path = "fix/cfb.rs"]
 mod cfb;
+/// The instrument's classification, at the seam between its value and FIX.
+#[path = "fix/classification.rs"]
+mod classification;
 #[path = "fix/codec.rs"]
 mod codec;
 #[path = "fix/content_identity.rs"]
@@ -34,6 +37,8 @@ mod global_install;
 mod identifier_dictionary;
 #[path = "fix/identifiers.rs"]
 mod identifiers;
+#[path = "fix/instids.rs"]
+mod instids;
 #[path = "fix/latest.rs"]
 mod latest;
 #[path = "fix/lifecycle.rs"]
@@ -56,10 +61,18 @@ mod merge;
 mod message;
 #[path = "fix/pipeline.rs"]
 mod pipeline;
+
+/// What a message takes from the one before it in its chain.
+#[path = "fix/previous.rs"]
+mod previous;
 #[path = "fix/schema.rs"]
 mod schema;
+#[path = "fix/session.rs"]
+mod session;
 #[path = "fix/store.rs"]
 mod store;
+#[path = "fix/transient.rs"]
+mod transient;
 #[path = "fix/zero_entries.rs"]
 mod zero_entries;
 
@@ -342,6 +355,19 @@ fn crated_fields() -> usize {
         .expect("the crate's own fields")
         .iter()
         .filter(|field| !field.dtype().is_nested())
+        .count()
+}
+
+/// The named components this crate defines beside the dictionary's own.
+///
+/// A definition is filed by the shape it has, so every crate column shaped as
+/// a Struct is a component: `instids` is one, and it answers to its crate tag
+/// rather than to a derived one.
+fn crated_components() -> usize {
+    yggdryl::fix_crate_fields()
+        .expect("the crate's own fields")
+        .iter()
+        .filter(|field| matches!(field.dtype(), yggdryl::DataType::Struct(_)))
         .count()
 }
 

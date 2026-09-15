@@ -588,7 +588,7 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
     assert_eq!(loaded.len(), 6241 + super::crated_fields());
     assert_eq!(
         loaded.definitions(FixCategory::Components).count(),
-        928 + super::crated_messages()
+        928 + super::crated_messages() + super::crated_components()
     );
     assert_eq!(loaded.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(loaded.definitions(FixCategory::Groups).count(), 581);
@@ -1099,7 +1099,10 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     // The census decision 13 rests on: 747 components and 181 messages fold
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
-        (FixCategory::Components, 928 + super::crated_messages()),
+        (
+            FixCategory::Components,
+            928 + super::crated_messages() + super::crated_components(),
+        ),
         (FixCategory::Groups, 581),
     ] {
         assert_eq!(registry.definitions(category).count(), count, "{category}");
@@ -1164,8 +1167,11 @@ fn named_definition_equality_does_not_depend_on_insertion_order() {
     // The two this test added, and behind them the one every registry starts
     // with.
     assert!(
-        left.definition_at(FixCategory::Components, 2 + super::crated_messages())
-            .is_none()
+        left.definition_at(
+            FixCategory::Components,
+            2 + super::crated_messages() + super::crated_components()
+        )
+        .is_none()
     );
     assert!(
         left.definition_at(FixCategory::Components, usize::MAX)
@@ -1197,6 +1203,16 @@ fn merging_folded_named_definitions_preserves_canonical_names_and_references() {
         let plain = original
             .definitions(FixCategory::Components)
             .filter(|field| field.as_fix().msgtype().is_none())
+            // The crate's own components - `instids` - are already in the
+            // source, which starts from a registry of its own, so respelling
+            // one would restate it.
+            .filter(|field| {
+                !field
+                    .as_fix()
+                    .tag()
+                    .unwrap()
+                    .is_some_and(yggdryl::is_crate_tag)
+            })
             .map(|field| (FixCategory::Components, field));
         let groups = original
             .definitions(FixCategory::Groups)

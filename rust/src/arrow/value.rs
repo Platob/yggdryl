@@ -9,9 +9,10 @@ use crate::types::budget::{
 };
 use crate::types::string::is_text_storage;
 use crate::types::{
-    Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
-    Code, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringLayout,
-    StringParameters, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
+    BLOOMBERG_WIDTH, Bytes, BytesLayout, BytesParameters, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH,
+    CUSIP_WIDTH, Code, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str,
+    StringLayout, StringParameters, TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes,
+    uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -169,6 +170,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
         DataType::Isin => code_array::<ISIN_WIDTH>(dtype, values)?,
         DataType::Cusip => code_array::<CUSIP_WIDTH>(dtype, values)?,
         DataType::Sedol => code_array::<SEDOL_WIDTH>(dtype, values)?,
+        DataType::Bloomberg => code_array::<BLOOMBERG_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
@@ -484,6 +486,12 @@ pub(crate) fn value_from_array(
                 dtype,
                 text.value(index).as_bytes(),
             )?)?))
+        }
+        DataType::Bloomberg => {
+            let text = downcast::<StringArray>(array)?;
+            Scalar::Code(Code::Bloomberg(crate::types::Bloomberg::new(
+                code_cell_text(dtype, text.value(index).as_bytes())?,
+            )?))
         }
         DataType::Side => {
             let text = downcast::<StringArray>(array)?;

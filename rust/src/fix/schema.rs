@@ -28,13 +28,21 @@
 //! # Nothing is lost at the end
 //!
 //! `fixentries` closes every row with the whole arrival record: every pair, in
-//! arrival order, untranslated, under the `nofixentries` that counts them. It
-//! is what makes a row lossless - the fixed columns are a reading of the
-//! message and the entries are the message, so the wire is rebuilt from them
-//! and never from the columns.
+//! arrival order, under the `nofixentries` that counts them. It is what makes
+//! a row lossless - the fixed columns are a reading of the message and the
+//! entries are the message, so the wire is rebuilt from them and never from
+//! the columns.
+//!
+//! Each pair carries both facts about itself: `tagkey` and `tagvalue` are the
+//! ranges of the line, untranslated, and `tagnum` and `tagname` are what the
+//! dictionary made of that key when the message was parsed. The arrival is
+//! what the wire is rebuilt from; the translation is there so a consumer
+//! reading the record can group and filter by a name without a dictionary of
+//! its own.
 //!
 //! Unresolved keys have tag zero in that same record; their original key,
-//! value and children remain in place. No second projection duplicates them.
+//! value and children remain in place, and `tagname` spells the key itself
+//! rather than nothing. No second projection duplicates them.
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -112,11 +120,13 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 
 /// One row's columns, in order, as tags.
 ///
-/// The standard header and trailer, because every message has them; the
-/// fields a financial consumer reads, because they are what a table is
-/// queried by; the three repeating groups worth persisting whole; the
-/// crate's own facts; FIX's own `MsgDirection`; and last the arrival
-/// record's counter, which closes the row with the group it counts.
+/// The crate's own facts lead - its clocks, then its identities, then the
+/// rest - because a table is read by time and joined by identity. Then the
+/// standard header and trailer, because every message has them; the fields a
+/// financial consumer reads, because they are what a table is queried by; the
+/// three repeating groups worth persisting whole; FIX's own `MsgDirection`;
+/// and last the arrival record's counter, which closes the row with the group
+/// it counts.
 ///
 /// This is the shape a capture lands in, and it is a *reading* of a message
 /// rather than the message: what the codec made of a line, in columns. The
@@ -136,24 +146,45 @@ pub fn fix_schema_tags() -> Vec<i32> {
             + crated.len()
             + 2,
     );
+    // The crate's own columns lead, in three groups: when, then which, then
+    // everything else it knows. A table is read by time and joined by
+    // identity, and a reader that has to scroll past eighty protocol columns
+    // to reach either is reading a wire frame rather than a table. The groups
+    // are not a second list to keep in step - each column is classified by
+    // the datatype it already carries, so a clock added to this crate lands
+    // among the clocks by being one.
+    let crate_tag = |field: &Field| field.as_fix().tag().ok().flatten();
+    let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
+    let push_group = |tags: &mut Vec<i32>, keep: &dyn Fn(&Field) -> bool| {
+        for field in crated {
+            // The arrival record closes the row, so its counter waits for the
+            // end with it rather than standing among the crate's own.
+            if let Some(tag) = crate_tag(field) {
+                if tag != counter && keep(field) {
+                    tags.push(tag);
+                }
+            }
+        }
+    };
+    push_group(&mut tags, &|field| field.dtype() == &CLOCK_DATATYPE);
+    push_group(&mut tags, &|field| {
+        field.dtype() == &super::identity::IDENTITY_DATATYPE
+            || crate_tag(field) == Some(super::CODE_TAG_NAME.0)
+    });
+    push_group(&mut tags, &|field| {
+        field.dtype() != &CLOCK_DATATYPE
+            && field.dtype() != &super::identity::IDENTITY_DATATYPE
+            && crate_tag(field) != Some(super::CODE_TAG_NAME.0)
+    });
     tags.extend_from_slice(&HEADER_TAGS);
     tags.extend_from_slice(&BODY_TAGS);
     tags.extend_from_slice(&GROUP_TAGS);
     tags.extend_from_slice(&TRAILER_TAGS);
-    for field in crated {
-        // The arrival record closes the row, so its counter waits for the end
-        // with it rather than standing among the crate's other columns.
-        if let Ok(Some(tag)) = field.as_fix().tag() {
-            if tag != super::crated::NOFIXENTRIES_TAG_NAME.0 {
-                tags.push(tag);
-            }
-        }
-    }
     // `MsgDirection` is FIX's own and already sits in the header's dialect,
     // but no message carries it on the wire - it is read from the line - so
     // it is appended here rather than expected among the header's tags.
     tags.push(super::MSGDIRECTION_TAG_NAME.0);
-    tags.push(super::crated::NOFIXENTRIES_TAG_NAME.0);
+    tags.push(counter);
     tags
 }
 
@@ -171,7 +202,7 @@ pub fn fix_generic_tags() -> Vec<i32> {
 
 /// BeginString and the partition supplement the identity owner's replay bundle.
 fn is_required(tag: i32) -> bool {
-    tag == 8 || tag == super::TIMEPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
+    tag == 8 || super::identity::is_mandatory(tag)
 }
 
 /// The fixed root every message answers as.
@@ -220,6 +251,30 @@ pub(super) fn rooted(
                 .any(|known| crate::types::folds_equal(known.name(), held.name()))
             {
                 fields.push(held);
+            }
+        }
+        // A crate column the registry files under neither door. A definition
+        // is categorized by its shape - a Map is a group, a Struct a
+        // component - so `instids` is a component and no tag lookup reaches
+        // it. The crate's own listing is where it is, and a column of this
+        // crate's belongs in this crate's row whatever the catalog calls it.
+        if super::is_crate_tag(tag)
+            && registry.get_field_by_tag(tag).is_none()
+            && registry.get_group_by_tag(tag).is_none()
+        {
+            if let Some(held) = super::fix_crate_fields()
+                .unwrap_or_default()
+                .iter()
+                .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+            {
+                let mut held = held.clone();
+                held.set_nullable(!is_required(tag));
+                if !fields
+                    .iter()
+                    .any(|known| crate::types::folds_equal(known.name(), held.name()))
+                {
+                    fields.push(held);
+                }
             }
         }
         // A native Map group owns its counter; no scalar has to precede it.
@@ -437,7 +492,9 @@ const ENTRY_DEPTH: usize = 3;
 fn entries_field() -> Result<Field> {
     let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
     field.set_display("FixEntries")?;
-    field.set_description("Every pair the message carried, in arrival order and untranslated.")?;
+    field.set_description(
+        "Every pair the message carried, in arrival order, beside what the dictionary made of it.",
+    )?;
     // A group says which counter counts it, the way every other group in this
     // crate says it. It does not name its occurrence as a component: a
     // `fixentry` contains `fixentries`, so a catalog reference to it would be
@@ -449,49 +506,140 @@ fn entries_field() -> Result<Field> {
     Ok(field)
 }
 
+/// The resolved canonical tag of the field an arrival named, `0` where none
+/// was resolved.
+const TAGNUM_COLUMN: (&str, &str) = ("tagnum", "TagNum");
+
+/// The dictionary's name for that tag, translated when the message was
+/// parsed. Never null - see [`entry_name`] for what fills it when no
+/// dictionary explains the arrival.
+const TAGNAME_COLUMN: (&str, &str) = ("tagname", "TagName");
+
+/// The value exactly as it arrived, untranslated.
+const TAGVALUE_COLUMN: (&str, &str) = ("tagvalue", "TagValue");
+
+/// The key exactly as it arrived, untranslated.
+const TAGKEY_COLUMN: (&str, &str) = ("tagkey", "TagKey");
+
 /// One `fixentry` struct at one materialization level.
 ///
-/// The fourth member is `fixentries` at every level and the meaning is
+/// The fifth member is `fixentries` at every level and the meaning is
 /// invariant; the type alone says where materialization stops - a list of
-/// deeper occurrences above [`ENTRY_DEPTH`], the binary leaf at it. Every
-/// occurrence, both inner lists and the leaf are non-null: an empty child
-/// list means no children, an empty leaf means nothing was truncated, and
-/// neither needs a validity bitmap to say so.
+/// deeper occurrences above [`ENTRY_DEPTH`], the folded text leaf at it. Every
+/// occurrence and every inner list is non-null: an empty child list means no
+/// children, and it needs no validity bitmap to say so. The leaf is nullable
+/// instead, because "nothing was truncated" is an absence and a column that
+/// spells it as the empty string cannot be told from one that folded an empty
+/// subtree.
+///
+/// # What arrived and what it was read as
+///
+/// `tagkey` and `tagvalue` are the arrival: the ranges of the line the reader
+/// read, as the text a `utf8` column holds. `tagnum` and `tagname` are what a
+/// *dictionary* made of that key, resolved once when the message was parsed.
+/// Keeping the arrival key is what keeps
+/// [`into_bytes`](super::FixMsg::into_bytes) byte for byte over a message read
+/// back out of a row: a venue that wrote `Side=1` wrote `Side`, and a row
+/// that spelled only the canonical `side` would re-emit a line that was never
+/// sent.
 fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
         DataType::list(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
     } else {
-        DataType::binary().required_field(FIXENTRIES_COLUMN)
+        DataType::utf8().nullable_field(FIXENTRIES_COLUMN)
+    };
+    let named = |dtype: DataType, (name, display): (&str, &str), required: bool| -> Result<Field> {
+        let mut field = if required {
+            dtype.required_field(name)
+        } else {
+            dtype.nullable_field(name)
+        };
+        field.set_display(display)?;
+        Ok(field)
     };
     Ok(DataType::from_fields([
-        DataType::Int32.nullable_field("tag"),
-        DataType::utf8().nullable_field("key"),
-        DataType::utf8().nullable_field("value"),
+        named(DataType::Int32, TAGNUM_COLUMN, false)?,
+        named(DataType::utf8(), TAGNAME_COLUMN, true)?,
+        named(DataType::utf8(), TAGVALUE_COLUMN, false)?,
+        named(DataType::utf8(), TAGKEY_COLUMN, false)?,
         tail,
     ])?
     .required_field(ENTRY_COMPONENT))
 }
 
+/// What the arrival record calls an entry whose key no dictionary explains.
+///
+/// `tagname` cannot be null, and the reason is the column's job: a consumer
+/// reading the record wants one column it can group, join and filter a wire
+/// name by without resolving every tag against a dictionary of its own. A
+/// null there would make every such consumer write the fallback itself, and
+/// they would not write the same one.
+///
+/// So the fallback is a *name*, in this order:
+///
+/// 1. the dictionary's canonical name for the entry's resolved tag;
+/// 2. the key exactly as it arrived, where no dictionary explains it - a
+///    venue's `VenueOwnThing`, an unregistered `9999`, and the `#ORDERID` a
+///    bridge marked as a restatement are each the only name that arrival
+///    has, and each is the name an operator will look for;
+/// 3. [`UNNAMED_ENTRY`], where an arrival carries no key at all - the
+///    row-header capture fills of decision 8 and the restatements of
+///    decision 20, which are recorded with tag `0` and are named after no
+///    pair because no pair carried them.
+///
+/// Step 2 is why this is not simply the dictionary's answer: an unresolved
+/// arrival is exactly the one a reader most needs to see spelled.
+fn entry_name(registry: &FixRegistry, entry: &super::FixEntry) -> smol_str::SmolStr {
+    if entry.tag() > 0 {
+        if let Some(field) = registry.get_field_by_tag(entry.tag()) {
+            return smol_str::SmolStr::new(field.name());
+        }
+    }
+    let key = entry.key_text();
+    if key.is_empty() {
+        return smol_str::SmolStr::new_static(UNNAMED_ENTRY);
+    }
+    key
+}
+
+/// The name an arrival that carried no key at all is recorded under.
+///
+/// Spelled with the crate's own prefix so it can never collide with a
+/// dictionary name or a venue's own spelling, and so a consumer grouping by
+/// `tagname` sees the decision-8 and decision-20 fills as the one category
+/// they are.
+pub const UNNAMED_ENTRY: &str = "yggdryl:unnamed";
+
 /// One entry as the row value its materialization level takes.
 ///
 /// Descendants past [`ENTRY_DEPTH`] fold into the leaf here and only here:
 /// the builder never folds, and the Rust tree is never truncated. The leaf is
-/// the UTF-8 bytes of the crate's own JSON over the truncated subtree, so one
-/// serializer and one parser answer for it.
-fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> {
+/// the crate's own JSON over the truncated subtree, as the text a `utf8`
+/// column holds, so one serializer and one parser answer for it; an entry
+/// that truncated nothing answers null there rather than an empty string,
+/// which is what tells "nothing was folded" from "an empty subtree was".
+fn entry_scalar(
+    registry: &FixRegistry,
+    entry: &super::FixEntry,
+    level: usize,
+) -> Result<crate::Scalar> {
     let tail = if level < ENTRY_DEPTH {
         let children: Result<Vec<crate::Scalar>> = entry
             .children()
             .iter()
-            .map(|held| entry_scalar(held, level + 1))
+            .map(|held| entry_scalar(registry, held, level + 1))
             .collect();
         crate::Scalar::from_sequence(children?)
     } else if entry.children().is_empty() {
-        crate::Scalar::from(&[] as &[u8])
+        crate::Scalar::Null
     } else {
-        let folded: Vec<crate::Scalar> = entry.children().iter().map(folded_scalar).collect();
+        let folded: Vec<crate::Scalar> = entry
+            .children()
+            .iter()
+            .map(|held| folded_scalar(registry, held))
+            .collect();
         let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
-        crate::Scalar::from(rendered.as_bytes())
+        crate::Scalar::from(rendered)
     };
     // The key and the value are the ranges of the line the entry names, read
     // as the text a `utf8` column holds - lossily where a data field's bytes
@@ -501,29 +649,31 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
     // on one rebuilt from this row alike.
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry_name(registry, entry)),
         crate::Scalar::from(entry.value_text()),
+        crate::Scalar::from(entry.key_text()),
         tail,
     ]))
 }
 
 /// One truncated entry as the value the leaf's JSON stores.
 ///
-/// The same four members in the same order, children as a plain array, so a
+/// The same five members in the same order, children as a plain array, so a
 /// reader walks the decoded value exactly as it walks the materialized
 /// levels. Untyped on the way back in, because no finite field describes an
 /// unbounded subtree - and every member is an integer or UTF-8, so an untyped
 /// decode loses nothing.
-fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
+fn folded_scalar(registry: &FixRegistry, entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry_name(registry, entry)),
         crate::Scalar::from(entry.value_text()),
+        crate::Scalar::from(entry.key_text()),
         crate::Scalar::from_sequence(
             entry
                 .children()
                 .iter()
-                .map(folded_scalar)
+                .map(|held| folded_scalar(registry, held))
                 .collect::<Vec<_>>(),
         ),
     ])
@@ -540,7 +690,7 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 
 /// One arrival entry read back out of the row value its level holds.
 ///
-/// The inverse of [`entry_scalar`], level by level: the four members in the
+/// The inverse of [`entry_scalar`], level by level: the five members in the
 /// order it wrote them, the children walked as the materialized List where
 /// the level holds one and as the leaf's JSON - decoded through the crate's
 /// one parser - where the level folded them. A leaf that cannot be decoded is
@@ -550,6 +700,12 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 /// and the value are copied here, because a row is where a message stops being
 /// a range of a line: the column holds the text, and the entry rebuilt from it
 /// owns a page of its own.
+///
+/// `tagname` is read past rather than read: it is what a dictionary made of
+/// the tag beside it, so rebuilding the entry from it would give the arrival
+/// record two owners of one fact. The message this returns carries the tag
+/// and the arrival key, and its [registry](super::FixMsg::registry) answers
+/// the name again whenever it is asked for.
 ///
 /// # Errors
 ///
@@ -561,9 +717,9 @@ fn entry_from_scalar(
 ) -> Result<super::FixEntry> {
     let held = pair
         .as_sequence()
-        .ok_or_else(|| entry_error(path, "a four-member arrival entry", pair.kind()))?;
-    let [tag, key, value, tail] = held else {
-        return Err(entry_error(path, "four arrival members", held.len()));
+        .ok_or_else(|| entry_error(path, "a five-member arrival entry", pair.kind()))?;
+    let [tag, _name, value, key, tail] = held else {
+        return Err(entry_error(path, "five arrival members", held.len()));
     };
     let tag = if tag.is_null() {
         0
@@ -573,7 +729,7 @@ fn entry_from_scalar(
             .filter(|value| *value >= 0)
             .ok_or_else(|| {
                 entry_error(
-                    &path.field("tag"),
+                    &path.field(TAGNUM_COLUMN.0),
                     "a nonnegative i32 tag or null",
                     format_args!("{tag:?}"),
                 )
@@ -590,7 +746,11 @@ fn entry_from_scalar(
         }
     };
     let children = entries_from_scalar(tail, &path.field(FIXENTRIES_COLUMN))?;
-    let entry = super::FixEntry::new(tag, text(key, "key")?, text(value, "value")?);
+    let entry = super::FixEntry::new(
+        tag,
+        text(key, TAGKEY_COLUMN.0)?,
+        text(value, TAGVALUE_COLUMN.0)?,
+    );
     Ok(entry.with_children(children))
 }
 
@@ -606,16 +766,22 @@ fn entry_error(
 }
 
 /// Decode one folded subtree, then walk the same entry shape as materialized rows.
+///
+/// The leaf is text and nullable: a null or an empty one folded nothing, and
+/// anything else is the crate's own JSON over the subtree it folded.
 fn entries_from_scalar(
     value: &crate::Scalar,
     path: &crate::path::Path<'_>,
 ) -> Result<Vec<super::FixEntry>> {
+    if value.is_null() {
+        return Ok(Vec::new());
+    }
     let decoded;
-    let value = if let Some(bytes) = value.as_bytes() {
-        if bytes.is_empty() {
+    let value = if let Some(text) = value.as_str() {
+        if text.is_empty() {
             return Ok(Vec::new());
         }
-        decoded = crate::from_json_scalar(bytes)
+        decoded = crate::from_json_scalar(text.as_bytes())
             .map_err(|error| entry_error(path, "a JSON sequence of arrival entries", error))?;
         &decoded
     } else {
@@ -757,8 +923,10 @@ impl super::FixMsg {
     /// assert_eq!(held[at].as_str(), Some("D"));
     /// // An unresolved numeric key stays in the one arrival record as tag zero.
     /// let entries = held.last().and_then(yggdryl::Scalar::as_sequence).unwrap();
-    /// let entry = entries.iter().find(|entry| entry.get(1).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
+    /// let entry = entries.iter().find(|entry| entry.get(3).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
     /// assert_eq!(entry.get(0).and_then(yggdryl::Scalar::as_i128), Some(0));
+    /// // And a key no dictionary explains is named after itself rather than nulled.
+    /// assert_eq!(entry.get(1).and_then(yggdryl::Scalar::as_str), Some("9999"));
     /// # Ok(())
     /// # }
     /// ```
@@ -819,7 +987,7 @@ impl super::FixMsg {
                 FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
                     self.entries()
                         .iter()
-                        .map(|entry| entry_scalar(entry, 1))
+                        .map(|entry| entry_scalar(self.registry(), entry, 1))
                         .collect::<Result<Vec<_>>>()?,
                 ),
                 // The group's counter counts the occurrences beside it, as
@@ -976,8 +1144,25 @@ impl super::FixMsg {
             })
         } else if is(super::SYMBOLTICKER_TAG_NAME) {
             self.symbol_ticker()
-        } else if is(super::TIMEPARTITION_TAG_NAME) {
-            partition_of(self.updatedat())
+        } else if is(super::SESSIONMSGID_TAG_NAME) {
+            self.session_scoped(&SESSION_MSG_PARTS)
+        } else if is(super::SESSIONMSGSEQID_TAG_NAME) {
+            self.session_scoped(&SESSION_MSG_SEQ_PARTS)
+        } else if is(super::INSTIDS_TAG_NAME) {
+            self.instrument_ids(derived)?
+        } else if tag == super::cfi::CFICODE_TAG {
+            // FIX's own tag rather than a column of this crate's: 461 is
+            // already where a message states its classification, so filling
+            // it to the maximum the message licenses is the whole job and a
+            // second column would be a second owner of one fact.
+            //
+            // Only reached when the message stated nothing there - a stated
+            // value returned above, because a stated value is never
+            // overwritten. `classification` merges a partial stated code with
+            // what the rest of the message says; this is the other half of it,
+            // where there was nothing stated to merge with.
+            self.classification()
+                .map_or(crate::Scalar::Null, crate::Scalar::from)
         } else if super::is_crate_tag(tag) {
             // The registry compiles every derivation once, and a refused
             // compile refuses the row as it refuses the pass; a derivation
@@ -1136,6 +1321,104 @@ const DERIVED_FACETS: [(i32, &str); 5] = [
 /// anything.
 const TICKER_SOURCES: [i32; 2] = [55, 48];
 
+/// The tag FIX publishes a message's sequence number under.
+const MSGSEQNUM_TAG: i32 = 34;
+
+/// What joins the parts of a session-scoped name.
+///
+/// The colon the bridge itself writes between them in its row header, so a
+/// reader grepping a log for `e7254b20:9f015ed023` finds the same string the
+/// column holds.
+const SESSION_SEPARATOR: char = ':';
+
+/// The columns [`SESSIONMSGID_TAG_NAME`](super::SESSIONMSGID_TAG_NAME) joins,
+/// in the order the bridge's own bracket writes them.
+pub(super) const SESSION_MSG_PARTS: [i32; 2] = [
+    super::BRIDGESESSIONID_TAG_NAME.0,
+    super::MSGCTXID_TAG_NAME.0,
+];
+
+/// The columns
+/// [`SESSIONMSGSEQID_TAG_NAME`](super::SESSIONMSGSEQID_TAG_NAME) joins, which
+/// are [`SESSION_MSG_PARTS`] and the occurrence.
+pub(super) const SESSION_MSG_SEQ_PARTS: [i32; 3] = [
+    super::BRIDGESESSIONID_TAG_NAME.0,
+    super::MSGCTXID_TAG_NAME.0,
+    MSGSEQNUM_TAG,
+];
+
+impl super::FixMsg {
+    /// The parts of a session-scoped name, joined, or null where any is
+    /// missing.
+    ///
+    /// All or nothing rather than best effort, which is the opposite of how
+    /// most of this crate fills - and deliberately. A name with a hole in it
+    /// looks like a name, so two messages missing different parts would join
+    /// to each other; a null says outright that this message cannot be named
+    /// that way.
+    pub(super) fn session_scoped(&self, tags: &[i32]) -> crate::Scalar {
+        let mut held = String::new();
+        for tag in tags {
+            let Some(part) = self
+                .get_by_tag(*tag)
+                .filter(|held| !held.is_null())
+                .and_then(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_owned)
+                        .or_else(|| value.as_i128().map(|held| held.to_string()))
+                })
+            else {
+                return crate::Scalar::Null;
+            };
+            if !held.is_empty() {
+                held.push(SESSION_SEPARATOR);
+            }
+            held.push_str(part.trim());
+        }
+        if held.is_empty() {
+            return crate::Scalar::Null;
+        }
+        crate::Scalar::from(held)
+    }
+
+    /// Every identifier this instrument is known by, as one struct value.
+    ///
+    /// Each member answers exactly as the column beside it does - through
+    /// [`Self::column_value`], the one place that says how an identifier
+    /// fills - rather than by reading whatever the message happens to hold.
+    /// A message and its own fixed-row projection must agree here: a row
+    /// carries `isincode` because the derivation filled it, and a struct
+    /// reading only stated columns would be empty on the message and full on
+    /// the row, which is two answers to one question. Null where the message
+    /// names the instrument in no way at all, because a struct of five nulls
+    /// is not a fact.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::column_value`] returns for a member.
+    fn instrument_ids(
+        &self,
+        derived: &mut Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)>,
+    ) -> Result<crate::Scalar> {
+        let members = [
+            super::cfi::CFICODE_TAG,
+            super::ISINCODE_TAG_NAME.0,
+            super::BLOOMBERGCODE_TAG_NAME.0,
+            super::CUSIPCODE_TAG_NAME.0,
+            super::SEDOLCODE_TAG_NAME.0,
+        ];
+        let mut held = Vec::with_capacity(members.len());
+        for tag in members {
+            held.push(self.column_value(tag, derived)?);
+        }
+        if held.iter().all(crate::Scalar::is_null) {
+            return Ok(crate::Scalar::Null);
+        }
+        Ok(crate::Scalar::from_sequence(held))
+    }
+}
+
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
 pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
@@ -1187,35 +1470,4 @@ impl super::FixMsg {
     }
 }
 
-impl super::FixMsg {
-    /// The partition [`Self::updatedat`] falls in: that instant floored to
-    /// the hour, the crate's one partition width
-    /// ([`DEFAULT_PARTITION_SECONDS`](super::DEFAULT_PARTITION_SECONDS)),
-    /// as the same nanosecond UTC clock.
-    ///
-    /// Floor division rather than truncation, so a clock before the epoch
-    /// lands in the hour that contains it rather than the one after. This is
-    /// the value the `timepartition` column carries, and the value the
-    /// column's own `transform:expression` computes when a batch arrives
-    /// without it.
-    #[must_use]
-    pub fn time_partition(&self) -> crate::Scalar {
-        partition_of(self.updatedat())
-    }
-}
-
-/// The hour one market clock falls in, as an instant of the clock's layout.
-///
-/// Floor division rather than truncation, so a clock before the epoch lands
-/// in the hour that contains it rather than the one after - and floored from
-/// the clock's own nanoseconds, so a clock stated to the microsecond still
-/// has a partition rather than a null for not being a whole second.
-fn partition_of(clock: &crate::Scalar) -> crate::Scalar {
-    let Some(nanoseconds) = clock.temporal_count_at(crate::TimeUnit::Nanosecond) else {
-        return crate::Scalar::Null;
-    };
-    let width = super::DEFAULT_PARTITION_SECONDS * 1_000_000_000;
-    let floored = nanoseconds.div_euclid(width) * width;
-    crate::Scalar::datetime64(floored, crate::TimeUnit::Nanosecond, crate::Timezone::UTC)
-        .unwrap_or(crate::Scalar::Null)
-}
+impl super::FixMsg {}

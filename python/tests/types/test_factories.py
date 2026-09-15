@@ -78,6 +78,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "isin": types.isin("value"),
         "cusip": types.cusip("value"),
         "sedol": types.sedol("value"),
+        "bloomberg": types.bloomberg("value"),
         "uuid": types.uuid("value"),
         "version": types.version("value"),
         "url": types.url("value"),
@@ -91,7 +92,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 63
+    assert len(values_by_kind) == 64
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }

@@ -125,6 +125,7 @@ impl DataType {
         ("isin", DataType::Isin),
         ("cusip", DataType::Cusip),
         ("sedol", DataType::Sedol),
+        ("bloomberg", DataType::Bloomberg),
         // The remaining codes resolve to themselves. `side` is a FIX code
         // set the standard itself declares, addressed constantly enough to
         // earn a packed datatype.

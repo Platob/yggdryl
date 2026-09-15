@@ -713,8 +713,8 @@ fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads()
             panic!("{} binds against what it reads: {error}", field.name())
         });
     }
-    // 29 shipped fields and the crate's three columns.
-    assert_eq!(carried, 32);
+    // 29 shipped fields and the crate's ten columns.
+    assert_eq!(carried, 39);
     for (tag, _) in [
         yggdryl::ISINCODE_TAG_NAME,
         yggdryl::MICCODE_TAG_NAME,

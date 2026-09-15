@@ -36,6 +36,7 @@ fn registered() -> Vec<(&'static str, DataType)> {
         ("isin", DataType::Isin),
         ("cusip", DataType::Cusip),
         ("sedol", DataType::Sedol),
+        ("bloomberg", DataType::Bloomberg),
         ("side", DataType::Side),
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),

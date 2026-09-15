@@ -26,8 +26,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the three categories - `{fields, components, groups}` and no other key - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 25 definitions from tag 65001: 24 scalar fields and the sorted Map group `altids(65020)`. `new()` registers each in its own category; ordinary size and iteration count the scalars only. A [store](store.md) omits these builtins and cannot override them |
-| Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated-and-versioned) are typed by, so an empty registry holds 26 scalars; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 27 definitions from tag 65001: 26 scalar fields and the sorted Map group `altids(65020)`. `new()` registers each in its own category; ordinary size and iteration count the scalars only. A [store](store.md) omits these builtins and cannot override them |
+| Standard clocks | `new()` also seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields the [message clocks](capture.md#every-message-is-dated-and-versioned) are typed by, so an empty registry holds 28 scalars; a loaded dictionary defining either supplies its own, which must keep that layout, and removing or overriding them stays an ordinary mutation |
 | Crate message | `new()` holds the one message type the crate defines beside them, [`pluginconfig`](capture.md#a-bridge-configuration-is-a-dictionary-of-its-own) under the code `UCFG`, because a codec meeting a plugin configuration cannot write the registry it shares; its members are held by value, so the component states the shape of a `UCFG` message without registering the plugin attributes as fields of this dictionary |
 
 ## Use
@@ -1138,7 +1138,7 @@ Registration updates tag 35's inline vocabulary and, if no message owns that cod
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the 24 crate scalars, the seeded `SendingTime` and `TransactTime`, the `altids` group and the `pluginconfig` message. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `Folder::config()/fix`, then `FixRegistry::new()`: the 26 crate scalars, the seeded `SendingTime` and `TransactTime`, the `altids` group and the `pluginconfig` message. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `Folder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

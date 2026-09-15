@@ -518,12 +518,8 @@ pub(super) fn fill_field<'registry>(
         .as_ref()
         .and_then(|path| registry.get_field_by_path(path))
         .or_else(|| registry.get_field_by_name(key));
-    if let Some(field) = named {
-        let tag = field.as_fix().tag().ok().flatten()?;
-        return Some((field, tag));
-    }
-    let tag = super::ulbridge::capture_tag(key)?;
-    let field = registry.get_field_by_tag(tag)?;
+    let field = named?;
+    let tag = field.as_fix().tag().ok().flatten()?;
     Some((field, tag))
 }
 

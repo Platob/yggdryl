@@ -54,8 +54,8 @@ use crate::types::temporal::casts::{
 use crate::types::uuid::casts::ingest_uuid_array;
 use crate::types::version::casts::{ingest_version_array, is_text_layout};
 use crate::types::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH,
-    SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, code_refusal,
 };
 use crate::types::{RecognizedExtension, recognized_arrow_extension};
 use crate::{DataType, Field, Scalar};
@@ -1267,6 +1267,13 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::Sedol => ingest_code_array::<SEDOL_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Bloomberg => ingest_code_array::<BLOOMBERG_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

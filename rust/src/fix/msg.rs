@@ -40,12 +40,12 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// A repeating-group counter remains an int32 value reached by its tag;
 /// the separate collection is reached by name, such as `Parties`.
 ///
-/// Every message stores non-null `updatedat`, `createdat`, `uuid`, `puuid`,
+/// Every message stores non-null `updatedat`, `createdat`, `msghash`, `msgphash`,
 /// `code`, `snapshotat` and `SendingTime(52)`. Initial intake settles clocks;
 /// replay never reads now. The four direct accessors borrow their stored
-/// values without lookup or allocation. `uuid` and `puuid` are sixteen fixed
-/// bytes each, never RFC identifiers: `puuid` is the big-endian XXH3-128 of
-/// the exact code bytes, and `uuid` the signed updatedat nanoseconds with
+/// values without lookup or allocation. `msghash` and `msgphash` are sixteen fixed
+/// bytes each, never RFC identifiers: `msgphash` is the big-endian XXH3-128 of
+/// the exact code bytes, and `msghash` the signed updatedat nanoseconds with
 /// the sign bit flipped in bytes 0..8 beside all 64 bits of the named
 /// content's XXH64 in bytes 8..16. These non-cryptographic identities are
 /// separate from the immutable arrival record's [`Self::digest`].
@@ -82,8 +82,8 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// assert_eq!(msg.by_tag(9999)?, &Scalar::from("custom"), "an unknown tag is kept");
 /// assert_eq!(msg.updatedat(), msg.by_name("updatedat")?);
 /// assert_eq!(msg.createdat(), msg.by_name("createdat")?);
-/// assert_eq!(msg.uuid(), msg.by_name("uuid")?);
-/// assert_eq!(msg.puuid(), msg.by_name("puuid")?);
+/// assert_eq!(msg.msghash(), msg.by_name("msghash")?);
+/// assert_eq!(msg.msgphash(), msg.by_name("msgphash")?);
 ///
 /// // Both halves serialize through the paths every field and value share.
 /// let root = msg.as_field();
@@ -133,8 +133,8 @@ pub struct FixMsg {
     value: Scalar,
     updatedat: Scalar,
     createdat: Scalar,
-    uuid: Scalar,
-    puuid: Scalar,
+    msghash: Scalar,
+    msgphash: Scalar,
 }
 
 /// One child a write lands: replaced at `at`, appended when there is none,
@@ -442,8 +442,8 @@ impl FixMsg {
             value,
             updatedat: hard.updatedat,
             createdat: hard.createdat,
-            uuid: hard.uuid,
-            puuid: hard.puuid,
+            msghash: hard.msghash,
+            msgphash: hard.msgphash,
         }
     }
 
@@ -458,13 +458,13 @@ impl FixMsg {
     }
 
     /// Borrow the time/content identity, sixteen bytes, without a lookup.
-    pub const fn uuid(&self) -> &Scalar {
-        &self.uuid
+    pub const fn msghash(&self) -> &Scalar {
+        &self.msghash
     }
 
     /// Borrow the code-only chain identity, sixteen bytes, without a lookup.
-    pub const fn puuid(&self) -> &Scalar {
-        &self.puuid
+    pub const fn msgphash(&self) -> &Scalar {
+        &self.msgphash
     }
 
     /// A resolved replay or restatement never defaults a clock.
@@ -783,7 +783,7 @@ impl FixMsg {
             return Ok(None);
         };
         if super::identity::resolve_tag(&self.field.fields()[at], &self.registry)?
-            .is_some_and(super::identity::is_mandatory)
+            .is_some_and(super::identity::is_held)
         {
             return Err(super::identity::refused(
                 self.field.fields()[at].name(),
@@ -831,7 +831,7 @@ impl FixMsg {
         if let Some(at) = self.index_of_key(key) {
             let field = &self.field.fields()[at];
             if let Some(tag) = super::identity::resolve_tag(field, &self.registry)?
-                .filter(|tag| super::identity::is_mandatory(*tag))
+                .filter(|tag| super::identity::is_held(*tag))
             {
                 let mut field = field.clone();
                 field.as_fix_mut().set_tag(tag)?;
@@ -913,7 +913,7 @@ impl FixMsg {
 
     fn mandatory_index(&self, known: &Field) -> Option<usize> {
         let (tag, _) = self.registry.identity_of(known)?;
-        super::identity::is_mandatory(tag)
+        super::identity::is_held(tag)
             .then(|| self.index_of_tag(tag))
             .flatten()
     }
@@ -934,8 +934,8 @@ impl FixMsg {
         let mut assertions = super::identity::Assertions::default();
         for write in &writes {
             let tag = write.field.as_fix().tag()?;
-            assertions.uuid |= tag == Some(super::UUID_TAG_NAME.0);
-            assertions.persistent |= tag == Some(super::PUUID_TAG_NAME.0);
+            assertions.msghash |= tag == Some(super::MSGHASH_TAG_NAME.0);
+            assertions.persistent |= tag == Some(super::MSGPHASH_TAG_NAME.0);
         }
         let (field, mut values, indexed) = stage_writes(&self.field, &self.value, writes)?;
         let plan = super::schema::column_plan_of(&field, &self.registry)?;
@@ -975,8 +975,8 @@ impl FixMsg {
     fn publish_hard(&mut self, hard: super::identity::Hard) {
         self.updatedat = hard.updatedat;
         self.createdat = hard.createdat;
-        self.uuid = hard.uuid;
-        self.puuid = hard.puuid;
+        self.msghash = hard.msghash;
+        self.msgphash = hard.msgphash;
     }
 
     /// The root over other children: its name, nullability and metadata,
@@ -1124,10 +1124,10 @@ impl FixMsg {
             Some(self.updatedat())
         } else if tag == super::CREATEDAT_TAG_NAME.0 {
             Some(self.createdat())
-        } else if tag == super::UUID_TAG_NAME.0 {
-            Some(self.uuid())
-        } else if tag == super::PUUID_TAG_NAME.0 {
-            Some(self.puuid())
+        } else if tag == super::MSGHASH_TAG_NAME.0 {
+            Some(self.msghash())
+        } else if tag == super::MSGPHASH_TAG_NAME.0 {
+            Some(self.msgphash())
         } else {
             None
         }
@@ -1477,8 +1477,8 @@ impl Clone for FixMsg {
             value: self.value.clone(),
             updatedat: self.updatedat.clone(),
             createdat: self.createdat.clone(),
-            uuid: self.uuid.clone(),
-            puuid: self.puuid.clone(),
+            msghash: self.msghash.clone(),
+            msgphash: self.msgphash.clone(),
         }
     }
 }

@@ -10,8 +10,8 @@
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Writes | `set`, `set_many`, `with_value` and `remove` [change the row](#written-into-the-row) and never the entries; a key resolves as a lookup does, a value types through the registry's field, and a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only; Python and JavaScript expose `set` and `remove` |
 | Validates | the row through `Field::scalar`, so a `Scalar::Record` input becomes that sequence |
-| Settled | every message holds non-null `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime(52)` - the two identities `fixedbinary(16)`, sixteen plain bytes - appended where the root lacks them and [dated once at construction](capture.md#every-message-is-dated-and-versioned); a write recomputes `uuid` and `puuid`, a stated one must match, and a mandatory field refuses a null or a removal |
-| Borrows | `registry()`, `as_field()`, `as_value()`, and `updatedat()`, `createdat()`, `uuid()`, `puuid()` without a lookup |
+| Settled | every message holds non-null `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat` and `SendingTime(52)` - the two identities `fixedbinary(16)`, sixteen plain bytes - appended where the root lacks them and [dated once at construction](capture.md#every-message-is-dated-and-versioned); a write recomputes `msghash` and `msgphash`, a stated one must match, and a mandatory field refuses a null or a removal |
+| Borrows | `registry()`, `as_field()`, `as_value()`, and `updatedat()`, `createdat()`, `msghash()`, `msgphash()` without a lookup |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
 | Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
 | Resolves through | the linked [registry](registry.md), never a private copy of its rules |
@@ -65,7 +65,7 @@
     assert_eq!(msg.as_value().as_sequence().map(|row| row.len()), Some(12));
     assert_eq!(msg.as_field().fields()[5].name(), "updatedat");
     assert_eq!(msg.updatedat(), msg.by_tag(52)?, "an undated message is dated once");
-    assert_eq!(msg.puuid(), msg.by_name("puuid")?);
+    assert_eq!(msg.msgphash(), msg.by_name("msgphash")?);
     assert_eq!(msg.by_tag(38)?, &Scalar::from(100_i64));
     assert_eq!(msg.by_name("ticker")?, &Scalar::from("AAPL"));
     assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, &Scalar::from("BROKER"));
@@ -138,7 +138,7 @@
     # settled values appended behind the five it stated.
     assert len(message) == 12
     assert message.updatedat() == message.by_tag(52), "an undated message is dated once"
-    assert message.puuid() == message.by_name("puuid")
+    assert message.msgphash() == message.by_name("msgphash")
     assert message.by_tag(38).as_py() == 100
     assert message.by_name("ticker").as_py() == "AAPL"
     assert message.by_path("Parties[0].PartyID").as_py() == "BROKER"
@@ -148,7 +148,7 @@
         message.by_path("Parties.PartyID")  # a group member needs its index
     assert [name for name, _ in message] == [
         "OrderQty", "Symbol", "NoPartyIDs", "Parties", "9999",
-        "updatedat", "createdat", "uuid", "puuid", "code", "snapshotat", "sendingtime",
+        "updatedat", "createdat", "msghash", "msgphash", "code", "snapshotat", "sendingtime",
     ]
 
     # An identifier is the tag and the name together, under the one fold, and exact.
@@ -215,7 +215,7 @@
     assert.equal(message.value.kind, 'sequence')
     assert.equal(message.size, 12)
     assert.ok(message.updatedat().equals(message.byTag(52)), 'an undated message is dated once')
-    assert.ok(message.puuid().equals(message.byName('puuid')))
+    assert.ok(message.msgphash().equals(message.byName('msgphash')))
     assert.equal(message.byTag(38).asJs(), 100)
     assert.equal(message.byName('ticker').asJs(), 'AAPL')
     assert.equal(message.byPath('Parties[0].PartyID').asJs(), 'BROKER')
@@ -226,7 +226,7 @@
       [...message].map(([name]) => name),
       [
         'OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999',
-        'updatedat', 'createdat', 'uuid', 'puuid', 'code', 'snapshotat', 'sendingtime',
+        'updatedat', 'createdat', 'msghash', 'msgphash', 'code', 'snapshotat', 'sendingtime',
       ],
     )
 
@@ -271,7 +271,7 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 | `get_by_name` / `by_name` | folds through the registry to the canonical spelling, then matches a root child exactly |
 | `get_by_path` / `by_path` | the whole string as a name, then segment by segment: into a Struct child by name, into a List entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects |
-| `updatedat` / `createdat` / `uuid` / `puuid` | the settled values the message holds directly, borrowed without a registry lookup, a metadata read or a child scan; methods in Python and JavaScript |
+| `updatedat` / `createdat` / `msghash` / `msgphash` | the settled values the message holds directly, borrowed without a registry lookup, a metadata read or a child scan; methods in Python and JavaScript |
 
 ## Clocks and identity
 
@@ -279,16 +279,16 @@ A message's clocks are settled once, when it is first built - `SendingTime`, the
 
 | identity | recipe |
 | --- | --- |
-| `puuid` | the sixteen big-endian bytes of the unseeded XXH3-128 of the exact `code` bytes alone; an empty code hashes empty bytes, and whitespace is a real name |
-| `uuid` | the row's named cells sorted by exact field-name bytes - `uuid`, `updatedat`, `createdat`, `sourceurl`, `fixentries` and its `nofixentries` counter left out, every other cell in, `code`, `puuid`, `snapshotat`, `SendingTime` and carried capture context included - fed through the canonical scalar record framing into an unseeded XXH64, then laid out beside `updatedat`'s signed nanoseconds by [`TxHash::into_ordered_bytes`](../hashing.md): the instant with its sign bit flipped in bytes 0..8, all 64 digest bits in bytes 8..16 |
+| `msgphash` | the sixteen big-endian bytes of the unseeded XXH3-128 of the exact `code` bytes alone; an empty code hashes empty bytes, and whitespace is a real name |
+| `msghash` | the row's named cells sorted by exact field-name bytes - `msghash`, `updatedat`, `createdat`, `sourceurl`, `fixentries` and its `nofixentries` counter left out, every other cell in, `code`, `msgphash`, `snapshotat`, `SendingTime` and carried capture context included - fed through the canonical scalar record framing into an unseeded XXH64, then laid out beside `updatedat`'s signed nanoseconds by [`TxHash::into_ordered_bytes`](../hashing.md): the instant with its sign bit flipped in bytes 0..8, all 64 digest bits in bytes 8..16 |
 
 Because the instant leads the sixteen bytes and its sign bit is flipped, two identities compare as their `updatedat` instants do, across the epoch, whatever the digests say.
 
-An omitted cell differs from a null one and an empty value from a null, while root column order does not matter; so a projection that pads, renames or regroups columns may move `uuid`, and unchanged named content keeps it. Every write, enrichment and projection recomputes both before publishing; a stated `uuid` or `puuid` is an assertion that must match the complete candidate. These hashes are non-cryptographic fingerprints, and `digest` - the arrival record's - is a separate contract.
+An omitted cell differs from a null one and an empty value from a null, while root column order does not matter; so a projection that pads, renames or regroups columns may move `msghash`, and unchanged named content keeps it. Every write, enrichment and projection recomputes both before publishing; a stated `msghash` or `msgphash` is an assertion that must match the complete candidate. These hashes are non-cryptographic fingerprints, and `digest` - the arrival record's - is a separate contract.
 
 ## Written into the row
 
-A message is read once and then written to: enrichment fills what it implied, the lifecycle stamps what the stream implied, a restatement rewrites a retired spelling. All of them go through one door. `set` writes one value into the row, typed by the field the key reaches; `set_many` lands several with one rebuild, which is what a stream stamping a chain's code, clocks and history on every message wants; `with_value` is the consuming twin; `remove` takes a child out and answers what it held, and refuses a mandatory one. Every one of them is row-only: the entries are what arrived, so `into_bytes` still re-emits the bytes this message arrived as, byte for byte, and `digest` still answers the arrival record's. Each recomputes the [identities](#clocks-and-identity) before publishing, so a content write moves `uuid` while `puuid` stays.
+A message is read once and then written to: enrichment fills what it implied, the lifecycle stamps what the stream implied, a restatement rewrites a retired spelling. All of them go through one door. `set` writes one value into the row, typed by the field the key reaches; `set_many` lands several with one rebuild, which is what a stream stamping a chain's code, clocks and history on every message wants; `with_value` is the consuming twin; `remove` takes a child out and answers what it held, and refuses a mandatory one. Every one of them is row-only: the entries are what arrived, so `into_bytes` still re-emits the bytes this message arrived as, byte for byte, and `digest` still answers the arrival record's. Each recomputes the [identities](#clocks-and-identity) before publishing, so a content write moves `msghash` while `msgphash` stays.
 
 | Key | Reaches |
 | --- | --- |
@@ -316,7 +316,7 @@ A written child keeps its position, so every reader already holding the row addr
     let mut message = reader.parse_fix_line(line)?;
     let children = message.as_field().fields().len();
     let at = message.as_field().index_of("symbol").expect("the symbol child");
-    let (uuid, puuid) = (message.uuid().clone(), message.puuid().clone());
+    let (msghash, msgphash) = (message.msghash().clone(), message.msgphash().clone());
 
     // Appended under the dictionary's field, typed by it, reached by tag or name.
     message.set(34, Scalar::from(7_i32))?;
@@ -329,8 +329,8 @@ A written child keeps its position, so every reader already holding the row addr
     assert_eq!(message.as_field().index_of("symbol"), Some(at));
     assert_eq!(message.by_tag(55)?.as_str(), Some("MSFT"));
     // The content identity moved with the content; the chain's is `code`'s alone.
-    assert_ne!(message.uuid(), &uuid);
-    assert_eq!(message.puuid(), &puuid);
+    assert_ne!(message.msghash(), &msghash);
+    assert_eq!(message.msgphash(), &msgphash);
 
     // A tag no dictionary explains is kept under its decimal spelling.
     message.set(7777, Scalar::from("custom"))?;
@@ -383,7 +383,7 @@ A written child keeps its position, so every reader already holding the row addr
     message = reader.parse_fix_line(line)
     children = len(message)
     names = [name for name, _ in message]
-    uuid, puuid = message.uuid(), message.puuid()
+    msghash, msgphash = message.msghash(), message.msgphash()
 
     # Appended under the dictionary's field, typed by it, reached by tag or name.
     message.set(34, 7)
@@ -396,8 +396,8 @@ A written child keeps its position, so every reader already holding the row addr
     assert [name for name, _ in message].index("symbol") == names.index("symbol")
     assert message.by_tag(55).as_py() == "MSFT"
     # The content identity moved with the content; the chain's is `code`'s alone.
-    assert message.uuid() != uuid
-    assert message.puuid() == puuid
+    assert message.msghash() != msghash
+    assert message.msgphash() == msgphash
 
     # A tag no dictionary explains is kept under its decimal spelling.
     message.set(7777, "custom")
@@ -450,7 +450,7 @@ A written child keeps its position, so every reader already holding the row addr
     const message = reader.parseFixLine(Buffer.from(line))
     const children = message.size
     const names = [...message].map(([name]) => name)
-    const [uuid, puuid] = [message.uuid(), message.puuid()]
+    const [msghash, msgphash] = [message.msghash(), message.msgphash()]
 
     // Appended under the dictionary's field, typed by it, reached by tag or name.
     message.set(34, 7)
@@ -463,8 +463,8 @@ A written child keeps its position, so every reader already holding the row addr
     assert.equal([...message].map(([name]) => name).indexOf('symbol'), names.indexOf('symbol'))
     assert.equal(message.byTag(55).asJs(), 'MSFT')
     // The content identity moved with the content; the chain's is `code`'s alone.
-    assert.ok(!message.uuid().equals(uuid))
-    assert.ok(message.puuid().equals(puuid))
+    assert.ok(!message.msghash().equals(msghash))
+    assert.ok(message.msgphash().equals(msgphash))
 
     // A tag no dictionary explains is kept under its decimal spelling.
     message.set(7777, 'custom')
@@ -500,7 +500,7 @@ A written child keeps its position, so every reader already holding the row addr
 
 ## A row is a message again
 
-`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The row must carry the seven settled values - `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat`, `sendingtime` - each non-null in its exact layout, and its `uuid` and `puuid` must be the ones its content computes; nothing is defaulted and no clock is read back out of those sixteen bytes. The entries are rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the bytes the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. The [example above](#written-into-the-row) ends with that round trip.
+`from_row` is the inverse of [`into_row`](capture.md#a-column-is-filled-by-the-tag-its-field-carries): the message whose root is the schema and whose value is the row, checked and canonicalized as `with_registry` checks one, so every column is a child under the name the schema gave it and every lookup reaches it by tag as it reaches a parsed message's. The row must carry the seven settled values - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - each non-null in its exact layout, and its `msghash` and `msgphash` must be the ones its content computes; nothing is defaulted and no clock is read back out of those sixteen bytes. The entries are rebuilt from the `fixentries` column - every level the row materialized, and the leaf the deepest level folded into decoded through the crate's own JSON reader - so `into_bytes` re-emits the bytes the row was read from and `digest` answers what it answered; a row without that column has no entries. Byte for byte over every capture this crate is tested against, and exact for any entry whose bytes are text - a `data` field carrying bytes no text holds reaches a `utf8` column as the decode of them, so the message that row makes re-emits the decode and `anomalies` reports the `Lossy` that says so. Nothing is parsed again, which is what makes a [batch of rows a stream of messages](arrow.md#rows-are-messages-again-and-messages-rows) at the cost of the values it already holds. The [example above](#written-into-the-row) ends with that round trip.
 
 ## Restated at the dictionary's newest version
 
@@ -687,7 +687,7 @@ A value written into a target is re-typed for the target's field through the cod
 - `FixId::of(0, ..)` or `FixId::of(-1, ..)` -> refused, because a definition's tag is positive and 0 marks only an unresolved arrival entry; a message root the codec builds carries no `fix:branches`, because a message is not a dictionary member.
 - `by_path("Parties.PartyID")` -> an error; a repeating group is a List of Structs, so a member needs the occurrence (`Parties[0].PartyID`), which is the spelling the registry takes too.
 - `set` with a name nothing reaches -> a typed absence naming the key, and the message unchanged; with a value the field refuses -> the value contract's refusal, and the message unchanged; `set_many` refuses all of its writes on the first refusal.
-- `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing. Either on one of the seven settled fields -> refused, the message unchanged; a `uuid` or `puuid` written by hand that the row does not compute -> refused.
+- `set` with a `Null` -> a stated null, the child kept and made nullable; `remove` -> the child gone and its value answered, `None` for a key that reaches nothing. Either on one of the seven settled fields -> refused, the message unchanged; a `msghash` or `msgphash` written by hand that the row does not compute -> refused.
 - `FixMsg::new` / `with_registry` on a root lacking a settled field -> the registry's definition appended and dated as intake dates it, with one UTC-now read where no `SendingTime` is stated; a duplicate holder of one settled role, or one declared in another layout, -> a located refusal.
 - `set` twice under one key -> one child, the later value; a bare unknown tag written twice -> one decimal-named child.
 - `from_row` on a row whose entries column holds something that is not an arrival entry - a folded entry without its four members, a negative tag, a key or value that is not text, children that are neither a sequence nor binary - or a leaf the JSON reader cannot decode -> refused at the arrival path; a null tag reads as 0; on a schema without the column -> a message with no entries and an empty wire; on a row missing a settled field or holding a tampered identity -> a located refusal.

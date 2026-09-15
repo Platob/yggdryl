@@ -57,6 +57,8 @@ const DIRECTIONS: &str = "directions";
 /// states none: the canonical text of one term over the message's fields.
 const DERIVATION: &str = "derivation";
 const COUNTER: &str = "counter";
+/// Whether this field travels from one message of a chain to the next.
+const TRANSIENT: &str = "transient";
 const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
 const GROUP: &str = "group";
@@ -104,6 +106,35 @@ impl<'field> FixField<'field> {
         self.get(COUNTER)
             .map(|stored| parse_tag(stored).ok_or_else(|| self.invalid(COUNTER, TAG_SHAPE, stored)))
             .transpose()
+    }
+
+    /// Whether this field's value carries from one message of a chain to the
+    /// next, `true` where the field says nothing.
+    ///
+    /// A chain is one instrument's run of messages, and most of what a
+    /// message says about the instrument is still true of the next one: the
+    /// classification, the ISIN, the market, the currency. A field that is
+    /// *transient* in this sense is carried forward, so a venue that states
+    /// `CFICode` once and then sends twenty updates that do not repeat it
+    /// still has twenty rows that know what the instrument is.
+    ///
+    /// The default is `true`, and it is the safe one: carrying a fact that
+    /// is still true costs a column fill, while failing to carry one loses
+    /// what the capture knew. A field that is genuinely about the single
+    /// message rather than the instrument - a sequence number, a clock, an
+    /// identity - says `false` and is left where it was stated.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the full `fix:transient` key when the stored
+    /// text is not `true` or `false`.
+    pub fn is_transient(&self) -> Result<bool> {
+        match self.get(TRANSIENT) {
+            None => Ok(true),
+            Some("true") => Ok(true),
+            Some("false") => Ok(false),
+            Some(stored) => Err(self.invalid(TRANSIENT, "true or false", stored)),
+        }
     }
 
     /// Iterates the dictionaries that contributed this field, folded and
@@ -688,6 +719,24 @@ impl FixFieldMut<'_> {
             return Err(self.rejected(COUNTER, format_smolstr!("expected {TAG_SHAPE}, got {tag}")));
         }
         self.store(COUNTER, tag.to_string())
+    }
+
+    /// Says whether this field carries from one message of a chain to the
+    /// next.
+    ///
+    /// `true` is the default, so setting it stores nothing and clears any
+    /// stored `false`: a property every field would carry identically is not
+    /// a property worth writing on every field.
+    ///
+    /// # Errors
+    ///
+    /// Returns the metadata layer's refusal when the write does not land.
+    pub fn set_transient(&mut self, transient: bool) -> Result<()> {
+        if transient {
+            self.remove(TRANSIENT);
+            return Ok(());
+        }
+        self.store(TRANSIENT, "false".to_owned())
     }
 
     /// Removes the component reference.

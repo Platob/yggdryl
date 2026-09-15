@@ -460,6 +460,7 @@ impl PyDataType {
             "isin" => CoreDataType::Isin,
             "cusip" => CoreDataType::Cusip,
             "sedol" => CoreDataType::Sedol,
+            "bloomberg" => CoreDataType::Bloomberg,
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,

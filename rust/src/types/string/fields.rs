@@ -19,6 +19,7 @@ define_field_types!(CfiType, "cfi", crate::DataType::Cfi);
 define_field_types!(IsinType, "isin", crate::DataType::Isin);
 define_field_types!(CusipType, "cusip", crate::DataType::Cusip);
 define_field_types!(SedolType, "sedol", crate::DataType::Sedol);
+define_field_types!(BloombergType, "bloomberg", crate::DataType::Bloomberg);
 define_field_types!(SideType, "side", crate::DataType::Side);
 define_field_types!(StateType, "state", crate::DataType::State);
 define_field_types!(TimeInForceType, "timeinforce", crate::DataType::TimeInForce);
@@ -37,6 +38,7 @@ pub type IsinField = TypedField<IsinType>;
 pub type CusipField = TypedField<CusipType>;
 /// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
 pub type SedolField = TypedField<SedolType>;
+pub type BloombergField = TypedField<BloombergType>;
 /// A side-typed field: FIX's side of a trade.
 pub type SideField = TypedField<SideType>;
 /// A field declared as a thing's state.

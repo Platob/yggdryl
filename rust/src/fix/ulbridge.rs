@@ -15,19 +15,28 @@
 /// them. Those three are optional as a whole, so a line that carries only
 /// the thread still frames and leaves them null rather than failing the row.
 ///
-/// Every capture is named for what it does. `timestamp` is the row's clock,
-/// so it stamps the message; `msgCtxId` fills the crate's own
-/// [`MsgCtxId`](super::MSGCTXID_TAG_NAME); `seqNum` fills `MsgSeqNum(34)`,
-/// through the bridge's own spellings of standard fields; `pluginid` is the
-/// plugin that logged the line, which fills the crate's own
-/// [`PluginId`](super::PLUGINID_TAG_NAME) - the session names the line
-/// moved between are what the line itself spells, never the plugin;
-/// `senderSessionId` is the session instance the bridge handled the line
-/// on, and fills [`SenderSessionId`](super::SENDERSESSIONID_TAG_NAME) - but
-/// only where the
-/// message states none of its own, because a fill never lands over a value the
-/// message already stated. A row spelling `SESSIONID` therefore keeps its own
-/// reading, and a line that spells nothing takes the bracket's.
+/// Every capture is named for the field it fills, so the registry's one
+/// namespace is what lands it and nothing translates in between. `timestamp`
+/// is the row's clock, so it stamps the message; `msgctxid` fills the
+/// crate's own [`MsgCtxId`](super::MSGCTXID_TAG_NAME); `msgseqnum` fills
+/// FIX's own `MsgSeqNum(34)`; `bridgesessionid` fills the crate's own
+/// [`BridgeSessionId`](super::BRIDGESESSIONID_TAG_NAME); `pluginid` is the
+/// plugin that logged the line and fills
+/// [`PluginId`](super::PLUGINID_TAG_NAME) - the session names the line moved
+/// between are what the line itself spells, never the plugin.
+///
+/// The bridge writes these three in camel case - `senderSessionId`,
+/// `msgCtxId`, `seqNum` - and they were captured that way, with a table
+/// mapping `seqnum` onto tag 34. Naming the captures for the fields instead
+/// retires that table: a capture reaches its field because it is called what
+/// the field is called, which is how every other fill in this crate works.
+///
+/// `bridgesessionid` is the session *instance* the bridge handled the line
+/// on, and is its own column rather than `SenderSessionId`: a bridge row
+/// spells `SESSIONID` for the counterparty session the message is on, and two
+/// connections to one counterparty are two instances, so they are two facts.
+/// A fill never lands over a value the message already stated, so a row
+/// spelling one of these keeps its own reading.
 ///
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
@@ -35,8 +44,8 @@
 ///     .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)?;
 /// let captures = options.source_field()?;
 /// let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-/// assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "pluginid", "level"]));
-/// assert_eq!(captures.field("seqNum")?.dtype(), &yggdryl::DataType::Int64);
+/// assert!(names.ends_with(&["timestamp", "threadId", "bridgesessionid", "msgctxid", "msgseqnum", "pluginid", "level"]));
+/// assert_eq!(captures.field("msgseqnum")?.dtype(), &yggdryl::DataType::Int64);
 /// // The bridge's own millisecond fraction is what types its stamp, so a
 /// // widened probe must leave this capture exactly where it was.
 /// assert_eq!(
@@ -49,21 +58,4 @@
 /// # Ok(())
 /// # }
 /// ```
-pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
-
-/// The standard tag one of the bridge's own capture spellings fills.
-///
-/// A bridge writes `seqNum` in its thread bracket where FIX says
-/// `MsgSeqNum`, and a capture named as the bridge spells it should still
-/// land on FIX's own tag. Folded, like every name here, so `SEQNUM` and
-/// `seqnum` are one spelling.
-#[must_use]
-pub(super) fn capture_tag(name: &str) -> Option<i32> {
-    CAPTURE_SPELLINGS
-        .iter()
-        .find(|(spelling, _)| crate::types::folds_equal(spelling, name))
-        .map(|(_, tag)| *tag)
-}
-
-/// The bridge's own spellings of standard fields, beside the tags they fill.
-const CAPTURE_SPELLINGS: [(&str, i32); 1] = [("seqnum", 34)];
+pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<bridgesessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";

@@ -231,12 +231,12 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // was written, what it was, the line itself and the header's captures -
     // and the fixed columns follow. A capture whose folded name a fixed
     // column takes is not carried in front, it fills that column: the
-    // reader's `msgtype` and `sourceurl`, and the header's `msgCtxId` and
-    // `pluginid`. `senderSessionId` names a fixed column too, so it is not
-    // carried either. `seqNum` is, since no fixed column is spelled so, and
-    // it fills `msgseqnum` besides.
+    // reader's `msgtype` and `sourceurl`, and the header's `bridgesessionid`,
+    // `msgctxid` and `msgseqnum`, each named for the field it fills. What is
+    // left in front is what no column is spelled for - the thread that wrote
+    // the line and its level.
     assert_eq!(
-        &names[..8],
+        &names[..7],
         [
             "rownum",
             "mtime",
@@ -244,13 +244,23 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
             "body",
             "timestamp",
             "threadId",
-            "seqNum",
             "level"
         ],
         "{names:?}"
     );
+    // The crate's own clocks open the fixed columns; the standard header
+    // follows them.
     assert_eq!(
-        &names[8..11],
+        &names[7..10],
+        ["updatedat", "prevupdatedat", "createdat"],
+        "{names:?}"
+    );
+    let header = names
+        .iter()
+        .position(|held| *held == "beginstring")
+        .expect("the header opens");
+    assert_eq!(
+        &names[header..header + 3],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
@@ -373,16 +383,20 @@ fn a_message_in_is_a_row_out_and_the_captures_own_columns_ride_in_front() {
     let thread = column(&read, "threadId");
     assert_eq!(thread[ROUTED_ROW].as_i64(), Some(15_333));
     assert_eq!(thread[HEARTBEAT_ROW].as_i64(), Some(15_261));
-    let seq = column(&read, "seqNum");
+    // The bracket's sequence number is FIX's own `MsgSeqNum(34)`, so it fills
+    // that column rather than riding in front of the row - and only where the
+    // message states none. The routed line is keyed by name and spells no
+    // `34`, so the bracket's is what it reads; the heartbeat spells its own
+    // and keeps it; the Jolokia response has neither.
+    let seq = tag_column(&read, 34);
     assert_eq!(seq[ROUTED_ROW].as_i64(), Some(4_507));
-    assert!(seq[HEARTBEAT_ROW].is_null(), "no session, no sequence");
+    assert_eq!(seq[HEARTBEAT_ROW].as_i64(), Some(696));
+    assert!(seq[RESPONSE_ROW].is_null(), "no session, no sequence");
 
-    // Both halves of the bracket are captures named after the crate's own
-    // fields, so both land in those columns rather than in front: the routed
-    // row's bracket stated them, the heartbeat's did not. No line here spells a
-    // session of its own, so the bracket's instance is what `sendersessionid`
-    // reads.
-    let session = tag_text(&read, yggdryl::SENDERSESSIONID_TAG_NAME.0);
+    // All three parts of the bracket are captures named after the fields they
+    // fill, so all three land in those columns rather than in front: the
+    // routed row's bracket stated them, the heartbeat's did not.
+    let session = tag_text(&read, yggdryl::BRIDGESESSIONID_TAG_NAME.0);
     let context = tag_text(&read, yggdryl::MSGCTXID_TAG_NAME.0);
     assert_eq!(session[ROUTED_ROW].as_deref(), Some("e7254b22"));
     assert_eq!(context[ROUTED_ROW].as_deref(), Some("9f015ee861"));
@@ -535,7 +549,7 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     // Every projected row carries its sixteen content identity bytes.
     // Distinct real messages remain distinct, independently of the separate
     // arrival digest.
-    let identities = tag_column(&read, yggdryl::UUID_TAG_NAME.0);
+    let identities = tag_column(&read, yggdryl::MSGHASH_TAG_NAME.0);
     for (row, held) in identities.iter().enumerate() {
         assert_eq!(
             super::identity_bytes(held).len(),
@@ -565,8 +579,10 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     assert_eq!(clock.len(), CAPTURE.len());
     for (row, line) in CARRYING.into_iter().enumerate() {
         assert_eq!(carried[row], clock[line], "capture context for row {row}");
-        assert_eq!(stamp[row], snapshot[row]);
-        assert_eq!(created[row], snapshot[row]);
+        // No snapshot was taken of any of these, so the column stays empty
+        // and the event instant is readable as `createdat`.
+        assert!(snapshot[row].is_null());
+        assert_eq!(created[row], stamp[row]);
         assert_ne!(stamp[row], clock[line]);
     }
     let millis = |row: usize| stamp[row].temporal_count_at(TimeUnit::Millisecond);
@@ -577,22 +593,6 @@ fn every_row_keeps_its_event_clock_capture_clock_and_fix_version() {
     );
     assert_eq!(millis(FILL_ROW), Some(1_786_682_796_000));
     assert_eq!(millis(ROUTED_ROW), Some(1_786_682_796_000));
-
-    // The partition the stamp falls in, floored from the clock's own
-    // nanoseconds so a millisecond clock still has one - on every row.
-    let partition = tag_column(&read, yggdryl::TIMEPARTITION_TAG_NAME.0);
-    for (row, held) in partition.iter().enumerate() {
-        assert!(!held.is_null(), "row {row} has a partition");
-    }
-    let seconds = 1_786_682_796_i64;
-    assert_eq!(
-        partition[FILL_ROW].temporal_count_at(TimeUnit::Second),
-        Some(seconds - seconds % yggdryl::DEFAULT_PARTITION_SECONDS)
-    );
-    assert_eq!(
-        partition[FILL_ROW].dtype().unwrap(),
-        stamp[FILL_ROW].dtype().unwrap()
-    );
 
     // Every row says which FIX it was read as: the wire's own `BeginString`
     // where the frame stated one, and `FIX.` and the version the row was read
@@ -775,7 +775,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
             let entry = entry.as_sequence().expect("an entry");
             (
                 entry[0].as_i64().map_or(0, |tag| tag as i32),
-                entry[1].as_str().unwrap_or_default().to_owned(),
+                entry[3].as_str().unwrap_or_default().to_owned(),
             )
         })
         .collect();
@@ -807,11 +807,11 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     // the line read for all five - and it is the line the row came from,
     // `CARRYING[row]`, whose columns the batch filled from. Where the line
     // alone answers nothing, what the batch answers is what that row's own
-    // columns stated - here the header's `seqNum`. The reader states no
+    // columns stated - here the header's `msgseqnum`. The reader states no
     // message type of its own: a line's type is what its frame says, read by
     // the codec.
     let stage = text_stage(&CAPTURE);
-    let sequenced = column(&stage, "seqNum");
+    let sequenced = column(&stage, "msgseqnum");
     let bodies = column(&read, "body");
     let rendered = |value: &Scalar| match value {
         Scalar::Null => None,

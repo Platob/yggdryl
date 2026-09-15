@@ -62,12 +62,12 @@ non-null: ``SendingTime`` is the message's own, else the carrier's, else the
 codec's ``default_sending_time``, else UTC now read once; ``snapshotat`` is the
 real event instant, ``TransactTime`` else ``SendingTime``; ``updatedat`` and
 ``createdat`` start at ``snapshotat``; ``code`` is the empty unknown name; and
-``uuid`` and ``puuid`` are computed. No clock is read after that intake, so
+``msghash`` and ``msgphash`` are computed. No clock is read after that intake, so
 replay carries the settled row or pins the same ``default_sending_time``, and
-:meth:`FixMsg.updatedat`, :meth:`FixMsg.createdat`, :meth:`FixMsg.uuid` and
-:meth:`FixMsg.puuid` always answer. ``uuid`` is sixteen ``fixedbinary(16)``
+:meth:`FixMsg.updatedat`, :meth:`FixMsg.createdat`, :meth:`FixMsg.msghash` and
+:meth:`FixMsg.msgphash` always answer. ``msghash`` is sixteen ``fixedbinary(16)``
 bytes over ``updatedat``'s nanoseconds and the message's named content, and
-``puuid`` sixteen bytes over ``code`` alone; a row change recomputes both, a
+``msgphash`` sixteen bytes over ``code`` alone; a row change recomputes both, a
 stated one that disagrees is refused, and :meth:`FixMsg.remove` refuses a
 mandatory field with ``ValueError``.
 :meth:`FixCodec.parse_text_arrow_reader` turns a whole Arrow capture into
@@ -76,9 +76,9 @@ columns after, one source row's columns repeated for each message a bulk
 document expands to - closed on the raw bytes of the payload column against
 the codec's ``batch_byte_size``. A capture's ``timestamp`` column is carried as
 its own context; its ``pluginid`` column names the plugin that logged the line;
-and any other column named after a field - ``prevpluginid``, ``senderSessionId``,
-or a bridge's ``seqNum`` for ``MsgSeqNum`` - fills that field where the frame
-did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
+and any other column named after a field - ``prevpluginid``,
+``bridgesessionid``, or ``msgseqnum`` for ``MsgSeqNum`` - fills that field
+where the frame did not state it, without becoming an entry. :meth:`FixCodec.enrich_message` and
 :meth:`FixCodec.enrich_messages` fill what a message implied but did not carry,
 and :meth:`FixCodec.enrich_messages_arrow_reader` does the same over batches
 of rows without parsing them again. After restatement and existing fills,
@@ -112,29 +112,37 @@ spelled by the dictionary's folded canonical names, ``msgtype`` and never
 to be resolved per row; the tag stays on each column's ``fix:tag``. Its tags
 end with the crate's own and ``MsgDirection`` (385), and one ``fixentries``
 list closes the row with the whole arrival record, where an unresolved key has
-tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``timepartition``,
-``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are its non-null
-columns. A replayable row carries the whole settled bundle, and
+tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``msghash``,
+``msgphash``, ``createdat`` and ``code`` are its non-null columns, while
+``snapshotat`` is nullable because only a snapshot stamps it. A replayable row carries the whole settled bundle, and
 :meth:`FixMsg.from_row` refuses one that lacks a member.
 :func:`fix_schema_carrying` puts a capture's own columns in front of them,
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
-specification: 27 definitions in tag order, twenty-six scalar fields at tags
-65001 to 65019 and 65021 to 65027 and the nullable sorted-key
-``map<utf8, utf8>`` group ``altids`` at 65020; the retired 65000 is not reused.
+specification: 37 definitions in tag order, thirty-five scalar fields at tags
+65001 to 65019 and 65021 to 65038, the nullable sorted-key
+``map<utf8, utf8>`` group ``altids`` at 65020 and the ``instids`` struct at
+65036; the retired 65000 and 65004 are not reused.
 The scalar fields are ``version``, ``symbolticker``, ``updatedat``,
-``timepartition``, ``parentclordid`` and ``parentorderid``; what a bridge's own
+``parentclordid`` and ``parentorderid``; what a bridge's own
 log states about a line - ``sendersessionid`` and ``targetsessionid``, the
-sessions the message itself names, ``msgctxid``, the plugin ``pluginid`` that
-logged it and the ``prevpluginid`` it came through before that, and the session
-names ``sendersessionname`` and ``targetsessionname`` the line spells; the three
-facts a row derives from what the message said - ``isincode``, ``miccode`` and
-``state``; the ``fixedbinary(16)`` ``instuuid``, ``uuid`` and ``puuid``; the previous
-message's ``prevupdatedat`` and ``prevuuid``; ``createdat``, ``code`` and
-``snapshotat``; the ``url``-typed ``sourceurl`` a line was read from; and the
+sessions the message itself names, ``bridgesessionid``, the session instance
+the bridge handled the line on, ``msgctxid``, the plugin ``pluginid`` that
+logged it and the ``prevpluginid`` it came through before that, the session
+names ``sendersessionname`` and ``targetsessionname`` the line spells, and the
+``sessionmsgid`` and ``sessionmsgseqid`` that join the bracket's parts; the
+facts a row derives from what the message said - ``isincode``,
+``bloombergcode``, ``cusipcode``, ``sedolcode``, ``miccode`` and
+``state``; the ``fixedbinary(16)`` ``instuuid``, ``msghash`` and ``msgphash``; the previous
+message's ``prevupdatedat`` and ``prevmsghash``; ``createdat``, ``code``,
+``snapshotat``, ``recordedat``, ``expiredat`` and the two lane currencies
+``bidcurrency`` and ``offercurrency``; the ``url``-typed ``sourceurl`` a line
+was read from; and the
 ``nofixentries`` that counts the ``fixentries`` arrival record. ``updatedat``,
-``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are non-null,
-and ``timepartition`` partitions ``updatedat``. The
+``msghash``, ``msgphash``, ``createdat`` and ``code`` are non-null, and
+``snapshotat`` is empty on every row no snapshot was taken of. How a layout is
+cut is the target's: an Iceberg table takes an ``hour`` transform over
+``updatedat`` rather than reading a materialized column. The
 separate ``pluginconfig`` component/message and the seeded clocks are not part
 of this tag listing.
 
@@ -144,11 +152,11 @@ globally; otherwise the first identifier - stated ``altids``, else the message
 type's declared identifiers - reaching a live chain under the message's
 ``instuuid`` lends that chain's code, and a new chain is named
 ``<scope hex or ->/<identifier>``, never taking an identifier another live
-chain holds. ``puuid`` hashes that code. Every accepted message has
+chain holds. ``msgphash`` hashes that code. Every accepted message has
 ``updatedat`` floored to its epoch grid - :attr:`FixLifecycle.DEFAULT_INTERVAL_NS`,
 one second, unless ``interval_ns`` says otherwise - while ``snapshotat`` keeps
 the real instant; takes its live chain's first accepted ``createdat``; and fills
-each absent ``prevupdatedat`` and ``prevuuid`` from the chain's last message. A
+each absent ``prevupdatedat`` and ``prevmsghash`` from the chain's last message. A
 terminal state closes the chain, so :meth:`FixLifecycle.alive` counts the events
 still open and :meth:`FixLifecycle.clear` forgets them, keeping the interval,
 which :meth:`FixLifecycle.set_interval_ns` changes only while none is live.

@@ -294,6 +294,7 @@ impl MaterializationBudget {
             | DataType::Isin
             | DataType::Cusip
             | DataType::Sedol
+            | DataType::Bloomberg
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce => {
@@ -409,6 +410,7 @@ impl MaterializationBudget {
             | DataType::Isin
             | DataType::Cusip
             | DataType::Sedol
+            | DataType::Bloomberg
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce => {
