@@ -69,7 +69,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use yggdryl::fix::ENTRIES_COLUMN;
+use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
@@ -195,7 +195,7 @@ impl Pinned {
         let values = row.as_sequence().expect("a row is a sequence");
         for (column, value) in schema.fields().iter().zip(values) {
             let name = column.name();
-            if name == ENTRIES_COLUMN || value.is_null() {
+            if name == FIXENTRIES_COLUMN || value.is_null() {
                 continue;
             }
             self.push(
@@ -642,23 +642,16 @@ fn the_codec_answers_what_it_answered() {
     // copied back verbatim can only be missed on the way back, so deleting
     // one is judged here.
     //
-    // Checked projection refuses two malformed groups in both source forms,
-    // and an indexed Symbol list formerly discarded as null (decision 26).
-    // No other fixture may disappear; invalid rows have no field values to pin.
+    // Nothing is unread. A value the fixed row's column will not hold is
+    // that column's null and a group keeps every member that does read -
+    // two malformed groups in both source forms, and an indexed Symbol list,
+    // are the fixtures that exercise both - so a capture of ten million
+    // lines cannot end on one bad value, and what those rows said is still
+    // in the arrival record the snapshot pins beside them.
     assert_eq!(
         pinned.unread,
-        [
-            "frames[028]:0: export: invalid record value at $.parties[0].party: \
-             non-nullable field received null",
-            "frames[031]:0: export: invalid record value at \
-             $.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
-            "lift[012]:0: export: invalid record value at $.symbol: expected string, got sequence",
-            "verbatim[028]:0: export: invalid record value at $.parties[0].party: \
-             non-nullable field received null",
-            "verbatim[031]:0: export: invalid record value at \
-             $.parties[0].party.ptyssubgrp[0].ptyssub: struct requires 2 fields, got 3 values",
-        ],
-        "the rows that will not read back"
+        [] as [&str; 0],
+        "every row reads back; an unreadable value is a null, not a refusal"
     );
     let path = snapshot_path();
     if std::env::var(WRITE).as_deref() == Ok("1") {

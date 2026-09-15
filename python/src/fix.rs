@@ -25,7 +25,7 @@ use yggdryl::{
     FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle, FixMsg as CoreFixMsg,
     FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, MsgType as CoreMsgType,
     Plugin as CorePlugin, Plugins as CorePlugins, Scalar, TimeUnit, Timezone,
-    Version as CoreVersion, from_json_scalar_with_field, into_json_scalar,
+    from_json_scalar_with_field, into_json_scalar,
 };
 
 use crate::iobase::{PyIOBase, located_holder};
@@ -214,11 +214,11 @@ impl PyFixRegistry {
 
     /// A registry holding this crate's own definitions and the standard clocks.
     ///
-    /// `fix_crate_fields` lists twenty-four scalar fields - tags 65001 to
-    /// 65019 and 65021 to 65025 - and the `altids` Map group at 65020; the
+    /// `fix_crate_fields` lists twenty-six scalar fields - tags 65001 to
+    /// 65019 and 65021 to 65027 - and the `altids` Map group at 65020; the
     /// retired 65000 is not reused. Beside them sit two seeded standard
     /// clocks, `SendingTime` (52) and `TransactTime` (60), each a
-    /// nanosecond UTC `datetime64`, so a new registry holds twenty-six
+    /// nanosecond UTC `datetime64`, so a new registry holds twenty-eight
     /// scalar fields. The seeds are ordinary definitions a loaded dictionary
     /// supplies its own metadata for; the crate's fields are held by every
     /// dictionary alike. `len` counts only scalar fields. The crate's
@@ -376,6 +376,22 @@ impl PyFixRegistry {
     fn with_plugin_fields(&mut self) -> PyResult<()> {
         let registry = self.inner_mut()?;
         *registry = registry.clone().with_plugin_fields().map_err(value_error)?;
+        Ok(())
+    }
+
+    /// Register the crate's own `GenericMessage`, the default format target.
+    ///
+    /// The fixed row's own columns under a `fix:msgtype`, so a
+    /// `format_messages` with no message type of its own has one to name.
+    /// Built against this dictionary rather than declared once, because the
+    /// columns are the dictionary's; idempotent, so a registry that already
+    /// answers the code keeps what it has.
+    fn with_generic_message(&mut self) -> PyResult<()> {
+        let registry = self.inner_mut()?;
+        *registry = registry
+            .clone()
+            .with_generic_message()
+            .map_err(value_error)?;
         Ok(())
     }
 
@@ -1335,7 +1351,7 @@ impl PyFixMsg {
     /// mapping of names, a sequence in the schema's order. The columns are
     /// the message's children under the schema's names, reached by tag as a
     /// parsed message's are, and the entries are rebuilt from the
-    /// `nofixentries` column, so `into_bytes` re-emits the line the row was
+    /// `fixentries` column, so `into_bytes` re-emits the line the row was
     /// read from; a row without that column has no entries. Nothing is
     /// parsed again and no clock is read: a replayable row carries the whole
     /// non-null bundle - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
@@ -1703,7 +1719,7 @@ impl PyFixMsg {
     /// shifting its neighbours, which is what makes two rows of one capture
     /// comparable at all. A column no tag or group counter names is the
     /// capture's: it takes the child of that name where the message has one
-    /// and is null otherwise. The `nofixentries` list closes the row with the
+    /// and is null otherwise. The `fixentries` list closes the row with the
     /// whole arrival record. A schema missing or mistyping a member of the
     /// settled bundle, or a cell its column cannot hold, is a `ValueError`,
     /// and the projected `uuid` is recomputed over what the row holds.
@@ -1819,7 +1835,6 @@ impl PyFixCodec {
     #[pyo3(signature = (
         registry=None,
         *,
-        version=None,
         default_sending_time=None,
         separator=None,
         payload_column="body",
@@ -1831,7 +1846,6 @@ impl PyFixCodec {
     #[allow(clippy::too_many_arguments)]
     fn new(
         registry: Option<PyRef<'_, PyFixRegistry>>,
-        version: Option<&str>,
         default_sending_time: Option<&Bound<'_, PyAny>>,
         separator: Option<u8>,
         payload_column: &str,
@@ -1845,9 +1859,6 @@ impl PyFixCodec {
             CoreFixCodec::new(Arc::clone(&registry)).with_payload_column(payload_column);
         if let Some(held) = direction {
             inner = inner.try_with_direction(Some(held)).map_err(value_error)?;
-        }
-        if let Some(held) = version {
-            inner = inner.with_version(version_from_py(held)?);
         }
         if let Some(held) = default_sending_time {
             inner = inner
@@ -1873,13 +1884,6 @@ impl PyFixCodec {
     #[getter]
     fn registry(&self) -> PyFixRegistry {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
-    }
-
-    /// The version values are read at, or `None` where each line states its
-    /// own.
-    #[getter]
-    fn version(&self) -> Option<String> {
-        self.inner.version().map(|version| version.to_string())
     }
 
     /// The nanosecond UTC `SendingTime` an undated new message takes, or
@@ -2157,6 +2161,61 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, self.inner.arrow_reader(schema, messages))
     }
 
+    /// A stream of messages as the rows one message field holds them.
+    ///
+    /// The third verb, and the one a consumer reads by: `parse_*` turns a
+    /// capture into messages, `enrich_*` fills what each implies, and this
+    /// answers them under a message field the registry names -
+    /// `fix_generic_message` for the crate's own, a venue's own type, or any
+    /// Struct root a caller built for the table it is writing.
+    ///
+    /// `messages` is any iterable of `FixMsg`, pulled one at a time; `field`
+    /// is anything `Field` accepts, read once here rather than per message.
+    /// Each row is `FixMsg.into_row` under it, so a column the message did
+    /// not state is derived where the crate derives it and a value the column
+    /// will not hold is that column's null. A column the message does not
+    /// carry at all is read off its arrival record first, which is what lets
+    /// a narrow row be formatted into a wider field.
+    ///
+    /// An item that is not a message raises `TypeError` where it is met.
+    fn format_messages(
+        &self,
+        messages: &Bound<'_, PyAny>,
+        field: &Bound<'_, PyAny>,
+    ) -> PyResult<Vec<PyScalar>> {
+        let field = core_field_from_value(field)?;
+        let mut rows = Vec::new();
+        for message in Pulled::new(messages, message_of)? {
+            rows.push(PyScalar::from_inner(
+                self.inner
+                    .format_messages([Ok(message)], &field)
+                    .next()
+                    .expect("one message answers one row")
+                    .map_err(value_error)?,
+            ));
+        }
+        Ok(rows)
+    }
+
+    /// A stream of batches of FIX rows as batches under one message field.
+    ///
+    /// The Arrow twin of `format_messages`, and the last stage of the
+    /// pipeline a capture runs. The schema is answered before a row is read,
+    /// from the source's carried columns and `field`, and the capture's own
+    /// columns still lead the row. A source carrying no arrival record is a
+    /// projection already and is cast batch by batch instead of read back as
+    /// messages.
+    fn format_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+        field: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let field = core_field_from_value(field)?;
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.format_arrow_reader(source, &field))
+    }
+
     /// Fills a stream of messages with the chains it implies, in order,
     /// lazily.
     ///
@@ -2185,7 +2244,7 @@ impl PyFixCodec {
     /// `separator` - `SOH` when none is pinned - then a newline, into `sink`,
     /// a binary file-like object with `write`. The wire is rebuilt from the
     /// arrival record, never from the columns, so a batch without the
-    /// `nofixentries` column is refused before a row is read. One batch is
+    /// `fixentries` column is refused before a row is read. One batch is
     /// held at a time.
     fn write_arrow_reader(
         &self,
@@ -2376,19 +2435,11 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     Ok(held)
 }
 
-/// Read one FIX version, or report the native parse failure as a `ValueError`.
-///
-/// A protocol prefix is removed before the numeric version parser runs.
-fn version_from_py(text: &str) -> PyResult<CoreVersion> {
-    let spelling = text.strip_prefix("FIX.").unwrap_or(text);
-    spelling.parse::<CoreVersion>().map_err(value_error)
-}
-
 /// The fixed root every message answers as, built from one dictionary.
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own definitions in tag order with `MsgDirection`
-/// (385) after them, and the one `nofixentries` list that closes every row
+/// (385) after them, and the one `fixentries` list that closes every row
 /// with the whole arrival record. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `fix:tag`, and
@@ -2404,6 +2455,25 @@ pub(crate) fn fix_schema(
 ) -> PyResult<PyField> {
     let registry = registry_or_global(registry)?;
     yggdryl::fix_schema(&registry, name.to_owned())
+        .map(PyField::from_inner)
+        .map_err(value_error)
+}
+
+/// The crate's own `GenericMessage`, built against one dictionary.
+///
+/// The target a `format_messages` or `format_arrow_reader` uses when a caller
+/// names no message of its own: the fixed row's own columns, carrying the
+/// `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
+/// what FIX reserves for a counterparty's own types. `name` is the root's
+/// name, which a caller spells for the table it is writing.
+#[pyfunction]
+#[pyo3(name = "fix_generic_message", signature = (registry=None, name="fix"))]
+pub(crate) fn fix_generic_message(
+    registry: Option<PyRef<'_, PyFixRegistry>>,
+    name: &str,
+) -> PyResult<PyField> {
+    let registry = registry_or_global(registry)?;
+    yggdryl::fix_generic_message(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
 }
@@ -2436,8 +2506,8 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
     yggdryl::fix_schema_tags()
 }
 
-/// The twenty-five definitions this crate lists in tag order: twenty-four
-/// scalar fields at tags 65001 to 65019 and 65021 to 65025, and the `altids`
+/// The twenty-seven definitions this crate lists in tag order: twenty-six
+/// scalar fields at tags 65001 to 65019 and 65021 to 65027, and the `altids`
 /// Map group at 65020. The retired 65000 is not reused.
 ///
 /// The version read, the cross-venue symbol, the settled `updatedat` clock
@@ -2448,8 +2518,9 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// names the line spells - the three facts a row derives from what the
 /// message said: its ISIN, its market and the order's state - the
 /// instrument's `instuuid`, the message's `uuid` and the chain's `puuid`,
-/// the previous message's `prevupdatedat` and `prevuuid`, and `createdat`,
-/// `code` and `snapshotat`. The Map holds the message's own-level
+/// the previous message's `prevupdatedat` and `prevuuid`, `createdat`,
+/// `code` and `snapshotat`, the `sourceurl` a line was read from, and the
+/// `nofixentries` that counts its arrival record. The Map holds the message's own-level
 /// identifiers. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
 /// `snapshotat` are non-null; every other definition is nullable. Every
 /// registry holds these definitions from construction beside the seeded

@@ -194,9 +194,13 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     let parsed = codec
         .parse_text_arrow_reader(source.read_arrow_reader(&text()).expect("a reader"))
         .expect("the batch reader opens");
-    let batched: Vec<_> = codec
+    let filled = codec
         .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens")
+        .expect("the filling reader opens");
+    let generic = super::generic(codec.registry());
+    let batched: Vec<_> = codec
+        .format_arrow_reader(filled, &generic)
+        .expect("the format reader opens")
         .map(|batch| batch.expect("a batch"))
         .collect();
     let rows: usize = batched.iter().map(arrow_array::RecordBatch::num_rows).sum();
@@ -225,7 +229,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
 
     // And the arrival record - the fact the wire is rebuilt from - is the same
     // on both paths, so the round trip closes either way.
-    let entries = column(batch, "nofixentries");
+    let entries = column(batch, "fixentries");
     for (at, message) in one_at_a_time.iter().enumerate() {
         assert_eq!(
             message.entries().len(),

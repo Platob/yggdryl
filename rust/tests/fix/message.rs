@@ -4,7 +4,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::fix::ENTRIES_COLUMN;
+use yggdryl::fix::FIXENTRIES_COLUMN;
 
 use yggdryl::media::text::{TextBytes, TextLine};
 use yggdryl::{
@@ -403,13 +403,17 @@ fn a_row_carrying_its_captures_own_columns_returns_to_its_schema_whole() {
 }
 
 #[test]
-fn a_row_without_the_entries_column_has_no_entries() {
+fn a_row_without_the_entries_group_has_no_entries() {
     let (registry, reader) = reader();
     let wide = fix_schema(&registry, "fix").unwrap();
+    // The group and the counter that counts it are dropped together: a count
+    // of a record the row does not carry is a number about nothing.
     let columns: Vec<Field> = wide
         .fields()
         .iter()
-        .filter(|column| column.name() != ENTRIES_COLUMN)
+        .filter(|column| {
+            column.name() != FIXENTRIES_COLUMN && column.name() != yggdryl::NOFIXENTRIES_TAG_NAME.1
+        })
         .cloned()
         .collect();
     let narrow = DataType::from_fields(columns)
@@ -461,7 +465,9 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
             None => false,
         }
     }
-    let entries = row.get(schema.index_of(ENTRIES_COLUMN).unwrap()).unwrap();
+    let entries = row
+        .get(schema.index_of(FIXENTRIES_COLUMN).unwrap())
+        .unwrap();
     assert!(
         entries
             .as_sequence()
@@ -486,7 +492,7 @@ fn an_entries_column_holding_no_entry_is_refused() {
         .iter()
         .map(|column| column.default_value().unwrap())
         .collect();
-    values[schema.index_of(ENTRIES_COLUMN).unwrap()] =
+    values[schema.index_of(FIXENTRIES_COLUMN).unwrap()] =
         Scalar::from_sequence([Scalar::from_sequence([
             Scalar::from(35_i32),
             Scalar::from(0_i32),
@@ -505,7 +511,7 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
     let schema = fix_schema(&registry, "fix").unwrap();
     let message = reader.sole_line(ORDER, false).unwrap();
     let original = message.into_row(&schema).unwrap();
-    let at = schema.index_of(ENTRIES_COLUMN).unwrap();
+    let at = schema.index_of(FIXENTRIES_COLUMN).unwrap();
     let row = |leaf: &[u8]| {
         let mut tail = Scalar::from(leaf);
         for _ in 0..3 {
@@ -539,7 +545,7 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
             FixMsg::from_row(Arc::clone(&registry), &schema, &row(leaf.as_bytes())).unwrap_err();
         assert!(
             matches!(&error, yggdryl::Error::InvalidRecord { path, .. }
-            if path.starts_with("$.nofixentries[0].nofixentries[0].nofixentries[0].nofixentries")),
+            if path.starts_with("$.fixentries[0].fixentries[0].fixentries[0].fixentries")),
             "{leaf}: {error}"
         );
     }
@@ -560,7 +566,7 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
         FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"not json")).unwrap_err();
     assert!(
         matches!(&undecodable, yggdryl::Error::InvalidRecord { path, .. }
-            if path == "$.nofixentries[0].nofixentries[0].nofixentries[0].nofixentries"),
+            if path == "$.fixentries[0].fixentries[0].fixentries[0].fixentries"),
         "{undecodable}"
     );
     assert_eq!(message.into_row(&schema).unwrap(), original);

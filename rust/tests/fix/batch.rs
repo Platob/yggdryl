@@ -212,7 +212,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         ],
         "{names:?}"
     );
-    assert_eq!(names.last(), Some(&"nofixentries"));
+    assert_eq!(names.last(), Some(&"fixentries"));
     // The standard header, the body a consumer queries, the groups worth
     // keeping whole, the trailer, and this crate's own derived facts - each
     // found by the tag its column carries.
@@ -355,7 +355,7 @@ fn the_entries_column_is_the_row_and_the_facets_are_a_convenience() {
     assert!(digest.is_valid(0));
     // And the arrival record is there in full, which is what makes the batch
     // lossless rather than one reader's summary.
-    let entries = column(&batch, "nofixentries");
+    let entries = column(&batch, "fixentries");
     assert!(entries.is_valid(0));
     assert_eq!(entries.len(), 1);
 }
@@ -519,7 +519,7 @@ fn messages_with_no_arrival_record_are_charged_by_their_row() {
     // come back as messages holding no entries.
     let batch = &whole[0];
     let lifted: Vec<usize> = (0..batch.num_columns())
-        .filter(|at| batch.schema().field(*at).name() != yggdryl::fix::ENTRIES_COLUMN)
+        .filter(|at| batch.schema().field(*at).name() != yggdryl::fix::FIXENTRIES_COLUMN)
         .collect();
     let projected = batch.project(&lifted).unwrap();
     assert_eq!(projected.num_rows(), 200);
@@ -896,8 +896,8 @@ fn the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_record_al
     // The arrival record is untouched either way, so the wire re-emits the
     // same bytes whether the row was filled or not.
     assert_eq!(
-        first_value(&bare, "nofixentries"),
-        first_value(&filled, "nofixentries"),
+        first_value(&bare, "fixentries"),
+        first_value(&filled, "fixentries"),
     );
 }
 
@@ -1414,7 +1414,7 @@ fn a_capture_already_in_arrow_feeds_the_same_builders() {
     // The entries column is a list, not a payload: naming it is refused
     // before a row is read rather than answered as rows of nothing.
     let refused = codec
-        .with_payload_column("nofixentries")
+        .with_payload_column("fixentries")
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(schema, [first]))
         .map(drop)
         .unwrap_err();
@@ -1435,7 +1435,7 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         DataType::binary().required_field("body"),
         // A name a FIX column already takes, which yields to it: one column
         // per name, and the FIX one is what a reader spelling it means.
-        DataType::utf8().nullable_field("nofixentries"),
+        DataType::utf8().nullable_field("fixentries"),
     ])
     .expect("a capture root")
     .required_field("line");
@@ -1466,10 +1466,7 @@ fn the_captures_own_columns_lead_the_row_and_a_clash_yields_to_fix() {
         "the capture leads the row"
     );
     assert_eq!(
-        columns
-            .iter()
-            .filter(|held| *held == "nofixentries")
-            .count(),
+        columns.iter().filter(|held| *held == "fixentries").count(),
         1,
         "the clashing capture column yielded to the FIX one"
     );

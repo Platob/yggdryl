@@ -12,11 +12,11 @@ identifier, by tag, by name or by dotted path and persists them as JSON
 shards through any ``IOBase`` location, and :class:`FixMsg` is one row typed against the registry it
 was resolved against, written through :meth:`FixMsg.set` and
 :meth:`FixMsg.remove` and read back from a fixed row by :meth:`FixMsg.from_row`.
-Every registry holds twenty-four crate-owned scalar fields, the ``altids`` Map
+Every registry holds twenty-six crate-owned scalar fields, the ``altids`` Map
 group and the separate ``pluginconfig`` component/message from construction,
 and :class:`FixRegistry` seeds the standard clocks ``SendingTime`` (52) and
 ``TransactTime`` (60) beside them as ordinary definitions a loaded dictionary
-may supply itself, so ``len(FixRegistry())`` is 26; ordinary size and
+may supply itself, so ``len(FixRegistry())`` is 28; ordinary size and
 iteration count only the scalars. A store neither writes the crate's
 definitions nor overrides them. A tag is a positive ``int``: ``fix.tag``,
 ``fix.tags`` and ``fix.counter`` refuse 0, which only an unresolved arrival
@@ -99,14 +99,18 @@ converters every stage composes over batches:
 :meth:`FixCodec.messages` reads a batch back as the
 messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
 batches under a schema. :meth:`FixCodec.write_arrow_reader` is the encode
-direction, re-emitting every row's wire. A pin - ``version``,
-``default_sending_time``, ``separator``, ``payload_column``, ``null_values``,
-``direction``, ``batch_byte_size`` - is on the codec; a stage is a call.
+direction, re-emitting every row's wire. :meth:`FixCodec.format_messages` and
+:meth:`FixCodec.format_arrow_reader` answer the same messages under a message
+field of the registry - :func:`fix_generic_message` is the crate's own default
+target. A pin - ``default_sending_time``, ``separator``, ``payload_column``,
+``null_values``, ``direction``, ``batch_byte_size`` - is on the codec; a stage
+is a call, and no pin decides a version: a row states one in its
+``beginstring`` capture, else the line implies it.
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns
 spelled by the dictionary's folded canonical names, ``msgtype`` and never
 ``35``, so a column is found with ``schema.index_of("msgtype")`` and nothing has
 to be resolved per row; the tag stays on each column's ``fix:tag``. Its tags
-end with the crate's own and ``MsgDirection`` (385), and one ``nofixentries``
+end with the crate's own and ``MsgDirection`` (385), and one ``fixentries``
 list closes the row with the whole arrival record, where an unresolved key has
 tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``timepartition``,
 ``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are its non-null
@@ -115,8 +119,8 @@ columns. A replayable row carries the whole settled bundle, and
 :func:`fix_schema_carrying` puts a capture's own columns in front of them,
 dropping a capture column whose folded name a FIX column already takes.
 :func:`fix_crate_fields` lists what this crate itself adds beside the
-specification: 25 definitions in tag order, twenty-four scalar fields at tags
-65001 to 65019 and 65021 to 65025 and the nullable sorted-key
+specification: 27 definitions in tag order, twenty-six scalar fields at tags
+65001 to 65019 and 65021 to 65027 and the nullable sorted-key
 ``map<utf8, utf8>`` group ``altids`` at 65020; the retired 65000 is not reused.
 The scalar fields are ``version``, ``symbolticker``, ``updatedat``,
 ``timepartition``, ``parentclordid`` and ``parentorderid``; what a bridge's own
@@ -126,9 +130,11 @@ logged it and the ``prevpluginid`` it came through before that, and the session
 names ``sendersessionname`` and ``targetsessionname`` the line spells; the three
 facts a row derives from what the message said - ``isincode``, ``miccode`` and
 ``state``; the ``fixedbinary(16)`` ``instuuid``, ``uuid`` and ``puuid``; the previous
-message's ``prevupdatedat`` and ``prevuuid``; and ``createdat``, ``code`` and
-``snapshotat``. ``updatedat``, ``uuid``, ``puuid``, ``createdat``, ``code`` and
-``snapshotat`` are non-null, and ``timepartition`` partitions ``updatedat``. The
+message's ``prevupdatedat`` and ``prevuuid``; ``createdat``, ``code`` and
+``snapshotat``; the ``url``-typed ``sourceurl`` a line was read from; and the
+``nofixentries`` that counts the ``fixentries`` arrival record. ``updatedat``,
+``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are non-null,
+and ``timepartition`` partitions ``updatedat``. The
 separate ``pluginconfig`` component/message and the seeded clocks are not part
 of this tag listing.
 
@@ -198,6 +204,7 @@ from ._native import (
     Plugins,
     fix_cfb_fields,
     fix_crate_fields,
+    fix_generic_message,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
@@ -220,6 +227,7 @@ __all__ = [
     "Plugins",
     "fix_cfb_fields",
     "fix_crate_fields",
+    "fix_generic_message",
     "fix_schema",
     "fix_schema_carrying",
     "fix_schema_tags",

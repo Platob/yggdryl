@@ -118,7 +118,7 @@ fn expected_uuid(message: &FixMsg) -> Scalar {
             .iter()
             .zip(message.as_value().as_sequence().unwrap())
             .filter(|(field, _)| {
-                field.name() != yggdryl::fix::ENTRIES_COLUMN
+                field.name() != yggdryl::fix::FIXENTRIES_COLUMN
                     && !field.as_fix().tag().unwrap().is_some_and(|tag| {
                         [UUID_TAG_NAME.0, UPDATEDAT_TAG_NAME.0, CREATEDAT_TAG_NAME.0].contains(&tag)
                     })
@@ -785,7 +785,7 @@ fn projection_canonicalizes_actual_values_and_propagates_unrepresentable_values(
 }
 
 #[test]
-fn projection_refuses_a_stated_list_in_a_string_column_without_losing_the_source() {
+fn projection_nulls_a_stated_list_in_a_string_column_without_losing_the_source() {
     let codec = super::fixed_codec(super::committed_registry());
     let source = b"8=FIX.4.4|35=D|11=A|Symbol[0]=ALPHA|Symbol[1]=BETA|10=0|";
     let message = codec.sole_line(source, false).unwrap();
@@ -797,14 +797,30 @@ fn projection_refuses_a_stated_list_in_a_string_column_without_losing_the_source
     );
     let row = message.into_row(message.as_field()).unwrap();
     let schema = yggdryl::fix_schema(codec.registry(), "fix").unwrap();
-    let error = message.into_row(&schema).unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "invalid record value at $.symbol: expected string, got sequence"
-    );
+
+    // Two symbols are no symbol a single column can answer with, so the
+    // fixed row says so with a null rather than ending the capture on it.
+    let projected = message.into_row(&schema).unwrap();
+    let at = yggdryl::fix_column_of(&schema, 55).expect("a symbol column");
+    assert!(projected.as_sequence().unwrap()[at].is_null());
+
+    // Nothing was taken from the message to say it: the source is unchanged,
+    // the line is rebuilt byte for byte, and the arrival record the row
+    // carries still holds both spellings.
     assert_eq!(message, original);
     assert_eq!(message.into_bytes(b'|'), source);
     assert_eq!(message.into_row(message.as_field()).unwrap(), row);
+    let entries = projected.as_sequence().unwrap().last().unwrap();
+    let spelled: Vec<&str> = entries
+        .as_sequence()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry.get(1).and_then(Scalar::as_str))
+        .collect();
+    assert!(
+        spelled.contains(&"Symbol[0]") && spelled.contains(&"Symbol[1]"),
+        "{spelled:?}"
+    );
 }
 
 #[test]

@@ -1293,8 +1293,8 @@ export declare class FixCodec {
   /**
    * Open a codec over one dictionary, or over the process default.
    *
-   * Every pin is the core's, spelled once here. `version` crosses as
-   * text; `separator` is the byte a numeric frame splits on where
+   * Every pin is the core's, spelled once here. `separator` is the byte a
+   * numeric frame splits on where
    * the line does not say; `payloadColumn` names the batch column a line
    * is read from; `captureNames` are what a run's row-header captures are
    * called, in the order a line answers them, which is what lets
@@ -1313,14 +1313,6 @@ export declare class FixCodec {
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
   get registry(): FixRegistry
-  /**
-   * The version values are read at, or `null` where each line states its
-   * own.
-   *
-   * A row reads at `ApplVerID`, then `BeginString`, then this pin, then
-   * the registry's newest.
-   */
-  get version(): string | null
   /** The byte a numeric frame splits on, or `null` where the line decides. */
   get separator(): number | null
   /** The record column a line is read from. */
@@ -1431,6 +1423,17 @@ export declare class FixCodec {
    */
   messages(source: JsBatchReader): FixMessages
   /**
+   * A stream of batches of FIX rows as batches under one message field.
+   *
+   * The Arrow twin of `formatMessages`, and the last stage of the pipeline
+   * a capture runs. The schema is answered before a row is read, from the
+   * source's carried columns and `field`, and the capture's own columns
+   * still lead the row. A source carrying no arrival record is a
+   * projection already and is cast batch by batch instead of read back as
+   * messages. The source is consumed.
+   */
+  formatArrowReader(source: JsBatchReader, field: JsField): JsBatchReader
+  /**
    * Writes a stream of batches of FIX rows back to the wire, answering the
    * count of lines.
    *
@@ -1439,7 +1442,7 @@ export declare class FixCodec {
    * `separator` - `SOH` when none is pinned - then a newline, into `sink`,
    * anything with `write(chunk: Uint8Array)`. The wire is rebuilt from the
    * arrival record, never from the columns, so a batch without the
-   * `nofixentries` column is refused before a row is read. One batch is
+   * `fixentries` column is refused before a row is read. One batch is
    * held at a time, and the source is consumed.
    */
   writeArrowReader(source: BatchReader, sink: { write(chunk: Uint8Array): unknown }): number
@@ -1625,7 +1628,7 @@ export declare class FixMsg {
    * row under it, which the loader widens from whatever `Scalar.fromJs`
    * reads. The columns are the message's children under the schema's
    * names, reached by tag as a parsed message's are, and the entries are
-   * rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
+   * rebuilt from the `fixentries` column, so `intoBytes` re-emits the
    * line the row was read from; a row without that column has no entries.
    * Nothing is parsed again and no clock is read: the row must carry the
    * seven non-null replay fields - `updatedat`, `createdat`, `uuid`,
@@ -1818,7 +1821,7 @@ export declare class FixMsg {
    * carried nothing at a column answers null there rather than shifting its
    * neighbours. A column no tag names is the capture's: it takes the child
    * of that name where the message has one, else null. The arrival record
-   * closes the row under `nofixentries`, unresolved keys at tag 0.
+   * closes the row under `fixentries`, unresolved keys at tag 0.
    *
    * A replayable row keeps the seven replay fields; a schema missing or
    * mistyping one, or a cell its column cannot represent, throws the
@@ -1910,15 +1913,25 @@ export declare class FixRegistry {
   /** Add the native scalar plugin fields atomically. */
   withPluginFields(): void
   /**
+   * Register the crate's own `GenericMessage`, the default format target.
+   *
+   * The fixed row's own columns under a `fix:msgtype`, so a
+   * `formatMessages` with no message type of its own has one to name.
+   * Built against this dictionary rather than declared once, because the
+   * columns are the dictionary's; idempotent, so a registry that already
+   * answers the code keeps what it has.
+   */
+  withGenericMessage(): void
+  /**
    * A registry holding the built-in definitions.
    *
-   * Every registry holds the twenty-four scalar fields and the sorted
+   * Every registry holds the twenty-six scalar fields and the sorted
    * `altids` Map group that `fixCrateFields` lists, and the `pluginconfig`
    * component. It also holds the standard `SendingTime` (52) and
    * `TransactTime` (60) clock fields, seeded where the dictionary defines
    * no field of its own at those tags. A dictionary loaded from a store,
    * built from fields or left alone holds them alike; scalar lookups and
-   * `size` exclude groups and components, so a new registry's `size` is 26.
+   * `size` exclude groups and components, so a new registry's `size` is 28.
    */
   constructor()
   /**
@@ -1980,8 +1993,8 @@ export declare class FixRegistry {
    */
   writeInto(location: LocationInput): void
   /**
-   * How many scalar fields are held, the crate's own twenty-four among
-   * them, 26 for a new registry with its two seeded clocks.
+   * How many scalar fields are held, the crate's own twenty-six among
+   * them, 28 for a new registry with its two seeded clocks.
    */
   get size(): number
   /**
@@ -5850,8 +5863,6 @@ export interface FileSelector {
 
 /** How a codec is pinned, where a caller pins it at all. */
 export interface FixCodecOptions {
-  /** The version built messages are expressed in. */
-  version?: string
   /** The byte a numeric frame splits on where the line does not say. */
   separator?: number
   /** The batch column a line is read from; `body` when unstated. */
@@ -5881,8 +5892,8 @@ export interface FixCodecOptions {
 }
 
 /**
- * The twenty-five definitions this crate owns, in tag order: twenty-four
- * scalar fields at 65001 to 65019 and 65021 to 65025, and the sorted
+ * The twenty-seven definitions this crate owns, in tag order: twenty-six
+ * scalar fields at 65001 to 65019 and 65021 to 65027, and the sorted
  * `altids` Map group at 65020. Tag 65000 is retired and not reused.
  *
  * The version read at, the ticker, `updatedat` and its partition, the
@@ -5891,8 +5902,9 @@ export interface FixCodecOptions {
  * before that, the two session names the line spells, the ISIN, MIC and
  * order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
  * the direct identifiers enrichment records in `altids`, the previous
- * message's `prevupdatedat` and `prevuuid`, and `createdat`, `code` and
- * `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+ * message's `prevupdatedat` and `prevuuid`, `createdat`, `code` and
+ * `snapshotat`, the `sourceurl` a line was read from and the
+ * `nofixentries` that counts its arrival record. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
  * `snapshotat` are non-null. Every registry already holds them in their
  * category, so this is the listing a schema or a document walks rather than
  * something a caller registers.
@@ -5906,6 +5918,17 @@ export interface FixDirection {
   /** The `regex::bytes` patterns, any of which names the code in the prose before a payload. */
   patterns: Array<string>
 }
+
+/**
+ * The crate's own `GenericMessage`, built against one dictionary.
+ *
+ * The target `formatMessages` and `formatArrowReader` use when a caller
+ * names no message of its own: the fixed row's own columns, carrying the
+ * `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
+ * what FIX reserves for a counterparty's own types. `name` is the root's
+ * name, which a caller spells for the table it is writing.
+ */
+export declare function fixGenericMessage(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
 /** How a lifecycle is configured, where a caller configures it at all. */
 export interface FixLifecycleOptions {
@@ -5936,7 +5959,7 @@ export declare function fixPluginMessage(): JsField
  *
  * Header, the fields a consumer reads, the groups worth persisting whole, the
  * trailer, this crate's own derived facts through tag 65025, `MsgDirection`
- * (385), and the one list that closes every row: `nofixentries`, the whole
+ * (385), and the one list that closes every row: `fixentries`, the whole
  * arrival record, unresolved keys at tag 0. Columns are spelled by the
  * dictionary's folded canonical names - `msgtype`, never `35` - so a row
  * reads the way a message reads; the tag stays each column's identity, on

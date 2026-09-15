@@ -921,10 +921,10 @@ assert.equal(venue.fieldByName('venuesymbol').fix.id, venueSymbol.fix.id)
 assert.deepEqual(venue.dialects(), ['cme', 'ice'])
 assert.equal(venue.removeById(venueSymbol.fix.id).name, 'VenueSymbol')
 assert.equal(venue.remove('TradeID').name, 'TradeID')
-// Symbol remains beside what every registry holds: the crate's 24 scalar
+// Symbol remains beside what every registry holds: the crate's 26 scalar
 // fields and the seeded SendingTime and TransactTime; altids is a group.
-assert.equal(new fix.FixRegistry().size, 26)
-assert.equal(venue.size, 27)
+assert.equal(new fix.FixRegistry().size, 28)
+assert.equal(venue.size, 29)
 assert.deepEqual(venue.dialects(), [])
 
 // Both collections are lazy native iterators the loader gives the protocol,

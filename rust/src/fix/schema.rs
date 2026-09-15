@@ -27,10 +27,11 @@
 //!
 //! # Nothing is lost at the end
 //!
-//! `nofixentries` closes every row with the whole arrival record: every pair, in arrival order,
-//! untranslated. It is what makes a row lossless - the fixed columns are a
-//! reading of the message and the entries are the message, so the wire is
-//! rebuilt from them and never from the columns.
+//! `fixentries` closes every row with the whole arrival record: every pair, in
+//! arrival order, untranslated, under the `nofixentries` that counts them. It
+//! is what makes a row lossless - the fixed columns are a reading of the
+//! message and the entries are the message, so the wire is rebuilt from them
+//! and never from the columns.
 //!
 //! Unresolved keys have tag zero in that same record; their original key,
 //! value and children remain in place. No second projection duplicates them.
@@ -89,20 +90,41 @@ pub const BODY_TAGS: [i32; 49] = [
 /// instrument's other identifiers were, and when each regulatory clock ran.
 pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 
-/// The column holding the arrival record.
+/// The group holding the arrival record.
 ///
-/// This arrival-record column carries no `fix:tag` or `fix:counter`: it belongs
-/// to the fixed row, outside the registry and its dictionary shards.
-pub const ENTRIES_COLUMN: &str = "nofixentries";
+/// Named as a group is named, because it is one: a List of `fixentry`
+/// occurrences counted by [`NOFIXENTRIES_TAG_NAME`](super::NOFIXENTRIES_TAG_NAME),
+/// exactly as `Parties` holds `Party` occurrences counted by `NoPartyIDs`. A
+/// group spelled after its own counter was the one place this crate named a
+/// thing after the thing beside it.
+///
+/// It is the one group the registry does not define. A `fixentry` contains
+/// `fixentries`, and a catalog definition that referenced itself would be the
+/// cyclic reference the store refuses to load; the shape is bounded to three
+/// levels of occurrence instead, here, where the bound can be read.
+pub const FIXENTRIES_COLUMN: &str = "fixentries";
 
 /// What one arrival record is called wherever it is materialized.
 const ENTRY_COMPONENT: &str = "fixentry";
 
+/// The counter column's name, as a pattern a row fill matches on.
+const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
+
 /// One row's columns, in order, as tags.
 ///
-/// Header, body, groups, then the crate's own derived fields. The trailer
-/// sits before the arrival list because it is still the message; the list
-/// records the message rather than a projection of its fields.
+/// The standard header and trailer, because every message has them; the
+/// fields a financial consumer reads, because they are what a table is
+/// queried by; the three repeating groups worth persisting whole; the
+/// crate's own facts; FIX's own `MsgDirection`; and last the arrival
+/// record's counter, which closes the row with the group it counts.
+///
+/// This is the shape a capture lands in, and it is a *reading* of a message
+/// rather than the message: what the codec made of a line, in columns. The
+/// message itself is the arrival record beside them, and
+/// [`fix_generic_message`](super::fix_generic_message) is the same shape
+/// registered as a message, so a
+/// [format](super::FixCodec::format_messages) has a target to name when a
+/// caller names none of its own.
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     let crated = super::fix_crate_fields().unwrap_or_default();
@@ -112,22 +134,39 @@ pub fn fix_schema_tags() -> Vec<i32> {
             + GROUP_TAGS.len()
             + TRAILER_TAGS.len()
             + crated.len()
-            + 1,
+            + 2,
     );
     tags.extend_from_slice(&HEADER_TAGS);
     tags.extend_from_slice(&BODY_TAGS);
     tags.extend_from_slice(&GROUP_TAGS);
     tags.extend_from_slice(&TRAILER_TAGS);
     for field in crated {
+        // The arrival record closes the row, so its counter waits for the end
+        // with it rather than standing among the crate's other columns.
         if let Ok(Some(tag)) = field.as_fix().tag() {
-            tags.push(tag);
+            if tag != super::crated::NOFIXENTRIES_TAG_NAME.0 {
+                tags.push(tag);
+            }
         }
     }
     // `MsgDirection` is FIX's own and already sits in the header's dialect,
     // but no message carries it on the wire - it is read from the line - so
     // it is appended here rather than expected among the header's tags.
     tags.push(super::MSGDIRECTION_TAG_NAME.0);
+    tags.push(super::crated::NOFIXENTRIES_TAG_NAME.0);
     tags
+}
+
+/// The columns the crate's own [`GenericMessage`](super::fix_generic_message)
+/// holds, in order, as tags.
+///
+/// The fixed row's own, because a message with fewer columns than the row a
+/// capture lands in would be a target that loses what the row already
+/// carried. What makes it a message rather than a schema is the `fix:msgtype`
+/// on the root, and that is what a format needs to name it.
+#[must_use]
+pub fn fix_generic_tags() -> Vec<i32> {
+    fix_schema_tags()
 }
 
 /// BeginString and the partition supplement the identity owner's replay bundle.
@@ -141,6 +180,12 @@ fn is_required(tag: i32) -> bool {
 /// lineage and code set - and built without reading a single message, so two
 /// captures that share a dictionary share a schema exactly.
 ///
+/// A parse lands here, an
+/// [enrichment](super::FixCodec::enrich_messages_arrow_reader) fills what
+/// each message implies, and a
+/// [format](super::FixCodec::format_arrow_reader) answers the same rows
+/// under whatever message field a consumer reads by.
+///
 /// A tag the dictionary does not have is skipped rather than invented: a
 /// column with no field behind it could not be typed, and a dictionary
 /// missing `Symbol` is a dictionary this was not meant for.
@@ -150,7 +195,15 @@ fn is_required(tag: i32) -> bool {
 /// Returns the schema grammar's refusal when the columns do not make a
 /// struct, or when this crate's own fields do not build.
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
-    let tags = fix_schema_tags();
+    rooted(registry, fix_schema_tags(), name)
+}
+
+/// One root over one tag list, closed by the arrival record.
+pub(super) fn rooted(
+    registry: &FixRegistry,
+    tags: Vec<i32>,
+    name: impl Into<SmolStr>,
+) -> Result<Field> {
     let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
         if let Some(held) = registry.get_field_by_tag(tag) {
@@ -173,7 +226,12 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
         if let Some(group) = registry.get_group_by_tag(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
-            fields.push(group);
+            if !fields
+                .iter()
+                .any(|known| crate::types::folds_equal(known.name(), group.name()))
+            {
+                fields.push(group);
+            }
         }
     }
     fields.push(entries_field()?);
@@ -375,17 +433,25 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
 /// this constant, not rewriting shapes by hand.
 const ENTRY_DEPTH: usize = 3;
 
-/// The single counter-named list of arrival records.
+/// The one group of arrival records, under the counter that counts them.
 fn entries_field() -> Result<Field> {
-    let mut field = DataType::list(entry_item(1)?).nullable_field(ENTRIES_COLUMN);
-    field.set_display("NoFixEntries")?;
+    let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
+    field.set_display("FixEntries")?;
     field.set_description("Every pair the message carried, in arrival order and untranslated.")?;
+    // A group says which counter counts it, the way every other group in this
+    // crate says it. It does not name its occurrence as a component: a
+    // `fixentry` contains `fixentries`, so a catalog reference to it would be
+    // the cycle the store refuses to load. The occurrence is declared inline
+    // instead, which is also why `ENTRY_DEPTH` bounds it here.
+    field
+        .as_fix_mut()
+        .set_counter(super::NOFIXENTRIES_TAG_NAME.0)?;
     Ok(field)
 }
 
 /// One `fixentry` struct at one materialization level.
 ///
-/// The fourth member is `nofixentries` at every level and the meaning is
+/// The fourth member is `fixentries` at every level and the meaning is
 /// invariant; the type alone says where materialization stops - a list of
 /// deeper occurrences above [`ENTRY_DEPTH`], the binary leaf at it. Every
 /// occurrence, both inner lists and the leaf are non-null: an empty child
@@ -393,9 +459,9 @@ fn entries_field() -> Result<Field> {
 /// neither needs a validity bitmap to say so.
 fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
-        DataType::list(entry_item(level + 1)?).required_field(ENTRIES_COLUMN)
+        DataType::list(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
     } else {
-        DataType::binary().required_field(ENTRIES_COLUMN)
+        DataType::binary().required_field(FIXENTRIES_COLUMN)
     };
     Ok(DataType::from_fields([
         DataType::Int32.nullable_field("tag"),
@@ -523,7 +589,7 @@ fn entry_from_scalar(
             crate::media::text::TextBytes::from_bytes(text)
         }
     };
-    let children = entries_from_scalar(tail, &path.field(ENTRIES_COLUMN))?;
+    let children = entries_from_scalar(tail, &path.field(FIXENTRIES_COLUMN))?;
     let entry = super::FixEntry::new(tag, text(key, "key")?, text(value, "value")?);
     Ok(entry.with_children(children))
 }
@@ -574,7 +640,7 @@ impl super::FixMsg {
     /// message's children under the names the schema gave them and every
     /// lookup reaches them by tag as it reaches a parsed message's. The
     /// branches are the schema's own `fix:branches`. The entries are rebuilt from
-    /// the [`ENTRIES_COLUMN`] - every level the row materialized, and the
+    /// the [`FIXENTRIES_COLUMN`] - every level the row materialized, and the
     /// leaf the deepest level folded into decoded through the crate's own
     /// JSON reader - so [`Self::into_bytes`] re-emits the line the row was
     /// read from, and a row without that column has no entries. Nothing is
@@ -638,12 +704,12 @@ impl super::FixMsg {
             super::identity::Assertions::STATED,
         )?;
         let entries = schema
-            .index_of(ENTRIES_COLUMN)
+            .index_of(FIXENTRIES_COLUMN)
             .and_then(|at| built.as_value().get(at))
             .and_then(crate::Scalar::as_sequence)
             .map(|held| {
                 let root = crate::path::Path::root();
-                let path = root.field(ENTRIES_COLUMN);
+                let path = root.field(FIXENTRIES_COLUMN);
                 held.iter()
                     .enumerate()
                     .map(|(index, entry)| {
@@ -669,7 +735,7 @@ impl super::FixMsg {
     /// left null otherwise, which a required column refuses. The capture reader
     /// supplies its prefix before validation, not after projection.
     ///
-    /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
+    /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
     /// explained have tag zero in that same record, with their raw text intact.
     ///
@@ -696,10 +762,18 @@ impl super::FixMsg {
     /// # Ok(())
     /// # }
     /// ```
+    /// A value a column will not hold is that column's null rather than a
+    /// refusal - a five-byte MIC under a four-byte column, an identifier
+    /// whose check digit does not close - because the arrival record carries
+    /// what arrived and a capture of ten million rows must not end on one of
+    /// them. A column that cannot be null keeps the refusal, which is what
+    /// separates an unreadable value from a broken contract.
+    ///
     /// # Errors
     ///
-    /// Refuses a missing or mistyped mandatory replay holder, a cell the target
-    /// field cannot represent, or an unrenderable truncated arrival subtree.
+    /// Refuses a missing or mistyped mandatory replay holder, a value a
+    /// column that cannot be null will not hold, or an unrenderable truncated
+    /// arrival subtree.
     pub fn into_row(&self, schema: &Field) -> Result<crate::Scalar> {
         let plan = column_plan_of(schema, self.registry())?;
         let mut values = self.row_values(schema, &plan, Vec::new())?;
@@ -738,16 +812,22 @@ impl super::FixMsg {
         let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
         for (column, planned) in columns.iter().zip(plan.iter()) {
             if let Some(value) = front.next() {
-                values.push(column.scalar(value)?);
+                values.push(fitted(column, value)?);
                 continue;
             }
             let value = match column.name() {
-                ENTRIES_COLUMN => crate::Scalar::from_sequence(
+                FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
                     self.entries()
                         .iter()
                         .map(|entry| entry_scalar(entry, 1))
                         .collect::<Result<Vec<_>>>()?,
                 ),
+                // The group's counter counts the occurrences beside it, as
+                // every counter does: read off the record rather than derived,
+                // so a reader prunes on it without opening the list.
+                NOFIXENTRIES_COLUMN => {
+                    crate::Scalar::from(i32::try_from(self.entries().len()).unwrap_or(i32::MAX))
+                }
                 // A column declaring a group's `fix:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one that
@@ -776,7 +856,7 @@ impl super::FixMsg {
                     }
                 }
             };
-            values.push(column.scalar(value)?);
+            values.push(fitted(column, value)?);
         }
         Ok(values)
     }
@@ -914,6 +994,121 @@ impl super::FixMsg {
         } else {
             crate::Scalar::Null
         })
+    }
+}
+
+/// One column's value as that column holds it, leaf by leaf, best effort.
+///
+/// A capture is written by systems that disagree with the dictionary about
+/// what a field is: a five-byte MIC where the standard says four, an
+/// identifier whose check digit does not close, a quantity spelled as a
+/// word. A table of ten million rows must not end on one of them. A leaf the
+/// column refuses is that leaf's null, which is the honest answer for a value
+/// nothing could read as the field it landed under, and nothing is lost by
+/// it, because the arrival record beside it carries what arrived verbatim.
+///
+/// A nested column keeps everything that does read. The whole value is tried
+/// first, so an ordinary row costs one call and nothing else; only when that
+/// refuses is the value taken apart and put back together member by member,
+/// so one unreadable `PartyID` costs that member, not the party around it and
+/// not the parties beside it. An occurrence that cannot be formed at all,
+/// because a member can hold neither its value nor a null, is dropped from
+/// the list rather than taking the list with it.
+///
+/// Every null this puts in a value's place is reported through `log` at warn
+/// level, naming the column and what the value could not be read as: a null
+/// nobody can tell from a stated one is how a capture quietly loses a field,
+/// and the log is where an operator sees that a venue and a dictionary
+/// disagree.
+///
+/// Only a column that cannot be null keeps the refusal, and the two kinds of
+/// failure stay apart because of it: an unreadable value is a null, and a
+/// required column holding nothing is a broken contract that names itself.
+/// The identity bundle is exactly such a contract, and
+/// [`Plan::finalize`](super::identity::Plan) is where it is stated.
+fn fitted(column: &Field, value: crate::Scalar) -> Result<crate::Scalar> {
+    // Kept for the retry only where a retry has members to work on, and a
+    // `Scalar`'s clone is a refcount rather than a copy of what it names.
+    let retry = column.dtype().is_nested().then(|| value.clone());
+    let refusal = match column.scalar(value) {
+        Ok(held) => return Ok(held),
+        Err(refusal) => refusal,
+    };
+    if let Some(value) = retry {
+        if let Some(held) = refit(column, value) {
+            log::warn!(
+                "FIX column {}: kept what reads and nulled the rest ({refusal})",
+                column.name()
+            );
+            return Ok(held);
+        }
+    }
+    // The null is asked of the column rather than assumed, so a column that
+    // refuses one answers with the refusal the value earned.
+    match column.scalar(crate::Scalar::Null) {
+        Ok(null) => {
+            log::warn!("FIX column {}: null, {refusal}", column.name());
+            Ok(null)
+        }
+        Err(_) => Err(refusal),
+    }
+}
+
+/// One value rebuilt under one field with every leaf that will not fit nulled.
+///
+/// `None` where the field can hold neither the value nor a null in its place,
+/// which is what drops one occurrence of a group rather than the group around
+/// it. Reached only from [`fitted`]'s refusal path, so no row that reads pays
+/// for it.
+fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
+    let rebuilt = match field.dtype() {
+        DataType::Struct(members) => value.as_sequence().map(|stated| {
+            // A member the value never reached is the null the column would
+            // have held anyway; one it reached is refitted in place.
+            let held: Option<Vec<crate::Scalar>> = members
+                .iter()
+                .enumerate()
+                .map(|(at, member)| match stated.get(at) {
+                    Some(value) => refit(member, value.clone()),
+                    None => member.scalar(crate::Scalar::Null).ok(),
+                })
+                .collect();
+            held.map(crate::Scalar::from_sequence)
+        }),
+        DataType::List(item)
+        | DataType::LargeList(item)
+        | DataType::ListView(item)
+        | DataType::LargeListView(item)
+        | DataType::FixedSizeList(item, _) => value.as_sequence().map(|stated| {
+            Some(crate::Scalar::from_sequence(
+                stated
+                    .iter()
+                    .filter_map(|held| refit(item, held.clone()))
+                    .collect::<Vec<_>>(),
+            ))
+        }),
+        DataType::Map(map) => value.as_mapping().map(|stated| {
+            // A pair whose key will not read names nothing, so it is left
+            // out; one whose value will not read keeps its name and loses
+            // the value, which is what every other column does.
+            let entries = map.entries().dtype().as_fields()?;
+            let [key, held] = entries else {
+                return None;
+            };
+            crate::Scalar::from_mapping(stated.iter().filter_map(|(name, value)| {
+                Some((refit(key, name.clone())?, refit(held, value.clone())?))
+            }))
+            .ok()
+        }),
+        // A leaf has no members to keep, so it is the value or the null.
+        _ => None,
+    };
+    match rebuilt.flatten() {
+        Some(held) => field.scalar(held).ok(),
+        None => field
+            .scalar(value)
+            .ok()
+            .or_else(|| field.scalar(crate::Scalar::Null).ok()),
     }
 }
 

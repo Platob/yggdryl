@@ -38,7 +38,7 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty-four scalar fields and one Map group, each registered by its shape.
+//! Twenty-six scalar fields and one Map group, each registered by its shape.
 
 use std::sync::LazyLock;
 
@@ -141,6 +141,25 @@ pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
 
 /// The tag and name carrying the real event instant captured by a snapshot.
 pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
+
+/// The tag and name carrying the object one line was read from.
+///
+/// Where a message was read from is not FIX and is exactly what a monitor
+/// orders, joins and prunes on: which file of a day's capture a row came out
+/// of, and therefore which file to re-read when a row is disputed. A text
+/// read already answers it - its own `sourceurl` column is a URL - and this
+/// is the FIX field that column fills, so a capture naming it states the
+/// object once per line and the row carries it typed rather than as text
+/// nobody can resolve.
+pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
+
+/// The tag and name counting the arrival records one message carried.
+///
+/// The counter of the `fixentries` group, and a counter in the ordinary FIX
+/// sense: `NoPartyIDs` counts `Parties`, and this counts the pairs a line
+/// stated. A reader prunes on it without opening the list, which is what a
+/// count column is for.
+pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
@@ -530,6 +549,25 @@ fn build() -> Result<Vec<Field>> {
             super::schema::CLOCK_DATATYPE,
             "The real event's instant, independent of the snapshot grid.",
         )?,
+        // Where the line was read from, typed as the URL it is. A text read
+        // names its own column `sourceurl` too, so a capture fills this
+        // field by position without anyone spelling a mapping.
+        crated(
+            SOURCEURL_TAG_NAME,
+            "SourceUrl",
+            DataType::Url,
+            "The object this message's line was read from.",
+        )?,
+        // The arrival record's counter. The group it counts is not a registry
+        // definition - a `fixentry` contains `fixentries`, and a definition
+        // that referenced itself would be a cycle - so the counter is here
+        // and the group is built beside the fixed row it closes.
+        crated(
+            NOFIXENTRIES_TAG_NAME,
+            "NoFixEntries",
+            DataType::Int32,
+            "How many pairs the message carried, in arrival order.",
+        )?,
     ])
 }
 
@@ -542,7 +580,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 25);
+/// assert_eq!(held.len(), 27);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// assert_eq!(held[20].dtype(), held[2].dtype());

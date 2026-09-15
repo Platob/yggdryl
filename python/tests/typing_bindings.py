@@ -1435,7 +1435,6 @@ fix_message_read_back_explicit: fix.FixMsg = fix.FixMsg.from_row(
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     fix_registry_from_fields,
-    version="4.2",
     default_sending_time=datetime.datetime(2024, 1, 2, 10, 15, 30, tzinfo=datetime.timezone.utc),
     separator=124,
     payload_column="line",
@@ -1444,7 +1443,6 @@ fix_reader_pinned: fix.FixCodec = fix.FixCodec(
     batch_byte_size=1 << 20,
 )
 fix_reader_registry: fix.FixRegistry = fix_reader.registry
-fix_reader_version: str | None = fix_reader_pinned.version
 fix_reader_separator: int | None = fix_reader_pinned.separator
 fix_reader_payload_column: str = fix_reader_pinned.payload_column
 fix_reader_null_values: list[str] = fix_reader_pinned.null_values
@@ -1588,6 +1586,8 @@ fix_configuration_hash: int = fix_configuration.stable_hash()
 fix_configuration_pickle: tuple[Any, tuple[str, str | None]] = fix_configuration.__reduce__()
 
 fix_fixed_schema: Field = fix.fix_schema(fix_registry_from_fields, "FixMessage")
+fix_generic_target: Field = fix.fix_generic_message(fix_registry_from_fields, "FixMessage")
+fix_formatted_rows: list[Scalar] = fix_reader.format_messages([fix_message], fix_generic_target)
 fix_fixed_tags: list[int] = fix.fix_schema_tags()
 fix_crated: list[Field] = fix.fix_crate_fields()
 fix_plugin_vocabulary: list[Field] = fix.fix_plugin_fields()

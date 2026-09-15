@@ -462,6 +462,13 @@ impl FixRegistry {
         self.get_definition(crate::FixCategory::Groups, name)
             .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
             .or_else(|| self.get_field_by_name(name))
+            // Last, and only for a name nothing else answers: a List group is
+            // reached by its own name - `Parties`, never `NoPartyIDs`, which
+            // names the count beside it - so a message can be written one
+            // whole, which is what lifting a group out of the arrival record
+            // needs. A scalar of that name still wins, because a field the
+            // dictionary publishes is what a caller spelling it means.
+            .or_else(|| self.get_definition(crate::FixCategory::Groups, name))
     }
 
     /// One key read as a name, and as the path it spells where it spells one.
@@ -1127,9 +1134,10 @@ impl FixRegistry {
     ///
     /// `dialect` names the dictionary, and the file names it when the caller
     /// does not: with none supplied the handle's own stem stands in, where it
-    /// reads as a name: non-empty and opening with a letter. The FIX version the
-    /// file's root declares is not carried - a caller reading a capture under
-    /// it pins it with [`FixCodec::with_version`](crate::FixCodec::with_version).
+    /// reads as a name: non-empty and opening with a letter. The FIX version
+    /// the file's root declares is not carried: the version a capture is read
+    /// at is the row's own `beginstring` where the transport states one, else
+    /// what the line implies.
     ///
     /// Answers the count added and the count merged. The message roots are
     /// dropped; take [`Self::from_cfb_file`] when they matter.

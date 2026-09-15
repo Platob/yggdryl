@@ -166,7 +166,7 @@ At bind, a literal meets the column it is compared with and is converted once in
     assert str(eur) == "legs[ccy = 'EUR']"
     assert eur.columns() == ["legs"]
     bound = eur.bind(schema)
-    assert bound.field.dtype == schema.fields[0].dtype
+    assert bound.field.dtype == schema.field_at(0).dtype
     assert len(bound.eval(row)) == 2
 
     # A position and a name compose after it; a parameter inside is supplied at bind.
@@ -195,7 +195,7 @@ At bind, a literal meets the column it is compared with and is converted once in
     assert.equal(eur.toString(), "legs[ccy = 'EUR']")
     assert.deepEqual(eur.columns, ['legs'])
     let bound = eur.bind(schema)
-    assert.ok(bound.field.dtype.equals(schema.fields[0].dtype))
+    assert.ok(bound.field.dtype.equals(schema.fieldAt(0).dtype))
     assert.ok(bound.eval(row).equals(Scalar.from([leg('EUR', 1), leg('EUR', 3)])))
 
     // A position and a name compose after it; a parameter inside is supplied at bind.

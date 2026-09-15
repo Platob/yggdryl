@@ -21,11 +21,11 @@ const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix, hashing } =
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
-// The crate's own twenty-four scalar fields, at 65001-65019 and 65021-65025
+// The crate's own twenty-six scalar fields, at 65001-65019 and 65021-65027
 // (`rust/tests/fix/digest.rs`); the complete `fix.crateFields()` inventory
 // also lists the altids Map group at 65020, and 65000 - the retired msghash -
 // is not reused. A loaded dictionary holds these beside its stored fields.
-const CRATED = 24
+const CRATED = 26
 // What a new registry holds before anything is inserted: the crate's own
 // scalar fields and the seeded SendingTime (52) and TransactTime (60) clocks
 // (`seeded_fields()` in `rust/tests/fix.rs`).
@@ -33,7 +33,7 @@ const SEEDED = CRATED + 2
 // The crate's scalar tags, in order: the altids group's counter sits between.
 const CRATE_TAGS = [
   ...Array.from({ length: 19 }, (_, at) => 65001 + at),
-  ...Array.from({ length: 5 }, (_, at) => 65021 + at),
+  ...Array.from({ length: 7 }, (_, at) => 65021 + at),
 ]
 // The one intake clock the Rust suites read undated bytes under
 // (`fixed_codec` in `rust/tests/fix.rs`): 2024-01-02T10:15:30Z. Without it an
@@ -1239,6 +1239,7 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'Plugin',
       'Plugins',
       'crateFields',
+      'genericMessage',
       'globalRegistry',
       'installGlobalRegistry',
       'pluginFields',
@@ -1316,10 +1317,12 @@ test('a reader parses every frame shape the core reads', () => {
   // `puuid`, `code`, `snapshotat`, `sendingtime` (`rust/tests/fix/codec.rs`).
   // None is an entry unless the line carried it, so the wire re-emits byte
   // for byte.
-  const pairs = fixedCodec(registry, { version: '4.2' }).parsePairs([['55', 'AAPL']])
+  const pairs = fixedCodec(registry).parsePairs([['55', 'AAPL']])
   assert.deepEqual([...pairs].map(([name]) => name), ['beginstring', 'symbol', 'version', ...REPLAY])
-  assert.equal(pairs.byTag(65001).toJSON(), '4.2')
-  assert.equal(pairs.byTag(8).toJSON(), 'FIX.4.2')
+  // Pairs state no frame, so the read is at the dictionary's newest.
+  const newest = '5.0.2'
+  assert.equal(pairs.byTag(65001).toJSON(), newest)
+  assert.equal(pairs.byTag(8).toJSON(), `FIX.${newest}`)
   assert.deepEqual(pairs.arrivals().map(([tag]) => tag), [55])
   assert.equal(pairs.intoBytes(124).toString(), '55=AAPL|')
   // An undated message takes the codec's default SendingTime, and its event,
@@ -1359,15 +1362,18 @@ test('a reader parses every frame shape the core reads', () => {
 test('a reader takes the pins the core takes', () => {
   const registry = seed()
 
-  // Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A pin settles how
-  // a value is read, never what a field is called: the column is the
-  // dictionary's own whatever version read the row, and the 4.2 spelling still
-  // reaches it as an alias.
-  const dated = new fix.FixCodec(registry, { version: '4.2' })
-  const named = dated.parseLine(Buffer.from('8=FIX.4.4|35=8|32=100|10=0|')).next().value
+  // Tag 32 is `lastshares` at 4.2 and `lastqty` from 4.3 on. A version
+  // settles how a value is read, never what a field is called: the column is
+  // the dictionary's own whatever version read the row, and the 4.2 spelling
+  // still reaches it as an alias.
+  const dated = new fix.FixCodec(registry)
+  const named = dated.parseLine(Buffer.from('8=FIX.4.2|35=8|32=100|10=0|')).next().value
   assert.ok(named.field.indexOf('lastqty') !== null)
   assert.ok(named.getByName('lastshares') !== null)
   assert.ok(named.getByName('lastqty') !== null)
+
+  // A codec pins no version: a row states one, or the line implies it.
+  assert.equal(dated.version, undefined)
 
   // A stated absence produces no field at all.
   const silent = new fix.FixCodec(registry, { nullValues: ['<none>'] })
@@ -1784,23 +1790,36 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.equal(schema.fieldAt(0).fix.tag, 8)
   assert.equal(schema.fieldAt(2).name, 'msgtype')
   assert.equal(schema.fieldAt(2).fix.tag, 35)
-  // One list closes the row: `nofixentries`, the whole arrival record, with
-  // FIX's own `MsgDirection` and the settled chain facts before it.
+  // One group closes the row: `fixentries`, the whole arrival record, under
+  // the `nofixentries` that counts it, with FIX's own `MsgDirection`, where
+  // the line was read from, and the settled chain facts before them.
   const tail = []
-  for (let at = schema.fieldLen - 7; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
-  assert.deepEqual(tail, ['prevupdatedat', 'prevuuid', 'createdat', 'code', 'snapshotat', 'msgdirection', 'nofixentries'])
+  for (let at = schema.fieldLen - 9; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
+  assert.deepEqual(tail, [
+    'prevupdatedat',
+    'prevuuid',
+    'createdat',
+    'code',
+    'snapshotat',
+    'sourceurl',
+    'msgdirection',
+    'nofixentries',
+    'fixentries',
+  ])
   assert.equal(schema.indexOf('nounmappedfixentries'), null)
   assert.equal(schema.indexOf('timestamp'), null)
   assert.equal(schema.indexOf('msghash'), null)
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
-  // The crate's own facts close the tagged columns - 65001 through 65025,
-  // the altids group at 65020 among them, 65000 retired - and FIX's own
-  // `MsgDirection` after them, because it is read off the line where the wire
-  // states none. The closing list has no tag.
-  assert.equal(fix.schemaTags().length, 105)
-  assert.deepEqual(fix.schemaTags().slice(-26), [
-    ...Array.from({ length: 25 }, (_, at) => 65001 + at),
+  // The crate's own facts close the tagged columns - 65001 through 65026,
+  // the altids group at 65020 among them, 65000 retired - then FIX's own
+  // `MsgDirection`, because it is read off the line where the wire states
+  // none, and last the arrival record's counter, which closes the row with
+  // the group it counts.
+  assert.equal(fix.schemaTags().length, 107)
+  assert.deepEqual(fix.schemaTags().slice(-28), [
+    ...Array.from({ length: 26 }, (_, at) => 65001 + at),
     385,
+    65027,
   ])
 
   // A column is found by its folded name, and nothing else is needed.
@@ -1916,7 +1935,7 @@ test("a capture's own columns lead the row", () => {
 
 test('the crate fields declare their own protocols', () => {
   const held = fix.crateFields()
-  // Twenty-four scalar fields and the altids group (`rust/tests/fix/digest.rs`).
+  // Twenty-six scalar fields and the altids group (`rust/tests/fix/digest.rs`).
   assert.equal(held.length, CRATED + 1)
   assert.equal(held.filter((field) => field.fix.counter === null).length, CRATED)
   assert.deepEqual(
@@ -1947,6 +1966,8 @@ test('the crate fields declare their own protocols', () => {
       'createdat',
       'code',
       'snapshotat',
+      'sourceurl',
+      'nofixentries',
     ],
   )
   assert.deepEqual(
@@ -1977,6 +1998,8 @@ test('the crate fields declare their own protocols', () => {
       'CreatedAt',
       'Code',
       'SnapshotAt',
+      'SourceUrl',
+      'NoFixEntries',
     ],
   )
   // In tag order from 65001 up: above every tag FIX or a venue publishes, so

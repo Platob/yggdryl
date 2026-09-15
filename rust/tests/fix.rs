@@ -22,6 +22,8 @@ mod direction;
 mod enrich;
 #[path = "fix/equivalence.rs"]
 mod equivalence;
+#[path = "fix/format.rs"]
+mod format;
 #[path = "fix/global_env.rs"]
 mod global_env;
 #[path = "fix/global_home.rs"]
@@ -163,6 +165,25 @@ fn plugin_fields_registry() -> std::sync::Arc<yggdryl::FixRegistry> {
                 .expect("the bridge's own fields"),
         )
     }))
+}
+
+/// One line read at a version the row itself states.
+///
+/// A codec pins no version: the two ranks are what the row states and what
+/// the line implies, so a fixture that wants a version of its own says it
+/// the way a bridge log says it - in the `beginstring` the transport wrote
+/// around the body.
+fn dated_line(
+    codec: &yggdryl::FixCodec,
+    body: &[u8],
+    version: &str,
+) -> yggdryl::Result<yggdryl::FixMsg> {
+    use yggdryl::media::text::{TextBytes, TextLine};
+
+    let codec = codec.clone().with_capture_names(["beginstring"]);
+    let line = TextLine::from_bytes(0, TextBytes::from_bytes(body)?)?
+        .with_captures(vec![Some(TextBytes::from_bytes(version.as_bytes())?)])?;
+    sole_message(codec.parse_text_line(&line)?)
 }
 
 /// The sole message a fixture carrying one is read into.
@@ -336,4 +357,32 @@ fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
     let schema =
         yggdryl::Field::from_arrow_schema("row", &batch.schema()).expect("the batch schema reads");
     yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
+}
+
+/// The crate's own `GenericMessage` over one dictionary.
+///
+/// The shape a consumer reads: what a parse lands in is the
+/// [stable row](yggdryl::fix_schema), and this is what a
+/// [format](yggdryl::FixCodec::format_arrow_reader) lifts it into.
+fn generic(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
+    yggdryl::fix_generic_message(registry, "fix").expect("the generic message")
+}
+
+/// One capture read the whole way: parsed into the stable row, then formatted
+/// into the crate's own `GenericMessage`.
+///
+/// The two stages a reader of typed columns runs, spelled once so a suite
+/// asserting what a capture answers is asserting the pipeline rather than one
+/// stage of it.
+fn parsed_and_formatted(
+    codec: &yggdryl::FixCodec,
+    source: yggdryl::arrow::BatchReader,
+) -> yggdryl::arrow::BatchReader {
+    let held = generic(codec.registry());
+    let parsed = codec
+        .parse_text_arrow_reader(source)
+        .expect("the batch reader opens");
+    codec
+        .format_arrow_reader(parsed, &held)
+        .expect("the format reader opens")
 }

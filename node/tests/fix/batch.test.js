@@ -262,7 +262,8 @@ test("a row's pluginid fills its own column and selects nothing", () => {
 test('the codec answers the pins it was given', () => {
   const registry = seed()
   const bare = new fix.FixCodec(registry)
-  assert.equal(bare.version, null)
+  // A codec pins no version: a row states one, or the line implies it.
+  assert.equal(bare.version, undefined)
   assert.equal(bare.separator, null)
   assert.equal(bare.payloadColumn, 'body')
   assert.deepEqual(bare.nullValues, ['', 'null', '<null>'])
@@ -271,14 +272,12 @@ test('the codec answers the pins it was given', () => {
   assert.equal(bare.batchByteSize, 128 * 1024 * 1024)
 
   const pinned = new fix.FixCodec(registry, {
-    version: 'FIX.4.2',
     separator: PIPE,
     payloadColumn: 'line',
     nullValues: ['<none>'],
     direction: 'Receive',
     batchByteSize: 4096,
   })
-  assert.equal(pinned.version, '4.2')
   // No pin names a dialect: the dictionary is one namespace.
   assert.equal('branch' in pinned, false)
   assert.equal(pinned.separator, PIPE)
@@ -306,7 +305,7 @@ test('the schema is decided before the first row is read', () => {
   assert.deepEqual(names.slice(0, 6), ['body', 'beginstring', 'bodylength', 'msgtype', 'sendercompid', 'targetcompid'])
   // One list closes the row - the whole arrival record, unresolved keys at
   // tag 0 - behind FIX's own `MsgDirection`.
-  assert.deepEqual(names.slice(-2), ['msgdirection', 'nofixentries'])
+  assert.deepEqual(names.slice(-3), ['msgdirection', 'nofixentries', 'fixentries'])
   assert.equal(names.includes('nounmappedfixentries'), false)
   assert.equal(reader.field.fieldAt(3).fix.tag, 35)
   // And an empty capture yields no batch at all.
@@ -398,7 +397,7 @@ test('the filling reader fills what the filling pass fills and leaves the record
   // The schema is the same schema: the carried column still leads.
   assert.deepEqual(filled.schema.fields.map((field) => field.name), bare.schema.fields.map((field) => field.name))
   // The arrival record is untouched either way.
-  assert.deepEqual(JSON.stringify(column(filled, 'nofixentries')), JSON.stringify(column(bare, 'nofixentries')))
+  assert.deepEqual(JSON.stringify(column(filled, 'fixentries')), JSON.stringify(column(bare, 'fixentries')))
 })
 
 test('messages and arrowReader invert each other', () => {
@@ -500,7 +499,7 @@ test('altids filling agrees between message and Arrow streams for all three rows
   const filled = codec.enrichMessagesArrowReader(bare).intoTable()
   const expected = [[['clordid', 'C-001'], ['execid', 'E-09'], ['orderid', 'O-01']], [], null]
   assert.deepEqual(mapColumn(filled, 'altids'), expected)
-  assert.equal(JSON.stringify(column(filled, 'nofixentries')), JSON.stringify(column(bare, 'nofixentries')))
+  assert.equal(JSON.stringify(column(filled, 'fixentries')), JSON.stringify(column(bare, 'fixentries')))
   assert.deepEqual(filled.schema, bare.schema)
   const second = codec.enrichMessagesArrowReader(filled).intoTable()
   assert.deepEqual(mapColumn(second, 'altids'), expected)
@@ -824,7 +823,7 @@ test('a row without the entries column has no entries', () => {
   const columns = []
   for (let at = 0; at < wideSchema.fieldLen; at += 1) {
     const held = wideSchema.fieldAt(at)
-    if (held.name !== 'nofixentries') columns.push(held)
+    if (held.name !== 'fixentries' && held.name !== 'nofixentries') columns.push(held)
   }
   const narrow = fields.struct('fix', columns, { nullable: false })
   const parsed = one(codec, ORDER)
@@ -836,4 +835,55 @@ test('a row without the entries column has no entries', () => {
   assert.ok(held.intoRow(narrow).equals(row))
   // A row that does not fit the schema is refused.
   assert.throws(() => fix.FixMsg.fromRow(narrow, { nosuchcolumn: 1 }, registry))
+})
+
+test('a registry takes the generic message by code', () => {
+  // Pinned by `the_generic_message_is_the_row_registered_as_a_message` in
+  // `rust/tests/fix/format.rs`. Registration adds a component, so the scalar
+  // length a registry answers does not move.
+  const registry = seed()
+  const before = registry.size
+  registry.withGenericMessage()
+  assert.equal(registry.size, before)
+  // Idempotent: a registry already answering the code keeps what it has.
+  registry.withGenericMessage()
+  const held = registry.msgtype('UGEN')
+  assert.equal(held.name, 'genericmessage')
+  assert.ok(held.asField().indexOf('symbol') !== null)
+})
+
+test('format answers the rows one message field holds, both doors', () => {
+  // Pinned by `format_messages_answers_one_row_per_message_under_the_field`
+  // and `format_arrow_reader_answers_the_batches_format_messages_answers_rows`
+  // in `rust/tests/fix/format.rs`.
+  const registry = seed()
+  const codec = new fix.FixCodec(registry)
+  const generic = fix.genericMessage(registry)
+  const schema = fix.schema(registry)
+
+  // The crate's own target is the fixed row registered as a message, so a
+  // formatted row is still a FIX row.
+  const names = (held) => Array.from({ length: held.fieldLen }, (_, at) => held.fieldAt(at).name)
+  assert.deepEqual(names(generic), names(schema))
+  assert.equal(generic.fix.msgtype, 'UGEN')
+
+  const messages = [...codec.parseLine(Buffer.from(ORDER))]
+  const rows = codec.formatMessages(messages, generic)
+  assert.equal(rows.length, 1)
+  const held = rows[0].asJs()
+  assert.equal(held[generic.indexOf('symbol')], 'AAPL')
+  // The record closes a formatted row exactly as it closes a parsed one.
+  assert.ok(held[generic.indexOf('fixentries')].length > 0)
+
+  // The Arrow twin answers the same row, one batch at a time, and decides its
+  // schema before a row is read.
+  const source = codec.arrowReader(schema, messages)
+  const formatted = codec.formatArrowReader(source, generic)
+  const table = formatted.intoTable()
+  assert.deepEqual(
+    table.schema.fields.map((field) => field.name),
+    names(generic),
+  )
+  assert.equal(table.numRows, 1)
+  assert.deepEqual(column(table, 'symbol'), ['AAPL'])
 })

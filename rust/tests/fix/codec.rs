@@ -1534,23 +1534,13 @@ fn a_message_re_emits_from_its_entries_and_reads_back_equal() {
 #[test]
 fn a_version_never_renames_or_retypes_the_column_a_tag_lands_in() {
     let reader = reader();
-    let old = reader
-        .clone()
-        .with_version("4.2".parse::<Version>().unwrap());
-    let newest = reader
-        .clone()
-        .with_version("5.0.2".parse::<Version>().unwrap());
 
     // Tag 32 is `LastShares` typed `int` in 4.0, `LastShares` typed `Qty` in
     // 4.2 and `LastQty` from 4.3 on. A row read at 4.2 still builds the
     // dictionary's own column, because a tag that renamed itself per version
     // is a tag no two captures of one venue could be read together on.
-    let at_42 = old
-        .sole_line(b"8=FIX.4.2|35=8|32=100|10=0|", false)
-        .unwrap();
-    let at_new = newest
-        .sole_line(b"8=FIX.4.4|35=8|32=100|10=0|", false)
-        .unwrap();
+    let at_42 = super::dated_line(&reader, b"8=FIX.4.2|35=8|32=100|10=0|", "4.2").unwrap();
+    let at_new = super::dated_line(&reader, b"8=FIX.4.4|35=8|32=100|10=0|", "5.0.2").unwrap();
     let column = |held: &yggdryl::FixMsg| {
         let at = held
             .as_field()
@@ -1850,19 +1840,17 @@ fn an_unnamed_occurrence_preserves_raw_input_under_the_declared_component() {
 
 #[test]
 fn a_renamed_group_builds_one_column_under_the_name_the_dictionary_holds() {
-    let reader = reader()
-        .clone()
-        .with_version("4.2".parse::<Version>().unwrap());
+    let reader = reader();
     // Tag 33 is `LinesOfText` before 4.4 and `NoLinesOfText` after, and the
     // message is read at 4.2 - but a field is one column under the one name
     // the dictionary holds it by, whatever version the row is read at. What
     // 4.2 called it stays readable through the field's lineage.
-    let message = reader
-        .sole_line(
-            b"MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
-            false,
-        )
-        .unwrap();
+    let message = super::dated_line(
+        &reader,
+        b"MSGTYPE=B|NOLINESOFTEXT=2|NOLINESOFTEXT[0]=TEXT=a|NOLINESOFTEXT[1]=TEXT=b",
+        "4.2",
+    )
+    .unwrap();
 
     let names: Vec<&str> = message
         .as_field()
@@ -2445,12 +2433,9 @@ fn a_row_inside_a_data_field_is_read_at_its_own_version_and_not_the_frames() {
     assert_eq!(message.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
     assert_eq!(message.by_tag(150).unwrap().as_str(), Some("D"));
 
-    // A pinned version is the caller speaking for the whole run and answers
-    // for the nested row too.
-    let dated = super::fixed_codec(Arc::clone(&registry))
-        .with_version("4.2".parse::<Version>().unwrap())
-        .parse_fix_line(frame)
-        .unwrap();
+    // A version the row itself states answers for the nested row too.
+    let dated =
+        super::dated_line(&super::fixed_codec(Arc::clone(&registry)), frame, "4.2").unwrap();
     assert_eq!(dated.by_tag(150).unwrap().as_str(), Some("1"));
 }
 
@@ -2497,13 +2482,10 @@ fn every_generated_message_carries_the_version_the_read_used() {
     assert_eq!(read.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
     assert_eq!(read.version(), Some(Version::new(4, 2, 0)));
 
-    // A pinned version is the caller speaking for the whole run: every
-    // message the codec makes is read at that target and carries it, while
-    // the frame keeps saying what the session said.
-    let dated = codec()
-        .with_version(Version::new(4, 4, 0))
-        .sole_line(frame, false)
-        .unwrap();
+    // A version the row states is the transport speaking for a line its
+    // frame dated otherwise: the message is read at that target and carries
+    // it, while the frame keeps saying what the session said.
+    let dated = super::dated_line(&codec(), frame, "4.4").unwrap();
     assert_eq!(dated.by_tag(8).unwrap().as_str(), Some("FIX.4.2"));
     assert_eq!(
         dated.by_tag(yggdryl::VERSION_TAG_NAME.0).unwrap().as_str(),

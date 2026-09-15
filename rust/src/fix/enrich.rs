@@ -562,7 +562,7 @@ impl Remembered {
 /// for the tags a book, a blotter, a quote feed and a monitor read, and a
 /// field outside that list reaches a message rebuilt from a row only through
 /// the arrival record - which the row carries whole, under
-/// [`ENTRIES_COLUMN`](super::schema::ENTRIES_COLUMN), whatever the columns
+/// [`FIXENTRIES_COLUMN`](super::schema::FIXENTRIES_COLUMN), whatever the columns
 /// made of it. `ExecBroker(76)` and `ClientID(109)` are two such fields, and
 /// the replacements that restate them write the `parties` group and its
 /// `NoPartyIDs(453)` counter, which do have columns. A pass reading only the
@@ -576,8 +576,37 @@ impl Remembered {
 /// and allocates nothing. Only a tag the message holds no child for at all is
 /// taken - a stated null is a child, and a message that said "nothing sent"
 /// said it.
-fn recovered(mut msg: FixMsg) -> FixMsg {
+/// What a row's projection dropped, lifted back out of the arrival record.
+///
+/// The one door a [format](super::FixCodec::format_messages) opens before it
+/// fills a message field. A row is a projection: a column the row it came
+/// from did not carry is in the arrival record and nowhere else, so
+/// formatting a narrower row into a wider field reads the record for what
+/// the narrower one lost.
+///
+/// It fills and never overwrites, so it is idempotent and free where nothing
+/// was dropped: a message parsed from a line already holds a child for every
+/// tag its record names, and the walk writes nothing.
+///
+/// What it cannot answer is what the record does not say. A bridge's packed
+/// occurrence is one pair the codec unpacked into members, a composed key is
+/// one pair the codec resolved onto another field, and a row-header capture
+/// never arrived on the wire at all - the record keeps each as the bridge
+/// wrote it, under tag zero where nothing resolved it, because an arrival is
+/// what arrived (decisions 8 and 20). Those readings are the codec's, so a
+/// row that drops their columns has dropped them.
+pub(super) fn lifted(registry: &FixRegistry, msg: FixMsg) -> FixMsg {
+    recovered(registry, msg)
+}
+
+fn recovered(registry: &FixRegistry, mut msg: FixMsg) -> FixMsg {
     let mut dropped: Vec<(i32, Scalar)> = Vec::new();
+    let mut groups: Vec<(SmolStr, Scalar)> = Vec::new();
+    // The version the row was read at, which is what a code spelling and a
+    // dated clock are read against - the same version the builder read the
+    // line at, so a value lifted back out of the record comes back as what
+    // went in.
+    let version = msg.version();
     for entry in msg.entries() {
         let tag = entry.tag();
         // `0` is an unresolved key - a name or number with no registry
@@ -587,29 +616,111 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
         if tag <= 0 || msg.get_by_tag(tag).is_some() {
             continue;
         }
-        // A pair that headed a subtree is that subtree's. Recovering a
-        // group's counter alone would state a count with no occurrences
-        // under it, which is a worse answer than the silence the projection
-        // left: only a leaf pair comes back here.
-        if !entry.children().is_empty() || dropped.iter().any(|(held, _)| *held == tag) {
+        if dropped.iter().any(|(held, _)| *held == tag) {
+            continue;
+        }
+        // A pair that headed a subtree is a group's counter, and the
+        // occurrences it heads come back as the group the dictionary
+        // declares - never as a count with nothing under it. The group is
+        // written under its own name, because a counter's tag names the
+        // count and the group is the thing beside it.
+        if !entry.children().is_empty() {
+            if let Some(group) = registry.get_group_by_tag(tag) {
+                if let Some(value) = occurrences_of(group, entry.children(), version) {
+                    let count = value.as_sequence().map_or(0, <[Scalar]>::len);
+                    groups.push((SmolStr::new(group.name()), value));
+                    dropped.push((tag, Scalar::from(i32::try_from(count).unwrap_or(i32::MAX))));
+                }
+            }
             continue;
         }
         let Some(text) = entry.value().as_str() else {
             continue;
         };
-        // `Scalar::from(&str)` holds the text as the compact string it is:
-        // an owned `String` here would be built only for the value to copy
-        // out of it and drop it again.
-        dropped.push((tag, Scalar::from(text)));
+        // The dictionary's own field reads the spelling, which is what the
+        // builder read on the way in: a FIX timestamp, a code's name and a
+        // decimal are spellings the generic value contract does not know, and
+        // a value lifted back out of the record has to come back as what went
+        // in. A spelling the field refuses is the null the row would hold
+        // anyway. `Scalar::from(&str)` holds the text as the compact string
+        // it is, for a tag no dictionary explains.
+        let value = registry.get_field_by_tag(tag).map_or_else(
+            || Scalar::from(text),
+            |field| super::build::typed_spelling(field, text, version),
+        );
+        if !value.is_null() {
+            dropped.push((tag, value));
+        }
     }
     for (tag, value) in dropped {
-        // The dictionary's own field types the text on the way in. Unresolved
-        // keys recorded tag 0 and were skipped above, so only a positive tag
-        // reaches this write; one the dictionary lacks is kept under its decimal
-        // spelling, as `set` keeps any such tag.
+        // Unresolved keys recorded tag 0 and were skipped above, so only a
+        // positive tag reaches this write; one the dictionary lacks is kept
+        // under its decimal spelling, as `set` keeps any such tag.
         let _ = msg.set(tag, value);
     }
+    for (name, value) in groups {
+        let _ = msg.set(name.as_str(), value);
+    }
     msg
+}
+
+/// One group's occurrences, rebuilt from the entries that arrived under its
+/// counter.
+///
+/// An occurrence opens on the group's declared delimiter - its first member,
+/// which is what FIX says opens one - and on any member the occurrence being
+/// filled has already stated, which is what a venue writing its members in
+/// its own order still says. A member the dictionary does not declare for
+/// this group is not this group's, so it is left where the record has it; a
+/// nested counter's own subtree comes back through the same walk.
+///
+/// `None` where nothing was rebuilt, so a group that says nothing writes
+/// nothing rather than an empty list the message never stated.
+fn occurrences_of(
+    group: &Field,
+    entries: &[super::FixEntry],
+    version: Option<crate::Version>,
+) -> Option<Scalar> {
+    let members = super::schema::item_fields(group)?;
+    let tags: Vec<Option<i32>> = members
+        .iter()
+        .map(|member| member.as_fix().tag().ok().flatten())
+        .collect();
+    let mut rows: Vec<Vec<Scalar>> = Vec::new();
+    let mut stated: Vec<bool> = Vec::new();
+    for entry in entries {
+        let Some(at) = tags.iter().position(|held| *held == Some(entry.tag())) else {
+            continue;
+        };
+        // The first declared member opens an occurrence, and so does a
+        // member the one being filled already stated.
+        if rows.is_empty() || at == 0 || stated[at] {
+            rows.push(vec![Scalar::Null; members.len()]);
+            stated = vec![false; members.len()];
+        }
+        let member = &members[at];
+        let value = if entry.children().is_empty() {
+            entry
+                .value()
+                .as_str()
+                .map(|text| super::build::typed_spelling(member, text, version))
+                .filter(|held| !held.is_null())
+        } else {
+            occurrences_of(member, entry.children(), version)
+                .and_then(|held| member.scalar(held).ok())
+        };
+        if let Some(value) = value {
+            let last = rows.len() - 1;
+            rows[last][at] = value;
+            stated[at] = true;
+        }
+    }
+    if rows.is_empty() {
+        return None;
+    }
+    Some(Scalar::from_sequence(
+        rows.into_iter().map(Scalar::from_sequence),
+    ))
 }
 
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
@@ -623,13 +734,13 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
 /// column is indistinguishable from a stated one and carries the same
 /// display, description and `fix:tag` a reader resolves it by - and a value
 /// it refuses, such as an identifier whose check digit does not close, is
-/// silence. Identifier Map construction propagates the shared text
-/// conversion's typed refusal if a declared member cannot spell text.
+/// silence. A declared identifier that cannot spell text is silence too: it
+/// is left out of the Map rather than allowed to refuse the message.
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
     // What the row's projection dropped comes back off the arrival record
     // first, because restatement reads what the document stated and a row
     // states only its columns (decision 20).
-    let msg = recovered(msg);
+    let msg = recovered(registry, msg);
     // Restatement next, and not as a step a caller may skip: every
     // derivation reads by canonical name, and a child stored under an alias
     // is invisible until it has been canonicalized (decision 20).

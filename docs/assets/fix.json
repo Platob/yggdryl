@@ -96,7 +96,7 @@
     ]
   },
   "kpi": {
-    "fields": 6265,
+    "fields": 6267,
     "groups": 581,
     "enumFields": 2026,
     "codes": 27209,
@@ -105,15 +105,15 @@
     "alternates": 0,
     "messages": 182,
     "components": 929,
-    "columns": 109,
+    "columns": 111,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 19,
+    "datatypes": 20,
     "versions": 10,
     "dtypes": [
       [
         "int32",
-        2511
+        2512
       ],
       [
         "utf8",
@@ -185,6 +185,10 @@
       ],
       [
         "side",
+        1
+      ],
+      [
+        "url",
         1
       ]
     ],
@@ -222687,6 +222691,30 @@
         },
         "name": "snapshotat",
         "nullable": false
+      },
+      {
+        "dtype": {
+          "type": "url"
+        },
+        "metadata": {
+          "description": "The object this message's line was read from.",
+          "display": "SourceUrl",
+          "fix:tag": "65026"
+        },
+        "name": "sourceurl",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "int32"
+        },
+        "metadata": {
+          "description": "How many pairs the message carried, in arrival order.",
+          "display": "NoFixEntries",
+          "fix:tag": "65027"
+        },
+        "name": "nofixentries",
+        "nullable": true
       }
     ],
     "groups": [
@@ -237383,6 +237411,13 @@
         "x": "The real event's instant, independent of the snapshot grid."
       },
       {
+        "c": "sourceurl",
+        "t": 65026,
+        "n": "SourceUrl",
+        "y": "url",
+        "x": "The object this message's line was read from."
+      },
+      {
         "c": "msgdirection",
         "t": 385,
         "n": "MsgDirection",
@@ -237391,9 +237426,16 @@
       },
       {
         "c": "nofixentries",
-        "t": 0,
+        "t": 65027,
         "n": "NoFixEntries",
-        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"nofixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
+        "y": "int32",
+        "x": "How many pairs the message carried, in arrival order."
+      },
+      {
+        "c": "fixentries",
+        "t": 0,
+        "n": "FixEntries",
+        "y": "list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"fixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"fixentries\",list(field(\"fixentry\",struct(field(\"tag\",int32,nullable=true,metadata={}),field(\"key\",utf8,nullable=true,metadata={}),field(\"value\",utf8,nullable=true,metadata={}),field(\"fixentries\",binary,nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={})),nullable=false,metadata={}))",
         "x": "Every pair the message carried, in arrival order and untranslated."
       }
     ],

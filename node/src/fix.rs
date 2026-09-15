@@ -36,7 +36,6 @@ use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCategory,
     FixCodec as CoreFixCodec, FixId as CoreFixId, FixKey, FixLifecycle as CoreFixLifecycle,
     FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar, TimeUnit, Timezone,
-    Version as CoreVersion,
 };
 
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
@@ -308,15 +307,33 @@ impl JsFixRegistry {
         Ok(())
     }
 
+    /// Register the crate's own `GenericMessage`, the default format target.
+    ///
+    /// The fixed row's own columns under a `fix:msgtype`, so a
+    /// `formatMessages` with no message type of its own has one to name.
+    /// Built against this dictionary rather than declared once, because the
+    /// columns are the dictionary's; idempotent, so a registry that already
+    /// answers the code keeps what it has.
+    #[napi]
+    pub fn with_generic_message(&mut self) -> Result<()> {
+        let registry = self
+            .inner_mut()?
+            .clone()
+            .with_generic_message()
+            .map_err(napi_error)?;
+        self.inner = Arc::new(registry);
+        Ok(())
+    }
+
     /// A registry holding the built-in definitions.
     ///
-    /// Every registry holds the twenty-four scalar fields and the sorted
+    /// Every registry holds the twenty-six scalar fields and the sorted
     /// `altids` Map group that `fixCrateFields` lists, and the `pluginconfig`
     /// component. It also holds the standard `SendingTime` (52) and
     /// `TransactTime` (60) clock fields, seeded where the dictionary defines
     /// no field of its own at those tags. A dictionary loaded from a store,
     /// built from fields or left alone holds them alike; scalar lookups and
-    /// `size` exclude groups and components, so a new registry's `size` is 26.
+    /// `size` exclude groups and components, so a new registry's `size` is 28.
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
@@ -416,8 +433,8 @@ impl JsFixRegistry {
         self.inner.write_into(&mut holder).map_err(napi_error)
     }
 
-    /// How many scalar fields are held, the crate's own twenty-four among
-    /// them, 26 for a new registry with its two seeded clocks.
+    /// How many scalar fields are held, the crate's own twenty-six among
+    /// them, 28 for a new registry with its two seeded clocks.
     #[napi(getter)]
     pub fn size(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)
@@ -823,7 +840,7 @@ impl JsFixMsg {
     /// row under it, which the loader widens from whatever `Scalar.fromJs`
     /// reads. The columns are the message's children under the schema's
     /// names, reached by tag as a parsed message's are, and the entries are
-    /// rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
+    /// rebuilt from the `fixentries` column, so `intoBytes` re-emits the
     /// line the row was read from; a row without that column has no entries.
     /// Nothing is parsed again and no clock is read: the row must carry the
     /// seven non-null replay fields - `updatedat`, `createdat`, `uuid`,
@@ -1177,7 +1194,7 @@ impl JsFixMsg {
     /// carried nothing at a column answers null there rather than shifting its
     /// neighbours. A column no tag names is the capture's: it takes the child
     /// of that name where the message has one, else null. The arrival record
-    /// closes the row under `nofixentries`, unresolved keys at tag 0.
+    /// closes the row under `fixentries`, unresolved keys at tag 0.
     ///
     /// A replayable row keeps the seven replay fields; a schema missing or
     /// mistyping one, or a cell its column cannot represent, throws the
@@ -1525,8 +1542,8 @@ pub struct JsFixCodec {
 impl JsFixCodec {
     /// Open a codec over one dictionary, or over the process default.
     ///
-    /// Every pin is the core's, spelled once here. `version` crosses as
-    /// text; `separator` is the byte a numeric frame splits on where
+    /// Every pin is the core's, spelled once here. `separator` is the byte a
+    /// numeric frame splits on where
     /// the line does not say; `payloadColumn` names the batch column a line
     /// is read from; `captureNames` are what a run's row-header captures are
     /// called, in the order a line answers them, which is what lets
@@ -1549,9 +1566,6 @@ impl JsFixCodec {
         let registry = registry_or_global(registry)?;
         let options = options.unwrap_or_default();
         let mut inner = CoreFixCodec::new(Arc::clone(&registry));
-        if let Some(held) = &options.version {
-            inner = inner.with_version(version_from_js(held)?);
-        }
         if let Some(held) = options.separator {
             inner = inner.with_separator(separator_byte(Some(held))?);
         }
@@ -1591,16 +1605,6 @@ impl JsFixCodec {
     #[napi(getter)]
     pub fn registry(&self) -> JsFixRegistry {
         JsFixRegistry::from_arc(Arc::clone(&self.registry))
-    }
-
-    /// The version values are read at, or `null` where each line states its
-    /// own.
-    ///
-    /// A row reads at `ApplVerID`, then `BeginString`, then this pin, then
-    /// the registry's newest.
-    #[napi(getter)]
-    pub fn version(&self) -> Option<String> {
-        self.inner.version().map(|version| version.to_string())
     }
 
     /// The byte a numeric frame splits on, or `null` where the line decides.
@@ -1899,6 +1903,61 @@ impl JsFixCodec {
         Ok(JsBatchReader::from_core(reader, schema.inner.name()))
     }
 
+    /// A stream of messages as the rows one message field holds them.
+    ///
+    /// The third verb, and the one a consumer reads by: `parse*` turns a
+    /// capture into messages, `enrich*` fills what each implies, and this
+    /// answers them under a message field the registry names -
+    /// `fix.genericMessage` for the crate's own, a venue's own type, or any
+    /// Struct root a caller built for the table it is writing.
+    ///
+    /// Each row is `FixMsg.intoRow` under `field`, read once here rather than
+    /// per message, so a column the message did not state is derived where
+    /// the crate derives it and a value the column will not hold is that
+    /// column's null. A column the message does not carry at all is read off
+    /// its arrival record first, which is what lets a narrow row be formatted
+    /// into a wider field.
+    #[napi(js_name = "_formatMessagesNative", skip_typescript)]
+    pub fn format_messages_native(
+        &self,
+        env: Env,
+        field: &JsField,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<Vec<JsScalar>> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(|message| Ok(message.inner.clone()));
+        let mut rows = Vec::new();
+        for row in self.inner.format_messages(messages, &field.inner) {
+            rows.push(JsScalar::from_core(row.map_err(napi_error)?));
+        }
+        if let Some(error) = failed.take() {
+            return Err(error);
+        }
+        Ok(rows)
+    }
+
+    /// A stream of batches of FIX rows as batches under one message field.
+    ///
+    /// The Arrow twin of `formatMessages`, and the last stage of the pipeline
+    /// a capture runs. The schema is answered before a row is read, from the
+    /// source's carried columns and `field`, and the capture's own columns
+    /// still lead the row. A source carrying no arrival record is a
+    /// projection already and is cast batch by batch instead of read back as
+    /// messages. The source is consumed.
+    #[napi]
+    pub fn format_arrow_reader(
+        &self,
+        source: &mut JsBatchReader,
+        field: &JsField,
+    ) -> Result<JsBatchReader> {
+        let formatted = self
+            .inner
+            .format_arrow_reader(source.take()?, &field.inner)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(formatted, field.inner.name()))
+    }
+
     /// Fills a stream of messages through one lifecycle, in order, lazily.
     ///
     /// One `FixLifecycle` at `FixLifecycle.DEFAULT_INTERVAL_NS` over the whole
@@ -1931,7 +1990,7 @@ impl JsFixCodec {
     /// `separator` - `SOH` when none is pinned - then a newline, into `sink`,
     /// anything with `write(chunk: Uint8Array)`. The wire is rebuilt from the
     /// arrival record, never from the columns, so a batch without the
-    /// `nofixentries` column is refused before a row is read. One batch is
+    /// `fixentries` column is refused before a row is read. One batch is
     /// held at a time, and the source is consumed.
     #[allow(clippy::cast_precision_loss)]
     #[napi(ts_args_type = "source: BatchReader, sink: { write(chunk: Uint8Array): unknown }")]
@@ -1967,8 +2026,6 @@ impl JsFixCodec {
 #[napi(object, object_to_js = false)]
 #[derive(Default)]
 pub struct FixCodecOptions<'env> {
-    /// The version built messages are expressed in.
-    pub version: Option<String>,
     /// The byte a numeric frame splits on where the line does not say.
     pub separator: Option<f64>,
     /// The batch column a line is read from; `body` when unstated.
@@ -2007,12 +2064,6 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
                 .map_err(napi_error)
         }
     }
-}
-
-/// Read one FIX version, or report the native parse failure.
-fn version_from_js(text: &str) -> Result<CoreVersion> {
-    let spelling = text.strip_prefix("FIX.").unwrap_or(text);
-    spelling.parse::<CoreVersion>().map_err(napi_error)
 }
 
 /// The state a stream of messages has reached, one chain per live event.
@@ -2219,7 +2270,7 @@ pub fn fix_lifecycle_default_interval_ns_native() -> BigInt {
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own derived facts through tag 65025, `MsgDirection`
-/// (385), and the one list that closes every row: `nofixentries`, the whole
+/// (385), and the one list that closes every row: `fixentries`, the whole
 /// arrival record, unresolved keys at tag 0. Columns are spelled by the
 /// dictionary's folded canonical names - `msgtype`, never `35` - so a row
 /// reads the way a message reads; the tag stays each column's identity, on
@@ -2234,6 +2285,25 @@ pub fn fix_schema(
     let registry = registry_or_global(registry)?;
     let name = name.unwrap_or_else(|| "fix".to_owned());
     yggdryl::fix_schema(&registry, name)
+        .map(JsField::from_core)
+        .map_err(napi_error)
+}
+
+/// The crate's own `GenericMessage`, built against one dictionary.
+///
+/// The target `formatMessages` and `formatArrowReader` use when a caller
+/// names no message of its own: the fixed row's own columns, carrying the
+/// `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
+/// what FIX reserves for a counterparty's own types. `name` is the root's
+/// name, which a caller spells for the table it is writing.
+#[napi(js_name = "fixGenericMessage")]
+pub fn fix_generic_message(
+    registry: Option<ClassInstance<'_, JsFixRegistry>>,
+    name: Option<String>,
+) -> Result<JsField> {
+    let registry = registry_or_global(registry)?;
+    let name = name.unwrap_or_else(|| "fix".to_owned());
+    yggdryl::fix_generic_message(&registry, name)
         .map(JsField::from_core)
         .map_err(napi_error)
 }
@@ -2267,8 +2337,8 @@ pub fn fix_schema_tags() -> Vec<f64> {
         .collect()
 }
 
-/// The twenty-five definitions this crate owns, in tag order: twenty-four
-/// scalar fields at 65001 to 65019 and 65021 to 65025, and the sorted
+/// The twenty-seven definitions this crate owns, in tag order: twenty-six
+/// scalar fields at 65001 to 65019 and 65021 to 65027, and the sorted
 /// `altids` Map group at 65020. Tag 65000 is retired and not reused.
 ///
 /// The version read at, the ticker, `updatedat` and its partition, the
@@ -2277,8 +2347,9 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// before that, the two session names the line spells, the ISIN, MIC and
 /// order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
 /// the direct identifiers enrichment records in `altids`, the previous
-/// message's `prevupdatedat` and `prevuuid`, and `createdat`, `code` and
-/// `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
+/// message's `prevupdatedat` and `prevuuid`, `createdat`, `code` and
+/// `snapshotat`, the `sourceurl` a line was read from and the
+/// `nofixentries` that counts its arrival record. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
 /// `snapshotat` are non-null. Every registry already holds them in their
 /// category, so this is the listing a schema or a document walks rather than
 /// something a caller registers.

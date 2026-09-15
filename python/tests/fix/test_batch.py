@@ -19,7 +19,15 @@ import pyarrow as pa
 import pytest
 
 from yggdryl import DataType, Field, Scalar, TextLine
-from yggdryl.fix import FixCodec, FixMessages, FixMsg, FixRegistry, fix_schema, fix_schema_carrying
+from yggdryl.fix import (
+    FixCodec,
+    FixMessages,
+    FixMsg,
+    FixRegistry,
+    fix_generic_message,
+    fix_schema,
+    fix_schema_carrying,
+)
 
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SEED = REPO / "config" / "fix"
@@ -208,7 +216,8 @@ def test_parse_text_lines_pulls_one_line_at_a_time(seed: FixRegistry) -> None:
 
 def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
     bare = FixCodec(seed)
-    assert bare.version is None
+    # A codec pins no version: a row states one, or the line implies it.
+    assert not hasattr(bare, "version")
     assert bare.separator is None
     assert bare.payload_column == "body"
     assert bare.null_values == ["", "null", "<null>"]
@@ -220,7 +229,6 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
 
     pinned = FixCodec(
         seed,
-        version="FIX.4.2",
         default_sending_time=CLOCK,
         separator=124,
         payload_column="line",
@@ -228,7 +236,6 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
         direction="Receive",
         batch_byte_size=4096,
     )
-    assert pinned.version == "4.2"
     assert pinned.default_sending_time == CLOCK
     assert pinned.separator == 124
     assert pinned.payload_column == "line"
@@ -256,7 +263,7 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     # folded names, each carrying its tag on the field.
     assert names[:6] == ["body", "beginstring", "bodylength", "msgtype", "sendercompid", "targetcompid"]
     # FIX's own `msgdirection`, then the one arrival record closes the row.
-    assert names[-2:] == ["msgdirection", "nofixentries"]
+    assert names[-3:] == ["msgdirection", "nofixentries", "fixentries"]
     assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
     assert reader.schema.field("msgtype").metadata[b"display"] == b"MsgType"
     # The content identity's storage is sixteen plain bytes: `fixed[16]`
@@ -274,7 +281,7 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistr
     assert msgtype[0] == "D", "a framed row states its type"
     assert msgtype[-1] is None, "a document that states no type is `unknown`"
     # The arrival record closes every row that carried one.
-    assert len(_column(parsed, "nofixentries")[0]) == 7
+    assert len(_column(parsed, "fixentries")[0]) == 7
 
 
 def test_several_small_input_batches_accumulate_into_one_output_batch(seed: FixRegistry) -> None:
@@ -354,7 +361,7 @@ def test_the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_rec
     # The schema is the same schema: the carried column still leads.
     assert filled.schema == bare.schema
     # The arrival record is untouched either way.
-    assert _column(filled, "nofixentries") == _column(bare, "nofixentries")
+    assert _column(filled, "fixentries") == _column(bare, "fixentries")
 
 
 def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
@@ -435,7 +442,7 @@ def test_altids_fill_agrees_between_message_and_arrow_streams(seed: FixRegistry)
     filled = codec.enrich_messages_arrow_reader(bare).read_all()
     expected = [[("clordid", "C-001"), ("execid", "E-09"), ("orderid", "O-01")], [], None]
     assert _column(filled, "altids") == expected
-    assert _column(filled, "nofixentries") == _column(bare, "nofixentries")
+    assert _column(filled, "fixentries") == _column(bare, "fixentries")
     assert filled.schema == bare.schema
     assert codec.enrich_messages_arrow_reader(filled).read_all().equals(filled)
     native = codec.arrow_reader(fix_schema(seed), direct).read_all()
@@ -722,7 +729,7 @@ def test_a_row_without_the_entries_column_has_no_entries(seed: FixRegistry) -> N
     wide = fix_schema(seed)
     narrow = Field(
         "fix",
-        DataType.from_fields([column for column in wide if column.name != "nofixentries"]),
+        DataType.from_fields([column for column in wide if column.name not in ("fixentries", "nofixentries")]),
         nullable=False,
     )
     parsed = _one(codec, ORDER)
@@ -735,3 +742,92 @@ def test_a_row_without_the_entries_column_has_no_entries(seed: FixRegistry) -> N
     # A row that does not fit the schema is refused.
     with pytest.raises(ValueError):
         FixMsg.from_row(narrow, {"nosuchcolumn": 1}, seed)
+
+
+def test_format_answers_the_rows_one_message_field_holds(seed: FixRegistry) -> None:
+    """The third verb, both doors: messages in, rows under a message field out.
+
+    Pinned by ``format_messages_answers_one_row_per_message_under_the_field``
+    and ``format_arrow_reader_answers_the_batches_format_messages_answers_rows``
+    in ``rust/tests/fix/format.rs``.
+    """
+    codec = _fixed(seed)
+    generic = fix_generic_message(seed)
+    # The crate's own target is the fixed row registered as a message, so a
+    # formatted row is still a FIX row.
+    assert [column.name for column in generic] == [column.name for column in fix_schema(seed)]
+    assert generic.metadata["fix:msgtype"] == "UGEN"
+
+    messages = list(codec.parse_line(ORDER))
+    rows = codec.format_messages(messages, generic)
+    assert len(rows) == 1
+    held = rows[0].as_py()
+    assert held[generic.index_of("symbol")] == "AAPL"
+    # The record closes a formatted row exactly as it closes a parsed one.
+    assert held[generic.index_of("fixentries")]
+
+    # The Arrow twin answers the same row, one batch at a time, and decides
+    # its schema before a row is read.
+    source = codec.arrow_reader(fix_schema(seed), messages)
+    formatted = codec.format_arrow_reader(source, generic)
+    assert [field.name for field in formatted.schema] == [column.name for column in generic]
+    batched = formatted.read_all()
+    assert batched.num_rows == 1
+    assert batched.column("symbol").to_pylist() == ["AAPL"]
+
+
+def test_a_registry_takes_the_generic_message_by_code(seed: FixRegistry) -> None:
+    """The default format target is reachable as a registered message.
+
+    Pinned by ``the_generic_message_is_the_row_registered_as_a_message`` in
+    ``rust/tests/fix/format.rs``. Registration adds a component, so the
+    scalar length a registry answers does not move.
+    """
+    registry = copy.copy(seed)
+    before = len(registry)
+    registry.with_generic_message()
+    assert len(registry) == before
+    # Idempotent: a registry already answering the code keeps what it has, and
+    # a second call is not the refusal a shared registry answers with.
+    registry.with_generic_message()
+    held = registry.msgtype("UGEN")
+    assert held.name == "genericmessage"
+    assert held.field.index_of("symbol") is not None
+
+
+def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegistry) -> None:
+    """Formatting a narrow row into a wider field reads the arrival record.
+
+    Pinned by ``a_column_the_source_row_dropped_is_lifted_out_of_the_record``
+    in ``rust/tests/fix/format.rs``.
+    """
+    codec = _fixed(seed)
+    wide = fix_schema(seed)
+    keep = (
+        "beginstring",
+        "msgtype",
+        "version",
+        "updatedat",
+        "timepartition",
+        "uuid",
+        "puuid",
+        "createdat",
+        "code",
+        "snapshotat",
+        "sendingtime",
+        "fixentries",
+        "nofixentries",
+    )
+    narrow = Field(
+        "fix",
+        DataType.from_fields([wide[wide.index_of(name)] for name in keep]),
+        nullable=False,
+    )
+    assert narrow.index_of("symbol") is None
+
+    parsed = _one(codec, ORDER)
+    stored = parsed.into_row(narrow)
+    held = FixMsg.from_row(narrow, stored, seed)
+    row = codec.format_messages([held], fix_generic_message(seed)).pop().as_py()
+    generic = fix_generic_message(seed)
+    assert row[generic.index_of("symbol")] == "AAPL"

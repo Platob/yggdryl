@@ -200,9 +200,13 @@ fn batches(bytes: Option<u64>) -> Vec<RecordBatch> {
     let parsed = codec
         .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
         .expect("the batch reader opens");
-    codec
+    let filled = codec
         .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens")
+        .expect("the filling reader opens");
+    let generic = super::generic(codec.registry());
+    codec
+        .format_arrow_reader(filled, &generic)
+        .expect("the format reader opens")
         .map(|batch| batch.expect("a batch"))
         .collect()
 }
@@ -473,6 +477,8 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
     assert!(fixed.len() > 80, "{} fixed columns", fixed.len());
     let direction =
         yggdryl::fix_column_of(&schema, yggdryl::MSGDIRECTION_TAG_NAME.0).expect("the direction");
+    let source =
+        yggdryl::fix_column_of(&schema, yggdryl::SOURCEURL_TAG_NAME.0).expect("the source url");
     let mut next = 0;
     let mut unread: Vec<(usize, i32)> = Vec::new();
     for (line, held) in lines.iter().enumerate() {
@@ -494,6 +500,12 @@ fn the_row_by_row_read_agrees_with_the_batch_read_on_every_tag() {
                 if index == direction {
                     // The batch door fills the codec's pin where a line states
                     // no direction; the line door leaves it unsaid (decision 14).
+                    continue;
+                }
+                if index == source {
+                    // Where a line was read from is the capture's answer, not
+                    // the line's: the batch door has an object to name and a
+                    // line handed over on its own does not.
                     continue;
                 }
                 let alone = message.get_by_tag(tag).cloned().unwrap_or(Scalar::Null);
@@ -857,7 +869,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
         );
         // The arrival record is the frame's ten pairs and nothing the row
         // inside one of them said: the nested row fills, and records nothing.
-        let entries = held[at(&names, "nofixentries")]
+        let entries = held[at(&names, "fixentries")]
             .as_sequence()
             .expect("entries");
         assert_eq!(entries.len(), 10, "row {row}: {entries:?}");

@@ -473,7 +473,7 @@ fn compiled_integer_identifiers_match_enrichments_sorted_map_and_priority() {
 }
 
 #[test]
-fn invalid_identifier_text_refuses_atomically_at_the_declared_member() {
+fn an_identifier_that_will_not_spell_text_still_moves_the_chain() {
     let registry = declared_registry(DataType::binary());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let live = life
@@ -488,16 +488,26 @@ fn invalid_identifier_text_refuses_atomically_at_the_declared_member() {
             (39, Scalar::from("2")),
         ],
     );
-    located(life.fill(invalid).unwrap_err(), "$.zidentifier");
-    assert_eq!(life.alive(), 1);
-    assert_eq!(
-        chain(
-            &life
-                .fill(event(&registry, None, None, 1, &[("id", "LIVE")]))
-                .unwrap()
-        ),
-        chain(&live)
+    // The declared identifier holds bytes no text spells, so it names
+    // nothing - and naming nothing is not a reason to drop the message. It
+    // joins the chain its own code names and closes it, which is what its
+    // terminal OrdStatus says it does.
+    let filled = life.fill(invalid).unwrap();
+    assert_eq!(chain(&filled), chain(&live));
+    assert!(
+        filled
+            .get_by_tag(ALTIDS_TAG_NAME.0)
+            .is_none_or(Scalar::is_null)
     );
+    assert_eq!(life.alive(), 0, "the terminal state closed the chain");
+
+    // So the next event is a new chain rather than a continuation of a chain
+    // an unreadable identifier would have left open forever.
+    let next = life
+        .fill(event(&registry, None, None, 1, &[("id", "LIVE")]))
+        .unwrap();
+    assert_ne!(chain(&next), chain(&live));
+    assert_eq!(life.alive(), 1);
 }
 
 #[test]

@@ -145,11 +145,12 @@ fn text_stage(lines: &[&str]) -> RecordBatch {
 /// The whole path, as the batches it answers - which is none where the lines
 /// carry no message at all.
 fn read_batches(lines: &[&str]) -> Vec<RecordBatch> {
-    codec()
-        .parse_text_arrow_reader(corpus(lines).read_arrow_reader(&text()).expect("a reader"))
-        .expect("the batch reader opens")
-        .map(|batch| batch.expect("a batch"))
-        .collect()
+    super::parsed_and_formatted(
+        &codec(),
+        corpus(lines).read_arrow_reader(&text()).expect("a reader"),
+    )
+    .map(|batch| batch.expect("a batch"))
+    .collect()
 }
 
 /// The whole path, as one batch: the capture is far under the byte target.
@@ -226,19 +227,17 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         .map(|held| held.name().as_str())
         .collect();
 
-    // The text reader's own columns lead the row - where the line came from,
-    // which line it was, when it was written, what it was, the line itself
-    // and the header's
-    // captures - and the fixed columns follow. A capture whose folded name a
-    // fixed column takes is not carried in front, it fills that column: the
-    // reader's `msgtype`, and the header's `msgCtxId` and
+    // The text reader's own columns lead the row - which line it was, when it
+    // was written, what it was, the line itself and the header's captures -
+    // and the fixed columns follow. A capture whose folded name a fixed
+    // column takes is not carried in front, it fills that column: the
+    // reader's `msgtype` and `sourceurl`, and the header's `msgCtxId` and
     // `pluginid`. `senderSessionId` names a fixed column too, so it is not
     // carried either. `seqNum` is, since no fixed column is spelled so, and
     // it fills `msgseqnum` besides.
     assert_eq!(
-        &names[..9],
+        &names[..8],
         [
-            "sourceurl",
             "rownum",
             "mtime",
             "mimetype",
@@ -251,12 +250,13 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
         "{names:?}"
     );
     assert_eq!(
-        &names[9..12],
+        &names[8..11],
         ["beginstring", "bodylength", "msgtype"],
         "{names:?}"
     );
     for once in [
         "msgtype",
+        "sourceurl",
         "timestamp",
         "sendersessionid",
         "msgctxid",
@@ -272,7 +272,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // Which way a line moved is FIX's own `msgdirection` (decision 14).
     assert!(names.contains(&"msgdirection"), "{names:?}");
     assert!(!names.contains(&"direction"), "{names:?}");
-    assert_eq!(names.last(), Some(&"nofixentries"));
+    assert_eq!(names.last(), Some(&"fixentries"));
 
     // The timestamp capture was typed from its pattern before a byte was
     // read and took the zone the options declared; updatedat is independently
@@ -767,7 +767,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     // arrival record, one entry per field under the key the document spelled
     // it by, and nothing the answer wrapped them in.
     let read = read(&CAPTURE);
-    let entries = column(&read, "nofixentries");
+    let entries = column(&read, "fixentries");
     let held = entries[RESPONSE_ROW].as_sequence().expect("the entries");
     let keyed: Vec<(i32, String)> = held
         .iter()
@@ -849,7 +849,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let alone = codec.sole_line(routed, false).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
-    let entries = column(&read, "nofixentries");
+    let entries = column(&read, "fixentries");
     let recorded: Vec<i64> = entries[ROUTED_ROW]
         .as_sequence()
         .expect("the entries")

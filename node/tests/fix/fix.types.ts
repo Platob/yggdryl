@@ -270,15 +270,14 @@ field.fix.derivation = { term: 'orderqty - cumqty' }
 const readerClass: typeof FixCodec = fix.FixCodec
 const reader: FixCodec = new fix.FixCodec(loaded)
 const pinned: FixCodec = new fix.FixCodec(loaded, {
-  version: '4.4',
   separator: 124,
   payloadColumn: 'line',
   nullValues: ['<none>'],
   direction: 'recv',
   batchByteSize: 1 << 20,
 })
-// @ts-expect-error the source and target pins are one `version`
-const stalePin: FixCodec = new fix.FixCodec(loaded, { sourceVersion: '4.2' })
+// @ts-expect-error a codec pins no version: a row states one, or the line implies it
+const stalePin: FixCodec = new fix.FixCodec(loaded, { version: '4.2' })
 void stalePin
 // @ts-expect-error no pin names a dialect: the dictionary is one namespace
 const dialectPin: FixCodec = new fix.FixCodec(loaded, { branch: 'cme' })
@@ -297,7 +296,6 @@ new fix.FixCodec(loaded, { defaultSendingTime: '2024-01-02T10:15:30Z' })
 // @ts-expect-error the default sending time is fixed at construction
 dated.defaultSendingTime = value
 const readRegistry: FixRegistry = reader.registry
-const pinnedVersion: string | null = pinned.version
 const pinnedSeparator: number | null = pinned.separator
 const pinnedPayloadColumn: string = pinned.payloadColumn
 const pinnedNullValues: string[] = pinned.nullValues
@@ -360,7 +358,6 @@ const readBackStream: FixMessages = reader.messages(filledBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
 const written: number = reader.writeArrowReader(rows, { write(chunk: Uint8Array) { void chunk } })
 
-void pinnedVersion
 void pinnedSeparator
 void pinnedPayloadColumn
 void pinnedNullValues
