@@ -4,3 +4,4 @@ pub(crate) mod avro;
 pub(crate) mod handles;
 pub(crate) mod iceberg;
 pub(crate) mod partition;
+pub(crate) mod xml;

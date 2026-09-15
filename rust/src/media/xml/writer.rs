@@ -341,7 +341,15 @@ fn write_element(
         return Ok(());
     }
     match value {
+        // A record is the canonical named shape and a mapping with string
+        // keys is the input shape of the same thing, so both are written as
+        // the element they describe rather than as text.
         Scalar::Record(_) => write_record(out, name, value, depth, formatting),
+        Scalar::Mapping(entries) if named_entries(entries.as_slice()).is_some() => {
+            let named = named_entries(entries.as_slice()).unwrap_or_default();
+            let record = Scalar::from_record(named).unwrap_or(Scalar::Null);
+            write_record(out, name, &record, depth, formatting)
+        }
         Scalar::Sequence(values) => {
             // A sequence is a repeat of this element, not an element holding
             // a list, so the name is written once per item.
@@ -410,6 +418,23 @@ fn write_record(
     Ok(())
 }
 
+/// One mapping's entries, when every key names a column.
+///
+/// A mapping whose keys are all strings is a record written another way - the
+/// shape a host runtime's dictionary arrives as - so it is accepted here for
+/// the same reason a read accepts an attribute and a child element for one
+/// column. A mapping keyed by anything else has no element name to be written
+/// under, and falls through to the refusal every unspellable value gets.
+fn named_entries(entries: &[(Scalar, Scalar)]) -> Option<Vec<(SmolStr, Scalar)>> {
+    entries
+        .iter()
+        .map(|(key, value)| match key {
+            Scalar::String(name) => Some((name.as_str().into(), value.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Render one leaf as the text a document spells it with.
 ///
 /// Every leaf crosses XML as text, and the crate already has exactly one
@@ -417,5 +442,19 @@ fn write_record(
 /// writes through. A second spelling here would be a second answer to what a
 /// decimal or an instant looks like.
 fn leaf_text(value: &Scalar) -> Result<smol_str::SmolStr> {
+    // A container has an element to be written as and is never text; reaching
+    // here with one means it is a shape no element can hold.
+    if matches!(
+        value,
+        Scalar::Mapping(_) | Scalar::Sequence(_) | Scalar::Record(_)
+    ) {
+        return Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: format_smolstr!(
+                "expected a value an element can hold, got {}",
+                quoted(&value.kind().to_string())
+            ),
+        });
+    }
     crate::media::partition::partition_text(value)
 }

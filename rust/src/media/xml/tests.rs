@@ -344,3 +344,21 @@ fn every_name_a_read_can_produce_a_write_can_spell() {
     assert!(written.contains("a\u{b7}b"), "{written}");
     assert_eq!(document(&written).unwrap(), value);
 }
+
+#[test]
+fn a_mapping_named_by_strings_is_the_record_it_describes() {
+    // A host runtime's dictionary arrives as a mapping rather than a record.
+    // It is the same named shape, so it is written as the element it
+    // describes rather than rendered as text.
+    let value = Scalar::from_mapping([(Scalar::from("symbol"), Scalar::from("AAPL"))]).unwrap();
+    let document = crate::media::xml::into_utf8("Order", &value).unwrap();
+    assert!(document.contains("<symbol>AAPL</symbol>"), "{document}");
+
+    // A mapping keyed by anything else has no element name to be written
+    // under, and says so.
+    let positional = Scalar::from_mapping([(Scalar::from(1), Scalar::from("x"))]).unwrap();
+    let error = crate::media::xml::into_utf8("r", &positional)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("an element can hold"), "{error}");
+}

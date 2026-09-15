@@ -21,11 +21,12 @@ from .._native import (
     TextLine,
     TextLines,
     TextOptions,
+    Xml,
     partition_text,
     with_partitions,
     without_partitions,
 )
-from . import avro, iceberg
+from . import avro, iceberg, xml
 
 __all__ = [
     "AVRO_MAX_SCHEMA_DEPTH",
@@ -44,9 +45,11 @@ __all__ = [
     "TextLine",
     "TextLines",
     "TextOptions",
+    "Xml",
     "avro",
     "iceberg",
     "partition_text",
     "with_partitions",
     "without_partitions",
+    "xml",
 ]

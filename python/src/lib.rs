@@ -580,5 +580,10 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(media::avro::avro_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(media::avro::avro_loads_single, module)?)?;
     module.add_function(wrap_pyfunction!(media::avro::avro_dumps_single, module)?)?;
+    module.add_function(wrap_pyfunction!(media::xml::xml_loads, module)?)?;
+    module.add_function(wrap_pyfunction!(media::xml::xml_dumps, module)?)?;
+    module.add_function(wrap_pyfunction!(media::xml::xml_loads_with_field, module)?)?;
+    module.add_function(wrap_pyfunction!(media::xml::xml_schema, module)?)?;
+    module.add_function(wrap_pyfunction!(media::xml::xml_schema_dumps, module)?)?;
     Ok(())
 }

@@ -162,6 +162,10 @@
   media.avro.Block
     instance: count, rows, size
     protocol: intentionally unhashable lazy block with resolution context
+  media.xml
+    exports: dumps, loads, loads_with_field, schema, schema_dumps
+    decode limits: max_depth, max_input_bytes, max_nodes; schema takes root to pick one of several global elements
+    semantics: loads answers a natural value and every leaf is text; loads_with_field types them under a Field; schema answers the Field an XML Schema declares and schema_dumps writes one back
   media.iceberg.IcebergOptions
     instance: commit_max_backoff_ms, commit_min_backoff_ms, commit_retries, compact_after_commits, data_mime_type, read_parallel_min_file_size, read_parallel_min_files, read_parallelism, stable_hash, target_file_size, write_parallelism, write_staging
     protocol: native equality/order; hashing freezes all setters; copy/pickle unlock

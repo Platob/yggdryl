@@ -3372,6 +3372,9 @@ class Parquet(Media):
 class Avro(Media):
     """An Apache Avro object container."""
 
+class Xml(Media):
+    """An XML document whose rows are its document element's children."""
+
 class Text(IOBase):
     """Plain-text rows under one retained flat configuration."""
 
@@ -4840,6 +4843,31 @@ def avro_loads_single(
     max_nodes: int | None = None,
 ) -> Any: ...
 def avro_dumps_single(value: object, schema: object) -> bytes: ...
+def xml_loads(
+    data: str | bytes | bytearray | memoryview,
+    *,
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+) -> object: ...
+def xml_dumps(value: object, name: str, *, indent: int | None = None) -> bytes: ...
+def xml_loads_with_field(
+    data: str | bytes | bytearray | memoryview,
+    field: object,
+    *,
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+) -> Scalar: ...
+def xml_schema(
+    data: str | bytes | bytearray | memoryview,
+    *,
+    root: str | None = None,
+    max_depth: int | None = None,
+    max_input_bytes: int | None = None,
+    max_nodes: int | None = None,
+) -> Field: ...
+def xml_schema_dumps(field: object, *, indent: int | None = None) -> bytes: ...
 
 class Version:
     def __init__(self, major: int, minor: int = 0, patch: int = 0) -> None: ...
