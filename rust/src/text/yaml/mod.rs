@@ -16,7 +16,6 @@ use base64::Engine as _;
 
 mod parser;
 
-use crate::text::wire::{RawValue, from_raw};
 use crate::text::{
     Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
 };
@@ -293,7 +292,6 @@ pub fn from_reader_iter_with_field_and_limits<'a, R: Read + 'a>(
 /// An owning, lazy iterator over YAML documents.
 pub struct Reader<'a> {
     inner: YamlParser<'a>,
-    limits: Limits,
     failed: bool,
 }
 
@@ -307,7 +305,6 @@ impl<'a> Reader<'a> {
     pub fn with_limits<R: Read + 'a>(reader: R, limits: Limits) -> Self {
         Self {
             inner: YamlParser::new(reader, limits),
-            limits,
             failed: false,
         }
     }
@@ -330,7 +327,6 @@ impl Iterator for Reader<'_> {
             return None;
         }
         let value = self.inner.next()?;
-        let value = value.and_then(|raw| from_raw(raw, self.limits, "yaml"));
         if value.is_err() {
             self.failed = true;
         }
@@ -1081,7 +1077,7 @@ fn is_plain_safe(value: &str) -> bool {
 /// passed every cheaper check.
 fn scanner_reads_back_the_same_string(value: &str) -> bool {
     let mut parser = YamlParser::new(value.as_bytes(), Limits::default());
-    let Some(Ok(RawValue::String(scanned))) = parser.next() else {
+    let Some(Ok(Scalar::String(scanned))) = parser.next() else {
         return false;
     };
     // More than one document means the text carries a marker the scanner acts

@@ -20,7 +20,6 @@ mod parser;
 mod wire;
 
 use crate::text::position::{LineOffsets, line_column_to_byte_offset};
-use crate::text::wire::from_raw;
 use crate::text::{
     Formatting, Limits, Scalar, ScalarIter, apply_field, check_encode_depth, check_input_size,
 };
@@ -129,8 +128,7 @@ pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Scalar> {
     if limits.max_documents() == 0 {
         return Err(codec_error(0, "document limit exceeded"));
     }
-    let raw = parser::parse(input, limits)?;
-    from_raw(raw, limits, "json")
+    parser::parse(input, limits)
 }
 
 /// Decode JSON and interpret the natural value under `field`.

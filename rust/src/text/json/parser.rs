@@ -3,12 +3,13 @@
 use std::collections::HashSet;
 use std::str;
 
+use smol_str::SmolStr;
+
 use crate::text::Limits;
 use crate::text::position::line_column_to_byte_offset;
-use crate::text::wire::RawValue;
-use crate::{Error, Result};
+use crate::{Error, Result, Scalar};
 
-pub(super) fn parse(input: &[u8], limits: Limits) -> Result<RawValue> {
+pub(super) fn parse(input: &[u8], limits: Limits) -> Result<Scalar> {
     Parser::new(input, limits).parse_document()
 }
 
@@ -29,7 +30,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_document(mut self) -> Result<RawValue> {
+    fn parse_document(mut self) -> Result<Scalar> {
         self.skip_whitespace();
         if self.position == self.input.len() {
             return Err(codec_error(self.position, "expected one JSON value"));
@@ -45,15 +46,15 @@ impl<'a> Parser<'a> {
         Ok(value)
     }
 
-    fn parse_value(&mut self, depth: usize) -> Result<RawValue> {
+    fn parse_value(&mut self, depth: usize) -> Result<Scalar> {
         self.skip_whitespace();
         let position = self.position;
         self.observe_node(position)?;
         match self.peek() {
-            Some(b'n') => self.parse_literal(b"null", RawValue::Null),
-            Some(b't') => self.parse_literal(b"true", RawValue::Bool(true)),
-            Some(b'f') => self.parse_literal(b"false", RawValue::Bool(false)),
-            Some(b'"') => self.parse_string().map(RawValue::String),
+            Some(b'n') => self.parse_literal(b"null", Scalar::Null),
+            Some(b't') => self.parse_literal(b"true", Scalar::from(true)),
+            Some(b'f') => self.parse_literal(b"false", Scalar::from(false)),
+            Some(b'"') => self.parse_string().map(Scalar::from),
             Some(b'[') => self.parse_sequence(depth, position),
             Some(b'{') => self.parse_mapping(depth, position),
             Some(b'-' | b'0'..=b'9') => self.parse_number(),
@@ -85,7 +86,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_literal(&mut self, expected: &[u8], value: RawValue) -> Result<RawValue> {
+    fn parse_literal(&mut self, expected: &[u8], value: Scalar) -> Result<Scalar> {
         let start = self.position;
         if self.input.get(start..start.saturating_add(expected.len())) == Some(expected) {
             self.position += expected.len();
@@ -95,19 +96,19 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_sequence(&mut self, depth: usize, position: usize) -> Result<RawValue> {
+    fn parse_sequence(&mut self, depth: usize, position: usize) -> Result<Scalar> {
         self.observe_container_depth(depth, position)?;
         self.position += 1;
         self.skip_whitespace();
         if self.consume(b']') {
-            return Ok(RawValue::Sequence(Vec::new()));
+            return Ok(Scalar::from_sequence([]));
         }
         let mut values = Vec::new();
         loop {
             values.push(self.parse_value(depth + 1)?);
             self.skip_whitespace();
             if self.consume(b']') {
-                return Ok(RawValue::Sequence(values));
+                return Ok(Scalar::from_sequence(values));
             }
             self.expect(b',', "expected ',' or ']' after JSON array value")?;
             self.skip_whitespace();
@@ -117,12 +118,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_mapping(&mut self, depth: usize, position: usize) -> Result<RawValue> {
+    fn parse_mapping(&mut self, depth: usize, position: usize) -> Result<Scalar> {
         self.observe_container_depth(depth, position)?;
         self.position += 1;
         self.skip_whitespace();
         if self.consume(b'}') {
-            return Ok(RawValue::Mapping(Vec::new()));
+            return Self::record(Vec::new(), &[], position);
         }
         let mut entries = Vec::new();
         let mut key_positions = Vec::new();
@@ -135,7 +136,7 @@ impl<'a> Parser<'a> {
                 ));
             }
             self.observe_node(key_position)?;
-            let key = RawValue::String(self.parse_string()?);
+            let key = SmolStr::new(self.parse_string()?);
             self.skip_whitespace();
             self.expect(b':', "expected ':' after JSON object key")?;
             let value = self.parse_value(depth + 1)?;
@@ -144,7 +145,7 @@ impl<'a> Parser<'a> {
             self.skip_whitespace();
             if self.consume(b'}') {
                 validate_unique_keys(&entries, &key_positions)?;
-                return Ok(RawValue::Mapping(entries));
+                return Self::record(entries, &key_positions, position);
             }
             self.expect(b',', "expected ',' or '}' after JSON object value")?;
             self.skip_whitespace();
@@ -152,6 +153,32 @@ impl<'a> Parser<'a> {
                 return Err(codec_error(self.position, "trailing comma in JSON object"));
             }
         }
+    }
+
+    /// Seal an object's entries into the record the document proved.
+    ///
+    /// JSON keys are strings by grammar, so an object is always a record and
+    /// never a mapping. `Scalar::from_record` reports a duplicate name by its
+    /// entry index; `key_positions` is what turns that index back into the
+    /// byte offset the rest of this parser reports, and it is index-aligned
+    /// with `entries` by construction.
+    fn record(
+        entries: Vec<(SmolStr, Scalar)>,
+        key_positions: &[usize],
+        position: usize,
+    ) -> Result<Scalar> {
+        Scalar::from_record(entries).map_err(|error| match error {
+            Error::Codec {
+                format: "value",
+                position: index,
+                reason,
+            } => Error::Codec {
+                format: "json",
+                position: key_positions.get(index).copied().unwrap_or(position),
+                reason,
+            },
+            other => other,
+        })
     }
 
     fn parse_string(&mut self) -> Result<String> {
@@ -172,7 +199,7 @@ impl<'a> Parser<'a> {
         Err(codec_error(start, "unterminated JSON string"))
     }
 
-    fn parse_number(&mut self) -> Result<RawValue> {
+    fn parse_number(&mut self) -> Result<Scalar> {
         let start = self.position;
         let negative = self.consume(b'-');
         match self.peek() {
@@ -225,25 +252,25 @@ impl<'a> Parser<'a> {
                 .ok()
                 .filter(|value| value.is_finite())
                 .ok_or_else(|| codec_error(start, "JSON number is outside the finite f64 range"))?;
-            return Ok(RawValue::Float(value));
+            return Ok(Scalar::from(value));
         }
         if spelling == "-0" {
-            return Ok(RawValue::Float(-0.0));
+            return Ok(Scalar::from(-0.0));
         }
         if negative {
             if let Ok(value) = spelling.parse::<i64>() {
-                return Ok(RawValue::Int64(value));
+                return Ok(Scalar::from(value));
             }
-            return spelling.parse::<i128>().map(RawValue::Int128).map_err(|_| {
+            return spelling.parse::<i128>().map(Scalar::from).map_err(|_| {
                 codec_error(start, "JSON integer is outside the signed 128-bit range")
             });
         }
         if let Ok(value) = spelling.parse::<u64>() {
-            return Ok(RawValue::UInt64(value));
+            return Ok(Scalar::from(value));
         }
         spelling
             .parse::<u128>()
-            .map(RawValue::UInt128)
+            .map(Scalar::from)
             .map_err(|_| codec_error(start, "JSON integer is outside the unsigned 128-bit range"))
     }
 
@@ -275,18 +302,15 @@ impl<'a> Parser<'a> {
     }
 }
 
-fn validate_unique_keys(entries: &[(RawValue, RawValue)], key_positions: &[usize]) -> Result<()> {
+/// Refuse an object that names one key twice.
+///
+/// The names are compared in place: a short object scans its own prefix and a
+/// long one builds a set once, which is the same split `Scalar::from_mapping`
+/// makes for the same reason.
+fn validate_unique_keys(entries: &[(SmolStr, Scalar)], key_positions: &[usize]) -> Result<()> {
     if entries.len() <= 16 {
         for (index, (key, _)) in entries.iter().enumerate() {
-            let RawValue::String(key) = key else {
-                return Err(codec_error(
-                    key_positions.get(index).copied().unwrap_or_default(),
-                    "JSON object key must be a string",
-                ));
-            };
-            if entries[..index].iter().any(
-                |(existing, _)| matches!(existing, RawValue::String(existing) if existing == key),
-            ) {
+            if entries[..index].iter().any(|(existing, _)| existing == key) {
                 return Err(codec_error(
                     key_positions.get(index).copied().unwrap_or_default(),
                     "JSON object contains a duplicate key",
@@ -298,12 +322,6 @@ fn validate_unique_keys(entries: &[(RawValue, RawValue)], key_positions: &[usize
 
     let mut seen = HashSet::with_capacity(entries.len());
     for (index, (key, _)) in entries.iter().enumerate() {
-        let RawValue::String(key) = key else {
-            return Err(codec_error(
-                key_positions.get(index).copied().unwrap_or_default(),
-                "JSON object key must be a string",
-            ));
-        };
         if !seen.insert(key.as_str()) {
             return Err(codec_error(
                 key_positions.get(index).copied().unwrap_or_default(),

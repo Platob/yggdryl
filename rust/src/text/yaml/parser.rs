@@ -8,9 +8,8 @@ use std::rc::Rc;
 use base64::Engine as _;
 use saphyr_parser::{BufferedInput, Event, Parser, ScalarStyle, Tag as SaphyrTag};
 
-use crate::text::wire::RawValue;
 use crate::text::{Limits, input_too_large};
-use crate::{Error, Result};
+use crate::{Error, Result, Scalar};
 
 type EventParser<'a> = Parser<'a, BufferedInput<Box<dyn Iterator<Item = char> + 'a>>>;
 
@@ -19,8 +18,10 @@ pub(super) struct YamlParser<'a> {
     input: Rc<RefCell<InputState>>,
     limits: Limits,
     frames: Vec<Frame>,
-    root: Option<RawValue>,
-    anchors: Vec<Option<RawValue>>,
+    root: Option<Scalar>,
+    /// Each anchored node beside whether it was written as a plain `<<`,
+    /// because an alias replays the spelling as well as the value.
+    anchors: Vec<Option<(Scalar, bool)>>,
     expansions: Vec<usize>,
     nodes: usize,
     tagged_frames: usize,
@@ -126,26 +127,32 @@ impl<'a> YamlParser<'a> {
         }
     }
 
-    fn attach(&mut self, value: RawValue, position: usize) -> Result<()> {
+    /// Land one finished node in whatever is currently open.
+    ///
+    /// `merge_key` says the node was written as the plain, untagged text `<<`.
+    /// That is a fact about the spelling rather than about the value - a
+    /// quoted `'<<'` and a tagged `!!str <<` are ordinary keys - so it rides
+    /// beside the value instead of inside it, and only key position reads it.
+    fn attach(&mut self, value: Scalar, merge_key: bool, position: usize) -> Result<()> {
         match self.frames.last_mut() {
-            Some(Frame::Sequence { values, .. }) => values.push(normalize_merge_key(value)),
+            Some(Frame::Sequence { values, .. }) => values.push(value),
             Some(Frame::Mapping {
                 entries,
                 key,
                 key_positions,
                 ..
             }) => {
-                if let Some((key, key_position)) = key.take() {
-                    if matches!(&key, RawValue::YamlMergeKey) {
+                if let Some((key, key_position, key_is_merge)) = key.take() {
+                    if key_is_merge {
                         return Err(codec_error(position, "YAML merge keys are not supported"));
                     }
-                    entries.push((key, normalize_merge_key(value)));
+                    entries.push((key, value));
                     key_positions.push(key_position);
                 } else {
-                    *key = Some((value, position));
+                    *key = Some((value, position, merge_key));
                 }
             }
-            None if self.root.is_none() => self.root = Some(normalize_merge_key(value)),
+            None if self.root.is_none() => self.root = Some(value),
             None => {
                 return Err(codec_error(
                     position,
@@ -156,23 +163,23 @@ impl<'a> YamlParser<'a> {
         Ok(())
     }
 
-    fn remember_anchor(&mut self, anchor: usize, value: &RawValue) {
+    fn remember_anchor(&mut self, anchor: usize, value: &Scalar, merge_key: bool) {
         if anchor == 0 {
             return;
         }
         if self.anchors.len() <= anchor {
             self.anchors.resize_with(anchor.saturating_add(1), || None);
         }
-        self.anchors[anchor] = Some(value.clone());
+        self.anchors[anchor] = Some((value.clone(), merge_key));
     }
 
     fn alias(&mut self, anchor: usize, position: usize) -> Result<()> {
-        let value = self
+        let (value, _) = self
             .anchors
             .get(anchor)
             .and_then(Option::as_ref)
             .ok_or_else(|| codec_error(position, "unknown YAML anchor"))?;
-        let (nodes, depth) = raw_stats(value);
+        let (nodes, depth) = scalar_stats(value);
         let parent_depth = self.frames.len().saturating_add(self.tagged_frames);
         let expanded_depth = parent_depth.saturating_add(depth);
         if expanded_depth > super::MAX_PARSER_DEPTH {
@@ -192,21 +199,21 @@ impl<'a> YamlParser<'a> {
         if self.expansions[anchor] > self.limits.max_nodes() {
             return Err(codec_error(position, "alias expansion limit exceeded"));
         }
-        let value = self
+        let (value, merge_key) = self
             .anchors
             .get(anchor)
             .and_then(Option::as_ref)
             .cloned()
             .ok_or_else(|| codec_error(position, "unknown YAML anchor"))?;
-        self.attach(value, position)
+        self.attach(value, merge_key, position)
     }
 
-    fn fail(&mut self, error: Error) -> Option<Result<RawValue>> {
+    fn fail(&mut self, error: Error) -> Option<Result<Scalar>> {
         self.finished = true;
         Some(Err(error))
     }
 
-    fn input_error(&mut self) -> Option<Result<RawValue>> {
+    fn input_error(&mut self) -> Option<Result<Scalar>> {
         let error = self.input.borrow_mut().error.take()?;
         let position = error.position;
         let error = if error.limit {
@@ -217,17 +224,17 @@ impl<'a> YamlParser<'a> {
         self.fail(error)
     }
 
-    fn finish_document(&mut self, position: usize) -> Result<RawValue> {
+    fn finish_document(&mut self, position: usize) -> Result<Scalar> {
         if !self.frames.is_empty() {
             return Err(codec_error(position, "unterminated YAML container"));
         }
         self.in_document = false;
-        Ok(self.root.take().unwrap_or(RawValue::Null))
+        Ok(self.root.take().unwrap_or(Scalar::Null))
     }
 }
 
 impl Iterator for YamlParser<'_> {
-    type Item = Result<RawValue>;
+    type Item = Result<Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.finished {
@@ -284,21 +291,18 @@ impl Iterator for YamlParser<'_> {
                         }
                     }
                     let custom = custom_tag(tag.as_deref());
-                    let tag_position = tag_position(tag.as_deref(), position);
-                    if custom.is_some() {
+                    if custom {
                         if let Err(error) = self.observe_tagged_scalar_depth(position) {
                             return self.fail(error);
                         }
                     }
-                    if let Err(error) =
-                        self.observe_nodes(1 + usize::from(custom.is_some()), position)
-                    {
+                    if let Err(error) = self.observe_nodes(1 + usize::from(custom), position) {
                         return self.fail(error);
                     }
-                    parse_scalar(value, style, tag.as_deref(), position, tag_position).and_then(
-                        |value| {
-                            self.remember_anchor(anchor, &value);
-                            self.attach(value, position)
+                    parse_scalar(value, style, tag.as_deref(), position).and_then(
+                        |(value, merge_key)| {
+                            self.remember_anchor(anchor, &value, merge_key);
+                            self.attach(value, merge_key, position)
                         },
                     )
                 }
@@ -308,23 +312,17 @@ impl Iterator for YamlParser<'_> {
                             return self.fail(error);
                         }
                     }
-                    let tag_position = tag_position(tag.as_deref(), position);
-                    let tag = container_tag(tag.as_deref(), "seq", position);
-                    match tag {
+                    match container_tag(tag.as_deref(), "seq", position) {
                         Ok(tag) => self
-                            .observe_container_depth(tag.is_some(), position)
-                            .and_then(|()| {
-                                self.observe_nodes(1 + usize::from(tag.is_some()), position)
-                            })
+                            .observe_container_depth(tag, position)
+                            .and_then(|()| self.observe_nodes(1 + usize::from(tag), position))
                             .map(|()| {
-                                self.tagged_frames = self
-                                    .tagged_frames
-                                    .saturating_add(usize::from(tag.is_some()));
+                                self.tagged_frames =
+                                    self.tagged_frames.saturating_add(usize::from(tag));
                                 self.frames.push(Frame::Sequence {
                                     values: Vec::new(),
                                     anchor,
                                     tag,
-                                    position: tag_position,
                                 });
                             }),
                         Err(error) => Err(error),
@@ -336,40 +334,29 @@ impl Iterator for YamlParser<'_> {
                             return self.fail(error);
                         }
                     }
-                    let tag_position = tag_position(tag.as_deref(), position);
-                    let tag = container_tag(tag.as_deref(), "map", position);
-                    match tag {
+                    match container_tag(tag.as_deref(), "map", position) {
                         Ok(tag) => self
-                            .observe_container_depth(tag.is_some(), position)
-                            .and_then(|()| {
-                                self.observe_nodes(1 + usize::from(tag.is_some()), position)
-                            })
+                            .observe_container_depth(tag, position)
+                            .and_then(|()| self.observe_nodes(1 + usize::from(tag), position))
                             .map(|()| {
-                                self.tagged_frames = self
-                                    .tagged_frames
-                                    .saturating_add(usize::from(tag.is_some()));
+                                self.tagged_frames =
+                                    self.tagged_frames.saturating_add(usize::from(tag));
                                 self.frames.push(Frame::Mapping {
                                     entries: Vec::new(),
                                     key: None,
                                     key_positions: Vec::new(),
                                     anchor,
                                     tag,
-                                    position: tag_position,
                                 });
                             }),
                         Err(error) => Err(error),
                     }
                 }
                 Event::SequenceEnd => match self.pop_frame() {
-                    Some(Frame::Sequence {
-                        values,
-                        anchor,
-                        tag,
-                        position: tag_position,
-                    }) => {
-                        let value = wrap_tag(RawValue::Sequence(values), tag, tag_position);
-                        self.remember_anchor(anchor, &value);
-                        self.attach(value, position)
+                    Some(Frame::Sequence { values, anchor, .. }) => {
+                        let value = Scalar::from_sequence(values);
+                        self.remember_anchor(anchor, &value, false);
+                        self.attach(value, false, position)
                     }
                     _ => Err(codec_error(position, "unexpected YAML sequence end")),
                 },
@@ -379,17 +366,14 @@ impl Iterator for YamlParser<'_> {
                         key: None,
                         key_positions,
                         anchor,
-                        tag,
-                        position: tag_position,
-                    }) => {
-                        let value = wrap_tag(
-                            RawValue::YamlMapping(entries, key_positions),
-                            tag,
-                            tag_position,
-                        );
-                        self.remember_anchor(anchor, &value);
-                        self.attach(value, position)
-                    }
+                        ..
+                    }) => match mapping(entries, &key_positions, position) {
+                        Ok(value) => {
+                            self.remember_anchor(anchor, &value, false);
+                            self.attach(value, false, position)
+                        }
+                        Err(error) => Err(error),
+                    },
                     Some(Frame::Mapping { .. }) => {
                         Err(codec_error(position, "YAML mapping is missing a value"))
                     }
@@ -409,116 +393,147 @@ impl YamlParser<'_> {
         let frame = self.frames.pop()?;
         self.tagged_frames = self
             .tagged_frames
-            .saturating_sub(usize::from(frame.tag().is_some()));
+            .saturating_sub(usize::from(frame.tagged()));
         Some(frame)
     }
 }
 
+/// One container the parser is still inside.
+///
+/// `tag` records only that a non-core tag was present, which is all the depth
+/// and node accounting ever asks; the tag's own name has no effect on the
+/// value a document proves, so it is never carried.
 enum Frame {
     Sequence {
-        values: Vec<RawValue>,
+        values: Vec<Scalar>,
         anchor: usize,
-        tag: Option<String>,
-        position: usize,
+        tag: bool,
     },
     Mapping {
-        entries: Vec<(RawValue, RawValue)>,
-        key: Option<(RawValue, usize)>,
+        entries: Vec<(Scalar, Scalar)>,
+        /// The key waiting for its value, its byte offset, and whether it was
+        /// written as a plain `<<`.
+        key: Option<(Scalar, usize, bool)>,
         key_positions: Vec<usize>,
         anchor: usize,
-        tag: Option<String>,
-        position: usize,
+        tag: bool,
     },
 }
 
 impl Frame {
-    fn tag(&self) -> Option<&str> {
+    const fn tagged(&self) -> bool {
         match self {
-            Self::Sequence { tag, .. } | Self::Mapping { tag, .. } => tag.as_deref(),
+            Self::Sequence { tag, .. } | Self::Mapping { tag, .. } => *tag,
         }
     }
 }
 
-fn wrap_tag(value: RawValue, tag: Option<String>, _position: usize) -> RawValue {
-    match tag {
-        Some(_) => RawValue::YamlTagged(Box::new(value)),
-        None => value,
-    }
-}
-
-fn normalize_merge_key(value: RawValue) -> RawValue {
-    if matches!(&value, RawValue::YamlMergeKey) {
-        RawValue::String("<<".to_owned())
-    } else {
-        value
-    }
-}
-
-fn container_tag(
-    tag: Option<&SaphyrTag>,
-    expected: &str,
+/// Seal one mapping's entries into the value its keys prove.
+///
+/// Every key a string is a record, sorted by name; anything else stays an
+/// insertion-ordered mapping. Both constructors report a duplicate by its
+/// entry index, and `key_positions` - index-aligned with `entries` by the way
+/// `attach` fills the two - is what turns that index back into the byte
+/// offset every other error here reports.
+fn mapping(
+    entries: Vec<(Scalar, Scalar)>,
+    key_positions: &[usize],
     position: usize,
-) -> Result<Option<String>> {
+) -> Result<Scalar> {
+    // `Scalar::String` is the exact test rather than `as_str`, which also
+    // answers for a code and an enum - shapes a document cannot prove and
+    // shapes the record build below could not name.
+    if entries
+        .iter()
+        .all(|(key, _)| matches!(key, Scalar::String(_)))
+    {
+        let mut record = Vec::with_capacity(entries.len());
+        for (key, value) in entries {
+            let Scalar::String(name) = key else {
+                return Err(codec_error(position, "YAML mapping key is not a string"));
+            };
+            record.push((name.into_inner(), value));
+        }
+        return Scalar::from_record(record)
+            .map_err(|error| positioned(error, key_positions, position));
+    }
+    Scalar::from_mapping(entries).map_err(|error| positioned(error, key_positions, position))
+}
+
+/// Restate a duplicate-key refusal at the byte the key was written at.
+fn positioned(error: Error, key_positions: &[usize], position: usize) -> Error {
+    match error {
+        Error::Codec {
+            format: "value",
+            position: index,
+            reason,
+        } => Error::Codec {
+            format: "yaml",
+            position: key_positions.get(index).copied().unwrap_or(position),
+            reason,
+        },
+        other => other,
+    }
+}
+
+/// Whether a container carries a tag the value model does not represent.
+///
+/// A core-schema tag that names the container it is on says nothing extra, so
+/// it is not one; one that names a different container is a refusal.
+fn container_tag(tag: Option<&SaphyrTag>, expected: &str, position: usize) -> Result<bool> {
     let Some(tag) = tag else {
-        return Ok(None);
+        return Ok(false);
     };
     if tag.is_yaml_core_schema() {
         if tag.suffix == expected {
-            return Ok(None);
+            return Ok(false);
         }
         return Err(codec_error(
             position,
             "YAML core tag does not match container",
         ));
     }
-    Ok(custom_tag(Some(tag)))
+    Ok(true)
 }
 
-fn custom_tag(tag: Option<&SaphyrTag>) -> Option<String> {
-    let tag = tag?;
-    if tag.is_yaml_core_schema() {
-        return None;
-    }
-    if tag.handle == "!" {
-        Some(tag.suffix.clone())
-    } else {
-        Some(tag.to_string().trim_start_matches('!').to_owned())
-    }
+/// Whether a node carries a tag outside the core schema.
+///
+/// A tag is an annotation: the value model has no carrier for one, so only
+/// its presence is kept, and only because the depth and node budgets charge
+/// for it.
+fn custom_tag(tag: Option<&SaphyrTag>) -> bool {
+    tag.is_some_and(|tag| !tag.is_yaml_core_schema())
 }
 
-fn tag_position(tag: Option<&SaphyrTag>, value_position: usize) -> usize {
-    tag.filter(|tag| !tag.is_yaml_core_schema())
-        .map_or(value_position, |tag| {
-            value_position.saturating_sub(tag.to_string().len().saturating_add(1))
-        })
-}
-
+/// Resolve one scalar event, and say whether it was written as a plain `<<`.
+///
+/// The flag is the spelling rather than the value: the value is the ordinary
+/// string `<<`, which is what a sequence element, a mapping value or a root
+/// keeps, and only key position refuses it.
 fn parse_scalar(
     value: Cow<'_, str>,
     style: ScalarStyle,
     tag: Option<&SaphyrTag>,
     position: usize,
-    tag_position: usize,
-) -> Result<RawValue> {
+) -> Result<(Scalar, bool)> {
     let value = value.into_owned();
     let merge_key = matches!(style, ScalarStyle::Plain) && tag.is_none() && value == "<<";
-    let custom = custom_tag(tag);
     let parsed = if let Some(tag) = tag.filter(|tag| tag.is_yaml_core_schema()) {
         match tag.suffix.as_str() {
-            "str" | "timestamp" => RawValue::String(value),
-            "null" => RawValue::Null,
+            "str" | "timestamp" => Scalar::from(value),
+            "null" => Scalar::Null,
             "bool" => parse_bool(&value)
-                .map(RawValue::Bool)
+                .map(Scalar::from)
                 .ok_or_else(|| codec_error(position, "invalid YAML boolean"))?,
             "int" => parse_integer(&value, position)
                 .transpose()?
                 .ok_or_else(|| codec_error(position, "invalid YAML integer"))?,
-            "float" => RawValue::Float(
+            "float" => Scalar::from(
                 parse_float(&value, position)
                     .transpose()?
                     .ok_or_else(|| codec_error(position, "invalid YAML float"))?,
             ),
-            "binary" => RawValue::Bytes(
+            "binary" => Scalar::from(
                 base64::engine::general_purpose::STANDARD
                     .decode(compact_binary(&value).as_ref())
                     .map_err(|_| codec_error(position, "invalid YAML binary scalar"))?,
@@ -528,30 +543,26 @@ fn parse_scalar(
     } else if matches!(style, ScalarStyle::Plain) {
         parse_plain(&value, position)?
     } else {
-        RawValue::String(value)
+        Scalar::from(value)
     };
-    if merge_key {
-        Ok(RawValue::YamlMergeKey)
-    } else {
-        Ok(wrap_tag(parsed, custom, tag_position))
-    }
+    Ok((parsed, merge_key))
 }
 
-fn parse_plain(value: &str, position: usize) -> Result<RawValue> {
+fn parse_plain(value: &str, position: usize) -> Result<Scalar> {
     let value = value.trim();
     if value.is_empty() || value == "~" || value.eq_ignore_ascii_case("null") {
-        return Ok(RawValue::Null);
+        return Ok(Scalar::Null);
     }
     if let Some(value) = parse_bool(value) {
-        return Ok(RawValue::Bool(value));
+        return Ok(Scalar::from(value));
     }
     if let Some(value) = parse_integer(value, position).transpose()? {
         return Ok(value);
     }
     if let Some(value) = parse_plain_float(value, position).transpose()? {
-        return Ok(RawValue::Float(value));
+        return Ok(Scalar::from(value));
     }
-    Ok(RawValue::String(value.to_owned()))
+    Ok(Scalar::from(value.to_owned()))
 }
 
 fn parse_bool(value: &str) -> Option<bool> {
@@ -570,7 +581,7 @@ fn parse_bool(value: &str) -> Option<bool> {
     }
 }
 
-fn parse_integer(value: &str, position: usize) -> Option<Result<RawValue>> {
+fn parse_integer(value: &str, position: usize) -> Option<Result<Scalar>> {
     let (negative, unsigned) = value.strip_prefix('-').map_or_else(
         || (false, value.strip_prefix('+').unwrap_or(value)),
         |value| (true, value),
@@ -615,13 +626,13 @@ fn parse_integer(value: &str, position: usize) -> Option<Result<RawValue>> {
                     i128::try_from(magnitude).ok().and_then(i128::checked_neg)
                 }
             })
-            .map(|value| i64::try_from(value).map_or(RawValue::Int128(value), RawValue::Int64))
+            .map(|value| i64::try_from(value).map_or_else(|_| Scalar::from(value), Scalar::from))
             .ok_or_else(|| {
                 codec_error(position, "YAML integer is outside the signed 128-bit range")
             })
     } else {
         u128::from_str_radix(digits, radix)
-            .map(|value| u64::try_from(value).map_or(RawValue::UInt128(value), RawValue::UInt64))
+            .map(|value| u64::try_from(value).map_or_else(|_| Scalar::from(value), Scalar::from))
             .map_err(|_| {
                 codec_error(
                     position,
@@ -740,29 +751,51 @@ fn is_radix_digit(byte: u8, radix: u32) -> bool {
     }
 }
 
-fn raw_stats(value: &RawValue) -> (usize, usize) {
+/// What expanding one anchored value would cost: its nodes and its levels.
+///
+/// An alias is charged what the value it names would have cost had it been
+/// written out again, so the budgets bound the expansion rather than the
+/// source text. A record's name is a node and a level exactly as a mapping's
+/// key scalar is, because the two are the same document shape read twice.
+fn scalar_stats(value: &Scalar) -> (usize, usize) {
     match value {
-        RawValue::Sequence(values) => values.iter().fold((1, 1), |(nodes, depth), value| {
-            let (child_nodes, child_depth) = raw_stats(value);
-            (
-                nodes.saturating_add(child_nodes),
-                depth.max(child_depth.saturating_add(1)),
-            )
-        }),
-        RawValue::Mapping(entries) | RawValue::YamlMapping(entries, _) => {
-            entries.iter().fold((1, 1), |(nodes, depth), (key, value)| {
-                let (key_nodes, key_depth) = raw_stats(key);
-                let (value_nodes, value_depth) = raw_stats(value);
-                (
-                    nodes.saturating_add(key_nodes).saturating_add(value_nodes),
-                    depth
-                        .max(key_depth.saturating_add(1))
-                        .max(value_depth.saturating_add(1)),
-                )
-            })
+        Scalar::Sequence(values) => {
+            values
+                .as_slice()
+                .iter()
+                .fold((1, 1), |(nodes, depth), value| {
+                    let (child_nodes, child_depth) = scalar_stats(value);
+                    (
+                        nodes.saturating_add(child_nodes),
+                        depth.max(child_depth.saturating_add(1)),
+                    )
+                })
         }
-        RawValue::YamlTagged(value) => raw_stats(value),
-        RawValue::YamlMergeKey => (1, 0),
+        Scalar::Mapping(entries) => {
+            entries
+                .as_slice()
+                .iter()
+                .fold((1, 1), |(nodes, depth), (key, value)| {
+                    let (key_nodes, key_depth) = scalar_stats(key);
+                    let (value_nodes, value_depth) = scalar_stats(value);
+                    (
+                        nodes.saturating_add(key_nodes).saturating_add(value_nodes),
+                        depth
+                            .max(key_depth.saturating_add(1))
+                            .max(value_depth.saturating_add(1)),
+                    )
+                })
+        }
+        Scalar::Record(record) => record
+            .as_map()
+            .values()
+            .fold((1, 1), |(nodes, depth), value| {
+                let (value_nodes, value_depth) = scalar_stats(value);
+                (
+                    nodes.saturating_add(1).saturating_add(value_nodes),
+                    depth.max(value_depth.saturating_add(1)),
+                )
+            }),
         _ => (1, 0),
     }
 }

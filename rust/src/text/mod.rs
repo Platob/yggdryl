@@ -23,7 +23,6 @@ pub(crate) mod typed;
 /// instant. That is exactly [`typed::with_field`]: the byte substitution a
 /// document needs, then the value contract every reading goes through.
 pub(crate) use typed::with_field as prepare_text;
-pub(crate) mod wire;
 pub mod yaml;
 
 pub use crate::types::floating::scalars::{Float16, Float32, Float64};
