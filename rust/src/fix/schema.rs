@@ -1122,6 +1122,12 @@ impl super::FixMsg {
             self.symbol_ticker()
         } else if is(super::TIMEPARTITION_TAG_NAME) {
             partition_of(self.updatedat())
+        } else if is(super::CFICODE_TAG_NAME) {
+            // The chain is a positional merge over five sources rather than
+            // anything the expression grammar spells, so it is code and it
+            // lives with the standard it implements.
+            self.classification()
+                .map_or(crate::Scalar::Null, crate::Scalar::from)
         } else if super::is_crate_tag(tag) {
             // The registry compiles every derivation once, and a refused
             // compile refuses the row as it refuses the pass; a derivation

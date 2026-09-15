@@ -173,6 +173,9 @@ pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");
 /// The tag and name carrying the currency the offer lane is denominated in.
 pub const OFFERCURRENCY_TAG_NAME: (i32, &str) = (65_031, "offercurrency");
 
+/// The tag and name carrying the instrument's ISO 10962 classification.
+pub const CFICODE_TAG_NAME: (i32, &str) = (65_032, "cficode");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -243,8 +246,7 @@ const RECORDEDAT_DERIVATION: &str = "sendingtime";
 /// not the order's statement at all - it is the instrument's, and an order
 /// cannot outlive the thing it trades, so it bounds the answer when nothing
 /// closer was said.
-const EXPIREDAT_DERIVATION: &str =
-    "coalesce(expiretime, validuntiltime, expiredate, maturitydate)";
+const EXPIREDAT_DERIVATION: &str = "coalesce(expiretime, validuntiltime, expiredate, maturitydate)";
 
 /// What denominates a quote lane.
 ///
@@ -373,6 +375,20 @@ fn build() -> Result<Vec<Field>> {
     // the value *is* the partition, so a reader prunes on its bounds and a
     // writer lays rows out by it without a transform between them.
     timepartition.set_partition(true);
+    // The second column a layout is cut on, and the one that cuts it into
+    // sub-products: a lake reading only listed options reads only the `O`
+    // partitions. Identity rather than a transform, exactly as the hour is -
+    // the six characters *are* the partition.
+    let mut cficode = aliased(
+        CFICODE_TAG_NAME,
+        "CFICode",
+        DataType::Cfi,
+        "The instrument's ISO 10962 classification, filled to the maximum the \
+         message licenses: a stated CFICode, then SecurityType, Product, the \
+         identifier's own scheme, and PutOrCall.",
+        &["detailedcficode"],
+    )?;
+    cficode.set_partition(true);
     // Named by the column it reads, because that is what the column is
     // called in a row.
     //
@@ -673,6 +689,11 @@ fn build() -> Result<Vec<Field>> {
              Currency, else SettlCurrency.",
             LANE_CURRENCY_DERIVATION,
         )?,
+        // The classification of record, beside `isincode` and `miccode` and
+        // for the same reason: what the message said about the instrument,
+        // read once into one typed column a table partitions and joins on.
+        // `detailedcficode` is the spelling a bridge writes it under.
+        cficode,
     ])
 }
 
@@ -685,7 +706,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 31);
+/// assert_eq!(held.len(), 32);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// assert_eq!(held[20].dtype(), held[2].dtype());
