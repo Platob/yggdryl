@@ -341,7 +341,13 @@ fn element_spelled(
     let attribute_count = columns.len();
 
     if empty {
-        return finish(columns, SmolStr::default(), nil, attribute_count);
+        return finish(
+            columns,
+            SmolStr::default(),
+            nil,
+            attribute_count,
+            claimed.repeated,
+        );
     }
 
     loop {
@@ -374,7 +380,7 @@ fn element_spelled(
                         ),
                     ));
                 }
-                return finish(columns, text, nil, attribute_count);
+                return finish(columns, text, nil, attribute_count, claimed.repeated);
             }
             Step::End => {
                 return Err(codec_error(
@@ -418,7 +424,7 @@ struct Claim {
 fn claim(seen: &mut Claims, name: &Name, position: usize, kind: Kind) -> Result<()> {
     let local = SmolStr::new(name.local());
     let namespace = name.namespace().map(SmolStr::new);
-    if let Some(held) = seen.index.get(&local).map(|at| &seen.held[*at]) {
+    if let Some(held) = seen.find(&local) {
         if held.namespace.as_deref() != namespace.as_deref() {
             return Err(codec_error(
                 position,
@@ -450,18 +456,53 @@ fn claim(seen: &mut Claims, name: &Name, position: usize, kind: Kind) -> Result<
                 ),
             ));
         }
+        seen.repeated = true;
         return Ok(());
     }
-    seen.index.insert(local, seen.held.len());
-    seen.held.push(Claim { namespace, kind });
+    seen.push(local, Claim { namespace, kind });
     Ok(())
 }
 
 /// The names claimed inside one element, and where each was claimed.
+///
+/// A handful of columns is a scan and a few hundred is an index, on the same
+/// threshold and for the same reason [`group`] uses one.
 #[derive(Default)]
 struct Claims {
+    names: Vec<SmolStr>,
     held: Vec<Claim>,
-    index: std::collections::HashMap<SmolStr, usize>,
+    index: Option<std::collections::HashMap<SmolStr, usize>>,
+    /// Whether any name was claimed twice, which is what makes a column a
+    /// sequence. Learned here because this is where it is already known.
+    repeated: bool,
+}
+
+impl Claims {
+    /// The claim on one name, if it is already claimed.
+    fn find(&self, local: &SmolStr) -> Option<&Claim> {
+        match &self.index {
+            Some(index) => index.get(local).map(|at| &self.held[*at]),
+            None => self
+                .names
+                .iter()
+                .position(|held| held == local)
+                .map(|at| &self.held[at]),
+        }
+    }
+
+    /// Record one claim, building the index once the scan stops paying.
+    fn push(&mut self, local: SmolStr, claim: Claim) {
+        if let Some(index) = &mut self.index {
+            index.insert(local.clone(), self.held.len());
+        } else if self.held.len() == INDEX_THRESHOLD {
+            let mut index: std::collections::HashMap<SmolStr, usize> =
+                self.names.iter().cloned().zip(0..).collect();
+            index.insert(local.clone(), self.held.len());
+            self.index = Some(index);
+        }
+        self.names.push(local);
+        self.held.push(claim);
+    }
 }
 
 /// Turn one element's collected parts into the value it states.
@@ -470,6 +511,7 @@ fn finish(
     text: SmolStr,
     nil: bool,
     attribute_count: usize,
+    repeated: bool,
 ) -> Result<Scalar> {
     if nil {
         return Ok(Scalar::Null);
@@ -482,6 +524,7 @@ fn finish(
     // get the name the crate already uses for one. A document that also spells
     // an attribute `value` is claiming the name twice, which is refused where
     // every other double claim is.
+    // (A `value` column added here never repeats, so the flag stands.)
     if columns.len() == attribute_count && !text.trim().is_empty() {
         if columns.iter().any(|(name, _)| name == VALUE_COLUMN) {
             return Err(codec_error(
@@ -497,16 +540,36 @@ fn finish(
             Scalar::from(text.as_str()),
         ));
     }
-    Ok(group(columns))
+    Ok(group(columns, repeated))
 }
+
+/// Past this many columns, an element indexes its names instead of scanning.
+///
+/// The same split `Scalar::from_mapping` makes, and for the same reason: a
+/// map costs an allocation and a hash per name, which a handful of columns
+/// never earns back, while a few hundred pay for the scan quadratically.
+const INDEX_THRESHOLD: usize = 16;
 
 /// Collapse repeated names into sequences and answer the record.
 ///
-/// Repeats are found through a name index rather than by rescanning what has
-/// been collected, so one element costs its own width rather than its width
-/// squared - which is what an element with a few hundred columns would pay.
-fn group(columns: Vec<(SmolStr, Scalar)>) -> Scalar {
+/// `repeated` is what the claim register already learned while the element was
+/// read: a name that appeared twice. Almost no element has one, and an element
+/// without one is its columns exactly - so the common case builds the record
+/// straight from them, with no per-column vector and no second pass.
+fn group(columns: Vec<(SmolStr, Scalar)>, repeated: bool) -> Scalar {
+    if !repeated {
+        return Scalar::from_record(columns).unwrap_or(Scalar::Null);
+    }
     let mut named: Vec<(SmolStr, Vec<Scalar>)> = Vec::with_capacity(columns.len());
+    if columns.len() <= INDEX_THRESHOLD {
+        for (name, value) in columns {
+            match named.iter_mut().find(|(held, _)| held == &name) {
+                Some((_, values)) => values.push(value),
+                None => named.push((name, vec![value])),
+            }
+        }
+        return record_of(named);
+    }
     let mut index: std::collections::HashMap<SmolStr, usize> =
         std::collections::HashMap::with_capacity(columns.len());
     for (name, value) in columns {
@@ -518,6 +581,11 @@ fn group(columns: Vec<(SmolStr, Scalar)>) -> Scalar {
             }
         }
     }
+    record_of(named)
+}
+
+/// Seal the grouped columns into the record they are.
+fn record_of(named: Vec<(SmolStr, Vec<Scalar>)>) -> Scalar {
     let entries = named.into_iter().map(|(name, mut values)| {
         let value = if values.len() == 1 {
             values.pop().unwrap_or(Scalar::Null)

@@ -224,7 +224,14 @@ pub(crate) struct Cursor<'a> {
     /// rather than assigned, because a run splits at every entity boundary:
     /// `a &lt; b` arrives as three events and keeping the last would keep a
     /// fragment.
+    ///
+    /// The buffers are reused rather than freed: `open` is the depth reached
+    /// so far, so closing an element clears its buffer and leaves the capacity
+    /// for the next element at that depth. A row of four columns then costs no
+    /// text allocation after the first row.
     text: Vec<String>,
+    /// How many of `text` are currently open.
+    open: usize,
     /// Whether the document element has closed, so trailing content is
     /// content after the root rather than part of it.
     rooted: bool,
@@ -249,6 +256,7 @@ impl<'a> Cursor<'a> {
             limits,
             nodes: 0,
             text: Vec::new(),
+            open: 0,
             rooted: false,
         }
     }
@@ -259,8 +267,24 @@ impl<'a> Cursor<'a> {
     }
 
     /// How many elements are currently open.
-    pub(crate) fn depth(&self) -> usize {
-        self.text.len()
+    pub(crate) const fn depth(&self) -> usize {
+        self.open
+    }
+
+    /// Open one text frame, reusing the buffer left at this depth.
+    fn push_frame(&mut self) {
+        if self.open == self.text.len() {
+            self.text.push(String::new());
+        } else {
+            self.text[self.open].clear();
+        }
+        self.open = self.open.saturating_add(1);
+    }
+
+    /// Close the innermost text frame and take what it accumulated.
+    fn pop_frame(&mut self) -> Option<&str> {
+        self.open = self.open.checked_sub(1)?;
+        Some(self.text[self.open].as_str())
     }
 
     /// Charge one decoded node against the budget.
@@ -275,7 +299,7 @@ impl<'a> Cursor<'a> {
 
     /// Charge one newly opened element against the depth budget.
     fn observe_depth(&self, position: usize) -> Result<()> {
-        let depth = self.text.len().saturating_add(1);
+        let depth = self.open.saturating_add(1);
         if depth > MAX_PARSER_DEPTH {
             return Err(codec_error(
                 position,
@@ -290,7 +314,7 @@ impl<'a> Cursor<'a> {
 
     /// Append one character run to the innermost open element.
     fn push_text(&mut self, run: &str, position: usize) -> Result<()> {
-        match self.text.last_mut() {
+        match self.open.checked_sub(1).map(|at| &mut self.text[at]) {
             Some(held) => {
                 held.push_str(run);
                 Ok(())
@@ -373,7 +397,7 @@ impl<'a> Cursor<'a> {
         self.reader
             .read_to_end(QName(raw.as_bytes()))
             .map_err(|error| codec_error(position, format_smolstr!("{error}")))?;
-        self.text.pop();
+        self.pop_frame();
         Ok(())
     }
 
@@ -398,15 +422,13 @@ impl<'a> Cursor<'a> {
                 Event::Start(element) => return self.open(element, namespace, position, false),
                 Event::Empty(element) => return self.open(element, namespace, position, true),
                 Event::End(_) => {
-                    let text = self.text.pop().ok_or_else(|| {
+                    let text = self.pop_frame().map(SmolStr::new).ok_or_else(|| {
                         codec_error(position, "expected an open element to close")
                     })?;
-                    if self.text.is_empty() {
+                    if self.open == 0 {
                         self.rooted = true;
                     }
-                    return Ok(Step::Close {
-                        text: SmolStr::new(text),
-                    });
+                    return Ok(Step::Close { text });
                 }
                 Event::Text(run) => {
                     let run = text_of(run.as_ref(), position, "character data")?;
@@ -479,7 +501,7 @@ impl<'a> Cursor<'a> {
                 // A document that stops inside an element reads as a
                 // shorter document to the parser, so the refusal is this
                 // module's to raise.
-                Event::Eof if !self.text.is_empty() => {
+                Event::Eof if self.open > 0 => {
                     return Err(codec_error(
                         position,
                         "expected every element to close, got the end of the document",
@@ -510,11 +532,11 @@ impl<'a> Cursor<'a> {
         let local = text_of(element.local_name().as_ref(), position, "an element name")?;
         let (attributes, nil) = self.attributes(&element, position)?;
         if empty {
-            if self.text.is_empty() {
+            if self.open == 0 {
                 self.rooted = true;
             }
         } else {
-            self.text.push(String::new());
+            self.push_frame();
         }
         Ok(Step::Open {
             name: Name {
