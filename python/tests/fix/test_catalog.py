@@ -99,7 +99,7 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
 def test_inline_codes_are_per_field_and_snapshot_preserves_all_categories() -> None:
     registry = _catalog()
     value = registry.field(448)
-    value.metadata["fix:codes"] = '{"codes":[{"value":"B","name":"Broker"}]}'
+    value.metadata["fix:codes"] = '[{"value":"B","name":"Broker"}]'
     # Membership is metadata like any other: it travels with the field
     # through the snapshot, the copy and the pickle, and `dialects` lists it.
     value.fix.branches = ["Pending"]
@@ -423,7 +423,7 @@ def test_catalog_merge_refreshes_every_reference_with_the_inline_code_union() ->
     target, source = _catalog(), _catalog()
     for registry, code, name in [(target, "B", "Broker"), (source, "C", "Client")]:
         member = registry.field(448)
-        member.metadata["fix:codes"] = json.dumps({"codes": [{"value": code, "name": name}]}, separators=(",", ":"))
+        member.metadata["fix:codes"] = json.dumps([{"value": code, "name": name}], separators=(",", ":"))
         registry.update_definition("fields", member)
     message = source.definition("components", "NewOrderSingle")
     message.set_name("IncomingOrder")
@@ -435,7 +435,7 @@ def test_catalog_merge_refreshes_every_reference_with_the_inline_code_union() ->
     assert target.merge_with(source) == (0, 4)
     for path in ["PartyID", "Party.PartyID", "Parties.PartyID", "NewOrderSingle.Parties.PartyID", "IncomingOrder.Parties.PartyID"]:
         member = target.field_by_path(path)
-        codes = json.loads(member.metadata["fix:codes"])["codes"]
+        codes = json.loads(member.metadata["fix:codes"])
         assert {item["value"]: item["name"] for item in codes} == {"B": "Broker", "C": "Client"}, path
     assert target.msgtype("I").get_group_by_tag(453).name == "Parties"
     assert source.into_json() == before_source
@@ -496,7 +496,7 @@ def test_catalog_merge_extends_a_referenced_definition_and_refuses_a_changed_mem
     """A member the source adds is appended to the stored definition; one that disagrees refuses."""
     target = _catalog()
     member = target.field(448)
-    member.metadata["fix:codes"] = '{"codes":[{"value":"C","name":"Client"}]}'
+    member.metadata["fix:codes"] = '[{"value":"C","name":"Client"}]'
     source = FixRegistry.from_fields([member])
     member = source.field(448)
     member.fix.field_ref = "PartyID"

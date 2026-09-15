@@ -550,6 +550,8 @@ impl<'field> FixField<'field>
   impl<'field> Iterator for FixSpellings<'field>  (Item = &'field str; also DoubleEndedIterator and FusedIterator)
 
 ### yggdryl::fix::document  [rust\src\fix\document.rs]
+pub fn into_fix_document(field: Field) -> Result<Scalar>  (re-exported at the crate root; the native Field document a FIX store writes, with fix:codes/fix:lineage/fix:replacements/fix:directions as the JSON they are)
+pub fn from_fix_document(document: Scalar) -> Result<Field>  (re-exported at the crate root; the inverse, restating each document as its canonical text)
 pub struct Words<'doc>  (re-exported at the crate root)
   impl<'doc> Iterator for Words<'doc>  (Item = &'doc str; also FusedIterator)
   impl Clone, Debug for Words<'_>
@@ -924,6 +926,7 @@ pub struct FixRegistry
   pub fn add_fields<I>(&mut self, fields: I) -> Result<(usize, usize)> where I: IntoIterator<Item = Field>,  (added, merged) under add_field's rules, one staged mutation
   pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)>  (fields and definitions folded under add_field/add_definition's rules, memberships unioned, one staged mutation)
   pub fn add_cfb_file(&mut self, handle: &dyn IOBase, dialect: Option<&str>) -> Result<(usize, usize)>  (the dialect or the handle's URL stem, merged under add_field's rules)
+  pub fn add_cfb_files(&mut self, root: &dyn IOBase, pattern: &str, dialect: Option<&str>) -> Result<(usize, usize, usize)>  (files, added, merged) over IOBase::glob, private entries never matched, files folded in ascending URL order, the dialect or each file's own stem, one staged mutation for the whole call
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Option<Field>
   pub fn dialects(&self) -> Vec<String>  (every membership any field or definition names, sorted, each once)
   pub fn next_field_after(&self, after: Option<FixId>) -> Option<&Field>  (tag-major, then id)
@@ -961,6 +964,7 @@ impl FixRegistry
 impl FixRegistry
   pub fn from_json(input: &str) -> Result<Self>
   pub fn into_json(&self) -> Result<String>
+  pub fn add_json_file(&mut self, handle: &dyn IOBase) -> Result<(usize, usize)>  (added, merged) under merge_with's rules; no dialect - a snapshot states its own fix:branches
   pub fn from_handle(handle: &dyn IOBase) -> Result<Self>
   pub fn write_into(&self, root: &mut dyn IOBase) -> Result<()>
 

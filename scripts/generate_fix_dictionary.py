@@ -17,6 +17,12 @@ fields have tags. A group references its ordinary int32 counter and contains
 a non-null component. Each field stores its enum records directly in
 fix:codes metadata. Datatypes resolve through the crate's logical-name table.
 
+The four ``fix:`` properties that hold a document - ``fix:codes``,
+``fix:lineage``, ``fix:replacements``, ``fix:directions`` - are written as the
+JSON arrays they are rather than as one escaped line, so an indented document
+renders a code set as a code set; the crate restates each as its canonical
+compact text when it reads the store back.
+
 The dictionary carries every cross-version fact the crate restates a message
 with, so no table of them lives in Rust: a field FIX removed is present with
 a lineage that ends in a removed entry, a field or code FIX deprecated says so
@@ -460,11 +466,6 @@ def dtype_of(fix_type: str, tag: int, code_sets: dict[str, Any]) -> str:
     return fix_type
 
 
-def canonical_json(value: Any) -> str:
-    """The compact rendering the crate's own documents use."""
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
-
-
 # The datatype tags that hold an instant, a date or a time of day, and the
 # one that holds text: every string is the `string` tag, whatever layout,
 # charset or bound it declares. Mirrors `DataTypeId::is_temporal` and
@@ -497,7 +498,7 @@ def back_type(entries: list[dict[str, Any]]) -> None:
             entries[earlier]["type"] = later
 
 
-def lineage_document(entries: list[dict[str, Any]]) -> str:
+def lineage_document(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """`fix:lineage`, keys in the order the reader expects.
 
     This is the Python half of `FixLineage::render` and makes the same two
@@ -536,17 +537,17 @@ def lineage_document(entries: list[dict[str, Any]]) -> str:
             ):
                 continue
         rendered.append({key: held[key] for key in order if held.get(key) not in (None, False)})
-    return canonical_json({"entries": rendered})
+    return rendered
 
 
-def codes_document(codes: list[dict[str, Any]]) -> str:
+def codes_document(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """`fix:codes`, ordered by wire value with `value` leading each record."""
     order = ["value", "name", "since", "ep", "deprecated", "sort", "group", "aliases", "doc"]
     ordered = sorted(codes, key=lambda code: (code["value"], code["name"]))
     rendered = []
     for code in ordered:
         rendered.append({key: code[key] for key in order if code.get(key) not in (None, [], False)})
-    return canonical_json({"codes": rendered})
+    return rendered
 
 
 def camel_case(description: str) -> str:
@@ -664,7 +665,7 @@ def fold_legacy_codes(
     return held
 
 
-def replacements_document(entries: list[dict[str, Any]]) -> str:
+def replacements_document(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """`fix:replacements`, keys in the order the reader expects.
 
     The Python half of the Rust writer: entry keys `since, ep, msgtypes, in,
@@ -697,7 +698,7 @@ def replacements_document(entries: list[dict[str, Any]]) -> str:
                 if entry.get(key) not in (None, [])
             }
         )
-    return canonical_json({"replacements": rendered})
+    return rendered
 
 
 def rule(

@@ -405,9 +405,9 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
         .insert(
             "directions",
             concat!(
-                r#"{"directions":[{"code":"S","patterns":["(","^TX "]},"#,
+                r#"[{"code":"S","patterns":["(","^TX "]},"#,
                 r#"{"code":"Q","patterns":["^QX "]},{"code":"R","patterns":["^RX "]},"#,
-                r#"{"code":"Send","patterns":["<<<"]}]}"#,
+                r#"{"code":"Send","patterns":["<<<"]}]"#,
             ),
         )
         .unwrap();
@@ -459,7 +459,7 @@ fn a_pattern_the_regex_crate_refuses_is_refused_by_the_setter_and_dropped_by_the
     assert!(!field.as_fix().directions().is_stated());
     field
         .as_fix_mut()
-        .insert("directions", r#"{"directions":[{"code":"S"}]}"#)
+        .insert("directions", r#"[{"code":"S"}]"#)
         .unwrap();
     assert!(field.as_fix().directions().is_stated());
     let mut registry = FixRegistry::new();
@@ -487,8 +487,8 @@ fn the_rules_round_trip_through_the_field_escapes_included() {
     assert_eq!(
         field.get_metadata("fix:directions"),
         Some(concat!(
-            r#"{"directions":[{"code":"S","patterns":["(?i)(?:^|\\s)tx\\s","say \"out\""]},"#,
-            r#"{"code":"R","patterns":["(?i)(?:^|\\s)rx\\s"]}]}"#,
+            r#"[{"code":"S","patterns":["(?i)(?:^|\\s)tx\\s","say \"out\""]},"#,
+            r#"{"code":"R","patterns":["(?i)(?:^|\\s)rx\\s"]}]"#,
         ))
     );
     let read: Vec<FixDirection> = field

@@ -38,14 +38,14 @@ use crate::types::scalar::{PyScalar, from_py};
 use crate::uri::core_url_from_value;
 use crate::value_error;
 
-/// Read one Ullink `CBlock` through whatever Python named it with.
+/// Read one dictionary file through whatever Python named it with.
 ///
-/// A `CBlock` is a file, so the location is held as whichever role it actually
-/// is rather than as a container: a folder handle reads no bytes, and a reader
-/// handed one answers an empty vocabulary instead of a refusal. A handle
-/// crosses as itself rather than being rebuilt, so bytes held in memory are
-/// readable and no second mapping is opened.
-fn read_cfb<T>(
+/// A `CBlock` and a JSON snapshot are both files, so the location is held as
+/// whichever role it actually is rather than as a container: a folder handle
+/// reads no bytes, and a reader handed one answers an empty vocabulary instead
+/// of a refusal. A handle crosses as itself rather than being rebuilt, so
+/// bytes held in memory are readable and no second mapping is opened.
+fn read_located<T>(
     location: &Bound<'_, PyAny>,
     read: impl FnOnce(&dyn CoreIOBase) -> yggdryl::Result<T>,
 ) -> PyResult<T> {
@@ -281,7 +281,7 @@ impl PyFixRegistry {
         location: &Bound<'_, PyAny>,
         dialect: Option<&str>,
     ) -> PyResult<(Self, Vec<PyField>)> {
-        let (registry, roots) = read_cfb(location, |handle| {
+        let (registry, roots) = read_located(location, |handle| {
             CoreFixRegistry::from_cfb_file(handle, dialect)
         })?;
         Ok((
@@ -364,7 +364,62 @@ impl PyFixRegistry {
         dialect: Option<&str>,
     ) -> PyResult<(usize, usize)> {
         let registry = self.inner_mut()?;
-        read_cfb(location, |handle| registry.add_cfb_file(handle, dialect))
+        read_located(location, |handle| registry.add_cfb_file(handle, dialect))
+    }
+
+    /// Read every Ullink `CBlock` a pattern selects into this dictionary.
+    ///
+    /// The plural of `add_cfb_file`, over the core's own glob walk: `pattern`
+    /// is anchored at `location` the way `IOBase.glob` anchors it - a fixed
+    /// prefix is descended rather than listed, `**` spans any number of
+    /// levels - and a pattern selecting nothing folds nothing rather than
+    /// raising. Private entries are never matched.
+    ///
+    /// Files fold in ascending URL order whatever order the listing arrived
+    /// in, so where two files disagree about one tag the last-sorting file
+    /// wins and every spelling of one pattern answers the same dictionary.
+    ///
+    /// `dialect` is resolved per file: a name supplied here stamps every
+    /// matched file with it, and `None` lets each file's own stem stand in,
+    /// which is what globbing a folder of counterparty files is for.
+    ///
+    /// Answers the count of files folded, the count of fields added and the
+    /// count merged. One mutation, and one copy of the dictionary for the
+    /// whole call: a file that will not parse leaves it exactly as it was and
+    /// the `ValueError` names that file.
+    #[pyo3(signature = (location, pattern, dialect=None))]
+    fn add_cfb_files(
+        &mut self,
+        location: &Bound<'_, PyAny>,
+        pattern: &str,
+        dialect: Option<&str>,
+    ) -> PyResult<(usize, usize, usize)> {
+        // A glob is walked from a container, where a `CBlock` is a leaf.
+        let root = folder_holder_from_value(location)?;
+        self.inner_mut()?
+            .add_cfb_files(root.as_io(), pattern, dialect)
+            .map_err(value_error)
+    }
+
+    /// Read one JSON registry snapshot into this dictionary, whole.
+    ///
+    /// The lenient door beside `from_json`, which builds a dictionary of its
+    /// own: the file is read through exactly that parse and then folded in
+    /// the way `merge_with` folds any dictionary.
+    ///
+    /// No dialect is taken, and that is the point of the pair: a `CBlock`
+    /// states no membership, so `add_cfb_file` has to be told one or guess it
+    /// from the stem, while a snapshot is this package's own format and every
+    /// field and definition in it already carries the `fix:branches` its
+    /// writer meant.
+    ///
+    /// Answers the count added and the count merged. One mutation: a document
+    /// that does not parse, a reference naming a definition nothing holds, or
+    /// a datatype disagreeing with a stored field leaves it as it was, and
+    /// the `ValueError` names the file.
+    fn add_json_file(&mut self, location: &Bound<'_, PyAny>) -> PyResult<(usize, usize)> {
+        let registry = self.inner_mut()?;
+        read_located(location, |handle| registry.add_json_file(handle))
     }
 
     /// Add the plugin dictionary's own fields, so a plugin report types.
@@ -2851,7 +2906,7 @@ pub(crate) fn fix_cfb_fields(
     location: &Bound<'_, PyAny>,
     dialect: Option<&str>,
 ) -> PyResult<Vec<PyField>> {
-    read_cfb(location, |handle| {
+    read_located(location, |handle| {
         CoreFixField::from_cfb_file(handle, dialect)
     })
     .map(|held| held.into_iter().map(PyField::from_inner).collect())

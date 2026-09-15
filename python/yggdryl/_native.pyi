@@ -4967,6 +4967,16 @@ class FixRegistry:
         location: IOBase | Url | str | PathLike[str],
         dialect: str | None = None,
     ) -> tuple[int, int]: ...
+    def add_cfb_files(
+        self,
+        location: IOBase | Url | str | PathLike[str],
+        pattern: str,
+        dialect: str | None = None,
+    ) -> tuple[int, int, int]: ...
+    def add_json_file(
+        self,
+        location: IOBase | Url | str | PathLike[str],
+    ) -> tuple[int, int]: ...
     def with_plugin_fields(self) -> None: ...
     def with_generic_message(self) -> None: ...
     def register_msgtype(

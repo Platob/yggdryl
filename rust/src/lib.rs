@@ -81,7 +81,7 @@ pub use fix::{
     ULBRIDGE_ROWHEADER, UPDATEDAT_TAG_NAME, VERSION_TAG_NAME, Words, fix_column_of,
     fix_column_tags, fix_crate_fields, fix_generic_message, fix_generic_tags, fix_lift, fix_lifts,
     fix_plugin_fields, fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags,
-    is_crate_tag,
+    from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use hashing::xxhash::{DigestFieldNames, DigestFields};
 #[cfg(feature = "arrow")]

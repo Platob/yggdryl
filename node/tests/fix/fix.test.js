@@ -227,10 +227,10 @@ test('direction rules cross as a typed list', () => {
   // The stored text is the canonical document, backslashes escaped.
   assert.equal(
     field.get('fix:directions'),
-    '{"directions":[{"code":"S","patterns":["(?i)^TX\\\\b"]},' +
-      '{"code":"R","patterns":["(?i)^RX\\\\b"]}]}',
+    '[{"code":"S","patterns":["(?i)^TX\\\\b"]},' +
+      '{"code":"R","patterns":["(?i)^RX\\\\b"]}]',
   )
-  assert.deepEqual(JSON.parse(field.get('fix:directions')), { directions: rules })
+  assert.deepEqual(JSON.parse(field.get('fix:directions')), rules)
 
   // A codec compiles the rules of the dictionary it is built over, once,
   // and the line door fills tag 385 from them; the verb table no longer
@@ -1222,8 +1222,16 @@ test('a registry is a value: equality, hash, clone, JSON and text', () => {
   const document = registry.toJSON()
   // The crate's own are seeded, never stored, so only the store's own are written.
   assert.equal(document.fields.length, 6241)
-  assert.deepEqual(document.fields[0], JSON.parse(JSON.stringify(registry.fieldByTag(1))))
-  assert.equal(document.fields[0].metadata['fix:tag'], '1')
+  const stored = document.fields[0]
+  const held = JSON.parse(JSON.stringify(registry.fieldByTag(1)))
+  assert.equal(stored.name, held.name)
+  assert.deepEqual(stored.dtype, held.dtype)
+  assert.equal(stored.metadata['fix:tag'], '1')
+  // A snapshot is the store's shape, so a document property is the JSON it
+  // is; a `Field`'s own JSON is the core shape, where metadata is text.
+  assert.ok(Array.isArray(stored.metadata['fix:lineage']))
+  assert.equal(typeof held.metadata['fix:lineage'], 'string')
+  assert.deepEqual(stored.metadata['fix:lineage'], JSON.parse(held.metadata['fix:lineage']))
   assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
 })
 

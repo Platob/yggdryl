@@ -1174,8 +1174,8 @@ impl FixFieldMut<'_> {
     /// assert_eq!(
     ///     broker.get_metadata("fix:replacements"),
     ///     Some(concat!(
-    ///         r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":"#,
-    ///         r#"[{"tag":448},{"tag":452,"value":"1"}]}]}]}"#,
+    ///         r#"[{"since":"4.3","fills":[{"group":"parties","members":"#,
+    ///         r#"[{"tag":448},{"tag":452,"value":"1"}]}]}]"#,
     ///     ))
     /// );
     ///
@@ -1264,8 +1264,8 @@ impl FixFieldMut<'_> {
     /// assert_eq!(
     ///     direction.get_metadata("fix:directions"),
     ///     Some(concat!(
-    ///         r#"{"directions":[{"code":"S","patterns":["^TX\\b"]},"#,
-    ///         r#"{"code":"R","patterns":["^RX\\b"]}]}"#,
+    ///         r#"[{"code":"S","patterns":["^TX\\b"]},"#,
+    ///         r#"{"code":"R","patterns":["^RX\\b"]}]"#,
     ///     ))
     /// );
     ///
@@ -1748,6 +1748,13 @@ fn merge_lineage(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<S
 /// and two sharing a name are refused outright. So that spelling is dropped,
 /// and a code whose own *name* is taken is dropped with it, having no other
 /// name to arrive under.
+///
+/// One exception to the winner keeping its name: a code named after its own
+/// wire value carries no name at all - it is what a source that knows the
+/// value exists but not what anyone calls it writes - so a real name from
+/// either side takes its place. That is what folds a dialect's `6 Inbound`
+/// into whatever the dictionary already calls tag 35 `6`, rather than
+/// renaming the type after the dialect's qualifier.
 fn merge_codes(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<String>> {
     let mut codes: Vec<FixCode> = Vec::new();
     for code in winner.codes() {
@@ -1759,11 +1766,27 @@ fn merge_codes(winner: &FixField<'_>, other: &FixField<'_>) -> Result<Option<Str
         // from the code so the code itself can move into the set.
         let mut spellings: Vec<SmolStr> = vec![SmolStr::new(incoming.name())];
         spellings.extend(incoming.aliases().iter().cloned());
+        let named = !incoming.is_unnamed();
         let at = match codes
             .iter()
             .position(|held| held.value() == incoming.value())
         {
-            Some(at) => at,
+            Some(at) => {
+                // A placeholder name yields to a real one, whichever side
+                // carries it. The incoming name is a spelling either way, so
+                // it is added below like any other spelling; taking it here
+                // is only a question of which one leads.
+                if named
+                    && codes[at].is_unnamed()
+                    && !codes
+                        .iter()
+                        .enumerate()
+                        .any(|(index, held)| index != at && held.is_spelled(&spellings[0]))
+                {
+                    codes[at] = codes[at].clone().with_name(spellings[0].clone());
+                }
+                at
+            }
             None if codes.iter().any(|held| held.is_spelled(&spellings[0])) => continue,
             None => {
                 codes.push(incoming.with_aliases(std::iter::empty::<SmolStr>()));

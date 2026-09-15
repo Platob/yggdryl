@@ -1071,7 +1071,7 @@ whose prefix carries a verb, and every document that states its half, gains
 **Rule.** The rules that name a code of tag 385's set from the prose in
 front of a payload are the registry's, stored on tag 385's field as
 `fix:directions`: one canonical document
-`{"directions":[{"code":"S","patterns":["..."]},...]}`, an entry per code in
+`[{"code":"S","patterns":["..."]},...]` (decision 39), an entry per code in
 the order the dictionary lists them, each pattern a `regex::bytes`
 expression applied to the prefix - the bytes before the payload, exactly
 the bound `payload_at` answers, so a verb inside a payload is still the
@@ -3468,7 +3468,89 @@ byte for byte, and one differing byte of content is a different `uuid`;
 columns answer `fixedbinary(16)`, and the message identity's first eight
 bytes are the sign-flipped `updatedat` nanoseconds.
 
-## 39. The message identities are named for what they are: hashes
+## 39. A document is its array, stored as the JSON it is, and a qualified message type is a spelling
+
+**Rule.** Four `fix:` properties hold a canonical document - `fix:codes`,
+`fix:lineage`, `fix:replacements`, `fix:directions` - and three things about
+them change together, because they are one question about how a dictionary
+is written down and read back.
+
+**A document is the array of its entries.** `[{...},{...}]`, never
+`{"codes":[{...}]}`: the wrapper key only repeated the name of the property
+already holding the value, so it was a word stored twice and a byte cost on
+every field that carries one. `Cursor::open_array` takes no key, `Writer`
+opens on `[` and closes on `]`, and `Refusal::WrongRoot` and
+`Writer::close_array` are gone with the shape they named. All four convert:
+keeping one wrapped would leave two spellings of `open_array` and one
+document reading differently from its three siblings.
+
+**A store writes that document as the JSON it is.** A metadata value is
+inert text, so a code set beside a field used to be one escaped line however
+the file around it was indented - unreadable in a store a person edits, and
+a 14 MB tree of it. `fix::into_fix_document`/`from_fix_document` are the
+pair a store crosses: the four properties are written as their arrays and
+read back as the compact canonical text a field's metadata holds. One shape,
+not two: a file spelling one of these keys as text is refused by name, and
+so is a field holding text no reader can parse. Key *order* inside an entry
+is never a refusal on the way in, because a JSON object decodes sorted while
+the readers walk a declared order, so the loader restates that order from
+each reader's own `KEYS` - which is what lets the file be hand-edited at all.
+`ygg fix read --json` and `--input` speak that same shape, so what the CLI
+prints can be dropped into a store tree.
+
+**A qualified message type is a spelling and never a name.** An Ullink
+CBlock declares `6 Inbound` and `6 Outbound`: tag 35 `6`, twice, said by a
+file that knows the value exists and not what anyone calls it. So the code
+takes the wire value as its name and every declared spelling as an alias,
+and a name that is only its own value is a placeholder a real name displaces
+when the dialect folds into a dictionary that has one - `6` becomes what the
+specification calls it, keeping `6 Inbound` among its spellings. One wire
+type is one message too: the second grammar bound under it folds into the
+first, keeping its members in order and appending every member only the
+second declares, so a dialect describing a type in both directions holds one
+message carrying both. Direction is not recorded as a property: `fix:directions`
+is tag 385's own, read from the prose in front of a payload (decision 15),
+and the alias is the whole record that this dialect declared the type both
+ways.
+
+**And the ingest verbs follow the sources.** `add_cfb_files(root, pattern,
+dialect)` folds every CBlock a glob selects through the crate's one glob
+walk, files in ascending URL order so the fold's precedence is a property of
+the call rather than of the backend beneath it, each file's own stem naming
+its dialect where the caller names none, and one copy of the dictionary for
+the whole call rather than one per file. `add_json_file(handle)` is the same
+door for a snapshot and takes no dialect, because a snapshot is this crate's
+own format and already carries the `fix:branches` its writer meant.
+
+**What moves.** Every shipped field carrying one of the four documents holds
+different text for the same facts, so the committed dictionary's pinned hash
+moves from `13_715_550_792_597_346_458` to `7_300_787_928_050_199_931`.
+Nothing else is pinned on the stored text: `FixId` derives from a tag and a
+name.
+
+**Written in:** `fix/document.rs` (the root array, `Kind`, the `dump`/`load`
+pair and the two public doors), `fix/{codes,lineage,replacements,directions}.rs`
+(the readers and writers, and their `KEYS` becoming the one owner of each
+declared order), `fix/store.rs` (`add_json_file`, and the five places a Field
+document is rendered or read), `fix/registry.rs` (`add_cfb_files` and the
+`fold_registry` the plural verbs share), `fix/cfb.rs` and `fix/msgtype.rs`
+(`wire_value`, the code naming, the message fold), `fix/field.rs`
+(`merge_codes` displacing a placeholder name), `cli/src/{fix,registry}.rs`,
+`config/fix` and `scripts/generate_fix_dictionary.py`,
+`scripts/build_docs_fix.js` and `docs/assets/fix-explorer.js`,
+`docs/fix/{registry,store,cli}.md`, `docs/extensions/{python,javascript}.md`,
+the inventories.
+**Fixtures:** `rust/tests/fix/store.rs` - a document property is stored as
+the JSON it is and read back as its text, whatever order the file spelled an
+entry's keys in; the escaped shape and an undeclared key are refused by name;
+every committed field document round trips both ways; a snapshot file folds
+the way a CBlock does and a malformed one changes nothing.
+`rust/tests/fix/cfb.rs` - a glob folds every CBlock it selects under each
+file's own dialect, one unreadable file among many leaves the dictionary
+exactly as it was, and two grammars bound under one wire type are one
+message carrying both.
+
+## 40. The message identities are named for what they are: hashes
 
 Settled with the user's request to rename the two identity columns, and
 taken with the record of decision 26 in front of us rather than around it.

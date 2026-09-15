@@ -617,7 +617,7 @@ A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` 
 
     side = Field("Side", "utf8")
     side.fix.tag = 54
-    side.metadata["fix:codes"] = '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}'
+    side.metadata["fix:codes"] = '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
     registry = FixRegistry.from_fields([side])
     assert '"name":"Buy"' in registry.field(54).metadata["fix:codes"]
     assert FixRegistry.from_json(registry.into_json()) == registry
@@ -631,7 +631,7 @@ A scalar's enum vocabulary remains inline in `fix:codes`, with required `value` 
 
     const side = Field.from('Side: utf8')
     side.fix.tag = 54
-    side.set('fix:codes', '{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]}')
+    side.set('fix:codes', '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]')
     const registry = fix.FixRegistry.fromFields([side])
     assert.match(registry.field(54).get('fix:codes'), /"name":"Buy"/)
     assert.ok(fix.FixRegistry.fromJson(registry.intoJson()).equals(registry))
@@ -748,7 +748,7 @@ The specification retires a field or a value and says what stands in for it: `Ru
 Entries are in **document order**, and the order is semantic: the first entry whose conditions a held value meets answers, so a catch-all entry stating no `when` comes last.
 
 ```json
-{"replacements":[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"A"}],"doc":"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"}]}
+[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"A"}],"doc":"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"}]
 ```
 
 | Entry key | Required | Value | Meaning |
@@ -809,8 +809,8 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     assert_eq!(
         rule80a.get_metadata("fix:replacements"),
         Some(concat!(
-            r#"{"replacements":[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}],"#,
-            r#""doc":"Rule80A A on this venue was a principal order"}]}"#,
+            r#"[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}],"#,
+            r#""doc":"Rule80A A on this venue was a principal order"}]"#,
         ))
     );
     registry.update(rule80a)?;
@@ -839,7 +839,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     rule80a = registry.field_by_tag(47)
     rule80a.metadata["fix:replacements"] = (
-        '{"replacements":[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}]}]}'
+        '[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}]}]'
     )
     registry.update(rule80a)
     assert '"value":"P"' in registry.field_by_tag(47).metadata["fix:replacements"]
@@ -864,7 +864,7 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     const rule80a = registry.fieldByTag(47)
     rule80a.set(
       'fix:replacements',
-      '{"replacements":[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}]}]}',
+      '[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}]}]',
     )
     registry.update(rule80a)
     assert.match(registry.fieldByTag(47).get('fix:replacements'), /"value":"P"/)
@@ -1074,19 +1074,19 @@ Scalar `update` merges the same identifier: incoming scalar metadata wins, alias
 
 ## Folding a second source in
 
-Rust and Python expose `merge_with`, `add_fields`, and `add_cfb_file` as atomic native folds. `from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes, and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `fix:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
+Rust and Python expose `merge_with`, `add_fields`, `add_cfb_file`, `add_cfb_files` and `add_json_file` as atomic native folds. `from_cfb_file(location, dialect)` in all three languages returns the imported registry and its declared roots, including canonical scalar metadata, named groups/components/messages, and inline enum codes, and stamps every field, group, component and message the file produces - standard tags included - as a member of `dialect` in its `fix:branches`; `None` stamps nothing. The root element's `fix-version`, `sendercompid` and `targetcompid` are read past: the version a capture is read at is the row's own `beginstring` where the transport states one, else what the line implies. The [CLI](cli.md) exposes ingestion and synchronization.
 
 A `vocabulary-tag`'s `alt` names its tag where it names only that tag. A dialect that spells one `alt` over two tags - `TRTN_FX_TradeCapture` declares `HedgeCurrency` for the currency a hedge settles in and again for the one it is quoted in - has given a name to neither, and a tag whose `alt` is another tag's own decimal has done the same to that tag's identity. Both fall back to their own decimal, the name a tag declaring no `alt` already takes, and keep the declared spelling as `display`, so every tag is left named and nothing the file said is lost. Contention is decided by the key a name is indexed under, which folds case and drops `_`, `-` and space, so `Hedge_Currency` contends with `HedgeCurrency`. Two tags sharing a spelling record each other's tag among their alternate tags and so stay reachable as a pair; three record nothing, because an alternate identifier names one field. A `normalization-binding` cannot spell a contended name back onto one of them, and a `map` naming one decodes neither. The spelling survives where the file made it unambiguous: a `tag-constraint` binds one tag, so the message root, the component and the group each carry it, and a reader resolving a key against the message it arrived in - a bridge row's `MSGTYPE`, and the repeating group the key sits in - reaches the tag the file meant.
 
 A CBlock's `normalization-binding` is read for the names it spells its tags with, and for nothing else. A `tag-normalization` whose mapping is one bare `$602` says its `tag-name` is another spelling of tag 602, so that spelling joins the field as an alias while the `vocabulary-tag` keeps the name. A conditional mapping, a `lookup`, and a mapping built from several expressions each name nothing: this layer holds no evaluator. Most of a real binding spells names a tag already answers to - resolution folds ASCII case - so the pass pays where a `vocabulary-tag` declared no `alt` and the tag is otherwise reachable only by its own number. No name is refused: one the vocabulary never declared, one another tag already answers to, or one the core could not store drops on its own.
 
-`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its named definitions folded member by member and each field's membership unioned; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. These operations report added/merged counts only after the entire staged fold succeeds.
+`merge_with` combines another registry under the [fold table](#what-one-namespace-means-for-a-field-that-arrives), its named definitions folded member by member and each field's membership unioned; `add_fields` folds a scalar field iterable the same way; `add_cfb_file(location, dialect)` parses a CBlock and merges it, stamping the dialect - or, with none supplied, the file's stem where it reads as a name, opening with a letter - on everything the file produced; a supplied name that is empty or carries a comma is refused. `add_cfb_files(location, pattern, dialect)` is the plural, over the crate's one glob walk: `pattern` is anchored at `location` exactly as `IOBase::glob` anchors it, private entries are never matched, a pattern selecting nothing folds nothing, and the dialect is resolved per file - so `cblocks/*.cfb` with none supplied stamps `msfix44` and `blpfix44` from the two files' own stems, which is what globbing a folder of counterparty files is for. Files fold in **ascending URL order** whatever order the listing arrived in, because the fold's precedence is its input order and a glob's sequence varies with how the pattern decomposed and with the backend beneath; so where two files disagree about one tag the last-sorting file wins, and `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same files all answer the same dictionary. It answers `(files, added, merged)` - the file count is a fact only this call holds, since an empty match and a match whose files all merged into stored fields both answer zeroes for the other two. `add_json_file(location)` is the same door for a [JSON snapshot](store.md) and takes no dialect, because a snapshot is the crate's own format and every field and definition in it already carries the `fix:branches` its writer meant. These operations report their counts only after the entire staged fold succeeds, and a plural one pays one copy of the dictionary for the whole call rather than one per file: a file that will not parse leaves the dictionary exactly as it was and the refusal names that file among however many matched.
 
 A CBlock is read for what it says. A real one is megabytes over hundreds of thousands of elements, so an element this reader cannot make sense of - a tag spelled in a way the core cannot store, a constraint naming a tag the file's own vocabulary never declared, a mapping to a type nothing listed, a `fix-version` the version grammar cannot read - is dropped and the rest of the file is still a dictionary. Each drop is a `log` record at warn level carrying the located sentence a refusal would have: the byte, what was expected, what arrived, and the element the file spells it in. Only a document that is not well-formed XML, or that stops with an element open, is refused across each binding as a native located error, because neither leaves anything to keep.
 
 ## Registering a message type
 
-`MsgType` has no public constructor and is not a generic datatype or scalar. It is one immutable registry-owned message Struct; lookup accepts an exact case-sensitive wire code, a folded name, or an alias tag 35's code set gives the code. Message codes live in one map under the rule fields follow: a definition re-declaring a code under the same folded name folds into the stored one, and under another name it is a second message reached by its name. The bare code answers the message named as tag 35's code set names the code, else the first in name order - facts of the catalog's content rather than of the order it was built in, so a dictionary folded, stored and loaded answers the same message. An alias spelling that two codes share names nothing.
+`MsgType` has no public constructor and is not a generic datatype or scalar. It is one immutable registry-owned message Struct; lookup accepts an exact case-sensitive wire code, a folded name, or an alias tag 35's code set gives the code. Message codes live in one map under the rule fields follow: a definition re-declaring a code under the same folded name folds into the stored one, and under another name it is a second message reached by its name. A dialect that spells a type as a wire value and a qualifier - an Ullink CBlock's `6 Inbound` and `6 Outbound` - has stated tag 35 `6` twice and named it neither time, so the code takes the wire value as its name and every declared spelling as an alias, and that placeholder name yields to a real one the moment the dialect folds into a dictionary that has one. One wire type is one message: the second grammar bound under it folds into the first, keeping its members in order and appending every member only the second declares. The bare code answers the message named as tag 35's code set names the code, else the first in name order - facts of the catalog's content rather than of the order it was built in, so a dictionary folded, stored and loaded answers the same message. An alias spelling that two codes share names nothing.
 
 === "Rust"
 
@@ -1200,7 +1200,7 @@ An ObjectName's `type=` property supplies its raw configuration type; otherwise 
 
 ### A direction is what the rules on tag 385 read in front of the payload
 
-Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one (decision 14). The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too (decision 15): tag 385's field carries them as `fix:directions`, one canonical document `{"directions":[{"code":"S","patterns":["..."]},...]}` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
+Which way a message moved is FIX's own fact, tag 385 `MsgDirection`, and nothing else in the crate has one (decision 14). The dictionary types the field as it types every coded field - text carrying the code set `R = Receive`, `S = Send`, extendable like any set - and `FixRegistry::msgdirection` answers the registry's reading of it, a `fix::MsgDirection`. The rules that reading applies are the dictionary's too (decision 15): tag 385's field carries them as `fix:directions`, one canonical document `[{"code":"S","patterns":["..."]},...]` with an entry per code in the order the dictionary lists them, each pattern a `regex::bytes` expression applied to the prefix - the bytes before the payload, exactly the bound `payload_at` answers, so a verb inside a payload is still the payload's word. A code matches where any of its patterns matches; exactly one matching code names the direction; two or more, or none, name nothing. An entry's code is any spelling of a code of the set - its value, its name, an alias - resolved once through `MsgDirection::code` exactly as a pin is.
 
 Where the field carries no property the defaults answer, keyed by the set's `Send` and `Receive` codes so an extended set still reads `sending >>` as its own `Send`:
 

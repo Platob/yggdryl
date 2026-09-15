@@ -2048,3 +2048,151 @@ fn msgtype_at_indexes_the_marked_components_of_the_committed_dictionary() {
         Some("D")
     );
 }
+
+#[test]
+fn a_document_property_is_stored_as_the_json_it_is_and_read_back_as_its_text() {
+    let mut side = tagged("Side", 54, DataType::utf8());
+    side.as_fix_mut()
+        .set_codes(&[
+            FixCode::new("Buy", "1").with_description("Buy side"),
+            FixCode::new("Sell", "2"),
+        ])
+        .unwrap();
+    let canonical = side.get_metadata("fix:codes").unwrap().to_owned();
+    assert!(canonical.starts_with("[{"), "{canonical}");
+
+    // The store writes the document rather than one escaped line, so the
+    // file an operator opens renders a code set as a code set.
+    let document = yggdryl::into_fix_document(side.clone()).unwrap();
+    let codes = document
+        .get_key_str("metadata")
+        .and_then(|metadata| metadata.get_key_str("fix:codes"))
+        .expect("the code set");
+    assert_eq!(codes.len(), 2);
+    assert_eq!(
+        codes
+            .get(0)
+            .and_then(|code| code.get_key_str("value"))
+            .and_then(Scalar::as_str),
+        Some("1"),
+    );
+    // And the keys stay in the order the reader walks them, so the file
+    // reads the way the document is written.
+    assert_eq!(
+        codes.get(0).map(Scalar::keys),
+        Some(vec!["value", "name", "doc"]),
+    );
+
+    // Reading one back restates the canonical text, whatever order the file
+    // spelled an entry's keys in.
+    assert_eq!(yggdryl::from_fix_document(document).unwrap(), side);
+    let reordered = yggdryl::from_json_scalar(
+        r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,"metadata":{
+            "fix:tag":"54",
+            "fix:codes":[{"doc":"Buy side","name":"Buy","value":"1"},{"name":"Sell","value":"2"}]
+        }}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        yggdryl::from_fix_document(reordered)
+            .unwrap()
+            .get_metadata("fix:codes"),
+        Some(canonical.as_str()),
+    );
+}
+
+#[test]
+fn a_document_property_the_store_cannot_read_is_refused_by_name() {
+    // One shape: a property the file spells as text is not read as canonical
+    // text, because the store writes the document itself.
+    let text = yggdryl::from_json_scalar(
+        r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,
+            "metadata":{"fix:tag":"54","fix:codes":"[{\"value\":\"1\",\"name\":\"Buy\"}]"}}"#,
+    )
+    .unwrap();
+    let error = yggdryl::from_fix_document(text).expect_err("the escaped shape is not the shape");
+    assert!(error.to_string().contains("fix:codes"), "{error}");
+
+    // An entry stating a key the document does not declare is refused the
+    // same way rather than dropped.
+    let unknown = yggdryl::from_json_scalar(
+        r#"{"name":"Side","dtype":{"type":"string"},"nullable":true,
+            "metadata":{"fix:tag":"54","fix:codes":[{"value":"1","name":"Buy","note":"x"}]}}"#,
+    )
+    .unwrap();
+    let error = yggdryl::from_fix_document(unknown).expect_err("an undeclared key");
+    assert!(error.to_string().contains("note"), "{error}");
+
+    // And a field holding text no reader can parse is named where it is
+    // written rather than copied out for a reader to refuse later.
+    let mut broken = tagged("Side", 54, DataType::utf8());
+    broken
+        .set_metadata([("fix:codes", "not a document")])
+        .unwrap();
+    let error = yggdryl::into_fix_document(broken).expect_err("a malformed document");
+    assert!(error.to_string().contains("fix:codes"), "{error}");
+}
+
+#[test]
+fn every_committed_field_document_round_trips_through_the_store_shape() {
+    // The whole shipped dictionary, both directions: what the store writes
+    // reads back as the same field, byte for byte in its metadata.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = FixRegistry::from_handle(&Folder::new(root).unwrap()).unwrap();
+    let mut carried = 0_usize;
+    for field in &registry {
+        let document = yggdryl::into_fix_document(field.clone()).unwrap();
+        if document
+            .get_key_str("metadata")
+            .is_some_and(|metadata| metadata.get_key_str("fix:codes").is_some())
+        {
+            carried += 1;
+        }
+        assert_eq!(&yggdryl::from_fix_document(document).unwrap(), field);
+    }
+    assert!(carried > 400, "only {carried} fields carry a code set");
+    for category in [FixCategory::Components, FixCategory::Groups] {
+        for field in registry.definitions(category) {
+            let document = yggdryl::into_fix_document(field.clone()).unwrap();
+            assert_eq!(&yggdryl::from_fix_document(document).unwrap(), field);
+        }
+    }
+}
+
+#[test]
+fn a_json_snapshot_file_folds_in_the_way_a_cblock_does() {
+    let root = scratch("add-json");
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("venue.json");
+
+    // What one dictionary wrote is what another reads: a snapshot states its
+    // own memberships, so no dialect is named at this door.
+    let mut venue = tagged("VenueRef", 9001, DataType::utf8());
+    venue.as_fix_mut().set_branches(["venue"]).unwrap();
+    let source = FixRegistry::from_fields([venue]).unwrap();
+    std::fs::write(&path, source.into_json().unwrap()).unwrap();
+
+    let mut registry = FixRegistry::new();
+    let file = yggdryl::holder::local::File::new(&path).unwrap();
+    let (added, merged) = registry.add_json_file(&file).unwrap();
+    assert_eq!((added, merged), (1, 2), "one field, the two clock seeds");
+    assert_eq!(registry.field_by_tag(9001).unwrap().name(), "VenueRef");
+    assert!(
+        registry
+            .field_by_tag(9001)
+            .unwrap()
+            .as_fix()
+            .has_branch("venue")
+    );
+
+    // One mutation: a document that does not parse leaves it as it was.
+    let before = registry.stable_hash();
+    std::fs::write(&path, br#"{"fields":[],"components":[],"groups":"no"}"#).unwrap();
+    let error = registry
+        .add_json_file(&yggdryl::holder::local::File::new(&path).unwrap())
+        .expect_err("a category that is not an array");
+    assert!(error.to_string().contains("venue.json"), "{error}");
+    assert_eq!(registry.stable_hash(), before);
+
+    std::fs::remove_dir_all(&root).unwrap();
+}

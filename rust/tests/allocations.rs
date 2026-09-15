@@ -837,7 +837,7 @@ fn a_fix_lineage_read_allocates_nothing() {
     // position is carried by the borrowed cursor, not by a rendered copy.
     let mut edited = DataType::utf8().nullable_field("LastShares");
     edited
-        .set_metadata([("fix:lineage", r#"{"entries":[{"name":"x","since":"2.7"}]}"#)])
+        .set_metadata([("fix:lineage", r#"[{"name":"x","since":"2.7"}]"#)])
         .expect("a hand-edited document");
     let refused = edited.as_fix();
     free("name_at refused", || {

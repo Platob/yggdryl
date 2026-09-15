@@ -265,10 +265,10 @@ def test_direction_rules_cross_as_a_list() -> None:
     assert field.fix.directions == rules
     # The stored text is the canonical document, backslashes escaped.
     assert field.metadata["fix:directions"] == (
-        '{"directions":[{"code":"S","patterns":["(?i)^TX\\\\b"]},'
-        '{"code":"R","patterns":["(?i)^RX\\\\b"]}]}'
+        '[{"code":"S","patterns":["(?i)^TX\\\\b"]},'
+        '{"code":"R","patterns":["(?i)^RX\\\\b"]}]'
     )
-    assert json.loads(field.metadata["fix:directions"]) == {"directions": rules}
+    assert json.loads(field.metadata["fix:directions"]) == rules
 
     # A codec compiles the rules of the dictionary it is built over, once,
     # and the line door fills tag 385 from them; the verb table no longer
@@ -1118,6 +1118,53 @@ def test_a_cblock_reads_in_whole_and_stamps_its_dialect_on_every_field(
     with pytest.raises(ValueError, match="fix:branches"):
         registry.add_cfb_file(path, dialect="mor,gan")
     assert registry.dialects() == ["morgan", "msfix44"]
+
+
+def test_a_glob_reads_every_cblock_it_selects_and_a_snapshot_folds_beside_them(
+    tmp_path: pathlib.Path,
+) -> None:
+    tree = tmp_path / "cblocks"
+    tree.mkdir()
+    (tree / "MSFIX44.cfb").write_text(CBLOCK, encoding="utf-8")
+    (tree / "BLPFIX44.cfb").write_text(
+        CBLOCK.replace('name="10001" alt="ExcludedDealers"', 'name="10002" alt="BlpDealers"'),
+        encoding="utf-8",
+    )
+    (tree / "notes.txt").write_text("not a dictionary", encoding="utf-8")
+
+    # The pattern is the filter and each file names its own dialect from its
+    # own stem, which is what globbing a folder of counterparty files is for.
+    registry = FixRegistry()
+    files, added, merged = registry.add_cfb_files(tree, "*.cfb")
+    assert (files, added) == (2, 3)
+    assert merged == 5, "the shared tag once, plus two clock seeds per file"
+    assert registry.dialects() == ["blpfix44", "msfix44"]
+    assert registry.field_by_tag(10001).fix.branches == ["msfix44"]
+    assert registry.field_by_tag(10002).fix.branches == ["blpfix44"]
+
+    # A name supplied here stamps every matched file with the one membership,
+    # and a pattern selecting nothing folds nothing rather than raising.
+    named = FixRegistry()
+    named.add_cfb_files(tree, "*.cfb", "venues")
+    assert named.dialects() == ["venues"]
+    assert named.add_cfb_files(tree, "*.xml") == (0, 0, 0)
+
+    # A snapshot folds the same way and takes no dialect: it already carries
+    # the memberships its writer meant.
+    snapshot = tmp_path / "venues.json"
+    snapshot.write_text(named.into_json(), encoding="utf-8")
+    folded = FixRegistry()
+    assert folded.add_json_file(snapshot) == (3, 2)
+    assert folded.dialects() == ["venues"]
+    assert folded.field_by_tag(10002).fix.branches == ["venues"]
+
+    # One mutation for the whole call: a file that will not parse leaves the
+    # dictionary exactly as it was, and the refusal names that file.
+    (tree / "zzz.cfb").write_text("<cplugin-configuration><vocabulary>", encoding="utf-8")
+    before = FixRegistry()
+    with pytest.raises(ValueError, match="zzz.cfb"):
+        before.add_cfb_files(tree, "*.cfb")
+    assert before == FixRegistry()
 
 
 def test_a_cblock_answers_its_vocabulary_and_folds_into_a_dictionary(

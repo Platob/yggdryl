@@ -60,8 +60,13 @@ impl Workspace {
 
     fn document(&self, field: &Field) -> PathBuf {
         let path = self.0.join(format!("{}.json", field.name()));
-        std::fs::write(&path, field.clone().into_json_bytes().expect("native JSON"))
-            .expect("write definition");
+        let document =
+            yggdryl::into_fix_document(field.clone()).expect("one FIX definition document");
+        std::fs::write(
+            &path,
+            yggdryl::into_json_scalar(&document).expect("native JSON"),
+        )
+        .expect("write definition");
         path
     }
 
@@ -76,7 +81,8 @@ impl Workspace {
 
     fn read(&self, category: &str, name: &str) -> Field {
         let output = self.success(&[category, "read", name, "--json"]);
-        Field::from_json_bytes(&output.stdout).expect("native Field stdout")
+        let document = yggdryl::from_json_scalar(&output.stdout).expect("native JSON stdout");
+        yggdryl::from_fix_document(document).expect("native Field stdout")
     }
 }
 
@@ -497,15 +503,15 @@ fn field_codes_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
         "--tag",
         "54",
         "--codes",
-        r#"{"codes":[{"value":"2","name":"Sell"},{"value":"1","name":"Buy"}]}"#,
+        r#"[{"value":"2","name":"Sell"},{"value":"1","name":"Buy"}]"#,
     ]);
     let field = workspace.read("fields", "54");
     assert_eq!(field.as_fix().code_value("buy"), Some("1"));
     assert_eq!(field.as_fix().codes().next().unwrap().unwrap().value(), "1");
     for document in [
         "not json",
-        r#"{"codes":[]}junk"#,
-        r#"{"codes":[{"value":"1","name":"Buy"},{"value":"2","name":"Buy"}]}"#,
+        r"[]junk",
+        r#"[{"value":"1","name":"Buy"},{"value":"2","name":"Buy"}]"#,
     ] {
         workspace.failure(&[
             "fields", "update", "Side", "int32", "--tag", "54", "--codes", document,
@@ -523,14 +529,7 @@ fn field_codes_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
         "Side",
     ]);
     workspace.success(&[
-        "fields",
-        "update",
-        "Side",
-        "int32",
-        "--tag",
-        "54",
-        "--codes",
-        r#"{"codes":[]}"#,
+        "fields", "update", "Side", "int32", "--tag", "54", "--codes", r"[]",
     ]);
     assert_eq!(workspace.read("fields", "54").as_fix().codes().count(), 0);
 }
@@ -538,7 +537,7 @@ fn field_codes_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
 #[test]
 fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic() {
     let workspace = Workspace::new();
-    let codes = r#"{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}"#;
+    let codes = r#"[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]"#;
     workspace.success(&[
         "fields",
         "create",
@@ -549,7 +548,7 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
         "--codes",
         codes,
         "--directions",
-        r#"{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]}"#,
+        r#"[{"code":"S","patterns":["(?i)^TX\\b"]},{"code":"R","patterns":["(?i)^RX\\b"]}]"#,
     ]);
     let field = workspace.read("fields", "385");
     // Each raw document was re-rendered through its typed setter, and neither
@@ -571,15 +570,11 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
     assert_eq!(
         field.get_metadata("fix:directions"),
         Some(concat!(
-            r#"{"directions":[{"code":"S","patterns":["(?i)^TX\\b"]},"#,
-            r#"{"code":"R","patterns":["(?i)^RX\\b"]}]}"#,
+            r#"[{"code":"S","patterns":["(?i)^TX\\b"]},"#,
+            r#"{"code":"R","patterns":["(?i)^RX\\b"]}]"#,
         ))
     );
-    for document in [
-        "not json",
-        r#"{"directions":[]}junk"#,
-        r#"{"directions":[{"code":"S","patterns":["("]}]}"#,
-    ] {
+    for document in ["not json", r"[]junk", r#"[{"code":"S","patterns":["("]}]"#] {
         workspace.failure(&[
             "fields",
             "update",
@@ -604,7 +599,7 @@ fn direction_rules_are_canonical_inline_metadata_and_invalid_updates_are_atomic(
         "--codes",
         codes,
         "--directions",
-        r#"{"directions":[]}"#,
+        r"[]",
     ]);
     let cleared = workspace.read("fields", "385");
     assert_eq!(cleared.as_fix().directions().count(), 0);

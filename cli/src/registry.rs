@@ -163,7 +163,12 @@ pub fn list(
 pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Result<()> {
     let field = resolve(store.registry(), category, key)?;
     if json {
-        println!("{}", field.clone().into_json()?);
+        // The shape a store writes, so what this prints can be edited and
+        // handed back through `--input` or dropped into a store tree.
+        println!(
+            "{}",
+            yggdryl::into_json_scalar(&yggdryl::into_fix_document(field.clone())?)?
+        );
         return Ok(());
     }
     let view = field.as_fix();

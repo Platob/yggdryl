@@ -554,11 +554,16 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// session is `bridgesessionid`, not `sessionid`: a bridge row spells its own
 /// `SESSIONID` for the counterparty session, which `sendersessionid` already
 /// owns. `snapshotat` moves with them: it is what a snapshot stamps and
-/// nothing else, so its description says so and its column is nullable.
+/// nothing else, so its description says so and its column is nullable. The
+/// last thing to move it is the canonical documents becoming the arrays they
+/// always were: `fix:codes` is `[{...}]` where it was `{"codes":[{...}]}`,
+/// and `fix:lineage`, `fix:replacements` and `fix:directions` lose the same
+/// wrapper, so every shipped field carrying one holds different text for the
+/// same facts.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 12_951_011_944_693_588_924);
+    assert_eq!(registry.stable_hash(), 8_550_823_950_921_093_740);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

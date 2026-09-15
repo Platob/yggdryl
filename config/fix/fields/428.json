@@ -44,7 +44,40 @@
     "metadata": {
       "description": "Time unit associated with the dividend accrual floating rate index curve period.",
       "display": "UnderlyingDividendFloatingRateIndexCurveUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42803"
     }
   },
@@ -81,7 +114,23 @@
     "metadata": {
       "description": "Identifies whether the rate spread is applied to a long or short position.",
       "display": "UnderlyingDividendFloatingRateSpreadPositionType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Short\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Short\"},{\"value\":\"1\",\"name\":\"Long\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Long\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Short",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Short"
+        },
+        {
+          "value": "1",
+          "name": "Long",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Long"
+        }
+      ],
       "fix:tag": "42806"
     }
   },
@@ -94,7 +143,23 @@
     "metadata": {
       "description": "Specifies the yield calculation treatment for the index.",
       "display": "UnderlyingDividendFloatingRateTreatment",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"BondEquivalentYield\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Bond equivalent yield\"},{\"value\":\"1\",\"name\":\"MoneyMarketYield\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Money market yield\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "BondEquivalentYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Bond equivalent yield"
+        },
+        {
+          "value": "1",
+          "name": "MoneyMarketYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Money market yield"
+        }
+      ],
       "fix:tag": "42807"
     }
   },
@@ -119,7 +184,24 @@
     "metadata": {
       "description": "Reference to the buyer of the cap rate option through its trade side.",
       "display": "UnderlyingDividendCapRateBuySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "42809"
     }
   },
@@ -132,7 +214,24 @@
     "metadata": {
       "description": "Reference to the seller of the cap rate option through its trade side.",
       "display": "UnderlyingDividendCapRateSellSide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "42810"
     }
   },
@@ -157,7 +256,24 @@
     "metadata": {
       "description": "Reference to the buyer of the floor rate option through its trade side.",
       "display": "UnderlyingDividendFloorRateBuySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "42812"
     }
   },
@@ -170,7 +286,24 @@
     "metadata": {
       "description": "Reference to the seller of the floor rate option through its trade side.",
       "display": "UnderlyingDividendFloorRateSellSide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "42813"
     }
   },
@@ -195,7 +328,29 @@
     "metadata": {
       "description": "Specifies the rounding direction of the final rate.",
       "display": "UnderlyingDividendFinalRateRoundingDirection",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RoundToNearest\",\"since\":\"4.3\",\"sort\":1,\"doc\":\"Round to nearest\"},{\"value\":\"1\",\"name\":\"RoundDown\",\"since\":\"4.3\",\"sort\":2,\"doc\":\"Round down\"},{\"value\":\"2\",\"name\":\"RoundUp\",\"since\":\"4.3\",\"sort\":3,\"doc\":\"Round up\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RoundToNearest",
+          "since": "4.3",
+          "sort": 1,
+          "doc": "Round to nearest"
+        },
+        {
+          "value": "1",
+          "name": "RoundDown",
+          "since": "4.3",
+          "sort": 2,
+          "doc": "Round down"
+        },
+        {
+          "value": "2",
+          "name": "RoundUp",
+          "since": "4.3",
+          "sort": 3,
+          "doc": "Round up"
+        }
+      ],
       "fix:tag": "42815"
     }
   },
@@ -220,7 +375,23 @@
     "metadata": {
       "description": "When averaging is applicable, used to specify whether a weighted or unweighted average method of calculation is to be used.",
       "display": "UnderlyingDividendAveragingMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Unweighted\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Unweighted\"},{\"value\":\"1\",\"name\":\"Weighted\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Weighted\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Unweighted",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Unweighted"
+        },
+        {
+          "value": "1",
+          "name": "Weighted",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Weighted"
+        }
+      ],
       "fix:tag": "42817"
     }
   },
@@ -233,7 +404,23 @@
     "metadata": {
       "description": "The specification of any provisions for calculating payment obligations when a floating rate is negative (either due to a quoted negative floating rate or by operation of a spread that is subtracted from the floating rate).",
       "display": "UnderlyingDividendNegativeRateTreatment",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ZeroInterestRateMethod\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Zero interest rate method\"},{\"value\":\"1\",\"name\":\"NegativeInterestRateMethod\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Negative interest rate method\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ZeroInterestRateMethod",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Zero interest rate method"
+        },
+        {
+          "value": "1",
+          "name": "NegativeInterestRateMethod",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Negative interest rate method"
+        }
+      ],
       "fix:tag": "42818"
     }
   },
@@ -270,7 +457,40 @@
     "metadata": {
       "description": "Time unit associated with the relative accrual payment date offset.",
       "display": "UnderlyingDividendAccrualPaymentDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42821"
     }
   },
@@ -283,7 +503,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative accrual payment date offset.",
       "display": "UnderlyingDividendAccrualPaymentDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42822"
     }
   },
@@ -309,7 +577,71 @@
     "metadata": {
       "description": "Accrual payment date adjustment business day convention.",
       "display": "UnderlyingDividendAccrualPaymentDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "42824"
     }
   },
@@ -347,7 +679,23 @@
     "metadata": {
       "description": "Defines the contract event which the receiver of the derivative is entitled to the dividend.",
       "display": "UnderlyingDividendEntitlementEvent",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"ExDate\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Ex-date\"},{\"value\":\"1\",\"name\":\"RecordDate\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Record date\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "ExDate",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Ex-date"
+        },
+        {
+          "value": "1",
+          "name": "RecordDate",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Record date"
+        }
+      ],
       "fix:tag": "42827"
     }
   },
@@ -360,7 +708,39 @@
     "metadata": {
       "description": "Indicates how the gross cash dividend amount per share is determined.",
       "display": "UnderlyingDividendAmountType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RecordAmount\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Record amount\"},{\"value\":\"1\",\"name\":\"ExAmount\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Ex amount\"},{\"value\":\"2\",\"name\":\"PaidAmount\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Paid amount\"},{\"value\":\"3\",\"name\":\"PerMasterConfirm\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"As specified in master confirmation\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RecordAmount",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Record amount"
+        },
+        {
+          "value": "1",
+          "name": "ExAmount",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Ex amount"
+        },
+        {
+          "value": "2",
+          "name": "PaidAmount",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Paid amount"
+        },
+        {
+          "value": "3",
+          "name": "PerMasterConfirm",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "As specified in master confirmation"
+        }
+      ],
       "fix:tag": "42828"
     }
   },
@@ -385,7 +765,24 @@
     "metadata": {
       "description": "Reference to the party through its side in the trade who makes the determination whether dividends are extraordinary in relation to normal levels.",
       "display": "UnderlyingExtraordinaryDividendPartySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buyer\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buyer of the trade\"},{\"value\":\"2\",\"name\":\"Seller\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Seller of the trade\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buyer",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buyer of the trade"
+        },
+        {
+          "value": "2",
+          "name": "Seller",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Seller of the trade"
+        }
+      ],
       "fix:tag": "42830"
     }
   },
@@ -398,7 +795,39 @@
     "metadata": {
       "description": "Indicates how the extraordinary gross cash dividend per share is determined.",
       "display": "UnderlyingExtraordinaryDividendAmountType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"RecordAmount\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Record amount\"},{\"value\":\"1\",\"name\":\"ExAmount\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Ex amount\"},{\"value\":\"2\",\"name\":\"PaidAmount\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Paid amount\"},{\"value\":\"3\",\"name\":\"PerMasterConfirm\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"As specified in master confirmation\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "RecordAmount",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Record amount"
+        },
+        {
+          "value": "1",
+          "name": "ExAmount",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Ex amount"
+        },
+        {
+          "value": "2",
+          "name": "PaidAmount",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Paid amount"
+        },
+        {
+          "value": "3",
+          "name": "PerMasterConfirm",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "As specified in master confirmation"
+        }
+      ],
       "fix:tag": "42831"
     }
   },
@@ -447,7 +876,39 @@
     "metadata": {
       "description": "The compounding method to be used when more than one dividend period contributes to a single payment.",
       "display": "UnderlyingDividendCompoundingMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"Flat\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Flat\"},{\"value\":\"2\",\"name\":\"Straight\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Straight\"},{\"value\":\"3\",\"name\":\"SpreadExclusive\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Spread exclusive\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "None"
+        },
+        {
+          "value": "1",
+          "name": "Flat",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Flat"
+        },
+        {
+          "value": "2",
+          "name": "Straight",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Straight"
+        },
+        {
+          "value": "3",
+          "name": "SpreadExclusive",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Spread exclusive"
+        }
+      ],
       "fix:tag": "42835"
     }
   },
@@ -496,7 +957,23 @@
     "metadata": {
       "description": "Defines the treatment of non-cash dividends.",
       "display": "UnderlyingNonCashDividendTreatment",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"PotentialAdjustment\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Potential adjustment event\"},{\"value\":\"1\",\"name\":\"CashEquivalent\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Cash equivalent\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "PotentialAdjustment",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Potential adjustment event"
+        },
+        {
+          "value": "1",
+          "name": "CashEquivalent",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Cash equivalent"
+        }
+      ],
       "fix:tag": "42839"
     }
   },
@@ -509,7 +986,23 @@
     "metadata": {
       "description": "Defines how the composition of dividends is to be determined.",
       "display": "UnderlyingDividendComposition",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"EquityAmountReceiver\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Equity amount receiver election\"},{\"value\":\"1\",\"name\":\"CalculationAgent\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Calculation agent election\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "EquityAmountReceiver",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Equity amount receiver election"
+        },
+        {
+          "value": "1",
+          "name": "CalculationAgent",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Calculation agent election"
+        }
+      ],
       "fix:tag": "42840"
     }
   },
@@ -606,7 +1099,40 @@
     "metadata": {
       "description": "Time unit associated with the relative FX trigger date offset.",
       "display": "UnderlyingDividendFXTriggerDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42848"
     }
   },
@@ -619,7 +1145,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative FX trigger date offset.",
       "display": "UnderlyingDividendFXTriggerDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42849"
     }
   },
@@ -645,7 +1219,71 @@
     "metadata": {
       "description": "The business day convention used for the FX trigger date adjustment.",
       "display": "UnderlyingDividendFXTriggerDateBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "42851"
     }
   },
@@ -854,7 +1492,71 @@
     "metadata": {
       "description": "The dividend period dates business day convention.",
       "display": "UnderlyingDividendPeriodBusinessDayConvention",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotApplicable\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Not applicable\"},{\"value\":\"1\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"None (current day)\"},{\"value\":\"2\",\"name\":\"FollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Following day\"},{\"value\":\"3\",\"name\":\"FloatingRateNote\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Floating rate note\"},{\"value\":\"4\",\"name\":\"ModifiedFollowingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Modified following day\"},{\"value\":\"5\",\"name\":\"PrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Preceding day\"},{\"value\":\"6\",\"name\":\"ModifiedPrecedingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":6,\"doc\":\"Modified preceding day\"},{\"value\":\"7\",\"name\":\"NearestDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":7,\"doc\":\"Nearest day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotApplicable",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Not applicable"
+        },
+        {
+          "value": "1",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "None (current day)"
+        },
+        {
+          "value": "2",
+          "name": "FollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Following day"
+        },
+        {
+          "value": "3",
+          "name": "FloatingRateNote",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Floating rate note"
+        },
+        {
+          "value": "4",
+          "name": "ModifiedFollowingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Modified following day"
+        },
+        {
+          "value": "5",
+          "name": "PrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Preceding day"
+        },
+        {
+          "value": "6",
+          "name": "ModifiedPrecedingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 6,
+          "doc": "Modified preceding day"
+        },
+        {
+          "value": "7",
+          "name": "NearestDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 7,
+          "doc": "Nearest day"
+        }
+      ],
       "fix:tag": "42868"
     }
   },
@@ -904,7 +1606,40 @@
     "metadata": {
       "description": "Time unit associated with the relative dividend period valuation date offset.",
       "display": "UnderlyingDividendPeriodValuationDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42872"
     }
   },
@@ -917,7 +1652,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative dividend period valuation date offset.",
       "display": "UnderlyingDividendPeriodValuationDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42873"
     }
   },
@@ -980,7 +1763,40 @@
     "metadata": {
       "description": "Time unit associated with the relative dividend period payment date offset.",
       "display": "UnderlyingDividendPeriodPaymentDateOffsetUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Day\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Month\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Day"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Month"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "42878"
     }
   },
@@ -993,7 +1809,55 @@
     "metadata": {
       "description": "Specifies the day type of the relative dividend period payment date offset.",
       "display": "UnderlyingDividendPeriodPaymentDateOffsetDayType",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Business\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"Business\"},{\"value\":\"1\",\"name\":\"Calendar\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Calendar\"},{\"value\":\"2\",\"name\":\"CommodityBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Commodity business\"},{\"value\":\"3\",\"name\":\"CurrencyBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":3,\"doc\":\"Currency business\"},{\"value\":\"4\",\"name\":\"ExchangeBusiness\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":4,\"doc\":\"Exchange business\"},{\"value\":\"5\",\"name\":\"ScheduledTradingDay\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":5,\"doc\":\"Scheduled trading day\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Business",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "Business"
+        },
+        {
+          "value": "1",
+          "name": "Calendar",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Calendar"
+        },
+        {
+          "value": "2",
+          "name": "CommodityBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Commodity business"
+        },
+        {
+          "value": "3",
+          "name": "CurrencyBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 3,
+          "doc": "Currency business"
+        },
+        {
+          "value": "4",
+          "name": "ExchangeBusiness",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 4,
+          "doc": "Exchange business"
+        },
+        {
+          "value": "5",
+          "name": "ScheduledTradingDay",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 5,
+          "doc": "Scheduled trading day"
+        }
+      ],
       "fix:tag": "42879"
     }
   },
@@ -1019,7 +1883,15 @@
     "metadata": {
       "description": "Identifier for linking this stream dividend period to an underlier through an instance of RelatedInstrumentGrp.",
       "display": "UnderlyingDividendPeriodXID",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingdividendperiodxid\",\"type\":{\"type\":\"string\"}}]}",
+      "fix:lineage": [
+        {
+          "since": "5.0.2",
+          "name": "underlyingdividendperiodxid",
+          "type": {
+            "type": "string"
+          }
+        }
+      ],
       "fix:tag": "42881"
     }
   },
@@ -1092,7 +1964,24 @@
     "metadata": {
       "description": "Side value of the party electing the settlement method.",
       "display": "UnderlyingSettlMethodElectingPartySide",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Buy\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Buy\"},{\"value\":\"2\",\"name\":\"Sell\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":2,\"doc\":\"Sell\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Buy",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Buy"
+        },
+        {
+          "value": "2",
+          "name": "Sell",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 2,
+          "doc": "Sell"
+        }
+      ],
       "fix:tag": "42887"
     }
   },
@@ -1166,7 +2055,31 @@
     "metadata": {
       "description": "The quote side of the benchmark to be used for calculating the \"make whole\" amount.",
       "display": "UnderlyingMakeWholeBenchmarkQuote",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Bid\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Bid\"},{\"value\":\"1\",\"name\":\"Mid\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Mid\"},{\"value\":\"2\",\"name\":\"Offer\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Offer\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Bid",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Bid"
+        },
+        {
+          "value": "1",
+          "name": "Mid",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Mid"
+        },
+        {
+          "value": "2",
+          "name": "Offer",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Offer"
+        }
+      ],
       "fix:tag": "42893"
     }
   },
@@ -1179,7 +2092,23 @@
     "metadata": {
       "description": "The method used when calculating the \"make whole\" amount. The most common is linear method.",
       "display": "UnderlyingMakeWholeInterpolationMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"LinearZeroYield\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Linear zero yield\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "None"
+        },
+        {
+          "value": "1",
+          "name": "LinearZeroYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Linear zero yield"
+        }
+      ],
       "fix:tag": "42894"
     }
   },
@@ -1204,7 +2133,15 @@
     "metadata": {
       "description": "Reference to the stream which details the compounding fixed or floating rate.",
       "display": "UnderlyingPaymentStreamCompoundingXIDRef",
-      "fix:lineage": "{\"entries\":[{\"since\":\"5.0.2\",\"name\":\"underlyingpaymentstreamcompoundingxidref\",\"type\":{\"type\":\"string\"}}]}",
+      "fix:lineage": [
+        {
+          "since": "5.0.2",
+          "name": "underlyingpaymentstreamcompoundingxidref",
+          "type": {
+            "type": "string"
+          }
+        }
+      ],
       "fix:tag": "42896"
     }
   },
@@ -1229,7 +2166,23 @@
     "metadata": {
       "description": "The method used when calculating the index rate from multiple points on the curve. The most common is linear method.",
       "display": "UnderlyingPaymentStreamInterpolationMethod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"None\",\"since\":\"5.0.2\",\"ep\":161,\"doc\":\"None\"},{\"value\":\"1\",\"name\":\"LinearZeroYield\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":1,\"doc\":\"Linear zero yield\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "None",
+          "since": "5.0.2",
+          "ep": 161,
+          "doc": "None"
+        },
+        {
+          "value": "1",
+          "name": "LinearZeroYield",
+          "since": "5.0.2",
+          "ep": 161,
+          "sort": 1,
+          "doc": "Linear zero yield"
+        }
+      ],
       "fix:tag": "42898"
     }
   },
@@ -1242,7 +2195,39 @@
     "metadata": {
       "description": "Defines applicable periods for interpolation.",
       "display": "UnderlyingPaymentStreamInterpolationPeriod",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Initial\",\"since\":\"5.0.2\",\"ep\":208,\"doc\":\"Initial\"},{\"value\":\"1\",\"name\":\"InitialAndFinal\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":1,\"doc\":\"Initial and final\"},{\"value\":\"2\",\"name\":\"Final\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":2,\"doc\":\"Final\"},{\"value\":\"3\",\"name\":\"AnyPeriod\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":3,\"doc\":\"Any period\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Initial",
+          "since": "5.0.2",
+          "ep": 208,
+          "doc": "Initial"
+        },
+        {
+          "value": "1",
+          "name": "InitialAndFinal",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 1,
+          "doc": "Initial and final"
+        },
+        {
+          "value": "2",
+          "name": "Final",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 2,
+          "doc": "Final"
+        },
+        {
+          "value": "3",
+          "name": "AnyPeriod",
+          "since": "5.0.2",
+          "ep": 208,
+          "sort": 3,
+          "doc": "Any period"
+        }
+      ],
       "fix:tag": "42899"
     }
   }

@@ -1137,9 +1137,12 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
 
     // A CBlock spells a type as the wire value and a qualifier, and the wire
     // value is what tag 35 carries: `P Report Ack` is `P` used as a report
-    // ack, under the wording the listing gave it.
+    // ack, under the wording the listing gave it. The qualified spelling is
+    // only ever a spelling - a file that knows `P` exists has not said what
+    // anyone calls it, so the code is named after the value it is and never
+    // after the qualifier.
     assert_eq!(view.code_value("P Report Ack"), Some("P"));
-    assert_eq!(view.code_name("P"), Some("P Report Ack"));
+    assert_eq!(view.code_name("P"), Some("P"));
     assert_eq!(
         view.code_by_name("P Report Ack")
             .and_then(|code| code.parse_doc().ok().flatten()),
@@ -1150,12 +1153,25 @@ fn the_message_types_a_file_declares_become_the_code_set_of_tag_35() {
     // are one type on the wire: one code, answering to both spellings.
     assert_eq!(view.code_value("AR Inbound"), Some("AR"));
     assert_eq!(view.code_value("AR Outbound"), Some("AR"));
-    assert_eq!(view.code_name("AR"), Some("AR Inbound"));
+    assert_eq!(view.code_name("AR"), Some("AR"));
     assert_eq!(
         view.codes().count(),
         4,
         "AR was declared twice and is one code"
     );
+
+    // And a name the dictionary this folds into already carries takes the
+    // placeholder's place, rather than the dialect renaming the type.
+    let mut held = DataType::utf8().nullable_field("MsgType");
+    held.as_fix_mut().set_tag(35).unwrap();
+    held.as_fix_mut()
+        .set_codes(&[yggdryl::FixCode::new("AllocationReportAck", "P")])
+        .unwrap();
+    let mut dictionary = FixRegistry::from_fields([held]).unwrap();
+    dictionary.merge_with(&registry).unwrap();
+    let merged = dictionary.field_by_tag(35).unwrap();
+    assert_eq!(merged.as_fix().code_name("P"), Some("AllocationReportAck"));
+    assert_eq!(merged.as_fix().code_value("P Report Ack"), Some("P"));
 
     // Two roles of one wire type are one code too: `c SDR` and `c SLR` are
     // both tag 35 `c`, and a code set keys on the wire.
@@ -2420,4 +2436,142 @@ fn a_mapping_names_a_type_the_listing_declared_or_it_names_nothing() {
             .code_value("AE Inbound"),
         Some("AE")
     );
+}
+
+#[test]
+fn two_grammars_bound_under_one_wire_type_are_one_message_carrying_both() {
+    // The dialect describes message type 6 in both directions, and the two
+    // bindings do not carry the same body: inbound states tag 23, outbound
+    // states tag 28. One wire type is one message, so the dictionary holds
+    // one entry carrying every field either binding declared.
+    let body = r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<message-types>
+		<message-type value="6 Inbound" description="Indication of Interest" />
+		<message-type value="6 Outbound" description="Indication of Interest" />
+	</message-types>
+	<vocabulary>
+		<vocabulary-tag name="35" alt="MsgType" type="string" />
+		<vocabulary-tag name="23" alt="IOIID" type="string" />
+		<vocabulary-tag name="28" alt="IOITransType" type="char" />
+	</vocabulary>
+	<grammar-binding type="6 Inbound">
+		<grammar><tag-constraint name="35" part="header" required="true" /><tag-constraint name="23" part="body" /></grammar>
+	</grammar-binding>
+	<grammar-binding type="6 Outbound">
+		<grammar><tag-constraint name="35" part="header" required="true" /><tag-constraint name="28" part="body" /></grammar>
+	</grammar-binding>
+</cplugin-configuration>"#;
+    let (registry, roots) = parse(body);
+
+    // Tag 35 carries one code for the wire value, named after the value
+    // rather than after either qualifier, answering to both spellings.
+    let msgtype = registry.field_by_tag(35).expect("MsgType");
+    assert_eq!(msgtype.as_fix().codes().count(), 1);
+    assert_eq!(msgtype.as_fix().code_name("6"), Some("6"));
+    assert_eq!(msgtype.as_fix().code_value("6 Inbound"), Some("6"));
+    assert_eq!(msgtype.as_fix().code_value("6 Outbound"), Some("6"));
+
+    // One message, holding the union of what the two bindings declared, the
+    // first binding's members first and in its order.
+    assert_eq!(registry.msgtypes().count(), 1 + super::crated_messages());
+    let message = registry.msgtype("6").expect("one message under tag 35 `6`");
+    assert_eq!(message.as_str(), "6");
+    let members: Vec<&str> = message
+        .as_field()
+        .fields()
+        .iter()
+        .map(yggdryl::Field::name)
+        .collect();
+    assert_eq!(members, ["msgtype", "ioiid", "ioitranstype"]);
+
+    // The roots are still one per binding: that is what the file bound.
+    assert_eq!(roots.len(), 2);
+    assert_eq!(children(&roots[0]), ["msgtype", "ioiid"]);
+    assert_eq!(children(&roots[1]), ["msgtype", "ioitranstype"]);
+}
+
+/// Several CBlocks in one memory tree, for the glob the plural verb walks.
+fn cblock_tree(files: &[(&str, &str)]) -> yggdryl::holder::Holder {
+    let filesystem: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+    filesystem
+        .create_dir("cblocks", true)
+        .expect("a container to write into");
+    for (name, body) in files {
+        let mut file = File::from_path(Arc::clone(&filesystem), format!("cblocks/{name}"), None)
+            .expect("a path under it");
+        file.write_all_bytes(body.as_bytes()).expect("the document");
+    }
+    yggdryl::holder::Holder::from(
+        yggdryl::holder::fs::Folder::from_path(filesystem, "cblocks", None)
+            .expect("the folder holding them"),
+    )
+}
+
+/// One CBlock declaring one tag, for the ordering and membership cases.
+fn one_tag(tag: i32, name: &str) -> String {
+    format!(
+        r#"<?xml version="1.0"?>
+<cplugin-configuration fix-version="4.4">
+	<vocabulary><vocabulary-tag name="{tag}" alt="{name}" type="string" /></vocabulary>
+</cplugin-configuration>"#
+    )
+}
+
+#[test]
+fn a_glob_folds_every_cblock_it_selects_under_each_file_s_own_dialect() {
+    let tree = cblock_tree(&[
+        ("msfix44.cfb", &one_tag(9001, "MsVenueRef")),
+        ("blpfix44.cfb", &one_tag(9002, "BlpVenueRef")),
+        ("notes.txt", "not a dictionary"),
+    ]);
+    let mut registry = FixRegistry::new();
+    let (files, added, merged) = registry
+        .add_cfb_files(tree.as_io(), "*.cfb", None)
+        .expect("two readable CBlocks");
+
+    // The pattern is the filter: the text file is not selected, and the two
+    // seeded clocks merge once per file, as one `add_cfb_file` merges them.
+    assert_eq!((files, added), (2, 2));
+    assert_eq!(merged, 4, "two clock seeds per file");
+
+    // Each file named its own dialect from its own stem, which is what
+    // globbing a folder of counterparty files is for.
+    assert_eq!(branches(registry.field_by_tag(9001).unwrap()), ["msfix44"]);
+    assert_eq!(branches(registry.field_by_tag(9002).unwrap()), ["blpfix44"]);
+
+    // A name supplied here stamps every matched file with the one membership.
+    let mut named = FixRegistry::new();
+    named
+        .add_cfb_files(tree.as_io(), "*.cfb", Some("venues"))
+        .expect("two readable CBlocks");
+    assert_eq!(branches(named.field_by_tag(9001).unwrap()), ["venues"]);
+    assert_eq!(branches(named.field_by_tag(9002).unwrap()), ["venues"]);
+
+    // A pattern selecting nothing folds nothing rather than refusing.
+    let mut empty = FixRegistry::new();
+    assert_eq!(
+        empty.add_cfb_files(tree.as_io(), "*.xml", None).unwrap(),
+        (0, 0, 0)
+    );
+    assert_eq!(empty, FixRegistry::new());
+}
+
+#[test]
+fn one_unreadable_cblock_among_many_leaves_the_dictionary_exactly_as_it_was() {
+    let tree = cblock_tree(&[
+        ("aaa.cfb", &one_tag(9001, "GoodRef")),
+        ("zzz.cfb", "<cplugin-configuration><vocabulary>"),
+    ]);
+    let mut registry = FixRegistry::new();
+    let before = registry.stable_hash();
+    let error = registry
+        .add_cfb_files(tree.as_io(), "*.cfb", None)
+        .expect_err("the second file stops inside an element");
+
+    // The refusal names the file among the matched ones, and nothing the
+    // first file declared was adopted: one copy, one mutation.
+    assert!(error.to_string().contains("zzz.cfb"), "{error}");
+    assert_eq!(registry.stable_hash(), before);
+    assert!(registry.get_field_by_tag(9001).is_none());
 }
