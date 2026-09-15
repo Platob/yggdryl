@@ -3549,3 +3549,88 @@ the way a CBlock does and a malformed one changes nothing.
 file's own dialect, one unreadable file among many leaves the dictionary
 exactly as it was, and two grammars bound under one wire type are one
 message carrying both.
+
+## 40. XML is a media, the `xml:` view is what a document remembers, and Excel and XMLA are their own layers
+
+**Rule.** XML is a record media at `media/xml/`, not a `text::Format`; what a
+document says beyond a datatype rides on `Field` metadata under `xml:`; and the
+two formats built *on* XML - SpreadsheetML and XMLA - are separate media that
+consume this one rather than extensions of it.
+
+**XML is a media, and deliberately not a structured-text format.** JSON, YAML
+and TOML carry documents whose leaves state their own type, so they are read as
+values and bridged to Arrow. XML carries text and shape only, so what it needs
+is a schema, a projection and a batch - which is what a media is.
+`MimeType::XML` therefore keeps answering no `Format`, and that is load-bearing
+rather than an omission: `IOMedia::read_arrow` and `write_arrow` test
+`Structured::for_media_type(..).is_ok()` *first*, so making XML a `Format`
+would silently route every XML read through the document bridge and refuse
+every write but overwrite.
+
+**Structure is inferred; type never is.** Every leaf on the wire is text. A
+read given no field infers the shape and types every leaf `utf8`; a read given
+one crosses each leaf through that field's own value contract. There is no
+second type inference, and the schema door - `field_from_xsd` - answers a
+`Field` rather than adding a schema-shaped option, so the declared-field path
+every read already has does the rest.
+
+**`xml:` is what a document remembers.** Four properties, each because
+something reads it back: `xml:namespace` (the URI a name was bound in, which is
+what says two columns called `price` are one column or two), `xml:kind`
+(element, attribute, or the element's own characters - XML spells one fact
+three ways and a row has one cell for it), `xml:name` (the wire spelling when
+it is not the column's name), and `xml:type` (what a schema called a column
+that had to travel as text). A facet a datatype already carries has an owner,
+and a second copy here would be a second answer.
+
+**What a schema maps, and what it keeps instead.** The eight bounded integers,
+the two floats, the binaries, the boolean and a decimal carrying *both* digit
+facets map exactly. An unfaceted `xs:decimal` is unbounded in magnitude and in
+scale, `xs:integer` has no width, the five `g*` types are partial calendar
+values rather than instants, a temporal whose `explicitTimezone` is optional is
+two different columns, and `xs:anyURI` is any string - so all of those travel
+as text with `xml:type` recording the name. `xs:error` and `xs:NOTATION` are
+refused: one has an empty value space, the other means only what its own schema
+means.
+
+**Excel is a separate media, and it is a ZIP of XML parts.** `holder/zip/`
+already reads archives and `media/xml/` already reads the parts, so what an
+Excel media adds is the OPC graph and the style table, and those are its own:
+`[Content_Types].xml` and `_rels/.rels` name the start part, a sheet's path is
+*not* in `workbook.xml` but resolved through `xl/_rels/workbook.xml.rels`, and
+a cell's `s` indexes `cellXfs`, not `numFmts`. Two traps are worth recording
+now because they are invisible from here: **date-ness is a property of the
+style, not the cell type** - built-in `numFmtId`s 14-22, 27-36, 45-47, 50-58
+and 71-81 are dates, ids at or above 164 must be decided by scanning the custom
+`formatCode` - and the 1900 date system reproduces the Lotus bug in which
+serial 60 is the impossible 1900-02-29, so serials below 60 need a correction
+the 1904 system does not. `sharedStrings.xml` with `t="s"` is literally a
+dictionary encoding, so it maps onto `DataType::Dictionary` rather than onto a
+second string table.
+
+**XMLA is a separate layer, and it is a client.** The XML here reads its
+documents already: a rowset response carries its own `xsd:schema` inline, so
+`field_from_xsd` plus a named row element is the whole read path, and the
+corpus tests pin it. What XMLA adds is not parsing - it is HTTP, the two SOAP
+actions, session headers, and the `_xHHHH_` name escaping whose decoded name
+belongs in the `Field` name while the wire spelling belongs in `xml:name`. The
+namespace, never the prefix, is what a matcher keys on: clients write the
+envelope with a default namespace and servers reply with `SOAP-ENV:`,
+`soapenv:`, `soap:` or `m:` for the same elements. `mddataset` is honestly
+outside a flat row model - cells are keyed by a sparse ordinal over an axis
+cross product - and refusing it by namespace is the right answer rather than
+flattening it.
+
+**Written in:** `media/xml/` (`reader.rs` the one event loop, `document.rs` the
+mapping, `writer.rs` the escaping and the declaration-aware write, `xsd.rs`
+both schema directions, `batch.rs` and `handle.rs` the record surface),
+`scheme.rs` and `metadata.rs` (`Scheme::XML` and the registered view),
+`types/protocol/xml.rs` (the vocabulary), `media/{mod,options}.rs` and
+`iobase/transfer.rs` (the dispatch).
+**Fixtures:** `rust/tests/media/xml.rs` - the record surface, the byte budget,
+the list round trip and the spelling a document arrived in.
+`rust/tests/media/xsd.rs` - the mapping, the refusals, and a field that writes
+back the schema it was read from. `rust/tests/media/xml_corpora.rs` - an XMLA
+rowset read under its own inline schema, a SOAP envelope under either prefix
+convention, an ISO 20022 amount, a feed, and the prose documents a row model
+refuses.
