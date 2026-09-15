@@ -2,6 +2,8 @@
 
 `yggdryl::text` reads and writes JSON, JSON Lines, YAML, and TOML over the shared native [`Scalar`](../types/scalar.md); the bindings only translate native and Arrow values.
 
+XML is deliberately **not** one of these. It is a structured format, but it carries text and shape rather than typed values, so what it needs is a schema, a projection and a batch - which is what a media is. It lives at [`media/xml`](xml/index.md) and is reached through the record surface like Avro or Parquet.
+
 ## Contract
 
 | | |

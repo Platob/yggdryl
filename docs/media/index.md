@@ -7,7 +7,7 @@ A handle's declared media type names one scheme, and every scheme answers the sa
 | Key | Value |
 | --- | --- |
 | Owns | `Media`, `Media::open`, `open_as`, `ipc`, `parquet`, `avro`, `text`, `handle`, `into_handle` |
-| Variants | `Ipc`, `Parquet`, `Avro`, `Text` |
+| Variants | `Ipc`, `Parquet`, `Avro`, `Text`, `Xml` |
 | Selects on | the handle's declared media type; nothing is read to decide |
 | Every variant | implements [`IOMedia`](../holder/iobase/records.md): `record_options`, `read_arrow_field`, `read_arrow_reader`, three write methods |
 | Writes take | an [`arrow::BatchReader`](../arrow/readers.md); signatures and validation live in [Records](../holder/iobase/records.md) |
@@ -15,7 +15,7 @@ A handle's declared media type names one scheme, and every scheme answers the sa
 | Documents | JSON, JSON Lines, YAML, and TOML are not record encodings; [Structured documents](structured.md) owns them and their one Arrow bridge |
 | Content coding | the handle's business, not the scheme's |
 | Errors | an encoding with no implementation in this build is reported, never guessed |
-| Bindings | Rust: the enum; Python: `yggdryl.media.Media` with `Ipc`, `Parquet`, `Avro` under it and `Text` beside it; JavaScript: one `IOBase` class |
+| Bindings | Rust: the enum; Python: `yggdryl.media.Media` with `Ipc`, `Parquet`, `Avro`, `Xml` under it and `Text` beside it; JavaScript: one `IOBase` class |
 
 ## Schemes
 
@@ -26,6 +26,7 @@ Each scheme owns three pages: what it is, how rows cross as native scalars, and 
 | Arrow IPC | `application/vnd.apache.arrow.stream`, `.arrows` | [Arrow IPC](ipc/index.md) | [rows](ipc/scalar.md) | [batches](ipc/arrow.md) |
 | Apache Parquet | `application/vnd.apache.parquet`, `.parquet` | [Parquet](parquet/index.md) | [rows](parquet/scalar.md) | [batches](parquet/arrow.md) |
 | Apache Avro | `application/avro`, `.avro` | [Avro](avro/index.md) | [containers](avro/scalar.md) | [batches](avro/arrow.md) |
+| XML | `application/xml`, `text/xml`, `.xml` | [XML](xml/index.md) | [documents](xml/scalar.md) | [rows](xml/arrow.md) |
 | Plain text | `text/plain`, `.txt`, `.log` | [Plain-text records](text/index.md) | [lines](text/scalar.md) | [batches](text/arrow.md) |
 | JSON | `application/json`, `application/x-ndjson`, `.json`, `.jsonl` | [JSON](json/index.md) | [documents](json/scalar.md) | [rows](json/arrow.md) |
 | YAML | `application/yaml`, `.yaml` | [YAML](yaml/index.md) | [documents](yaml/scalar.md) | [rows](yaml/arrow.md) |

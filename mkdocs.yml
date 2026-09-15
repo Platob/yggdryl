@@ -189,6 +189,10 @@ nav:
       - media/avro/index.md
       - Scalars: media/avro/scalar.md
       - Arrow: media/avro/arrow.md
+    - XML:
+      - media/xml/index.md
+      - Scalars: media/xml/scalar.md
+      - Arrow: media/xml/arrow.md
     - Plain text:
       - media/text/index.md
       - Scalars: media/text/scalar.md

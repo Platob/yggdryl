@@ -55,7 +55,7 @@ rust/                    The core crate
   src/holder/            Buffer, local/Arrow filesystems, and buffering
   src/coding/            gzip, zlib/deflate, and Zstandard
   src/charset/           UTF-8, UTF-16, ASCII, ISO 8859, Windows and DOS pages
-  src/media/             IPC, Parquet, Avro, text records, and Iceberg
+  src/media/             IPC, Parquet, Avro, XML, text records, and Iceberg
   src/text/              JSON, YAML, TOML, limits, and inference
   src/{uri,arrow,expression,hashing,fix}/
                          The remaining core layers

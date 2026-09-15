@@ -30,7 +30,7 @@ Each `rust/src/<name>.rs` owns one shared trait, enum, or value (`iobase.rs` own
 | [`holder`](holder/index.md) | `Buffer`, local and generic filesystem handles, buffering, and every `IOBase` implementation |
 | [`coding`](coding/index.md) | gzip, zlib/deflate, zstd, and transparent coded handles |
 | [`charset`](charset/index.md) | UTF-8, UTF-16, US-ASCII, the ISO 8859 and Windows code pages, and transparent transcoded handles |
-| [`media`](media/index.md) | record options, IPC, Parquet, Avro, plain-text records, and Iceberg |
+| [`media`](media/index.md) | record options, IPC, Parquet, Avro, XML, plain-text records, and Iceberg |
 | [`text`](media/structured.md) | structured `Scalar` codecs for JSON, YAML, and TOML, under the [Media](media/index.md) tab as three more schemes |
 | [`uri`](uri/index.md) | URI, URL, URN, path, glob, and partition syntax |
 | [`arrow`](arrow/index.md) | Arrow schema, scalar, array, batch, and reader boundaries |
