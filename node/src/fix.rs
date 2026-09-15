@@ -2267,9 +2267,10 @@ pub fn fix_lifecycle_default_interval_ns_native() -> BigInt {
 /// arrival record, unresolved keys at tag 0. Columns are spelled by the
 /// dictionary's folded canonical names - `msgtype`, never `35` - so a row
 /// reads the way a message reads; the tag stays each column's identity, on
-/// its `fix:tag`, and is what fills it. `beginstring`, `timepartition` and
+/// its `fix:tag`, and is what fills it. `beginstring` and
 /// the replay fields - `sendingtime`, `updatedat`, `createdat`, `msghash`,
-/// `msgphash`, `code`, `snapshotat` - are required.
+/// `msgphash`, `code` - are required; `snapshotat` is the one the bundle
+/// holds without requiring, because only a snapshot stamps it.
 #[napi(js_name = "fixSchema")]
 pub fn fix_schema(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2306,10 +2307,10 @@ pub fn fix_generic_message(
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
-/// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
+/// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means.
 /// A bridge's own row header spells the session instance it handled a line on
-/// as `senderSessionId` for that reason, so the value reaches the FIX column
+/// as `MsgCtxId` for that reason, so the value reaches the FIX column
 /// rather than leading the row - and never over a reading the message stated
 /// itself. Its `pluginid` capture reaches the crate's own column of that name
 /// the same way.

@@ -86,11 +86,12 @@ def test_category_crud_refreshes_references_and_refuses_atomically(tmp_path: Any
         assert registry.get_definition(category, name) is None
         assert registry.remove_definition(category, name) is None
     # Only what every registry is built with is left: the crate's own
-    # twenty-six scalar fields, which are never a definition a caller can
+    # thirty-five scalar fields, which are never a definition a caller can
     # remove, and the two seeded standard clocks, SendingTime (52) and
-    # TransactTime (60). The crate also lists its `altids` Map group.
-    assert len(registry) == len(list(registry.definitions("fields"))) == 28
-    assert len(fix_crate_fields()) == 27
+    # TransactTime (60). The crate also lists its `altids` Map group and its
+    # `instids` Struct, neither of which a scalar iteration counts.
+    assert len(registry) == len(list(registry.definitions("fields"))) == 37
+    assert len(fix_crate_fields()) == 37
     assert [registry.field(tag).name for tag in (52, 60)] == ["sendingtime", "transacttime"]
     assert registry.group_by_tag(65020).name == "altids"
 
@@ -138,8 +139,11 @@ def test_category_iterators_and_singletons_pin_their_registry() -> None:
     # name order.
     assert next(iterator).name == "NewOrderSingle"
     assert next(iterator).name == "Party"
-    # The crate's own message is behind them: every registry carries
-    # `pluginconfig` as it carries the crate's own fields (decision 19).
+    # The crate's own are behind them, in name order: `instids`, the Struct
+    # that joins an instrument's identifiers, then the `pluginconfig` message
+    # every registry carries as it carries the crate's own fields
+    # (decision 19).
+    assert next(iterator).name == "instids"
     assert next(iterator).name == "pluginconfig"
     assert next(iterator, None) is None
     assert next(iterator, None) is None

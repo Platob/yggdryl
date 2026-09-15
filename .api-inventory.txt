@@ -720,7 +720,6 @@ pub const CRATE_TAG_MAX: i32 = 65_100;
 pub const VERSION_TAG_NAME: (i32, &str) = (65_001, "version");
 pub const SYMBOLTICKER_TAG_NAME: (i32, &str) = (65_002, "symbolticker");
 pub const UPDATEDAT_TAG_NAME: (i32, &str) = (65_003, "updatedat");  (settled event or lifecycle grid instant)
-pub const TIMEPARTITION_TAG_NAME: (i32, &str) = (65_004, "timepartition");
 pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_005, "parentclordid");
 pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_006, "parentorderid");
 pub const SENDERSESSIONID_TAG_NAME: (i32, &str) = (65_007, "sendersessionid");
@@ -741,12 +740,22 @@ pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");  (nul
 pub const PREVMSGHASH_TAG_NAME: (i32, &str) = (65_022, "prevmsghash");  (nullable fixed_size_binary(16): the preceding message's msghash bytes in the selected event chain)
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
 pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
-pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
+pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");  (nullable nanosecond UTC clock: the instant `FixLifecycle::snapshot` took this reading, empty on every row no snapshot was taken of; the replay bundle holds the column without requiring its value)
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");  (the object a line was read from, typed url; filled from the text read's own sourceurl column, and outside the content msghash hashes)
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");  (the arrival record group's counter; outside the content msghash hashes, because the record it counts is)
+pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");  (nullable nanosecond UTC clock: when the capture wrote the line down, a fact about the capture and outside the content msghash hashes)
+pub const EXPIREDAT_TAG_NAME: (i32, &str) = (65_029, "expiredat");  (nullable nanosecond UTC clock: when the order stops being live, derived on the field itself)
+pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");  (nullable currency: the message's own Currency, else SettlCurrency)
+pub const OFFERCURRENCY_TAG_NAME: (i32, &str) = (65_031, "offercurrency");  (likewise, for the offer lane)
+pub const BRIDGESESSIONID_TAG_NAME: (i32, &str) = (65_032, "bridgesessionid");  (display `BridgeSessionId`: the session instance a bridge handled a line on, as its own row header brackets it and never what the message states; `sessionid` is `SenderSessionId`'s alias and a different fact)
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_033, "bloombergcode");  (nullable bloomberg: the message's own, else a SecurityID or SecurityAltID whose source is Bloomberg (`A`) or FIGI (`S`))
+pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_034, "cusipcode");  (nullable cusip, source `1`)
+pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_035, "sedolcode");  (nullable sedol, source `2`)
+pub const INSTIDS_TAG_NAME: (i32, &str) = (65_036, "instids");  (nullable Struct of cficode/isincode/bloombergcode/cusipcode/sedolcode, filled from those columns; filed under Components because a definition is filed by the shape it has, and the first named definition to answer to a crate tag rather than a derived one)
+pub const SESSIONMSGID_TAG_NAME: (i32, &str) = (65_037, "sessionmsgid");  (nullable utf8: bridgesessionid and msgctxid joined by `:`, null where either is missing - a name with a hole in it looks like a name)
+pub const SESSIONMSGSEQID_TAG_NAME: (i32, &str) = (65_038, "sessionmsgseqid");  (likewise, with MsgSeqNum(34) appended: one occurrence's name)
 pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 pub const MSGTYPE_TAG_NAME: (i32, &str) = (35, "MsgType");
-pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
 pub const fn is_crate_tag(tag: i32) -> bool
 pub fn fix_crate_fields() -> Result<&'static [Field]>
 impl FixRegistry
@@ -933,7 +942,6 @@ impl FixMsg
   pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `fixentries`; a row without that column has no entries)
   pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null; a value a column will not hold is that column's null, reported through `log` at warn level, and a nested column keeps every leaf that does read)
   pub fn symbol_ticker(&self) -> Scalar
-  pub fn time_partition(&self, seconds: i64) -> Scalar
 
 ### yggdryl::fix::generic  [rust\src\fix\generic.rs]
 pub const GENERICMESSAGE_CODE_NAME: (&str, &str) = ("UGEN", "genericmessage");  (the crate's own generic message: `U` opens every type FIX reserves for a counterparty's own, as `UCFG` did for pluginconfig)

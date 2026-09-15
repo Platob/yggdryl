@@ -1415,7 +1415,6 @@ fix_message_clock: Scalar = fix_message.updatedat()
 fix_message_created: Scalar = fix_message.createdat()
 fix_message_msghash: Scalar = fix_message.msghash()
 fix_message_msgphash: Scalar = fix_message.msgphash()
-fix_message_partition: Scalar | None = fix_message.time_partition()
 fix_message_lifted: Scalar | None = fix_message.lifted("bidpx")
 fix_message_lift_source: int | None = fix_message.lift_source("bidpx")
 fix_message_lift: list[tuple[str, Scalar]] = fix_message.lift()
@@ -1646,7 +1645,6 @@ assert fix_message_ticker is None or fix_message_ticker
 assert isinstance(fix_message_clock, Scalar) and isinstance(fix_message_created, Scalar)
 assert isinstance(fix_message_msghash, Scalar) and isinstance(fix_message_msgphash, Scalar)
 assert fix_default_interval == fix_life_interval
-assert fix_message_partition is None or fix_message_partition
 assert fix_message_lifted is None or fix_message_lifted
 assert fix_message_lift_source is None or fix_message_lift_source
 assert isinstance(fix_message_lift, list) and isinstance(fix_message_anomalies, list)

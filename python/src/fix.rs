@@ -2437,10 +2437,10 @@ fn sending_time_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// with the whole arrival record. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `fix:tag`, and
-/// is what fills it. `beginstring`, `sendingtime`, `updatedat`,
-/// `timepartition`, `msghash`, `msgphash`, `createdat`, `code` and `snapshotat` are
-/// the non-null columns; a dictionary missing a member of the settled bundle
-/// is a `ValueError`.
+/// is what fills it. `beginstring`, `sendingtime`, `updatedat`, `msghash`,
+/// `msgphash`, `createdat` and `code` are the non-null columns, while
+/// `snapshotat` is nullable because only a snapshot stamps it; a dictionary
+/// missing a member of the settled bundle is a `ValueError`.
 #[pyfunction]
 #[pyo3(name = "fix_schema", signature = (registry=None, name="fix"))]
 pub(crate) fn fix_schema(
@@ -2477,7 +2477,7 @@ pub(crate) fn fix_generic_message(
 /// `carrier` is a capture's own root - where a line was read from, which line
 /// it was, what stamped it - and its columns lead the row, because that is what
 /// a monitor orders and joins on. A carried column whose folded name a FIX
-/// column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
+/// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means,
 /// and the row fills it from what the capture stated.
 #[pyfunction]

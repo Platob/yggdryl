@@ -259,9 +259,17 @@ def test_the_codec_answers_the_pins_it_was_given(seed: FixRegistry) -> None:
 def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -> None:
     reader = _fixed(seed).parse_text_arrow_reader(_capture([], 1))
     names = reader.schema.names
-    # The capture's own column leads; the fixed columns follow, named by their
-    # folded names, each carrying its tag on the field.
-    assert names[:6] == ["body", "beginstring", "bodylength", "msgtype", "sendercompid", "targetcompid"]
+    # The capture's own column leads; the fixed columns follow, the crate's
+    # own first - a table is read by time and joined by identity - and then
+    # the protocol's, each named by its folded name and carrying its tag.
+    assert names[:4] == ["body", "updatedat", "prevupdatedat", "createdat"]
+    header = names.index("beginstring")
+    assert names[header : header + 4] == [
+        "beginstring",
+        "bodylength",
+        "msgtype",
+        "sendercompid",
+    ]
     # FIX's own `msgdirection`, then the one arrival record closes the row.
     assert names[-3:] == ["msgdirection", "nofixentries", "fixentries"]
     assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
@@ -808,7 +816,6 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegi
         "msgtype",
         "version",
         "updatedat",
-        "timepartition",
         "msghash",
         "msgphash",
         "createdat",

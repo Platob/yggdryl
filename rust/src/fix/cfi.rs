@@ -122,7 +122,7 @@ impl super::FixMsg {
     /// The instrument's classification, filled to the maximum the message
     /// licenses.
     ///
-    /// The chain, each step merged into the last through [`fix_cfi_merged`]
+    /// The chain, each step merged into the last through [`Cfi::merged`](crate::types::string::Cfi::merged)
     /// so a later step can only *fill* what an earlier one left unknown:
     ///
     /// 1. a stated `CFICode(461)`, which is the instrument's classification
@@ -139,7 +139,7 @@ impl super::FixMsg {
     ///
     /// A step that names a different instrument than the one established -
     /// a different category or group - does not overwrite it and does not
-    /// merge: [`fix_cfi_merged`] answers `None` and the step is dropped,
+    /// merge: [`Cfi::merged`](crate::types::string::Cfi::merged) answers `None` and the step is dropped,
     /// because a message stating `CFICode=ESXXXX` and `SecurityType=FUT` has
     /// disagreed with itself and the stated classification is the one of
     /// record.

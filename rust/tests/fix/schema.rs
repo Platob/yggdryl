@@ -595,8 +595,6 @@ fn a_datatype_is_named_the_same_by_both_documents() {
     }
 }
 
-#[cfg(feature = "iceberg")]
-
 /// The four identity columns cross a lake as `fixed[16]`, byte for byte.
 ///
 /// This is the whole reason they are bytes: an Iceberg table maps

@@ -1,8 +1,8 @@
-"""The registered code field factories: ten identities, one width each.
+"""The registered code field factories: eleven identities, one width each.
 
-The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, the three
-securities identifiers ``isin``, ``cusip`` and ``sedol``, and FIX's own
-``side``, ``state`` and ``timeinforce`` - are datatypes of their own, each
+The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, the four
+securities identifiers ``isin``, ``cusip``, ``sedol`` and ``bloomberg``, and
+FIX's own ``side``, ``state`` and ``timeinforce`` - are datatypes of their own, each
 storing as the ASCII text it is and held to the width its standard fixes, so
 a code factory is not a bounded string wearing a name: the field it builds
 carries the code's identity across Arrow under its own extension name,
@@ -10,8 +10,8 @@ answers ``is_code`` and ``code_width``, and never ``string_parameters``. The
 width bounds a value rather than laying it out, so ``fixed_byte_width`` is
 ``None``. The declared vocabularies live in :mod:`yggdryl.enums`, whose
 classes carry their members onto the field they build; ``isin``, ``cusip``
-and ``sedol`` are open identifier spaces closed by their own check digits, so
-no class declares them.
+and ``sedol`` are open identifier spaces closed by their own check digits and
+``bloomberg`` is one no standard closes at all, so no class declares them.
 """
 
 from __future__ import annotations
@@ -30,13 +30,14 @@ if TYPE_CHECKING:
     IsinField: TypeAlias = TypedField[Literal["isin"], str]
     CusipField: TypeAlias = TypedField[Literal["cusip"], str]
     SedolField: TypeAlias = TypedField[Literal["sedol"], str]
+    BloombergField: TypeAlias = TypedField[Literal["bloomberg"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
     CountryField = CurrencyField = MicField = CfiField = IsinField = CusipField = (
         SedolField
-    ) = SideField = StateField = TimeInForceField = Field
+    ) = BloombergField = SideField = StateField = TimeInForceField = Field
 
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
@@ -45,6 +46,7 @@ _CFI = simple_dtype("cfi")
 _ISIN = simple_dtype("isin")
 _CUSIP = simple_dtype("cusip")
 _SEDOL = simple_dtype("sedol")
+_BLOOMBERG = simple_dtype("bloomberg")
 _SIDE = simple_dtype("side")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
@@ -92,6 +94,21 @@ def sedol(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -
     return new_field(SedolField, name, _SEDOL, nullable, metadata)
 
 
+def bloomberg(
+    name: str,
+    *,
+    nullable: bool = True,
+    metadata: MetadataInput = None,
+) -> BloombergField:
+    """A Bloomberg identifier: a ticker, a market and a yellow key, or a FIGI.
+
+    The one code here whose width is only a bound - thirty-two bytes - because
+    no standard fixes a length between those parts.
+    """
+
+    return new_field(BloombergField, name, _BLOOMBERG, nullable, metadata)
+
+
 def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SideField:
     """FIX ``Side(54)``, the wire value rather than a name for it."""
 
@@ -116,6 +133,7 @@ def timeinforce(
 
 
 __all__ = [
+    "BloombergField",
     "CfiField",
     "CountryField",
     "CurrencyField",
@@ -126,6 +144,7 @@ __all__ = [
     "SideField",
     "StateField",
     "TimeInForceField",
+    "bloomberg",
     "cfi",
     "country",
     "currency",

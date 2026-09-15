@@ -94,7 +94,7 @@ One column of frames in, batches out, the capture's own columns still in front o
             "url": ["file:///capture.log"] * 2,
             "rownum": pa.array([7, 8], pa.int64()),
             "timestamp": pa.array(clocks, pa.timestamp("us", "UTC")),
-            "senderSessionId": pa.array(["0123abcd", None], pa.utf8()),
+            "bridgesessionid": pa.array(["0123abcd", None], pa.utf8()),
             "body": pa.array(
                 [
                     "recv 8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|10=0|",
@@ -277,7 +277,7 @@ One column carries the frames; two more supply, per row, arguments the byte read
 
 A column is the caller speaking per row and a pin is the caller speaking per run, so a column outranks the pin and both outrank what the frame infers: a row whose `beginstring` says `FIX.4.2` is read at 4.2 whatever the codec was pinned to, and its values translate through the code spellings 4.2 declares. A column absent, null or empty is silence, never an instruction and never an error.
 
-A fill is named the way a key is: a column whose folded name resolves in the registry's one namespace - the canonical fold, then an alias fold, so a `senderSessionId` capture reaches the crate's own `sendersessionid` and a `pluginid` column the crate's `pluginid` - and last through the bridge's own spellings of standard fields, `seqNum` reaching `MsgSeqNum(34)`. It is row-only: never an entry, so it is not in `fixentries`, not re-emitted by `write_arrow_reader` and not in the arrival digest; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
+A fill is named the way a key is: a column whose folded name resolves in the registry's one namespace - the canonical fold, then an alias fold, so a `SessionId` capture reaches the crate's own `sendersessionid` and a `pluginid` column the crate's `pluginid`. It is row-only: never an entry, so it is not in `fixentries`, not re-emitted by `write_arrow_reader` and not in the arrival digest; a value the field cannot hold fills nothing rather than a null; and a column named by a tag's digits fills nothing, because a name is what reaches a field. Which columns fill is decided once, from the schema and the dictionary, rather than per row.
 
 `beginstring` and `msgdirection` are FIX columns' own names, so they are not carried in front: the row's `beginstring` and `version` columns say what a `beginstring` column decided. A record carrying only a payload column behaves exactly as the byte reader behaves, which is what makes this an entry point rather than a second contract.
 
@@ -286,20 +286,22 @@ A fill is named the way a key is: a column whose folded name resolves in the reg
 `yggdryl::ULBRIDGE_ROWHEADER` is the [row header](../media/text/index.md#row-schema) a ULBridge log writes in front of every line - a clock, a thread bracket, the plugin that wrote the line and its level - with every capture named for what it fills. Rust names the constant; the regex is the same text, ending in one space, in any binding's `rowheader`.
 
 ```text
-^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<senderSessionId>[0-9a-f]{8}):(?P<msgCtxId>[0-9a-f]{10}):(?P<seqNum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) 
+^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(?P<threadId>[1-9]\d*)(?:-(?P<bridgesessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<pluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) 
 ```
 
 | Capture | Typed as | In a batch read |
 | --- | --- | --- |
 | `timestamp` | datetime | the capture's own column, leading the row as context; the message's clocks stay its own |
 | `threadId` | int64 | the capture's own column, leading the row |
-| `senderSessionId` | utf8, nullable | the session instance the bridge handled the line on; folds onto `sendersessionid` (65007), so it fills that column rather than leading the row, and never over a reading the message stated |
-| `msgCtxId` | utf8, nullable | fills `msgctxid` (65008) |
-| `seqNum` | int64, nullable | fills `msgseqnum` (34) where the frame did not carry it; carried in front too, since no FIX column is named `seqnum` |
+| `bridgesessionid` | utf8, nullable | the session instance the bridge handled the line on; fills `bridgesessionid` (65032) rather than leading the row, and never over a reading the message stated. Not `sendersessionid`: a bridge row spells its own `SESSIONID` for the counterparty session, and two connections to one counterparty are two instances |
+| `msgctxid` | utf8, nullable | fills `msgctxid` (65008) |
+| `msgseqnum` | int64, nullable | fills `MsgSeqNum(34)` where the frame did not carry it |
 | `pluginid` | utf8 | fills `pluginid` (65009), the plugin that logged the line, and selects nothing |
 | `level` | utf8 | the capture's own column |
 
-The session uid, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
+The session instance, the context and the sequence number are optional as a whole, so a line carrying only its thread still frames and leaves them null rather than failing the row.
+
+Every capture is named for the field it fills, so the registry's one namespace is what lands it and nothing translates in between. The bridge writes these three in camel case - `senderSessionId`, `msgCtxId`, `seqNum` - and they used to be captured that way, with a table mapping `seqnum` onto tag 34; naming the captures for the fields retires that table. Two of them join: `sessionmsgid` (65037) is `bridgesessionid` and `msgctxid` under a colon, which is what the legs of one routed message share, and `sessionmsgseqid` (65038) appends the sequence number, which names one occurrence. Both are null where any part is missing, because a name with a hole in it looks like a name and two messages missing different parts would join to each other.
 
 The plugin is a fill and nothing more: it lands in the crate's own `pluginid` column by name, like any capture named after a field, and selects no dictionary and no version - the registry is one namespace, and which dictionaries a field belongs to is the field's own `fix:branches`, which no read consults. The two session names are only ever what the line itself spells, through the `ULFROMSESSIONNAME` and `ULTOSESSIONNAME` aliases they answer to.
 
@@ -312,9 +314,9 @@ The plugin is a fill and nothing more: it lands in the crate's own `pluginid` co
     let options = TextOptions::new().try_with_rowheader(ULBRIDGE_ROWHEADER)?;
     let captures = options.source_field()?;
     let names: Vec<&str> = captures.fields().iter().map(yggdryl::Field::name).collect();
-    assert!(names.ends_with(&["timestamp", "threadId", "senderSessionId", "msgCtxId", "seqNum", "pluginid", "level"]));
+    assert!(names.ends_with(&["timestamp", "threadId", "bridgesessionid", "msgctxid", "msgseqnum", "pluginid", "level"]));
     // Typed from the pattern before a byte is read.
-    assert_eq!(captures.field("seqNum")?.dtype(), &DataType::Int64);
+    assert_eq!(captures.field("msgseqnum")?.dtype(), &DataType::Int64);
     ```
 
 ## One row per message
@@ -615,7 +617,7 @@ A source row is read for every message it carries, so a capture answers one row 
 - A carried column whose folded name a FIX column takes is dropped in front rather than renamed - two columns of one name is not a schema - and what it stated lands in that FIX column.
 - A `msgdirection` column is the row's stated direction, read as a parameter - any spelling of a code of tag 385's set, stored as the code - and it outranks the reading of the line and the codec's pin; the FIX column carries it and no second column repeats it.
 - A `timestamp` column is carried context: it leads the row, enters the carried row's `msghash` content like any other named cell, and never dates the message - `TransactTime`, else `SendingTime`, does.
-- A fill never overrides what the frame stated: a `seqNum` capture beside a frame carrying `34=` leaves `msgseqnum` to the frame.
+- A fill never overrides what the frame stated: a `msgseqnum` capture beside a frame carrying `34=` leaves that field to the frame.
 - A fill is row-only: never an entry, never in `fixentries`, never re-emitted by `write_arrow_reader`, never in the arrival digest.
 - `messages` reads a row carrying the seven settled values - `updatedat`, `createdat`, `msghash`, `msgphash`, `code`, `snapshotat`, `sendingtime` - as a replayable message and verifies its identities; a row missing one, or holding a `msghash` its content does not compute, is a located refusal, and nothing reads a clock back out of those sixteen bytes.
 - A batch's bytes are read once from the payload column's offsets and spread evenly over its rows, so a large batch splits into equal row counts; a source row's whole charge rides on its first message, whether it answered one or many.
