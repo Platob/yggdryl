@@ -1,31 +1,35 @@
 # HTTP over `IOBase`: a session, a request, an answer, a stream, and a byte leaf
 
-Twelve pieces of work on `claude/rust-http-stream-implementation-oxd1ea`, each a
-design change with its own decision in `DECISIONS.md` written before the code
-that keeps it, in this order because each one moves what the next one reads:
+Thirteen pieces of work on `claude/rust-http-stream-implementation-oxd1ea`,
+each a design change with its own decision in `DECISIONS.md` written before the
+code that keeps it, in this order because each one moves what the next one reads:
 
 1. The store-neutral half of `holder/object/client.rs` moves to
    `holder/wire/`, and `object` and `http` both consume it.
 2. `HttpMethod` becomes the crate's one spelling of an HTTP verb, and
    `holder/object/request.rs` stops spelling it `&'static str`.
-3. *(reserved: the HTTP version seam)*
-4. Certificate verification is skipped only when a caller asks, and such a
+3. `HttpVersion` is the crate's one spelling of a protocol version. This
+   build speaks HTTP/1.1, and HTTP/1.0 when pinned; the other two are named,
+   refused by name, and their blockers written down.
+4. A field name is lowercased once at intake, and the five fields the
+   transport owns are refused to a caller.
+5. Certificate verification is skipped only when a caller asks, and such a
    session never touches the shared connection pool.
-5. A header is a `Metadata` entry under the `http:` keys the crate already
+6. A header is a `Metadata` entry under the `http:` keys the crate already
    owns, in both directions, and this module writes no second parser.
-6. `HttpSession`, `HttpRequest` and `HttpResponse` are one exchange: the
+7. `HttpSession`, `HttpRequest` and `HttpResponse` are one exchange: the
    `requests`-recognizable door, wide at intake and typed past it.
-7. `HttpStream` resumes a cut transfer from `start + delivered` under
+8. `HttpStream` resumes a cut transfer from `start + delivered` under
    `If-Range`; it never restarts, and it never reports a cut as end of stream.
-8. A transport failure replays an idempotent method and refuses a
+9. A transport failure replays an idempotent method and refuses a
    non-idempotent one; `holder::object` keeps its present behaviour by name.
-9. A redirect is followed and its resolution is the session's;
-   `IOBase::url()` never moves.
-10. `HttpFile` and `HttpPath` are the two roles. There is no `HttpFolder`,
+10. A redirect is followed and its resolution is the session's;
+    `IOBase::url()` never moves.
+11. `HttpFile` and `HttpPath` are the two roles. There is no `HttpFolder`,
     because an origin has no listing primitive to promise one with.
-11. `http://` and `https://` resolve through `Holder::from_url`, which is
+12. `http://` and `https://` resolve through `Holder::from_url`, which is
     what `Scheme::is_storage` has been promising since it was written.
-12. The cost model is an assertion: request counts, call counts, allocation
+13. The cost model is an assertion: request counts, call counts, allocation
     pins, a benchmark, and a docs page that states the same numbers.
 
 The transport extraction (piece 1) is one commit or none. A parallel copy of
@@ -68,6 +72,16 @@ the retry loop is forbidden by `AGENTS.md:52-58`, and
 - `with_tls_verification(false)` is the one spelling, defaults to verifying,
   never reaches the shared agent, logs once, and prints plainly in `Debug`.
   `insecure` is refused by name.
+- `HttpVersion` is the crate's one spelling of a protocol version. This build
+  speaks HTTP/1.1 and, when pinned, HTTP/1.0 — both of which `ureq` already
+  frames and pools differently. `Http2` and `Http3` are named and refused by
+  name with `Error::unsupported`, never clamped, and `ureq::http::Version` is
+  spelled in exactly one function. No ALPN is offered, because ureq sends none
+  and cannot frame what an offer would select.
+- Every field name leaves lowercase, `holder/object/aws/credentials.rs:266`
+  stops being the crate's one uppercase one, and `connection`, `keep-alive`,
+  `proxy-connection`, `transfer-encoding` and `upgrade` are refused to a
+  caller because the transport owns framing.
 - `docs/holder/backends/http.md` exists, is in `mkdocs.yml`, states the same
   cost table, and carries `Rust-only.` as the whole body of its Python and
   JavaScript tabs.
@@ -80,13 +94,13 @@ the retry loop is forbidden by `AGENTS.md:52-58`, and
   hand-maintained and move in the same commit as the name they list.
   §"Storage: IOBase" (`:498-624`) is the contract every piece from 6 on is
   read against; **`:621` ("a 3xx is never followed") is argued with by
-  piece 8**, not quietly ignored.
+  piece 10**, not quietly ignored.
 - `rust/src/iobase.rs` in full. Nine methods have no default body
   (`:124, 149, 152, 155, 163, 170, 173, 192, 195`); implementing only those
   compiles and is wrong on cost. The Laziness contract is `:86-110`, the
   Invariants `:111-117`, and `DEFAULT_STREAM_BATCH_SIZE` (`:48`, 64 KiB)
   and `DEFAULT_FETCH_BYTE_SIZE` (`:62`, 1 MiB) are deliberately different
-  sizes — the doc at `:51-61` says why, and piece 11 depends on it.
+  sizes — the doc at `:51-61` says why, and piece 13 depends on it.
 - `rust/src/holder/object/client.rs` in full (2836 lines). This is the thing
   being cut in half. The retry constants are `:35-51`, the pool and agent
   `:2377-2412`, the retry loop `:740-782` and `:884-1029`, `Resuming`,
@@ -118,14 +132,18 @@ the retry loop is forbidden by `AGENTS.md:52-58`, and
 - `rust/src/holder/object/tests/server.rs:1-14` — the leaf-file `#[path]`
   include shape the in-process origin copies.
 - `rust/src/holder/counted.rs:75-140` — `Call`, the canonical list of the
-  surface a backend implements, and the spellings piece 11's tallies use.
+  surface a backend implements, and the spellings piece 13's tallies use.
 - `DECISIONS.md` — the last decision is 39. These eleven are 40 to 50, in the
   file's own format (`**Rule.**` / `**Why.**` / `**Written in:**` /
   `**Fixtures:**`).
-- ureq 3.4.0 is not vendored here. Fetch it before piece 3:
+- ureq 3.4.0 is not vendored here. Fetch it before pieces 3 and 5:
   `curl -sSL -o ureq-3.4.0.crate https://static.crates.io/crates/ureq/ureq-3.4.0.crate && tar xzf ureq-3.4.0.crate`.
-  The API piece 3 depends on is `src/tls/mod.rs:199`, `:82`, `:265` and
-  `src/config.rs:462`.
+  The API piece 5 depends on is `src/tls/mod.rs:199`, `:82`, `:265` and
+  `src/config.rs:462`. Fetch `ureq-proto` 0.6.1 the same way for piece 3:
+  `src/ext.rs:64-65` is where every version but HTTP/1.0 and HTTP/1.1 is
+  refused, `src/client/prepare.rs:19` is where HTTP/1.0 loses pooling, and
+  `src/chunk.rs:144-172` is where the chunked trailer part is parsed and
+  thrown away.
 - The code each piece moves is named under it.
 
 ## 1. The transport gets a third home
@@ -179,7 +197,7 @@ nothing consumes.
 **Today.** `rust/src/holder/object/request.rs:13` is `method: &'static str`,
 and every `Request::new` call site passes `"GET"`, `"PUT"`, `"POST"`,
 `"DELETE"` or `"HEAD"` as a literal. There is no type that knows a method is
-safe, idempotent, or carries a body — which is exactly the fact piece 7 needs.
+safe, idempotent, or carries a body — which is exactly the fact piece 9 needs.
 
 **Rule to write (decision 41).** `holder::wire::HttpMethod` is the crate's one
 spelling: `Get, Head, Post, Put, Patch, Delete, Options`, `ALL` in that order,
@@ -194,7 +212,181 @@ no literal survives, and no alias is kept.
 recorded-request assertion in `rust/src/holder/object/tests/` that compares a
 method; `.api-inventory.txt`.
 
-## 4. Verification is skipped only when asked, and never on the shared pool
+## 3. The version is what the answer says, and this build says HTTP/1.1
+
+**Today.** Nothing in the crate names an HTTP version, and the transport already
+speaks two. `ureq` frames HTTP/1.0 and HTTP/1.1 and refuses every other version
+at the source: `ureq-proto-0.6.1/src/ext.rs:64-65` returns
+`Error::UnsupportedVersion` for anything but `HTTP_10`/`HTTP_11`, and
+`src/parser.rs:47-49` reads only minor 0 and 1 off a status line. It sends no
+ALPN extension at all - `grep -rniE 'alpn|http2|HTTP_2' ureq-3.4.0/src` is
+empty - and `ureq::tls::TlsConfig`'s builder exposes `provider`, `client_cert`,
+`root_certs`, `use_sni`, `disable_verification` and
+`unversioned_rustls_crypto_provider`, and no `alpn_protocols`. Both spoken
+versions are live on both sides: `ureq-3.4.0/src/request.rs:301` takes
+`version(Version::HTTP_10)`; `ureq-proto-0.6.1/src/client/prepare.rs:19` pushes
+`CloseReason::CloseDelimitedBody` for it, so that connection is never pooled;
+`client/recvresp.rs:133` reads the answer's version to pick the body mode;
+`ureq-3.4.0/src/run.rs:165` carries it onto the response; and
+`holder/object/tests/server.rs:1569,1633-1646` already models the 1.0-versus-1.1
+keep-alive difference. `StatsSnapshot` (`client.rs:69-101`) counts requests by
+method and nothing by version, and `Pooled::drop` (`client.rs:2318-2325`) spends
+up to `POOLED_DRAIN_LIMIT` (1 MiB, `:2368`) draining an abandoned body to save a
+TLS handshake it cannot save on HTTP/1.0.
+
+**Rule to write (decision 42).** `holder::wire::HttpVersion` is the crate's one
+spelling of a protocol version, a closed enum in `Codec`'s shape: `Http10`,
+`Http11`, `Http2`, `Http3`, declared oldest first so `Ord` reads as "newer is
+greater"; `ALL`; `SPOKEN = [Http10, Http11]`; `as_str` the RFC 9110
+`HTTP-version` token; `is_spoken`; `pools_connections`; `FromStr` accepting the
+canonical spelling, the ALPN identifier and the bare number (`HTTP/2`,
+`HTTP/2.0`, `http2`, `h2`, `2` are one version) and refusing with the accepted
+vocabulary and the input; `Display`, `Serialize`, `Deserialize`. `h2c` is
+**refused**, not aliased: cleartext HTTP/2 is a different negotiation - prior
+knowledge, or the `Upgrade` exchange RFC 9113 removed - and accepting the name
+would claim a version the token does not mean.
+
+Naming a version and speaking one are separate, and that is the whole design.
+`HttpOptions::with_version(HttpVersion)` **pins**; it is not `max_version`,
+because nothing is negotiated and a ceiling would be vocabulary for a mechanism
+that does not exist. A version outside `SPOKEN` is
+`Error::unsupported("speaking this HTTP version", version.as_str())` -
+**refused by name, never clamped**, because clamping downgrades what a caller
+asked for and says nothing.
+
+Three points, and no fourth:
+
+1. **Offered: nowhere.** This build sends no ALPN, because ureq sends none and
+   cannot frame what an ALPN offer would select. Offering `h2` and then writing
+   HTTP/1.1 bytes onto a connection the server selected `h2` for is a protocol
+   violation; sending nothing is correct and is what ships.
+2. **Decided: one function.** `holder/wire/send.rs` holds
+   `fn wire_version(HttpVersion) -> ureq::http::Version` and its inverse, at the
+   `ureq::http::Request::builder()` call site that is `client.rs:893` and
+   `:1003` today. That is the **only** place `ureq::http::Version` is named, and
+   **no `ureq::` type appears in any signature outside `holder/wire/`** - which
+   costs nothing, because `client.rs:198` already erases a streamed body to
+   `(u16, Vec<(String, String)>, Box<dyn Read + Send>)` and `open_stream`
+   (`:997-1029`) is the only function in 2836 lines that names one on the way
+   out. That rule is the entire seam.
+3. **Recorded and reported.** `WireAnswer` carries the version the answer
+   arrived on; `HttpResponse::version()` and `HttpStream::version()` read it;
+   `WireStatsSnapshot::requests_by_version: [u64; HttpVersion::ALL.len()]` with
+   `requests_on(version)` counts it. The array sums to `requests` and an
+   assertion says so, which is what keeps a newly spoken version from going
+   uncounted; the fixed length makes a new variant a compile error in
+   `WireStats::snapshot` rather than a silently dropped column, and it keeps the
+   `Copy`/`Default`/`Eq` reading `StatsSnapshot` has today.
+
+`pools_connections()` has one reader and it is a **fix**, not a seam:
+`HttpStream::drop` (piece 8) drains only when the answer's version pools
+connections. Draining an abandoned HTTP/1.0 body returns nothing - the
+connection closes regardless - so the object backend spends up to a mebibyte
+there for nothing.
+
+Written and not written, with the reason, because the reason is the decision:
+`HttpRequest` carries **no** version, because a version is a property of the
+connection and the connection is chosen per origin - which is why every public
+signature in this module names `HttpVersion` at most as a returned value, and
+why the day a second version lands only the private transport handle inside
+`holder/wire/` grows an arm. There is **no** `multiplexes()`, `allows_0rtt()`,
+`alpn_token()`, `requires_lowercase_fields()` or `has_trailers()`: each is
+constant over what this build speaks or has no reader, and `AGENTS.md:64`
+forbids speculative generality by name. There is no `Wire` enum with one
+variant, no transport trait, no `http2.rs`, and no `#[cfg(feature = "http2")]`.
+`Provider` (`AGENTS.md`, "Object stores") is the house shape for a dispatcher
+and it is written when the second value exists.
+
+The module doc and `docs/holder/backends/http.md` say what is true and name the
+blocker, so nobody rediscovers it: this module speaks HTTP/1.1, and HTTP/1.0
+when pinned. `ureq` frames neither of the other two
+(`ureq-proto-0.6.1/src/ext.rs:64`). HTTP/3 has no path - `quiche` is the only
+sans-io HTTP/3 implementation, its only TLS backend is BoringSSL through
+`cmake`, against `rust/Cargo.toml:52`'s own standard, and it declares MSRV 1.88
+against the 1.85 floor Gate 1 checks; `quinn-proto` 0.11.17 is pure Rust,
+sans-io and MSRV exactly 1.85 but is QUIC transport only, so RFC 9114 and RFC
+9204 QPACK would be this crate's code. HTTP/2 **is** reachable synchronously -
+`h2` pulls tokio only for the `AsyncRead`/`AsyncWrite` traits and can be driven
+by a hand-rolled `std::task::Waker` over a blocking socket with no executor and
+no `unsafe` - and it is **not taken**: eleven crates and a connection driver
+whose failure mode is a silent hang, bought on no measurement. It is revisited
+when a profile from the deployment network shows many concurrent small ranges
+dominating **and** `HttpFile` issues ranges in batches; neither is true. One
+comment records that, and the numbered pieces move on.
+
+**What moves.** New `rust/src/holder/wire/version.rs`; `holder/wire/mod.rs`
+(`pub use version::HttpVersion;`, re-exported from `holder/http/mod.rs`);
+`holder/wire/send.rs` (`wire_version` and its inverse, the crate's only
+`ureq::http::Version`); `holder/wire/stats.rs` (`requests_by_version`,
+`requests_on`); `holder/wire/body.rs` (the drain gate on `pools_connections`);
+`holder/http/options.rs` and `properties.rs` (`with_version`, the
+`version`/`http_version`/`http-version` intake spellings through the existing
+`canonical()` recipe at `object/properties.rs:608`, and the refusal);
+`holder/http/{response,stream}.rs` (`version()`);
+`holder/http/tests/version.rs`; `holder/http/tests/origin.rs` (answer `HTTP/1.0`
+and close on demand, as `object/tests/server.rs:1633-1646` already does);
+`.api-inventory.txt`; `docs/holder/backends/http.md` (a Versions row stating
+what is spoken, what is named, and the blocker for each named one).
+
+## 4. A field name is lowercase, and framing is never a caller's header
+
+**Today.** The crate sends exactly one uppercase field name:
+`holder/object/aws/credentials.rs:266`, `.header("Authorization", token)`. Every
+other name is spelled lowercase at its call site, and `request.rs:158`
+(`header_name`) lowercases whatever a caller spells. The inbound side already
+lowercases too - `metadata/validation.rs:317` `canonicalize_metadata_key` - and
+lookups compare with `eq_ignore_ascii_case` (`client.rs:214`). So the rule is one
+edit from being true and is enforced nowhere: `Request::header`
+(`request.rs:79-80`) pushes `name.to_owned()` verbatim. Nothing refuses
+`connection`, `keep-alive`, `proxy-connection`, `transfer-encoding` or
+`upgrade`; no dialect sends one -
+`grep -rniE '"(connection|keep-alive|proxy-connection|transfer-encoding|upgrade)"' rust/src/`
+hits only `object/tests/server.rs` - but `holder/http`'s surface is a caller's,
+and ureq owns framing.
+
+**Rule to write (decision 43).** A field name is lowercased once, at intake, by
+the setter - `HttpRequest::try_with_header` and `Request::header` both, through
+one helper in `holder/wire/`, never twice and never at send time. RFC 9110 §5.1
+makes field names case-insensitive, so this is the correct HTTP/1.1 behaviour
+rather than a concession to anything: it is what makes piece 6's claim true that
+two identical requests put byte-identical headers on the wire, it removes the
+fold from SigV4's canonical request, which lowercases anyway, and it makes the
+outbound side agree with `canonicalize_metadata_key`'s inbound one, so one fact
+has one spelling in both directions. `credentials.rs:266` becomes
+`"authorization"` in this change; no other call site moves.
+
+Five names are refused outright by the setter - `connection`, `keep-alive`,
+`proxy-connection`, `transfer-encoding`, `upgrade` - and `te` is accepted only
+with the exact value `trailers`. The refusal is
+`Error::unsupported("setting a field the transport owns", name)`, naming the
+field. This is a present-day guard: a caller who sets
+`transfer-encoding: chunked` through `HttpRequest` puts a second framing
+authority on a connection ureq is already framing, which is the
+request-smuggling shape `validate_http_header_value` (`validation.rs:391`)
+refuses CR, LF, NUL and DEL for. The constant lives in `holder/wire/`, not in
+`holder/http/`, because `holder::object` sends through the same door and one
+list is the whole point.
+
+Nothing else is owed, and the module doc says so rather than leaving it to be
+rediscovered. There is **no** trailers accessor: ureq parses the chunked trailer
+part and throws it away (`ureq-proto-0.6.1/src/chunk.rs:144-172`; `grep -rni
+trailer ureq-3.4.0/src` returns nothing), so `HttpResponse::trailers()` would
+answer empty on every version, which is a lie about the transport rather than a
+seam - and `AGENTS.md:52-58` makes adding it later cheap. There is **no**
+`requires_lowercase_fields()` predicate: the setter lowercases unconditionally,
+so nothing would read it.
+
+**What moves.** New `rust/src/holder/wire/field.rs` (the lowercase helper and
+the refused-name constant, named once); `holder/object/request.rs:79-80`
+(`header`) and `:149-164` (`header_name`, which calls the helper instead of
+folding its own); `holder/object/aws/credentials.rs:266`;
+`holder/http/request.rs` (`try_with_header`, `try_with_headers`);
+`holder/http/headers.rs` (piece 6 reads the helper rather than writing a
+second); any recorded-header assertion in `rust/src/holder/object/tests/` that
+spells a name with a capital; `holder/http/tests/headers.rs`;
+`.api-inventory.txt`.
+
+## 5. Verification is skipped only when asked, and never on the shared pool
 
 **Today.** `build_agent` (`client.rs:2377-2412`) sets
 `http_status_as_error(false)` (`:2392`), `max_redirects(0)` and
@@ -203,7 +395,7 @@ the user agent, and an optional proxy. It says nothing about TLS, so every
 connection uses ureq's default verification and there is no way to reach an
 origin behind a self-signed or corporate certificate.
 
-**Rule to write (decision 43).** `WireOptions::tls_verification()` defaults to
+**Rule to write (decision 44).** `WireOptions::tls_verification()` defaults to
 `true`. `with_tls_verification(bool)` is the **only** spelling: no `insecure`,
 no `skip_ssl`, no `danger_*`, and the inverted spelling `insecure` is *refused*
 by name with `unsupported` naming `verify` as the spelling to use — accepting
@@ -250,7 +442,7 @@ failure is `Error::Io` and stops.
 `holder/http/options.rs` and `properties.rs` (intake), `holder/http/tests/tls.rs`,
 `docs/holder/backends/http.md` (the Contract table row).
 
-## 5. A header is a `Metadata` entry, and there is no second parser
+## 6. A header is a `Metadata` entry, and there is no second parser
 
 **Today.** `rust/src/metadata/validation.rs` already owns the whole RFC 9110
 field grammar: `canonicalize_metadata_key` (`:317`) folds an `https:`/`HTTPS:`
@@ -267,7 +459,7 @@ range and yields the bare lowercase name and the stored value. None of this is
 reachable from a transport, because there is no transport that speaks HTTP in
 its own name.
 
-**Rule to write (decision 44).** `Metadata` is not converted into the header
+**Rule to write (decision 45).** `Metadata` is not converted into the header
 map — it **is** the header map. `holder/http/headers.rs` is only the list↔map
 adapter and the disposition rule, and writes no parser and no validator.
 
@@ -317,12 +509,12 @@ rather than a second one.
 **What moves.** `holder/http/headers.rs`, `holder/http/tests/headers.rs`,
 `.api-inventory.txt`, `rust/tests/allocations.rs` (the zero-allocation pin).
 
-## 6. `HttpSession`, `HttpRequest`, `HttpResponse`
+## 7. `HttpSession`, `HttpRequest`, `HttpResponse`
 
 **Today.** Nothing in the crate makes an HTTP request in its own name. Every
 byte that leaves goes out as an S3, GCS or Azure operation.
 
-**Rule to write (decision 45).** One reusable client, one call before it is
+**Rule to write (decision 46).** One reusable client, one call before it is
 sent, one answer that is 2xx by construction.
 
 `HttpSession` holds the transport (and therefore the pool), the base location,
@@ -406,7 +598,7 @@ properties,location}.rs`, `holder/http/tests/{mod,origin}.rs`,
 `rust/Cargo.toml` (`http = ["wire"]`), `holder/mod.rs`
 (`#[cfg(feature = "http")] pub mod http;`), `.api-inventory.txt`.
 
-## 7. A stream resumes; it never restarts, and a cut is never end of stream
+## 8. A stream resumes; it never restarts, and a cut is never end of stream
 
 **Today.** `object`'s `Resuming` (`client.rs`, the `:2414-2596` block) re-opens a
 cut transfer but sends **no** conditional: `grep -rn 'if-range' rust/src/`
@@ -420,7 +612,7 @@ connection**, and several core consumers abandon deliberately
 (`hashing/xxhash/stream.rs:50-52`, `media/iceberg/manifest.rs:726-730`,
 `media/ipc/mod.rs:196-206`).
 
-**Rule to write (decision 46).** `HttpStream` is a plain `std::io::Read` and
+**Rule to write (decision 47).** `HttpStream` is a plain `std::io::Read` and
 nothing else. It does not chunk, does not implement `Iterator`, and caches
 nothing: `ByteStream` already owns batching, the never-empty rule, the
 short-final rule, the allocation guard and the fuse. What `HttpStream` owns is
@@ -490,14 +682,14 @@ unbounded drain would be worse than burning the connection.
 `holder/wire/body.rs` (the `Pooled` drain fix), `holder/http/tests/resume.rs`,
 `rust/benchmarks/holder/http/resume.rs`.
 
-## 8. A transport failure does not replay a non-idempotent method
+## 9. A transport failure does not replay a non-idempotent method
 
 **Today.** `send` (`client.rs:740-782`) retries `PUT`, `POST` and `DELETE` on a
 transport failure and on 5xx exactly as it retries `GET`. There is no method
 check anywhere. Against a store whose API is known that is defensible; against
 an arbitrary origin a re-sent `POST` duplicates an effect.
 
-**Rule to write (decision 47).** The budget itself is unchanged and moves
+**Rule to write (decision 48).** The budget itself is unchanged and moves
 verbatim: `RETRY_TOKENS = 500`, `RETRY_COST = 5`, `RETRY_REFUND = 1`,
 `RETRY_BACKOFF = 50ms`, `RETRY_BACKOFF_CAP = 20s`, `RETRY_AFTER_CAP = 30s`;
 `may_retry` is an attempt cap **and** a token bucket, both; `withdraw` is a
@@ -533,7 +725,7 @@ so its attempt count is forced to 1 and `may_retry` is never consulted.
 `holder/http/request.rs` (`Prepared`), `holder/object/client.rs` (the
 `retry_regardless` call sites), `holder/http/tests/accounting.rs`.
 
-## 9. A redirect is followed, and the handle's URL does not move
+## 10. A redirect is followed, and the handle's URL does not move
 
 **Today.** `AGENTS.md:621` says "a 3xx is never followed", and `build_agent`
 enforces it with `.max_redirects(0).max_redirects_will_error(false)`
@@ -541,7 +733,7 @@ enforces it with `.max_redirects(0).max_redirects_will_error(false)`
 reasons from S3's signing-region correction and Google's reuse of 308 for a
 chunk that landed.
 
-**Rule to write (decision 48).** Neither of those reasons applies to a general
+**Rule to write (decision 49).** Neither of those reasons applies to a general
 origin, so this module follows redirects, and the decision **argues with that
 sentence** rather than ignoring it. The agent stays at `max_redirects(0)`: ureq
 still follows nothing, and the loop is made one level up, on `HttpSession`,
@@ -603,13 +795,13 @@ to follow, it corrects a signing region, and `redirect.rs` knows nothing about i
 (the entry that argues with `AGENTS.md:621`), and `AGENTS.md:620-623` itself,
 which gains the sentence naming the object-store scope of its own rule.
 
-## 10. Two roles, and no folder
+## 11. Two roles, and no folder
 
 **Today.** `AGENTS.md:47` says a storage backend is a location/container/leaf
 trio. `holder/zip/mod.rs:15-18` already argues a departure from it for a store
 whose shape does not fit. An HTTP origin has no listing primitive at all.
 
-**Rule to write (decision 49).** `HttpFile` (`IOFile`) and `HttpPath`
+**Rule to write (decision 50).** `HttpFile` (`IOFile`) and `HttpPath`
 (`IOPath`). There is no `HttpFolder`: a role that scraped a directory-index
 page would promise a tree the protocol does not have, which is what zip's own
 module doc argues against for a store that at least *has* an index. The
@@ -728,7 +920,7 @@ silently reintroduce one request per batch.
 `holder/http/mod.rs` (the cost table as the module's own rustdoc, in the shape
 of `object/file.rs:16-36`).
 
-## 11. `http://` resolves like every other location
+## 12. `http://` resolves like every other location
 
 **Today.** `Scheme::is_storage()` (`scheme.rs:249-263`) already lists `Http` and
 `Https` as "the schemes a filesystem abstraction can open", and has since it
@@ -737,7 +929,7 @@ so every such URL falls to
 `Error::unsupported("holding a location of this scheme", …)` at `:234-237`.
 The crate promises a handle it does not have.
 
-**Rule to write (decision 50).** `Scheme::is_http()` exists beside
+**Rule to write (decision 51).** `Scheme::is_http()` exists beside
 `is_object_store()`, spelled the same way and for the same reason — one
 predicate, read everywhere the scheme is branched on, so the three never drift.
 `Holder::from_url` gains one arm answering `HttpPath`, and the two universal
@@ -752,7 +944,7 @@ feature the arm is a refusal naming the feature, exactly as the object arm at
 and Variants tables), `docs/holder/backends/http.md`, `mkdocs.yml` nav
 (`- HTTP: holder/backends/http.md` after the ZIP row at `:162`).
 
-## 12. The cost model is an assertion, not a claim
+## 13. The cost model is an assertion, not a claim
 
 **Today.** `AGENTS.md:503-510` requires every derived surface to state its cost
 in call counts, pin it in `rust/tests/iobase_calls.rs`, and report it in the
@@ -760,7 +952,7 @@ in call counts, pin it in `rust/tests/iobase_calls.rs`, and report it in the
 1154 lines of exactly that for the object backend, against the in-process
 `FakeS3` at `holder/object/tests/server.rs`.
 
-**Rule to write (decision 51).** The same, twice: what a layer asks of storage
+**Rule to write (decision 52).** The same, twice: what a layer asks of storage
 in `rust/tests/iobase_calls.rs` through `Counted`, and what those calls become
 on the wire in `holder/http/tests/accounting.rs` against an in-process origin.
 The split is the repo's own (`iobase_calls.rs:1-14`). The table is in the
@@ -853,7 +1045,7 @@ It must be able to inject, by name: `redirect_next(status, location)`,
 the entity mid-transfer so `If-Range` fails), `refuse_head` (405), `chunk_next`
 (answer without `Content-Length`), and `oversized_error`. It records
 `Recorded { method, path, headers, range }`, `connection_count` and
-`request_count`, because every assertion in piece 12 is a count or a recorded
+`request_count`, because every assertion in piece 13 is a count or a recorded
 header.
 
 Without `rewrite_body` and `chunk_next` the two sharpest rules in this prompt —
@@ -875,6 +1067,25 @@ Build them first.
   it is off, and a decoded body corrupts a range.
 - Caching bytes in `open`. `open` caches metadata, never bytes — that is
   `object/mod.rs`'s rule and `Buffered`'s job.
+- Speaking HTTP/2 now. It is reachable synchronously — `h2` pulls tokio only
+  for the `AsyncRead`/`AsyncWrite` traits and can be driven by a hand-rolled
+  `std::task::Waker` over a blocking socket, with no executor and no `unsafe`,
+  and all eleven net-new crates are already in this repo's `Cargo.lock` through
+  the `object_store` dev-dependency. It is not taken, because no measurement
+  justifies eleven crates and a connection driver whose failure mode is a
+  silent hang. Multiplexing is the only win and it is unreachable while
+  `IOBase`'s contract is one range per blocking call. Revisit when **both** are
+  true: a profile from the deployment network, not a proxied sandbox, shows
+  many concurrent small ranges dominating; and `HttpFile` issues ranges in
+  batches. Then it is `h2` behind an `http2` feature, and never hyper, reqwest
+  or a tokio runtime.
+- Speaking HTTP/3 now. `quiche` is the only sans-io HTTP/3 implementation and
+  its only TLS backend is BoringSSL through `cmake`, against
+  `rust/Cargo.toml:52`'s own "still no C toolchain needed", at MSRV 1.88
+  against the 1.85 floor Gate 1 checks. `quinn-proto` 0.11.17 is pure Rust,
+  sans-io, MSRV exactly 1.85 and already in the lockfile — and is QUIC
+  transport only, so RFC 9114 and RFC 9204 QPACK would be this crate's code
+  forever. One comment records that door; the pieces move on.
 
 ## How to prove it
 
@@ -904,7 +1115,7 @@ cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-ta
 A `wire`-only build must compile with neither `object` nor `http`, or the
 extraction left a module nothing consumes.
 
-The cost and allocation pins re-run on every piece from 6 on:
+The cost and allocation pins re-run on every piece from 7 on:
 `cargo test --locked -p yggdryl --test iobase_calls --test allocations`.
 
 **Piece 1 has one extra gate, and it is the piece's whole point:**
@@ -936,7 +1147,7 @@ Gate 4 runs for the docs page: `python scripts/check_docs_examples.py` for
   keep an alias for it. The bindings and the doctest lose the old name.
 - Do not write a header parser, a header validator, or an allowlist of header
   names. `rust/src/metadata/validation.rs` owns the RFC 9110 grammar; calling
-  it is the whole of piece 5.
+  it is the whole of piece 6.
 - Do not call `Metadata::from_entries` before folding. It refuses a duplicate
   canonical key rather than taking last-wins, so a response carrying `Vary`
   twice would fail construction.
@@ -980,5 +1191,37 @@ Gate 4 runs for the docs page: `python scripts/check_docs_examples.py` for
 - Do not apply `Buffered` inside the handle. Composition is the caller's, and
   a wrapper that keeps its own copy of what the store said hides the call
   (`AGENTS.md:508-510`).
+- Do not advertise `h2` or `h3` in ALPN, and do not reach into
+  `ureq::unversioned::transport` to do it. ureq sends no ALPN extension and
+  cannot frame either version, so a server that selected one would receive
+  HTTP/1.1 bytes on an HTTP/2 connection; and that module is documented as
+  exempt from semver, so a minor bump breaks the build.
+- Do not add `h2`, `hyper`, `reqwest`, `h3`, `quinn`, `quinn-proto`, `quiche`,
+  `h2-sans-io`, `fluke-hpack` or `tokio`, and do not write an `http2.rs` stub
+  or a `#[cfg(feature = "http2")]` gate over code nothing compiles.
+  `rust/Cargo.toml:37` says "no SDK, runtime, or async executor rides in".
+- Do not add a transport trait, a boxed transport, or a `Wire` enum with one
+  variant. `Provider` is the house shape for a dispatcher and it is written in
+  the commit that adds the second value, not before.
+- Do not add `multiplexes()`, `allows_0rtt()`, `alpn_token()`,
+  `requires_lowercase_fields()` or `has_trailers()` to `HttpVersion`, and do
+  not put a version on `HttpRequest`. Each is constant over what this build
+  speaks or has no reader, and a version is a property of the connection.
+- Do not clamp a version, and do not spell the option `max_version`. Nothing
+  is negotiated; a version this build cannot speak is refused by name.
+- Do not accept `h2c`. RFC 9113 removed the `Upgrade` path and says a client
+  MUST NOT send the token.
+- Do not add a trailers accessor. ureq parses the chunked trailer part and
+  discards it, so it would answer empty on every version — a lie about the
+  transport rather than a seam.
+- Do not drain an abandoned body without consulting `pools_connections()`. On
+  HTTP/1.0 the connection closes regardless.
+- **Do not write anywhere — rustdoc, module doc, `DECISIONS.md`, or the docs
+  page — that this module speaks HTTP/2 or HTTP/3, or that Amazon S3 does.**
+  The ALPN probes behind any such claim in the research that produced this
+  prompt measured a proxying egress gateway, which answers `ALPN: h2` for
+  every host including `neverssl.com`. Any version claim about a real origin
+  is re-measured from an unproxied network, checking the certificate issuer,
+  before it is written down. The same applies to any h2-versus-h1.1 timing.
 - Do not write a binding. Rust-only is complete work here; document it as such.
 - Do not land two pieces in one commit.
