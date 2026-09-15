@@ -516,11 +516,13 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// the partition column and declares its derivation as an expression; it
 /// then moves the enrichment rules out of Rust onto the 29 shipped fields
 /// that carry a `fix:derivation`, and onto the three crate columns that
-/// derive.
+/// derive - `CountryOfIssue` listing the crate's 249 ISO 3166 codes,
+/// `OrderQty` reading a canceled quantity outright, `isincode` reading each
+/// identifier through `try_cast(... as isin)`.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 11_687_013_810_517_068_997);
+    assert_eq!(registry.stable_hash(), 7_166_947_808_242_523_749);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

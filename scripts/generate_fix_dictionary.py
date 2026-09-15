@@ -1127,12 +1127,35 @@ def product_case(codes: list[dict[str, Any]]) -> str:
     return case(branches)
 
 
-# The ISIN prefixes ISO 3166 does not assign to a country, as the crate's own
-# registry of countries excludes them: the user-assigned range (`AA`, `QM`
-# through `QZ`, `XA` through `XZ`, `ZZ`), the transitionally reserved codes
-# (`AN`, `CS`, `YU`) and the exceptionally reserved `EU`. `XS` and `EU` are
-# numbering agencies, not countries, and say nothing about the issue.
-UNASSIGNED_PREFIXES = ("AA", "AN", "CS", "EU", "YU", "ZZ")
+# The crate's own registry of ISO 3166-1 alpha-2 codes, `StringEnum::COUNTRIES`
+# in `rust/src/types/string/registries.rs`: the one list of the assigned codes
+# this repository holds, read here rather than copied, so `CountryOfIssue`
+# answers exactly the prefixes that registry lists. The `country` datatype
+# validates width alone - a stream carrying an unassigned code registers it -
+# so the whitelist is the derivation's to state, and it states it as the
+# registry's own membership.
+COUNTRIES_SOURCE = pathlib.Path(__file__).resolve().parents[1] / "rust" / "src" / "types" / "string" / "registries.rs"
+
+
+def crate_countries() -> tuple[str, ...]:
+    """The assigned ISO 3166-1 alpha-2 codes, as the crate's registry lists them."""
+    source = COUNTRIES_SOURCE.read_text(encoding="utf-8")
+    matched = re.search(r"pub const COUNTRIES: &'static \[&'static str\] = &\[(.*?)\];", source, re.DOTALL)
+    if matched is None:
+        raise ValueError(f"{COUNTRIES_SOURCE} declares no COUNTRIES registry")
+    codes = tuple(re.findall(r'"([A-Z]{2})"', matched[1]))
+    if not codes or list(codes) != sorted(set(codes)):
+        raise ValueError("the COUNTRIES registry is not a sorted list of distinct codes")
+    return codes
+
+
+def country_case() -> str:
+    """`CountryOfIssue` off the ISIN prefix: ISO 6166 opens a number with the
+    ISO 3166 code of the country whose agency numbered it, and only a prefix
+    the crate's registry lists as a country answers - `XS`, `EU` and every
+    unassigned pair are silence."""
+    prefix = "substring(isincode, 1, 2)"
+    return case([(f"{prefix} in {quoted(crate_countries())}", prefix)])
 
 # Target tag -> the term, in the grammar's canonical spelling. `Product(460)`
 # is generated from the dictionary's own code set by `attach_derivations`.
@@ -1143,9 +1166,13 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     (6, f"case when msgtype in {quoted(REPORTS)} and cumqty = lastqty and lastqty > 0 then lastpx end"),
     # Appendix D's identity read each way: what was done is what was ordered
     # minus what is left, what was ordered is what was done plus what is
-    # left - or plus what was canceled - and nothing is left once the order
-    # is closed. A negative remainder means the two inputs were never about
-    # one order, and is silence.
+    # left - and nothing is left once the order is closed. A negative
+    # remainder means the two inputs were never about one order, and is
+    # silence. What a canceled order asked for is what it did plus what was
+    # canceled: a report with nothing left, stated or unstated, that states a
+    # canceled quantity answers that way, and one that states what is left
+    # answers done plus left whatever it canceled; the canceled quantity is
+    # read last where nothing says what is left.
     (14, f"case when msgtype in {quoted(REPORTS)} and orderqty - leavesqty >= 0 then orderqty - leavesqty end"),
     # Appendix O: a trade settling in the currency it was dealt in states the
     # dealt currency once, so each states the other.
@@ -1157,7 +1184,7 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     # A forward price is quoted as a spot rate and the points away from it,
     # and the points are already in price units, so the two add.
     (31, "lastspotrate + lastforwardpoints"),
-    (38, f"case when msgtype in {quoted(REPORTS)} then coalesce(cumqty + leavesqty, cumqty + cxlqty) end"),
+    (38, f"case when msgtype in {quoted(REPORTS)} and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in {quoted(REPORTS)} then coalesce(cumqty + leavesqty, cumqty + cxlqty) end"),
     # A report stating an execution type the two code sets spell alike has
     # stated its order status; a trade has stated it in what is left and
     # what was done: nothing left is filled, something left after something
@@ -1191,8 +1218,9 @@ DERIVATION_RULES: tuple[tuple[int, str], ...] = (
     (381, f"case when msgtype in {quoted(REPORTS)} then lastqty * lastpx end"),
     (461, cfi_case()),
     # ISO 6166 opens a number with the ISO 3166 code of the country whose
-    # agency numbered it, where one did.
-    (470, f"case when substring(isincode, 1, 1) <> 'X' and not substring(isincode, 1, 2) between 'QM' and 'QZ' and not substring(isincode, 1, 2) in {quoted(UNASSIGNED_PREFIXES)} then try_cast(substring(isincode, 1, 2) as country) end"),
+    # agency numbered it, where one did: the crate's registry of countries
+    # is the whitelist, read off the Rust source.
+    (470, country_case()),
     # A pegged order's price is the reference it pegs to plus its own
     # offset, which is signed: a peg below the reference is a negative one.
     (839, "peggedrefprice + pegoffsetvalue"),

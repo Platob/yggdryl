@@ -732,6 +732,10 @@ impl super::FixMsg {
         }
         let mut front = front.into_iter();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
+        // The crate columns' derivations and the working row they read,
+        // gathered off this message once for the three of them, and only
+        // when one is asked for.
+        let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
         for (column, planned) in columns.iter().zip(plan.iter()) {
             if let Some(value) = front.next() {
                 values.push(column.scalar(value)?);
@@ -760,7 +764,9 @@ impl super::FixMsg {
                         self.regrouped(counter, column, value)
                     } else {
                         match planned.tag {
-                            Some(tag) => self.regrouped(tag, column, self.column_value(tag)),
+                            Some(tag) => {
+                                self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
+                            }
                             None => self
                                 .index_of_name(column.name())
                                 .and_then(|at| self.as_value().get(at))
@@ -782,8 +788,16 @@ impl super::FixMsg {
     /// members. Placing them by name is what lets an occurrence a bridge
     /// packed into one member land in the same column as one that spelled
     /// every member out. An unstated member becomes null; Field::scalar then
-    /// enforces the declared occurrence's types and nullability.
-    fn regrouped(&self, tag: i32, declared: &Field, held: crate::Scalar) -> crate::Scalar {
+    /// enforces the declared occurrence's types and nullability. The
+    /// [enriching pass](super::enrich) lays a group out the same way for
+    /// the working row its derivations read, so a member named in a term
+    /// stands where the registry's definition puts it.
+    pub(super) fn regrouped(
+        &self,
+        tag: i32,
+        declared: &Field,
+        held: crate::Scalar,
+    ) -> crate::Scalar {
         let Some(members) = item_fields(declared) else {
             return held;
         };
@@ -836,18 +850,31 @@ impl super::FixMsg {
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
-    fn column_value(&self, tag: i32) -> crate::Scalar {
+    ///
+    /// `derived` is the row's one gather for the crate columns: built on
+    /// the first crate column asked for and read by the ones after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the registry's refusal of its own derivations, naming the
+    /// field whose `fix:derivation` does not compile: a dictionary whose
+    /// rules do not compile fills no row, exactly as it enriches no message.
+    fn column_value(
+        &self,
+        tag: i32,
+        derived: &mut Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)>,
+    ) -> Result<crate::Scalar> {
         // A stated value wins - a stated null is a value that would not
         // type, and the derivation still answers for it.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
-            return held.clone();
+            return Ok(held.clone());
         }
         if let Some(facet) = DERIVED_FACETS
             .iter()
             .find_map(|(held, facet)| (*held == tag).then_some(*facet))
         {
             if let Some(held) = self.lifted(facet) {
-                return held.clone();
+                return Ok(held.clone());
             }
         }
         // The columns every row fills, derived here for a message built from
@@ -856,14 +883,14 @@ impl super::FixMsg {
         // by name.
         let is = |held: (i32, &str)| held.0 == tag;
         if tag == 8 {
-            return crate::Scalar::from(format!(
+            return Ok(crate::Scalar::from(format!(
                 "FIX.{}",
                 self.registry()
                     .newest()
                     .map_or_else(|| "4.4".to_owned(), |held| held.version().to_string())
-            ));
+            )));
         }
-        if is(super::VERSION_TAG_NAME) {
+        Ok(if is(super::VERSION_TAG_NAME) {
             self.version().map_or(crate::Scalar::Null, |held| {
                 crate::Scalar::from(held.to_string())
             })
@@ -872,18 +899,21 @@ impl super::FixMsg {
         } else if is(super::TIMEPARTITION_TAG_NAME) {
             partition_of(self.updatedat())
         } else if super::is_crate_tag(tag) {
-            // The registry compiles every derivation once and a refused
-            // compile is the pass's to report; a row answers null for the
-            // column and nothing more, as it does for any derivation that
-            // answers nothing.
-            self.registry()
-                .derivations()
-                .ok()
-                .and_then(|derivations| derivations.fill(tag, self))
-                .unwrap_or(crate::Scalar::Null)
+            // The registry compiles every derivation once, and a refused
+            // compile refuses the row as it refuses the pass; a derivation
+            // that answers nothing is a null column, as on the message.
+            let (derivations, row) = match derived {
+                Some(held) => held,
+                None => {
+                    let compiled = self.registry().derivations()?;
+                    let row = compiled.crate_row(self);
+                    derived.insert((compiled, row))
+                }
+            };
+            derivations.fill(tag, row).unwrap_or(crate::Scalar::Null)
         } else {
             crate::Scalar::Null
-        }
+        })
     }
 }
 

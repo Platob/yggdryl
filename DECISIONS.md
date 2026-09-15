@@ -3162,55 +3162,71 @@ generation (every name a field, a group or a crate column), the CFI and
 rule generated from the groups the dictionary's own `SecurityType` code set
 files each value under. The crate's three derived columns declare theirs in
 `fix/crated.rs`: `isincode` is `coalesce(case when securityidsource = '4'
-then securityid end, secaltidgrp[securityaltidsource = '4'][0].securityaltid)`,
+then try_cast(securityid as isin) end,
+try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin))`
+- each identifier read through the `isin` datatype's own refusal, so a
+primary no check digit closes is null and the alternate is consulted behind
+it, which is the fall-through the deleted table had as two rules -
 `miccode` is `coalesce(securityexchange, exdestination, lastmkt)`, `state`
 is `coalesce(ordstatus, exectype)`, and `schema.rs::column_value` no longer
 duplicates them: a row of an unenriched message fills those three columns
-through the same evaluator the pass runs.
+through the same compiled term and the same gather the pass runs.
 
 **The evaluator is the expression layer.** One grammar, one binder, one
 evaluator: a rule is a `Term`, it binds with `Term::bind` against the
-message's root, it evaluates with the scalar tier, and its answer is typed
+working schema, it evaluates with the scalar tier, and its answer is typed
 by the dictionary's own field for the tag exactly as `FixMsg::set` types a
 value. Nothing here interprets a rule; a `case`, a `coalesce`, a `try_cast`
 and a path predicate mean in a derivation what they mean in a `where`.
 The registry compiles its derivations once - `FixRegistry::derivations()`,
-a `OnceLock<Arc<Derivations>>` built on the first enrichment or row fill and
-forgotten by every field change (`index`, `remove_resolved`), by every
-catalog change (a clone starts empty and every mutation stages itself on a
-clone; the direct catalog writes forget explicitly) - rather than on the
-codec, because the row fill (`FixMsg::into_row`) has no codec in hand and
-evaluates the crate columns through the same compiled list, and because the
-cost of a mutation is then a pointer reset. Compiling proves every name a
-term reads is a field or a group of the registry and types the term against
-those fields, refusing by the field's name, never per message. The crate's
-own columns are the one exception: their terms read the standard's fields
-by name and a registry built from a handful of fields holds none of them,
-so for a crate field a name the registry lacks is widened as a null input
-the term answers null over, and a term that cannot bind over such inputs is
-silent.
+a `OnceLock<Result<Arc<Derivations>, Refused>>` built on the first
+enrichment or row fill and forgotten by every field change (`index`,
+`remove_resolved`), by every catalog change (a clone starts empty and every
+mutation stages itself on a clone; the direct catalog writes forget
+explicitly) - rather than on the codec, because the row fill
+(`FixMsg::into_row`) has no codec in hand and evaluates the crate columns
+through the same compiled list, and because the cost of a mutation is then
+a pointer reset. Compiling proves every name a term reads is a field or a
+group of the registry and binds the term against the working schema,
+refusing by the field's name, never per message - and the refusal is kept
+exactly as a compiled list is, so a registry whose rules do not compile
+compiles once and refuses every ask on every door: `enrich_message`,
+`enrich_messages`, `into_row` (`column_value` is fallible for it) and the
+batch reader answer the same error naming the field, and none nulls the
+crate columns in silence. The crate's own columns are the one exception to
+the name check: their terms read the standard's fields by name and a
+registry built from a handful of fields holds none of them, so for a crate
+field a name the registry lacks is a null column of the working schema, and
+a term that cannot bind over such columns is silent.
 
-**Bound once per root shape.** A message's root is widened with every
-column the derivations read or fill that it lacks, typed by the registry's
-field, and every term is bound against that widened root; the bound shape
-is memoized on the compiled derivations, keyed as `column_plan_of` keys the
-column plan - the root's `Fields` by storage identity, then structurally -
-in a bounded cache of sixteen shapes. Per message the pass copies the row
-into a working row over the widened schema, the absent columns null, sweeps
-the derivations in tag order (a target the row holds non-null is skipped; a
-null answer, a value the field refuses, an evaluation the grammar refuses
-and a shape the term cannot bind against are silence; a non-null answer is
-typed and written where the next derivation reads it), repeats the sweep
-until one writes nothing - bounded by the derivation count - and lands
-everything through one `FixMsg::set_each`, one rebuild for the whole pass.
-`Bound::eval_padded` is the crate-private door this reads through: a
-working row whose trailing columns are absent reads them as null, so a row
-fill evaluates over the message's own values without building a row. The
-fixpoint replaces the hand-laid rule order and settles a chain in either
-direction (`securityid` <-> `isincode`, `securityidsource` after
-`securityid`, `product` after `securitytype` after `cficode`, `leavesqty`
-after `ordstatus` after `exectype`); the primary identifier is read before
-the alternate ones because the `isincode` term says so.
+**Bound once per registry, against the working schema.** The working
+schema is the ordered union of every column any derivation reads or fills,
+each typed by the registry's field for it, a group by its group definition;
+every term is bound against it at compile and never against a message, so
+there is no shape to recognize and nothing cached per shape. Per message the
+pass gathers exactly those columns off the message by tag (`FixMsg::
+indexed_by_tag`, the index alone and never the name table a miss would
+build; a stated group laid out through `regrouped` as the registry declares
+its occurrence, so a member a term names stands where the definition puts
+it; an absent column null) into one working row, sweeps the derivations in
+tag order (a target the row holds non-null is skipped; a null answer, a
+value the field refuses and an evaluation the grammar refuses are silence;
+a non-null answer is typed and written where the next derivation reads it),
+repeats the sweep until one writes nothing - bounded by the derivation
+count - and lands everything through one `FixMsg::set_each`, one rebuild
+for the whole pass. `Bound::eval_values` is the crate-private door this
+reads through, the row as its column values rather than as a sequence, so
+a write into the working row is what the next term reads. The row fill
+gathers the same way, the columns the one term reads, and types the answer
+through the column's field as the pass does, so a refused value is a null
+column rather than a refused row. A message costs the same whatever came
+before it: the bridge corpus of 54 root shapes enriches at 224 allocations
+a message, and its second pass costs exactly its first less the compile.
+The fixpoint replaces the hand-laid rule order and settles a
+chain in either direction (`securityid` <-> `isincode`, `securityidsource`
+after `securityid`, `product` after `securitytype` after `cficode`,
+`leavesqty` after `ordstatus` after `exectype`); the primary identifier is
+read before the alternate ones because the `isincode` term says so.
 
 **What was kept, exactly.** Every case of `rust/tests/fix/enrich.rs`,
 `latest.rs`, `dataset.rs` and `pipeline.rs` answers as before, and the
@@ -3218,31 +3234,68 @@ equivalence snapshot's `enrich` group does not move: the recovered
 arrival-record fields, restatement, every derivation the rule table stated
 (spelled as the design brief lists them, with `PeggedRefPrice(1095)` under
 its dictionary name), the `altids` Map and the stream's `Remembered` plugin
-memory. Two spellings deserve a note. `CountryOfIssue(470)` used the crate's
-ISO 3166 registry as a whitelist; the `country` datatype validates width
-alone, so the term states ISO 3166's own reservation rule - the user-assigned
-range `AA`, `QM`-`QZ`, `XA`-`XZ`, `ZZ`, the transitionally reserved `AN`,
-`CS`, `YU`, and `EU` - which is exactly what that registry excludes, so
-`XS` and `EU` answer nothing as before. The `Product(460)` group lookup
-matched a `SecurityType` code exactly where the CFI lookup folded case; both
-now fold (`upper(securitytype)`), which changes no pinned answer.
+memory. `CountryOfIssue(470)` keeps the whitelist the deleted
+`FixDerivation::Country` was, `StringEnum::COUNTRIES`: the `country`
+datatype validates width alone and stays so - it is the width its standard
+fixes, as every registered code is, and a stream carrying an unassigned
+code registers it - so the derivation states the membership, as an `in
+(...)` over the 249 assigned codes the generator reads off
+`rust/src/types/string/registries.rs` rather than copies; one owner, and a
+pin over all 676 pairs holds the term to the registry. (The first spelling
+stated ISO 3166's reservation rule instead and answered 381 unassigned
+pairs; that was wrong and is gone.) The `Product(460)` group lookup matched
+a `SecurityType` code exactly where the CFI lookup folded case; both now
+fold (`upper(securitytype)`), which changes no pinned answer.
+
+**What changed, on purpose.** Five answers differ from the deleted table,
+each pinned in `rust/tests/fix/enrich.rs` and stated in the capture page's
+edges. A report with nothing left that states a canceled quantity orders
+what it did plus what it canceled (`39=4|14=40|84=60` derives `OrderQty`
+100, and `151=0` stated beside them changes nothing): Appendix D's cancel,
+where the hand-laid order derived `LeavesQty` first and answered `CumQty`
+alone; the rule says it outright - `cxlqty > 0 and coalesce(leavesqty, 0) =
+0` - so the answer does not hinge on tag 38 being swept before 151. The
+fixpoint fills chains the single pass could not reach and was not idempotent
+over: `GrossTradeAmt` and `AvgPx` after a `LastPx` derived from spot and
+points, `LeavesQty` after an `OrderQty` derived from `CxlQty`, the
+multiplied and gross quantities after a `TotalTradeQty` derived from the
+period multiplier. `OrigSendingTime(122)` and `TotalTradeQty(2367)` fire: the
+deleted rules read `PossDupFlag` as text and `TradingUnitPeriodMultiplier`
+as a float, and a boolean and an integer never matched; a term reads each
+as what it is. `Symbol(55)` compares `SecurityIDSource` exactly - `A` is
+Bloomberg's source, `a` is no code of the set - because FIX codes are
+case-sensitive, where the deleted condition folded case. Each is the better
+answer, and none is an accident of order.
 
 **Pins.** A `fix:derivation` edited on a registry field changes what the
 reader fills (Rust doc example, Python and JavaScript tabs, and their tests);
-a malformed derivation refuses at insert, update and load naming the field;
-an absent input is silence and a stated value is never overwritten, a stated
-null filled in place with the wire untouched; a chain resolves in one pass
-whichever way it runs; a derivation naming what the dictionary lacks, or one
-that does not type, refuses the first enrichment naming the field; every
-shipped derivation is stored as its canonical text and binds against the
-fields it reads; the crate columns fill a row of an unenriched message as
-the pass fills the message; and `rust/tests/allocations.rs` pins that a warm
-same-shaped message costs 159 allocations - the clone, restatement's rebuild,
-the working row and the derivation rebuild, the `altids` Map and its rebuild -
-that a thousand cost exactly a thousand times that (nothing binds per
-message), that a settled message costs 46, and that a shape's bind is paid
-once by its first message. `enrich_messages_same_shape` in the pipeline
-benchmark isolates the bound path.
+a malformed derivation refuses at insert and update, and at load through a
+store whose shard was corrupted and through a JSON snapshot, naming the
+field; an absent input is silence and a stated value is never overwritten, a
+stated null filled in place with the wire untouched; a chain resolves in one
+pass whichever way it runs; a derivation naming what the dictionary lacks, or
+one that does not bind, refuses on all four doors naming the field; every
+shipped derivation is stored as its canonical text and binds; the crate
+columns fill a row of an unenriched message as the pass fills the message;
+the ISIN fall-through, the 676-pair country whitelist and the five changed
+answers above; a registry of a handful of fields enriches and its crate
+columns are silent; the corpus of every bridge shape enriches to the same
+answers forwards, backwards and twice; and `rust/src/fix/tests.rs` pins the
+working schema - 57 columns for the committed dictionary, the group typed as
+the registry declares it, all 32 terms bound in tag order, every target a
+column - and that one registry compiles once, a clone compiles its own and
+an update recompiles. `rust/tests/allocations.rs` pins that a warm
+same-shaped message costs 146 allocations - the clone, restatement's rebuild
+and the working row, and nine derivations landing: their evaluations, the
+landed list sized once, nine writes staged and one rebuild through
+`set_each`, the `altids` Map and its rebuild - that a thousand
+cost exactly a thousand times that (nothing is bound or kept per message),
+that a settled message costs 46, that the bridge corpus of 54 root
+shapes costs the same on its second pass as on its first (nothing is kept
+per shape), and that a registry whose derivations refuse compiles once: the
+first refused ask pays the compile and the second 23, the clone, the
+restatement and the refusal's two string handles. `enrich_messages_same_shape` in the pipeline benchmark is the same
+pass over one shape, beside the corpus of every shape.
 
 **Written in:** `fix/enrich.rs`, `fix/field.rs`, `fix/registry.rs`,
 `fix/catalog.rs`, `fix/store.rs`, `fix/msg.rs`, `fix/schema.rs`,

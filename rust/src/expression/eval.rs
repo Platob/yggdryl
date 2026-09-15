@@ -42,10 +42,6 @@ use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 pub(crate) struct Row<'context> {
     values: Option<&'context [Scalar]>,
     holder: Option<&'context dyn Attributes>,
-    /// Whether a column past the end of `values` reads as null rather than
-    /// as a row missing a bound column: a working row that holds only the
-    /// leading columns of the schema it was bound against.
-    padded: bool,
 }
 
 impl<'context> Row<'context> {
@@ -53,20 +49,7 @@ impl<'context> Row<'context> {
         values: Option<&'context [Scalar]>,
         holder: Option<&'context dyn Attributes>,
     ) -> Self {
-        Self {
-            values,
-            holder,
-            padded: false,
-        }
-    }
-
-    /// A row whose trailing columns are absent and read as null.
-    pub(crate) const fn padded(values: &'context [Scalar]) -> Self {
-        Self {
-            values: Some(values),
-            holder: None,
-            padded: true,
-        }
+        Self { values, holder }
     }
 }
 
@@ -93,11 +76,10 @@ impl Node {
                 let values = row
                     .values
                     .ok_or_else(|| missing("a row to read a column from"))?;
-                match values.get(*index) {
-                    Some(value) => Ok(value.clone()),
-                    None if row.padded => Ok(Scalar::Null),
-                    None => Err(missing("a row with every bound column")),
-                }
+                values
+                    .get(*index)
+                    .cloned()
+                    .ok_or_else(|| missing("a row with every bound column"))
             }
             Kind::Path(base, steps) => {
                 let mut field = &base.field;

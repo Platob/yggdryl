@@ -945,8 +945,9 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // Decision 26 changes the clock/code/identity declarations and seeds standard clocks.
     // Decision 38 renames the partition and previous-clock columns,
     // registers the cusip and sedol codes beside isin, and declares how
-    // `isincode`, `miccode` and `state` derive on the fields themselves.
-    assert_eq!(carrying.stable_hash(), 9_985_971_198_859_573_369);
+    // `isincode`, `miccode` and `state` derive on the fields themselves -
+    // `isincode` reading each identifier through `try_cast(... as isin)`.
+    assert_eq!(carrying.stable_hash(), 318_981_572_616_015_665);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -5742,4 +5743,119 @@ fn a_composed_key_fills_the_field_its_last_segment_names() {
     // A segment naming no field of this dictionary names nothing.
     let stranger = enriched("MSGTYPE=8|METAL.LOCO=LDN|");
     assert!(stranger.get_by_name("Loco").is_none());
+}
+
+#[test]
+fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_change() {
+    let registry = committed();
+    let compiled = registry.derivations().unwrap();
+    // One compile per registry, shared by every ask.
+    assert!(
+        Arc::ptr_eq(&compiled, &registry.derivations().unwrap()),
+        "a second ask answers the same compiled list"
+    );
+    // The working schema is the ordered union of every column any
+    // derivation reads or fills, typed by the registry's field - a group by
+    // its own definition - and every term is bound against it: no shape is
+    // recognized per message, and nothing is bound past this.
+    let schema = compiled.schema().expect("a bound term");
+    let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
+    assert_eq!(names.len(), 54, "{names:?}");
+    for read in [
+        "cumqty",
+        "cxlqty",
+        "securityid",
+        "secaltidgrp",
+        "isincode",
+        "possdupflag",
+        "tradingunitperiodmultiplier",
+    ] {
+        assert!(names.contains(&read), "{read} is a working column");
+    }
+    let group = schema.get_field("secaltidgrp").expect("the group");
+    assert!(
+        matches!(group.dtype(), DataType::List(_)),
+        "a group is typed as the registry declares it: {}",
+        group.dtype()
+    );
+    let derived: Vec<(i32, bool)> = compiled.derived().collect();
+    assert_eq!(
+        derived.len(),
+        32,
+        "29 shipped fields and the crate's three columns"
+    );
+    assert!(
+        derived.iter().all(|(_, bound)| *bound),
+        "every shipped term binds: {derived:?}"
+    );
+    assert!(
+        derived.windows(2).all(|pair| pair[0].0 < pair[1].0),
+        "swept in tag order"
+    );
+    for (tag, _) in derived {
+        let name = registry.field_by_tag(tag).unwrap().name();
+        assert!(
+            names.iter().any(|held| held.eq_ignore_ascii_case(name)),
+            "{name} is a column the working row can hold"
+        );
+    }
+
+    // A mutation forgets the compiled list, and the next ask compiles the
+    // registry as it stands then.
+    let mut edited = (*registry).clone();
+    assert!(
+        !Arc::ptr_eq(&compiled, &edited.derivations().unwrap()),
+        "a clone compiles its own"
+    );
+    let mut gross = edited.field_by_tag(381).unwrap().clone();
+    gross
+        .as_fix_mut()
+        .set_derivation(&"lastqty * lastpx * settlcurrfxrate".parse().unwrap())
+        .unwrap();
+    let before = edited.derivations().unwrap();
+    edited.update(gross).unwrap();
+    let after = edited.derivations().unwrap();
+    assert!(!Arc::ptr_eq(&before, &after), "an update recompiles");
+    let names: Vec<String> = after
+        .schema()
+        .expect("a bound term")
+        .fields()
+        .iter()
+        .map(|field| field.name().to_owned())
+        .collect();
+    assert!(names.iter().any(|held| held == "settlcurrfxrate"));
+    assert_eq!(names.len(), 54, "the edit reads a column another rule read");
+}
+
+#[test]
+fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states() {
+    // A registry holding none of the standard's fields widens what the
+    // crate columns read as null columns of the working schema: every
+    // crate term compiles, none refuses, and what does not bind over
+    // nothing is silent rather than a refusal.
+    let registry = FixRegistry::new();
+    let compiled = registry.derivations().unwrap();
+    let derived: Vec<(i32, bool)> = compiled.derived().collect();
+    assert_eq!(
+        derived.iter().map(|(tag, _)| *tag).collect::<Vec<_>>(),
+        [
+            super::ISINCODE_TAG_NAME.0,
+            super::MICCODE_TAG_NAME.0,
+            super::STATE_TAG_NAME.0
+        ]
+    );
+    // A stated crate column is never overwritten and never re-derived, and
+    // a refusal of nothing enriches: the handful of fields fills nothing.
+    let codec = FixCodec::new(Arc::new(registry));
+    let read = codec
+        .parse_line(b"8=FIX.4.4|35=D|11=A|48=US0378331005|22=4|10=0|")
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    let held = codec.enrich_message(read).unwrap();
+    assert!(
+        held.get_by_tag(super::ISINCODE_TAG_NAME.0)
+            .is_none_or(Scalar::is_null)
+    );
 }

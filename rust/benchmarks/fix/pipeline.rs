@@ -262,10 +262,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    // The same pass over one shape a thousand times: what the derivations
-    // cost once their terms are bound, which the registry does once per
-    // root shape and keeps (decision 38). The corpus above is every shape a
-    // bridge writes; this is the stream a venue writes.
+    // The same pass over one shape a thousand times: the corpus above is
+    // every shape a bridge writes, this is the stream a venue writes, and
+    // the two cost the same per message because nothing is bound or kept
+    // per shape (decision 38).
     let report = messages
         .iter()
         .find(|message| message.as_field().name() == "executionreport")

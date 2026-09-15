@@ -143674,7 +143674,7 @@
         "metadata": {
           "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
           "display": "OrderQty",
-          "fix:derivation": "case when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
+          "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
           "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
           "fix:tag": "38"
         },
@@ -149473,7 +149473,7 @@
         "metadata": {
           "description": "ISO Country code of instrument issue (e.g. the country portion typically used in ISIN). Can be used in conjunction with non-ISIN SecurityID (48) (e.g. CUSIP for Municipal Bonds without ISIN) to provide uniqueness.",
           "display": "CountryOfIssue",
-          "fix:derivation": "case when substring(isincode, 1, 1) <> 'X' and not substring(isincode, 1, 2) between 'QM' and 'QZ' and not substring(isincode, 1, 2) in ('AA', 'AN', 'CS', 'EU', 'YU', 'ZZ') then try_cast(substring(isincode, 1, 2) as country) end",
+          "fix:derivation": "case when substring(isincode, 1, 2) in ('AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX', 'AZ', 'BA', 'BB', 'BD', 'BE', 'BF', 'BG', 'BH', 'BI', 'BJ', 'BL', 'BM', 'BN', 'BO', 'BQ', 'BR', 'BS', 'BT', 'BV', 'BW', 'BY', 'BZ', 'CA', 'CC', 'CD', 'CF', 'CG', 'CH', 'CI', 'CK', 'CL', 'CM', 'CN', 'CO', 'CR', 'CU', 'CV', 'CW', 'CX', 'CY', 'CZ', 'DE', 'DJ', 'DK', 'DM', 'DO', 'DZ', 'EC', 'EE', 'EG', 'EH', 'ER', 'ES', 'ET', 'FI', 'FJ', 'FK', 'FM', 'FO', 'FR', 'GA', 'GB', 'GD', 'GE', 'GF', 'GG', 'GH', 'GI', 'GL', 'GM', 'GN', 'GP', 'GQ', 'GR', 'GS', 'GT', 'GU', 'GW', 'GY', 'HK', 'HM', 'HN', 'HR', 'HT', 'HU', 'ID', 'IE', 'IL', 'IM', 'IN', 'IO', 'IQ', 'IR', 'IS', 'IT', 'JE', 'JM', 'JO', 'JP', 'KE', 'KG', 'KH', 'KI', 'KM', 'KN', 'KP', 'KR', 'KW', 'KY', 'KZ', 'LA', 'LB', 'LC', 'LI', 'LK', 'LR', 'LS', 'LT', 'LU', 'LV', 'LY', 'MA', 'MC', 'MD', 'ME', 'MF', 'MG', 'MH', 'MK', 'ML', 'MM', 'MN', 'MO', 'MP', 'MQ', 'MR', 'MS', 'MT', 'MU', 'MV', 'MW', 'MX', 'MY', 'MZ', 'NA', 'NC', 'NE', 'NF', 'NG', 'NI', 'NL', 'NO', 'NP', 'NR', 'NU', 'NZ', 'OM', 'PA', 'PE', 'PF', 'PG', 'PH', 'PK', 'PL', 'PM', 'PN', 'PR', 'PS', 'PT', 'PW', 'PY', 'QA', 'RE', 'RO', 'RS', 'RU', 'RW', 'SA', 'SB', 'SC', 'SD', 'SE', 'SG', 'SH', 'SI', 'SJ', 'SK', 'SL', 'SM', 'SN', 'SO', 'SR', 'SS', 'ST', 'SV', 'SX', 'SY', 'SZ', 'TC', 'TD', 'TF', 'TG', 'TH', 'TJ', 'TK', 'TL', 'TM', 'TN', 'TO', 'TR', 'TT', 'TV', 'TW', 'TZ', 'UA', 'UG', 'UM', 'US', 'UY', 'UZ', 'VA', 'VC', 'VE', 'VG', 'VI', 'VN', 'VU', 'WF', 'WS', 'YE', 'YT', 'ZA', 'ZM', 'ZW') then substring(isincode, 1, 2) end",
           "fix:lineage": "{\"entries\":[{\"since\":\"4.3\",\"name\":\"countryofissue\",\"type\":{\"type\":\"country\"}}]}",
           "fix:tag": "470"
         },
@@ -222531,7 +222531,7 @@
         "metadata": {
           "description": "The instrument's ISIN: the message's own, else SecurityID or a SecurityAltID whose source is ISIN.",
           "display": "ISINCode",
-          "fix:derivation": "coalesce(case when securityidsource = '4' then securityid end, secaltidgrp[securityaltidsource = '4'][0].securityaltid)",
+          "fix:derivation": "coalesce(case when securityidsource = '4' then try_cast(securityid as isin) end, try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin))",
           "fix:tag": "65013"
         },
         "name": "isincode",

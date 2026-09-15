@@ -296,10 +296,13 @@ pub struct FixRegistry {
     resettle_newest: bool,
     /// The `fix:derivation` of every field, compiled once on the first
     /// enrichment or row fill and shared by every codec and message reading
-    /// this registry; emptied by every change to the fields or the catalog,
+    /// this registry - or the refusal that compile answered, kept the same
+    /// way so a registry whose rules do not compile refuses every ask and
+    /// compiles once; emptied by every change to the fields or the catalog,
     /// so an edited derivation is the one the next reader evaluates
     /// (decision 38).
-    derivations: OnceLock<Arc<super::enrich::Derivations>>,
+    derivations:
+        OnceLock<std::result::Result<Arc<super::enrich::Derivations>, super::enrich::Refused>>,
 }
 
 impl Default for FixRegistry {
@@ -1636,24 +1639,29 @@ impl FixRegistry {
     /// Built from what the registry holds on the first ask and kept until a
     /// field or a definition changes, so a stream of a million messages
     /// compiles its dictionary's derivations once and a registry edit is
-    /// what the next reader evaluates. Cached here rather than on the codec because a row
-    /// fill - [`FixMsg::into_row`](super::FixMsg::into_row), which has no
-    /// codec in hand - evaluates the crate columns' derivations through the
-    /// same compiled list, and a mutation pays a pointer reset and nothing
-    /// else. A refusal is not kept: a derivation naming a field the
-    /// dictionary lacks refuses every ask until the dictionary names it.
+    /// what the next reader evaluates. Cached here rather than on the codec
+    /// because a row fill - [`FixMsg::into_row`](super::FixMsg::into_row),
+    /// which has no codec in hand - evaluates the crate columns' derivations
+    /// through the same compiled list, and a mutation pays a pointer reset
+    /// and nothing else. A refusal is kept exactly as a compiled list is: a
+    /// derivation naming a field the dictionary lacks refuses every ask,
+    /// on every door, until a field changes, and is compiled once rather
+    /// than once per ask.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] naming the field whose derivation
-    /// reads a column no field or group of this registry answers to, or
-    /// whose text a load did not validate.
+    /// reads a column no field or group of this registry answers to, does
+    /// not bind against the fields it reads, or whose text a load did not
+    /// validate.
     pub(super) fn derivations(&self) -> Result<Arc<super::enrich::Derivations>> {
-        if let Some(held) = self.derivations.get() {
-            return Ok(Arc::clone(held));
+        match self
+            .derivations
+            .get_or_init(|| super::enrich::Derivations::compile(self).map(Arc::new))
+        {
+            Ok(held) => Ok(Arc::clone(held)),
+            Err(refused) => Err(refused.error()),
         }
-        let compiled = Arc::new(super::enrich::Derivations::compile(self)?);
-        Ok(Arc::clone(self.derivations.get_or_init(|| compiled)))
     }
 
     /// Forgets the compiled derivations: what the next reader evaluates is

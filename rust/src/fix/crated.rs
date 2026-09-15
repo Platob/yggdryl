@@ -158,7 +158,8 @@ pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 /// An hour. A day is too coarse to prune a capture with - a session's whole
 /// traffic lands in one partition - and a minute makes a day of capture
 /// fourteen hundred of them, which is more files than rows in the quiet ones.
-/// [`TIMEPARTITION_DERIVATION`] spells the same hour for the expression
+/// The `timepartition` field's `transform:expression`,
+/// `truncate(updatedat, 'hour')`, spells the same hour for the expression
 /// layer, and [`FixMsg::time_partition`](super::FixMsg::time_partition)
 /// floors by this constant, so the declared derivation and the value a row
 /// carries never say different things.
@@ -175,10 +176,13 @@ const TIMEPARTITION_DERIVATION: &str = "truncate(updatedat, 'hour')";
 /// primary identifier under the ISIN source, else the alternate identifier
 /// whose source says ISIN - the primary first, so a message stating both
 /// states its ISIN in `SecurityID` and the alternate answers only where the
-/// primary did not. The column's own `isin` type refuses a spelling no check
-/// digit closes, and a refused value is silence.
-const ISINCODE_DERIVATION: &str = "coalesce(case when securityidsource = '4' then securityid \
-                                   end, secaltidgrp[securityaltidsource = '4'][0].securityaltid)";
+/// primary did not. Each is read through `try_cast(... as isin)`, so a
+/// primary no check digit closes is null rather than an answer, and the
+/// alternate is consulted behind it; a spelling neither closes is silence.
+const ISINCODE_DERIVATION: &str = "coalesce(case when securityidsource = '4' then \
+                                   try_cast(securityid as isin) end, \
+                                   try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid \
+                                   as isin))";
 
 /// How `miccode` derives: the exchange the instrument is listed on, the
 /// destination it was routed to, or the market it last traded on, the first

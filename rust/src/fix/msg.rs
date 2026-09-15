@@ -1099,19 +1099,36 @@ impl FixMsg {
     /// is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
+        self.clock_by_tag(tag)
+            .or_else(|| self.value.get(self.reached_by_tag(tag)?))
+    }
+
+    /// The value a tag names by the index alone: one of the four values the
+    /// message computes about itself, else the child declaring the tag, and
+    /// never the two fallbacks of [`Self::get_by_tag`], which end in a name
+    /// table built on the first miss. The [enriching pass](super::enrich)
+    /// gathers its working row through this, a column per tag it reads, so
+    /// the columns a message lacks - most of them - cost a binary search
+    /// each and never the table.
+    pub(super) fn indexed_by_tag(&self, tag: i32) -> Option<&Scalar> {
+        self.clock_by_tag(tag)
+            .or_else(|| self.value.get(self.index_of_tag(tag)?))
+    }
+
+    /// The four values the message holds beside its row rather than in it,
+    /// where `tag` names one of them.
+    fn clock_by_tag(&self, tag: i32) -> Option<&Scalar> {
         if tag == super::UPDATEDAT_TAG_NAME.0 {
-            return Some(self.updatedat());
+            Some(self.updatedat())
+        } else if tag == super::CREATEDAT_TAG_NAME.0 {
+            Some(self.createdat())
+        } else if tag == super::UUID_TAG_NAME.0 {
+            Some(self.uuid())
+        } else if tag == super::PUUID_TAG_NAME.0 {
+            Some(self.puuid())
+        } else {
+            None
         }
-        if tag == super::CREATEDAT_TAG_NAME.0 {
-            return Some(self.createdat());
-        }
-        if tag == super::UUID_TAG_NAME.0 {
-            return Some(self.uuid());
-        }
-        if tag == super::PUUID_TAG_NAME.0 {
-            return Some(self.puuid());
-        }
-        self.value.get(self.reached_by_tag(tag)?)
     }
 
     /// The child a tag reaches: the one carrying the tag, by one hash-free

@@ -513,7 +513,7 @@
     "metadata": {
       "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
       "display": "OrderQty",
-      "fix:derivation": "case when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
+      "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
       "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
       "fix:tag": "38"
     }

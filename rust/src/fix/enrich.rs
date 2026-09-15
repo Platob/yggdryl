@@ -31,25 +31,29 @@
 //! editing a field, exactly as adding a [replacement](super::latest) is, and
 //! a dictionary a desk loads carries the desk's rules.
 //!
-//! # One compile, one bind per shape, one rebuild per message
+//! # One compile per registry, one working row per message
 //!
 //! A registry compiles its derivations once - every term parsed, every name
-//! it reads proven to be a field or a group, every term typed against the
-//! registry's own fields - and keeps [`Derivations`] until a field changes.
-//! A message's root is widened, once per distinct root shape, with the
-//! columns the derivations read or fill that it lacks, typed by the
-//! registry's field for each, and every term is bound against that widened
-//! root; a stream of a million same-shaped messages binds once. Per message
-//! the pass copies the row into a working row over the widened schema, the
-//! absent columns null, and sweeps the derivations in tag order: a target the
-//! row holds non-null is skipped, else the term is evaluated and a non-null
-//! answer the target's field accepts is written into the working row where
-//! the next derivation reads it. Sweeps repeat until one writes nothing,
-//! bounded by the number of derivations, which is what settles a chain in
-//! either direction - `securityid` from `isincode` and `isincode` from
-//! `securityid`, `product` after `securitytype` after `cficode` - without a
-//! hand-laid order. Everything that landed then reaches the message through
-//! one [`FixMsg::set_each`], one rebuild for the whole pass.
+//! it reads proven to be a field or a group, every term bound - and keeps
+//! [`Derivations`] until a field changes. What the terms bind against is the
+//! working schema: the ordered union of every column any derivation reads or
+//! fills, each typed by the registry's field for it, a group by its group
+//! definition. A term binds against that schema at compile and never against
+//! a message, so there is no shape to recognize and nothing to cache per
+//! shape. Per message the pass gathers exactly those columns off the message
+//! by tag - a stated field as its value, a stated group laid out as the
+//! registry declares its occurrence, an absent column as null - into a
+//! working row over the schema, and sweeps the derivations in tag order: a
+//! target the row holds non-null is skipped, else the term is evaluated and
+//! a non-null answer the target's field accepts is written into the working
+//! row where the next derivation reads it. Sweeps repeat until one writes
+//! nothing, bounded by the number of derivations, which is what settles a
+//! chain in either direction - `securityid` from `isincode` and `isincode`
+//! from `securityid`, `product` after `securitytype` after `cficode` -
+//! without a hand-laid order. Everything that landed then reaches the message
+//! through one [`FixMsg::set_each`], one rebuild for the whole pass. Nothing
+//! is kept between messages: a stream of a million messages of a thousand
+//! shapes costs each message one working row and the sweeps over it.
 //!
 //! # Enrichment never touches the entries
 //!
@@ -62,33 +66,28 @@
 //!
 //! # A derivation answers only when the answer is certain
 //!
-//! An absent input is a null column of the widened row, so a term over it
+//! An absent input is a null column of the working row, so a term over it
 //! answers null under the grammar's three-valued rules and the target stays
 //! unfilled; a condition that does not hold answers null the same way. A
 //! value the target's field refuses - an identifier whose check digit does
 //! not close, a spelling a code set does not read - is silence, as one
 //! refused [`FixMsg::set`] is. The cost of silence is a null column; the
 //! cost of a guess is a wrong number nobody can tell from a sent one.
+//!
+//! A dictionary whose rules do not compile has no rules to fill by, and that
+//! is not silence: the compile's refusal names the field, the registry keeps
+//! it beside what it would have kept of a compiled list, and every door -
+//! the enrichment and the row fill alike - answers it until a field changes.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::fmt;
 
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
-use crate::types::nested::Fields;
 use crate::{DataType, Error, Field, FixCategory, Result, Scalar};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
-
-/// How many distinct root shapes a compiled registry keeps bound terms for.
-///
-/// A capture is a handful of shapes - the message types it carries, each
-/// with the columns its venue states - read a million times, so a bound
-/// shape is reused far more often than it is built; a shape past this many
-/// evicts the oldest, and a pathological stream of a new shape per message
-/// pays one bind per message and never grows.
-const SHAPES: usize = 16;
 
 /// One field's derivation, as the registry compiled it.
 struct Derivation {
@@ -97,39 +96,124 @@ struct Derivation {
     /// The registry's field for that tag, which types every answer exactly
     /// as [`FixMsg::set`] would type it on the way in.
     field: Field,
-    /// The term, as the field spells it in `fix:derivation`.
-    term: Term,
+    /// The term bound against the working schema, or `None` where it does
+    /// not bind: a crate column's term over a registry lacking the standard
+    /// fields it reads, which is silence for it on every message.
+    bound: Option<Bound>,
+    /// The working columns the term reads, ascending: what a row fill
+    /// gathers for this one derivation alone.
+    reads: Vec<usize>,
+    /// The target's column in the working schema.
+    slot: usize,
 }
 
-/// The derivations bound against one root shape.
-struct Shape {
-    /// The root's children as they were: the key a message is matched by.
-    columns: Fields,
-    /// The root widened with every column a derivation reads or fills that
-    /// the root lacks, each typed by the registry's field.
-    schema: Field,
-    /// One bound term per derivation, in list order; `None` where this shape
-    /// cannot bind the term, which is silence for it on every such message.
-    bound: Vec<Option<Bound>>,
-    /// Each derivation's target column in `schema`.
-    slots: Vec<usize>,
+impl Derivation {
+    /// The value this derivation answers for the working row, typed for the
+    /// field it fills, or nothing: a term that does not bind, an evaluation
+    /// the grammar refuses, an answer of null, and a value the field refuses
+    /// are all silence.
+    fn answer(&self, row: &[Scalar]) -> Option<Scalar> {
+        let value = self.bound.as_ref()?.eval_values(row).ok()?;
+        if value.is_null() {
+            return None;
+        }
+        self.field.scalar(value).ok()
+    }
+}
+
+/// Where a message states one column of the working schema.
+enum Source {
+    /// A scalar field, read by its tag.
+    Field(i32),
+    /// A repeating group, read by its counter's tag and laid out as the
+    /// registry declares its occurrence, so the members a term reads by
+    /// name stand where the group definition puts them whatever order the
+    /// message stated them in.
+    Group(i32),
+    /// A name no field or group of the registry answers to, which no message
+    /// states: a crate column's term reads the standard's fields by name,
+    /// and a registry built from a handful of fields holds none of them.
+    Absent,
+}
+
+/// One column of the working schema, and how a message states it.
+struct Input {
+    /// The field typing the column: the registry's own, or a null field for
+    /// a name the registry lacks.
+    field: Field,
+    source: Source,
+}
+
+impl Input {
+    /// The registry's column one name reaches, as the working schema holds
+    /// it: a group before a scalar field, because a group's column is named
+    /// by the group and its counter is a field of its own.
+    fn of(registry: &FixRegistry, name: &str) -> std::result::Result<Option<Self>, SmolStr> {
+        if let Some(group) = registry.get_definition(FixCategory::Groups, name) {
+            let Some(counter) = group.as_fix().counter().ok().flatten() else {
+                return Err(format_smolstr!(
+                    "fix:derivation reads `{name}`, a group declaring no counter"
+                ));
+            };
+            return Ok(Some(Self {
+                field: group.clone(),
+                source: Source::Group(counter),
+            }));
+        }
+        let Some(field) = registry.get_field_by_name(name) else {
+            return Ok(None);
+        };
+        // A registry field carries its tag; one that does not is a column
+        // no row is indexed by, which is a column no message states.
+        let source = registry
+            .identity_of(field)
+            .map_or(Source::Absent, |(tag, _)| Source::Field(tag));
+        Ok(Some(Self {
+            field: field.clone(),
+            source,
+        }))
+    }
+
+    /// A column the registry lacks, typed as nothing and always null.
+    fn absent(name: &str) -> Self {
+        Self {
+            field: DataType::Null.nullable_field(name),
+            source: Source::Absent,
+        }
+    }
+
+    /// What `msg` states for this column, or null.
+    fn read(&self, msg: &FixMsg) -> Scalar {
+        match self.source {
+            Source::Field(tag) => msg.indexed_by_tag(tag).cloned().unwrap_or(Scalar::Null),
+            Source::Group(counter) => msg
+                .index_of_group(counter)
+                .and_then(|at| msg.as_value().get(at))
+                .map_or(Scalar::Null, |held| {
+                    msg.regrouped(counter, &self.field, held.clone())
+                }),
+            Source::Absent => Scalar::Null,
+        }
+    }
 }
 
 /// Every `fix:derivation` a registry carries, compiled once (decision 38).
 ///
 /// Built by [`FixRegistry::derivations`] and kept on the registry until a
 /// field changes; every codec and every message reading that registry
-/// evaluates through the same instance, so the bound shapes it caches serve
-/// the line door, the batch door and the row fill alike.
+/// evaluates through the same instance, the line door, the batch door and
+/// the row fill alike.
 pub(super) struct Derivations {
     /// In tag order, which is the order one sweep evaluates them in.
     list: Vec<Derivation>,
-    /// Every root column a term reads or a derivation fills, beside the
-    /// registry's field for it: what a root is widened with where it lacks
-    /// the column, in first-seen order.
-    columns: Vec<Field>,
-    /// The shapes bound so far, oldest first.
-    shapes: Mutex<Vec<Arc<Shape>>>,
+    /// The working schema's columns in first-seen order - every column a
+    /// term reads or a derivation fills - and how a message states each.
+    /// The schema every term is bound against is the Struct of their
+    /// fields, held by each bound term.
+    inputs: Vec<Input>,
+    /// The working columns the crate columns' terms read, ascending: what
+    /// a row fill gathers, once per row, for the three of them.
+    crate_reads: Vec<usize>,
 }
 
 impl Derivations {
@@ -137,29 +221,29 @@ impl Derivations {
     /// registry.
     ///
     /// Every column a term reads must be a field or a group the registry
-    /// names, and the term must type against those fields - so a name the
-    /// dictionary lacks, or `orderqty - symbol`, is refused here naming the
-    /// field, not once per message. The crate's own columns are the one
-    /// exception: their derivations read the standard's fields by name, and
-    /// a registry built from a handful of fields holds none of them, so for
-    /// a crate field a name the registry lacks is an input the dictionary
-    /// never states - widened as a null column the term answers null over -
-    /// and a term that cannot bind over such columns is silent rather than
-    /// a refusal of the registry that lacks them.
+    /// names, and the term must bind against the working schema those
+    /// fields make - so a name the dictionary lacks, or `orderqty - symbol`,
+    /// is refused here naming the field, not once per message. The crate's
+    /// own columns are the one exception: their derivations read the
+    /// standard's fields by name, and a registry built from a handful of
+    /// fields holds none of them, so for a crate field a name the registry
+    /// lacks is an input the dictionary never states - a null column of the
+    /// working schema - and a term that cannot bind over such columns is
+    /// silent rather than a refusal of the registry that lacks them.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] at the registry field whose
-    /// derivation does not parse, reads a column no field or group of this
-    /// registry answers to, or does not type against the fields it reads.
-    pub(super) fn compile(registry: &FixRegistry) -> Result<Self> {
-        let mut list: Vec<Derivation> = Vec::new();
-        let mut columns: Vec<Field> = Vec::new();
+    /// Returns the refusal, naming the registry field whose derivation does
+    /// not parse, reads a column no field or group of this registry answers
+    /// to, or does not bind against the fields it reads.
+    pub(super) fn compile(registry: &FixRegistry) -> std::result::Result<Self, Refused> {
+        let mut carried: Vec<(i32, Field, Term)> = Vec::new();
+        let mut inputs: Vec<Input> = Vec::new();
         for field in registry.iter() {
             let Some(term) = field
                 .as_fix()
                 .derivation()
-                .map_err(|error| refused(field.name(), &error))?
+                .map_err(|error| Refused::new(field.name(), &error))?
             else {
                 continue;
             };
@@ -167,20 +251,17 @@ impl Derivations {
                 continue;
             };
             let crated = super::is_crate_tag(tag);
-            let mut inputs: Vec<Field> = Vec::new();
             for name in term.columns() {
-                match column_of(registry, &name) {
-                    Some(known) => {
-                        widen(&mut inputs, known);
-                        widen(&mut columns, known);
-                    }
-                    None if crated => {
-                        let absent = DataType::Null.nullable_field(name);
-                        widen(&mut inputs, &absent);
-                        widen(&mut columns, &absent);
-                    }
+                if position_of(&inputs, &name).is_some() {
+                    continue;
+                }
+                let input = match Input::of(registry, &name)
+                    .map_err(|reason| Refused::new(field.name(), &reason))?
+                {
+                    Some(known) => known,
+                    None if crated => Input::absent(&name),
                     None => {
-                        return Err(refused(
+                        return Err(Refused::new(
                             field.name(),
                             &format_smolstr!(
                                 "fix:derivation reads `{name}`, which names no field or group \
@@ -188,32 +269,89 @@ impl Derivations {
                             ),
                         ));
                     }
-                }
+                };
+                inputs.push(input);
             }
-            // Typed once against the registry's own fields: what refuses
-            // here would refuse for every message, and is the field's to fix.
-            let schema = DataType::from_fields(inputs)?.required_field(field.name());
-            if let Err(error) = term.bind(&schema) {
-                if crated {
-                    continue;
+            match position_of(&inputs, field.name()) {
+                // A term read the target already, as a chain's two ends do.
+                Some(at) if matches!(inputs[at].source, Source::Field(_)) => {}
+                Some(_) => {
+                    return Err(Refused::new(
+                        field.name(),
+                        &"fix:derivation fills a name the registry also gives a group",
+                    ));
                 }
-                return Err(refused(field.name(), &error));
+                None => inputs.push(Input {
+                    field: field.clone(),
+                    source: Source::Field(tag),
+                }),
             }
-            widen(&mut columns, field);
+            carried.push((tag, field.clone(), term));
+        }
+        let schema = DataType::from_fields(inputs.iter().map(|input| input.field.clone()))
+            .map_err(|error| Refused::new("fix:derivation", &error))?
+            .required_field("derived");
+        let mut list: Vec<Derivation> = Vec::with_capacity(carried.len());
+        for (tag, field, term) in carried {
+            // Bound once, here: what refuses would refuse for every message,
+            // and is the field's to fix.
+            let bound = match term.bind(&schema) {
+                Ok(bound) => Some(bound),
+                Err(_) if super::is_crate_tag(tag) => None,
+                Err(error) => return Err(Refused::new(field.name(), &error)),
+            };
+            let reads = bound
+                .as_ref()
+                .map(Bound::column_indices)
+                .unwrap_or_default();
+            let Some(slot) = position_of(&inputs, field.name()) else {
+                return Err(Refused::new(
+                    field.name(),
+                    &"the working schema lacks the derived column",
+                ));
+            };
             list.push(Derivation {
                 tag,
-                field: field.clone(),
-                term,
+                field,
+                bound,
+                reads,
+                slot,
             });
         }
         // The registry iterates tag-major already; stated here so the sweep
         // order is this list's contract rather than the iteration's.
         list.sort_by_key(|derivation| derivation.tag);
+        let mut crate_reads: Vec<usize> = list
+            .iter()
+            .filter(|derivation| super::is_crate_tag(derivation.tag))
+            .flat_map(|derivation| derivation.reads.iter().copied())
+            .collect();
+        crate_reads.sort_unstable();
+        crate_reads.dedup();
         Ok(Self {
             list,
-            columns,
-            shapes: Mutex::new(Vec::new()),
+            inputs,
+            crate_reads,
         })
+    }
+
+    /// The working schema: the Struct every term is bound against, one
+    /// column per field or group any derivation reads or fills, as the
+    /// first bound term holds it; `None` where no term bound.
+    #[cfg(test)]
+    pub(super) fn schema(&self) -> Option<&Field> {
+        self.list
+            .iter()
+            .find_map(|derivation| derivation.bound.as_ref())
+            .map(Bound::schema)
+    }
+
+    /// Each derived tag in sweep order, beside whether its term bound.
+    #[cfg(test)]
+    pub(super) fn derived(&self) -> impl Iterator<Item = (i32, bool)> + '_ {
+        self.list
+            .iter()
+            .map(|derivation| (derivation.tag, derivation.bound.is_some()))
     }
 
     /// Fills `msg` with everything its derivations imply, to a fixpoint.
@@ -227,39 +365,36 @@ impl Derivations {
     ///
     /// # Errors
     ///
-    /// Returns the widened root's refusal - two children folding to one
-    /// name - or the schema grammar's refusal when the written children do
-    /// not make a root.
+    /// Returns the schema grammar's refusal when the written children do not
+    /// make a root.
     pub(super) fn fill_all(&self, msg: &mut FixMsg) -> Result<()> {
         if self.list.is_empty() {
             return Ok(());
         }
-        let shape = self.shape_of(msg.as_field())?;
-        let values = msg.as_value().as_sequence().unwrap_or_default();
-        let mut row: Vec<Scalar> = Vec::with_capacity(shape.schema.field_len());
-        row.extend(values.iter().cloned());
-        row.resize(shape.schema.field_len(), Scalar::Null);
+        let mut row = self.working_row(msg, 0..self.inputs.len());
         let mut landed: Vec<(i32, Scalar)> = Vec::new();
         // A productive sweep fills at least one target and a filled target
         // is never revisited, so the derivation count bounds the sweeps; the
         // one past it is the sweep that writes nothing.
         for _ in 0..=self.list.len() {
             let mut wrote = false;
-            for (index, derivation) in self.list.iter().enumerate() {
-                let slot = shape.slots[index];
+            for derivation in &self.list {
                 // A stated value is never overwritten, which is what makes
                 // this idempotent: the second pass finds the first pass's
                 // answer stated.
-                if !row[slot].is_null() {
+                if !row[derivation.slot].is_null() {
                     continue;
                 }
-                let Some(bound) = &shape.bound[index] else {
+                let Some(value) = derivation.answer(&row) else {
                     continue;
                 };
-                let Some(value) = answer(bound, &derivation.field, &row) else {
-                    continue;
-                };
-                row[slot] = value.clone();
+                row[derivation.slot] = value.clone();
+                // Sized once, on the first answer, for every derivation
+                // there is: a message deriving nothing allocates nothing
+                // here, and one deriving nine grows the list once.
+                if landed.capacity() == 0 {
+                    landed.reserve_exact(self.list.len());
+                }
                 landed.push((derivation.tag, value));
                 wrote = true;
             }
@@ -273,133 +408,72 @@ impl Derivations {
         Ok(())
     }
 
-    /// One derivation's answer for `msg` as it stands, or nothing.
+    /// The working row a row fill reads: the columns the crate columns'
+    /// terms read, gathered off `msg` as the pass gathers them, once for
+    /// every crate column the row asks for.
+    pub(super) fn crate_row(&self, msg: &FixMsg) -> Vec<Scalar> {
+        self.working_row(msg, self.crate_reads.iter().copied())
+    }
+
+    /// One derivation's answer over a working row, or nothing.
     ///
     /// What a row fill asks for a crate column the message does not state:
-    /// the one evaluation of that column's own term, over the message's row
-    /// with every absent column null, typed by nothing - the column that
-    /// asked types it, as it types a stated value. `None` for a tag no field
-    /// derives, a shape the term does not bind against, or an answer of
-    /// null.
-    pub(super) fn fill(&self, tag: i32, msg: &FixMsg) -> Option<Scalar> {
-        let index = self
-            .list
+    /// the one evaluation of that column's own term over [`Self::crate_row`],
+    /// typed by the column's field as the pass types it. `None` for a tag no
+    /// field derives, a term that does not bind, an answer of null and a
+    /// value the field refuses alike.
+    pub(super) fn fill(&self, tag: i32, row: &[Scalar]) -> Option<Scalar> {
+        self.list
             .iter()
-            .position(|derivation| derivation.tag == tag)?;
-        let shape = self.shape_of(msg.as_field()).ok()?;
-        let bound = shape.bound[index].as_ref()?;
-        let value = bound.eval_padded(msg.as_value().as_sequence()?).ok()?;
-        (!value.is_null()).then_some(value)
+            .find(|derivation| derivation.tag == tag)?
+            .answer(row)
     }
 
-    /// The derivations bound against `root`'s shape, built on the first ask.
-    ///
-    /// Keyed as the column plan is (`column_plan_of`): the root's `Fields`
-    /// by storage identity first, which a stream sharing one schema answers
-    /// without a comparison, then structurally, which a root rebuilt by a
-    /// write answers without a bind.
-    fn shape_of(&self, root: &Field) -> Result<Arc<Shape>> {
-        let DataType::Struct(columns) = root.dtype() else {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new(root.name()),
-                reason: SmolStr::new_static("expected a Struct root to derive over"),
-            });
-        };
-        {
-            let held = self.shapes.lock().unwrap_or_else(PoisonError::into_inner);
-            if let Some(shape) = held.iter().find(|shape| {
-                shape.columns.shares_storage_with(columns) || shape.columns == *columns
-            }) {
-                return Ok(Arc::clone(shape));
-            }
+    /// The working row of `msg`: every column of the working schema, the
+    /// `wanted` ones read off the message and the rest null.
+    fn working_row(&self, msg: &FixMsg, wanted: impl IntoIterator<Item = usize>) -> Vec<Scalar> {
+        let mut row = vec![Scalar::Null; self.inputs.len()];
+        for at in wanted {
+            row[at] = self.inputs[at].read(msg);
         }
-        let shape = Arc::new(self.bind_shape(root, columns.clone())?);
-        let mut held = self.shapes.lock().unwrap_or_else(PoisonError::into_inner);
-        if held.len() >= SHAPES {
-            held.remove(0);
-        }
-        held.push(Arc::clone(&shape));
-        Ok(shape)
-    }
-
-    /// Widens `root` with every column it lacks and binds every term.
-    fn bind_shape(&self, root: &Field, columns: Fields) -> Result<Shape> {
-        let mut fields: Vec<Field> = root.fields().to_vec();
-        for known in &self.columns {
-            if position_of(&fields, known.name()).is_none() {
-                fields.push(known.clone());
-            }
-        }
-        let schema = Field::new(
-            root.name(),
-            DataType::from_fields(fields)?,
-            root.is_nullable(),
-        );
-        let mut bound = Vec::with_capacity(self.list.len());
-        let mut slots = Vec::with_capacity(self.list.len());
-        for derivation in &self.list {
-            // A shape the term does not bind against - a child a venue typed
-            // as the term cannot read - is silence for that derivation, as a
-            // value the field refuses is; the registry's own fields already
-            // proved the term at compile.
-            bound.push(derivation.term.bind(&schema).ok());
-            slots.push(
-                position_of(schema.fields(), derivation.field.name()).ok_or_else(|| {
-                    Error::InvalidRecord {
-                        path: SmolStr::new(derivation.field.name()),
-                        reason: SmolStr::new_static("the widened root lacks the derived column"),
-                    }
-                })?,
-            );
-        }
-        Ok(Shape {
-            columns,
-            schema,
-            bound,
-            slots,
-        })
+        row
     }
 }
 
-/// The value one bound derivation answers for the working row, typed for
-/// the field it fills, or nothing: an evaluation the grammar refuses, an
-/// answer of null, and a value the field refuses are all silence.
-fn answer(bound: &Bound, field: &Field, row: &[Scalar]) -> Option<Scalar> {
-    let value = bound.eval_padded(row).ok()?;
-    if value.is_null() {
-        return None;
-    }
-    field.scalar(value).ok()
-}
-
-/// The registry's column one name reaches: a group before a scalar field,
-/// because a group's column is named by the group and its counter is a
-/// field of its own.
-fn column_of<'registry>(registry: &'registry FixRegistry, name: &str) -> Option<&'registry Field> {
-    registry
-        .get_definition(FixCategory::Groups, name)
-        .or_else(|| registry.get_field_by_name(name))
-}
-
-/// Adds `known` to the columns a root is widened with, once per name.
-fn widen(columns: &mut Vec<Field>, known: &Field) {
-    if position_of(columns, known.name()).is_none() {
-        columns.push(known.clone());
-    }
-}
-
-/// Where a column stands, under the fold the binder resolves a name by.
-fn position_of(fields: &[Field], name: &str) -> Option<usize> {
-    fields
+/// Where a column stands among the inputs, under the fold the binder
+/// resolves a name by.
+fn position_of(inputs: &[Input], name: &str) -> Option<usize> {
+    inputs
         .iter()
-        .position(|field| field.name().eq_ignore_ascii_case(name))
+        .position(|input| input.field.name().eq_ignore_ascii_case(name))
 }
 
 /// A derivation refused at compile, naming the field that carries it.
-fn refused(field: &str, reason: &dyn std::fmt::Display) -> Error {
-    Error::InvalidRecord {
-        path: SmolStr::new(field),
-        reason: format_smolstr!("{reason}"),
+///
+/// What the registry keeps where it would have kept the compiled list: a
+/// registry whose rules do not compile refuses every ask - the enrichment
+/// and the row fill alike - with this, and compiles once until a field
+/// changes rather than once per ask.
+#[derive(Clone, Debug)]
+pub(super) struct Refused {
+    path: SmolStr,
+    reason: SmolStr,
+}
+
+impl Refused {
+    fn new(field: &str, reason: &dyn fmt::Display) -> Self {
+        Self {
+            path: SmolStr::new(field),
+            reason: format_smolstr!("{reason}"),
+        }
+    }
+
+    /// The refusal as the error a door answers with.
+    pub(super) fn error(&self) -> Error {
+        Error::InvalidRecord {
+            path: self.path.clone(),
+            reason: self.reason.clone(),
+        }
     }
 }
 
@@ -560,9 +634,9 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // derivation reads by canonical name, and a child stored under an alias
     // is invisible until it has been canonicalized (decision 20).
     let mut held = super::latest::restate(msg)?;
-    // The derivations, compiled once per registry and bound once per root
-    // shape; a refused compile is the pass's to report, since a dictionary
-    // whose rules do not compile has no rules to fill by.
+    // The derivations, compiled and bound once per registry; a refused
+    // compile is the pass's to report, since a dictionary whose rules do not
+    // compile has no rules to fill by.
     registry.derivations()?.fill_all(&mut held)?;
     if held
         .get_by_tag(super::ALTIDS_TAG_NAME.0)

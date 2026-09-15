@@ -350,31 +350,22 @@ impl Bound {
         self.node.eval(&Row::new(Some(values), None))
     }
 
-    /// Evaluate this term over the leading columns of a row.
+    /// Evaluate this term over a row held as its column values.
     ///
-    /// `values` holds the bound schema's columns in order and may stop
-    /// short: a column past its end reads as null. This is the door a pass
-    /// that fills a row evaluates through - the message's own columns first,
-    /// then the columns the schema was widened with, held only where an
-    /// answer has landed - so a row is never rebuilt to be read.
+    /// `values` holds the bound schema's columns in order, exactly as
+    /// [`Self::eval`] reads them out of a sequence: the door a pass that
+    /// fills a row evaluates through, writing each answer into the values it
+    /// reads the next one from, so no row is rebuilt to be read.
     ///
     /// # Errors
     ///
-    /// Returns an error when `values` holds more columns than the schema, a
-    /// strict cast refuses a value, or checked arithmetic overflows, divides
-    /// by zero, or cannot represent an exact decimal result.
-    pub(crate) fn eval_padded(&self, values: &[Scalar]) -> Result<Scalar> {
-        if values.len() > self.schema.field_len() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new(self.schema.name()),
-                reason: format_smolstr!(
-                    "expected at most {} column values, got {}",
-                    self.schema.field_len(),
-                    values.len()
-                ),
-            });
-        }
-        self.node.eval(&Row::padded(values))
+    /// Returns an error when `values` does not hold one value per column of
+    /// the schema, a strict cast refuses a value, or checked arithmetic
+    /// overflows, divides by zero, or cannot represent an exact decimal
+    /// result.
+    pub(crate) fn eval_values(&self, values: &[Scalar]) -> Result<Scalar> {
+        self.node
+            .eval(&Row::new(Some(sized(values, &self.schema)?), None))
     }
 
     /// Evaluate this term for one row alongside a holder.
@@ -466,6 +457,11 @@ pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'ro
             row.kind()
         ),
     })?;
+    sized(values, schema)
+}
+
+/// The values, proven one per column of the schema.
+fn sized<'row>(values: &'row [Scalar], schema: &Field) -> Result<&'row [Scalar]> {
     if values.len() != schema.field_len() {
         return Err(Error::InvalidRecord {
             path: SmolStr::new(schema.name()),
