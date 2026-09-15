@@ -28,13 +28,21 @@
 //! # Nothing is lost at the end
 //!
 //! `fixentries` closes every row with the whole arrival record: every pair, in
-//! arrival order, untranslated, under the `nofixentries` that counts them. It
-//! is what makes a row lossless - the fixed columns are a reading of the
-//! message and the entries are the message, so the wire is rebuilt from them
-//! and never from the columns.
+//! arrival order, under the `nofixentries` that counts them. It is what makes
+//! a row lossless - the fixed columns are a reading of the message and the
+//! entries are the message, so the wire is rebuilt from them and never from
+//! the columns.
+//!
+//! Each pair carries both facts about itself: `tagkey` and `tagvalue` are the
+//! ranges of the line, untranslated, and `tagnum` and `tagname` are what the
+//! dictionary made of that key when the message was parsed. The arrival is
+//! what the wire is rebuilt from; the translation is there so a consumer
+//! reading the record can group and filter by a name without a dictionary of
+//! its own.
 //!
 //! Unresolved keys have tag zero in that same record; their original key,
-//! value and children remain in place. No second projection duplicates them.
+//! value and children remain in place, and `tagname` spells the key itself
+//! rather than nothing. No second projection duplicates them.
 
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -437,7 +445,9 @@ const ENTRY_DEPTH: usize = 3;
 fn entries_field() -> Result<Field> {
     let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
     field.set_display("FixEntries")?;
-    field.set_description("Every pair the message carried, in arrival order and untranslated.")?;
+    field.set_description(
+        "Every pair the message carried, in arrival order, beside what the dictionary made of it.",
+    )?;
     // A group says which counter counts it, the way every other group in this
     // crate says it. It does not name its occurrence as a component: a
     // `fixentry` contains `fixentries`, so a catalog reference to it would be
@@ -449,49 +459,140 @@ fn entries_field() -> Result<Field> {
     Ok(field)
 }
 
+/// The resolved canonical tag of the field an arrival named, `0` where none
+/// was resolved.
+const TAGNUM_COLUMN: (&str, &str) = ("tagnum", "TagNum");
+
+/// The dictionary's name for that tag, translated when the message was
+/// parsed. Never null - see [`entry_name`] for what fills it when no
+/// dictionary explains the arrival.
+const TAGNAME_COLUMN: (&str, &str) = ("tagname", "TagName");
+
+/// The value exactly as it arrived, untranslated.
+const TAGVALUE_COLUMN: (&str, &str) = ("tagvalue", "TagValue");
+
+/// The key exactly as it arrived, untranslated.
+const TAGKEY_COLUMN: (&str, &str) = ("tagkey", "TagKey");
+
 /// One `fixentry` struct at one materialization level.
 ///
-/// The fourth member is `fixentries` at every level and the meaning is
+/// The fifth member is `fixentries` at every level and the meaning is
 /// invariant; the type alone says where materialization stops - a list of
-/// deeper occurrences above [`ENTRY_DEPTH`], the binary leaf at it. Every
-/// occurrence, both inner lists and the leaf are non-null: an empty child
-/// list means no children, an empty leaf means nothing was truncated, and
-/// neither needs a validity bitmap to say so.
+/// deeper occurrences above [`ENTRY_DEPTH`], the folded text leaf at it. Every
+/// occurrence and every inner list is non-null: an empty child list means no
+/// children, and it needs no validity bitmap to say so. The leaf is nullable
+/// instead, because "nothing was truncated" is an absence and a column that
+/// spells it as the empty string cannot be told from one that folded an empty
+/// subtree.
+///
+/// # What arrived and what it was read as
+///
+/// `tagkey` and `tagvalue` are the arrival: the ranges of the line the reader
+/// read, as the text a `utf8` column holds. `tagnum` and `tagname` are what a
+/// *dictionary* made of that key, resolved once when the message was parsed.
+/// Keeping the arrival key is what keeps
+/// [`into_bytes`](super::FixMsg::into_bytes) byte for byte over a message read
+/// back out of a row: a venue that wrote `Side=1` wrote `Side`, and a row
+/// that spelled only the canonical `side` would re-emit a line that was never
+/// sent.
 fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
         DataType::list(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
     } else {
-        DataType::binary().required_field(FIXENTRIES_COLUMN)
+        DataType::utf8().nullable_field(FIXENTRIES_COLUMN)
+    };
+    let named = |dtype: DataType, (name, display): (&str, &str), required: bool| -> Result<Field> {
+        let mut field = if required {
+            dtype.required_field(name)
+        } else {
+            dtype.nullable_field(name)
+        };
+        field.set_display(display)?;
+        Ok(field)
     };
     Ok(DataType::from_fields([
-        DataType::Int32.nullable_field("tag"),
-        DataType::utf8().nullable_field("key"),
-        DataType::utf8().nullable_field("value"),
+        named(DataType::Int32, TAGNUM_COLUMN, false)?,
+        named(DataType::utf8(), TAGNAME_COLUMN, true)?,
+        named(DataType::utf8(), TAGVALUE_COLUMN, false)?,
+        named(DataType::utf8(), TAGKEY_COLUMN, false)?,
         tail,
     ])?
     .required_field(ENTRY_COMPONENT))
 }
 
+/// What the arrival record calls an entry whose key no dictionary explains.
+///
+/// `tagname` cannot be null, and the reason is the column's job: a consumer
+/// reading the record wants one column it can group, join and filter a wire
+/// name by without resolving every tag against a dictionary of its own. A
+/// null there would make every such consumer write the fallback itself, and
+/// they would not write the same one.
+///
+/// So the fallback is a *name*, in this order:
+///
+/// 1. the dictionary's canonical name for the entry's resolved tag;
+/// 2. the key exactly as it arrived, where no dictionary explains it - a
+///    venue's `VenueOwnThing`, an unregistered `9999`, and the `#ORDERID` a
+///    bridge marked as a restatement are each the only name that arrival
+///    has, and each is the name an operator will look for;
+/// 3. [`UNNAMED_ENTRY`], where an arrival carries no key at all - the
+///    row-header capture fills of decision 8 and the restatements of
+///    decision 20, which are recorded with tag `0` and are named after no
+///    pair because no pair carried them.
+///
+/// Step 2 is why this is not simply the dictionary's answer: an unresolved
+/// arrival is exactly the one a reader most needs to see spelled.
+fn entry_name(registry: &FixRegistry, entry: &super::FixEntry) -> smol_str::SmolStr {
+    if entry.tag() > 0 {
+        if let Some(field) = registry.get_field_by_tag(entry.tag()) {
+            return smol_str::SmolStr::new(field.name());
+        }
+    }
+    let key = entry.key_text();
+    if key.is_empty() {
+        return smol_str::SmolStr::new_static(UNNAMED_ENTRY);
+    }
+    key
+}
+
+/// The name an arrival that carried no key at all is recorded under.
+///
+/// Spelled with the crate's own prefix so it can never collide with a
+/// dictionary name or a venue's own spelling, and so a consumer grouping by
+/// `tagname` sees the decision-8 and decision-20 fills as the one category
+/// they are.
+pub const UNNAMED_ENTRY: &str = "yggdryl:unnamed";
+
 /// One entry as the row value its materialization level takes.
 ///
 /// Descendants past [`ENTRY_DEPTH`] fold into the leaf here and only here:
 /// the builder never folds, and the Rust tree is never truncated. The leaf is
-/// the UTF-8 bytes of the crate's own JSON over the truncated subtree, so one
-/// serializer and one parser answer for it.
-fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> {
+/// the crate's own JSON over the truncated subtree, as the text a `utf8`
+/// column holds, so one serializer and one parser answer for it; an entry
+/// that truncated nothing answers null there rather than an empty string,
+/// which is what tells "nothing was folded" from "an empty subtree was".
+fn entry_scalar(
+    registry: &FixRegistry,
+    entry: &super::FixEntry,
+    level: usize,
+) -> Result<crate::Scalar> {
     let tail = if level < ENTRY_DEPTH {
         let children: Result<Vec<crate::Scalar>> = entry
             .children()
             .iter()
-            .map(|held| entry_scalar(held, level + 1))
+            .map(|held| entry_scalar(registry, held, level + 1))
             .collect();
         crate::Scalar::from_sequence(children?)
     } else if entry.children().is_empty() {
-        crate::Scalar::from(&[] as &[u8])
+        crate::Scalar::Null
     } else {
-        let folded: Vec<crate::Scalar> = entry.children().iter().map(folded_scalar).collect();
+        let folded: Vec<crate::Scalar> = entry
+            .children()
+            .iter()
+            .map(|held| folded_scalar(registry, held))
+            .collect();
         let rendered = crate::into_json_scalar(&crate::Scalar::from_sequence(folded))?;
-        crate::Scalar::from(rendered.as_bytes())
+        crate::Scalar::from(rendered)
     };
     // The key and the value are the ranges of the line the entry names, read
     // as the text a `utf8` column holds - lossily where a data field's bytes
@@ -501,29 +602,31 @@ fn entry_scalar(entry: &super::FixEntry, level: usize) -> Result<crate::Scalar> 
     // on one rebuilt from this row alike.
     Ok(crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry_name(registry, entry)),
         crate::Scalar::from(entry.value_text()),
+        crate::Scalar::from(entry.key_text()),
         tail,
     ]))
 }
 
 /// One truncated entry as the value the leaf's JSON stores.
 ///
-/// The same four members in the same order, children as a plain array, so a
+/// The same five members in the same order, children as a plain array, so a
 /// reader walks the decoded value exactly as it walks the materialized
 /// levels. Untyped on the way back in, because no finite field describes an
 /// unbounded subtree - and every member is an integer or UTF-8, so an untyped
 /// decode loses nothing.
-fn folded_scalar(entry: &super::FixEntry) -> crate::Scalar {
+fn folded_scalar(registry: &FixRegistry, entry: &super::FixEntry) -> crate::Scalar {
     crate::Scalar::from_sequence([
         crate::Scalar::from(entry.tag()),
-        crate::Scalar::from(entry.key_text()),
+        crate::Scalar::from(entry_name(registry, entry)),
         crate::Scalar::from(entry.value_text()),
+        crate::Scalar::from(entry.key_text()),
         crate::Scalar::from_sequence(
             entry
                 .children()
                 .iter()
-                .map(folded_scalar)
+                .map(|held| folded_scalar(registry, held))
                 .collect::<Vec<_>>(),
         ),
     ])
@@ -540,7 +643,7 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 
 /// One arrival entry read back out of the row value its level holds.
 ///
-/// The inverse of [`entry_scalar`], level by level: the four members in the
+/// The inverse of [`entry_scalar`], level by level: the five members in the
 /// order it wrote them, the children walked as the materialized List where
 /// the level holds one and as the leaf's JSON - decoded through the crate's
 /// one parser - where the level folded them. A leaf that cannot be decoded is
@@ -550,6 +653,12 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 /// and the value are copied here, because a row is where a message stops being
 /// a range of a line: the column holds the text, and the entry rebuilt from it
 /// owns a page of its own.
+///
+/// `tagname` is read past rather than read: it is what a dictionary made of
+/// the tag beside it, so rebuilding the entry from it would give the arrival
+/// record two owners of one fact. The message this returns carries the tag
+/// and the arrival key, and its [registry](super::FixMsg::registry) answers
+/// the name again whenever it is asked for.
 ///
 /// # Errors
 ///
@@ -561,9 +670,9 @@ fn entry_from_scalar(
 ) -> Result<super::FixEntry> {
     let held = pair
         .as_sequence()
-        .ok_or_else(|| entry_error(path, "a four-member arrival entry", pair.kind()))?;
-    let [tag, key, value, tail] = held else {
-        return Err(entry_error(path, "four arrival members", held.len()));
+        .ok_or_else(|| entry_error(path, "a five-member arrival entry", pair.kind()))?;
+    let [tag, _name, value, key, tail] = held else {
+        return Err(entry_error(path, "five arrival members", held.len()));
     };
     let tag = if tag.is_null() {
         0
@@ -573,7 +682,7 @@ fn entry_from_scalar(
             .filter(|value| *value >= 0)
             .ok_or_else(|| {
                 entry_error(
-                    &path.field("tag"),
+                    &path.field(TAGNUM_COLUMN.0),
                     "a nonnegative i32 tag or null",
                     format_args!("{tag:?}"),
                 )
@@ -590,7 +699,11 @@ fn entry_from_scalar(
         }
     };
     let children = entries_from_scalar(tail, &path.field(FIXENTRIES_COLUMN))?;
-    let entry = super::FixEntry::new(tag, text(key, "key")?, text(value, "value")?);
+    let entry = super::FixEntry::new(
+        tag,
+        text(key, TAGKEY_COLUMN.0)?,
+        text(value, TAGVALUE_COLUMN.0)?,
+    );
     Ok(entry.with_children(children))
 }
 
@@ -606,16 +719,22 @@ fn entry_error(
 }
 
 /// Decode one folded subtree, then walk the same entry shape as materialized rows.
+///
+/// The leaf is text and nullable: a null or an empty one folded nothing, and
+/// anything else is the crate's own JSON over the subtree it folded.
 fn entries_from_scalar(
     value: &crate::Scalar,
     path: &crate::path::Path<'_>,
 ) -> Result<Vec<super::FixEntry>> {
+    if value.is_null() {
+        return Ok(Vec::new());
+    }
     let decoded;
-    let value = if let Some(bytes) = value.as_bytes() {
-        if bytes.is_empty() {
+    let value = if let Some(text) = value.as_str() {
+        if text.is_empty() {
             return Ok(Vec::new());
         }
-        decoded = crate::from_json_scalar(bytes)
+        decoded = crate::from_json_scalar(text.as_bytes())
             .map_err(|error| entry_error(path, "a JSON sequence of arrival entries", error))?;
         &decoded
     } else {
@@ -757,8 +876,10 @@ impl super::FixMsg {
     /// assert_eq!(held[at].as_str(), Some("D"));
     /// // An unresolved numeric key stays in the one arrival record as tag zero.
     /// let entries = held.last().and_then(yggdryl::Scalar::as_sequence).unwrap();
-    /// let entry = entries.iter().find(|entry| entry.get(1).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
+    /// let entry = entries.iter().find(|entry| entry.get(3).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
     /// assert_eq!(entry.get(0).and_then(yggdryl::Scalar::as_i128), Some(0));
+    /// // And a key no dictionary explains is named after itself rather than nulled.
+    /// assert_eq!(entry.get(1).and_then(yggdryl::Scalar::as_str), Some("9999"));
     /// # Ok(())
     /// # }
     /// ```
@@ -819,7 +940,7 @@ impl super::FixMsg {
                 FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
                     self.entries()
                         .iter()
-                        .map(|entry| entry_scalar(entry, 1))
+                        .map(|entry| entry_scalar(self.registry(), entry, 1))
                         .collect::<Result<Vec<_>>>()?,
                 ),
                 // The group's counter counts the occurrences beside it, as

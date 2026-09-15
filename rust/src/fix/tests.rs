@@ -13,7 +13,6 @@ use crate::fix::{
     FixCodes, FixFill, FixFillEntry, FixFillSource, FixFillValue, FixReplacement, FixReplacements,
 };
 use crate::holder::local::Folder;
-use crate::types::BytesParameters;
 use crate::{
     DataType, Error, Field, FixCategory, FixCode, FixCodec, FixEntry, FixId, FixKey, FixLineage,
     FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MimeType, Scalar, Version,
@@ -5540,10 +5539,10 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     let DataType::List(item) = held.dtype() else {
         panic!("a list, got {}", held.dtype());
     };
-    // Exactly three fixentry levels on every root-to-leaf path, each with
-    // the same four members - what the line said and what FIX added, and
-    // nothing the message already answers - the fourth a non-null
-    // fixentries that is a deeper list twice and the binary leaf at the
+    // Exactly three fixentry levels on every root-to-leaf path, each with the
+    // same five members - what the line said, what the dictionary made of it,
+    // and nothing the message already answers - the fifth a fixentries that
+    // is a non-null deeper list twice and the nullable text leaf at the
     // bottom.
     let mut held = item;
     for level in 1..=3 {
@@ -5553,7 +5552,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         let names: Vec<&str> = members.iter().map(Field::name).collect();
         assert_eq!(
             names,
-            ["tag", "key", "value", "fixentries"],
+            ["tagnum", "tagname", "tagvalue", "tagkey", "fixentries"],
             "{column} level {level}",
         );
         assert_eq!(
@@ -5561,11 +5560,23 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
             &DataType::Int32,
             "{column} level {level}"
         );
-        let tail = &members[3];
-        assert!(!tail.is_nullable(), "{column} level {level} tail");
+        // The dictionary's name for the arrival is the one member that cannot
+        // be null: a consumer groups a wire name by it without a dictionary
+        // of its own, so an absence there would be its problem to solve.
+        assert!(!members[1].is_nullable(), "{column} level {level} tagname");
+        assert!(members[2].is_nullable(), "{column} level {level} tagvalue");
+        assert!(members[3].is_nullable(), "{column} level {level} tagkey");
+        let tail = &members[4];
         match tail.dtype() {
-            DataType::List(deeper) if level < 3 => held = deeper,
-            DataType::Bytes(bytes) if level == 3 && *bytes == BytesParameters::default() => {
+            DataType::List(deeper) if level < 3 => {
+                assert!(!tail.is_nullable(), "{column} level {level} tail");
+                held = deeper;
+            }
+            DataType::String(_) if level == 3 => {
+                // Nullable, because "nothing was folded" is an absence and a
+                // leaf that spelled it as the empty string could not be told
+                // from one that folded an empty subtree.
+                assert!(tail.is_nullable(), "{column} level {level} tail");
                 break;
             }
             other => panic!("{column} level {level}: {other}"),
@@ -5632,25 +5643,30 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
         .as_sequence()
         .expect("the arrival column");
     let level1 = entries[1].as_sequence().expect("the counter entry");
-    let level2 = level1[3].as_sequence().expect("one child list")[0]
+    let level2 = level1[4].as_sequence().expect("one child list")[0]
         .as_sequence()
         .expect("the level-2 entry")
         .to_vec();
-    let level3 = level2[3].as_sequence().expect("one child list")[0]
+    let level3 = level2[4].as_sequence().expect("one child list")[0]
         .as_sequence()
         .expect("the level-3 entry")
         .to_vec();
-    let leaf = level3[3].as_bytes().expect("the binary leaf");
+    let leaf = level3[4].as_str().expect("the folded text leaf");
     assert!(!leaf.is_empty(), "two levels folded into it");
 
     // The leaf recovers exactly the folded entries through the one JSON
     // parser this crate has: level 4 carrying level 5.
-    let decoded = crate::from_json_scalar(leaf).expect("a decodable leaf");
+    let decoded = crate::from_json_scalar(leaf.as_bytes()).expect("a decodable leaf");
     let folded = decoded.as_sequence().expect("the folded children");
     assert_eq!(folded.len(), 1);
     let level4 = folded[0].as_sequence().expect("the level-4 entry").to_vec();
     assert_eq!(level4[0].as_i64(), Some(453));
-    let level5 = level4[3].as_sequence().expect("its children")[0]
+    // A folded entry carries the same five members in the same order as a
+    // materialized one, so a reader walks the decode exactly as it walks the
+    // levels above it.
+    assert_eq!(level4.len(), 5);
+    assert_eq!(level4[1].as_str(), Some("nopartyids"));
+    let level5 = level4[4].as_sequence().expect("its children")[0]
         .as_sequence()
         .expect("the level-5 entry")
         .to_vec();
@@ -5660,7 +5676,7 @@ fn a_deep_arrival_materializes_three_levels_and_folds_the_rest() {
     // A flat sibling's child list is empty: nothing arrived under it and
     // nothing was folded for it.
     let flat = entries[0].as_sequence().expect("the msgtype entry");
-    assert_eq!(flat[3].as_sequence().map(<[Scalar]>::len), Some(0));
+    assert_eq!(flat[4].as_sequence().map(<[Scalar]>::len), Some(0));
 
     // Wire emission walks the whole tree pre-order, so what comes back is
     // what went in.

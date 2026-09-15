@@ -815,7 +815,7 @@ fn projection_nulls_a_stated_list_in_a_string_column_without_losing_the_source()
         .as_sequence()
         .unwrap()
         .iter()
-        .filter_map(|entry| entry.get(1).and_then(Scalar::as_str))
+        .filter_map(|entry| entry.get(3).and_then(Scalar::as_str))
         .collect();
     assert!(
         spelled.contains(&"Symbol[0]") && spelled.contains(&"Symbol[1]"),

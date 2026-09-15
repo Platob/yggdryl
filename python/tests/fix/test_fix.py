@@ -2272,8 +2272,18 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     # arrival order: a key no dictionary explains records tag 0 and its raw
     # key (``the_row_stays_lossless_and_says_what_nothing_explained``).
     arrived = reader.arrow_reader(schema, [message]).read_all().column("fixentries").to_pylist()[0]
-    assert [entry["tag"] for entry in arrived] == [8, 35, 11, 0, 0, 10]
-    assert [entry["key"] for entry in arrived if entry["tag"] == 0] == ["9999", "VenueOwnThing"]
+    assert [entry["tagnum"] for entry in arrived] == [8, 35, 11, 0, 0, 10]
+    assert [entry["tagkey"] for entry in arrived if entry["tagnum"] == 0] == [
+        "9999",
+        "VenueOwnThing",
+    ]
+    # ``tagname`` cannot be null: a key no dictionary explains is named after
+    # itself, and one it does explain carries the dictionary's own name.
+    assert [entry["tagname"] for entry in arrived if entry["tagnum"] == 0] == [
+        "9999",
+        "VenueOwnThing",
+    ]
+    assert arrived[0]["tagname"] == "beginstring"
     assert message.into_bytes(ord("|")) == wire
 
 
@@ -2726,8 +2736,8 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     # Row-only: what the row filled is never an entry, so the arrival record
     # is exactly what the frame carried.
     entries = parsed.column("fixentries").to_pylist()
-    assert {entry["tag"] for entry in entries[0]} == {8, 35, 55, 10}
-    assert {entry["tag"] for entry in entries[1]} == {8, 35, 34, 52, 10}
+    assert {entry["tagnum"] for entry in entries[0]} == {8, 35, 55, 10}
+    assert {entry["tagnum"] for entry in entries[1]} == {8, 35, 34, 52, 10}
 
 
 def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
@@ -2768,7 +2778,7 @@ def test_a_rows_pluginid_fills_its_field_and_selects_nothing(
     # which the one arrival record would say with tag 0.
     entries = parsed.column("fixentries").to_pylist()
     for row in range(len(spellings)):
-        assert [entry["tag"] for entry in entries[row]] == [35, 11, 5001], row
+        assert [entry["tagnum"] for entry in entries[row]] == [35, 11, 5001], row
 
     # One line read alone answers exactly what the batch did, and a fill is
     # never an entry: neither plugin is one.

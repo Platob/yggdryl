@@ -217,8 +217,9 @@ pub use replacements::{
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{
-    BODY_TAGS, FIXENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, fix_column_of,
-    fix_column_tags, fix_generic_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
+    BODY_TAGS, FIXENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNNAMED_ENTRY,
+    fix_column_of, fix_column_tags, fix_generic_tags, fix_schema, fix_schema_carrying,
+    fix_schema_tags,
 };
 
 /// A digest as everything outside this crate holds it.

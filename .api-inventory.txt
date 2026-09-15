@@ -923,7 +923,8 @@ pub const HEADER_TAGS: [i32; 24]
 pub const TRAILER_TAGS: [i32; 3]
 pub const BODY_TAGS: [i32; 49]
 pub const GROUP_TAGS: [i32; 3]
-pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries)
+pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries; one occurrence is tagnum/tagname/tagvalue/tagkey/fixentries, the arrival beside what the dictionary made of it)
+pub const UNNAMED_ENTRY: &str = "yggdryl:unnamed";  (what non-null tagname holds for an arrival that carried no key at all - the decision-8 row-header fills and decision-20 restatements, recorded with tag 0)
 pub fn fix_schema_tags() -> Vec<i32>
 pub fn fix_generic_tags() -> Vec<i32>  (the columns the crate's own GenericMessage holds: the fixed row's own)
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>

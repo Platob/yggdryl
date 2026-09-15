@@ -529,9 +529,30 @@ fn the_row_stays_lossless_and_says_what_nothing_explained() {
     let unknown: Vec<_> = entries
         .iter()
         .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
-        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .map(|entry| entry.get(3).and_then(Scalar::as_str).unwrap())
         .collect();
     assert_eq!(unknown, ["9999", "VenueOwnThing"]);
+
+    // A key no dictionary explains is named after itself: `tagname` cannot be
+    // null, and the arrival's own spelling is the only name it has.
+    let named: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(0))
+        .map(|entry| entry.get(1).and_then(Scalar::as_str).unwrap())
+        .collect();
+    assert_eq!(named, ["9999", "VenueOwnThing"]);
+
+    // A key one does explain carries the dictionary's name beside the
+    // arrival's, so a consumer groups by name without a dictionary of its own.
+    let beginstring = entries
+        .iter()
+        .find(|entry| entry.get(0).and_then(Scalar::as_i128) == Some(8))
+        .expect("the BeginString arrival");
+    assert_eq!(
+        beginstring.get(1).and_then(Scalar::as_str),
+        Some("beginstring")
+    );
+    assert_eq!(beginstring.get(3).and_then(Scalar::as_str), Some("8"));
 }
 
 /// The two documents a datatype writes name it the same way.

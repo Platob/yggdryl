@@ -454,8 +454,8 @@ fn entries_folded_past_the_materialization_depth_read_back_whole() {
     let row = parsed.into_row(&schema).unwrap();
     // The row holds a folded leaf somewhere under the entries column.
     fn leaf(entry: &[Scalar]) -> bool {
-        match entry.get(3) {
-            Some(tail) if tail.as_bytes().is_some_and(|bytes| !bytes.is_empty()) => true,
+        match entry.get(4) {
+            Some(tail) if tail.as_str().is_some_and(|text| !text.is_empty()) => true,
             Some(tail) => tail
                 .as_sequence()
                 .unwrap_or_default()
@@ -498,6 +498,7 @@ fn an_entries_column_holding_no_entry_is_refused() {
             Scalar::from(0_i32),
             Scalar::from("35"),
             Scalar::from("D"),
+            Scalar::from("msgtype"),
             Scalar::from(b"not json" as &[u8]),
         ])]);
     let row = Scalar::from_sequence(values);
@@ -512,13 +513,14 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
     let message = reader.sole_line(ORDER, false).unwrap();
     let original = message.into_row(&schema).unwrap();
     let at = schema.index_of(FIXENTRIES_COLUMN).unwrap();
-    let row = |leaf: &[u8]| {
-        let mut tail = Scalar::from(leaf);
+    let row = |leaf: Scalar| {
+        let mut tail = leaf;
         for _ in 0..3 {
             tail = Scalar::from_sequence([Scalar::from_sequence([
                 Scalar::from(0_i32),
                 Scalar::from("raw"),
                 Scalar::from("value"),
+                Scalar::from("raw"),
                 tail,
             ])]);
         }
@@ -527,43 +529,56 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
         Scalar::from_sequence(values)
     };
     for leaf in [
+        // A leaf whose JSON is `null` folded nothing and says so with an
+        // absent leaf, not with a document that decodes to nothing.
         "null",
         "true",
         "{}",
         "[1]",
-        "[[0,\"key\",\"value\"]]",
-        "[[0,\"key\",\"value\",[],0]]",
-        "[[-1,\"key\",\"value\",[]]]",
-        "[[2147483648,\"key\",\"value\",[]]]",
-        "[[\"0\",\"key\",\"value\",[]]]",
-        "[[0,1,\"value\",[]]]",
-        "[[0,\"key\",false,[]]]",
-        "[[0,\"key\",\"value\",null]]",
-        "[[0,\"key\",\"value\",[false]]]",
+        // Four members is one short and six is one over: an arrival is
+        // exactly the five the materialized levels hold.
+        "[[0,\"name\",\"value\",\"key\"]]",
+        "[[0,\"name\",\"value\",\"key\",[],0]]",
+        "[[-1,\"name\",\"value\",\"key\",[]]]",
+        "[[2147483648,\"name\",\"value\",\"key\",[]]]",
+        "[[\"0\",\"name\",\"value\",\"key\",[]]]",
+        "[[0,\"name\",\"value\",1,[]]]",
+        "[[0,\"name\",false,\"key\",[]]]",
+        "[[0,\"name\",\"value\",\"key\",true]]",
+        "[[0,\"name\",\"value\",\"key\",[false]]]",
     ] {
         let error =
-            FixMsg::from_row(Arc::clone(&registry), &schema, &row(leaf.as_bytes())).unwrap_err();
+            FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from(leaf))).unwrap_err();
         assert!(
             matches!(&error, yggdryl::Error::InvalidRecord { path, .. }
             if path.starts_with("$.fixentries[0].fixentries[0].fixentries[0].fixentries")),
             "{leaf}: {error}"
         );
     }
-    // Null optional members are meaningful defaults, unlike an absent member.
+    // Null optional members are meaningful defaults, unlike an absent member;
+    // `tagname` among them, because the folded leaf is untyped and the name is
+    // what a dictionary says about the tag beside it rather than an arrival.
     let accepted = FixMsg::from_row(
         Arc::clone(&registry),
         &schema,
-        &row(b"[[null,null,null,[]]]"),
+        &row(Scalar::from("[[null,null,null,null,[]]]")),
     )
     .unwrap();
     let leaf = &accepted.entries()[0].children()[0].children()[0].children()[0];
     assert_eq!(leaf.tag(), 0);
     assert!(leaf.key().is_empty());
     assert!(leaf.value().is_empty());
-    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"[]")).is_ok());
-    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"")).is_ok());
-    let undecodable =
-        FixMsg::from_row(Arc::clone(&registry), &schema, &row(b"not json")).unwrap_err();
+    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from("[]"))).is_ok());
+    // An empty leaf and an absent one both mean nothing was folded - which is
+    // what the nullable leaf buys over the empty-string-only spelling.
+    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::from(""))).is_ok());
+    assert!(FixMsg::from_row(Arc::clone(&registry), &schema, &row(Scalar::Null)).is_ok());
+    let undecodable = FixMsg::from_row(
+        Arc::clone(&registry),
+        &schema,
+        &row(Scalar::from("not json")),
+    )
+    .unwrap_err();
     assert!(
         matches!(&undecodable, yggdryl::Error::InvalidRecord { path, .. }
             if path == "$.fixentries[0].fixentries[0].fixentries[0].fixentries"),
