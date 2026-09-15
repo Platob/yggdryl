@@ -26,3 +26,5 @@ mod structured;
 mod text;
 #[path = "media/xml.rs"]
 mod xml;
+#[path = "media/xsd.rs"]
+mod xsd;

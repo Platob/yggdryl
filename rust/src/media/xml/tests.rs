@@ -14,8 +14,7 @@ fn document(input: &str) -> Result<Scalar> {
 }
 
 fn rows(input: &str) -> Result<(smol_str::SmolStr, Vec<Scalar>)> {
-    read_rows(input.as_bytes(), Limits::default(), None)
-        .map(|(name, rows, _)| (name, rows))
+    read_rows(input.as_bytes(), Limits::default(), None).map(|(name, rows, _)| (name, rows))
 }
 
 #[test]
