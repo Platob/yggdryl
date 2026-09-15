@@ -69,7 +69,39 @@ the container it names.
 A **ranged read learns the object's length** from the `Content-Range` it comes
 back with, so an open scope that reads and then asks the size pays nothing for
 the answer. A closed handle asks again, because a length is only true of the
-moment the store stated it.
+moment the store stated it - unless the caller already knew it: a listing
+states every entry's size, and `File::with_known_size` lets a caller hand over
+a size it holds from elsewhere, which is how an Iceberg scan reads each data
+file with one `GET` and no `HEAD`, the manifest having stated the length.
+
+### What an Iceberg table costs
+
+An [Iceberg table](../../media/iceberg/index.md) over a store touches only the
+files its metadata names - never a listing of `data/`, never a `HEAD` for a
+size the manifest already states, never a listing to learn the role of a
+handle the table already knows - so every commit and scan is a number the
+accounting suite (`holder::object::tests::accounting::iceberg`) holds exactly.
+Before local staging and the leaf handles, the same sequence cost 9, 25, 40,
+40, 5, 21, 9 and 29 requests.
+
+| operation | requests | which |
+| --- | ---: | --- |
+| create | 5 | the claim, the document and the hint (3 `PUT`), the listing that detects a competing claim, the claim's removal |
+| append, one partition | 9 | one upload each for the data file, the manifest and the manifest list; the hint read that re-checks the version; the create's five |
+| append, three partitions | 12 | three data files, and the manifest list of the snapshot before read once |
+| upsert into one partition of three | 14 | the list and both manifests read for the plan, the one data file the key bounds keep, then one data file, its manifest, the carried manifest, the list and the document |
+| open | 2 | the hint and the document |
+| full scan, four files in two manifests | 7 | one `GET` each for the list, the manifests and the files |
+| pruned scan, one file | 3 | the list, the one manifest the summary keeps, the one file |
+| projected scan | 7 | the same as the full scan: no footer is read for a column name unless the table ever renamed one |
+
+A commit stages every file it writes under a local directory of its own and
+streams it up once - one `PUT` below the multipart threshold, `parts + 2`
+requests above it, one part in memory at a time - so its request count is one
+upload per file plus the metadata chain, and a commit that fails before its
+versioned document is out removes what it published, with no removal for an
+upload the store refused - see
+[Iceberg writes](../../media/iceberg/write.md#staged-commits).
 
 ## Which store answers
 

@@ -244,6 +244,7 @@ const options: IcebergOptions = new IcebergOptions({
   readParallelMinFiles: 16,
   readParallelMinFileSize: 4096,
   writeParallelism: 2,
+  writeStaging: 'off',
   compactAfterCommits: 8,
   dataMimeType: MimeType.AVRO,
 })
@@ -262,6 +263,7 @@ options.readParallelism = 1
 options.readParallelMinFiles = 4
 options.readParallelMinFileSize = 1024
 options.writeParallelism = 1
+options.writeStaging = 'off'
 options.compactAfterCommits = 3
 options.dataMimeType = MimeType.PARQUET
 const commitRetries: number = options.commitRetries
@@ -273,6 +275,7 @@ const readParallelism: number = options.readParallelism
 const readParallelMinFiles: number = options.readParallelMinFiles
 const readParallelMinFileSize: number = options.readParallelMinFileSize
 const writeParallelism: number = options.writeParallelism
+const writeStaging: string | null = options.writeStaging
 const compactAfterCommits: number | null = options.compactAfterCommits
 const dataMimeType: MimeType = options.dataMimeType
 const puffinMimeType: MimeType = puffinOptions.dataMimeType

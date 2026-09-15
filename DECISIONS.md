@@ -3303,3 +3303,97 @@ pass over one shape, beside the corpus of every shape.
 `scripts/generate_fix_dictionary.py`, `config/fix`, both bindings,
 `docs/fix/capture.md`, `registry.md`, `message.md`, `arrow.md`, `store.md`,
 the inventories.
+### Staging and the remote call budget
+
+**Rule.** A table touches only the files its metadata names, and names them
+as what they are. A handle the table resolves is the leaf or the container
+the layout says it is - `staging::leaf`, `staging::container` - never an
+undecided location the store is asked to classify, because a listing to
+learn what a manifest already states is a round trip for nothing. A data
+file's handle is told the length the manifest recorded
+(`File::with_known_size`, the one primitive the object backend was missing:
+a listing already taught a handle its size, a manifest can too), so a scan
+opens each file with one `GET`. A manifest and a manifest list stream out of
+one open read, the input limit enforced on what arrives rather than by a
+size question first. A commit re-checks its version by the hint alone and
+reads the document only when the hint names a newer one, and an attempt
+beaten on write re-uses the manifest list it already read. A projection
+opens a file's footer for its column names only when a schema the table
+ever had spells a current column under another name; a table that never
+renamed one projects by the read root's names.
+
+Every file a commit writes - data file, manifest, manifest list - goes
+through one `Staging`: with `write.staging` on it is encoded into a local
+file under a directory of the commit's own (`yggdryl-iceberg-<snapshot>-
+<uuid>` under the folder), its statistics read from that copy, and streamed
+from it as one upload - `File::upload_from`: one `PUT` below the store's
+multipart threshold, and above it one part-sized buffer at a time, read and
+sent before the next (`Client::put_streamed`, which the in-memory
+`put_chunked` goes through as well), so memory holds one part of one file
+per writer thread - with the copy removed once the upload ends; with it off
+the file is written in place. Either way the published file is recorded,
+and the staging is a transaction whose point of no return is the versioned
+metadata document: `commit_metadata` calls `Staging::commit` the moment
+`v{n}.metadata.json` is durable and before the hint is written, because a
+fresh handle resolves the version to that document whatever the hint write
+reports - a hint the store publishes and then reports failed leaves every
+file the document names - and a drop before that point (a refused upload, a
+beaten commit out of retries, a refused document write, a panic) removes
+every published file and the directory, so a failed commit leaves no local
+file and no file the metadata does not name. The attempt document is part
+of that rule: a failure between its write and the versioned document's
+removes it too, because left in place it would name removed files and
+claim the version against every later writer. A store handle whose upload
+was refused is discarded, not removed - a refused `PUT` stored nothing and
+an abandoned multipart upload is aborted, so no `DELETE` goes out for a key
+never written; any other handle is removed rather than dropped, because a
+leaf publishes what it holds when it is dropped. An attempt beaten on write
+withdraws the manifest list of the attempt it replaces (`Staging::withdraw`,
+one removal) before publishing its own, so a successful commit leaves
+nothing the metadata does not name either. A data file's recorded length of
+zero is never seeded as a known size (`staging::sized`): a real file's
+reader would take it for an empty one and answer no rows without an error,
+so the handle asks the file instead, one `HEAD` more. A bound filesystem
+location's child named `.` is the location itself (`BoundLocation::child`,
+as the empty name already was): the per-thread root handle a data commit
+takes with `child_by_path(".")` used to bind `table/./data/...` over an
+Arrow filesystem, a key no reader of `table/data/...` finds, so a data
+commit into a memory-backed table published its files where no scan could
+read them. The option is `IcebergOptions::write_staging` (`write.staging`:
+`off` or a local folder URL or path; a remote folder is refused naming the
+key), resolved explicit, then property, then the root's own default -
+`WriteStaging::Folder` of the platform temporary folder for a remote root,
+`WriteStaging::Off` for a local one, which `Table::write_staging` answers.
+It crosses the Python and Node bindings as text (`write_staging`,
+`writeStaging`), `None`/`null` being the unset default.
+
+**What it costs.** Over the in-process S3, exact and pinned: create 5 (was
+9), an append of one partition 9 (was 25), of three 12 (was 40), an upsert
+into one partition of three 14 (was 40), open 2 (was 5), a full scan of four
+files 7 (was 21), a pruned scan of one file 3 (was 9), a projected scan 7
+(was 29). What remains is the metadata chain, one upload per written file,
+one `GET` per read file, and the one listing that claims a version.
+
+**Written in:** `media/iceberg/staging.rs`, `table.rs`, `manifest.rs`,
+`scan.rs`, `options.rs`, `holder/object/file.rs`, `holder/object/client.rs`,
+`holder/fs/location.rs`, both bindings, `docs/media/iceberg/write.md`,
+`docs/media/iceberg/index.md`, `docs/holder/backends/object.md`.
+**Fixtures:** `holder/object/tests/accounting.rs` (the request shape of
+every operation above; a refused first upload publishing nothing and
+removing nothing - 1 `PUT`, 0 `DELETE` - and a refused second one removing
+the first - 2 `PUT`, 1 `DELETE`, the keys restored - leaving no staged
+file, the next commit whole; a manifest recording a length of zero read
+for its one row at one `HEAD` more),
+`media/iceberg/tests.rs` (the staging directory a commit's own and disjoint
+from a concurrent one's, removed on drop with its published files and on
+commit without them, off for a local root and under the temporary folder
+for a remote one, a failed publication rolling a partitioned commit back; a
+hint published and then reported failed keeping the data files the
+document names, with a fresh handle reading them; a refused document write
+removing the files and the attempt, the next commit taking the version; a
+commit beaten on write withdrawing the list of the attempt it replaces -
+one removal, one list left, the one the snapshot names),
+`rust/tests/media/iceberg.rs` (`write.staging` resolving explicit, property,
+then the root's default, refusing a remote folder by key, a staged commit
+leaving the staging folder empty), the oversized-container pin now reading
+past the limit by at most one chunk.

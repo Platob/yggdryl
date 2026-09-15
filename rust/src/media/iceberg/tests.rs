@@ -676,6 +676,334 @@ fn write_filesystem_bytes(
     writer.close()
 }
 
+fn read_filesystem_bytes(filesystem: &dyn FileSystem, path: &str) -> crate::Result<Vec<u8>> {
+    let mut reader = filesystem.open_input_stream(path)?;
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+    }
+    reader.close()?;
+    Ok(bytes)
+}
+
+/// Every file under a filesystem folder, at any depth, by its location.
+fn listed_paths(folder: &crate::holder::fs::Folder) -> Vec<String> {
+    let mut paths: Vec<String> = crate::holder::Holder::from(folder.clone())
+        .ls(true, false)
+        .map(|entry| entry.unwrap())
+        .filter(|entry| !entry.is_container())
+        .filter_map(|entry| entry.url().map(ToString::to_string))
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// An Arrow filesystem that refuses the write of one versioned metadata
+/// document - `v{n}.metadata.json` - after the attempt before it landed.
+///
+/// A store can refuse the second of two writes as well as the first; this
+/// makes it refuse exactly the one that is the commit's point of no return,
+/// so what a commit leaves behind when it fails just short of it is pinned.
+#[derive(Debug, Default)]
+struct RefusedDocumentWrite {
+    inner: crate::holder::fs::MemoryFileSystem,
+    refuse_next_document: Arc<AtomicBool>,
+}
+
+impl RefusedDocumentWrite {
+    fn arm(&self) {
+        self.refuse_next_document.store(true, Ordering::Relaxed);
+    }
+}
+
+impl crate::holder::fs::FileSystem for RefusedDocumentWrite {
+    fn type_name(&self) -> &str {
+        self.inner.type_name()
+    }
+
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
+    }
+
+    fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        self.inner.create_dir(path, recursive)
+    }
+
+    fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        if name.starts_with('v')
+            && name.ends_with(".metadata.json")
+            && self.refuse_next_document.swap(false, Ordering::Relaxed)
+        {
+            return Err(crate::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "the versioned document write is refused",
+            )));
+        }
+        self.inner.open_output_stream(path, metadata)
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// A memory filesystem that lands a competing metadata-only document at
+/// version 2 after a data commit's version preflight but before its
+/// same-version collision listing, and records every file the loser removes.
+///
+/// The competitor is the version 1 document with a property added - a
+/// genuine other writer's commit, naming none of the loser's files - so the
+/// loser rebases onto it, publishes its manifest list again, and what it
+/// does with the list of the attempt it replaces is what this pins.
+#[derive(Debug, Default)]
+struct MetadataOnlyWinner {
+    inner: crate::holder::fs::MemoryFileSystem,
+    armed: Arc<AtomicBool>,
+    removed: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl MetadataOnlyWinner {
+    fn arm(&self) {
+        self.armed.store(true, Ordering::Relaxed);
+    }
+
+    fn removed(&self) -> Vec<String> {
+        self.removed.lock().unwrap().clone()
+    }
+}
+
+impl crate::holder::fs::FileSystem for MetadataOnlyWinner {
+    fn type_name(&self) -> &str {
+        self.inner.type_name()
+    }
+
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
+    }
+
+    fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        self.inner.create_dir(path, recursive)
+    }
+
+    fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.removed.lock().unwrap().push(path.to_owned());
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        let writer = self.inner.open_output_stream(path, metadata)?;
+        if path.contains("/metadata/00002-") && path.ends_with(".metadata.json") {
+            Ok(Box::new(MetadataOnlyWriter {
+                inner: writer,
+                filesystem: self.inner.clone(),
+                path: path.to_owned(),
+                armed: Arc::clone(&self.armed),
+            }))
+        } else {
+            Ok(writer)
+        }
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+struct MetadataOnlyWriter {
+    inner: Box<dyn ByteWriter>,
+    filesystem: crate::holder::fs::MemoryFileSystem,
+    path: String,
+    armed: Arc<AtomicBool>,
+}
+
+impl MetadataOnlyWriter {
+    fn inject_winner(&self) -> crate::Result<()> {
+        let (directory, _) = self
+            .path
+            .rsplit_once('/')
+            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata directory"))?;
+        let previous =
+            read_filesystem_bytes(&self.filesystem, &format!("{directory}/v1.metadata.json"))?;
+        let mut document: serde_json::Value = serde_json::from_slice(&previous)?;
+        let metadata = document
+            .as_object_mut()
+            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata object"))?;
+        let properties = metadata
+            .entry("properties")
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+            .as_object_mut()
+            .ok_or_else(|| SameVersionWinner::invalid("expected metadata properties"))?;
+        properties.insert(
+            "winner".to_owned(),
+            serde_json::Value::String("visible".to_owned()),
+        );
+        write_filesystem_bytes(
+            &self.filesystem,
+            &format!("{directory}/00002-ffffffff-ffff-ffff-ffff-ffffffffffff.metadata.json"),
+            &serde_json::to_vec(&document)?,
+        )?;
+        write_filesystem_bytes(
+            &self.filesystem,
+            &format!("{directory}/version-hint.text"),
+            b"2",
+        )
+    }
+}
+
+impl ByteWriter for MetadataOnlyWriter {
+    fn write(&mut self, bytes: &[u8]) -> crate::Result<usize> {
+        self.inner.write(bytes)
+    }
+
+    fn tell(&self) -> u64 {
+        self.inner.tell()
+    }
+
+    fn flush(&mut self) -> crate::Result<()> {
+        self.inner.flush()
+    }
+
+    fn close(&mut self) -> crate::Result<()> {
+        self.inner.close()?;
+        if self.armed.swap(false, Ordering::Relaxed) {
+            self.inject_winner()?;
+        }
+        Ok(())
+    }
+
+    fn closed(&self) -> bool {
+        self.inner.closed()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
 /// Build a scratch directory unique to this test and this process.
 fn root(label: &str) -> std::path::PathBuf {
     let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -4224,6 +4552,184 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
 }
 
 #[test]
+fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
+    let filesystem = Arc::new(PublishedHintFailure::default());
+    let folder =
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let schema = trade_schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+    let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let version = table.metadata_version();
+
+    filesystem.arm();
+    let batch = trades(
+        &[1, 2],
+        &[Some("AAPL"), Some("MSFT")],
+        &[Some("XNAS"), Some("XNYS")],
+    );
+    let error = table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("acknowledgement failure"),
+        "{error}"
+    );
+
+    // The versioned document went out before the hint did, and it names the
+    // data files, the manifest and the list: from that point nothing is
+    // rolled back, whatever the hint write reports, because every fresh
+    // handle resolves the version to that document.
+    assert_eq!(table.metadata_version(), version + 1);
+    let files = table.data_files().unwrap();
+    assert_eq!(files.len(), 2, "both data files stay");
+    let paths = listed_paths(&folder);
+    assert_eq!(
+        paths.iter().filter(|path| path.contains("/data/")).count(),
+        2,
+        "{paths:?}"
+    );
+    assert_eq!(
+        paths.iter().filter(|path| path.ends_with(".avro")).count(),
+        2,
+        "the manifest and the list stay: {paths:?}"
+    );
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version(), version + 1);
+    assert_eq!(
+        collect(reopened.scan(None).unwrap())
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        [1, 2],
+        "the rows the published document names are read"
+    );
+}
+
+#[test]
+fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
+    let filesystem = Arc::new(RefusedDocumentWrite::default());
+    let folder =
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let schema = trade_schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+    let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let version = table.metadata_version();
+
+    filesystem.arm();
+    let batch = trades(
+        &[1, 2],
+        &[Some("AAPL"), Some("MSFT")],
+        &[Some("XNAS"), Some("XNYS")],
+    );
+    let error = table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap_err();
+    assert!(error.to_string().contains("refused"), "{error}");
+
+    // Nothing durable named the commit's files, so all of them went - the
+    // data files, the manifest, the list - and so did the attempt that
+    // named them, which left in place would have claimed the version for
+    // good.
+    assert_eq!(table.metadata_version(), version);
+    assert!(table.current_snapshot().is_none());
+    let paths = listed_paths(&folder);
+    assert!(
+        paths.iter().all(|path| !path.contains("/data/")),
+        "{paths:?}"
+    );
+    assert!(
+        paths.iter().all(|path| !path.ends_with(".avro")),
+        "{paths:?}"
+    );
+    assert!(
+        paths.iter().all(|path| !path.contains("/00002-")),
+        "the attempt is removed with the files it named: {paths:?}"
+    );
+
+    // The version was not claimed: the next commit takes it.
+    let batch = trades(&[3], &[Some("NVDA")], &[Some("XNAS")]);
+    table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap();
+    assert_eq!(table.metadata_version(), version + 1);
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version(), version + 1);
+    assert_eq!(
+        collect(reopened.scan(None).unwrap())
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        [3]
+    );
+}
+
+#[test]
+fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
+    let filesystem = Arc::new(MetadataOnlyWinner::default());
+    let folder =
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let mut table = Table::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(1)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+
+    filesystem.arm();
+    let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+    table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap();
+    assert_eq!(
+        table.metadata_version(),
+        3,
+        "the rebase adopted the winner's version and committed after it"
+    );
+    assert_eq!(table.metadata().property("winner"), Some("visible"));
+
+    // The first attempt's list was withdrawn when the retry published its
+    // own: one removal, and the metadata directory holds one list - the one
+    // the current snapshot names - so a successful commit leaves nothing
+    // the metadata does not name either.
+    let removed: Vec<String> = filesystem
+        .removed()
+        .into_iter()
+        .filter(|path| path.contains("/metadata/snap-"))
+        .collect();
+    assert_eq!(removed.len(), 1, "one list is removed: {removed:?}");
+    let lists: Vec<String> = listed_paths(&folder)
+        .into_iter()
+        .filter(|path| path.contains("/metadata/snap-"))
+        .collect();
+    assert_eq!(lists.len(), 1, "one list is left: {lists:?}");
+    let named = table.current_snapshot().unwrap().manifest_list.clone();
+    let named = named.rsplit('/').next().unwrap();
+    assert!(
+        lists[0].ends_with(named),
+        "the list left is the one the snapshot names: {lists:?} vs {named}"
+    );
+    assert!(
+        !removed[0].ends_with(named),
+        "the list removed is the other one: {removed:?}"
+    );
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(
+        collect(reopened.scan(None).unwrap())
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        [1]
+    );
+}
+
+#[test]
 fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
     let folder =
@@ -7372,6 +7878,196 @@ mod isolation {
                 (6, Some("AMD".to_owned()), Some("XNAS".to_owned())),
             ]
         );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+/// The staging of one commit: a transaction over the files it writes.
+///
+/// `Staging` is private to the module, so its drop, rollback and default
+/// rules are pinned here; what a staged commit costs over a store is
+/// pinned in `holder::object::tests::accounting`.
+mod staging_transaction {
+    use std::path::{Path, PathBuf};
+
+    use super::super::WriteStaging;
+    use super::super::staging::Staging;
+    use super::{FormatVersion, IcebergOptions, PartitionSpec, Table, root, trade_schema, trades};
+    use crate::holder::Holder;
+    use crate::holder::local::Folder;
+    use crate::{IOBase, MediaType, MimeType, Url};
+
+    fn staging_folder(label: &str) -> (PathBuf, WriteStaging) {
+        let path = root(label);
+        let staging = WriteStaging::Folder(Url::from_path(&path).unwrap());
+        (path, staging)
+    }
+
+    fn is_empty_dir(path: &Path) -> bool {
+        !path.exists() || std::fs::read_dir(path).unwrap().next().is_none()
+    }
+
+    /// Every regular file under `path`, at any depth.
+    fn files_under(path: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries {
+                let entry = entry.unwrap().path();
+                if entry.is_dir() {
+                    pending.push(entry);
+                } else {
+                    files.push(entry);
+                }
+            }
+        }
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn staging_is_off_for_a_local_root_and_the_temporary_folder_for_a_remote_one() {
+        assert!(
+            Staging::begin(Some(&WriteStaging::Off), true, 1)
+                .unwrap()
+                .directory()
+                .is_none()
+        );
+        assert!(
+            Staging::begin(None, false, 1)
+                .unwrap()
+                .directory()
+                .is_none()
+        );
+        let remote = Staging::begin(None, true, 1).unwrap();
+        let directory = remote.directory().unwrap().to_path_buf();
+        assert!(directory.starts_with(Folder::temporary().unwrap().path().unwrap()));
+        assert!(
+            directory
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("yggdryl-iceberg-1-"),
+            "{}",
+            directory.display()
+        );
+        assert!(
+            !directory.exists(),
+            "nothing is created until a file is staged"
+        );
+    }
+
+    #[test]
+    fn a_staging_directory_is_the_commits_own_and_goes_when_the_commit_ends() {
+        let (base, staging) = staging_folder("staging-drop");
+        let table_path = root("staging-drop-table");
+        let root_handle = Holder::folder(&table_path).unwrap();
+        let media = MediaType::new(MimeType::FILE);
+
+        // Two commits of one snapshot id - a retry, a concurrent writer -
+        // stage apart, and neither can see the other's files.
+        let first = Staging::begin(Some(&staging), false, 7).unwrap();
+        let second = Staging::begin(Some(&staging), false, 7).unwrap();
+        let first_dir = first.directory().unwrap().to_path_buf();
+        let second_dir = second.directory().unwrap().to_path_buf();
+        assert_ne!(first_dir, second_dir);
+        assert!(first_dir.starts_with(&base) && second_dir.starts_with(&base));
+
+        let ((), size) = first
+            .publish(&root_handle, "data/venue=XNAS/part.bin", &media, |handle| {
+                handle.write_all_bytes(b"PAR1")
+            })
+            .unwrap();
+        assert_eq!(size, 4);
+        // The staged file went out and is already gone; the directory is
+        // the commit's until the commit ends; the other commit sees nothing.
+        assert!(first_dir.exists());
+        assert!(files_under(&first_dir).is_empty());
+        assert!(!second_dir.exists());
+        let published = table_path.join("data").join("venue=XNAS").join("part.bin");
+        assert_eq!(std::fs::read(&published).unwrap(), b"PAR1");
+
+        // Dropping a staging that never finished rolls its published file
+        // back and removes its directory: a failed commit leaves nothing.
+        drop(first);
+        assert!(!first_dir.exists());
+        assert!(!published.exists(), "the published file is removed again");
+
+        // A committed staging keeps what it published and removes only the
+        // directory, when it drops.
+        let third = Staging::begin(Some(&staging), false, 8).unwrap();
+        let third_dir = third.directory().unwrap().to_path_buf();
+        third
+            .publish(&root_handle, "data/venue=XNYS/part.bin", &media, |handle| {
+                handle.write_all_bytes(b"PAR1")
+            })
+            .unwrap();
+        third.commit();
+        drop(third);
+        assert!(!third_dir.exists());
+        assert_eq!(
+            std::fs::read(table_path.join("data").join("venue=XNYS").join("part.bin")).unwrap(),
+            b"PAR1"
+        );
+        drop(second);
+        assert!(is_empty_dir(&base));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&table_path);
+    }
+
+    #[test]
+    fn a_failed_publication_rolls_the_commit_back_and_leaves_no_staged_file() {
+        let (base, staging) = staging_folder("staging-rollback");
+        let path = root("staging-rollback-table");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        // A regular file where the XNAS partition directory belongs: that
+        // partition's file is staged, and its publication is what fails.
+        std::fs::create_dir_all(path.join("data")).unwrap();
+        let blocker = path.join("data").join("venue=XNAS");
+        std::fs::write(&blocker, b"a file where a directory would be").unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_staging(staging)
+                .unwrap()
+                .try_with_write_parallelism(1)
+                .unwrap(),
+        );
+        let version = table.metadata_version();
+
+        // XLON's file is staged and published first; XNAS's publication
+        // fails, and XNYS's is never attempted.
+        let batch = trades(
+            &[1, 2, 3],
+            &[Some("a"), Some("b"), Some("c")],
+            &[Some("XLON"), Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap_err();
+        assert_eq!(table.metadata_version(), version);
+        assert!(table.current_snapshot().is_none());
+        assert_eq!(
+            files_under(&path.join("data")),
+            [blocker],
+            "the file the commit published is removed again"
+        );
+        assert!(
+            files_under(&path.join("metadata"))
+                .iter()
+                .all(|file| !file.to_string_lossy().ends_with(".avro")),
+            "no manifest and no manifest list were published"
+        );
+        assert!(is_empty_dir(&base), "no staged file survives");
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version(), version);
+        assert!(reopened.current_snapshot().is_none());
+        let _ = std::fs::remove_dir_all(&base);
         let _ = std::fs::remove_dir_all(&path);
     }
 }

@@ -13,6 +13,8 @@ This page owns committing rows to an Iceberg table: the record methods, data-fil
 | Keys | The identity partition columns lead every merge key, once each, then `merge_by`; a merge naming no key replaces the partitions its rows fall in; a merge reads and rewrites only the files of the partitions its rows fall in |
 | Sort | Every data file holds one partition, sorted by the table's default sort order: [`SortOrder::for_spec`](#sorted-data-files) - the spec's source columns ascending, nulls first - unless `create_sorted` declared another; order 0 is unsorted |
 | Parallel writes | Partition groups are written on `write.parallelism` threads (default: the resolved `read.parallelism`); the manifest lists files in group order; a failing group fails the commit before any metadata is written |
+| Staging | `write.staging` = `off` or a local folder (default: the platform temporary folder for a remote root, `off` for a local one); every data file, manifest and manifest list is encoded into a staging file under a directory of the commit's own and uploaded once - multipart above the store's threshold - with its statistics read from the staged copy; the directory goes when the commit ends, and a failed commit removes every file it published |
+| Remote calls | Over an object store an append of one partition is 9 requests, an upsert into one partition of three 14, a full scan of four files 7, a pruned scan of one file 3: the metadata chain, one `GET` per data file, one upload per written file, and the one listing that claims the version - never a listing of `data/`, a `HEAD` for a size, or a footer read back from the store ([Object stores](../../holder/backends/object.md#what-an-iceberg-table-costs)) |
 | Options | Explicit handle option, then the table property of the same name (or the `iceberg:` root protocol property), then the documented default; `set_options` sets the handle layer |
 | Retry defaults | `commit_retries` 4, `commit_min_backoff_ms` 100, `commit_total_timeout_ms` `1_800_000`; a commit resolves only the four `commit.retry.*` keys |
 | Data format | `write.format.default`; Parquet by default, Avro writable; ORC and Puffin metadata are preserved but refused on write |
@@ -623,6 +625,149 @@ The partition groups of one commit are independent - each writes its own files u
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
+## Staged commits
+
+A commit into a remote table is a set of uploads: every data file, the manifest, the manifest list, then the document that names them. With `write.staging` on, each of those files is encoded into a local staging file first - under a directory of the commit's own, so two commits into one table never see each other's files - its statistics are read back from that copy rather than from the store, and it goes out as one upload, multipart above the store's threshold. The upload streams the staged file: above the threshold one part at a time, so memory holds one part of one file per writer thread, and below it the whole file, read once; the staged copy is removed as soon as its upload ends, so the disk holds each writer thread's current file and nothing else.
+
+The staging is a transaction whose point of no return is the versioned metadata document. Until that document is durable, a failure - a refused upload, a commit beaten out of retries, a refused document write - removes every file the commit published, the attempt document included, so nothing is left that the metadata does not name, on the store or on the local disk; the directory goes when the commit ends however it ends. Once the document is durable the files are the table's whatever a later step reports, because every fresh handle resolves the version to that document: a hint write the store publishes and then reports as failed leaves a table that reads whole. A commit beaten on write publishes its manifest list again for the snapshot it rebases onto and removes the list of the attempt it replaces, one request, so a successful commit leaves nothing the metadata does not name either. An upload the store refuses is not followed by a removal: a refused `PUT` stored nothing, and an abandoned multipart upload is aborted.
+
+The option resolves like every other: the explicit value, then the table property, then the default, which is the root's own - the platform temporary folder when the root is remote, `off` when it is local, where a staging file would be a second copy of a file already on the same disk. `off` writes every file straight to the table; a folder must be local, and a remote one is refused naming the key.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::media::iceberg::{
+        FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
+    };
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{arrow, DataType};
+
+    let mut schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-staging");
+    let stage = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-staging-folder");
+    let _ = std::fs::remove_dir_all(&path);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    // A local root stages nothing by default; the property and the explicit
+    // option override it, and a remote folder is refused naming the key.
+    assert_eq!(table.write_staging()?, WriteStaging::Off);
+    assert_eq!(IcebergOptions::new().write_staging(), None);
+    let folder = WriteStaging::from_str(&stage.to_string_lossy())?;
+    assert!(WriteStaging::from_str("s3://trades/stage").is_err());
+    table.commit_metadata_changes(|metadata| {
+        metadata.set_property(IcebergOptions::WRITE_STAGING_KEY, folder.to_string())?;
+        Ok(())
+    })?;
+    assert_eq!(table.write_staging()?, folder);
+    table.set_options(IcebergOptions::new().try_with_write_staging(WriteStaging::Off)?);
+    assert_eq!(table.write_staging()?, WriteStaging::Off);
+
+    // A staged commit reads back as any other, and the staging folder holds
+    // nothing once it is done.
+    table.set_options(IcebergOptions::new().try_with_write_staging(folder)?);
+    let batch = RecordBatch::try_new(
+        schema.into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2])),
+            Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
+        ],
+    )?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+    assert_eq!(table.data_files()?.len(), 2);
+    assert!(!stage.exists() || std::fs::read_dir(&stage)?.next().is_none());
+
+    let _ = std::fs::remove_dir_all(&path);
+    let _ = std::fs::remove_dir_all(&stage);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import IcebergOptions, Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    stage = pathlib.Path(tempfile.mkdtemp()) / "stage"
+    table = Table.create(IOBase(path), columns, ["venue"])
+
+    # A local root stages nothing by default; the property and the explicit
+    # option override it, and a remote folder is refused naming the key.
+    assert IcebergOptions().write_staging is None
+    assert table.options().write_staging is None
+    table.update_properties({"write.staging": str(stage)})
+    assert table.options().write_staging.startswith("file:")
+    try:
+        IcebergOptions(write_staging="s3://trades/stage")
+    except ValueError as error:
+        assert "write.staging" in str(error)
+
+    # A staged commit reads back as any other, and the staging folder holds
+    # nothing once it is done.
+    rows = pa.record_batch({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=columns)
+    table.append(rows, options=IcebergOptions(write_staging=str(stage)))
+    assert len(table.data_files()) == 2
+    assert not stage.exists() or not any(stage.iterdir())
+    assert IcebergOptions(write_staging="off").write_staging == "off"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const stage = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'stage')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+
+    // A local root stages nothing by default; the property and the explicit
+    // option override it, and a remote folder is refused naming the key.
+    assert.equal(new iceberg.IcebergOptions().writeStaging, null)
+    assert.equal(table.options().writeStaging, null)
+    table.updateProperties({ 'write.staging': stage })
+    assert.ok(table.options().writeStaging.startsWith('file:'))
+    assert.throws(() => new iceberg.IcebergOptions({ writeStaging: 's3://trades/stage' }), /write\.staging/)
+
+    // A staged commit reads back as any other, and the staging folder holds
+    // nothing once it is done.
+    const rows = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
+    })
+    table.append(rows, new iceberg.IcebergOptions({ writeStaging: stage }))
+    assert.equal(table.dataFiles().length, 2)
+    assert.ok(!fs.existsSync(stage) || fs.readdirSync(stage).length === 0)
+    assert.equal(new iceberg.IcebergOptions({ writeStaging: 'off' }).writeStaging, 'off')
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    fs.rmSync(path.dirname(stage), { recursive: true, force: true })
+    ```
+
 ## Data files aim at a size
 
 The bindings read the target as `target_file_size` / `targetFileSize`, and Parquet compression lands files under it rather than at it. A table that has accumulated small files rewrites them with `compact()`, which reports the same three numbers in each language's casing.
@@ -756,6 +901,7 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
 - `write.target-file-size-bytes`, `write.format.default`
 - `read.parallelism`, `read.parallel.min-files`, `read.parallel.min-file-size-bytes`
 - `write.parallelism`, defaulting to the resolved `read.parallelism`
+- `write.staging`, `off` or a local folder, defaulting to the temporary folder for a remote root and `off` for a local one
 
 === "Rust"
 

@@ -778,6 +778,8 @@ test('an options value answers the fields it was given and defaults the rest', (
   // and the write parallelism defaults to it.
   assert.ok(untouched.readParallelism >= 1 && untouched.readParallelism <= 8)
   assert.equal(untouched.writeParallelism, untouched.readParallelism)
+  // The staging folder is unset until a layer speaks: the table decides.
+  assert.equal(untouched.writeStaging, null)
 
   const given = new iceberg.IcebergOptions({
     commitRetries: 9,
@@ -789,9 +791,11 @@ test('an options value answers the fields it was given and defaults the rest', (
     readParallelMinFiles: 3,
     readParallelMinFileSize: 1024,
     writeParallelism: 5,
+    writeStaging: 'off',
     compactAfterCommits: 7,
     dataMimeType: MimeType.AVRO,
   })
+  assert.equal(given.writeStaging, 'off')
   assert.equal(given.commitRetries, 9)
   assert.equal(given.commitMinBackoffMs, 5)
   assert.equal(given.commitMaxBackoffMs, 50)
@@ -889,6 +893,20 @@ test('a zero file size and a zero read parallelism are refused by property name'
     () => new iceberg.IcebergOptions({ writeParallelism: 0 }),
     /write\.parallelism.*expected at least one writer thread, got 0/,
   )
+  // A staging folder is a local folder: a URL, a path, or `off`, and a
+  // remote one is refused naming the key.
+  assert.throws(
+    () => new iceberg.IcebergOptions({ writeStaging: 's3://trades/stage' }),
+    /write\.staging.*expected off or a local folder/,
+  )
+  const staged = new iceberg.IcebergOptions({ writeStaging: os.tmpdir() })
+  assert.ok(staged.writeStaging.startsWith('file:'))
+  staged.writeStaging = 'off'
+  assert.equal(staged.writeStaging, 'off')
+  assert.throws(() => {
+    staged.writeStaging = 's3://trades/stage'
+  }, /write\.staging/)
+  assert.equal(staged.writeStaging, 'off')
 
   const options = new iceberg.IcebergOptions({ targetFileSize: 4096, readParallelism: 2 })
   assert.throws(() => {
