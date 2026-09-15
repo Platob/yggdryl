@@ -286,3 +286,42 @@ fn a_document_the_schema_describes_reads_under_the_field_it_answers() {
     assert_eq!(batches.len(), 1);
     assert_eq!(batches[0].num_rows(), 1);
 }
+
+#[test]
+fn a_schema_this_read_writes_back_to_the_same_field() {
+    // The property that makes both directions worth having: a field read from
+    // a schema, written as a schema, and read again is the same field. The
+    // columns that had to travel as text remember what they were, so
+    // `xsd:decimal` comes back as `xsd:decimal` rather than as a string.
+    let field = field_of(ROWSET, None).unwrap();
+    let written = xml::field_into_xsd(&field, yggdryl::text::Formatting::new()).unwrap();
+    let again = xml::field_from_xsd(&written, Limits::default(), None).unwrap();
+    assert_eq!(again, field, "{}", String::from_utf8_lossy(&written));
+
+    let typed = field_of(
+        r#"<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+             <xsd:element name="r"><xsd:complexType>
+               <xsd:sequence>
+                 <xsd:element name="amount" type="xsd:decimal"/>
+                 <xsd:element name="when" type="xsd:dateTimeStamp"/>
+               </xsd:sequence>
+               <xsd:attribute name="Ccy" type="xsd:string" use="required"/>
+             </xsd:complexType></xsd:element>
+           </xsd:schema>"#,
+        None,
+    )
+    .unwrap();
+    let written = xml::field_into_xsd(&typed, yggdryl::text::Formatting::new()).unwrap();
+    let rendered = String::from_utf8_lossy(&written).into_owned();
+    assert!(rendered.contains(r#"type="xsd:decimal""#), "{rendered}");
+    assert!(
+        rendered.contains(r#"<xsd:attribute name="Ccy""#)
+            || rendered.contains(r#"<xs:attribute name="Ccy""#),
+        "{rendered}"
+    );
+    assert_eq!(
+        xml::field_from_xsd(&written, Limits::default(), None).unwrap(),
+        typed,
+        "{rendered}"
+    );
+}

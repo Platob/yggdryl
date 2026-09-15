@@ -509,3 +509,213 @@ fn refused(local: &str, because: &str) -> Error {
         format_smolstr!("expected a type a column can hold, got xs:{local}, and {because}"),
     )
 }
+
+/// Write one field as the schema that declares it.
+///
+/// The reverse of [`field_from_xsd`], and lossless for a field that came from
+/// one: `xml:type` is what a column that had to travel as text was called, so
+/// an unfaceted `xs:decimal` is written back as `xs:decimal` rather than as
+/// the string it was read as. A field built by hand gets the type its datatype
+/// earns.
+///
+/// # Errors
+///
+/// Returns a refusal naming a datatype no schema can declare, or a name no
+/// element can be called.
+pub fn field_into_xsd(field: &Field, formatting: crate::text::Formatting) -> Result<Vec<u8>> {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+    let newline = !matches!(formatting.indent(), crate::text::Indent::None);
+    if newline {
+        out.push('\n');
+    }
+    out.push_str("<xs:schema xmlns:xs=\"");
+    out.push_str(XSD_NAMESPACE);
+    out.push('"');
+    if let Some(namespace) = field.as_xml().namespace() {
+        let _ = write!(out, " targetNamespace=\"{namespace}\"");
+        out.push_str(" elementFormDefault=\"qualified\"");
+    }
+    out.push('>');
+    write_element_declaration(&mut out, field, 1, formatting, newline)?;
+    if newline {
+        out.push('\n');
+    }
+    out.push_str("</xs:schema>");
+    if newline {
+        out.push('\n');
+    }
+    Ok(out.into_bytes())
+}
+
+/// Write one `xs:element` declaration for a field.
+fn write_element_declaration(
+    out: &mut String,
+    field: &Field,
+    depth: usize,
+    formatting: crate::text::Formatting,
+    newline: bool,
+) -> Result<()> {
+    use std::fmt::Write as _;
+
+    let spelling = field.as_xml();
+    let name = spelling.wire_name().to_owned();
+    if newline {
+        out.push('\n');
+        indent(out, depth, formatting);
+    }
+    // A list is one column written more than once, which is what maxOccurs
+    // says; the item's own type is the column's type.
+    let (dtype, repeated) = match field.dtype() {
+        DataType::List(item)
+        | DataType::LargeList(item)
+        | DataType::ListView(item)
+        | DataType::LargeListView(item) => (item.dtype(), true),
+        other => (other, false),
+    };
+    let _ = write!(out, "<xs:element name=\"{name}\"");
+    if field.is_nullable() {
+        out.push_str(" minOccurs=\"0\"");
+    }
+    if repeated {
+        out.push_str(" maxOccurs=\"unbounded\"");
+    }
+
+    if let DataType::Struct(children) = dtype {
+        out.push('>');
+        if newline {
+            out.push('\n');
+            indent(out, depth.saturating_add(1), formatting);
+        }
+        out.push_str("<xs:complexType>");
+        // Elements sit in the model group; attributes sit beside it.
+        let elements: Vec<&Field> = children
+            .iter()
+            .filter(|child| !child.as_xml().kind().is_ok_and(XmlKind::is_attribute))
+            .collect();
+        if !elements.is_empty() {
+            if newline {
+                out.push('\n');
+                indent(out, depth.saturating_add(2), formatting);
+            }
+            out.push_str("<xs:sequence>");
+            for child in elements {
+                write_element_declaration(
+                    out,
+                    child,
+                    depth.saturating_add(3),
+                    formatting,
+                    newline,
+                )?;
+            }
+            if newline {
+                out.push('\n');
+                indent(out, depth.saturating_add(2), formatting);
+            }
+            out.push_str("</xs:sequence>");
+        }
+        for child in children.iter() {
+            if !child.as_xml().kind().is_ok_and(XmlKind::is_attribute) {
+                continue;
+            }
+            if newline {
+                out.push('\n');
+                indent(out, depth.saturating_add(2), formatting);
+            }
+            let child_name = child.as_xml().wire_name().to_owned();
+            let _ = write!(out, "<xs:attribute name=\"{child_name}\"");
+            let _ = write!(out, " type=\"{}\"", declared_type(child)?);
+            if !child.is_nullable() {
+                out.push_str(" use=\"required\"");
+            }
+            out.push_str("/>");
+        }
+        if newline {
+            out.push('\n');
+            indent(out, depth.saturating_add(1), formatting);
+        }
+        out.push_str("</xs:complexType>");
+        if newline {
+            out.push('\n');
+            indent(out, depth, formatting);
+        }
+        out.push_str("</xs:element>");
+        return Ok(());
+    }
+
+    let declared = declared_type_of(dtype, field)?;
+    let _ = write!(out, " type=\"{declared}\"/>");
+    Ok(())
+}
+
+/// The XSD type name one column is declared with.
+fn declared_type(field: &Field) -> Result<SmolStr> {
+    declared_type_of(field.dtype(), field)
+}
+
+/// The XSD type name one datatype earns, or the one it was read as.
+fn declared_type_of(dtype: &DataType, field: &Field) -> Result<SmolStr> {
+    // A column that had to travel as text remembers what it was, so a schema
+    // written from it says what the first one said.
+    if let Some(declared) = field.as_xml().declared_type() {
+        return Ok(SmolStr::new(declared));
+    }
+    let name = match dtype {
+        DataType::Boolean => "xs:boolean",
+        DataType::Int8 => "xs:byte",
+        DataType::Int16 => "xs:short",
+        DataType::Int32 => "xs:int",
+        DataType::Int64 => "xs:long",
+        DataType::UInt8 => "xs:unsignedByte",
+        DataType::UInt16 => "xs:unsignedShort",
+        DataType::UInt32 => "xs:unsignedInt",
+        DataType::UInt64 => "xs:unsignedLong",
+        DataType::Float16 | DataType::Float32 => "xs:float",
+        DataType::Float64 => "xs:double",
+        DataType::Date32 | DataType::Date64 => "xs:date",
+        DataType::Time32(_) | DataType::Time64(_) => "xs:time",
+        DataType::DateTime64 { timezone, .. } => {
+            if timezone.is_naive() {
+                "xs:dateTime"
+            } else {
+                "xs:dateTimeStamp"
+            }
+        }
+        DataType::Bytes(_) => "xs:base64Binary",
+        DataType::String(_) => "xs:string",
+        DataType::Decimal32 { .. }
+        | DataType::Decimal64 { .. }
+        | DataType::Decimal128 { .. }
+        | DataType::Decimal256 { .. } => "xs:decimal",
+        other => {
+            return Err(codec_error(
+                0,
+                format_smolstr!(
+                    "expected a datatype a schema can declare, got {}",
+                    quoted(&other.to_string())
+                ),
+            ));
+        }
+    };
+    Ok(SmolStr::new_static(name))
+}
+
+/// Write the indentation one level asks for.
+fn indent(out: &mut String, depth: usize, formatting: crate::text::Formatting) {
+    let width = match formatting.indent() {
+        crate::text::Indent::None => return,
+        crate::text::Indent::Tabs => {
+            for _ in 0..depth {
+                out.push('\t');
+            }
+            return;
+        }
+        crate::text::Indent::Spaces(width) => usize::from(width),
+        crate::text::Indent::Default => 2,
+    };
+    for _ in 0..depth * width {
+        out.push(' ');
+    }
+}

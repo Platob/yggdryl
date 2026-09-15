@@ -39,7 +39,7 @@ pub use batch::{overwrite_arrow_reader, read_batch_reader, read_field};
 pub use handle::Xml;
 pub use options::{DEFAULT_DOCUMENT_NAME, XmlOptions};
 pub use reader::MAX_PARSER_DEPTH;
-pub use xsd::{MAX_SCHEMA_DEPTH, field_from_xsd};
+pub use xsd::{MAX_SCHEMA_DEPTH, field_from_xsd, field_into_xsd};
 
 #[cfg(test)]
 #[path = "tests.rs"]
