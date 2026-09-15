@@ -120,11 +120,13 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 
 /// One row's columns, in order, as tags.
 ///
-/// The standard header and trailer, because every message has them; the
-/// fields a financial consumer reads, because they are what a table is
-/// queried by; the three repeating groups worth persisting whole; the
-/// crate's own facts; FIX's own `MsgDirection`; and last the arrival
-/// record's counter, which closes the row with the group it counts.
+/// The crate's own facts lead - its clocks, then its identities, then the
+/// rest - because a table is read by time and joined by identity. Then the
+/// standard header and trailer, because every message has them; the fields a
+/// financial consumer reads, because they are what a table is queried by; the
+/// three repeating groups worth persisting whole; FIX's own `MsgDirection`;
+/// and last the arrival record's counter, which closes the row with the group
+/// it counts.
 ///
 /// This is the shape a capture lands in, and it is a *reading* of a message
 /// rather than the message: what the codec made of a line, in columns. The
@@ -144,24 +146,45 @@ pub fn fix_schema_tags() -> Vec<i32> {
             + crated.len()
             + 2,
     );
+    // The crate's own columns lead, in three groups: when, then which, then
+    // everything else it knows. A table is read by time and joined by
+    // identity, and a reader that has to scroll past eighty protocol columns
+    // to reach either is reading a wire frame rather than a table. The groups
+    // are not a second list to keep in step - each column is classified by
+    // the datatype it already carries, so a clock added to this crate lands
+    // among the clocks by being one.
+    let crate_tag = |field: &Field| field.as_fix().tag().ok().flatten();
+    let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
+    let mut push_group = |tags: &mut Vec<i32>, keep: &dyn Fn(&Field) -> bool| {
+        for field in crated {
+            // The arrival record closes the row, so its counter waits for the
+            // end with it rather than standing among the crate's own.
+            if let Some(tag) = crate_tag(field) {
+                if tag != counter && keep(field) {
+                    tags.push(tag);
+                }
+            }
+        }
+    };
+    push_group(&mut tags, &|field| field.dtype() == &CLOCK_DATATYPE);
+    push_group(&mut tags, &|field| {
+        field.dtype() == &super::identity::IDENTITY_DATATYPE
+            || crate_tag(field) == Some(super::CODE_TAG_NAME.0)
+    });
+    push_group(&mut tags, &|field| {
+        field.dtype() != &CLOCK_DATATYPE
+            && field.dtype() != &super::identity::IDENTITY_DATATYPE
+            && crate_tag(field) != Some(super::CODE_TAG_NAME.0)
+    });
     tags.extend_from_slice(&HEADER_TAGS);
     tags.extend_from_slice(&BODY_TAGS);
     tags.extend_from_slice(&GROUP_TAGS);
     tags.extend_from_slice(&TRAILER_TAGS);
-    for field in crated {
-        // The arrival record closes the row, so its counter waits for the end
-        // with it rather than standing among the crate's other columns.
-        if let Ok(Some(tag)) = field.as_fix().tag() {
-            if tag != super::crated::NOFIXENTRIES_TAG_NAME.0 {
-                tags.push(tag);
-            }
-        }
-    }
     // `MsgDirection` is FIX's own and already sits in the header's dialect,
     // but no message carries it on the wire - it is read from the line - so
     // it is appended here rather than expected among the header's tags.
     tags.push(super::MSGDIRECTION_TAG_NAME.0);
-    tags.push(super::crated::NOFIXENTRIES_TAG_NAME.0);
+    tags.push(counter);
     tags
 }
 
