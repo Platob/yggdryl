@@ -217,6 +217,64 @@ impl TxHash {
         }
     }
 
+    /// Project this value to sixteen bytes that order as the instants do.
+    ///
+    /// The instant is converted exactly to signed 64-bit nanoseconds; its
+    /// sign bit is flipped and the eight big-endian bytes take slots 0..8,
+    /// so a lexicographic comparison of the sixteen bytes is a chronological
+    /// one across the epoch. The digest's full 64 bits take slots 8..16.
+    /// There is no version or variant bit anywhere: these are plain bytes a
+    /// lake engine reads as `fixed[16]`, not an RFC 9562 identifier. Neither
+    /// the original unit nor the algorithm is encoded, so this is a
+    /// fingerprint rather than an inverse of [`Self::into_bytes`], whose
+    /// two's-complement instant orders negatives after nonnegatives instead.
+    ///
+    /// ```
+    /// use yggdryl::{Digest, DigestAlgorithm, TimeUnit, hashing::txhash::TxHash};
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let epoch = TxHash::new_in(
+    ///     0, TimeUnit::Nanosecond, Digest::new(DigestAlgorithm::Xxh64, 1),
+    /// )?;
+    /// assert_eq!(
+    ///     epoch.into_ordered_bytes()?,
+    ///     [0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    /// );
+    /// let before = TxHash::new_in(-1, TimeUnit::Nanosecond, epoch.digest())?;
+    /// let after = TxHash::new_in(1, TimeUnit::Nanosecond, epoch.digest())?;
+    /// assert!(before.into_ordered_bytes()? < epoch.into_ordered_bytes()?);
+    /// assert!(epoch.into_ordered_bytes()? < after.into_ordered_bytes()?);
+    /// // The two's-complement bytes of `into_bytes` order the other way.
+    /// assert!(before.into_bytes() > epoch.into_bytes());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
+    /// 64 bits wide, and the existing [`Error::ArithmeticOverflow`] from
+    /// [`restate_unix`] when the instant does not fit signed 64-bit
+    /// nanoseconds.
+    pub fn into_ordered_bytes(self) -> Result<[u8; 16]> {
+        let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
+            path: "$.digest".into(),
+            reason: crate::text::expected_got(
+                "a 64-bit digest for sixteen ordered bytes",
+                format_args!(
+                    "{} ({} bits)",
+                    self.algorithm(),
+                    self.algorithm().width() * 8
+                ),
+            ),
+        })?;
+        let nanoseconds = restate_unix(self.unix, self.unit, TimeUnit::Nanosecond)?;
+        let ordered = u64::from_be_bytes(nanoseconds.to_be_bytes()) ^ (1 << 63);
+        let mut bytes = [0_u8; 16];
+        bytes[..8].copy_from_slice(&ordered.to_be_bytes());
+        bytes[8..].copy_from_slice(&digest.to_be_bytes());
+        Ok(bytes)
+    }
+
     /// Project this value to RFC 9562 UUIDv8 without allocating on success.
     ///
     /// The instant is converted exactly to signed 64-bit nanoseconds. Its

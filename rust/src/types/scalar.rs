@@ -598,6 +598,8 @@ impl<'de> Deserialize<'de> for Scalar {
             Mic(SmolStr),
             Cfi(SmolStr),
             Isin(SmolStr),
+            Cusip(SmolStr),
+            Sedol(SmolStr),
             Side(SmolStr),
             State(SmolStr),
             #[serde(rename = "timeinforce")]
@@ -667,6 +669,12 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(D::Error::custom),
             StructuralValue::Isin(value) => super::string::Isin::new(value)
                 .map(|value| Self::Code(Code::Isin(value)))
+                .map_err(D::Error::custom),
+            StructuralValue::Cusip(value) => super::string::Cusip::new(value)
+                .map(|value| Self::Code(Code::Cusip(value)))
+                .map_err(D::Error::custom),
+            StructuralValue::Sedol(value) => super::string::Sedol::new(value)
+                .map(|value| Self::Code(Code::Sedol(value)))
                 .map_err(D::Error::custom),
             StructuralValue::Side(value) => super::string::Side::new(value)
                 .map(|value| Self::Code(Code::Side(value)))

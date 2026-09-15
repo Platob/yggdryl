@@ -6,7 +6,7 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 51 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the eight [codes](codes.md) |
+| Owns | 56 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, URL, the [string and byte families](text.md), the ten [codes](codes.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly |
 | Identity | `id()`, `kind()`: 60 ids, 12 kinds, parameter-free; a string's id is its layout, a byte column's its layout |
 | Serializes | one structural model under JSON, YAML, TOML |
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -181,6 +181,8 @@ The registry is the FIX Latest table plus `mic`, `cfi` and `isin`; `currency`, `
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |
 | `isin` | - | `isin` | ISO 6166, twelve bytes closed by a check digit |
+| `cusip` | - | `cusip` | CUSIP, nine bytes closed by a check digit |
+| `sedol` | - | `sedol` | SEDOL, seven bytes closed by a check digit |
 | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |

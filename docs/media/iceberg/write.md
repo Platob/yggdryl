@@ -9,7 +9,12 @@ This page owns committing rows to an Iceberg table: the record methods, data-fil
 | Owns | `append`, `overwrite`, `merge` commits; `compact`; `IcebergOptions`; `data_mime_type`; the commit gate; branches and tags |
 | Commit | Every record call, `compact`, and ref change is one commit through one retry gate; a failed commit leaves no visible change |
 | Reads | A table folder reads through the current snapshot; a replaced or uncommitted file is never read |
-| Target size | `write.target-file-size-bytes`, then the root's `iceberg:write.target-file-size-bytes`, then 512 MiB; a file rolls at the batch boundary, sized by Arrow in-memory bytes |
+| Target size | `write.target-file-size-bytes`, then the root's `iceberg:write.target-file-size-bytes`, then 512 MiB; a partition group is cut into files of about the target, measured as its Arrow in-memory bytes per row |
+| Keys | The identity partition columns lead every merge key, once each, then `merge_by`; a merge naming no key replaces the partitions its rows fall in; a merge reads and rewrites only the files of the partitions its rows fall in |
+| Sort | Every data file holds one partition, sorted by the table's default sort order: [`SortOrder::for_spec`](#sorted-data-files) - the spec's source columns ascending, nulls first - unless `create_sorted` declared another; order 0 is unsorted |
+| Parallel writes | Partition groups are written on `write.parallelism` threads (default: the resolved `read.parallelism`); the manifest lists files in group order; a failing group fails the commit before any metadata is written |
+| Staging | `write.staging` = `off` or a local folder (default: the platform temporary folder for a remote root, `off` for a local one); every data file, manifest and manifest list is encoded into a staging file under a directory of the commit's own and uploaded once - multipart above the store's threshold - with its statistics read from the staged copy; the directory goes when the commit ends, and a failed commit removes every file it published |
+| Remote calls | Over an object store an append of one partition is 9 requests, an upsert into one partition of three 14, a full scan of four files 7, a pruned scan of one file 3: the metadata chain, one `GET` per data file, one upload per written file, and the one listing that claims the version - never a listing of `data/`, a `HEAD` for a size, or a footer read back from the store ([Object stores](../../holder/backends/object.md#what-an-iceberg-table-costs)) |
 | Options | Explicit handle option, then the table property of the same name (or the `iceberg:` root protocol property), then the documented default; `set_options` sets the handle layer |
 | Retry defaults | `commit_retries` 4, `commit_min_backoff_ms` 100, `commit_total_timeout_ms` `1_800_000`; a commit resolves only the four `commit.retry.*` keys |
 | Data format | `write.format.default`; Parquet by default, Avro writable; ORC and Puffin metadata are preserved but refused on write |
@@ -173,7 +178,7 @@ A handle on a table folder is not a folder of Parquet files: it is read through 
 | --- | --- |
 | `read_arrow_reader` | Scans the current snapshot, planned as on [Iceberg reads](read.md) |
 | `overwrite_arrow_reader` | Replaces every row |
-| `merge_arrow_reader` | Requires match keys; reads only the data files whose recorded key bounds overlap the incoming keys; carries the rest with the same location, statistics, and commit order |
+| `merge_arrow_reader` | Keys the rows by their partition, then `merge_by`; groups them by partition, reads only that partition's files whose recorded key bounds overlap the group's keys, and carries every other file with the same location, statistics, and commit order; without `merge_by` a partitioned table replaces the partitions the rows fall in |
 | `append_arrow_reader` | Writes new data files and keeps every manifest of the last snapshot; nothing stored is read or rewritten |
 
 ### The table value as a handle
@@ -258,6 +263,510 @@ let matching: usize = table
     .sum();
 assert_eq!(matching, 1);
 ```
+
+## Partition keys are the primary keys
+
+A merge joins on the identity partition columns first and the caller's key after them, each named once, so a row can only ever update a row of its own partition. The incoming rows are grouped by partition tuple - the grouping an append lays files out by - and each group joins with its own partition's files alone: the plan opens the manifests and files of those partitions, the key bounds narrow them further, and everything else is carried into the new snapshot under its own path. What is in memory at once is one group's rows and the files it selected. Within one write, the last of the rows arriving with one key wins. A merge that names no key is keyed by the partition alone and replaces the partitions its rows fall in; an unpartitioned table has nothing to match on then and refuses by name.
+
+=== "Rust"
+
+    ```rust
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{arrow, DataType, Selector};
+
+    let mut schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+        DataType::utf8().nullable_field("venue"),
+    ])?
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-primary-keys");
+    let _ = std::fs::remove_dir_all(&path);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    let arrow_schema = schema.into_arrow_schema()?;
+    let rows = |ids: Vec<i64>, symbols: Vec<&'static str>, venues: Vec<&'static str>| {
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow_schema),
+            vec![
+                Arc::new(Int64Array::from(ids)),
+                Arc::new(StringArray::from(symbols)),
+                Arc::new(StringArray::from(venues)),
+            ],
+        )
+        .expect("a batch matching the root");
+        arrow::batch_reader(batch.schema(), [batch])
+    };
+    for (id, symbol, venue) in [(1, "AAPL", "XNAS"), (2, "MSFT", "XNYS"), (3, "VOD", "XLON")] {
+        table.commit_append(rows(vec![id], vec![symbol], vec![venue]))?;
+    }
+    let paths = |table: &Table<Folder>| -> BTreeSet<String> {
+        table.data_files().expect("the files list").into_iter().map(|(file, _)| file.file_path.to_string()).collect()
+    };
+    let before = paths(&table);
+
+    // The key is (venue, id): id 1 updates inside XNAS, id 4 appends there,
+    // and the two other partitions' files are carried under their own paths.
+    table.commit_merge(
+        rows(vec![1, 4], vec!["AAPL.O", "NVDA"], vec!["XNAS", "XNAS"]),
+        &Selector::from_columns(["id"]),
+        true,
+    )?;
+    let after = paths(&table);
+    assert_eq!(before.intersection(&after).count(), 2);
+
+    // The same id in another partition is another row, never an update.
+    table.commit_merge(rows(vec![1], vec!["AAPL.L"], vec!["XLON"]), &Selector::from_columns(["id"]), true)?;
+    assert_eq!(table.scan_where(&[("id", "1")], None)?.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 2);
+
+    // No key: the partition is the key, so XNYS is replaced by the rows sent to it.
+    table.commit_merge(rows(vec![9], vec!["MSFT.N"], vec!["XNYS"]), &Selector::all(), true)?;
+    assert_eq!(table.scan_where(&[("venue", "XNYS")], None)?.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 1);
+    assert_eq!(table.scan(None)?.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 5);
+
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("symbol", pa.string()),
+        pa.field("venue", pa.string()),
+    ])
+    rows = lambda ids, symbols, venues: pa.record_batch(
+        {"id": ids, "symbol": symbols, "venue": venues}, schema=columns
+    )
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns, ["venue"])
+    for id_, symbol, venue in [(1, "AAPL", "XNAS"), (2, "MSFT", "XNYS"), (3, "VOD", "XLON")]:
+        table.append(rows([id_], [symbol], [venue]))
+    before = {file.path for file, _ in table.data_files()}
+
+    # The key is (venue, id): id 1 updates inside XNAS, id 4 appends there,
+    # and the two other partitions' files are carried under their own paths.
+    table.merge(rows([1, 4], ["AAPL.O", "NVDA"], ["XNAS", "XNAS"]), ["id"])
+    after = {file.path for file, _ in table.data_files()}
+    assert len(before & after) == 2
+
+    # The same id in another partition is another row, never an update.
+    table.merge(rows([1], ["AAPL.L"], ["XLON"]), ["id"])
+    assert table.scan_where({"id": "1"}).read_all().num_rows == 2
+
+    # No key: the partition is the key, so XNYS is replaced by the rows sent to it.
+    table.merge(rows([9], ["MSFT.N"], ["XNYS"]), [])
+    assert table.scan_where({"venue": "XNYS"}).read_all().num_rows == 1
+    assert table.scan().read_all().num_rows == 5
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { BatchReader, Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct(
+      'row',
+      [Field.from('id: int64'), Field.from('symbol: utf8?'), Field.from('venue: utf8?')],
+      { nullable: false },
+    )
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+    const rows = (ids, symbols, venues) =>
+      BatchReader.from(
+        new arrow.Table({
+          id: arrow.vectorFromArray(ids, new arrow.Int64()),
+          symbol: arrow.vectorFromArray(symbols, new arrow.Utf8()),
+          venue: arrow.vectorFromArray(venues, new arrow.Utf8()),
+        }),
+      )
+    for (const [id, symbol, venue] of [[1n, 'AAPL', 'XNAS'], [2n, 'MSFT', 'XNYS'], [3n, 'VOD', 'XLON']]) {
+      table.append(rows([id], [symbol], [venue]))
+    }
+    const paths = () => new Set(table.dataFiles().map((file) => file.filePath))
+    const before = paths()
+
+    // The key is (venue, id): id 1 updates inside XNAS, id 4 appends there,
+    // and the two other partitions' files are carried under their own paths.
+    table.merge(rows([1n, 4n], ['AAPL.O', 'NVDA'], ['XNAS', 'XNAS']), ['id'])
+    const after = paths()
+    assert.equal([...before].filter((file) => after.has(file)).length, 2)
+
+    // The same id in another partition is another row, never an update.
+    table.merge(rows([1n], ['AAPL.L'], ['XLON']), ['id'])
+    assert.equal(table.scanWhere({ id: '1' }).intoTable().numRows, 2)
+
+    // No key: the partition is the key, so XNYS is replaced by the rows sent to it.
+    table.merge(rows([9n], ['MSFT.N'], ['XNYS']), [])
+    assert.equal(table.scanWhere({ venue: 'XNYS' }).intoTable().numRows, 1)
+    assert.equal(table.scan().intoTable().numRows, 5)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+## Sorted data files
+
+Every data file a commit writes holds one partition group with its rows in the table's default sort order, so the bounds it records on the sorted columns are tight and a filter on them prunes files instead of reading them. The default order a table takes at `create` is `SortOrder::for_spec`: the partition spec's source columns in spec order, ascending, nulls first, recorded in the metadata as sort order 1 and made the default; an unpartitioned spec derives from nothing, so its default stays the unsorted order 0. `Table::create_sorted` declares another - or `SortOrder::unsorted()`, which keeps rows in the order they arrived and records no order on the files. A sort field is honoured through its source column: identity, truncation and the calendar transforms order exactly as their source does, and a bucket orders by its source value rather than its hash.
+
+Rust only; the bindings read the table's sort orders off its metadata as every other engine does.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Int64Array, RecordBatch, StringArray};
+use yggdryl::media::iceberg::{
+    FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, Transform,
+    assign_field_ids,
+};
+use yggdryl::holder::local::Folder;
+use yggdryl::{arrow, DataType};
+
+let mut schema = DataType::from_fields([
+    DataType::Int64.required_field("id"),
+    DataType::utf8().nullable_field("symbol"),
+    DataType::utf8().nullable_field("venue"),
+])?
+.required_field("row");
+assign_field_ids(&mut schema, 1)?;
+let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+
+// The default order is the partition's source column, ascending, nulls first.
+let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-sorted");
+let _ = std::fs::remove_dir_all(&path);
+let table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec.clone())?;
+let order = table.metadata().default_sort_order()?;
+assert_eq!(table.metadata().default_sort_order_id(), 1);
+assert_eq!(order.fields[0].source_id, 3);
+assert_eq!(order.fields[0].transform, Transform::Identity);
+assert_eq!((order.fields[0].direction.as_str(), order.fields[0].null_order.as_str()), ("asc", "nulls-first"));
+
+// An explicit order sorts every file it writes: under a one-byte target each
+// row is one file, and the files' symbol bounds march with the sort.
+let sorted_path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-sorted-by-symbol");
+let _ = std::fs::remove_dir_all(&sorted_path);
+let by_symbol = SortOrder {
+    order_id: 1,
+    fields: vec![SortField {
+        source_id: 2,
+        transform: Transform::Identity,
+        direction: "asc".into(),
+        null_order: "nulls-last".into(),
+    }],
+};
+let mut table = Table::create_sorted(Folder::new(&sorted_path)?, FormatVersion::V2, schema.clone(), spec, by_symbol)?;
+table.set_options(IcebergOptions::new().try_with_target_file_size_bytes(1)?);
+let batch = RecordBatch::try_new(
+    schema.into_arrow_schema()?,
+    vec![
+        Arc::new(Int64Array::from(vec![1, 2, 3])),
+        Arc::new(StringArray::from(vec!["c", "a", "b"])),
+        Arc::new(StringArray::from(vec!["X", "X", "X"])),
+    ],
+)?;
+table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+let lower_bounds: Vec<String> = table
+    .data_files()?
+    .into_iter()
+    .map(|(file, _)| {
+        assert_eq!(file.sort_order_id, Some(1));
+        let (_, bytes) = file.lower_bounds.iter().find(|(id, _)| *id == 2).expect("a symbol bound");
+        String::from_utf8(bytes.clone()).expect("utf-8")
+    })
+    .collect();
+assert_eq!(lower_bounds, ["a", "b", "c"]);
+
+let _ = std::fs::remove_dir_all(&path);
+let _ = std::fs::remove_dir_all(&sorted_path);
+```
+
+## Parallel partition writes
+
+The partition groups of one commit are independent - each writes its own files under its own directory - so they are written on worker threads, at most `write.parallelism` at once. The option resolves like every other: the explicit value, then the table property, then the default, which is the resolved `read.parallelism`; 1 writes the groups one after another on the calling thread. Whatever the parallelism, the manifest lists the files in partition-group order, never in completion order, so a commit's manifest bytes do not depend on scheduling, and a group that fails fails the commit before any metadata is written.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::media::iceberg::{FormatVersion, IcebergOptions, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{arrow, DataType};
+
+    let mut schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-parallel-writes");
+    let _ = std::fs::remove_dir_all(&path);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    // The default is the read parallelism; a table property or an explicit
+    // option overrides it, and zero is refused naming the key.
+    assert_eq!(table.options()?.write_parallelism(), table.options()?.read_parallelism());
+    assert!(IcebergOptions::new().set_write_parallelism(0).is_err());
+    table.set_options(IcebergOptions::new().try_with_write_parallelism(4)?);
+    assert_eq!(table.options()?.write_parallelism(), 4);
+
+    // Eight partitions on four threads: the manifest lists v1 through v8.
+    let batch = RecordBatch::try_new(
+        schema.into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from((1..=8).collect::<Vec<i64>>())),
+            Arc::new(StringArray::from((1..=8).map(|n| format!("v{n}")).collect::<Vec<_>>())),
+        ],
+    )?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+    let venues: Vec<String> = table
+        .data_files()?
+        .into_iter()
+        .map(|(file, _)| file.partition[0].as_str().expect("a venue").to_owned())
+        .collect();
+    assert_eq!(venues, ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"]);
+
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import IcebergOptions, Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    table = Table.create(IOBase(path), columns, ["venue"])
+
+    # The default is the read parallelism; the property and the explicit
+    # option override it, and zero is refused naming the key.
+    assert table.options().write_parallelism == table.options().read_parallelism
+    table.update_properties({"write.parallelism": "3"})
+    assert table.options().write_parallelism == 3
+    try:
+        IcebergOptions(write_parallelism=0)
+    except ValueError as error:
+        assert "write.parallelism" in str(error)
+
+    # Eight partitions on four threads: the manifest lists v1 through v8.
+    rows = pa.record_batch(
+        {"id": list(range(1, 9)), "venue": [f"v{n}" for n in range(1, 9)]}, schema=columns
+    )
+    table.append(rows, options=IcebergOptions(write_parallelism=4))
+    assert [file.partition[0] for file, _ in table.data_files()] == [f"v{n}" for n in range(1, 9)]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+
+    // The default is the read parallelism; the property and the explicit
+    // option override it, and zero is refused naming the key.
+    assert.equal(table.options().writeParallelism, table.options().readParallelism)
+    table.updateProperties({ 'write.parallelism': '3' })
+    assert.equal(table.options().writeParallelism, 3)
+    assert.throws(() => new iceberg.IcebergOptions({ writeParallelism: 0 }), /write\.parallelism/)
+
+    // Eight partitions on four threads: the manifest lists v1 through v8.
+    const ids = [1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]
+    const rows = new arrow.Table({
+      id: arrow.vectorFromArray(ids, new arrow.Int64()),
+      venue: arrow.vectorFromArray(ids.map((n) => `v${n}`), new arrow.Utf8()),
+    })
+    table.append(rows, new iceberg.IcebergOptions({ writeParallelism: 4 }))
+    assert.deepEqual(
+      table.dataFiles().map((file) => file.partition[0].asJs()),
+      ids.map((n) => `v${n}`),
+    )
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+## Staged commits
+
+A commit into a remote table is a set of uploads: every data file, the manifest, the manifest list, then the document that names them. With `write.staging` on, each of those files is encoded into a local staging file first - under a directory of the commit's own, so two commits into one table never see each other's files - its statistics are read back from that copy rather than from the store, and it goes out as one upload, multipart above the store's threshold. The upload streams the staged file: above the threshold one part at a time, so memory holds one part of one file per writer thread, and below it the whole file, read once; the staged copy is removed as soon as its upload ends, so the disk holds each writer thread's current file and nothing else.
+
+The staging is a transaction whose point of no return is the versioned metadata document. Until that document is durable, a failure - a refused upload, a commit beaten out of retries, a refused document write - removes every file the commit published, the attempt document included, so nothing is left that the metadata does not name, on the store or on the local disk; the directory goes when the commit ends however it ends. Once the document is durable the files are the table's whatever a later step reports, because every fresh handle resolves the version to that document: a hint write the store publishes and then reports as failed leaves a table that reads whole. A commit beaten on write publishes its manifest list again for the snapshot it rebases onto and removes the list of the attempt it replaces, one request, so a successful commit leaves nothing the metadata does not name either. An upload the store refuses is not followed by a removal: a refused `PUT` stored nothing, and an abandoned multipart upload is aborted.
+
+The option resolves like every other: the explicit value, then the table property, then the default, which is the root's own - the platform temporary folder when the root is remote, `off` when it is local, where a staging file would be a second copy of a file already on the same disk. `off` writes every file straight to the table; a folder must be local, and a remote one is refused naming the key.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+    use yggdryl::media::iceberg::{
+        FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
+    };
+    use yggdryl::holder::local::Folder;
+    use yggdryl::{arrow, DataType};
+
+    let mut schema = DataType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("venue"),
+    ])?
+    .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let path = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-staging");
+    let stage = Folder::temporary()?.path()?.join("yggdryl-docs-iceberg-staging-folder");
+    let _ = std::fs::remove_dir_all(&path);
+    let spec = PartitionSpec::identity(1, &schema, &["venue"])?;
+    let mut table = Table::create(Folder::new(&path)?, FormatVersion::V2, schema.clone(), spec)?;
+
+    // A local root stages nothing by default; the property and the explicit
+    // option override it, and a remote folder is refused naming the key.
+    assert_eq!(table.write_staging()?, WriteStaging::Off);
+    assert_eq!(IcebergOptions::new().write_staging(), None);
+    let folder = WriteStaging::from_str(&stage.to_string_lossy())?;
+    assert!(WriteStaging::from_str("s3://trades/stage").is_err());
+    table.commit_metadata_changes(|metadata| {
+        metadata.set_property(IcebergOptions::WRITE_STAGING_KEY, folder.to_string())?;
+        Ok(())
+    })?;
+    assert_eq!(table.write_staging()?, folder);
+    table.set_options(IcebergOptions::new().try_with_write_staging(WriteStaging::Off)?);
+    assert_eq!(table.write_staging()?, WriteStaging::Off);
+
+    // A staged commit reads back as any other, and the staging folder holds
+    // nothing once it is done.
+    table.set_options(IcebergOptions::new().try_with_write_staging(folder)?);
+    let batch = RecordBatch::try_new(
+        schema.into_arrow_schema()?,
+        vec![
+            Arc::new(Int64Array::from(vec![1_i64, 2])),
+            Arc::new(StringArray::from(vec![Some("XNAS"), Some("XNYS")])),
+        ],
+    )?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+    assert_eq!(table.data_files()?.len(), 2);
+    assert!(!stage.exists() || std::fs::read_dir(&stage)?.next().is_none());
+
+    let _ = std::fs::remove_dir_all(&path);
+    let _ = std::fs::remove_dir_all(&stage);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import IOBase
+    from yggdryl.media.iceberg import IcebergOptions, Table
+
+    columns = pa.schema([
+        pa.field("id", pa.int64(), nullable=False),
+        pa.field("venue", pa.string()),
+    ])
+    path = pathlib.Path(tempfile.mkdtemp()) / "trades"
+    stage = pathlib.Path(tempfile.mkdtemp()) / "stage"
+    table = Table.create(IOBase(path), columns, ["venue"])
+
+    # A local root stages nothing by default; the property and the explicit
+    # option override it, and a remote folder is refused naming the key.
+    assert IcebergOptions().write_staging is None
+    assert table.options().write_staging is None
+    table.update_properties({"write.staging": str(stage)})
+    assert table.options().write_staging.startswith("file:")
+    try:
+        IcebergOptions(write_staging="s3://trades/stage")
+    except ValueError as error:
+        assert "write.staging" in str(error)
+
+    # A staged commit reads back as any other, and the staging folder holds
+    # nothing once it is done.
+    rows = pa.record_batch({"id": [1, 2], "venue": ["XNAS", "XNYS"]}, schema=columns)
+    table.append(rows, options=IcebergOptions(write_staging=str(stage)))
+    assert len(table.data_files()) == 2
+    assert not stage.exists() or not any(stage.iterdir())
+    assert IcebergOptions(write_staging="off").write_staging == "off"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const schema = fields.struct('row', [Field.from('id: int64'), Field.from('venue: utf8?')], {
+      nullable: false,
+    })
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const stage = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'stage')
+    const table = iceberg.Table.create(root, schema, ['venue'])
+
+    // A local root stages nothing by default; the property and the explicit
+    // option override it, and a remote folder is refused naming the key.
+    assert.equal(new iceberg.IcebergOptions().writeStaging, null)
+    assert.equal(table.options().writeStaging, null)
+    table.updateProperties({ 'write.staging': stage })
+    assert.ok(table.options().writeStaging.startsWith('file:'))
+    assert.throws(() => new iceberg.IcebergOptions({ writeStaging: 's3://trades/stage' }), /write\.staging/)
+
+    // A staged commit reads back as any other, and the staging folder holds
+    // nothing once it is done.
+    const rows = new arrow.Table({
+      id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
+      venue: arrow.vectorFromArray(['XNAS', 'XNYS'], new arrow.Utf8()),
+    })
+    table.append(rows, new iceberg.IcebergOptions({ writeStaging: stage }))
+    assert.equal(table.dataFiles().length, 2)
+    assert.ok(!fs.existsSync(stage) || fs.readdirSync(stage).length === 0)
+    assert.equal(new iceberg.IcebergOptions({ writeStaging: 'off' }).writeStaging, 'off')
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    fs.rmSync(path.dirname(stage), { recursive: true, force: true })
+    ```
 
 ## Data files aim at a size
 
@@ -391,6 +900,8 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
 - `commit.retry.num-retries`, `commit.retry.min-wait-ms`, `commit.retry.max-wait-ms`, `commit.retry.total-timeout-ms`
 - `write.target-file-size-bytes`, `write.format.default`
 - `read.parallelism`, `read.parallel.min-files`, `read.parallel.min-file-size-bytes`
+- `write.parallelism`, defaulting to the resolved `read.parallelism`
+- `write.staging`, `off` or a local folder, defaulting to the temporary folder for a remote root and `off` for a local one
 
 === "Rust"
 
@@ -514,7 +1025,7 @@ Every knob a table honors lives on `IcebergOptions`, and every field resolves th
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```
 
-The JavaScript constructor takes an object naming any of the ten fields, and every field is also a getter and a setter. A per-call value never mutates the passed object and never leaks into the handle's own override.
+The JavaScript constructor takes an object naming any of the eleven fields, and every field is also a getter and a setter. A per-call value never mutates the passed object and never leaks into the handle's own override.
 
 | Binding | Per-call layer | Handle-wide override |
 | --- | --- | --- |
@@ -891,7 +1402,13 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
 
 ## Edges
 
-- `merge_arrow_reader` without match keys -> refused; a merge requires `merge_by`.
+- `merge_arrow_reader` on a `Table` without match keys -> the partition columns are the key, so the partitions the rows fall in are replaced; on an unpartitioned table, and through a plain folder handle, a merge still requires `merge_by`.
+- Merge key naming a partition column -> named once; the partition columns always lead the key.
+- A live data file written under another partition spec that the key bounds cannot exclude -> the merge is refused naming the file and both spec ids; it belongs to no partition of the current spec, so rewrite it first.
+- Duplicate keys inside one incoming write -> the last row wins, per partition group, before the join.
+- Unknown (`DataType::Null`) column -> never written into a data file, as the spec requires; the scan restores it as null.
+- A sort field over a bucket transform -> the file's rows order by the source value; every other transform orders exactly as its source.
+- A partition writer thread that fails -> the commit fails before any manifest or metadata document is written; the files it wrote are orphans no snapshot names.
 - A partition filter naming an undeclared column, on a `Table` handle -> error.
 - The same filter on a folder of leaves -> ignored, because its batches do not carry that column.
 - A stray file nobody committed, or a file an overwrite replaced -> never read.
@@ -932,6 +1449,8 @@ A tag is a name that never moves; a branch is a name meant to. Creating one is a
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::concurrency_and_compaction
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::data_mime_type
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::line_projection
+    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^compact/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^merge/'
     cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^commit/'

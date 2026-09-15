@@ -34,8 +34,8 @@ use yggdryl::types::{
 };
 use yggdryl::{
     Charset, DataType, DataTypeId, Field, FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec,
-    FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, MediaType, MimeType, PythonKind,
-    PythonMetadata, Scalar, TimeUnit, Timezone, Version,
+    FixId, FixLineageEntry, FixMsg, FixPedigree, FixRegistry, IOMedia, MediaType, MimeType,
+    PythonKind, PythonMetadata, Scalar, TimeUnit, Timezone, Url, Version,
 };
 
 /// A pass-through allocator that counts allocations while armed.
@@ -1702,7 +1702,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 32] = [
+    let seeds: [(DataTypeId, Scalar); 34] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1729,6 +1729,8 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Mic, Scalar::from("XNAS")),
         (DataTypeId::Cfi, Scalar::from("ESVUFR")),
         (DataTypeId::Isin, Scalar::from("US0378331005")),
+        (DataTypeId::Cusip, Scalar::from("037833100")),
+        (DataTypeId::Sedol, Scalar::from("B0YBKJ7")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
@@ -2547,4 +2549,240 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
     costs("transcribing a long cell into compact storage", 2, || {
         black_box(Charset::Cp1252.transcribe_smol(black_box(wire.as_slice())));
     });
+}
+
+#[test]
+fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+    let registry =
+        Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"));
+    let codec = FixCodec::new(Arc::clone(&registry));
+    // A fill naming an unsourced ISIN, a CFI and a market: nine derivations
+    // land on it (the source, the ISIN column and its country, the security
+    // type and the product, the market, the status and the state, and the
+    // day order).
+    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
+    let message = codec
+        .parse_line(line)
+        .expect("a row")
+        .next()
+        .expect("one frame")
+        .expect("a message");
+    // The first message a registry enriches pays the registry's compile:
+    // every derivation parsed, the working schema built and every term
+    // bound against it, once, for every message and every shape after
+    // (decision 38). Thousands of allocations, and the reason it is paid
+    // per registry rather than per message or per shape.
+    let (cold, enriched) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
+    let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
+    assert!(
+        cold > 10 * warm,
+        "the compile is paid by the first message: {cold} cold, {warm} warm"
+    );
+    // What a message costs after that, exactly: the clone (2, the row's
+    // value list and the arrival record); restatement's rebuild of the row
+    // at the dictionary's newest version and the working row of the 54
+    // columns the derivations read or fill (44 together, what a settled
+    // message pays below less its clone); and the nine derivations landing
+    // (100): their evaluations, the landed list sized once, the nine writes
+    // staged and the one rebuild that lands them through `set_each`, and
+    // the `altids` Map with the rebuild that lands it. Nothing in it is a
+    // parse, a bind or a shape: the terms were bound at compile and are
+    // read borrowed from the registry.
+    assert_eq!(warm, 146, "a warm same-shaped message");
+    let (thousand, _) = counted(|| {
+        for _ in 0..1_000 {
+            black_box(codec.enrich_message(message.clone()).expect("enriches"));
+        }
+    });
+    assert_eq!(
+        thousand,
+        1_000 * warm,
+        "a thousand same-shaped messages bind nothing and grow nothing"
+    );
+    // A stated value is never overwritten, so a second pass over the
+    // enriched message derives nothing: the clone (2), restatement's rebuild
+    // and the working row (44); the nine stated targets skip their terms,
+    // and the landed list is never sized.
+    black_box(
+        codec
+            .enrich_message(enriched.clone())
+            .expect("a second pass"),
+    );
+    let (settled, _) = counted(|| {
+        codec
+            .enrich_message(enriched.clone())
+            .expect("a second pass")
+    });
+    assert_eq!(
+        settled, 46,
+        "a settled message pays restatement, the working row and nothing per derivation"
+    );
+    // For scale: one clone, and one `set` on the same message - the clone
+    // and one rebuild (16).
+    let (clone, _) = counted(|| black_box(message.clone()));
+    assert_eq!(clone, 2, "the value list and the arrival record");
+    let (set_once, _) = counted(|| {
+        let mut held = message.clone();
+        held.set(59, Scalar::from("0")).expect("a write");
+        black_box(held)
+    });
+    assert_eq!(set_once, 18, "one clone and one write");
+    // A report stating two fields derives nothing but its `altids` Map:
+    // every one of the 32 terms evaluates over columns mostly null, which
+    // the evaluator pays in its own temporaries - a settled such report
+    // costs 71, the clone, restatement, the working row and those
+    // evaluations, 25 over the settled report above whose nine stated
+    // targets skip their terms - and the Map and the rebuild that lands it
+    // are the 19 on top of that.
+    let identified = codec
+        .parse_line(b"8=FIX.4.4|35=8|37=A|59=0|10=0|")
+        .expect("a row")
+        .next()
+        .expect("one frame")
+        .expect("a message");
+    let (_, mapped) = counted(|| codec.enrich_message(identified.clone()).expect("enriches"));
+    let (mapped_warm, _) = counted(|| codec.enrich_message(identified.clone()).expect("enriches"));
+    black_box(codec.enrich_message(mapped.clone()).expect("a second pass"));
+    let (mapped_settled, _) =
+        counted(|| codec.enrich_message(mapped.clone()).expect("a second pass"));
+    assert_eq!(mapped_settled, 71, "a settled two-field report");
+    assert_eq!(
+        mapped_warm - mapped_settled,
+        19,
+        "the altids Map and the rebuild that lands it"
+    );
+
+    // The corpus: every shape a bridge writes - 95 messages of 54 distinct
+    // root shapes, read under the bridge's own registry - enriched three
+    // times through one codec. The first pass pays that registry's compile
+    // and nothing else over the second; the second and the third cost the
+    // same allocation for allocation, because nothing is bound or kept per
+    // shape: each message pays its clone, its working row, its sweeps and
+    // its rebuilds, whatever shape came before it (decision 38).
+    let corpus = std::fs::read(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fix/ulbridge.log"),
+    )
+    .expect("the corpus");
+    let plugged = Arc::new(
+        FixRegistry::from_handle(&folder)
+            .expect("loads")
+            .with_plugin_fields()
+            .expect("the bridge's own fields"),
+    );
+    let bridge = FixCodec::new(Arc::clone(&plugged));
+    let messages: Vec<FixMsg> = bridge
+        .parse_lines(&ulbridge_bodies(corpus))
+        .filter_map(Result::ok)
+        .collect();
+    assert_eq!(messages.len(), 95, "the corpus");
+    let pass = || {
+        counted(|| {
+            bridge
+                .enrich_messages(messages.clone())
+                .map(|message| message.expect("enriched").entries().len())
+                .sum::<usize>()
+        })
+        .0
+    };
+    let (first, second, third) = (pass(), pass(), pass());
+    assert_eq!(
+        second, third,
+        "a pass over every shape costs the same every time"
+    );
+    assert_eq!(
+        first - second,
+        13_523,
+        "the first pass pays the bridge registry's compile and nothing else"
+    );
+    // 224 per message on average, the 451 allocations of cloning the 95
+    // messages included: the clone, the working row, the sweeps and the
+    // rebuilds of each, and the `Remembered` plugin memory of the stream.
+    assert_eq!(
+        second, 21_330,
+        "95 messages of 54 shapes, each its own working row"
+    );
+    let (clones, _) = counted(|| black_box(messages.clone()));
+    assert_eq!(clones, 451, "what cloning the corpus costs of that");
+}
+
+#[test]
+fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+    let mut registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
+    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
+    gross
+        .as_fix_mut()
+        .set_derivation(&"lastqty * nosuchfield".parse().expect("a term"))
+        .expect("stored");
+    registry.update(gross).expect("the text is a term");
+    let registry = Arc::new(registry);
+    let codec = FixCodec::new(Arc::clone(&registry));
+    let schema = yggdryl::fix_schema(&registry, "fix").expect("the fixed schema");
+    let message = codec
+        .parse_line(b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|")
+        .expect("a row")
+        .next()
+        .expect("one frame")
+        .expect("a message");
+    // The first ask pays the compile up to the refusal; the registry keeps
+    // the refusal as it would keep the compiled list, so the second ask
+    // pays the clone (2), restatement's rebuild of the parsed message (21)
+    // and the refusal's two strings - both handles to text the registry
+    // holds, so nothing - and nothing of a compile (decision 38).
+    let (cold, refused) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
+    assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
+    let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
+    let (again, _) = counted(|| codec.enrich_message(message.clone()).expect_err("refused"));
+    assert!(
+        cold > 10 * warm,
+        "the refused compile is paid once: {cold} cold, {warm} warm"
+    );
+    assert_eq!(warm, again, "the refusal is kept, not recompiled");
+    assert_eq!(
+        warm, 23,
+        "a refused enrichment: the clone, restatement and the refusal"
+    );
+    // The row door refuses the same way and compiles nothing either: the
+    // first fill pays the clone (2), the fixed schema's column plan (4,
+    // resolved once per thread and kept), the row's values up to the first
+    // crate column (2) and the refusal; the next fill finds the plan kept
+    // and pays 8.
+    let (row, refused) = counted(|| message.clone().into_row(&schema).expect_err("refused"));
+    assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
+    let (row_again, _) = counted(|| message.clone().into_row(&schema).expect_err("refused"));
+    assert_eq!(row - row_again, 4, "the fixed schema's column plan, once");
+    assert_eq!(row_again, 8, "a refused row fill reads the kept refusal");
+}
+
+/// The bodies the text reader hands the codec for the bridge's capture,
+/// framed under the bridge's own row header exactly as the pipeline
+/// benchmark reads them.
+fn ulbridge_bodies(corpus: Vec<u8>) -> Vec<Vec<u8>> {
+    use arrow_array::cast::AsArray;
+
+    let source = Buffer::from_bytes(corpus).with_media_type(
+        Url::from_str("file:///ulbridge.log")
+            .expect("a URL")
+            .media_type(),
+    );
+    let mut options = TextOptions::new()
+        .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+        .expect("the row header compiles")
+        .with_timezone(Timezone::UTC);
+    options.start_rownum = Some(1);
+    options.parse_mimetype = true;
+    let options: yggdryl::media::RecordOptions = options.into();
+    let mut held = Vec::new();
+    for batch in source.read_arrow_reader(&options).expect("a reader") {
+        let batch = batch.expect("a batch");
+        let at = batch.schema().index_of("body").expect("the body column");
+        let column = batch.column(at).as_string::<i32>();
+        for row in 0..batch.num_rows() {
+            held.push(column.value(row).as_bytes().to_vec());
+        }
+    }
+    held
 }

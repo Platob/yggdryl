@@ -360,9 +360,14 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // exchanges as the characters it holds, the cast encodes them as
         // UTF-8 and trims a fixed width's padding. A code already holds its
         // characters; what it loses here is the identity, not the bytes.
-        D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
-            Ok((D::utf8(), true))
-        }
+        D::String(_)
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -463,9 +468,14 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // No fixed-width text and no charset to declare here, so a string
         // exchanges as the characters it holds, the cast encodes them as
         // UTF-8 and trims a fixed width's padding.
-        D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
-            Ok((D::utf8(), true))
-        }
+        D::String(_)
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -558,9 +568,14 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // No fixed-width text and no charset to declare here, so a string
         // exchanges as the characters it holds, the cast encodes them as
         // UTF-8 and trims a fixed width's padding.
-        D::String(_) | D::Country | D::Currency | D::Mic | D::Cfi | D::Isin => {
-            Ok((D::utf8(), true))
-        }
+        D::String(_)
+        | D::Country
+        | D::Currency
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol => Ok((D::utf8(), true)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -667,7 +682,9 @@ fn iceberg_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)>
         | D::Currency
         | D::Mic
         | D::Cfi
-        | D::Isin => Ok((D::utf8(), true)),
+        | D::Isin
+        | D::Cusip
+        | D::Sedol => Ok((D::utf8(), true)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

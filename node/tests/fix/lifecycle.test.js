@@ -22,7 +22,7 @@ const UPDATEDAT = 65003
 const INSTUUID = 65016
 const STATE = 65015
 const ALTIDS = 65020
-const PREVTIMESTAMP = 65021
+const PREVUPDATEDAT = 65021
 const PREVUUID = 65022
 const CREATEDAT = 65023
 const CODE = 65024
@@ -33,10 +33,13 @@ function clock(nanos) {
   return Scalar.datetime(BigInt(nanos), 'ns', 'UTC')
 }
 
-/** The canonical text of the UUID `Uuid::new(value)` packs in the Rust suite. */
-function uuidOf(value) {
-  const hex = value.toString(16).padStart(32, '0')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+/**
+ * The sixteen identity bytes the Rust suite's `numbered_identity(value)`
+ * builds: the number big-endian, as the `Buffer` a `fixedbinary(16)` column
+ * takes.
+ */
+function identityOf(value) {
+  return Buffer.from(value.toString(16).padStart(32, '0'), 'hex')
 }
 
 /**
@@ -73,12 +76,12 @@ function lifecycle(registry, intervalNs = 10n) {
 
 /** The previous stamps `message` carries: `expected`'s grid clock and UUID, or null. */
 function previous(message, expected) {
-  const held = [message.byTag(PREVTIMESTAMP), message.byTag(PREVUUID)]
+  const held = [message.byTag(PREVUPDATEDAT), message.byTag(PREVUUID)]
   if (expected === null) {
     assert.deepEqual(held.map((value) => value.kind), ['null', 'null'])
     return
   }
-  assert.ok(held[0].equals(expected.updatedat()), 'prevtimestamp is the previous grid instant')
+  assert.ok(held[0].equals(expected.updatedat()), 'prevupdatedat is the previous grid instant')
   assert.ok(held[1].equals(expected.uuid()), 'prevuuid is the previous message identity')
 }
 
@@ -225,7 +228,7 @@ test('the full and filtered doors share finalized history and consume aligned bu
 test('explicit codes are global and never steal scoped identifier ownership', () => {
   const registry = new fix.FixRegistry()
   const life = lifecycle(registry)
-  const scope = uuidOf(1)
+  const scope = identityOf(1)
   const first = life.fill(event(registry, 1, 'A', scope, [['id', 'OWNED']]))
   const other = life.fill(event(registry, 2, 'B', scope, [['id', 'OWNED']]))
   assert.equal(first.puuid().equals(other.puuid()), false)
@@ -240,11 +243,11 @@ test('explicit codes are global and never steal scoped identifier ownership', ()
   assert.ok(alias.createdat().equals(first.createdat()))
 
   // An explicit code joins its chain across instrument scopes.
-  const direct = life.fill(event(registry, 21, 'A', uuidOf(2), [['id', 'NEW']]))
+  const direct = life.fill(event(registry, 21, 'A', identityOf(2), [['id', 'NEW']]))
   previous(direct, alias)
   assert.ok(direct.puuid().equals(first.puuid()))
   assert.ok(direct.createdat().equals(first.createdat()))
-  const attached = life.fill(event(registry, 31, '', uuidOf(2), [['id', 'NEW']]))
+  const attached = life.fill(event(registry, 31, '', identityOf(2), [['id', 'NEW']]))
   previous(attached, direct)
   assert.ok(attached.createdat().equals(first.createdat()))
   assert.equal(life.alive, 2)
@@ -266,11 +269,11 @@ test('derived codes keep the scope and identifier text, and empty is not whitesp
   const registry = new fix.FixRegistry()
   const life = lifecycle(registry)
   const text = 'Mixed/Case/界'
-  const scopes = [null, uuidOf(0), uuidOf(1)]
+  const scopes = [null, identityOf(0), identityOf(1)]
   const ids = []
   for (const [at, scope] of scopes.entries()) {
     const time = at + 1
-    const expected = scope === null ? `-/${text}` : `${scope}/${text}`
+    const expected = scope === null ? `-/${text}` : `${scope.toString('hex')}/${text}`
     const value = life.fill(event(registry, time, '', scope, [['id', text]]))
     assert.equal(value.byTag(CODE).asJs(), expected)
     assert.ok(value.puuid().equals(persistentOf(expected)))
@@ -386,8 +389,8 @@ test('a previous stamp its target cannot hold consumes no bucket, closes and att
     [PREVUUID, 'prevuuid', DataType.from('utf8')],
     [PREVUUID, 'prevuuid', DataType.from('binary')],
     [PREVUUID, 'prevuuid', clock(0).dtype],
-    [PREVTIMESTAMP, 'prevtimestamp', DataType.from('uuid')],
-    [PREVTIMESTAMP, 'prevtimestamp', DataType.from('utf8')],
+    [PREVUPDATEDAT, 'prevupdatedat', DataType.from('uuid')],
+    [PREVUPDATEDAT, 'prevupdatedat', DataType.from('utf8')],
   ]) {
     const custom = wrongPrevious(tag, dtype)
     for (const existing of [false, true]) {
@@ -410,17 +413,17 @@ test('a previous stamp its target cannot hold consumes no bucket, closes and att
 
 test('independently stated previous values are not the current history', () => {
   const registry = new fix.FixRegistry()
-  const statedUuid = uuidOf(987)
+  const statedIdentity = identityOf(987)
   for (const [statedClock, statedId] of [[false, false], [true, false], [false, true], [true, true]]) {
     const life = lifecycle(registry)
     const first = life.fill(event(registry, 1, 'A'))
     let second = event(registry, 11, 'A')
-    second = withValue(second, PREVTIMESTAMP, statedClock ? clock(987) : null)
-    second = withValue(second, PREVUUID, statedId ? statedUuid : null)
+    second = withValue(second, PREVUPDATEDAT, statedClock ? clock(987) : null)
+    second = withValue(second, PREVUUID, statedId ? statedIdentity : null)
     second = life.fill(second)
-    assert.ok(second.byTag(PREVTIMESTAMP).equals(statedClock ? clock(987) : first.updatedat()))
+    assert.ok(second.byTag(PREVUPDATEDAT).equals(statedClock ? clock(987) : first.updatedat()))
     if (statedId) {
-      assert.equal(second.byTag(PREVUUID).asJs(), statedUuid)
+      assert.deepEqual(Buffer.from(second.byTag(PREVUUID).asJs()), statedIdentity)
     } else {
       assert.ok(second.byTag(PREVUUID).equals(first.uuid()))
     }

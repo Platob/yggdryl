@@ -230,6 +230,8 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Mic
             | DataType::Cfi
             | DataType::Isin
+            | DataType::Cusip
+            | DataType::Sedol
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce
@@ -338,6 +340,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Mic
         | D::Cfi
         | D::Isin
+        | D::Cusip
+        | D::Sedol
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),

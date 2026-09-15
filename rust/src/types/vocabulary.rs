@@ -113,15 +113,18 @@ impl DataType {
     /// folds a caller's spelling into, so `UTCTimestamp`, `utc_timestamp`,
     /// and `UTC Timestamp` are one name.
     pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[
-        // Four ISO code vocabularies are datatypes of their own, so their
-        // names resolve to themselves and display as themselves; `exchange`
-        // is FIX's name for the one ISO 10383 calls `mic`.
+        // The ISO code vocabularies and the three securities identifiers
+        // are datatypes of their own, so their names resolve to themselves
+        // and display as themselves; `exchange` is FIX's name for the one
+        // ISO 10383 calls `mic`.
         ("currency", DataType::Currency),
         ("country", DataType::Country),
         ("mic", DataType::Mic),
         ("exchange", DataType::Mic),
         ("cfi", DataType::Cfi),
         ("isin", DataType::Isin),
+        ("cusip", DataType::Cusip),
+        ("sedol", DataType::Sedol),
         // The remaining codes resolve to themselves. `side` is a FIX code
         // set the standard itself declares, addressed constantly enough to
         // earn a packed datatype.

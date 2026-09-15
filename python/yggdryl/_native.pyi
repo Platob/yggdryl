@@ -532,7 +532,7 @@ class Scalar:
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
         "d256", "string", "fixed_string", "string_view", "large_string",
         "large_string_view", "country", "currency", "mic", "cfi", "isin",
-        "side", "state", "timeinforce", "uuid", "version",
+        "cusip", "sedol", "side", "state", "timeinforce", "uuid", "version",
         "url", "enum", "bytes", "fixed_size_binary", "large_binary",
         "binary_view", "geospatial",
         "geography", "date32", "date64", "time32", "time64", "datetime64",
@@ -1173,6 +1173,10 @@ class ProtocolField:
     def directions(self) -> list[FixDirection]: ...
     @directions.setter
     def directions(self, directions: Iterable[Mapping[str, object]]) -> None: ...
+    @property
+    def derivation(self) -> str | None: ...
+    @derivation.setter
+    def derivation(self, value: str | None) -> None: ...
     @property
     def description(self) -> str | None: ...
     @description.setter
@@ -3788,6 +3792,8 @@ class IcebergOptions:
         read_parallelism: int | None = None,
         read_parallel_min_files: int | None = None,
         read_parallel_min_file_size: int | None = None,
+        write_parallelism: int | None = None,
+        write_staging: str | PathLike[str] | None = None,
         compact_after_commits: int | None = None,
         data_mime_type: MimeType | str | None = None,
     ) -> None: ...
@@ -3825,6 +3831,14 @@ class IcebergOptions:
     def read_parallel_min_file_size(self) -> int: ...
     @read_parallel_min_file_size.setter
     def read_parallel_min_file_size(self, bytes: int) -> None: ...
+    @property
+    def write_parallelism(self) -> int: ...
+    @write_parallelism.setter
+    def write_parallelism(self, threads: int) -> None: ...
+    @property
+    def write_staging(self) -> str | None: ...
+    @write_staging.setter
+    def write_staging(self, staging: str | PathLike[str]) -> None: ...
     @property
     def compact_after_commits(self) -> int | None: ...
     @compact_after_commits.setter
@@ -5031,11 +5045,11 @@ class FixMsg:
     ``createdat`` default to ``snapshotat``; ``code`` is the empty unknown
     name. No clock is read after intake. A message built here appends any
     member its root lacks. ``updatedat()``, ``createdat()``, ``uuid()`` and
-    ``puuid()`` always answer: ``uuid`` is a version-8 UUID of ``updatedat``'s
-    nanoseconds and the named content, ``puuid`` a version-8 UUID of
-    ``code`` alone, both recomputed when the row changes, and a stated one
-    that disagrees is a ``ValueError``. None of these is an entry unless the
-    wire sent it, so ``into_bytes`` re-emits the line byte for byte.
+    ``puuid()`` always answer: ``uuid`` is sixteen ``fixedbinary(16)`` bytes
+    over ``updatedat``'s nanoseconds and the named content, ``puuid`` sixteen
+    bytes over ``code`` alone, both recomputed when the row changes, and a
+    stated one that disagrees is a ``ValueError``. None of these is an entry
+    unless the wire sent it, so ``into_bytes`` re-emits the line byte for byte.
 
     The row is written through ``set`` and ``remove``, typed by the field the
     key resolves to; the entries never are. A mandatory field refuses
@@ -5091,7 +5105,7 @@ class FixMsg:
     def createdat(self) -> Scalar: ...
     def uuid(self) -> Scalar: ...
     def puuid(self) -> Scalar: ...
-    def unix_partition(self, seconds: int = 3600) -> Scalar | None: ...
+    def time_partition(self) -> Scalar | None: ...
     def lifted(self, facet: str) -> Scalar | None: ...
     def lift_source(self, facet: str) -> int | None: ...
     def lift(self) -> list[tuple[str, Scalar]]: ...
@@ -5234,10 +5248,10 @@ class FixLifecycle:
     live chain globally; otherwise the first identifier - stated ``altids``,
     else the message type's declared identifiers - reaching a live chain under
     the message's ``instuuid`` lends that chain's code, and a new chain is
-    named ``<scope uuid or ->/<identifier>``. ``puuid`` hashes that code.
+    named ``<scope hex or ->/<identifier>``. ``puuid`` hashes that code.
     Every accepted message has ``updatedat`` floored to its grid instant
     while ``snapshotat`` keeps the real one, takes its live chain's first
-    ``createdat``, and fills each absent ``prevtimestamp`` and ``prevuuid``
+    ``createdat``, and fills each absent ``prevupdatedat`` and ``prevuuid``
     from the chain's last message; a stated non-null value is kept. A
     terminal state closes the chain, so ``alive`` counts the events still
     open and ``clear`` forgets them all, keeping the interval. A refusal is a

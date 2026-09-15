@@ -517,6 +517,7 @@
     "metadata": {
       "description": "The price the order is currently pegged at",
       "display": "PeggedPrice",
+      "fix:derivation": "peggedrefprice + pegoffsetvalue",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.4\",\"name\":\"peggedprice\",\"type\":{\"type\":\"float64\"}}]}",
       "fix:tag": "839"
     }

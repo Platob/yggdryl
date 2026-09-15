@@ -5,7 +5,8 @@
 //! second happened not to hold: a Jolokia exchange whose answer is a
 //! configuration document, FIXML behind a verb, frames spelled with `^A` and
 //! `<SOH>`, a `35=UL` frame packing a group inside a group, a bridge row
-//! keyed by name, a statistics line, an empty body and a warning - repeated
+//! keyed by name, a statistics line, an empty body, a warning and a
+//! cancel/reject flow - repeated
 //! until the release corpus is about eleven megabytes, so the numbers are
 //! per byte of a real capture rather than of one shape. Throughput is in
 //! bytes of that log.
@@ -149,7 +150,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
             .try_fold(0_usize, |read, message| message.map(|_| read + 1))
             .expect("an enriched message")
     };
-    assert_eq!(read_composed(), 83 * REPEATS);
+    assert_eq!(read_composed(), 95 * REPEATS);
     group.bench_function("decoded_lines_enrich", |bencher| {
         bencher.iter(|| black_box(read_composed()));
     });
@@ -252,6 +253,28 @@ pub fn benchmarks(criterion: &mut Criterion) {
     group.bench_function("enrich_messages", |bencher| {
         bencher.iter_batched(
             || messages.clone(),
+            |held| {
+                codec
+                    .enrich_messages(held)
+                    .map(|message| message.expect("enriched").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The same pass over one shape a thousand times: the corpus above is
+    // every shape a bridge writes, this is the stream a venue writes, and
+    // the two cost the same per message because nothing is bound or kept
+    // per shape (decision 38).
+    let report = messages
+        .iter()
+        .find(|message| message.as_field().name() == "executionreport")
+        .expect("the corpus carries an execution report")
+        .clone();
+    let same_shape: Vec<FixMsg> = std::iter::repeat_n(report, 1_000).collect();
+    group.bench_function("enrich_messages_same_shape", |bencher| {
+        bencher.iter_batched(
+            || same_shape.clone(),
             |held| {
                 codec
                     .enrich_messages(held)

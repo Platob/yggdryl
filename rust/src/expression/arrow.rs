@@ -35,15 +35,16 @@ use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, BooleanArray, Datum, FixedSizeListArray, LargeListArray, ListArray,
-    RecordBatch, RecordBatchReader, Scalar as ArrowScalar, StructArray, UInt32Array, UInt64Array,
+    RecordBatch, RecordBatchOptions, RecordBatchReader, Scalar as ArrowScalar, StructArray,
+    UInt32Array, UInt64Array,
 };
-use arrow_buffer::{BooleanBuffer, NullBuffer, OffsetBuffer};
+use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, OffsetBuffer};
 use arrow_ord::cmp;
 use arrow_schema::{ArrowError, SchemaRef};
 
 use super::attribute::Attributes;
-use super::bind::{Bound, Kind, Node};
-use super::eval::Row;
+use super::bind::{Bound, Kind, Node, StepKind};
+use super::eval::{Row, keep_elements};
 use super::path::{FieldSegment, resolve_index, resolve_range};
 use super::{Comparison, Expression, Filter};
 use crate::arrow::value::{array_from_values, value_from_array};
@@ -488,12 +489,18 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
         Kind::Column(index) => Ok(Vector::Column(context.column(*index)?)),
         Kind::Path(base, steps) => {
             let rows = context.batch.num_rows();
-            let mut field = base.field.clone();
+            let mut field = &base.field;
             let mut array = evaluate(base, context)?.into_column(rows)?;
-            for step in steps.iter() {
-                let (next, stepped) = step_array(&field, &array, step)?;
-                field = next;
-                array = stepped;
+            for step in steps {
+                array = match &step.kind {
+                    StepKind::Segment(segment) => {
+                        segment_array(field, &step.field, &array, segment)?
+                    }
+                    StepKind::Where(predicate) => {
+                        kept_elements(field, &step.field, &array, predicate, context.holder)?
+                    }
+                };
+                field = &step.field;
             }
             Ok(Vector::Column(array))
         }
@@ -593,15 +600,15 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
 
 /// Take one path step through a column, kernel first and row walk otherwise.
 ///
-/// Answers the field the step reaches beside the array, typed by the one
+/// `reached` is the field the step reaches, typed by the one
 /// [`FieldSegment::apply_field`] the scalar tier types with, so the two tiers
 /// cannot disagree about what a step produces.
-pub(crate) fn step_array(
+fn segment_array(
     field: &Field,
+    reached: &Field,
     array: &ArrayRef,
     segment: &FieldSegment,
-) -> Result<(Field, ArrayRef)> {
-    let reached = segment.apply_field(field)?;
+) -> Result<ArrayRef> {
     if let Some(name) = segment.as_name() {
         if let Some(held) = array.as_any().downcast_ref::<StructArray>() {
             let position = held
@@ -618,14 +625,14 @@ pub(crate) fn step_array(
                     }
                     _ => child,
                 };
-                return Ok((reached, stepped));
+                return Ok(stepped);
             }
         }
     }
     match segment {
         FieldSegment::Index(position) => {
             if let Some(stepped) = list_element(array, *position)? {
-                return Ok((reached, stepped));
+                return Ok(stepped);
             }
         }
         FieldSegment::Range { start, end } => {
@@ -636,11 +643,13 @@ pub(crate) fn step_array(
             };
             if let Some(item) = item {
                 if let Some(stepped) = list_run(array, *start, *end, item)? {
-                    return Ok((reached, stepped));
+                    return Ok(stepped);
                 }
             }
         }
-        FieldSegment::Field(_) | FieldSegment::Key(_) => {}
+        // A predicate reaches here only as a segment bound by no one, which
+        // the binder never produces; the row walk still answers it.
+        FieldSegment::Field(_) | FieldSegment::Key(_) | FieldSegment::Where(_) => {}
     }
     // No kernel: a map key, a dictionary-encoded container, a list layout
     // without offsets. The row walk answers, gathered into a column.
@@ -648,10 +657,110 @@ pub(crate) fn step_array(
     let mut values = Vec::with_capacity(rows);
     for row in 0..rows {
         let value = value_from_array(field.dtype(), array.as_ref(), row)?;
-        values.push(segment.apply_scalar(field, &value));
+        values.push(segment.apply_scalar(field, &value)?);
     }
     let borrowed: Vec<&Scalar> = values.iter().collect();
-    Ok((reached.clone(), array_from_values(&reached, &borrowed)?))
+    array_from_values(reached, &borrowed)
+}
+
+/// The elements of every list a predicate keeps, as one list column.
+///
+/// The predicate runs once over the flattened elements the rows cover, as
+/// the batch of the element struct's children; the answer is read as a
+/// certainty and a null element is dropped with it; the kept elements are
+/// one `filter`; and the offsets are rebuilt from how many each row kept. A
+/// null list stays null through the input's own mask. A layout with no
+/// offsets to rebuild takes the row walk, which answers the same thing.
+fn kept_elements(
+    field: &Field,
+    reached: &Field,
+    array: &ArrayRef,
+    predicate: &Node,
+    holder: Option<&dyn Attributes>,
+) -> Result<ArrayRef> {
+    let element = super::path::list_item(reached.dtype()).ok_or_else(|| {
+        Error::IncompatibleSchema(format!(
+            "expected a list of structs to keep elements of, got {}",
+            reached.dtype()
+        ))
+    })?;
+    let rows = array.len();
+    let Some(layout) = offsets(array) else {
+        let mut values = Vec::with_capacity(rows);
+        for row in 0..rows {
+            let value = value_from_array(field.dtype(), array.as_ref(), row)?;
+            values.push(keep_elements(element, predicate, &value, holder)?);
+        }
+        let borrowed: Vec<&Scalar> = values.iter().collect();
+        return array_from_values(reached, &borrowed);
+    };
+    // Only the run of flattened elements the rows cover is asked about: a
+    // sliced batch shares its child array with the rows around it.
+    let (first, last) = if rows == 0 {
+        (0, 0)
+    } else {
+        (layout.row(0).0, layout.row(rows - 1).1)
+    };
+    let window = layout.values().slice(first, last.saturating_sub(first));
+    let Some(structs) = window.as_any().downcast_ref::<StructArray>() else {
+        return Err(Error::IncompatibleSchema(format!(
+            "expected a list of structs to keep elements of, got a list of {}",
+            window.data_type()
+        )));
+    };
+    let elements = RecordBatch::try_new_with_options(
+        Arc::new(arrow_schema::Schema::new(structs.fields().clone())),
+        structs.columns().to_vec(),
+        &RecordBatchOptions::new().with_row_count(Some(structs.len())),
+    )
+    .map_err(Error::Arrow)?;
+    let context = Context::new(element, &elements, holder);
+    let answered = evaluate(predicate, &context)?.into_boolean(structs.len())?;
+    let mut mask = certain(&answered);
+    if let Some(nulls) = structs.nulls() {
+        mask = BooleanArray::new(mask.values() & nulls.inner(), None);
+    }
+    let bits = mask.values();
+    let mut keep = BooleanBufferBuilder::new(structs.len());
+    let mut lengths = Vec::with_capacity(rows);
+    let mut cursor = 0;
+    for row in 0..rows {
+        let (start, end) = layout.row(row);
+        let (start, end) = (start - first, end.max(start) - first);
+        // An element between two rows' runs belongs to neither row.
+        keep.append_n(start.saturating_sub(cursor), false);
+        if array.is_null(row) {
+            keep.append_n(end - start, false);
+            lengths.push(0);
+        } else {
+            keep.append_packed_range(bits.offset() + start..bits.offset() + end, bits.values());
+            lengths.push(bits.slice(start, end - start).count_set_bits());
+        }
+        cursor = cursor.max(end);
+    }
+    keep.append_n(structs.len().saturating_sub(cursor), false);
+    let kept = arrow_select::filter::filter(&window, &BooleanArray::new(keep.finish(), None))
+        .map_err(Error::Arrow)?;
+    // The item field is the input's own, so the kept values and the field
+    // agree byte for byte on what an element is.
+    let item = match array.data_type() {
+        arrow_schema::DataType::List(item)
+        | arrow_schema::DataType::LargeList(item)
+        | arrow_schema::DataType::FixedSizeList(item, _) => Arc::clone(item),
+        other => {
+            return Err(Error::IncompatibleSchema(format!(
+                "expected a list to keep elements of, got {other}"
+            )));
+        }
+    };
+    let list = ListArray::try_new(
+        item,
+        OffsetBuffer::from_lengths(lengths),
+        kept,
+        array.nulls().cloned(),
+    )
+    .map_err(Error::Arrow)?;
+    Ok(Arc::new(list))
 }
 
 /// The same array under another validity mask.

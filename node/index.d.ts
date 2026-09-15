@@ -1493,15 +1493,15 @@ export type JsFixFieldIterator = FixFieldIterator
  * otherwise the first identifier - stated `altids`, else the message type's
  * declared identifiers - reaching a live chain under the effective
  * `instuuid` scope supplies its code, and a new chain is named
- * `<scope UUID or ->/<first identifier>`. Occupied identifiers are never
+ * `<scope hex or ->/<first identifier>`. Occupied identifiers are never
  * stolen, and an empty code opens no chain. `puuid` hashes the settled code.
  *
  * Every accepted message has `updatedat` truncated to its epoch grid bucket
  * of `intervalNs`, while `snapshotat` keeps the real instant. A live chain
  * carries its first message's `createdat` and hands each later message the
- * previous message's `prevtimestamp` and `prevuuid`. A terminal state closes
+ * previous message's `prevupdatedat` and `prevuuid`. A terminal state closes
  * the chain; what is held is the live chains, their code, first creation
- * instant, last clock and UUID, and highest consumed bucket - never pending
+ * instant, last clock and identity, and highest consumed bucket - never pending
  * messages. `FixCodec.lifecycle` runs one at the default cadence over an
  * iterable.
  */
@@ -1755,24 +1755,29 @@ export declare class FixMsg {
    */
   createdat(): JsScalar
   /**
-   * The message's time/content UUID, never null.
+   * The message's time/content identity, never null.
    *
-   * A version-8 UUID of `updatedat`'s signed nanoseconds and 58 bits of
-   * the canonical named content's XXH64; `updatedat`, `createdat`, `uuid`
-   * itself and the arrival record are not content. A stated `uuid` must
-   * match it.
+   * Sixteen `fixedbinary(16)` bytes - a `Buffer` in JavaScript:
+   * `updatedat`'s signed nanoseconds with the sign bit flipped in bytes
+   * 0..8, then all 64 bits of the canonical named content's XXH64;
+   * `updatedat`, `createdat`, `uuid` itself and the arrival record are not
+   * content. A stated `uuid` must match it.
    */
   uuid(): JsScalar
   /**
-   * The event chain's UUID, never null.
+   * The event chain's identity, never null.
    *
-   * A version-8 UUID over XXH3-128 of the exact `code` bytes alone, so the
-   * empty (unknown) code has one deterministic `puuid` too. A stated
-   * `puuid` must match it.
+   * The sixteen big-endian `fixedbinary(16)` bytes of the XXH3-128 of the
+   * exact `code` bytes alone - a `Buffer` in JavaScript - so the empty
+   * (unknown) code has one deterministic `puuid` too. A stated `puuid`
+   * must match it.
    */
   puuid(): JsScalar
-  /** The partition `updatedat` falls in, in whole seconds. */
-  unixPartition(seconds: number): JsScalar | null
+  /**
+   * The hour `updatedat` falls in, as an instant: the partition a row is
+   * stored under.
+   */
+  timePartition(): JsScalar | null
   /** One lifted facet's value, or `null` where nothing carries it. */
   lifted(facet: string): JsScalar | null
   /**
@@ -2198,6 +2203,38 @@ export declare class IcebergOptions {
   get readParallelMinFiles(): number
   /** Set how many large-enough files justify a parallel scan. */
   set readParallelMinFiles(files: number)
+  /**
+   * How many partition groups a commit writes at once. Default: the
+   * resolved `readParallelism`; 1 writes them one after another. The
+   * manifest lists a commit's files in partition-group order whatever the
+   * value.
+   */
+  get writeParallelism(): number
+  /**
+   * Set how many partition groups a commit writes at once.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the value when the count is zero,
+   * which would write nothing at all.
+   */
+  set writeParallelism(threads: number)
+  /**
+   * Where a commit stages its files before uploading them: `"off"`, or
+   * a local folder URL. `null` - the default - is the table's own: the
+   * temporary folder for a remote root, off for a local one.
+   */
+  get writeStaging(): string | null
+  /**
+   * Set where a commit stages its files: `"off"`, a local folder URL, or
+   * a local path.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the key when the folder is not
+   * local, which could hold no staging file.
+   */
+  set writeStaging(staging: string)
   /**
    * The recorded size below which a file does not count toward justifying a
    * parallel scan, in bytes. Default: 4 MiB.
@@ -3522,6 +3559,18 @@ export declare class ProtocolField {
    * the regex crate refuses throws leaving the field unchanged.
    */
   set directions(values: Array<FixDirection>)
+  /**
+   * How this field's value is derived from the message where the message
+   * states none: one expression over the message's fields, in its
+   * canonical text, or `null` for a field nothing derives.
+   */
+  get derivation(): string | null
+  /**
+   * Record the derivation; `null` removes the property, and a text that
+   * is not a term, or one past the grammar's budget, throws leaving the
+   * field unchanged.
+   */
+  set derivation(value: string | undefined | null)
   /** The specification's own wording for this field. */
   get description(): string | null
   /** Record the specification's own wording for this field. */
@@ -5842,7 +5891,7 @@ export interface FixCodecOptions {
  * before that, the two session names the line spells, the ISIN, MIC and
  * order state a row derives, the `instuuid`, `uuid` and `puuid` identities,
  * the direct identifiers enrichment records in `altids`, the previous
- * message's `prevtimestamp` and `prevuuid`, and `createdat`, `code` and
+ * message's `prevupdatedat` and `prevuuid`, and `createdat`, `code` and
  * `snapshotat`. `updatedat`, `uuid`, `puuid`, `createdat`, `code` and
  * `snapshotat` are non-null. Every registry already holds them in their
  * category, so this is the listing a schema or a document walks rather than
@@ -5891,7 +5940,7 @@ export declare function fixPluginMessage(): JsField
  * arrival record, unresolved keys at tag 0. Columns are spelled by the
  * dictionary's folded canonical names - `msgtype`, never `35` - so a row
  * reads the way a message reads; the tag stays each column's identity, on
- * its `fix:tag`, and is what fills it. `beginstring`, `unixpartition` and
+ * its `fix:tag`, and is what fills it. `beginstring`, `timepartition` and
  * the replay fields - `sendingtime`, `updatedat`, `createdat`, `uuid`,
  * `puuid`, `code`, `snapshotat` - are required.
  */
@@ -5922,7 +5971,7 @@ export declare function fixSchemaTags(): Array<number>
  * Every field is optional because an options value records only what was set
  * on it: a field left out is not "the default" but unresolved, and a table
  * still answers it from its own properties. The names are the ones the
- * getters carry, so the object and the setters spell the same ten things.
+ * getters carry, so the object and the setters spell the same eleven things.
  */
 export interface IcebergOptionsInput {
   /** How many beaten commit attempts are retried. */
@@ -5944,6 +5993,10 @@ export interface IcebergOptionsInput {
    * justification, in bytes.
    */
   readParallelMinFileSize?: number
+  /** How many partition groups a commit writes at once. */
+  writeParallelism?: number
+  /** Where a commit stages its files: `off`, or a local folder URL or path. */
+  writeStaging?: string
   /** After how many data commits an automatic compaction runs. */
   compactAfterCommits?: number
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */

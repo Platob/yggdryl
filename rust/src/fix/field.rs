@@ -17,6 +17,7 @@ use super::codes::{FixCode, FixCodeValue, FixCodes};
 use super::directions::{FixDirection, FixDirections};
 use super::lineage::{FixLineage, FixLineageEntry};
 use super::replacements::{FixReplacement, FixReplacements};
+use crate::expression::Term;
 use crate::types::folds_equal;
 use crate::{DataType, Error, FixField, FixFieldMut, Result, Version};
 
@@ -52,6 +53,9 @@ const REPLACEMENTS: &str = "replacements";
 /// The rules naming a code of this field's set from the prose in front of a
 /// payload; tag 385's.
 const DIRECTIONS: &str = "directions";
+/// How this field's value is derived from the message where the message
+/// states none: the canonical text of one term over the message's fields.
+const DERIVATION: &str = "derivation";
 const COUNTER: &str = "counter";
 const COMPONENT: &str = "component";
 const FIELD_REF: &str = "field";
@@ -505,6 +509,48 @@ impl<'field> FixField<'field> {
         FixDirections::over(self.get(DIRECTIONS))
     }
 
+    /// The term this field's value is derived from the message with, where
+    /// the message states none (decision 38).
+    ///
+    /// One term in the crate's expression grammar over the message's fields,
+    /// spelled by their canonical folded names - `orderqty`, `cumqty`,
+    /// `secaltidgrp` - and evaluated by the [enriching
+    /// pass](crate::FixCodec::enrich_message): a field carrying one is a
+    /// column the pass fills where the message left it unsaid. `None` is a
+    /// field nothing derives.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Term;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut leaves = DataType::Float64.nullable_field("leavesqty");
+    /// leaves.as_fix_mut().set_tag(151)?;
+    /// leaves.as_fix_mut().set_derivation(&"orderqty - cumqty".parse::<Term>()?)?;
+    ///
+    /// let term = leaves.as_fix().derivation()?.expect("a derivation");
+    /// assert_eq!(term.to_string(), "orderqty - cumqty");
+    /// assert_eq!(term.columns(), ["orderqty", "cumqty"]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] naming `fix:derivation` when
+    /// the stored text is not a term, or one past the depth or node budget.
+    pub fn derivation(&self) -> Result<Option<Term>> {
+        let Some(stored) = self.get(DERIVATION) else {
+            return Ok(None);
+        };
+        let term: Term = stored
+            .parse()
+            .map_err(|error: Error| self.rejected(DERIVATION, format_smolstr!("{error}")))?;
+        term.check_budget()
+            .map_err(|error| self.rejected(DERIVATION, format_smolstr!("{error}")))?;
+        Ok(Some(term))
+    }
+
     /// Returns the code one wire value stands for.
     ///
     /// The scan stops at the match: `value` leads each record, so this reads
@@ -601,6 +647,15 @@ impl<'field> FixField<'field> {
         Error::InvalidMetadataValue {
             key: SmolStr::new(self.key(name)),
             reason: format_smolstr!("expected {expected}, got {actual:?}"),
+        }
+    }
+
+    /// Name the full key a stored value was refused under, with the reader's
+    /// own reason.
+    fn rejected(&self, name: &str, reason: SmolStr) -> Error {
+        Error::InvalidMetadataValue {
+            key: SmolStr::new(self.key(name)),
+            reason,
         }
     }
 }
@@ -1247,6 +1302,71 @@ impl FixFieldMut<'_> {
             .map(Some)
     }
 
+    /// Records the term this field's value is derived from the message with
+    /// (decision 38).
+    ///
+    /// The term is stored as its canonical text, so what is read back is
+    /// what was written whatever spelling the caller parsed it from, and a
+    /// registry validates it exactly as this does when a field carrying one
+    /// is inserted, updated or loaded.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Term;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut gross = DataType::Float64.nullable_field("grosstradeamt");
+    /// gross.as_fix_mut().set_tag(381)?;
+    /// gross.as_fix_mut().set_derivation(&"lastqty*lastpx".parse::<Term>()?)?;
+    /// assert_eq!(gross.get_metadata("fix:derivation"), Some("lastqty * lastpx"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when the term is past the depth or node
+    /// budget, and the property write's refusal otherwise; either leaves the
+    /// field unchanged.
+    pub fn set_derivation(&mut self, term: &Term) -> Result<()> {
+        term.check_budget()?;
+        self.store(DERIVATION, term.to_string())
+    }
+
+    /// Removes the derivation, answering the term it spelled.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::expression::Term;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut gross = DataType::Float64.nullable_field("grosstradeamt");
+    /// gross.as_fix_mut().set_tag(381)?;
+    /// let term: Term = "lastqty * lastpx".parse()?;
+    /// gross.as_fix_mut().set_derivation(&term)?;
+    ///
+    /// assert_eq!(gross.as_fix_mut().remove_derivation()?, Some(term));
+    /// assert_eq!(gross.as_fix_mut().remove_derivation()?, None);
+    /// assert_eq!(gross.get_metadata("fix:derivation"), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidMetadataValue`] when the stored text does not
+    /// parse, having already removed it: a text a reader refuses is one a
+    /// caller asked to take away.
+    pub fn remove_derivation(&mut self) -> Result<Option<Term>> {
+        let Some(stored) = self.remove(DERIVATION) else {
+            return Ok(None);
+        };
+        stored
+            .parse()
+            .map(Some)
+            .map_err(|error: Error| self.rejected(DERIVATION, format_smolstr!("{error}")))
+    }
+
     /// Folds another definition of the same field into this one.
     ///
     /// This field is the incoming definition and wins every shared key; the
@@ -1266,6 +1386,7 @@ impl FixFieldMut<'_> {
     /// | `fix:codes` | merged by wire value, incoming winning a shared value |
     /// | `fix:replacements` | incoming wins whole: the order of its entries is the rule, and two documents have no order between them |
     /// | `fix:directions` | incoming wins whole: a rule table is one statement, and two tables have no order between them |
+    /// | `fix:derivation` | incoming wins whole: a derivation is one term, and a field derives one way |
     /// | `fix:identifiers` | incoming wins whole: identifiers are one ordered component declaration |
     /// | any other `fix:` key | incoming wins; stored keeps what only it has |
     ///
@@ -1488,7 +1609,7 @@ impl FusedIterator for FixSpellings<'_> {}
 /// A merge walks this rather than collecting the keys a field holds, because
 /// the held names are owned `String`s behind a generic snapshot and building
 /// a vector of them to scan `O(n*m)` is what this replaced.
-const MERGED_KEYS: [&str; 10] = [
+const MERGED_KEYS: [&str; 11] = [
     TAG,
     BRANCHES,
     TAGS,
@@ -1498,6 +1619,7 @@ const MERGED_KEYS: [&str; 10] = [
     CODES,
     REPLACEMENTS,
     DIRECTIONS,
+    DERIVATION,
     IDENTIFIERS,
 ];
 

@@ -9,7 +9,11 @@
 //! packs a group inside a group inside a group and separates their members
 //! with the glyphs a viewer prints for those bytes, one carrying a FIXML
 //! document in the same field instead, a bridge row with null spellings, a
-//! marked frame, a statistics line, an empty body and a warning. The text reader frames every line under the bridge's own row
+//! marked frame, a statistics line, an empty body and a warning - and then
+//! fifteen more lines of the bridge's own, a cancel/reject flow: a cancel
+//! request and its reject, the reject routed, enriched with its regulatory
+//! clocks and forwarded as a bridge row of ten parties, the `35=UL` frame
+//! that row goes out in, and two heartbeats. The text reader frames every line under the bridge's own row
 //! header; each row is then read on its own as a record and as a batch of
 //! one shape, with enrichment on, and the two readings are required to agree
 //! line for line.
@@ -31,7 +35,7 @@ use yggdryl::{
 const LOG: &[u8] = include_bytes!("ulbridge.log");
 
 /// How many lines the capture holds.
-const LINES: usize = 129;
+const LINES: usize = 144;
 
 /// The lines that read as more than one row: the wildcard Jolokia reads,
 /// each answering for several plugins and so yielding one message per
@@ -50,10 +54,10 @@ const WILDCARDS: [(usize, usize); 2] = [(98, 1), (128, 2)];
 ///
 /// A line is still a line - the text reader answers every one of them - and
 /// this is what the FIX reader answers for it.
-const SILENT: [usize; 49] = [
+const SILENT: [usize; 52] = [
     0, 2, 12, 16, 17, 18, 19, 22, 28, 29, 31, 40, 41, 42, 46, 48, 49, 50, 54, 61, 65, 66, 67, 68,
     71, 78, 79, 80, 84, 86, 87, 88, 92, 93, 94, 95, 96, 99, 108, 109, 110, 115, 116, 117, 118, 120,
-    124, 126, 127,
+    124, 126, 127, 136, 137, 139,
 ];
 
 /// How many rows the capture reads as: a row for every message, so a row a
@@ -663,7 +667,7 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
         assert_eq!(&held[column(yggdryl::SNAPSHOTAT_TAG_NAME.0)], event);
         assert_eq!(&held[column(yggdryl::CREATEDAT_TAG_NAME.0)], event);
         assert!(
-            !held[column(yggdryl::UNIXPARTITION_TAG_NAME.0)].is_null(),
+            !held[column(yggdryl::TIMEPARTITION_TAG_NAME.0)].is_null(),
             "row {row} has a partition"
         );
         assert!(
@@ -673,9 +677,10 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             "row {row} says which FIX it was read as: {:?}",
             held[column(8)]
         );
-        assert!(
-            matches!(held[column(yggdryl::UUID_TAG_NAME.0)], Scalar::Uuid(_)),
-            "row {row} has a native content identity"
+        assert_eq!(
+            super::identity_bytes(&held[column(yggdryl::UUID_TAG_NAME.0)]).len(),
+            16,
+            "row {row} has a sixteen-byte content identity"
         );
         // The bracket names the context, which fills `msgctxid`; its session
         // uid is the bridge's own and is carried in front, so `sendersessionid`
@@ -808,8 +813,8 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
         .collect();
     assert_eq!(
         frames.len(),
-        4,
-        "two of the bridge's frames, the exact one and the trade capture"
+        5,
+        "two of the bridge's frames, the exact one, the trade capture and the cancel reject"
     );
     for &line in &frames {
         let (row, held) = (line, &rows[row_of(line)]);
@@ -828,8 +833,12 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
             held[column(11)].as_str().is_some(),
             "row {row} ClOrdID from the nested row"
         );
-        assert!(
+        // Typed by the dictionary where the row states one: the four
+        // executions carry a `LASTPX`, the cancel reject carries none and
+        // fills nothing there.
+        assert_eq!(
             held[column(31)].as_f64().is_some(),
+            body(&text_names, &text[line]).contains("LASTPX="),
             "row {row} LastPx typed from the nested row"
         );
         assert!(held[column(60)].is_null() || held[column(60)].is_temporal());
@@ -886,6 +895,61 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
     );
     assert_eq!(rows[exact][column(55)].as_str(), Some("EXAMPLECO.S"));
     assert_eq!(rows[exact][column(1)].as_str(), Some("ACCT1"));
+    // The frame the bridge forwards the cancel reject in states its length
+    // in bytes too, and is read to it; the row it carries names itself a
+    // `cancelreject`, and the frame keeps saying `UL` - its own type, as the
+    // trade capture frame's does - while the row fills every column the
+    // frame left unsaid: the order's chain, the rejection, the reason.
+    let reject = row_of(frames[4]);
+    assert_eq!(
+        rows[reject][column(212)].as_i64().map(|held| held as usize),
+        rows[reject][column(213)].as_bytes().map(<[u8]>::len)
+    );
+    let message = codec
+        .enriched_line(&lines[frames[4]])
+        .and_then(|mut messages| messages.next().expect("a message"))
+        .expect("the reject frame reads");
+    assert_eq!(message.as_field().name(), "UL");
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("UL"));
+    assert_eq!(rows[reject][column(11)].as_str(), Some("0102000452788802"));
+    assert_eq!(rows[reject][column(41)].as_str(), Some("0102000452788801"));
+    assert_eq!(rows[reject][column(55)].as_str(), Some("2454"));
+    assert_eq!(
+        rows[reject][column(39)]
+            .as_str()
+            .and_then(State::from_spelling),
+        State::from_spelling("8"),
+        "the row's `ORDSTATUS=rejected`, typed"
+    );
+    assert_eq!(
+        rows[reject][column(yggdryl::STATE_TAG_NAME.0)],
+        rows[reject][column(39)]
+    );
+    assert_eq!(
+        rows[reject][column(58)].as_str(),
+        Some("Counterparty unavailable - please contact support")
+    );
+    assert_eq!(rows[reject][column(385)].as_str(), Some("S"));
+    // The groups the row packs replicate inside the frame exactly as they
+    // do on the bridge row the frame carries, the stated count included.
+    assert_eq!(rows[reject][column(453)], Scalar::from(10_i32));
+    assert_eq!(rows[reject][column(768)], Scalar::from(4_i32));
+    assert_eq!(
+        message
+            .by_path(&path("Parties"))
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(10)
+    );
+    assert_eq!(
+        message
+            .by_path(&path("TrdRegTimestamps"))
+            .unwrap()
+            .as_sequence()
+            .map(<[Scalar]>::len),
+        Some(5)
+    );
 }
 
 #[test]
@@ -1509,4 +1573,474 @@ fn a_trade_capture_frame_nests_every_group_its_payload_packs() {
             .as_str(),
         Some("LN")
     );
+}
+
+/// The text line whose body holds `needle`.
+fn line_holding(text_names: &[String], text: &[Vec<Scalar>], needle: &str) -> usize {
+    text.iter()
+        .position(|held| body(text_names, held).contains(needle))
+        .unwrap_or_else(|| panic!("a line holding {needle:?}"))
+}
+
+/// The fifteen lines the capture ends on, as the bridge logged them: a
+/// cancel request going out and its reject coming back, the reject routed,
+/// enriched with its regulatory clocks and forwarded as a bridge row, the
+/// `35=UL` frame that row goes out in, and two heartbeats. This test and the
+/// two after it pin what those lines carry that no earlier line did; the
+/// suites above already read every one of them both ways and require the
+/// two doors to agree.
+#[test]
+fn a_cancel_request_and_its_reject_are_typed_and_the_reject_states_its_state() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let lines = text_lines();
+    let batch = batches(None);
+    let (_, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+    let read = |line: usize| {
+        codec
+            .enriched_line(&lines[line])
+            .and_then(|mut messages| messages.next().expect("a message"))
+            .expect("the line reads")
+    };
+
+    // The request: a frame typed by its code, sent by the bridge, naming the
+    // order it cancels and the order it replaces.
+    let request = line_holding(&text_names, &text, "|35=F|");
+    let message = read(request);
+    assert_eq!(message.as_field().name(), "F");
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("F"));
+    assert_eq!(
+        rows[row_of(request)][column(11)].as_str(),
+        Some("0102000452788802")
+    );
+    assert_eq!(
+        rows[row_of(request)][column(41)].as_str(),
+        Some("0102000452788801")
+    );
+    assert_eq!(rows[row_of(request)][column(54)].as_str(), Some("2"));
+    assert_eq!(rows[row_of(request)][column(38)].as_f64(), Some(10000.0));
+    assert_eq!(rows[row_of(request)][column(385)].as_str(), Some("S"));
+    // A request states no status, so the crate's `state` has nothing to read.
+    assert!(rows[row_of(request)][column(yggdryl::STATE_TAG_NAME.0)].is_null());
+
+    // The reject: typed by its code, received, answering the cancel request
+    // (`434=1`), stating the order rejected and why.
+    let reject = line_holding(&text_names, &text, "|35=9|");
+    let message = read(reject);
+    assert_eq!(message.as_field().name(), "9");
+    assert_eq!(message.by_tag(35).unwrap().as_str(), Some("9"));
+    assert_eq!(message.by_tag(434).unwrap().as_str(), Some("1"));
+    assert_eq!(
+        message
+            .by_tag(39)
+            .unwrap()
+            .as_str()
+            .and_then(State::from_spelling),
+        State::from_spelling("8")
+    );
+    assert_eq!(
+        message.by_tag(58).unwrap().as_str(),
+        Some("Counterparty unavailable - please contact support")
+    );
+    let row = &rows[row_of(reject)];
+    assert_eq!(row[column(385)].as_str(), Some("R"));
+    assert_eq!(
+        row[column(39)].as_str().and_then(State::from_spelling),
+        State::from_spelling("8")
+    );
+    // The crate's `state` is the status the message stated, on the row and
+    // on the message alike, and `CxlRejResponseTo` is no fixed column, so
+    // the message alone answers for it.
+    assert_eq!(row[column(yggdryl::STATE_TAG_NAME.0)], row[column(39)]);
+    assert_eq!(
+        message.by_tag(yggdryl::STATE_TAG_NAME.0).unwrap(),
+        message.by_tag(39).unwrap()
+    );
+    assert!(yggdryl::fix_column_of(&schema, 434).is_none());
+    assert_eq!(
+        row[column(58)].as_str(),
+        Some("Counterparty unavailable - please contact support")
+    );
+    // Both the request and the reject re-emit byte for byte from their
+    // arrival record.
+    for line in [request, reject] {
+        let frame = body(&text_names, &text[line]);
+        let frame = &frame[frame.find("8=FIX").expect("a frame")..];
+        assert_eq!(
+            String::from_utf8(read(line).into_bytes(b'|')).expect("text"),
+            frame
+        );
+    }
+}
+
+/// The bridge's own `#`-marked, packed and composed spellings are read by the
+/// rules the codec documents on `parse_ullink_line`, so this is those rules
+/// held against a real row of a hundred keys rather than a fixture of three.
+#[test]
+fn the_forwarded_reject_row_reads_its_marked_packed_and_composed_keys() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let lines = text_lines();
+    let batch = batches(None);
+    let (_, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+    let read = |line: usize| {
+        codec
+            .enriched_line(&lines[line])
+            .and_then(|mut messages| messages.next().expect("a message"))
+            .expect("the line reads")
+    };
+
+    // The row sits in parentheses after prose on the line the bridge logs
+    // its forwarding with, and bare on the line the next hop pushes: one
+    // row, read twice, is one message twice - same entries, same digest.
+    let received = line_holding(
+        &text_names,
+        &text,
+        "Message received: Message type [cancel/replace reject]",
+    );
+    let pushed = line_holding(
+        &text_names,
+        &text,
+        "PushMessage : #BLOOMBERGCODE=2454 TT Equity|",
+    );
+    let message = read(received);
+    let bare = read(pushed);
+    assert_eq!(message.entries(), bare.entries());
+    assert_eq!(message.digest(), bare.digest());
+    assert_eq!(message.as_field().name(), "cancelreject");
+    assert_eq!(
+        message
+            .by_tag(yggdryl::TARGETSESSIONNAME_TAG_NAME.0)
+            .unwrap()
+            .as_str(),
+        Some("ULMSG_DMZ_FIRM"),
+        "the paren closing the remark is not the session's name"
+    );
+
+    // A `#`-marked key with no bare twin is the key it marks: the bridge's
+    // `#DELIVERTOCOMPID`, `#SECURITYEXCHANGE`, `#SECURITYID`, `#MINTRADEVOL`
+    // and `#IDSOURCE` - the 4.2 spelling of `SecurityIDSource` - land on
+    // their tags, mark dropped. A marked twin stating the same bytes as the
+    // bare key is dropped (`#CFICODE` beside `CFICODE`); one stating other
+    // bytes stays verbatim beside it, its own key and its own entry
+    // (`#SYMBOL=TW0002454006` beside `SYMBOL=2454`).
+    assert_eq!(message.by_tag(128).unwrap().as_str(), Some("ITGA"));
+    assert_eq!(message.by_tag(207).unwrap().as_str(), Some("XTAI"));
+    assert_eq!(message.by_tag(48).unwrap().as_str(), Some("TW0002454006"));
+    assert_eq!(message.by_tag(22).unwrap().as_str(), Some("4"));
+    assert_eq!(message.by_tag(562).unwrap().as_f64(), Some(1.0));
+    assert_eq!(message.by_tag(461).unwrap().as_str(), Some("ESXXXX"));
+    assert_eq!(
+        message
+            .entries()
+            .iter()
+            .filter(|entry| entry.tag() == 461)
+            .count(),
+        1
+    );
+    assert_eq!(message.by_tag(55).unwrap().as_str(), Some("2454"));
+    assert_eq!(
+        message.by_name("#SYMBOL").unwrap().as_str(),
+        Some("TW0002454006")
+    );
+    let marked = message
+        .entries()
+        .iter()
+        .find(|entry| entry.key().as_str() == Some("#SYMBOL"))
+        .expect("the marked twin's own entry");
+    assert_eq!(marked.tag(), 0);
+    assert_eq!(
+        message
+            .entries()
+            .iter()
+            .filter(|entry| entry.tag() == 55)
+            .count(),
+        1
+    );
+    let row = &rows[row_of(received)];
+    assert_eq!(row[column(55)].as_str(), Some("2454"));
+    assert_eq!(row[column(207)].as_str(), Some("XTAI"));
+    assert_eq!(
+        row[column(yggdryl::MICCODE_TAG_NAME.0)].as_str(),
+        Some("XTAI")
+    );
+    assert_eq!(
+        row[column(yggdryl::ISINCODE_TAG_NAME.0)].as_str(),
+        Some("TW0002454006")
+    );
+
+    // Ten packed parties replicate into the `parties` group, every member
+    // typed where the dictionary's code set spells the bridge's word and
+    // kept as text where the member is text; a role FIX has no code for
+    // (`orderoriginatorsystem`) and a qualifier it has none for (`buyside`)
+    // are null. `party` addresses a party by role, and answers none where
+    // two bear it.
+    assert_eq!(message.by_tag(453).unwrap(), &Scalar::from(10_i32));
+    assert_eq!(row[column(453)], Scalar::from(10_i32));
+    let parties = message
+        .by_path(&path("Parties"))
+        .unwrap()
+        .as_sequence()
+        .expect("parties");
+    assert_eq!(parties.len(), 10);
+    let party = |index: usize, member: &str| {
+        message
+            .get_by_path(&path(&format!("Parties[{index}].{member}")))
+            .cloned()
+            .unwrap_or(Scalar::Null)
+    };
+    for (index, id, source, role) in [
+        (0, "3000090.019", "proprietary/customcode", Some(3)),
+        (1, "BU/SGP", "shortcodeid", Some(3)),
+        (2, "FIRMA9120", "proprietary/customcode", Some(5)),
+        (3, "0101", "proprietary/customcode", Some(36)),
+        (4, "0102TRADER3", "proprietary/customcode", Some(12)),
+        (5, "0101", "proprietary/customcode", Some(122)),
+        (6, "2000657.018", "proprietary/customcode", Some(1)),
+        (
+            7,
+            "ITGA_TRITON@2",
+            "generallyacceptedmarketparticipantidentifier",
+            Some(1),
+        ),
+        (8, "OMSVENDOR0102", "proprietary/customcode", None),
+        (9, "Autex", "proprietary/customcode", None),
+    ] {
+        assert_eq!(party(index, "PartyID").as_str(), Some(id), "party {index}");
+        assert_eq!(
+            party(index, "PartyIDSource").as_str(),
+            Some(source),
+            "party {index}"
+        );
+        assert_eq!(party(index, "PartyRole").as_i64(), role, "party {index}");
+    }
+    assert!(party(8, "PartyRoleQualifier").is_null());
+    let trader = message
+        .party("ExecutingTrader")
+        .expect("one executing trader");
+    assert_eq!(trader.id().and_then(Scalar::as_str), Some("0102TRADER3"));
+    assert_eq!(
+        trader.source().and_then(Scalar::as_str),
+        Some("proprietary/customcode")
+    );
+    assert_eq!(trader.role().and_then(Scalar::as_i64), Some(12));
+    assert!(trader.qualifier().is_none_or(Scalar::is_null));
+    assert_eq!(
+        message
+            .party("InvestorID")
+            .and_then(|party| party.id())
+            .and_then(Scalar::as_str),
+        Some("FIRMA9120")
+    );
+    assert!(
+        message.party("ExecutingFirm").is_none(),
+        "two parties bear the role, so none is the executing firm"
+    );
+
+    // Two alternate identifiers, their sources kept as the bridge spelled
+    // them.
+    assert_eq!(message.by_tag(454).unwrap(), &Scalar::from(2_i32));
+    for (index, id, source) in [(0, "2454 TT Equity", "bloomberg"), (1, "2454.TW", "ric")] {
+        assert_eq!(
+            message
+                .by_path(&path(&format!("SecAltIDGrp[{index}].SecurityAltID")))
+                .unwrap()
+                .as_str(),
+            Some(id)
+        );
+        assert_eq!(
+            message
+                .by_path(&path(&format!("SecAltIDGrp[{index}].SecurityAltIDSource")))
+                .unwrap()
+                .as_str(),
+            Some(source)
+        );
+    }
+
+    // The regulatory clocks: the bridge states four and indexes five. The
+    // occurrences are what it indexed, all five; the counter is what it
+    // stated, four, never renumbered; and the disagreement is reported,
+    // not repaired. Only the submission time bears a type FIX spells; the
+    // bridge's own kinds are null, and `trd_reg_timestamp` reads by FIX's.
+    assert_eq!(message.by_tag(768).unwrap(), &Scalar::from(4_i32));
+    assert_eq!(row[column(768)], Scalar::from(4_i32));
+    let stamps = message
+        .by_path(&path("TrdRegTimestamps"))
+        .unwrap()
+        .as_sequence()
+        .expect("the timestamps");
+    assert_eq!(stamps.len(), 5);
+    let stamp = |index: usize, member: &str| {
+        message
+            .get_by_path(&path(&format!("TrdRegTimestamps[{index}].{member}")))
+            .cloned()
+            .unwrap_or(Scalar::Null)
+    };
+    // The bridge's compact spelling, `20260814011345549`, read as the
+    // millisecond it is: 2026-08-14T01:13:45.549Z and 21:59:46.479Z.
+    let clock = |seconds: i64, millis: i64| {
+        Scalar::datetime64(
+            (seconds * 1_000 + millis) * 1_000_000,
+            yggdryl::TimeUnit::Nanosecond,
+            Timezone::UTC,
+        )
+        .expect("a clock")
+    };
+    const SUBMITTED: i64 = 1786670025;
+    const CANCELLED: i64 = 1786744786;
+    for (index, when, kind, origin) in [
+        (0, clock(SUBMITTED, 0), None, "CLIENT"),
+        (1, clock(SUBMITTED, 549), None, "ULBRIDGE"),
+        (2, clock(SUBMITTED, 162), Some(10), "CLIENT"),
+        (3, clock(CANCELLED, 416), None, "ULBRIDGE"),
+        (4, clock(CANCELLED, 479), None, "CLIENT"),
+    ] {
+        assert_eq!(stamp(index, "TrdRegTimestamp"), when, "stamp {index}");
+        assert_eq!(
+            stamp(index, "TrdRegTimestampType").as_i64(),
+            kind,
+            "stamp {index}"
+        );
+        assert_eq!(
+            stamp(index, "TrdRegTimestampOrigin").as_str(),
+            Some(origin),
+            "stamp {index}"
+        );
+    }
+    assert_eq!(
+        message.trd_reg_timestamp("OrderSubmissionTime"),
+        Some(&clock(SUBMITTED, 162))
+    );
+    assert!(message.trd_reg_timestamp("ExecutionTime").is_none());
+    let anomalies: Vec<yggdryl::FixAnomaly<'_>> = message.anomalies().collect();
+    assert!(
+        anomalies.contains(&yggdryl::FixAnomaly::Miscounted {
+            tag: 768,
+            name: "trdregtimestamps",
+            stated: 4,
+            held: 5,
+        }),
+        "{anomalies:?}"
+    );
+    // The enriched result two hops earlier states five and indexes five,
+    // and reports no miscount.
+    let enriched = read(line_holding(
+        &text_names,
+        &text,
+        "Result of message post-enrichment : #NOTRDREGTIMESTAMPS=5|",
+    ));
+    assert_eq!(enriched.by_tag(768).unwrap(), &Scalar::from(5_i32));
+    assert!(
+        enriched
+            .anomalies()
+            .all(|anomaly| !matches!(anomaly, yggdryl::FixAnomaly::Miscounted { .. })),
+        "{:?}",
+        enriched.anomalies().collect::<Vec<_>>()
+    );
+
+    // Composed keys (decision 20): a namespace's last segment fills the
+    // absent dictionary field it names - `OMSVENDOR.ORDERQTY` fills
+    // `OrderQty`, `OMSVENDOR.TIMEINFORCE` fills `TimeInForce` - and the
+    // filled field takes its tag while the pair the bridge wrote stays the
+    // arrival, under its own name and no tag. A segment naming no field -
+    // `FIRM.ACRONYM`, `ULLINK.INSTRUMENTID`, `ULLINK.BYPASSRISK` - stays
+    // under its namespace, verbatim.
+    assert_eq!(message.by_tag(38).unwrap().as_f64(), Some(10000.0));
+    assert_eq!(row[column(38)].as_f64(), Some(10000.0));
+    assert_eq!(message.by_tag(59).unwrap().as_str(), Some("day"));
+    for (key, value) in [
+        ("omsvendor.orderqty", "10000"),
+        ("omsvendor.timeinforce", "day"),
+        ("firm.acronym", "FIRMA9120"),
+        ("firm.last_instrument_lookup_date", "20260814"),
+        ("ullink.instrumentid", "dbi;TW0002454006_XTAI_TWD"),
+        ("ullink.bypassrisk", "yes"),
+    ] {
+        assert_eq!(message.by_name(key).unwrap().as_str(), Some(value), "{key}");
+        let entry = message
+            .entries()
+            .iter()
+            .find(|entry| {
+                entry
+                    .key()
+                    .as_str()
+                    .is_some_and(|held| held.eq_ignore_ascii_case(key))
+            })
+            .unwrap_or_else(|| panic!("the arrival of {key}"));
+        assert_eq!(entry.tag(), 0, "{key}");
+    }
+    assert!(message.get_by_name("acronym").is_none());
+    assert!(message.get_by_name("instrumentid").is_none());
+
+    // The rejection the row states, typed as the frame's was, and the
+    // response-to spelled as the bridge spells it, since the code set has
+    // no such word and the field is text.
+    assert_eq!(
+        message
+            .by_tag(39)
+            .unwrap()
+            .as_str()
+            .and_then(State::from_spelling),
+        State::from_spelling("8")
+    );
+    assert_eq!(
+        row[column(yggdryl::STATE_TAG_NAME.0)]
+            .as_str()
+            .and_then(State::from_spelling),
+        State::from_spelling("8")
+    );
+    assert_eq!(message.by_tag(434).unwrap().as_str(), Some("cancel"));
+    assert_eq!(message.by_tag(167).unwrap().as_str(), Some("equity"));
+}
+
+#[test]
+fn two_heartbeats_close_the_capture_and_one_says_it_is_no_resend() {
+    let codec = codec();
+    let (text_names, text) = text_rows();
+    let lines = text_lines();
+    let batch = batches(None);
+    let (_, rows) = rows_of(&batch);
+    let schema = yggdryl::Field::from_arrow_schema("row", &batch[0].schema()).expect("the schema");
+    let column =
+        |tag: i32| yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("tag {tag}"));
+    let sent = line_holding(&text_names, &text, "|35=0|49=FIRMB|56=FIDESSA|");
+    let received = line_holding(
+        &text_names,
+        &text,
+        "|35=0|49=FIDESSA_BOPRD|56=FIRMAPRD|43=N|",
+    );
+    assert_eq!(received, LINES - 1, "the capture ends on it");
+    let read = |line: usize| {
+        codec
+            .enriched_line(&lines[line])
+            .and_then(|mut messages| messages.next().expect("a message"))
+            .expect("the heartbeat reads")
+    };
+    let (sent_beat, received_beat) = (read(sent), read(received));
+    for (line, message) in [(sent, &sent_beat), (received, &received_beat)] {
+        assert_eq!(message.as_field().name(), "0");
+        assert_eq!(rows[row_of(line)][column(35)].as_str(), Some("0"));
+    }
+    assert_eq!(rows[row_of(sent)][column(385)].as_str(), Some("S"));
+    assert_eq!(rows[row_of(received)][column(385)].as_str(), Some("R"));
+    // `43=N` is the boolean it is: this transmission is the original, and
+    // the `resent` facet says so; the heartbeat that states nothing
+    // states nothing.
+    assert_eq!(received_beat.by_tag(43).unwrap(), &Scalar::from(false));
+    assert_eq!(rows[row_of(received)][column(43)], Scalar::from(false));
+    assert_eq!(received_beat.lifted("resent"), Some(&Scalar::from(false)));
+    assert!(sent_beat.get_by_tag(43).is_none());
+    assert!(rows[row_of(sent)][column(43)].is_null());
+    assert!(sent_beat.lifted("resent").is_none());
+    // A digest reads past the header and the trailer, and a heartbeat is
+    // nothing else: two sessions' heartbeats digest equal, and only their
+    // wires tell them apart.
+    assert_eq!(sent_beat.digest(), received_beat.digest());
+    assert_ne!(sent_beat.into_bytes(b'|'), received_beat.into_bytes(b'|'));
 }

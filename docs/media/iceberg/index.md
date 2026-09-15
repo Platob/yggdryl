@@ -713,6 +713,8 @@ Both exchanges run in both directions and skip themselves, naming what is missin
 - `days(at)` or `bucket(4, id)` partition -> restores no column; only `identity` values come from the manifest.
 - `uuid`, `fixed`, `time` in Spark -> no DDL spelling, so the exchange covers only the direction that exists.
 - `uuid` -> preserved as `uuid` through a metadata round trip, never demoted to `fixed[16]`.
+- `unknown` and `variant` columns -> spelled by the crate's own schema serde; the official model sees `binary` under their field ids and never the names, in documents and manifest headers alike.
+- A manifest whose header spells `unknown` or `variant` -> re-encoded in memory for the official reader once per read; every other manifest is read as it is.
 - Remote catalog -> none; `Catalog` is an `IOBase` warehouse view, and commits publish through the supplied handle.
 - Writing delete files, and applying deletes on read -> not implemented.
 - Live position or equality delete manifests -> scans return a typed unsupported error, never undeleted rows; proven-inert manifests pass.
@@ -773,4 +775,24 @@ The manifest rows share that host and toolchain.
 
 ```bash
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
+```
+
+### Iceberg over S3
+
+The same table over the in-process S3 the object backend's own suites run on, every request counted: the `s3` group builds a fresh venue-partitioned table per measured commit, scans one of eight partitions, reads the bridge's own `.log` as one object and writes the FIX rows it holds back into a table on the store. Release Criterion `--quick`, sample size 10, on a containerized x86_64 Linux host (Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB; rustc 1.94.1) shared with another build at the time, so the medians are noisier than the request counts, which are exact and pinned in `holder::object::tests::accounting::iceberg`. The `.log` read is untouched by this work and keeps its six requests; the gap between its two medians is the noise floor of that host, and the FIX row is parsing and enrichment first, remote calls second.
+
+| operation | requests before | requests after | median before | median after |
+| --- | ---: | ---: | ---: | ---: |
+| append, one partition, 5,000 rows | 25 | 9 | 7.81 ms | 7.41 ms |
+| append, eight partitions, 40,000 rows | 67 | 16 | 56.7 ms | 35.0 ms |
+| upsert of 10 rows into one partition of eight | 37 | 13 | 16.6 ms | 8.93 ms |
+| full scan, eight files | 30 | 10 | 8.70 ms | 5.42 ms |
+| pruned scan, one file of eight | 9 | 3 | 4.11 ms | 2.40 ms |
+| `.log` object read as text, 2,304 lines | 6 | 6 | 36.2 ms | 25.0 ms |
+| FIX rows parsed, enriched and written back | 61 | 20 | 3.99 s | 2.81 s |
+
+Every request left is the metadata chain - the hint, the manifest list, one manifest per commit that survives the summaries, one `GET` per data file - one upload per file a commit writes, and the one listing that claims a version; the loopback timing only shows that nothing else hides between them. On a real store each request is a round trip of 1-20 ms, which is what the counts are worth.
+
+```bash
+cargo bench --features "iceberg object" -p yggdryl --bench media -- 's3/' --quick
 ```

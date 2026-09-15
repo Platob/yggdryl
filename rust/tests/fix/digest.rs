@@ -221,7 +221,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "version",
             "symbolticker",
             "updatedat",
-            "unixpartition",
+            "timepartition",
             "parentclordid",
             "parentorderid",
             "sendersessionid",
@@ -238,7 +238,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "puuid",
             "targetsessionid",
             "altids",
-            "prevtimestamp",
+            "prevupdatedat",
             "prevuuid",
             "createdat",
             "code",
@@ -252,7 +252,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Version"),
             Some("SymbolTicker"),
             Some("UpdatedAt"),
-            Some("UnixPartition"),
+            Some("TimePartition"),
             Some("ParentClOrdID"),
             Some("ParentOrderID"),
             Some("SenderSessionId"),
@@ -269,7 +269,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("PUuid"),
             Some("TargetSessionId"),
             Some("AltIds"),
-            Some("PrevTimestamp"),
+            Some("PrevUpdatedAt"),
             Some("PrevUuid"),
             Some("CreatedAt"),
             Some("Code"),
@@ -279,12 +279,12 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
 
     // The columns a message answers from what it said are typed as the thing
     // they hold, not as the text a venue spelled it in; the three lifecycle
-    // identities carry UUID identity rather than untyped digest bytes.
+    // identities are sixteen fixed bytes, which is what a lake engine reads.
     assert_eq!(held[12].dtype(), &DataType::Isin);
     assert_eq!(held[13].dtype(), &DataType::Mic);
     assert_eq!(held[14].dtype(), &DataType::State);
     for identity in &held[15..18] {
-        assert_eq!(identity.dtype(), &DataType::Uuid);
+        assert_eq!(identity.dtype(), &super::identity_dtype());
         assert_eq!(identity.as_fix().aliases().count(), 0);
     }
     assert_eq!(held[20].dtype(), held[2].dtype());
@@ -295,7 +295,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             timezone: yggdryl::Timezone::UTC,
         }
     );
-    assert_eq!(held[21].dtype(), &DataType::Uuid);
+    assert_eq!(held[21].dtype(), &super::identity_dtype());
     for previous in &held[20..22] {
         assert!(previous.is_nullable());
         assert_eq!(previous.as_fix().aliases().count(), 0);
@@ -306,6 +306,30 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     assert_eq!(held[23].dtype(), &DataType::utf8());
     assert!(!held[23].is_nullable());
+    // The partition is the hour `updatedat` falls in, typed as that clock
+    // is; it is marked as the column a layout is cut on, names the clock it
+    // reads, and declares its derivation in the expression layer's own
+    // vocabulary rather than in an Iceberg transform of its own.
+    assert_eq!(held[3].dtype(), held[2].dtype());
+    assert!(held[3].is_partition());
+    assert_eq!(
+        held[3].as_partition().sources().unwrap(),
+        Some(vec!["updatedat".to_owned()])
+    );
+    assert_eq!(
+        held[3].get_metadata("transform:expression"),
+        Some("truncate(updatedat, 'hour')")
+    );
+    assert_eq!(
+        held[3]
+            .as_transform()
+            .term()
+            .unwrap()
+            .map(|term| term.to_string()),
+        Some("truncate(updatedat, 'hour')".to_owned())
+    );
+    assert_eq!(held[3].get_metadata("iceberg:transform"), None);
+    assert_eq!(held[3].get_metadata("partition:transform"), None);
 
     // Every definition has a tag from 65000 up: one block, in the one namespace
     // every dictionary resolves through, so a bridge row spelling `SESSIONID`
@@ -341,8 +365,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         [(65_016, "instuuid"), (65_017, "uuid"), (65_018, "puuid")]
     );
     assert_eq!(
-        [yggdryl::PREVTIMESTAMP_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
-        [(65_021, "prevtimestamp"), (65_022, "prevuuid")]
+        [yggdryl::PREVUPDATEDAT_TAG_NAME, yggdryl::PREVUUID_TAG_NAME],
+        [(65_021, "prevupdatedat"), (65_022, "prevuuid")]
     );
     assert!(!yggdryl::is_crate_tag(yggdryl::CRATE_TAG_MIN - 1));
     let sessions = &held[10..12];

@@ -23,8 +23,6 @@
 //! which is the mechanism - not the intention - behind scalar and vectorized
 //! agreeing.
 
-use std::sync::Arc;
-
 use smol_str::{SmolStr, format_smolstr};
 
 use super::attribute::{Attribute, Attributes, Cost};
@@ -58,8 +56,9 @@ pub(crate) enum Kind {
     Literal(Scalar),
     /// A column, by index into the bound schema.
     Column(usize),
-    /// A path into a value.
-    Path(Box<Node>, Arc<[FieldSegment]>),
+    /// A path into a value: the column it starts at and the steps taken
+    /// inside it, each typed once.
+    Path(Box<Node>, Vec<Step>),
     /// A holder attribute.
     Attribute(Attribute),
     /// Conjunction, operands ordered cheapest-first.
@@ -114,6 +113,49 @@ pub(crate) enum Kind {
     Map(Vec<(Node, Node)>),
 }
 
+/// One step of a bound path, and the field it reaches.
+///
+/// A predicate segment is the one step that carries a term of its own: the
+/// term is lowered here against the element struct, so the two row evaluators
+/// answer it from a resolved tree and never bind per row.
+#[derive(Clone, Debug)]
+pub(crate) struct Step {
+    pub(crate) kind: StepKind,
+    /// The field this step reaches, typed by [`FieldSegment::apply_field`].
+    pub(crate) field: Field,
+}
+
+/// What one bound step does.
+#[derive(Clone, Debug)]
+pub(crate) enum StepKind {
+    /// A step the segment answers by itself.
+    Segment(FieldSegment),
+    /// A predicate over the element struct, resolved against it; the
+    /// element struct is the item of the field the step reaches.
+    Where(Box<Node>),
+}
+
+impl Step {
+    /// The segment this step stands for, the predicate rebuilt as bound.
+    pub(crate) fn segment(&self) -> FieldSegment {
+        match &self.kind {
+            StepKind::Segment(segment) => segment.clone(),
+            StepKind::Where(predicate) => FieldSegment::filter(rebuild(predicate)),
+        }
+    }
+
+    /// The element struct a predicate step keeps elements of.
+    ///
+    /// Total for a predicate step: binding typed the field as a list of the
+    /// element struct, so the item is there to borrow.
+    pub(crate) fn element(&self) -> Option<&Field> {
+        match &self.kind {
+            StepKind::Where(_) => super::path::list_item(self.field.dtype()),
+            StepKind::Segment(_) => None,
+        }
+    }
+}
+
 impl Node {
     /// Return whether this node is a constant.
     pub(crate) const fn as_literal(&self) -> Option<&Scalar> {
@@ -132,6 +174,10 @@ impl Node {
     }
 
     /// Visit every direct child of this node.
+    ///
+    /// A path's children are its base and nothing else: the predicate a step
+    /// carries reads the element struct, so its column indices are not the
+    /// row's and must never be gathered as if they were.
     pub(crate) fn for_each_child<'node>(&'node self, mut visit: impl FnMut(&'node Self)) {
         match &self.kind {
             Kind::Literal(_) | Kind::Column(_) | Kind::Attribute(_) => {}
@@ -304,6 +350,24 @@ impl Bound {
         self.node.eval(&Row::new(Some(values), None))
     }
 
+    /// Evaluate this term over a row held as its column values.
+    ///
+    /// `values` holds the bound schema's columns in order, exactly as
+    /// [`Self::eval`] reads them out of a sequence: the door a pass that
+    /// fills a row evaluates through, writing each answer into the values it
+    /// reads the next one from, so no row is rebuilt to be read.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `values` does not hold one value per column of
+    /// the schema, a strict cast refuses a value, or checked arithmetic
+    /// overflows, divides by zero, or cannot represent an exact decimal
+    /// result.
+    pub(crate) fn eval_values(&self, values: &[Scalar]) -> Result<Scalar> {
+        self.node
+            .eval(&Row::new(Some(sized(values, &self.schema)?), None))
+    }
+
     /// Evaluate this term for one row alongside a holder.
     ///
     /// # Errors
@@ -393,6 +457,11 @@ pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'ro
             row.kind()
         ),
     })?;
+    sized(values, schema)
+}
+
+/// The values, proven one per column of the schema.
+fn sized<'row>(values: &'row [Scalar], schema: &Field) -> Result<&'row [Scalar]> {
     if values.len() != schema.field_len() {
         return Err(Error::InvalidRecord {
             path: SmolStr::new(schema.name()),
@@ -526,13 +595,33 @@ impl Binder<'_> {
                     base
                 } else {
                     let mut field = column;
-                    for step in rest {
-                        field = step.apply_field(&field)?;
+                    let mut steps = Vec::with_capacity(rest.len());
+                    let mut cost = COST_COLUMN + 1;
+                    for segment in rest {
+                        let reached = segment.apply_field(&field)?;
+                        let kind = match segment {
+                            FieldSegment::Where(predicate) => {
+                                // The element struct is the row the predicate
+                                // reads, so it is lowered against that and
+                                // not against the schema of the path.
+                                let element = super::path::element_field(&field)?;
+                                let inner = Binder { schema: &element }
+                                    .lower(predicate, Some(&DataType::Boolean))?;
+                                cost += inner.cost;
+                                StepKind::Where(Box::new(inner))
+                            }
+                            other => StepKind::Segment(other.clone()),
+                        };
+                        steps.push(Step {
+                            kind,
+                            field: reached.clone(),
+                        });
+                        field = reached;
                     }
                     Node {
                         field: field.with_name(SmolStr::new(term.to_string())),
-                        kind: Kind::Path(Box::new(base), Arc::from(rest)),
-                        cost: COST_COLUMN + 1,
+                        kind: Kind::Path(Box::new(base), steps),
+                        cost,
                     }
                 }
             }
@@ -962,7 +1051,10 @@ fn fits(dtype: &DataType, held: &Literal) -> bool {
     };
     // Text is read, not rounded: a spelling the datatype parses is exactly
     // the value it parses to, whatever canonical spelling it prints back as.
-    if super::typing::is_text(held.dtype()) && !super::typing::is_text(dtype) {
+    // A registered code is text by kind and reads a spelling the same way -
+    // `state` reads the wire code `F` as the state it names - so it stands
+    // with the datatypes that parse rather than with the text that compares.
+    if super::typing::is_text(held.dtype()) && (!super::typing::is_text(dtype) || dtype.is_code()) {
         return true;
     }
     // A conversion that cannot be undone lost something, and a lost digit
@@ -1077,7 +1169,11 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         Kind::Literal(value) => Literal::new(node.field.dtype().clone(), value.clone())
             .map_or_else(|_| Term::literal(value.clone()), Term::Literal),
         Kind::Column(_) => Term::column(node.field.name()),
-        Kind::Path(base, steps) => rebuild(base).path(steps.iter().cloned()),
+        // A bound path always starts at a column, and a path extends by any
+        // step, so this cannot refuse.
+        Kind::Path(base, steps) => rebuild(base)
+            .path(steps.iter().map(Step::segment))
+            .expect("a bound path starts at a column"),
         Kind::Attribute(attribute) => Term::attribute(attribute.clone()),
         Kind::And(operands) => Term::And(operands.iter().map(rebuild).collect()),
         Kind::Or(operands) => Term::Or(operands.iter().map(rebuild).collect()),

@@ -119,6 +119,96 @@ A literal holds a `Scalar` in one datatype. `literal` infers the datatype from t
 
 At bind, a literal meets the column it is compared with and is converted once into that column's type: `price > 100` on a `decimal(9,2)` column becomes `price > decimal32(9,2) '100.00'`, and `i = '1'` on an `int64` column becomes `i = 1`. A constant subtree is folded by evaluating it, so `n > 2 * 1000` binds as `n > 2000`.
 
+## Predicate segments
+
+`list[filter]` keeps the elements of a list of structs for which `filter`, a boolean over the element's own fields, answers exactly true; the answer is a list of the same item type, so `[0]`, `[-1]`, `.name` and further predicates compose after it. The predicate is typed and bound against the element struct - a name inside it is the element's field, never the row's - and a parameter inside it is supplied at bind like any other. A null element is dropped, an element the predicate answers false or unknown for is dropped, no match is the empty list, and a null list stays null. The vectorized tier runs the predicate once over the flattened elements, filters them, and rebuilds the offsets; the statistics tier treats the segment as a column decode that proves nothing.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::expression::Term;
+    use yggdryl::{Field, Scalar};
+
+    let schema: Field = "trades:struct<legs:list<struct<ccy:utf8,size:bigint>>>".parse()?;
+    let leg = |ccy: &str, size: i64| Scalar::from_sequence([Scalar::from(ccy), Scalar::from(size)]);
+    let row = Scalar::from_sequence([Scalar::from_sequence([leg("EUR", 1), leg("USD", 2), leg("EUR", 3)])]);
+
+    // The predicate reads the element's fields and the answer keeps the list's item type.
+    let eur: Term = "legs[ccy = 'EUR']".parse()?;
+    assert_eq!(eur.to_string(), "legs[ccy = 'EUR']");
+    assert_eq!(eur.columns(), vec!["legs".to_owned()]);
+    let bound = eur.bind(&schema)?;
+    assert_eq!(bound.field().dtype(), schema.fields()[0].dtype());
+    assert_eq!(bound.eval(&row)?, Scalar::from_sequence([leg("EUR", 1), leg("EUR", 3)]));
+
+    // A position and a name compose after it; a parameter inside is supplied at bind.
+    let last: Term = "legs[ccy = :ccy and size > 1][-1].size".parse()?;
+    let bound = last.bind_with(&schema, &[("ccy", Scalar::from("EUR"))])?;
+    assert_eq!(bound.term().to_string(), "legs[ccy = 'EUR' and size > 1][-1].size");
+    assert_eq!(bound.eval(&row)?, Scalar::from(3_i64));
+
+    // No match is the empty list; a null list stays null.
+    assert_eq!("legs[ccy = 'JPY']".parse::<Term>()?.bind(&schema)?.eval(&row)?, Scalar::from_sequence([]));
+    let missing = Scalar::from_sequence([Scalar::Null]);
+    assert_eq!("legs[true]".parse::<Term>()?.bind(&schema)?.eval(&missing)?, Scalar::Null);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import Field, Term
+
+    schema = Field("trades", "struct<legs:list<struct<ccy:utf8,size:bigint>>>", False)
+    row = {"legs": [{"ccy": "EUR", "size": 1}, {"ccy": "USD", "size": 2}, {"ccy": "EUR", "size": 3}]}
+
+    # The predicate reads the element's fields and the answer keeps the list's item type.
+    eur = Term("legs[ccy = 'EUR']")
+    assert str(eur) == "legs[ccy = 'EUR']"
+    assert eur.columns() == ["legs"]
+    bound = eur.bind(schema)
+    assert bound.field.dtype == schema.fields[0].dtype
+    assert len(bound.eval(row)) == 2
+
+    # A position and a name compose after it; a parameter inside is supplied at bind.
+    last = Term("legs[ccy = :ccy and size > 1][-1].size")
+    bound = last.bind(schema, {"ccy": "EUR"})
+    assert str(bound.term) == "legs[ccy = 'EUR' and size > 1][-1].size"
+    assert bound.eval(row) == 3
+
+    # No match is the empty list; a null list stays null.
+    assert Term("legs[ccy = 'JPY']").bind(schema).eval(row) == []
+    assert Term("legs[true]").bind(schema).eval({"legs": None}) is None
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Field, Scalar, Term } = require('yggdryl')
+
+    const schema = new Field('trades', 'struct<legs:list<struct<ccy:utf8,size:bigint>>>', false)
+    const leg = (ccy, size) => [ccy, BigInt(size)]
+    const row = Scalar.from([[leg('EUR', 1), leg('USD', 2), leg('EUR', 3)]])
+
+    // The predicate reads the element's fields and the answer keeps the list's item type.
+    const eur = new Term("legs[ccy = 'EUR']")
+    assert.equal(eur.toString(), "legs[ccy = 'EUR']")
+    assert.deepEqual(eur.columns, ['legs'])
+    let bound = eur.bind(schema)
+    assert.ok(bound.field.dtype.equals(schema.fields[0].dtype))
+    assert.ok(bound.eval(row).equals(Scalar.from([leg('EUR', 1), leg('EUR', 3)])))
+
+    // A position and a name compose after it; a parameter inside is supplied at bind.
+    const last = new Term("legs[ccy = :ccy and size > 1][-1].size")
+    bound = last.bind(schema, { ccy: 'EUR' })
+    assert.equal(bound.term.toString(), "legs[ccy = 'EUR' and size > 1][-1].size")
+    assert.ok(bound.eval(row).equals(Scalar.from(3n)))
+
+    // No match is the empty list; a null list stays null.
+    assert.ok(new Term("legs[ccy = 'JPY']").bind(schema).eval(row).equals(Scalar.from([])))
+    assert.ok(new Term('legs[true]').bind(schema).eval(Scalar.from([null])).equals(Scalar.from(null)))
+    ```
+
 ## Binding
 
 | Step | Does |
@@ -139,6 +229,7 @@ At bind, a literal meets the column it is compared with and is converted once in
 - `simplify` -> a fixed point: simplifying twice changes nothing.
 - `explain` on a `Bound` -> the cheapest-first order, which is the order the tree runs in.
 - A term with holder attributes bound against an empty struct -> binds; `reads_rows` is false.
+- A predicate segment on a computed value -> refused at parse; on anything but a list of structs, or with a predicate that answers no boolean -> refused at bind naming the datatype.
 
 ## Commands
 
@@ -146,7 +237,8 @@ At bind, a literal meets the column it is compared with and is converted once in
 
     ```bash
     cargo test --features "parquet iceberg" -p yggdryl --lib -- expression::tests::binds_and_evaluates_rows expression::tests::a_literal_is_converted_once_into_the_column_it_meets expression::tests::a_constant_subtree_is_folded_by_evaluating_it expression::tests::binding_simplifies_before_it_lowers expression::tests::parameters_are_supplied_at_bind_and_never_again expression::tests::an_unknown_column_names_the_ones_there_are expression::tests::cheapest_first_is_stable_when_costs_tie expression::tests::a_simplification_has_fewer_nodes_and_one_shape expression::tests::a_simplification_answers_what_the_original_answered
-    cargo bench -p yggdryl --bench expression -- expression_bind
+    cargo test --features "parquet iceberg" -p yggdryl --test expression -- predicate_segment
+    cargo bench -p yggdryl --bench expression -- expression_bind expression_predicate_path
     ```
 
 === "Python"

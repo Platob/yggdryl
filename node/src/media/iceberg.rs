@@ -19,8 +19,8 @@ use yggdryl::media::iceberg::{
     IcebergOptions as CoreIcebergOptions, ManifestContent, ManifestFile, Names as CoreNames,
     Namespaces as CoreNamespaces, PartitionField as CorePartitionField,
     PartitionSpec as CorePartitionSpec, ScanPlan as CoreScanPlan, SchemaUpdate as CoreSchemaUpdate,
-    Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, assign_field_ids, can_promote,
-    last_column_id, schema_from_json, schema_into_json,
+    Snapshot, SnapshotRef, Table as CoreTable, Tables as CoreTables, WriteStaging,
+    assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
 };
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar as CoreScalar};
 
@@ -145,7 +145,7 @@ fn borrowed_pairs(pairs: &[(String, String)]) -> Vec<(&str, &str)> {
 /// Every field is optional because an options value records only what was set
 /// on it: a field left out is not "the default" but unresolved, and a table
 /// still answers it from its own properties. The names are the ones the
-/// getters carry, so the object and the setters spell the same ten things.
+/// getters carry, so the object and the setters spell the same eleven things.
 #[napi(object)]
 pub struct IcebergOptionsInput<'env> {
     /// How many beaten commit attempts are retried.
@@ -165,6 +165,10 @@ pub struct IcebergOptionsInput<'env> {
     /// The recorded size below which a file does not count toward that
     /// justification, in bytes.
     pub read_parallel_min_file_size: Option<f64>,
+    /// How many partition groups a commit writes at once.
+    pub write_parallelism: Option<u32>,
+    /// Where a commit stages its files: `off`, or a local folder URL or path.
+    pub write_staging: Option<String>,
     /// After how many data commits an automatic compaction runs.
     pub compact_after_commits: Option<u32>,
     /// The MIME type for new data files. Table writes encode Parquet and Avro.
@@ -214,6 +218,16 @@ fn apply_options_input(
             bytes,
             "readParallelMinFileSize",
         )?);
+    }
+    if let Some(threads) = input.write_parallelism {
+        options
+            .set_write_parallelism(threads as usize)
+            .map_err(napi_error)?;
+    }
+    if let Some(staging) = input.write_staging {
+        options
+            .set_write_staging(WriteStaging::from_str(&staging).map_err(napi_error)?)
+            .map_err(napi_error)?;
     }
     if let Some(commits) = input.compact_after_commits {
         options.set_compact_after_commits(commits);
@@ -381,6 +395,51 @@ impl JsIcebergOptions {
     #[napi(setter)]
     pub fn set_read_parallel_min_files(&mut self, files: u32) {
         self.inner.set_read_parallel_min_files(files as usize);
+    }
+
+    /// How many partition groups a commit writes at once. Default: the
+    /// resolved `readParallelism`; 1 writes them one after another. The
+    /// manifest lists a commit's files in partition-group order whatever the
+    /// value.
+    #[napi(getter)]
+    pub fn write_parallelism(&self) -> Result<u32> {
+        u32::try_from(self.inner.write_parallelism())
+            .map_err(|_| napi::Error::from_reason("writeParallelism exceeds a JavaScript u32"))
+    }
+
+    /// Set how many partition groups a commit writes at once.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error naming the value when the count is zero,
+    /// which would write nothing at all.
+    #[napi(setter)]
+    pub fn set_write_parallelism(&mut self, threads: u32) -> Result<()> {
+        self.inner
+            .set_write_parallelism(threads as usize)
+            .map_err(napi_error)
+    }
+
+    /// Where a commit stages its files before uploading them: `"off"`, or
+    /// a local folder URL. `null` - the default - is the table's own: the
+    /// temporary folder for a remote root, off for a local one.
+    #[napi(getter)]
+    pub fn write_staging(&self) -> Option<String> {
+        self.inner.write_staging().map(ToString::to_string)
+    }
+
+    /// Set where a commit stages its files: `"off"`, a local folder URL, or
+    /// a local path.
+    ///
+    /// # Errors
+    ///
+    /// Throws the core's typed error naming the key when the folder is not
+    /// local, which could hold no staging file.
+    #[napi(setter)]
+    pub fn set_write_staging(&mut self, staging: String) -> Result<()> {
+        self.inner
+            .set_write_staging(WriteStaging::from_str(&staging).map_err(napi_error)?)
+            .map_err(napi_error)
     }
 
     /// The recorded size below which a file does not count toward justifying a

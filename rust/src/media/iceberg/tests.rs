@@ -676,6 +676,334 @@ fn write_filesystem_bytes(
     writer.close()
 }
 
+fn read_filesystem_bytes(filesystem: &dyn FileSystem, path: &str) -> crate::Result<Vec<u8>> {
+    let mut reader = filesystem.open_input_stream(path)?;
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&buffer[..read]);
+    }
+    reader.close()?;
+    Ok(bytes)
+}
+
+/// Every file under a filesystem folder, at any depth, by its location.
+fn listed_paths(folder: &crate::holder::fs::Folder) -> Vec<String> {
+    let mut paths: Vec<String> = crate::holder::Holder::from(folder.clone())
+        .ls(true, false)
+        .map(|entry| entry.unwrap())
+        .filter(|entry| !entry.is_container())
+        .filter_map(|entry| entry.url().map(ToString::to_string))
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// An Arrow filesystem that refuses the write of one versioned metadata
+/// document - `v{n}.metadata.json` - after the attempt before it landed.
+///
+/// A store can refuse the second of two writes as well as the first; this
+/// makes it refuse exactly the one that is the commit's point of no return,
+/// so what a commit leaves behind when it fails just short of it is pinned.
+#[derive(Debug, Default)]
+struct RefusedDocumentWrite {
+    inner: crate::holder::fs::MemoryFileSystem,
+    refuse_next_document: Arc<AtomicBool>,
+}
+
+impl RefusedDocumentWrite {
+    fn arm(&self) {
+        self.refuse_next_document.store(true, Ordering::Relaxed);
+    }
+}
+
+impl crate::holder::fs::FileSystem for RefusedDocumentWrite {
+    fn type_name(&self) -> &str {
+        self.inner.type_name()
+    }
+
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
+    }
+
+    fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        self.inner.create_dir(path, recursive)
+    }
+
+    fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        let name = path.rsplit('/').next().unwrap_or(path);
+        if name.starts_with('v')
+            && name.ends_with(".metadata.json")
+            && self.refuse_next_document.swap(false, Ordering::Relaxed)
+        {
+            return Err(crate::Error::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "the versioned document write is refused",
+            )));
+        }
+        self.inner.open_output_stream(path, metadata)
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// A memory filesystem that lands a competing metadata-only document at
+/// version 2 after a data commit's version preflight but before its
+/// same-version collision listing, and records every file the loser removes.
+///
+/// The competitor is the version 1 document with a property added - a
+/// genuine other writer's commit, naming none of the loser's files - so the
+/// loser rebases onto it, publishes its manifest list again, and what it
+/// does with the list of the attempt it replaces is what this pins.
+#[derive(Debug, Default)]
+struct MetadataOnlyWinner {
+    inner: crate::holder::fs::MemoryFileSystem,
+    armed: Arc<AtomicBool>,
+    removed: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl MetadataOnlyWinner {
+    fn arm(&self) {
+        self.armed.store(true, Ordering::Relaxed);
+    }
+
+    fn removed(&self) -> Vec<String> {
+        self.removed.lock().unwrap().clone()
+    }
+}
+
+impl crate::holder::fs::FileSystem for MetadataOnlyWinner {
+    fn type_name(&self) -> &str {
+        self.inner.type_name()
+    }
+
+    fn equals(&self, other: &dyn FileSystem) -> bool {
+        other
+            .as_any()
+            .downcast_ref::<Self>()
+            .is_some_and(|other| std::ptr::eq(self, other))
+    }
+
+    fn normalize_path(&self, path: &str) -> crate::Result<String> {
+        self.inner.normalize_path(path)
+    }
+
+    fn file_info(&self, path: &str) -> crate::Result<FileInfo> {
+        self.inner.file_info(path)
+    }
+
+    fn list(&self, selector: &FileSelector) -> FileInfos {
+        self.inner.list(selector)
+    }
+
+    fn create_dir(&self, path: &str, recursive: bool) -> crate::Result<()> {
+        self.inner.create_dir(path, recursive)
+    }
+
+    fn delete_dir(&self, path: &str) -> crate::Result<()> {
+        self.inner.delete_dir(path)
+    }
+
+    fn delete_dir_contents(&self, path: &str, missing_dir_ok: bool) -> crate::Result<()> {
+        self.inner.delete_dir_contents(path, missing_dir_ok)
+    }
+
+    fn delete_root_dir_contents(&self) -> crate::Result<()> {
+        self.inner.delete_root_dir_contents()
+    }
+
+    fn delete_file(&self, path: &str) -> crate::Result<()> {
+        self.removed.lock().unwrap().push(path.to_owned());
+        self.inner.delete_file(path)
+    }
+
+    fn copy_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.copy_file(source, target)
+    }
+
+    fn move_file(&self, source: &str, target: &str) -> crate::Result<()> {
+        self.inner.move_file(source, target)
+    }
+
+    fn open_input_file(&self, path: &str) -> crate::Result<Box<dyn RandomAccessReader>> {
+        self.inner.open_input_file(path)
+    }
+
+    fn open_input_stream(&self, path: &str) -> crate::Result<Box<dyn ByteReader>> {
+        self.inner.open_input_stream(path)
+    }
+
+    fn open_output_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        let writer = self.inner.open_output_stream(path, metadata)?;
+        if path.contains("/metadata/00002-") && path.ends_with(".metadata.json") {
+            Ok(Box::new(MetadataOnlyWriter {
+                inner: writer,
+                filesystem: self.inner.clone(),
+                path: path.to_owned(),
+                armed: Arc::clone(&self.armed),
+            }))
+        } else {
+            Ok(writer)
+        }
+    }
+
+    fn open_append_stream(
+        &self,
+        path: &str,
+        metadata: Option<&OutputMetadata>,
+    ) -> crate::Result<Box<dyn ByteWriter>> {
+        self.inner.open_append_stream(path, metadata)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+struct MetadataOnlyWriter {
+    inner: Box<dyn ByteWriter>,
+    filesystem: crate::holder::fs::MemoryFileSystem,
+    path: String,
+    armed: Arc<AtomicBool>,
+}
+
+impl MetadataOnlyWriter {
+    fn inject_winner(&self) -> crate::Result<()> {
+        let (directory, _) = self
+            .path
+            .rsplit_once('/')
+            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata directory"))?;
+        let previous =
+            read_filesystem_bytes(&self.filesystem, &format!("{directory}/v1.metadata.json"))?;
+        let mut document: serde_json::Value = serde_json::from_slice(&previous)?;
+        let metadata = document
+            .as_object_mut()
+            .ok_or_else(|| SameVersionWinner::invalid("expected a metadata object"))?;
+        let properties = metadata
+            .entry("properties")
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()))
+            .as_object_mut()
+            .ok_or_else(|| SameVersionWinner::invalid("expected metadata properties"))?;
+        properties.insert(
+            "winner".to_owned(),
+            serde_json::Value::String("visible".to_owned()),
+        );
+        write_filesystem_bytes(
+            &self.filesystem,
+            &format!("{directory}/00002-ffffffff-ffff-ffff-ffff-ffffffffffff.metadata.json"),
+            &serde_json::to_vec(&document)?,
+        )?;
+        write_filesystem_bytes(
+            &self.filesystem,
+            &format!("{directory}/version-hint.text"),
+            b"2",
+        )
+    }
+}
+
+impl ByteWriter for MetadataOnlyWriter {
+    fn write(&mut self, bytes: &[u8]) -> crate::Result<usize> {
+        self.inner.write(bytes)
+    }
+
+    fn tell(&self) -> u64 {
+        self.inner.tell()
+    }
+
+    fn flush(&mut self) -> crate::Result<()> {
+        self.inner.flush()
+    }
+
+    fn close(&mut self) -> crate::Result<()> {
+        self.inner.close()?;
+        if self.armed.swap(false, Ordering::Relaxed) {
+            self.inject_winner()?;
+        }
+        Ok(())
+    }
+
+    fn closed(&self) -> bool {
+        self.inner.closed()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
 /// Build a scratch directory unique to this test and this process.
 fn root(label: &str) -> std::path::PathBuf {
     let mut path = Folder::temporary().unwrap().path().unwrap();
@@ -4224,6 +4552,184 @@ fn a_reported_hint_failure_reconciles_to_the_version_fresh_handles_see() {
 }
 
 #[test]
+fn a_reported_hint_failure_keeps_the_data_files_the_published_document_names() {
+    let filesystem = Arc::new(PublishedHintFailure::default());
+    let folder =
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let schema = trade_schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+    let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let version = table.metadata_version();
+
+    filesystem.arm();
+    let batch = trades(
+        &[1, 2],
+        &[Some("AAPL"), Some("MSFT")],
+        &[Some("XNAS"), Some("XNYS")],
+    );
+    let error = table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("acknowledgement failure"),
+        "{error}"
+    );
+
+    // The versioned document went out before the hint did, and it names the
+    // data files, the manifest and the list: from that point nothing is
+    // rolled back, whatever the hint write reports, because every fresh
+    // handle resolves the version to that document.
+    assert_eq!(table.metadata_version(), version + 1);
+    let files = table.data_files().unwrap();
+    assert_eq!(files.len(), 2, "both data files stay");
+    let paths = listed_paths(&folder);
+    assert_eq!(
+        paths.iter().filter(|path| path.contains("/data/")).count(),
+        2,
+        "{paths:?}"
+    );
+    assert_eq!(
+        paths.iter().filter(|path| path.ends_with(".avro")).count(),
+        2,
+        "the manifest and the list stay: {paths:?}"
+    );
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version(), version + 1);
+    assert_eq!(
+        collect(reopened.scan(None).unwrap())
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        [1, 2],
+        "the rows the published document names are read"
+    );
+}
+
+#[test]
+fn a_refused_document_write_rolls_the_commit_back_with_its_attempt() {
+    let filesystem = Arc::new(RefusedDocumentWrite::default());
+    let folder =
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let schema = trade_schema();
+    let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+    let mut table = Table::create(folder.clone(), FormatVersion::V2, schema, spec).unwrap();
+    let version = table.metadata_version();
+
+    filesystem.arm();
+    let batch = trades(
+        &[1, 2],
+        &[Some("AAPL"), Some("MSFT")],
+        &[Some("XNAS"), Some("XNYS")],
+    );
+    let error = table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap_err();
+    assert!(error.to_string().contains("refused"), "{error}");
+
+    // Nothing durable named the commit's files, so all of them went - the
+    // data files, the manifest, the list - and so did the attempt that
+    // named them, which left in place would have claimed the version for
+    // good.
+    assert_eq!(table.metadata_version(), version);
+    assert!(table.current_snapshot().is_none());
+    let paths = listed_paths(&folder);
+    assert!(
+        paths.iter().all(|path| !path.contains("/data/")),
+        "{paths:?}"
+    );
+    assert!(
+        paths.iter().all(|path| !path.ends_with(".avro")),
+        "{paths:?}"
+    );
+    assert!(
+        paths.iter().all(|path| !path.contains("/00002-")),
+        "the attempt is removed with the files it named: {paths:?}"
+    );
+
+    // The version was not claimed: the next commit takes it.
+    let batch = trades(&[3], &[Some("NVDA")], &[Some("XNAS")]);
+    table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap();
+    assert_eq!(table.metadata_version(), version + 1);
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(reopened.metadata_version(), version + 1);
+    assert_eq!(
+        collect(reopened.scan(None).unwrap())
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        [3]
+    );
+}
+
+#[test]
+fn a_commit_beaten_on_write_withdraws_the_list_of_the_attempt_it_replaces() {
+    let filesystem = Arc::new(MetadataOnlyWinner::default());
+    let folder =
+        crate::holder::fs::Folder::from_path(filesystem.clone(), "bucket/table", None).unwrap();
+    let mut table = Table::create(
+        folder.clone(),
+        FormatVersion::V2,
+        trade_schema(),
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    table.set_options(
+        IcebergOptions::new()
+            .with_commit_retries(1)
+            .with_commit_min_backoff_ms(0)
+            .with_commit_max_backoff_ms(0),
+    );
+
+    filesystem.arm();
+    let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+    table
+        .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+        .unwrap();
+    assert_eq!(
+        table.metadata_version(),
+        3,
+        "the rebase adopted the winner's version and committed after it"
+    );
+    assert_eq!(table.metadata().property("winner"), Some("visible"));
+
+    // The first attempt's list was withdrawn when the retry published its
+    // own: one removal, and the metadata directory holds one list - the one
+    // the current snapshot names - so a successful commit leaves nothing
+    // the metadata does not name either.
+    let removed: Vec<String> = filesystem
+        .removed()
+        .into_iter()
+        .filter(|path| path.contains("/metadata/snap-"))
+        .collect();
+    assert_eq!(removed.len(), 1, "one list is removed: {removed:?}");
+    let lists: Vec<String> = listed_paths(&folder)
+        .into_iter()
+        .filter(|path| path.contains("/metadata/snap-"))
+        .collect();
+    assert_eq!(lists.len(), 1, "one list is left: {lists:?}");
+    let named = table.current_snapshot().unwrap().manifest_list.clone();
+    let named = named.rsplit('/').next().unwrap();
+    assert!(
+        lists[0].ends_with(named),
+        "the list left is the one the snapshot names: {lists:?} vs {named}"
+    );
+    assert!(
+        !removed[0].ends_with(named),
+        "the list removed is the other one: {removed:?}"
+    );
+    let reopened = Table::open(folder).unwrap();
+    assert_eq!(
+        collect(reopened.scan(None).unwrap())
+            .iter()
+            .map(|row| row.0)
+            .collect::<Vec<_>>(),
+        [1]
+    );
+}
+
+#[test]
 fn a_same_version_publication_conflict_rebases_through_the_retry_gate() {
     let filesystem = Arc::new(SameVersionWinner::default());
     let folder =
@@ -4526,8 +5032,9 @@ fn a_tiny_write_target_rolls_one_append_into_multiple_data_files() {
     let files = table.data_files().unwrap();
     assert_eq!(files.len(), 4, "one whole file plus three rolled ones");
 
-    // One running index numbers the commit's files, whatever partition each
-    // lands in: the rolled commit wrote 00000, 00001, and 00002.
+    // One running index numbers the files of a partition group - the whole
+    // commit, on an unpartitioned table: the rolled commit wrote 00000,
+    // 00001, and 00002.
     let snapshot = table.current_snapshot().unwrap().snapshot_id;
     let mut indices: Vec<String> = files
         .iter()
@@ -6327,4 +6834,1240 @@ fn a_uuid_column_keeps_its_type_through_a_round_trip() {
     let rendered = String::from_utf8(crate::text::json::into_bytes(&emitted).unwrap()).unwrap();
     assert!(rendered.contains(r#""type":"uuid""#), "{rendered}");
     assert!(rendered.contains(r#""type":"fixed[16]""#), "{rendered}");
+}
+
+/// Partition isolation, default keys, sorted files, parallel writes, and the
+/// v3 types: the private half of the contract `docs/media/iceberg/write.md`
+/// states, pinned where the plan, the grouping, and the data-file handles
+/// are visible.
+mod isolation {
+    use std::sync::{Arc, Mutex};
+
+    use arrow_array::{
+        Array, ArrayRef, BinaryArray, Int64Array, NullArray, RecordBatch, StructArray,
+        TimestampMicrosecondArray,
+    };
+
+    use super::{
+        FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, Transform,
+        assign_field_ids, collect, root, schema_from_json, schema_into_json, trade_schema, trades,
+    };
+    use crate::holder::local::Folder;
+    use crate::holder::{Buffer, Holder};
+    use crate::media::{IORecordOptions, RecordOptions};
+    use crate::{DataType, Field, IOBase, IOMedia, Scalar, TimeUnit, Timezone};
+
+    /// A table folder that records every relative path resolved through it.
+    ///
+    /// The table reaches every data file, manifest, and metadata document
+    /// with one `child_by_path` on its root, so the paths seen here are the
+    /// files a read opened: a merge into one partition must resolve no data
+    /// file of another. `fail_after` turns the Nth partition writer's own root
+    /// into a handle no file can be written through, which is how a worker
+    /// failure is made deterministic.
+    struct Recording {
+        inner: Folder,
+        seen: Arc<Mutex<Vec<String>>>,
+        roots: Arc<Mutex<usize>>,
+        fail_after: Option<usize>,
+    }
+
+    impl Recording {
+        fn new(path: &std::path::Path) -> Self {
+            Self {
+                inner: Folder::new(path).unwrap(),
+                seen: Arc::new(Mutex::new(Vec::new())),
+                roots: Arc::new(Mutex::new(0)),
+                fail_after: None,
+            }
+        }
+
+        /// The `data/` paths resolved since the last reset, sorted.
+        fn data_files(&self) -> Vec<String> {
+            let mut seen: Vec<String> = self
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|path| path.starts_with("data/") && !path.ends_with('/'))
+                .cloned()
+                .collect();
+            seen.sort();
+            seen.dedup();
+            seen
+        }
+
+        fn reset(&self) {
+            self.seen.lock().unwrap().clear();
+        }
+    }
+
+    impl std::fmt::Debug for Recording {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.debug_struct("Recording").finish_non_exhaustive()
+        }
+    }
+
+    impl IOMedia for Recording {
+        crate::impl_default_iomedia!();
+    }
+
+    impl IOBase for Recording {
+        crate::delegate_iobase!(inner: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+            pwrite, size, capacity, reserve, truncate, url, bound_location, mtime, media_type,
+            set_media_type, flush, open, opened, close, parent, ls, kind, clear, remove,
+            is_atomic, is_tabular, is_io);
+
+        fn child_by_path(&self, path: &str) -> crate::Result<Holder> {
+            if path == "." {
+                let mut roots = self.roots.lock().unwrap();
+                *roots += 1;
+                if self.fail_after.is_some_and(|limit| *roots > limit) {
+                    // A byte buffer has no children, so the writer that gets
+                    // this root fails at its first data file.
+                    return Ok(Holder::Buffer(Buffer::new()));
+                }
+            }
+            self.seen.lock().unwrap().push(path.to_owned());
+            self.inner.child_by_path(path)
+        }
+    }
+
+    /// One row per venue, one commit per row: three partitions, three files.
+    fn venues(label: &str) -> (std::path::PathBuf, Table<Folder>) {
+        let path = root(label);
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        for (id, symbol, venue) in [
+            (1_i64, "AAPL", "XNAS"),
+            (2, "MSFT", "XNYS"),
+            (3, "VOD", "XLON"),
+        ] {
+            let batch = trades(&[id], &[Some(symbol)], &[Some(venue)]);
+            table
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+        (path, table)
+    }
+
+    fn file_paths(table: &Table<impl IOBase>) -> Vec<String> {
+        let mut paths: Vec<String> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| file.file_path.to_string())
+            .collect();
+        paths.sort();
+        paths
+    }
+
+    fn rows_of(reader: crate::arrow::BatchReader) -> Vec<(i64, Option<String>, Option<String>)> {
+        let mut rows = collect(reader);
+        rows.sort();
+        rows
+    }
+
+    /// The `id` column of every batch, in the order the scan yields rows.
+    fn ids_in_order(reader: crate::arrow::BatchReader) -> Vec<i64> {
+        let mut ids = Vec::new();
+        for batch in reader {
+            let batch = batch.unwrap();
+            let column = batch
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            ids.extend(column.values().iter().copied());
+        }
+        ids
+    }
+
+    #[test]
+    fn a_range_and_a_membership_prune_exactly_as_an_equality_does() {
+        let (_path, table) = venues("isolation-expressions");
+
+        // The reference: one venue by equality skips two manifests outright.
+        let equal = table.plan_matching("venue = 'XNAS'").unwrap();
+        assert_eq!(equal.tasks.len(), 1);
+        assert_eq!(equal.manifests_skipped(), 2);
+        assert_eq!(equal.files_skipped(), 0);
+
+        // Two venues by membership: two manifests read, one skipped.
+        let members = table.plan_matching("venue in ('XNAS', 'XLON')").unwrap();
+        assert_eq!(members.tasks.len(), 2);
+        assert_eq!(members.manifests_skipped(), 1);
+        assert_eq!(members.files_skipped(), 0);
+
+        // A range over the text: XLON < XNAS < XNYS, so the range keeps two.
+        let ranged = table
+            .plan_matching("venue between 'XLON' and 'XNAS'")
+            .unwrap();
+        assert_eq!(ranged.tasks.len(), 2);
+        assert_eq!(ranged.manifests_skipped(), 1);
+
+        // A null test prunes too: no partition is null, so nothing is read.
+        let nulls = table.plan_matching("venue is null").unwrap();
+        assert_eq!(nulls.tasks.len(), 0);
+        assert_eq!(nulls.manifests_skipped(), 3);
+    }
+
+    #[test]
+    fn a_time_partition_range_skips_manifests_like_the_equality_form() {
+        let path = root("isolation-timepartition");
+        let mut schema = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::DateTime64 {
+                unit: TimeUnit::Microsecond,
+                timezone: Timezone::UTC,
+            }
+            .required_field("timepartition"),
+        ])
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec::identity(1, &schema, &["timepartition"]).unwrap();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+        let arrow = schema.into_arrow_schema().unwrap();
+        let hour = 3_600_000_000_i64;
+        // Three hourly partitions from 2024-01-01T00:00Z, one commit each.
+        for index in 0..3_i64 {
+            let batch = RecordBatch::try_new(
+                Arc::clone(&arrow),
+                vec![
+                    Arc::new(Int64Array::from(vec![index])),
+                    Arc::new(
+                        TimestampMicrosecondArray::from(vec![1_704_067_200_000_000 + index * hour])
+                            .with_timezone("UTC"),
+                    ),
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+                .unwrap();
+        }
+
+        let equal = table
+            .plan_matching("timepartition = '2024-01-01T01:00:00Z'")
+            .unwrap();
+        assert_eq!(equal.tasks.len(), 1);
+        assert_eq!(equal.manifests_skipped(), 2);
+
+        let ranged = table
+            .plan_matching(
+                "timepartition between '2024-01-01T01:00:00Z' and '2024-01-01T01:59:59Z'",
+            )
+            .unwrap();
+        assert_eq!(ranged.tasks.len(), 1, "{ranged:?}");
+        assert_eq!(ranged.manifests_skipped(), 2);
+
+        let wide = table
+            .plan_matching("timepartition >= '2024-01-01T01:00:00Z'")
+            .unwrap();
+        assert_eq!(wide.tasks.len(), 2);
+        assert_eq!(wide.manifests_skipped(), 1);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_record_read_pushes_the_whole_where_into_the_plan_and_opens_only_survivors() {
+        let (path, _) = venues("isolation-record-read");
+        let recording = Recording::new(&path);
+        let table = Table::open(recording).unwrap();
+        let options = IOMedia::record_options(&table)
+            .unwrap()
+            .with_filter("venue in ('XNAS', 'XLON') and id >= 1")
+            .unwrap();
+
+        table.root().reset();
+        let rows = rows_of(IOMedia::read_arrow_reader(&table, &options).unwrap());
+        assert_eq!(
+            rows,
+            vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (3, Some("VOD".to_owned()), Some("XLON".to_owned())),
+            ]
+        );
+        let opened = table.root().data_files();
+        assert_eq!(opened.len(), 2, "{opened:?}");
+        assert!(
+            opened.iter().all(|file| !file.contains("venue=XNYS")),
+            "{opened:?}"
+        );
+
+        // The select narrows what each file decodes: only `id` and the
+        // filter's own `venue` are read, and the reader reports `id` alone.
+        let narrowed = IOMedia::record_options(&table)
+            .unwrap()
+            .with_filter("venue = 'XLON'")
+            .unwrap()
+            .with_select("id")
+            .unwrap();
+        let mut reader = IOMedia::read_arrow_reader(&table, &narrowed).unwrap();
+        let batch = reader.next().unwrap().unwrap();
+        assert_eq!(batch.schema().fields().len(), 1);
+        assert_eq!(batch.schema().field(0).name(), "id");
+        assert_eq!(batch.num_rows(), 1);
+
+        // A where over a select alias runs after the projection, so the
+        // scan is unfiltered and the alias still answers.
+        let aliased = IOMedia::record_options(&table)
+            .unwrap()
+            .with_select("id as trade")
+            .unwrap()
+            .with_filter("trade = 2")
+            .unwrap();
+        let rows: usize = IOMedia::read_arrow_reader(&table, &aliased)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(rows, 1);
+
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_merge_into_one_partition_reads_no_other_partition_and_carries_their_files() {
+        let (path, _) = venues("isolation-merge");
+        let mut table = Table::open(Recording::new(&path)).unwrap();
+        let before = file_paths(&table);
+        assert_eq!(before.len(), 3);
+
+        table.root().reset();
+        let batch = trades(&[1, 4], &[Some("AAPL.O"), Some("NVDA")], &[Some("XNAS"); 2]);
+        table
+            .commit_merge(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &crate::Selector::from_columns(["id"]),
+                true,
+            )
+            .unwrap();
+
+        // The only data file resolved on the way was XNAS's own.
+        let opened = table.root().data_files();
+        assert_eq!(opened.len(), 1, "{opened:?}");
+        assert!(opened[0].contains("venue=XNAS"), "{opened:?}");
+
+        // The other partitions' files are carried under their exact paths.
+        let after = file_paths(&table);
+        let carried: Vec<&String> = before.iter().filter(|p| after.contains(p)).collect();
+        assert_eq!(carried.len(), 2, "before {before:?} after {after:?}");
+        assert!(carried.iter().all(|p| !p.contains("venue=XNAS")));
+        assert_eq!(after.len(), 3);
+
+        // 1 updated in place, 4 appended, 2 and 3 untouched.
+        assert_eq!(
+            rows_of(table.scan(None).unwrap()),
+            vec![
+                (1, Some("AAPL.O".to_owned()), Some("XNAS".to_owned())),
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (3, Some("VOD".to_owned()), Some("XLON".to_owned())),
+                (4, Some("NVDA".to_owned()), Some("XNAS".to_owned())),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn the_partition_columns_lead_the_key_so_a_moved_row_is_a_new_row() {
+        let (path, mut table) = venues("isolation-moved-row");
+        // Key = (venue, id): id 2 under XLON is not id 2 under XNYS.
+        let batch = trades(&[2], &[Some("MSFT.L")], &[Some("XLON")]);
+        table
+            .commit_merge(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &crate::Selector::from_columns(["id"]),
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            rows_of(table.scan(None).unwrap()),
+            vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (2, Some("MSFT.L".to_owned()), Some("XLON".to_owned())),
+                (3, Some("VOD".to_owned()), Some("XLON".to_owned())),
+            ]
+        );
+        // Naming the partition column in the key changes nothing: it is
+        // there already, once.
+        let batch = trades(&[2], &[Some("MSFT.LN")], &[Some("XLON")]);
+        table
+            .commit_merge(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &crate::Selector::from_columns(["venue", "id"]),
+                true,
+            )
+            .unwrap();
+        let rows = rows_of(table.scan(None).unwrap());
+        assert_eq!(rows.len(), 4);
+        assert!(rows.contains(&(2, Some("MSFT.LN".to_owned()), Some("XLON".to_owned()))));
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_keyless_merge_replaces_the_partitions_the_rows_fall_in() {
+        let (path, mut table) = venues("isolation-keyless");
+        let before = file_paths(&table);
+        let batch = trades(&[7, 8], &[Some("BP"), Some("HSBA")], &[Some("XLON"); 2]);
+        table
+            .commit_merge(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &crate::Selector::all(),
+                true,
+            )
+            .unwrap();
+        let after = file_paths(&table);
+        assert_eq!(before.iter().filter(|p| after.contains(p)).count(), 2);
+        assert_eq!(
+            rows_of(table.scan(None).unwrap()),
+            vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (7, Some("BP".to_owned()), Some("XLON".to_owned())),
+                (8, Some("HSBA".to_owned()), Some("XLON".to_owned())),
+            ]
+        );
+
+        // An unpartitioned table has no key at all without one named.
+        let flat = root("isolation-keyless-flat");
+        let mut flat_table = Table::create(
+            Folder::new(&flat).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        let message = flat_table
+            .commit_merge(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &crate::Selector::all(),
+                true,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(message.contains("empty match key"), "{message}");
+        assert!(flat_table.current_snapshot().is_none());
+        let _ = std::fs::remove_dir_all(&path);
+        let _ = std::fs::remove_dir_all(&flat);
+    }
+
+    #[test]
+    fn duplicate_keys_in_one_write_keep_the_last_row() {
+        let (path, mut table) = venues("isolation-duplicates");
+        let batch = trades(
+            &[9, 9, 9],
+            &[Some("first"), Some("second"), Some("last")],
+            &[Some("XNAS"); 3],
+        );
+        table
+            .commit_merge(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &crate::Selector::from_columns(["id"]),
+                true,
+            )
+            .unwrap();
+        let rows = rows_of(table.scan_where(&[("venue", "XNAS")], None).unwrap());
+        assert_eq!(
+            rows,
+            vec![
+                (1, Some("AAPL".to_owned()), Some("XNAS".to_owned())),
+                (9, Some("last".to_owned()), Some("XNAS".to_owned())),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn files_are_sorted_by_the_default_order_and_their_bounds_are_monotone() {
+        let path = root("isolation-sorted");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+        // The default order is the partition's source column.
+        let order = table.metadata().default_sort_order().unwrap();
+        assert_eq!(order.order_id, 1);
+        assert_eq!(order.fields.len(), 1);
+        assert_eq!(order.fields[0].source_id, 3);
+        assert_eq!(order.fields[0].transform, Transform::Identity);
+        assert_eq!(order.fields[0].direction, "asc");
+        assert_eq!(order.fields[0].null_order, "nulls-first");
+        assert_eq!(table.metadata().default_sort_order_id(), 1);
+
+        // Written unsorted, in one commit, under a tiny target: one file per
+        // row, each file's rows in venue order and the files monotone.
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.target-file-size-bytes", "1")?;
+                Ok(())
+            })
+            .unwrap();
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("d"), Some("c"), Some("b"), Some("a")],
+            &[Some("XNAS"); 4],
+        );
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        let files = table.data_files().unwrap();
+        assert_eq!(files.len(), 4);
+        for (file, _) in &files {
+            assert_eq!(file.sort_order_id, Some(1));
+        }
+        // Explicit: a second commit sorted by symbol lays symbols out
+        // ascending across the files it writes.
+        let sorted = root("isolation-sorted-explicit");
+        let mut by_symbol = Table::create_sorted(
+            Folder::new(&sorted).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+            SortOrder {
+                order_id: 1,
+                fields: vec![SortField {
+                    source_id: 2,
+                    transform: Transform::Identity,
+                    direction: "asc".into(),
+                    null_order: "nulls-last".into(),
+                }],
+            },
+        )
+        .unwrap();
+        by_symbol
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property("write.target-file-size-bytes", "1")?;
+                Ok(())
+            })
+            .unwrap();
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("d"), Some("c"), Some("b"), Some("a")],
+            &[Some("XNAS"); 4],
+        );
+        by_symbol
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        let mut bounds: Vec<(String, String)> = by_symbol
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| {
+                let lower = file
+                    .lower_bounds
+                    .iter()
+                    .find_map(|(id, bytes)| {
+                        (*id == 2).then(|| String::from_utf8(bytes.clone()).unwrap())
+                    })
+                    .unwrap();
+                let upper = file
+                    .upper_bounds
+                    .iter()
+                    .find_map(|(id, bytes)| {
+                        (*id == 2).then(|| String::from_utf8(bytes.clone()).unwrap())
+                    })
+                    .unwrap();
+                (file.file_path.to_string(), format!("{lower}{upper}"))
+            })
+            .map(|(name, bounds)| (name.rsplit('/').next().unwrap().to_owned(), bounds))
+            .collect();
+        // File 00000 holds the smallest symbol, 00003 the largest.
+        bounds.sort();
+        let laid_out: Vec<&str> = bounds.iter().map(|(_, bounds)| bounds.as_str()).collect();
+        assert_eq!(laid_out, ["aa", "bb", "cc", "dd"]);
+        // And a scan returns the rows in file order: ids 4, 3, 2, 1 carry
+        // symbols a, b, c, d.
+        assert_eq!(ids_in_order(by_symbol.scan(None).unwrap()), [4, 3, 2, 1]);
+
+        // The order round-trips through the metadata document and the
+        // official validation of a reopened table.
+        let document = by_symbol.metadata().clone().into_json().unwrap();
+        let reread = super::TableMetadata::from_json(&document).unwrap();
+        assert_eq!(reread.default_sort_order_id(), 1);
+        assert_eq!(reread.default_sort_order().unwrap().fields[0].source_id, 2);
+        let reopened = Table::open(Folder::new(&sorted).unwrap()).unwrap();
+        assert_eq!(reopened.metadata().default_sort_order_id(), 1);
+        reopened.metadata().validate().unwrap();
+
+        let _ = std::fs::remove_dir_all(&path);
+        let _ = std::fs::remove_dir_all(&sorted);
+    }
+
+    #[test]
+    fn an_explicitly_unsorted_table_keeps_the_order_the_rows_arrived_in() {
+        let path = root("isolation-unsorted");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table = Table::create_sorted(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema,
+            spec,
+            SortOrder::unsorted(),
+        )
+        .unwrap();
+        assert_eq!(table.metadata().default_sort_order_id(), 0);
+        assert_eq!(table.metadata().sort_orders().len(), 1);
+        let batch = trades(
+            &[3, 1, 2],
+            &[Some("c"), Some("a"), Some("b")],
+            &[Some("XNAS"); 3],
+        );
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+        assert_eq!(ids_in_order(table.scan(None).unwrap()), [3, 1, 2]);
+        assert_eq!(table.data_files().unwrap()[0].0.sort_order_id, None);
+        // An unpartitioned table's default is the unsorted order too.
+        let flat = root("isolation-unsorted-flat");
+        let flat_table = Table::create(
+            Folder::new(&flat).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        assert_eq!(flat_table.metadata().default_sort_order_id(), 0);
+        let _ = std::fs::remove_dir_all(&path);
+        let _ = std::fs::remove_dir_all(&flat);
+    }
+
+    #[test]
+    fn write_parallelism_resolves_like_every_option_and_defaults_to_the_read_parallelism() {
+        let mut options = IcebergOptions::new();
+        assert_eq!(options.write_parallelism(), options.read_parallelism());
+        assert_eq!(options.write_parallelism_option(), None);
+        options.set_read_parallelism(3).unwrap();
+        assert_eq!(options.write_parallelism(), 3);
+        options.set_write_parallelism(5).unwrap();
+        assert_eq!(options.write_parallelism(), 5);
+        assert_eq!(options.write_parallelism_option(), Some(5));
+        let refused = options.set_write_parallelism(0).unwrap_err().to_string();
+        assert!(refused.contains("write.parallelism"), "{refused}");
+        assert_eq!(options.write_parallelism(), 5, "a refusal changes nothing");
+        assert_eq!(
+            IcebergOptions::new()
+                .try_with_write_parallelism(2)
+                .unwrap()
+                .write_parallelism(),
+            2
+        );
+
+        let path = root("isolation-write-parallelism");
+        let mut table = Table::create(
+            Folder::new(&path).unwrap(),
+            FormatVersion::V2,
+            trade_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property(IcebergOptions::READ_PARALLELISM_KEY, "2")?;
+                metadata.set_property(IcebergOptions::WRITE_PARALLELISM_KEY, "6")?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(table.options().unwrap().write_parallelism(), 6);
+        table
+            .commit_metadata_changes(|metadata| {
+                let _ = metadata.remove_property(IcebergOptions::WRITE_PARALLELISM_KEY);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            table.options().unwrap().write_parallelism(),
+            2,
+            "absent: the resolved read parallelism"
+        );
+        table
+            .commit_metadata_changes(|metadata| {
+                metadata.set_property(IcebergOptions::WRITE_PARALLELISM_KEY, "zero")?;
+                Ok(())
+            })
+            .unwrap();
+        let message = table.options().unwrap_err().to_string();
+        assert!(message.contains("write.parallelism"), "{message}");
+        table.set_options(IcebergOptions::new().try_with_write_parallelism(4).unwrap());
+        assert_eq!(table.options().unwrap().write_parallelism(), 4);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn a_parallel_commit_writes_the_same_table_as_a_sequential_one_in_group_order() {
+        let batch = trades(
+            &[1, 2, 3, 4, 5, 6, 7, 8],
+            &[Some("a"); 8],
+            &[
+                Some("v1"),
+                Some("v2"),
+                Some("v3"),
+                Some("v4"),
+                Some("v5"),
+                Some("v6"),
+                Some("v7"),
+                Some("v8"),
+            ],
+        );
+        let mut layouts = Vec::new();
+        for parallelism in [1, 4] {
+            let path = root(&format!("isolation-parallel-{parallelism}"));
+            let schema = trade_schema();
+            let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+            let mut table =
+                Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec)
+                    .unwrap();
+            table.set_options(
+                IcebergOptions::new()
+                    .try_with_write_parallelism(parallelism)
+                    .unwrap(),
+            );
+            table
+                .commit_append(crate::arrow::batch_reader(batch.schema(), [batch.clone()]))
+                .unwrap();
+            // The manifest lists the files in group order: v1 first, v8 last.
+            let venues: Vec<String> = table
+                .data_files()
+                .unwrap()
+                .into_iter()
+                .map(|(file, _)| file.partition[0].as_str().unwrap().to_owned())
+                .collect();
+            assert_eq!(venues, ["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"]);
+            layouts.push(rows_of(table.scan(None).unwrap()));
+            let _ = std::fs::remove_dir_all(&path);
+        }
+        assert_eq!(layouts[0], layouts[1]);
+        assert_eq!(layouts[0].len(), 8);
+    }
+
+    #[test]
+    fn a_failing_partition_writer_fails_the_commit_before_any_metadata() {
+        let path = root("isolation-worker-failure");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        let mut recording = Recording::new(&path);
+        // The third partition group's writer gets a root it cannot write through.
+        recording.fail_after = Some(2);
+        let mut table = Table::open(recording).unwrap();
+        table.set_options(IcebergOptions::new().try_with_write_parallelism(4).unwrap());
+        let version = table.metadata_version();
+        let batch = trades(
+            &[1, 2, 3, 4],
+            &[Some("a"); 4],
+            &[Some("v1"), Some("v2"), Some("v3"), Some("v4")],
+        );
+        let error = table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("container"), "{error}");
+        assert_eq!(table.metadata_version(), version);
+        assert!(table.current_snapshot().is_none());
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version(), version);
+        assert!(reopened.current_snapshot().is_none());
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    /// A schema with an `unknown` column beside the ordinary ones.
+    fn unknown_schema() -> Field {
+        let mut schema = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Null.nullable_field("later"),
+        ])
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        schema
+    }
+
+    #[test]
+    fn unknown_is_null_in_both_directions_and_only_a_v3_table_carries_it() {
+        // Schema document -> field: `unknown` is DataType::Null and optional.
+        let document: Scalar = crate::text::json::from_utf8(
+            r#"{"type":"struct","schema-id":0,"fields":[
+                {"id":1,"name":"id","required":true,"type":"long"},
+                {"id":2,"name":"later","required":false,"type":"unknown"},
+                {"id":3,"name":"tags","required":false,"type":{"type":"list","element-id":4,"element":"unknown","element-required":false}}
+            ]}"#,
+        )
+        .unwrap();
+        let schema = schema_from_json("row", &document).unwrap();
+        assert_eq!(schema.fields()[1].dtype(), &DataType::Null);
+        assert!(schema.fields()[1].is_nullable());
+        // Field -> document: the same spelling, the placeholder never shows.
+        let written = schema_into_json(&schema).unwrap();
+        assert_eq!(written, document);
+        assert!(
+            !crate::text::json::into_utf8(&written)
+                .unwrap()
+                .contains("binary")
+        );
+
+        // A required unknown column is refused by name.
+        let mut required = DataType::from_fields([DataType::Null.required_field("never")])
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut required, 1).unwrap();
+        let message = schema_into_json(&required).unwrap_err().to_string();
+        assert!(
+            message.contains("never") && message.contains("optional"),
+            "{message}"
+        );
+
+        // A v2 table refuses the type by name; a v3 table takes it.
+        let v2 = root("isolation-unknown-v2");
+        let message = Table::create(
+            Folder::new(&v2).unwrap(),
+            FormatVersion::V2,
+            unknown_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            message.contains("later") && message.contains("unknown") && message.contains("v2"),
+            "{message}"
+        );
+
+        let v3 = root("isolation-unknown-v3");
+        let schema = unknown_schema();
+        let mut table = Table::create(
+            Folder::new(&v3).unwrap(),
+            FormatVersion::V3,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let arrow = schema.into_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])),
+                Arc::new(NullArray::new(2)),
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+
+        // The column reads back as nulls, typed as the schema says...
+        let mut reader = table.scan(None).unwrap();
+        assert_eq!(
+            reader.schema().field(1).data_type(),
+            &arrow_schema::DataType::Null
+        );
+        let read = reader.next().unwrap().unwrap();
+        assert_eq!(read.num_rows(), 2);
+        assert_eq!(read.column(1).logical_null_count(), 2);
+        // ...and the data file never stored it, as the spec requires.
+        let (file, _) = table.data_files().unwrap().remove(0);
+        let handle = table.child_at(&file.file_path).unwrap();
+        let stored = crate::media::parquet::read_field(
+            &handle,
+            &crate::media::parquet::ParquetOptions::new(),
+        )
+        .unwrap();
+        assert_eq!(stored.field_len(), 1);
+        assert_eq!(stored.fields()[0].name(), "id");
+        assert!(file.value_counts.iter().all(|(id, _)| *id != 2));
+
+        // The metadata document spells it and reads back through the
+        // official validation of a reopened table.
+        let reopened = Table::open(Folder::new(&v3).unwrap()).unwrap();
+        assert_eq!(
+            reopened.schema().unwrap().fields()[1].dtype(),
+            &DataType::Null
+        );
+        reopened.metadata().validate().unwrap();
+        let text = crate::text::json::into_utf8(&reopened.metadata().clone().into_json().unwrap())
+            .unwrap();
+        assert!(text.contains("\"unknown\""), "{text}");
+
+        let _ = std::fs::remove_dir_all(&v2);
+        let _ = std::fs::remove_dir_all(&v3);
+    }
+
+    #[test]
+    fn an_unknown_column_promotes_to_any_type_in_v3() {
+        let v3 = root("isolation-unknown-promotion");
+        let mut table = Table::create(
+            Folder::new(&v3).unwrap(),
+            FormatVersion::V3,
+            unknown_schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut evolved = unknown_schema();
+        let mut later = DataType::Int64.nullable_field("later");
+        later.set_parquet_field_id(2);
+        evolved.set_field("later", later).unwrap();
+        table.evolve_schema(evolved).unwrap();
+        assert_eq!(
+            table.schema().unwrap().fields()[1].dtype(),
+            &DataType::Int64
+        );
+        let _ = std::fs::remove_dir_all(&v3);
+    }
+
+    /// One variant value: the v1 metadata of an empty dictionary and a null.
+    fn variant_column(rows: usize, field: &arrow_schema::Field) -> ArrayRef {
+        let arrow_schema::DataType::Struct(children) = field.data_type() else {
+            panic!("a variant lays out as a struct, got {}", field.data_type());
+        };
+        let metadata = BinaryArray::from_iter_values((0..rows).map(|_| [0x01_u8, 0x00, 0x00]));
+        let value =
+            BinaryArray::from_iter_values((0..rows).map(|row| vec![u8::try_from(row).unwrap()]));
+        Arc::new(
+            StructArray::try_new(
+                children.clone(),
+                vec![Arc::new(metadata), Arc::new(value)],
+                None,
+            )
+            .unwrap(),
+        )
+    }
+
+    #[test]
+    fn variant_is_the_semi_structured_datatype_in_both_directions_and_rides_a_data_file() {
+        use super::super::PrimitiveType;
+
+        assert_eq!(
+            PrimitiveType::from_str("variant").unwrap(),
+            PrimitiveType::Variant
+        );
+        assert_eq!(PrimitiveType::Variant.to_string(), "variant");
+        assert_eq!(
+            PrimitiveType::Variant.into_dtype().unwrap(),
+            DataType::Variant
+        );
+        assert_eq!(
+            PrimitiveType::from_dtype(&DataType::Variant).unwrap(),
+            PrimitiveType::Variant
+        );
+        // Not the same thing as unknown: one is a type-per-value, the other
+        // the absence of a type.
+        assert_ne!(
+            PrimitiveType::Variant.into_dtype().unwrap(),
+            PrimitiveType::Unknown.into_dtype().unwrap()
+        );
+
+        let document: Scalar = crate::text::json::from_utf8(
+            r#"{"type":"struct","schema-id":0,"fields":[
+                {"id":1,"name":"id","required":true,"type":"long"},
+                {"id":2,"name":"payload","required":false,"type":"variant"}
+            ]}"#,
+        )
+        .unwrap();
+        let schema = schema_from_json("row", &document).unwrap();
+        assert_eq!(schema.fields()[1].dtype(), &DataType::Variant);
+        assert_eq!(schema_into_json(&schema).unwrap(), document);
+
+        let v2 = root("isolation-variant-v2");
+        let message = Table::create(
+            Folder::new(&v2).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            message.contains("payload") && message.contains("variant") && message.contains("v2"),
+            "{message}"
+        );
+
+        let v3 = root("isolation-variant-v3");
+        let mut table = Table::create(
+            Folder::new(&v3).unwrap(),
+            FormatVersion::V3,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let arrow = schema.into_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            Arc::clone(&arrow),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])),
+                variant_column(2, arrow.field(1)),
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch.clone()]))
+            .unwrap();
+        let mut reader = table.scan(None).unwrap();
+        let read = reader.next().unwrap().unwrap();
+        assert_eq!(read, batch);
+        assert_eq!(
+            reader
+                .schema()
+                .field(1)
+                .metadata()
+                .get(arrow_schema::extension::EXTENSION_TYPE_NAME_KEY)
+                .map(String::as_str),
+            Some(crate::types::VARIANT_EXTENSION_NAME)
+        );
+        let reopened = Table::open(Folder::new(&v3).unwrap()).unwrap();
+        assert_eq!(
+            reopened.schema().unwrap().fields()[1].dtype(),
+            &DataType::Variant
+        );
+        reopened.metadata().validate().unwrap();
+
+        let _ = std::fs::remove_dir_all(&v2);
+        let _ = std::fs::remove_dir_all(&v3);
+    }
+
+    #[test]
+    fn the_record_surface_keys_a_merge_by_the_partition_and_the_options_key() {
+        let (path, _) = venues("isolation-record-merge");
+        let mut table = Table::open(Folder::new(&path).unwrap()).unwrap();
+        let options: RecordOptions = IOMedia::record_options(&table)
+            .unwrap()
+            .with_field(trade_schema());
+        // No key: the XNAS partition is replaced, the others carried.
+        let batch = trades(&[5], &[Some("TSLA")], &[Some("XNAS")]);
+        table
+            .merge_arrow_reader(
+                crate::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        assert_eq!(
+            rows_of(table.scan(None).unwrap()),
+            vec![
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (3, Some("VOD".to_owned()), Some("XLON".to_owned())),
+                (5, Some("TSLA".to_owned()), Some("XNAS".to_owned())),
+            ]
+        );
+        // With a key: an upsert within the partition.
+        let keyed = options.with_merge_by("id").unwrap();
+        let batch = trades(&[5, 6], &[Some("TSLA.O"), Some("AMD")], &[Some("XNAS"); 2]);
+        table
+            .merge_arrow_reader(crate::arrow::batch_reader(batch.schema(), [batch]), &keyed)
+            .unwrap();
+        assert_eq!(
+            rows_of(table.scan(None).unwrap()),
+            vec![
+                (2, Some("MSFT".to_owned()), Some("XNYS".to_owned())),
+                (3, Some("VOD".to_owned()), Some("XLON".to_owned())),
+                (5, Some("TSLA.O".to_owned()), Some("XNAS".to_owned())),
+                (6, Some("AMD".to_owned()), Some("XNAS".to_owned())),
+            ]
+        );
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}
+
+/// The staging of one commit: a transaction over the files it writes.
+///
+/// `Staging` is private to the module, so its drop, rollback and default
+/// rules are pinned here; what a staged commit costs over a store is
+/// pinned in `holder::object::tests::accounting`.
+mod staging_transaction {
+    use std::path::{Path, PathBuf};
+
+    use super::super::WriteStaging;
+    use super::super::staging::Staging;
+    use super::{FormatVersion, IcebergOptions, PartitionSpec, Table, root, trade_schema, trades};
+    use crate::holder::Holder;
+    use crate::holder::local::Folder;
+    use crate::{IOBase, MediaType, MimeType, Url};
+
+    fn staging_folder(label: &str) -> (PathBuf, WriteStaging) {
+        let path = root(label);
+        let staging = WriteStaging::Folder(Url::from_path(&path).unwrap());
+        (path, staging)
+    }
+
+    fn is_empty_dir(path: &Path) -> bool {
+        !path.exists() || std::fs::read_dir(path).unwrap().next().is_none()
+    }
+
+    /// Every regular file under `path`, at any depth.
+    fn files_under(path: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries {
+                let entry = entry.unwrap().path();
+                if entry.is_dir() {
+                    pending.push(entry);
+                } else {
+                    files.push(entry);
+                }
+            }
+        }
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn staging_is_off_for_a_local_root_and_the_temporary_folder_for_a_remote_one() {
+        assert!(
+            Staging::begin(Some(&WriteStaging::Off), true, 1)
+                .unwrap()
+                .directory()
+                .is_none()
+        );
+        assert!(
+            Staging::begin(None, false, 1)
+                .unwrap()
+                .directory()
+                .is_none()
+        );
+        let remote = Staging::begin(None, true, 1).unwrap();
+        let directory = remote.directory().unwrap().to_path_buf();
+        assert!(directory.starts_with(Folder::temporary().unwrap().path().unwrap()));
+        assert!(
+            directory
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("yggdryl-iceberg-1-"),
+            "{}",
+            directory.display()
+        );
+        assert!(
+            !directory.exists(),
+            "nothing is created until a file is staged"
+        );
+    }
+
+    #[test]
+    fn a_staging_directory_is_the_commits_own_and_goes_when_the_commit_ends() {
+        let (base, staging) = staging_folder("staging-drop");
+        let table_path = root("staging-drop-table");
+        let root_handle = Holder::folder(&table_path).unwrap();
+        let media = MediaType::new(MimeType::FILE);
+
+        // Two commits of one snapshot id - a retry, a concurrent writer -
+        // stage apart, and neither can see the other's files.
+        let first = Staging::begin(Some(&staging), false, 7).unwrap();
+        let second = Staging::begin(Some(&staging), false, 7).unwrap();
+        let first_dir = first.directory().unwrap().to_path_buf();
+        let second_dir = second.directory().unwrap().to_path_buf();
+        assert_ne!(first_dir, second_dir);
+        assert!(first_dir.starts_with(&base) && second_dir.starts_with(&base));
+
+        let ((), size) = first
+            .publish(&root_handle, "data/venue=XNAS/part.bin", &media, |handle| {
+                handle.write_all_bytes(b"PAR1")
+            })
+            .unwrap();
+        assert_eq!(size, 4);
+        // The staged file went out and is already gone; the directory is
+        // the commit's until the commit ends; the other commit sees nothing.
+        assert!(first_dir.exists());
+        assert!(files_under(&first_dir).is_empty());
+        assert!(!second_dir.exists());
+        let published = table_path.join("data").join("venue=XNAS").join("part.bin");
+        assert_eq!(std::fs::read(&published).unwrap(), b"PAR1");
+
+        // Dropping a staging that never finished rolls its published file
+        // back and removes its directory: a failed commit leaves nothing.
+        drop(first);
+        assert!(!first_dir.exists());
+        assert!(!published.exists(), "the published file is removed again");
+
+        // A committed staging keeps what it published and removes only the
+        // directory, when it drops.
+        let third = Staging::begin(Some(&staging), false, 8).unwrap();
+        let third_dir = third.directory().unwrap().to_path_buf();
+        third
+            .publish(&root_handle, "data/venue=XNYS/part.bin", &media, |handle| {
+                handle.write_all_bytes(b"PAR1")
+            })
+            .unwrap();
+        third.commit();
+        drop(third);
+        assert!(!third_dir.exists());
+        assert_eq!(
+            std::fs::read(table_path.join("data").join("venue=XNYS").join("part.bin")).unwrap(),
+            b"PAR1"
+        );
+        drop(second);
+        assert!(is_empty_dir(&base));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&table_path);
+    }
+
+    #[test]
+    fn a_failed_publication_rolls_the_commit_back_and_leaves_no_staged_file() {
+        let (base, staging) = staging_folder("staging-rollback");
+        let path = root("staging-rollback-table");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        // A regular file where the XNAS partition directory belongs: that
+        // partition's file is staged, and its publication is what fails.
+        std::fs::create_dir_all(path.join("data")).unwrap();
+        let blocker = path.join("data").join("venue=XNAS");
+        std::fs::write(&blocker, b"a file where a directory would be").unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_staging(staging)
+                .unwrap()
+                .try_with_write_parallelism(1)
+                .unwrap(),
+        );
+        let version = table.metadata_version();
+
+        // XLON's file is staged and published first; XNAS's publication
+        // fails, and XNYS's is never attempted.
+        let batch = trades(
+            &[1, 2, 3],
+            &[Some("a"), Some("b"), Some("c")],
+            &[Some("XLON"), Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap_err();
+        assert_eq!(table.metadata_version(), version);
+        assert!(table.current_snapshot().is_none());
+        assert_eq!(
+            files_under(&path.join("data")),
+            [blocker],
+            "the file the commit published is removed again"
+        );
+        assert!(
+            files_under(&path.join("metadata"))
+                .iter()
+                .all(|file| !file.to_string_lossy().ends_with(".avro")),
+            "no manifest and no manifest list were published"
+        );
+        assert!(is_empty_dir(&base), "no staged file survives");
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version(), version);
+        assert!(reopened.current_snapshot().is_none());
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&path);
+    }
 }

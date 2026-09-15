@@ -2,7 +2,7 @@
 //!
 //! An explicit nonempty `code` names one chain globally. Otherwise the first
 //! identifier reaching a live chain under the effective `instuuid` supplies
-//! its code; a new chain is named `<scope UUID or ->/<first identifier>`.
+//! its code; a new chain is named `<scope hex or ->/<first identifier>`.
 //! Identifiers come from stated `altids` or the registered compiled selector,
 //! never a second tag list. Occupied keys are not stolen, and empty code opens
 //! no chain. The message's identity owner hashes the settled code into `puuid`.
@@ -17,7 +17,7 @@
 //! every later join carries it, even when late, suppressed or terminal.
 //!
 //! State is bounded to live chains and their distinct attached identifiers:
-//! code, first creation clock, last clock/UUID and highest bucket, never pending
+//! code, first creation clock, last clock/identity and highest bucket, never pending
 //! rows or historical tombstones. A terminal receives its previous pair and
 //! creation clock, then closes the chain even when suppressed. Reopening starts
 //! fresh and may emit in the same bucket. Late arrivals advance history but
@@ -31,15 +31,16 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::hashing::xxhash::Xxh128;
 use crate::path::{Path, Segment};
-use crate::types::{Code, State, Uuid};
+use crate::types::{Code, State};
 use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone};
 
+use super::identity::{self, Identity};
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, INSTUUID_TAG_NAME,
-    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME,
+    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME,
     STATE_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
@@ -59,7 +60,7 @@ const PART_SEPARATOR: u8 = 0x1F;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PREVTIMESTAMP_TAG_NAME};
+/// use yggdryl::{FixCodec, FixLifecycle, FixRegistry, Scalar, CODE_TAG_NAME, CREATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PREVUPDATEDAT_TAG_NAME};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let registry = Arc::new(FixRegistry::new());
@@ -76,9 +77,9 @@ const PART_SEPARATOR: u8 = 0x1F;
 /// assert_eq!(first.puuid(), second.puuid());
 /// assert_eq!(first.createdat(), second.createdat());
 /// assert!(first.by_tag(PREVUUID_TAG_NAME.0)?.is_null());
-/// assert!(first.by_tag(PREVTIMESTAMP_TAG_NAME.0)?.is_null());
+/// assert!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0)?.is_null());
 /// assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0)?, first.uuid());
-/// assert_eq!(second.by_tag(PREVTIMESTAMP_TAG_NAME.0)?, first.updatedat());
+/// assert_eq!(second.by_tag(PREVUPDATEDAT_TAG_NAME.0)?, first.updatedat());
 /// assert_eq!(life.alive(), 1);
 /// life.clear();
 /// assert_eq!(life.alive(), 0);
@@ -92,9 +93,9 @@ pub struct FixLifecycle {
     /// Positive nanoseconds; changes require an empty live set.
     interval_ns: i64,
     /// Live chains only; capacity is reused after a wider live set closes.
-    chains: HashMap<Uuid, Chain>,
+    chains: HashMap<Identity, Chain>,
     /// Which chain each live identifier belongs to.
-    keys: HashMap<(Option<Uuid>, SmolStr), Uuid>,
+    keys: HashMap<(Option<Identity>, SmolStr), Identity>,
 }
 
 /// One event still alive.
@@ -103,12 +104,12 @@ struct Chain {
     /// Collision detection and identifier-only joins need the original name.
     code: SmolStr,
     /// Every attached scope is forgotten together when this chain closes.
-    keys: Vec<(Option<Uuid>, SmolStr)>,
+    keys: Vec<(Option<Identity>, SmolStr)>,
     /// The first successful arrival, never replaced by a later join.
     createdat: Scalar,
     /// Only the last successful message, under the shared clock datatype.
     timestamp: Scalar,
-    uuid: Uuid,
+    uuid: Identity,
     /// Includes aligned and suppressed arrivals, never decreases while live.
     highest_bucket: i64,
 }
@@ -259,9 +260,9 @@ impl FixLifecycle {
             path: Path::root().field(UPDATEDAT_TAG_NAME.1).render().into(),
             reason: crate::text::expected_got("an i64 nanosecond grid instant", grid),
         })?;
-        let stated_instrument = stated_uuid(&message, INSTUUID_TAG_NAME)?;
+        let stated_instrument = stated_identity_of(&message, INSTUUID_TAG_NAME)?;
         let instrument =
-            stated_instrument.or_else(|| instrument_digest(&message).map(Uuid::from_v8));
+            stated_instrument.or_else(|| instrument_digest(&message).map(u128::to_be_bytes));
         let keys = self.chain_keys(&message, instrument)?;
         let (code, persistent) = self.chain_name(&message, &keys)?;
         let previous = persistent.and_then(|held| self.chains.get(&held));
@@ -279,7 +280,7 @@ impl FixLifecycle {
             if terminal {
                 self.close(persistent);
             } else {
-                let uuid = native_uuid(message.uuid(), UUID_TAG_NAME.1)?;
+                let uuid = identity::stated_identity(UUID_TAG_NAME.1, message.uuid())?;
                 self.join(persistent, code, keys, &message, uuid, grid);
             }
         }
@@ -290,8 +291,8 @@ impl FixLifecycle {
     fn chain_name(
         &self,
         message: &FixMsg,
-        keys: &[(Option<Uuid>, SmolStr)],
-    ) -> Result<(SmolStr, Option<Uuid>)> {
+        keys: &[(Option<Identity>, SmolStr)],
+    ) -> Result<(SmolStr, Option<Identity>)> {
         let stated = message.get_by_tag(CODE_TAG_NAME.0);
         let Some(Scalar::String(stated)) = stated else {
             return Err(Error::InvalidRecord {
@@ -305,17 +306,19 @@ impl FixLifecycle {
         let (code, persistent) = if !stated.as_str().is_empty() {
             (
                 stated.storage().clone(),
-                native_uuid(message.puuid(), PUUID_TAG_NAME.1)?,
+                identity::stated_identity(PUUID_TAG_NAME.1, message.puuid())?,
             )
         } else if let Some(persistent) = keys.iter().find_map(|key| self.keys.get(key)) {
             let chain = &self.chains[persistent];
             return Ok((chain.code.clone(), Some(*persistent)));
         } else if let Some((scope, first)) = keys.first() {
             let code = match scope {
-                Some(scope) => format_smolstr!("{scope}/{first}"),
+                Some(scope) => {
+                    format_smolstr!("{}/{first}", identity::IdentityText(*scope))
+                }
                 None => format_smolstr!("-/{first}"),
             };
-            let persistent = super::identity::persistent_uuid(&code);
+            let persistent = identity::persistent_identity(&code);
             (code, persistent)
         } else {
             return Ok((SmolStr::default(), None));
@@ -337,11 +340,11 @@ impl FixLifecycle {
     /// Attach only unowned keys, retaining the incoming buffer for a new chain.
     fn join(
         &mut self,
-        persistent: Uuid,
+        persistent: Identity,
         code: SmolStr,
-        mut keys: Vec<(Option<Uuid>, SmolStr)>,
+        mut keys: Vec<(Option<Identity>, SmolStr)>,
         message: &FixMsg,
-        uuid: Uuid,
+        uuid: Identity,
         bucket: i64,
     ) {
         keys.retain(|key| match self.keys.entry(key.clone()) {
@@ -376,7 +379,7 @@ impl FixLifecycle {
     }
 
     /// Forgets one chain and every identifier that reached it.
-    fn close(&mut self, persistent: Uuid) {
+    fn close(&mut self, persistent: Identity) {
         if let Some(chain) = self.chains.remove(&persistent) {
             for key in chain.keys {
                 self.keys.remove(&key);
@@ -388,8 +391,8 @@ impl FixLifecycle {
     fn chain_keys(
         &self,
         message: &FixMsg,
-        instrument: Option<Uuid>,
-    ) -> Result<Vec<(Option<Uuid>, SmolStr)>> {
+        instrument: Option<Identity>,
+    ) -> Result<Vec<(Option<Identity>, SmolStr)>> {
         let derived;
         let held = if let Some(held) = message
             .get_by_tag(ALTIDS_TAG_NAME.0)
@@ -416,7 +419,7 @@ impl FixLifecycle {
                 crate::text::elide_display(&format_args!("{held:?}")),
             ),
         })?;
-        let mut keys: Vec<(Option<Uuid>, SmolStr)> = Vec::with_capacity(entries.len());
+        let mut keys: Vec<(Option<Identity>, SmolStr)> = Vec::with_capacity(entries.len());
         let mut previous = None;
         for (index, (name, value)) in entries.iter().enumerate() {
             let Scalar::String(name) = name else {
@@ -467,23 +470,23 @@ impl FixMsg {
         &mut self,
         code: &SmolStr,
         updatedat: Scalar,
-        instrument: Option<Uuid>,
+        instrument: Option<Identity>,
         previous: Option<&Chain>,
     ) -> Result<()> {
-        let previous_id_stated = stated_uuid(self, PREVUUID_TAG_NAME)?.is_some();
+        let previous_id_stated = stated_identity_of(self, PREVUUID_TAG_NAME)?.is_some();
         let previous_clock_stated = stated_previous_clock(self)?.is_some();
         let created = previous.map(|chain| (CREATEDAT_TAG_NAME.0, chain.createdat.clone()));
         let previous = [
             (!previous_clock_stated).then(|| {
                 (
-                    PREVTIMESTAMP_TAG_NAME.0,
+                    PREVUPDATEDAT_TAG_NAME.0,
                     previous.map_or(Scalar::Null, |chain| chain.timestamp.clone()),
                 )
             }),
             (!previous_id_stated).then(|| {
                 (
                     PREVUUID_TAG_NAME.0,
-                    previous.map_or(Scalar::Null, |chain| Scalar::Uuid(chain.uuid)),
+                    previous.map_or(Scalar::Null, |chain| identity::identity_scalar(chain.uuid)),
                 )
             }),
         ];
@@ -494,7 +497,7 @@ impl FixMsg {
             ]
             .into_iter()
             .chain(created)
-            .chain(instrument.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(value))))
+            .chain(instrument.map(|value| (INSTUUID_TAG_NAME.0, identity::identity_scalar(value))))
             .chain(previous.into_iter().flatten()),
             |key, field| {
                 let expected = match key {
@@ -502,11 +505,11 @@ impl FixMsg {
                     FixKey::Tag(tag)
                         if *tag == UPDATEDAT_TAG_NAME.0
                             || *tag == CREATEDAT_TAG_NAME.0
-                            || *tag == PREVTIMESTAMP_TAG_NAME.0 =>
+                            || *tag == PREVUPDATEDAT_TAG_NAME.0 =>
                     {
                         &CLOCK_DATATYPE
                     }
-                    _ => &DataType::Uuid,
+                    _ => &identity::IDENTITY_DATATYPE,
                 };
                 if field.dtype() == expected {
                     Ok(())
@@ -524,33 +527,20 @@ impl FixMsg {
     }
 }
 
-/// Native UUIDs are already packed; this adds no version/variant policy.
-fn stated_uuid(message: &FixMsg, (tag, name): (i32, &str)) -> Result<Option<Uuid>> {
+/// A stated identity is sixteen bytes exactly; this reads them without
+/// coercion, parsing or changing one bit.
+fn stated_identity_of(message: &FixMsg, (tag, name): (i32, &str)) -> Result<Option<Identity>> {
     message
         .get_by_tag(tag)
         .filter(|held| !held.is_null())
-        .map(|held| native_uuid(held, name))
+        .map(|held| identity::stated_identity(name, held))
         .transpose()
-}
-
-/// Extract the native leaf without coercion, parsing or changing its bits.
-fn native_uuid(held: &Scalar, name: &str) -> Result<Uuid> {
-    match held {
-        Scalar::Uuid(held) => Ok(*held),
-        held => Err(Error::InvalidRecord {
-            path: Path::root().field(name).render().into(),
-            reason: crate::text::expected_got(
-                "a native UUID or null",
-                crate::text::elide_display(&format_args!("{held:?}")),
-            ),
-        }),
-    }
 }
 
 /// A previous clock is a statement in the declared layout, not a coercion.
 fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
     let held = message
-        .get_by_tag(PREVTIMESTAMP_TAG_NAME.0)
+        .get_by_tag(PREVUPDATEDAT_TAG_NAME.0)
         .filter(|held| !held.is_null());
     match held {
         None => Ok(None),
@@ -558,7 +548,7 @@ fn stated_previous_clock(message: &FixMsg) -> Result<Option<&Scalar>> {
             Ok(Some(held))
         }
         Some(held) => Err(Error::InvalidRecord {
-            path: Path::root().field(PREVTIMESTAMP_TAG_NAME.1).render().into(),
+            path: Path::root().field(PREVUPDATEDAT_TAG_NAME.1).render().into(),
             reason: crate::text::expected_got(
                 &CLOCK_DATATYPE,
                 crate::text::elide_display(&format_args!("{held:?}")),
@@ -627,6 +617,14 @@ fn is_terminal(message: &FixMsg) -> bool {
 mod tests {
     use super::*;
 
+    /// One distinguishable identity per number, so a test names chains the
+    /// way it named them when they were integers behind a UUID.
+    const fn numbered(last: u8) -> Identity {
+        let mut bytes = [0_u8; 16];
+        bytes[15] = last;
+        bytes
+    }
+
     #[test]
     fn stated_identifier_keys_share_long_strings() {
         let registry = Arc::new(FixRegistry::new());
@@ -664,13 +662,13 @@ mod tests {
             .unwrap();
         for count in [1, 64, 1024] {
             let mut life = FixLifecycle::new(Arc::clone(&registry));
-            let persistent = Uuid::new(1);
+            let persistent = numbered(1);
             life.join(
                 persistent,
                 SmolStr::new("same"),
                 vec![(None, SmolStr::new("same")); count],
                 &message,
-                Uuid::new(2),
+                numbered(2),
                 0,
             );
             let chain = &life.chains[&persistent];
@@ -705,16 +703,16 @@ mod tests {
                     (STATE_TAG_NAME.0, Scalar::from("Filled")),
                 ])
                 .unwrap();
-            let persistent = super::super::identity::persistent_uuid(code);
+            let persistent = identity::persistent_identity(code);
             let mut life = FixLifecycle::new(Arc::clone(&registry));
-            // Force the otherwise impractical 122-bit collision at the state
+            // Force the otherwise impractical 128-bit collision at the state
             // seam, without weakening the public asserted-identity boundary.
             life.join(
                 persistent,
                 SmolStr::new("a different live code"),
                 vec![(None, SmolStr::new("OWNED"))],
                 &message,
-                Uuid::new(7),
+                numbered(7),
                 0,
             );
             let Error::InvalidRecord { path, .. } = life.snapshot(message).unwrap_err() else {
@@ -723,7 +721,7 @@ mod tests {
             assert_eq!(path, "$.puuid");
             let chain = &life.chains[&persistent];
             assert_eq!(chain.code, "a different live code");
-            assert_eq!(chain.uuid, Uuid::new(7));
+            assert_eq!(chain.uuid, numbered(7));
             assert_eq!(chain.highest_bucket, 0);
             assert_eq!(chain.keys, [(None, SmolStr::new("OWNED"))]);
             assert_eq!(life.keys.len(), 1);

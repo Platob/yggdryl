@@ -43,10 +43,12 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// Every message stores non-null `updatedat`, `createdat`, `uuid`, `puuid`,
 /// `code`, `snapshotat` and `SendingTime(52)`. Initial intake settles clocks;
 /// replay never reads now. The four direct accessors borrow their stored
-/// values without lookup or allocation. `puuid` hashes exact code bytes;
-/// `uuid` combines signed updatedat nanoseconds with 58 bits of named-content
-/// XXH64 in a UUIDv8. These non-cryptographic identities are separate from
-/// the immutable arrival record's [`Self::digest`].
+/// values without lookup or allocation. `uuid` and `puuid` are sixteen fixed
+/// bytes each, never RFC identifiers: `puuid` is the big-endian XXH3-128 of
+/// the exact code bytes, and `uuid` the signed updatedat nanoseconds with
+/// the sign bit flipped in bytes 0..8 beside all 64 bits of the named
+/// content's XXH64 in bytes 8..16. These non-cryptographic identities are
+/// separate from the immutable arrival record's [`Self::digest`].
 ///
 /// Serialization is inherited, not written: `field.clone().into_json()`
 /// renders the schema, [`into_json_scalar`](crate::into_json_scalar) the
@@ -141,6 +143,20 @@ pub(super) struct Write {
     pub(super) at: Option<usize>,
     pub(super) field: Field,
     pub(super) value: Scalar,
+}
+
+/// Adds one staged write to the batch, the later of two writes to one child
+/// standing, whether both reached it or both would append it.
+fn stage(writes: &mut Vec<Write>, write: Write) {
+    let pending = writes.iter().position(|held| match (held.at, write.at) {
+        (Some(held), Some(at)) => held == at,
+        (None, None) => held.field.name() == write.field.name(),
+        _ => false,
+    });
+    match pending {
+        Some(pending) => writes[pending] = write,
+        None => writes.push(write),
+    }
 }
 
 /// What one landed write does to the tag and group indexes.
@@ -441,12 +457,12 @@ impl FixMsg {
         &self.createdat
     }
 
-    /// Borrow the time/content UUID without a lookup.
+    /// Borrow the time/content identity, sixteen bytes, without a lookup.
     pub const fn uuid(&self) -> &Scalar {
         &self.uuid
     }
 
-    /// Borrow the code-only chain UUID without a lookup.
+    /// Borrow the code-only chain identity, sixteen bytes, without a lookup.
     pub const fn puuid(&self) -> &Scalar {
         &self.puuid
     }
@@ -642,43 +658,78 @@ impl FixMsg {
         let mut writes: Vec<Write> = Vec::new();
         for (key, value) in values {
             let key = key.into();
-            let (at, mut field) = self.target(&key)?;
-            check(&key, &field)?;
-            if field
-                .as_fix()
-                .tag()?
-                .is_some_and(super::identity::is_mandatory)
-                && value.is_null()
-            {
-                return Err(super::identity::refused(
-                    field.name(),
-                    "a non-null mandatory value",
-                    "null",
-                ));
-            }
-            let value = if value.is_null() {
-                field.set_nullable(true);
-                Scalar::Null
-            } else {
-                field.scalar(value)?
-            };
-            // The later of two writes to one child stands, whether both
-            // reached it or both would append it.
-            let pending = writes.iter().position(|held| match (held.at, at) {
-                (Some(held), Some(at)) => held == at,
-                (None, None) => held.field.name() == field.name(),
-                _ => false,
-            });
-            let write = Write { at, field, value };
-            match pending {
-                Some(pending) => writes[pending] = write,
-                None => writes.push(write),
-            }
+            stage(&mut writes, self.staged(&key, value, &check)?);
         }
         if writes.is_empty() {
             return Ok(());
         }
         self.write_all(writes)
+    }
+
+    /// Writes every value the field it reaches can hold, with one rebuild,
+    /// answering how many landed.
+    ///
+    /// The lenient twin of [`Self::set_many`], for a pass whose answers are
+    /// best effort: a value the target refuses - an identifier whose check
+    /// digit does not close, a spelling its code set does not read - is
+    /// silence rather than a refusal, exactly as one refused `set` is to the
+    /// [enriching pass](super::FixCodec::enrich_message), and every other
+    /// value lands as `set_many` lands it. Nothing else is lenient: the
+    /// rebuild's refusal, which no single value causes, is still returned
+    /// and leaves the message unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the written children do
+    /// not make a root.
+    pub(super) fn set_each<'key, I, K>(&mut self, values: I) -> Result<usize>
+    where
+        I: IntoIterator<Item = (K, Scalar)>,
+        K: Into<FixKey<'key>>,
+    {
+        let mut writes: Vec<Write> = Vec::new();
+        for (key, value) in values {
+            let key = key.into();
+            if let Ok(write) = self.staged(&key, value, &|_, _| Ok(())) {
+                stage(&mut writes, write);
+            }
+        }
+        let landed = writes.len();
+        if landed > 0 {
+            self.write_all(writes)?;
+        }
+        Ok(landed)
+    }
+
+    /// One value resolved and typed for the child its key reaches, exactly
+    /// as [`Self::set`] resolves and types one, against the row as it stands.
+    fn staged<'key>(
+        &self,
+        key: &FixKey<'key>,
+        value: Scalar,
+        check: &impl Fn(&FixKey<'key>, &Field) -> Result<()>,
+    ) -> Result<Write> {
+        let (at, mut field) = self.target(key)?;
+        check(key, &field)?;
+        if field
+            .as_fix()
+            .tag()?
+            .is_some_and(super::identity::is_mandatory)
+            && value.is_null()
+        {
+            return Err(super::identity::refused(
+                field.name(),
+                "a non-null mandatory value",
+                "null",
+            ));
+        }
+        let value = if value.is_null() {
+            field.set_nullable(true);
+            Scalar::Null
+        } else {
+            field.scalar(value)?
+        };
+        Ok(Write { at, field, value })
     }
 
     /// [`Self::set`], consuming the message.
@@ -1050,19 +1101,36 @@ impl FixMsg {
     /// is looked for under its decimal rendering, so an unknown tag a
     /// transcriber retained is still reachable.
     pub fn get_by_tag(&self, tag: i32) -> Option<&Scalar> {
+        self.clock_by_tag(tag)
+            .or_else(|| self.value.get(self.reached_by_tag(tag)?))
+    }
+
+    /// The value a tag names by the index alone: one of the four values the
+    /// message computes about itself, else the child declaring the tag, and
+    /// never the two fallbacks of [`Self::get_by_tag`], which end in a name
+    /// table built on the first miss. The [enriching pass](super::enrich)
+    /// gathers its working row through this, a column per tag it reads, so
+    /// the columns a message lacks - most of them - cost a binary search
+    /// each and never the table.
+    pub(super) fn indexed_by_tag(&self, tag: i32) -> Option<&Scalar> {
+        self.clock_by_tag(tag)
+            .or_else(|| self.value.get(self.index_of_tag(tag)?))
+    }
+
+    /// The four values the message holds beside its row rather than in it,
+    /// where `tag` names one of them.
+    fn clock_by_tag(&self, tag: i32) -> Option<&Scalar> {
         if tag == super::UPDATEDAT_TAG_NAME.0 {
-            return Some(self.updatedat());
+            Some(self.updatedat())
+        } else if tag == super::CREATEDAT_TAG_NAME.0 {
+            Some(self.createdat())
+        } else if tag == super::UUID_TAG_NAME.0 {
+            Some(self.uuid())
+        } else if tag == super::PUUID_TAG_NAME.0 {
+            Some(self.puuid())
+        } else {
+            None
         }
-        if tag == super::CREATEDAT_TAG_NAME.0 {
-            return Some(self.createdat());
-        }
-        if tag == super::UUID_TAG_NAME.0 {
-            return Some(self.uuid());
-        }
-        if tag == super::PUUID_TAG_NAME.0 {
-            return Some(self.puuid());
-        }
-        self.value.get(self.reached_by_tag(tag)?)
     }
 
     /// The child a tag reaches: the one carrying the tag, by one hash-free
@@ -1180,11 +1248,7 @@ impl FixMsg {
     pub fn get_by_path(&self, path: &FieldPath) -> Option<&Scalar> {
         let mut segments = path.segments().iter();
         let first = segments.next()?;
-        let name = match first {
-            FieldSegment::Field(name) => name.as_str(),
-            FieldSegment::Key(key) => key.value().as_str()?,
-            FieldSegment::Index(_) | FieldSegment::Range { .. } => return None,
-        };
+        let name = first.as_name()?;
         let index = self.index_of_key(&FixKey::Name(name))?;
         let mut field = self.field.fields().get(index)?;
         let mut value = self.value.get(index)?;
@@ -1300,11 +1364,7 @@ impl FixMsg {
     /// it reaches nothing here - a position is answered by [`Self::descend`],
     /// which knows whether it is standing on a list.
     fn segment_index(&self, parent: &Field, segment: &FieldSegment) -> Option<usize> {
-        match segment {
-            FieldSegment::Field(name) => self.child_index(parent, name),
-            FieldSegment::Key(key) => self.child_index(parent, key.value().as_str()?),
-            FieldSegment::Index(_) | FieldSegment::Range { .. } => None,
-        }
+        self.child_index(parent, segment.as_name()?)
     }
 
     /// One step of a path: into a Struct child by name, or into one

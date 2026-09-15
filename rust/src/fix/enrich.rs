@@ -18,15 +18,42 @@
 //! the dictionary files every `SecurityType` under the `Product` group it
 //! belongs to; `OrdStatus` and `ExecType` spell most of their values alike;
 //! `TimeInForce` defines its own absence as a day order; and ISO 6166 opens a
-//! number with the two letters ISO 3166 gives its issuing country. This
-//! module is those tables read as the implications they are.
+//! number with the two letters ISO 3166 gives its issuing country.
 //!
-//! # It is a table, not code per field
+//! # The rules are the registry's, not this module's
 //!
-//! A rule is a tag, the message types it speaks for, the conditions that must
-//! hold, and how the value is derived. Adding one is a row, exactly as adding
-//! a [lift](super::lift) is. There is no expression layer and no venue
-//! condition: a rule the specification does not state is not a rule.
+//! Each of those tables is one field's `fix:derivation` (decision 38): one
+//! term in the crate's expression grammar over the message's fields, spelled
+//! by their canonical folded names, carried by the field it fills and read
+//! with [`FixField::derivation`](crate::FixField::derivation). Nothing here
+//! knows what `LeavesQty` is; the field says `case when ... then orderqty -
+//! cumqty end`, and this module evaluates what a field says. Adding a rule is
+//! editing a field, exactly as adding a [replacement](super::latest) is, and
+//! a dictionary a desk loads carries the desk's rules.
+//!
+//! # One compile per registry, one working row per message
+//!
+//! A registry compiles its derivations once - every term parsed, every name
+//! it reads proven to be a field or a group, every term bound - and keeps
+//! [`Derivations`] until a field changes. What the terms bind against is the
+//! working schema: the ordered union of every column any derivation reads or
+//! fills, each typed by the registry's field for it, a group by its group
+//! definition. A term binds against that schema at compile and never against
+//! a message, so there is no shape to recognize and nothing to cache per
+//! shape. Per message the pass gathers exactly those columns off the message
+//! by tag - a stated field as its value, a stated group laid out as the
+//! registry declares its occurrence, an absent column as null - into a
+//! working row over the schema, and sweeps the derivations in tag order: a
+//! target the row holds non-null is skipped, else the term is evaluated and
+//! a non-null answer the target's field accepts is written into the working
+//! row where the next derivation reads it. Sweeps repeat until one writes
+//! nothing, bounded by the number of derivations, which is what settles a
+//! chain in either direction - `securityid` from `isincode` and `isincode`
+//! from `securityid`, `product` after `securitytype` after `cficode` -
+//! without a hand-laid order. Everything that landed then reaches the message
+//! through one [`FixMsg::set_each`], one rebuild for the whole pass. Nothing
+//! is kept between messages: a stream of a million messages of a thousand
+//! shapes costs each message one working row and the sweeps over it.
 //!
 //! # Enrichment never touches the entries
 //!
@@ -37,822 +64,416 @@
 //! idempotent: a stated value is never overwritten, so a value derived once
 //! is a stated value the second time and derives to itself.
 //!
-//! # A rule answers only when the answer is certain
+//! # A derivation answers only when the answer is certain
 //!
-//! Every input must be present and typed. A missing input, an untyped one, or
-//! a condition that does not hold answers nothing rather than a guess, and a
-//! rule that would contradict a stated value never runs at all. An identifier
-//! that validates as no standard, a CFI whose category several security types
-//! share, and a security type outside every group the specification files are
-//! all silence. The cost of silence is a null column; the cost of a guess is
-//! a wrong number nobody can tell from a sent one.
+//! An absent input is a null column of the working row, so a term over it
+//! answers null under the grammar's three-valued rules and the target stays
+//! unfilled; a condition that does not hold answers null the same way. A
+//! value the target's field refuses - an identifier whose check digit does
+//! not close, a spelling a code set does not read - is silence, as one
+//! refused [`FixMsg::set`] is. The cost of silence is a null column; the
+//! cost of a guess is a wrong number nobody can tell from a sent one.
+//!
+//! A dictionary whose rules do not compile has no rules to fill by, and that
+//! is not silence: the compile's refusal names the field, the registry keeps
+//! it beside what it would have kept of a compiled list, and every door -
+//! the enrichment and the row fill alike - answers it until a field changes.
 
-use smol_str::SmolStr;
+use std::fmt;
 
-use crate::Scalar;
-use crate::types::{Code, Isin, State, StringEnum};
+use smol_str::{SmolStr, format_smolstr};
+
+use crate::expression::{Bound, Term};
+use crate::{DataType, Error, Field, FixCategory, Result, Scalar};
 
 use super::msg::FixMsg;
 use super::registry::FixRegistry;
-use super::{ISINCODE_TAG_NAME, MICCODE_TAG_NAME, STATE_TAG_NAME};
 
-/// A condition one rule requires, read from the row.
-struct FixWhen {
-    /// The tag consulted.
+/// One field's derivation, as the registry compiled it.
+struct Derivation {
+    /// The tag the derivation fills.
     tag: i32,
-    /// The values it must carry, as the row spells them. Empty means the tag
-    /// need only be present.
-    values: &'static [&'static str],
+    /// The registry's field for that tag, which types every answer exactly
+    /// as [`FixMsg::set`] would type it on the way in.
+    field: Field,
+    /// The term bound against the working schema, or `None` where it does
+    /// not bind: a crate column's term over a registry lacking the standard
+    /// fields it reads, which is silence for it on every message.
+    bound: Option<Bound>,
+    /// The working columns the term reads, ascending: what a row fill
+    /// gathers for this one derivation alone.
+    reads: Vec<usize>,
+    /// The target's column in the working schema.
+    slot: usize,
 }
 
-impl FixWhen {
-    /// Whether the row satisfies this condition.
-    fn holds(&self, msg: &FixMsg) -> bool {
-        let Some(held) = msg.get_by_tag(self.tag) else {
-            return false;
-        };
-        if held == &Scalar::Null {
-            return false;
+impl Derivation {
+    /// The value this derivation answers for the working row, typed for the
+    /// field it fills, or nothing: a term that does not bind, an evaluation
+    /// the grammar refuses, an answer of null, and a value the field refuses
+    /// are all silence.
+    fn answer(&self, row: &[Scalar]) -> Option<Scalar> {
+        let value = self.bound.as_ref()?.eval_values(row).ok()?;
+        if value.is_null() {
+            return None;
         }
-        if self.values.is_empty() {
-            return true;
-        }
-        // A condition is written in the codes the specification's own
-        // matrices are written in. A state column holds the ranked value
-        // rather than the code, so the code is read the way the column read
-        // it before the two are compared; every other column holds the code.
-        if let Scalar::Code(Code::State(state)) = held {
-            return self
-                .values
-                .iter()
-                .any(|value| State::from_spelling(value).as_ref() == Some(state));
-        }
-        let Some(rendered) = held.as_str() else {
-            return false;
-        };
-        self.values
-            .iter()
-            .any(|value| value.eq_ignore_ascii_case(rendered))
+        self.field.scalar(value).ok()
     }
 }
 
-/// How one rule answers.
-enum FixDerivation {
-    /// `left - right`, refused below zero: a quantity cannot be negative, and
-    /// a negative result means the two inputs were never about one order.
-    Difference(i32, i32),
-    /// `left + right`.
-    Sum(i32, i32),
-    /// `left * right`.
-    Product(i32, i32),
-    /// Whatever another tag carries, unchanged and re-typed for the column it
-    /// lands in.
-    Same(i32),
-    /// The constant zero.
-    Zero,
-    /// A code the specification states as the meaning of an absence.
-    Constant(&'static str),
-    /// Whatever the first stated of several tags carries.
-    First(&'static [i32]),
-    /// One member of the first occurrence of a group whose other member
-    /// states `wanted`: the `SecurityAltID` beside a source of `4`, say.
-    Member {
-        group: i32,
-        member: i32,
-        by: i32,
-        wanted: &'static str,
-    },
-    /// The `SecurityIDSource` code of the standard a tag's value validates
-    /// as, each read by its own check digit.
-    Source(i32),
-    /// The country whose two letters open the ISIN a tag carries, where ISO
-    /// 3166 lists them as one.
-    Country(i32),
-    /// A table read by the prefix a tag's value opens with. `?` in a pattern
-    /// stands for any one character, and the first pattern to match answers,
-    /// so a longer pattern is listed before the shorter one it refines.
-    Prefix(i32, &'static [(&'static str, &'static str)]),
-    /// The CFI a security type states, with the exercise character an
-    /// option's `PutOrCall` supplies.
-    Cfi { securitytype: i32, putorcall: i32 },
-    /// The group the dictionary's own code set files a tag's value under,
-    /// read through a table of what each group means.
-    Group(i32, &'static [(&'static str, &'static str)]),
-    /// Filled where nothing is left, else partially filled where something
-    /// is left and something was done.
-    Filled { left: i32, done: i32 },
+/// Where a message states one column of the working schema.
+enum Source {
+    /// A scalar field, read by its tag.
+    Field(i32),
+    /// A repeating group, read by its counter's tag and laid out as the
+    /// registry declares its occurrence, so the members a term reads by
+    /// name stand where the group definition puts them whatever order the
+    /// message stated them in.
+    Group(i32),
+    /// A name no field or group of the registry answers to, which no message
+    /// states: a crate column's term reads the standard's fields by name,
+    /// and a registry built from a handful of fields holds none of them.
+    Absent,
 }
 
-/// One field a message implies, and what implies it.
-struct FixRule {
-    /// The tag filled.
-    tag: i32,
-    /// The message types this rule speaks for; empty means all of them.
-    msgtypes: &'static [&'static str],
-    /// Every condition that must hold before the rule runs.
-    when: &'static [FixWhen],
-    /// How the value is derived.
-    from: FixDerivation,
+/// One column of the working schema, and how a message states it.
+struct Input {
+    /// The field typing the column: the registry's own, or a null field for
+    /// a name the registry lacks.
+    field: Field,
+    source: Source,
 }
 
-/// The message types that report an order's state.
-const REPORTS: &[&str] = &["8", "9"];
-
-/// The message types that carry a `TimeInForce`: an order, a replace and the
-/// report on either.
-const TIMED: &[&str] = &["D", "G", "8"];
-
-/// The order statuses that leave quantity still working.
-///
-/// Appendix D's matrices: a `New`, `PartiallyFilled`, `PendingCancel`,
-/// `PendingReplace`, `Replaced` or `Stopped` order still has quantity the
-/// market can fill, so what is left is what was asked for minus what was
-/// done. `Suspended` is here too - the order exists and is not working, but
-/// its remainder is unchanged.
-const WORKING: &[&str] = &["0", "1", "6", "E", "5", "7", "9"];
-
-/// The order statuses that leave nothing working.
-///
-/// A `Filled`, `DoneForDay`, `Canceled`, `Rejected` or `Expired` order has no
-/// remainder, whatever the arithmetic of the other two would say. Appendix D
-/// shows `LeavesQty` at zero on every one of these.
-const CLOSED: &[&str] = &["2", "3", "4", "8", "C"];
-
-/// The execution types whose value `OrdStatus` spells with the same meaning.
-///
-/// The two code sets agree on `New`, `DoneForDay`, `Canceled`, `Replaced`,
-/// `PendingCancel`, `Stopped`, `Rejected`, `Suspended`, `PendingNew`,
-/// `Calculated`, `Expired` and `PendingReplace`. `D` is left out because it
-/// is `Restated` in one and `AcceptedForBidding` in the other, and a trade
-/// says what happened rather than what the order is.
-const AGREED: &[&str] = &["0", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "E"];
-
-/// The execution types that report a trade: a fill, or a correction to one.
-const TRADES: &[&str] = &["F", "G"];
-
-/// The `SecurityIDSource` codes under which `SecurityID` is a symbol: an
-/// exchange's, or Bloomberg's.
-const SYMBOLS: &[&str] = &["8", "A"];
-
-/// The `SecurityIDSource` code of an ISIN.
-const ISIN: &str = "4";
-
-/// Appendix 6-D read at its category level: the one `SecurityType` a CFI
-/// category or group names.
-///
-/// `O?F` - an option on a future - is read before the `O` every other listed
-/// option opens with. A category several types share, such as the `DB` of
-/// every plain bond, is absent because no one type is certain of it.
-const SECURITYTYPE_OF_CFI: &[(&str, &str)] = &[
-    ("ES", "CS"),
-    ("EP", "PS"),
-    ("ED", "DR"),
-    ("EU", "MF"),
-    ("CE", "ETF"),
-    ("CI", "MF"),
-    ("F", "FUT"),
-    ("O?F", "OOF"),
-    ("O", "OPT"),
-    ("H", "OPT"),
-    ("DC", "CB"),
-    ("DT", "MTN"),
-    ("DA", "ABS"),
-    ("DG", "MBS"),
-    ("SR", "IRS"),
-    ("SC", "CDS"),
-    ("ST", "CMDTYSWAP"),
-    ("SF", "FXSWAP"),
-    ("IF", "FXSPOT"),
-    ("JF", "FXFWD"),
-    ("JR", "FRA"),
-    ("JE", "EQFWD"),
-    ("LR", "REPO"),
-    ("LS", "SECLOAN"),
-    ("TI", "INDEX"),
-];
-
-/// The exercise character of a listed or an unlisted option, and what it
-/// says about `PutOrCall`.
-const PUTORCALL_OF_CFI: &[(&str, &str)] = &[("OC", "1"), ("OP", "0"), ("HC", "1"), ("HP", "0")];
-
-/// The `Product` a CFI category alone decides: an equity, or a financing.
-const PRODUCT_OF_CFI: &[(&str, &str)] = &[("E", "5"), ("L", "13")];
-
-/// The mortgage-backed security types.
-const MORTGAGE: &[&str] = &[
-    "MBS", "CMBS", "CMO", "TBA", "PFAND", "MPT", "IET", "MIO", "MPO", "MPP", "CMB",
-];
-
-/// The corporate bond security types at a fixed rate.
-const CORPORATE: &[&str] = &[
-    "CORP",
-    "EUCORP",
-    "YANK",
-    "PRCORP",
-    "DUAL",
-    "XLINKD",
-    "DIMSUMCORP",
-];
-
-/// The floating rate note security types.
-const FLOATING: &[&str] = &["FRN", "EUFRN", "TFRN"];
-
-/// The government bond security types.
-const GOVERNMENT: &[&str] = &[
-    "TBOND",
-    "TNOTE",
-    "SOV",
-    "EUSOV",
-    "BRADY",
-    "PROV",
-    "CAN",
-    "DIMSUMSOV",
-    "TIPS",
-];
-
-/// The bill and money market security types.
-const MONEY_MARKET: &[&str] = &[
-    "TBILL", "TB", "CTB", "CP", "CD", "BA", "BN", "CL", "DN", "EUCD", "EUCP", "LQN", "ONITE", "PN",
-    "STN", "TD", "XCN", "YCD", "NCD", "NCP", "JCD", "RCD", "TDR", "TLQN", "SLQN", "CPIB", "CLCP",
-    "CAMM", "BAB", "BDN", "BNST", "BOX", "CN", "EUNCP", "EUSTLQN", "EUTD", "MN", "PZFJ",
-];
-
-/// The municipal security types.
-const MUNICIPAL: &[&str] = &[
-    "GO", "REV", "AN", "COFO", "COFP", "MT", "RAN", "SPCLA", "SPCLO", "SPCLT", "TAN", "TAXA",
-    "TECP", "TRAN", "VRDN", "VRDO", "TMB", "TMCP", "MCPIB",
-];
-
-/// Appendix 6-D read the other way: the CFI a `SecurityType` states, down to
-/// the category and group the type names and `X` where it says nothing more.
-/// `?` is the exercise character an option's `PutOrCall` supplies.
-const CFI_OF_SECURITYTYPE: &[(&[&str], &str)] = &[
-    (&["CS"], "ESXXXX"),
-    (&["PS"], "EPXXXX"),
-    (&["DR"], "EDXXXX"),
-    (&["MF", "MMF"], "CIXXXX"),
-    (&["ETF"], "CEXXXX"),
-    (&["FUT"], "FXXXXX"),
-    (&["OPT", "OOP", "OOC"], "O?XXXX"),
-    (&["OOF"], "O?FXXX"),
-    (&["CB"], "DCXXXX"),
-    (&["MTN", "EUMTN"], "DTXXXX"),
-    (&["ABS"], "DAXXXX"),
-    (MORTGAGE, "DGXXXX"),
-    (CORPORATE, "DBXXXX"),
-    (FLOATING, "DBVXXX"),
-    (GOVERNMENT, "DBXXXX"),
-    (MONEY_MARKET, "DYXXXX"),
-    (MUNICIPAL, "DNXXXX"),
-    (&["IRS"], "SRXXXX"),
-    (&["CDS"], "SCXXXX"),
-    (&["CMDTYSWAP"], "STXXXX"),
-    (&["FXSWAP"], "SFXXXX"),
-    (&["FXSPOT"], "IFXXXX"),
-    (&["FXFWD"], "JFXXXX"),
-    (&["FRA"], "JRXXXX"),
-    (&["EQFWD"], "JEXXXX"),
-    (&["REPO"], "LRXXXX"),
-    (&["SECLOAN"], "LSXXXX"),
-    (&["INDEX"], "TIXXXX"),
-];
-
-/// The `Product` code each group of the `SecurityType` code set names.
-///
-/// The dictionary files every security type under the group the
-/// specification lists it in, and the `Product` code set spells those
-/// groups. `Derivatives` and `Other` are absent: the first spans products
-/// the specification codes separately, and the second is where the
-/// specification put what it could not place.
-const PRODUCT_OF_GROUP: &[(&str, &str)] = &[
-    ("Agency", "1"),
-    ("Corporate", "3"),
-    ("Currency", "4"),
-    ("Equity", "5"),
-    ("Government", "6"),
-    ("Loan", "8"),
-    ("Money Market", "9"),
-    ("Mortgage", "10"),
-    ("Municipal", "11"),
-    ("Financing", "13"),
-];
-
-/// Every rule, in the order they are applied.
-///
-/// Order matters only where one rule's output is another's input, and each
-/// such chain is laid out so one pass reaches its end: a `SecurityID`'s
-/// validation states the source, under which the ISIN column is read, and
-/// an ISIN found only among the alternate identifiers becomes the
-/// `SecurityID`, whose validation states the source in turn; a
-/// `SecurityType` read off a CFI places the `Product`; an `OrdStatus` read
-/// off an `ExecType` decides what is left; and `GrossTradeAmt` is derived
-/// before `SettlCurrAmt`, which is derived from it.
-///
-/// The primary identifier is read before the alternate ones, as the crate's
-/// own column is defined: a message stating both states its ISIN in
-/// `SecurityID`, and the alternate answers only where the primary did not.
-static RULES: &[FixRule] = &[
-    // The `SecurityIDSource` code set names the standard each code stands
-    // for, and ISO 6166, CUSIP and SEDOL each close an identifier with a
-    // check digit: a `SecurityID` one of them closes names its own source.
-    FixRule {
-        tag: 22,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Source(48),
-    },
-    // ISO 6166, in the primary identifier: `SecurityID` under an ISIN source.
-    FixRule {
-        tag: ISINCODE_TAG_NAME.0,
-        msgtypes: &[],
-        when: &[FixWhen {
-            tag: 22,
-            values: &[ISIN],
-        }],
-        from: FixDerivation::Same(48),
-    },
-    // ISO 6166, in the alternate identifiers: the `SecurityAltID` whose
-    // source says ISIN is the instrument's ISIN where the primary was not.
-    FixRule {
-        tag: ISINCODE_TAG_NAME.0,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Member {
-            group: 454,
-            member: 455,
-            by: 456,
-            wanted: ISIN,
-        },
-    },
-    // A message stating its ISIN and no `SecurityID` - a bridge row's
-    // `ISINCODE`, or an alternate identifier alone - has stated its
-    // `SecurityID`, and the validation below then states the source. The
-    // source is read a second time because the first reading found no
-    // `SecurityID` to validate; a `SecurityID` it did read is stated by now,
-    // and a source it did state stands.
-    FixRule {
-        tag: 48,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Same(ISINCODE_TAG_NAME.0),
-    },
-    FixRule {
-        tag: 22,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Source(48),
-    },
-    // ISO 6166 opens a number with the ISO 3166 code of the country whose
-    // agency numbered it, where one did: `XS` and `EU` are agencies and not
-    // countries, and say nothing about the issue.
-    FixRule {
-        tag: 470,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Country(ISINCODE_TAG_NAME.0),
-    },
-    // A `SecurityID` under an exchange's or Bloomberg's source is the symbol,
-    // and so is the `SecurityAltID` an exchange gave.
-    FixRule {
-        tag: 55,
-        msgtypes: &[],
-        when: &[FixWhen {
-            tag: 22,
-            values: SYMBOLS,
-        }],
-        from: FixDerivation::Same(48),
-    },
-    FixRule {
-        tag: 55,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Member {
-            group: 454,
-            member: 455,
-            by: 456,
-            wanted: "8",
-        },
-    },
-    // Appendix 6-D, both ways, and the exercise character of an option.
-    FixRule {
-        tag: 167,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Prefix(461, SECURITYTYPE_OF_CFI),
-    },
-    FixRule {
-        tag: 461,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Cfi {
-            securitytype: 167,
-            putorcall: 201,
-        },
-    },
-    FixRule {
-        tag: 201,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Prefix(461, PUTORCALL_OF_CFI),
-    },
-    // The `SecurityType` code set's own groups, as the `Product` code set
-    // spells them; else the two CFI categories that are one product alone.
-    FixRule {
-        tag: 460,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Group(167, PRODUCT_OF_GROUP),
-    },
-    FixRule {
-        tag: 460,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Prefix(461, PRODUCT_OF_CFI),
-    },
-    // The crate's own market column: the exchange the instrument is listed
-    // on, the destination it was routed to, or the market it last traded on.
-    FixRule {
-        tag: MICCODE_TAG_NAME.0,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::First(&[207, 100, 30]),
-    },
-    // `TimeInForce` defines its own absence: an order, a replace or a report
-    // stating none is a day order.
-    FixRule {
-        tag: 59,
-        msgtypes: TIMED,
-        when: &[],
-        from: FixDerivation::Constant("0"),
-    },
-    // A report stating an execution type the two code sets spell alike has
-    // stated its order status; a trade has stated it in what is left and
-    // what was done.
-    FixRule {
-        tag: 39,
-        msgtypes: REPORTS,
-        when: &[FixWhen {
-            tag: 150,
-            values: AGREED,
-        }],
-        from: FixDerivation::Same(150),
-    },
-    FixRule {
-        tag: 39,
-        msgtypes: REPORTS,
-        when: &[FixWhen {
-            tag: 150,
-            values: TRADES,
-        }],
-        from: FixDerivation::Filled {
-            left: 151,
-            done: 14,
-        },
-    },
-    // The crate's own lifecycle column: the order's status, else what the
-    // report said happened.
-    FixRule {
-        tag: STATE_TAG_NAME.0,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::First(&[39, 150]),
-    },
-    // Appendix D, every matrix: what is left is what was ordered minus what
-    // was done, and nothing is left once the order is closed.
-    FixRule {
-        tag: 151,
-        msgtypes: REPORTS,
-        when: &[FixWhen {
-            tag: 39,
-            values: CLOSED,
-        }],
-        from: FixDerivation::Zero,
-    },
-    FixRule {
-        tag: 151,
-        msgtypes: REPORTS,
-        when: &[FixWhen {
-            tag: 39,
-            values: WORKING,
-        }],
-        from: FixDerivation::Difference(38, 14),
-    },
-    // The same identity read the other two ways. A report stating what is
-    // left and what was done has stated what was ordered.
-    FixRule {
-        tag: 38,
-        msgtypes: REPORTS,
-        when: &[],
-        from: FixDerivation::Sum(14, 151),
-    },
-    FixRule {
-        tag: 14,
-        msgtypes: REPORTS,
-        when: &[],
-        from: FixDerivation::Difference(38, 151),
-    },
-    // A fill's worth, which Appendix O settles on and Appendix D's execution
-    // reports carry.
-    FixRule {
-        tag: 381,
-        msgtypes: REPORTS,
-        when: &[],
-        from: FixDerivation::Product(32, 31),
-    },
-    // Appendix O: the settled amount is the traded amount at the stated rate.
-    FixRule {
-        tag: 119,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Product(381, 155),
-    },
-    // Appendix O: a trade settling in the currency it was dealt in states the
-    // dealt currency once. `SettlCurrency` absent means "the same one", which
-    // is a default rather than an absence, and a reader joining two captures
-    // on the settlement currency needs it stated - and a trade stating only
-    // the currency it settles in has said which it was dealt in.
-    FixRule {
-        tag: 120,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Same(15),
-    },
-    FixRule {
-        tag: 15,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Same(120),
-    },
-    // The average of one fill is that fill's price. Stated only where the
-    // report says the whole done quantity is this fill, because an average
-    // over two fills is not derivable from one of them.
-    FixRule {
-        tag: 6,
-        msgtypes: REPORTS,
-        when: &[],
-        from: FixDerivation::Same(31),
-    },
-    // A forward price is quoted as a spot rate and the points away from it,
-    // and the points are already in price units, so the two add. The same
-    // shape answers a two-sided quote on each side.
-    FixRule {
-        tag: 31,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Sum(194, 195),
-    },
-    FixRule {
-        tag: 132,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Sum(188, 189),
-    },
-    FixRule {
-        tag: 133,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Sum(190, 191),
-    },
-    // A pegged order's price is the reference it pegs to plus its own
-    // offset, which is signed: a peg below the reference is a negative one.
-    FixRule {
-        tag: 839,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Sum(1_095, 211),
-    },
-    // A contract's quantity in units is its quantity in contracts times what
-    // one contract multiplies to, and an increment in money is the same
-    // product of the increment in price.
-    FixRule {
-        tag: 2_368,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Product(32, 231),
-    },
-    FixRule {
-        tag: 2_370,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Product(2_367, 231),
-    },
-    FixRule {
-        tag: 1_146,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Product(969, 231),
-    },
-    FixRule {
-        tag: 2_367,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Product(32, 2_353),
-    },
-    FixRule {
-        tag: 2_369,
-        msgtypes: &[],
-        when: &[],
-        from: FixDerivation::Product(31, 2_367),
-    },
-    // What a canceled order asked for is what it did plus what was canceled.
-    FixRule {
-        tag: 38,
-        msgtypes: REPORTS,
-        when: &[],
-        from: FixDerivation::Sum(14, 84),
-    },
-    // A possible duplicate carries the clock of the send it repeats, and the
-    // session layer says that is what its original sending time is.
-    FixRule {
-        tag: 122,
-        msgtypes: &[],
-        when: &[FixWhen {
-            tag: 43,
-            values: &["Y"],
-        }],
-        from: FixDerivation::Same(52),
-    },
-    // FIX writes a currency as ISO 4217 and in no other source, so a stated
-    // currency states its source too.
-    FixRule {
-        tag: 2_897,
-        msgtypes: &[],
-        when: &[FixWhen {
-            tag: 15,
-            values: &[],
-        }],
-        from: FixDerivation::Constant("6"),
-    },
-];
-
-/// The value one derivation answers, or nothing when it cannot be certain.
-fn derive(registry: &FixRegistry, msg: &FixMsg, from: &FixDerivation) -> Option<Scalar> {
-    let stated = |tag: i32| msg.get_by_tag(tag).filter(|held| !held.is_null());
-    let number = |tag: i32| stated(tag).and_then(Scalar::as_f64);
-    let text = |tag: i32| stated(tag).and_then(Scalar::as_str);
-    match from {
-        FixDerivation::Zero => Some(Scalar::from(0.0_f64)),
-        FixDerivation::Constant(code) => Some(Scalar::from(*code)),
-        FixDerivation::Same(tag) => stated(*tag).cloned(),
-        FixDerivation::First(tags) => tags.iter().find_map(|tag| stated(*tag).cloned()),
-        FixDerivation::Sum(left, right) => Some(Scalar::from(number(*left)? + number(*right)?)),
-        FixDerivation::Product(left, right) => Some(Scalar::from(number(*left)? * number(*right)?)),
-        FixDerivation::Difference(left, right) => {
-            let held = number(*left)? - number(*right)?;
-            // A negative remainder means the two inputs were never about one
-            // order, and answering it would state a quantity that cannot
-            // exist.
-            (held >= 0.0).then(|| Scalar::from(held))
-        }
-        FixDerivation::Member {
-            group,
-            member,
-            by,
-            wanted,
-        } => msg.group_member_where(*group, *member, *by, wanted),
-        FixDerivation::Source(tag) => {
-            let held = text(*tag)?;
-            let code = if Isin::is_valid(held) {
-                ISIN
-            } else if is_cusip(held) {
-                "1"
-            } else if is_sedol(held) {
-                "2"
-            } else {
-                return None;
+impl Input {
+    /// The registry's column one name reaches, as the working schema holds
+    /// it: a group before a scalar field, because a group's column is named
+    /// by the group and its counter is a field of its own.
+    fn of(registry: &FixRegistry, name: &str) -> std::result::Result<Option<Self>, SmolStr> {
+        if let Some(group) = registry.get_definition(FixCategory::Groups, name) {
+            let Some(counter) = group.as_fix().counter().ok().flatten() else {
+                return Err(format_smolstr!(
+                    "fix:derivation reads `{name}`, a group declaring no counter"
+                ));
             };
-            Some(Scalar::from(code))
+            return Ok(Some(Self {
+                field: group.clone(),
+                source: Source::Group(counter),
+            }));
         }
-        FixDerivation::Country(tag) => {
-            let isin = Isin::new(text(*tag)?).ok()?;
-            let prefix = isin.prefix();
-            StringEnum::COUNTRIES
-                .binary_search(&prefix)
-                .is_ok()
-                .then(|| Scalar::from(prefix))
+        let Some(field) = registry.get_field_by_name(name) else {
+            return Ok(None);
+        };
+        // A registry field carries its tag; one that does not is a column
+        // no row is indexed by, which is a column no message states.
+        let source = registry
+            .identity_of(field)
+            .map_or(Source::Absent, |(tag, _)| Source::Field(tag));
+        Ok(Some(Self {
+            field: field.clone(),
+            source,
+        }))
+    }
+
+    /// A column the registry lacks, typed as nothing and always null.
+    fn absent(name: &str) -> Self {
+        Self {
+            field: DataType::Null.nullable_field(name),
+            source: Source::Absent,
         }
-        FixDerivation::Prefix(tag, table) => {
-            let held = text(*tag)?;
-            table
-                .iter()
-                .find(|(pattern, _)| opens_with(held, pattern))
-                .map(|(_, answer)| Scalar::from(*answer))
+    }
+
+    /// What `msg` states for this column, or null.
+    fn read(&self, msg: &FixMsg) -> Scalar {
+        match self.source {
+            Source::Field(tag) => msg.indexed_by_tag(tag).cloned().unwrap_or(Scalar::Null),
+            Source::Group(counter) => msg
+                .index_of_group(counter)
+                .and_then(|at| msg.as_value().get(at))
+                .map_or(Scalar::Null, |held| {
+                    msg.regrouped(counter, &self.field, held.clone())
+                }),
+            Source::Absent => Scalar::Null,
         }
-        FixDerivation::Cfi {
-            securitytype,
-            putorcall,
-        } => {
-            let held = text(*securitytype)?;
-            let (_, pattern) = CFI_OF_SECURITYTYPE
-                .iter()
-                .find(|(types, _)| types.iter().any(|known| known.eq_ignore_ascii_case(held)))?;
-            // `PutOrCall` is `1` for a call and `0` for a put; an option
-            // stating neither is an option whose exercise the CFI leaves
-            // open, which `X` is the code for.
-            let exercise = match stated(*putorcall).and_then(Scalar::as_i128) {
-                Some(1) => 'C',
-                Some(0) => 'P',
-                _ => 'X',
-            };
-            let rendered: String = pattern
-                .chars()
-                .map(|held| if held == '?' { exercise } else { held })
-                .collect();
-            Some(Scalar::from(rendered))
-        }
-        FixDerivation::Group(tag, table) => {
-            let held = text(*tag)?;
-            let group = registry
-                .get_field_by_tag(*tag)?
+    }
+}
+
+/// Every `fix:derivation` a registry carries, compiled once (decision 38).
+///
+/// Built by [`FixRegistry::derivations`] and kept on the registry until a
+/// field changes; every codec and every message reading that registry
+/// evaluates through the same instance, the line door, the batch door and
+/// the row fill alike.
+pub(super) struct Derivations {
+    /// In tag order, which is the order one sweep evaluates them in.
+    list: Vec<Derivation>,
+    /// The working schema's columns in first-seen order - every column a
+    /// term reads or a derivation fills - and how a message states each.
+    /// The schema every term is bound against is the Struct of their
+    /// fields, held by each bound term.
+    inputs: Vec<Input>,
+    /// The working columns the crate columns' terms read, ascending: what
+    /// a row fill gathers, once per row, for the three of them.
+    crate_reads: Vec<usize>,
+}
+
+impl Derivations {
+    /// Reads every field's `fix:derivation` and proves it against the
+    /// registry.
+    ///
+    /// Every column a term reads must be a field or a group the registry
+    /// names, and the term must bind against the working schema those
+    /// fields make - so a name the dictionary lacks, or `orderqty - symbol`,
+    /// is refused here naming the field, not once per message. The crate's
+    /// own columns are the one exception: their derivations read the
+    /// standard's fields by name, and a registry built from a handful of
+    /// fields holds none of them, so for a crate field a name the registry
+    /// lacks is an input the dictionary never states - a null column of the
+    /// working schema - and a term that cannot bind over such columns is
+    /// silent rather than a refusal of the registry that lacks them.
+    ///
+    /// # Errors
+    ///
+    /// Returns the refusal, naming the registry field whose derivation does
+    /// not parse, reads a column no field or group of this registry answers
+    /// to, or does not bind against the fields it reads.
+    pub(super) fn compile(registry: &FixRegistry) -> std::result::Result<Self, Refused> {
+        let mut carried: Vec<(i32, Field, Term)> = Vec::new();
+        let mut inputs: Vec<Input> = Vec::new();
+        for field in registry.iter() {
+            let Some(term) = field
                 .as_fix()
-                .code(held)?
-                .group()?;
-            table
-                .iter()
-                .find(|(known, _)| *known == group)
-                .map(|(_, answer)| Scalar::from(*answer))
-        }
-        FixDerivation::Filled { left, done } => {
-            let left = number(*left)?;
-            if left == 0.0 {
-                return Some(Scalar::from("2"));
+                .derivation()
+                .map_err(|error| Refused::new(field.name(), &error))?
+            else {
+                continue;
+            };
+            let Some((tag, _)) = registry.identity_of(field) else {
+                continue;
+            };
+            let crated = super::is_crate_tag(tag);
+            for name in term.columns() {
+                if position_of(&inputs, &name).is_some() {
+                    continue;
+                }
+                let input = match Input::of(registry, &name)
+                    .map_err(|reason| Refused::new(field.name(), &reason))?
+                {
+                    Some(known) => known,
+                    None if crated => Input::absent(&name),
+                    None => {
+                        return Err(Refused::new(
+                            field.name(),
+                            &format_smolstr!(
+                                "fix:derivation reads `{name}`, which names no field or group \
+                                 of the registry"
+                            ),
+                        ));
+                    }
+                };
+                inputs.push(input);
             }
-            (left > 0.0 && number(*done)? > 0.0).then(|| Scalar::from("1"))
+            match position_of(&inputs, field.name()) {
+                // A term read the target already, as a chain's two ends do.
+                Some(at) if matches!(inputs[at].source, Source::Field(_)) => {}
+                Some(_) => {
+                    return Err(Refused::new(
+                        field.name(),
+                        &"fix:derivation fills a name the registry also gives a group",
+                    ));
+                }
+                None => inputs.push(Input {
+                    field: field.clone(),
+                    source: Source::Field(tag),
+                }),
+            }
+            carried.push((tag, field.clone(), term));
         }
-    }
-}
-
-/// Whether `text` opens with `pattern`, `?` standing for any one character
-/// and case not counting.
-fn opens_with(text: &str, pattern: &str) -> bool {
-    text.len() >= pattern.len()
-        && pattern
-            .bytes()
-            .zip(text.bytes())
-            .all(|(wanted, held)| wanted == b'?' || wanted.eq_ignore_ascii_case(&held))
-}
-
-/// The value an identifier's check reads one character as: a digit as
-/// itself, a letter as ten plus its alphabet position.
-fn identifier_digit(byte: u8) -> Option<u32> {
-    match byte {
-        b'0'..=b'9' => Some(u32::from(byte - b'0')),
-        b'A'..=b'Z' => Some(u32::from(byte - b'A') + 10),
-        b'a'..=b'z' => Some(u32::from(byte - b'a') + 10),
-        _ => None,
-    }
-}
-
-/// Whether `text` is a CUSIP: eight characters closed by their modulus-10
-/// "double-add-double" digit, every second character doubled and the digits
-/// of each product summed.
-fn is_cusip(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    if bytes.len() != 9 || !bytes[8].is_ascii_digit() {
-        return false;
-    }
-    let mut sum = 0;
-    for (index, byte) in bytes[..8].iter().enumerate() {
-        let Some(mut value) = identifier_digit(*byte) else {
-            return false;
-        };
-        if index % 2 == 1 {
-            value *= 2;
+        let schema = DataType::from_fields(inputs.iter().map(|input| input.field.clone()))
+            .map_err(|error| Refused::new("fix:derivation", &error))?
+            .required_field("derived");
+        let mut list: Vec<Derivation> = Vec::with_capacity(carried.len());
+        for (tag, field, term) in carried {
+            // Bound once, here: what refuses would refuse for every message,
+            // and is the field's to fix.
+            let bound = match term.bind(&schema) {
+                Ok(bound) => Some(bound),
+                Err(_) if super::is_crate_tag(tag) => None,
+                Err(error) => return Err(Refused::new(field.name(), &error)),
+            };
+            let reads = bound
+                .as_ref()
+                .map(Bound::column_indices)
+                .unwrap_or_default();
+            let Some(slot) = position_of(&inputs, field.name()) else {
+                return Err(Refused::new(
+                    field.name(),
+                    &"the working schema lacks the derived column",
+                ));
+            };
+            list.push(Derivation {
+                tag,
+                field,
+                bound,
+                reads,
+                slot,
+            });
         }
-        sum += value / 10 + value % 10;
+        // The registry iterates tag-major already; stated here so the sweep
+        // order is this list's contract rather than the iteration's.
+        list.sort_by_key(|derivation| derivation.tag);
+        let mut crate_reads: Vec<usize> = list
+            .iter()
+            .filter(|derivation| super::is_crate_tag(derivation.tag))
+            .flat_map(|derivation| derivation.reads.iter().copied())
+            .collect();
+        crate_reads.sort_unstable();
+        crate_reads.dedup();
+        Ok(Self {
+            list,
+            inputs,
+            crate_reads,
+        })
     }
-    (10 - sum % 10) % 10 == u32::from(bytes[8] - b'0')
+
+    /// The working schema: the Struct every term is bound against, one
+    /// column per field or group any derivation reads or fills, as the
+    /// first bound term holds it; `None` where no term bound.
+    #[cfg(test)]
+    pub(super) fn schema(&self) -> Option<&Field> {
+        self.list
+            .iter()
+            .find_map(|derivation| derivation.bound.as_ref())
+            .map(Bound::schema)
+    }
+
+    /// Each derived tag in sweep order, beside whether its term bound.
+    #[cfg(test)]
+    pub(super) fn derived(&self) -> impl Iterator<Item = (i32, bool)> + '_ {
+        self.list
+            .iter()
+            .map(|derivation| (derivation.tag, derivation.bound.is_some()))
+    }
+
+    /// Fills `msg` with everything its derivations imply, to a fixpoint.
+    ///
+    /// Every answer lands through one [`FixMsg::set_each`]: a row already
+    /// holding the tag holds a stated null, and the answer takes that child's
+    /// place; anything else is appended. The dictionary's own field typed the
+    /// value before it was written into the working row, so a derived column
+    /// is indistinguishable from a stated one and a value the field refuses
+    /// was silence before any write was planned.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the written children do not
+    /// make a root.
+    pub(super) fn fill_all(&self, msg: &mut FixMsg) -> Result<()> {
+        if self.list.is_empty() {
+            return Ok(());
+        }
+        let mut row = self.working_row(msg, 0..self.inputs.len());
+        let mut landed: Vec<(i32, Scalar)> = Vec::new();
+        // A productive sweep fills at least one target and a filled target
+        // is never revisited, so the derivation count bounds the sweeps; the
+        // one past it is the sweep that writes nothing.
+        for _ in 0..=self.list.len() {
+            let mut wrote = false;
+            for derivation in &self.list {
+                // A stated value is never overwritten, which is what makes
+                // this idempotent: the second pass finds the first pass's
+                // answer stated.
+                if !row[derivation.slot].is_null() {
+                    continue;
+                }
+                let Some(value) = derivation.answer(&row) else {
+                    continue;
+                };
+                row[derivation.slot] = value.clone();
+                // Sized once, on the first answer, for every derivation
+                // there is: a message deriving nothing allocates nothing
+                // here, and one deriving nine grows the list once.
+                if landed.capacity() == 0 {
+                    landed.reserve_exact(self.list.len());
+                }
+                landed.push((derivation.tag, value));
+                wrote = true;
+            }
+            if !wrote {
+                break;
+            }
+        }
+        if !landed.is_empty() {
+            msg.set_each(landed)?;
+        }
+        Ok(())
+    }
+
+    /// The working row a row fill reads: the columns the crate columns'
+    /// terms read, gathered off `msg` as the pass gathers them, once for
+    /// every crate column the row asks for.
+    pub(super) fn crate_row(&self, msg: &FixMsg) -> Vec<Scalar> {
+        self.working_row(msg, self.crate_reads.iter().copied())
+    }
+
+    /// One derivation's answer over a working row, or nothing.
+    ///
+    /// What a row fill asks for a crate column the message does not state:
+    /// the one evaluation of that column's own term over [`Self::crate_row`],
+    /// typed by the column's field as the pass types it. `None` for a tag no
+    /// field derives, a term that does not bind, an answer of null and a
+    /// value the field refuses alike.
+    pub(super) fn fill(&self, tag: i32, row: &[Scalar]) -> Option<Scalar> {
+        self.list
+            .iter()
+            .find(|derivation| derivation.tag == tag)?
+            .answer(row)
+    }
+
+    /// The working row of `msg`: every column of the working schema, the
+    /// `wanted` ones read off the message and the rest null.
+    fn working_row(&self, msg: &FixMsg, wanted: impl IntoIterator<Item = usize>) -> Vec<Scalar> {
+        let mut row = vec![Scalar::Null; self.inputs.len()];
+        for at in wanted {
+            row[at] = self.inputs[at].read(msg);
+        }
+        row
+    }
 }
 
-/// Whether `text` is a SEDOL: six characters weighted `1, 3, 1, 7, 3, 9` and
-/// closed by their modulus-10 digit.
-fn is_sedol(text: &str) -> bool {
-    const WEIGHTS: [u32; 6] = [1, 3, 1, 7, 3, 9];
-    let bytes = text.as_bytes();
-    if bytes.len() != 7 || !bytes[6].is_ascii_digit() {
-        return false;
-    }
-    let mut sum = 0;
-    for (byte, weight) in bytes[..6].iter().zip(WEIGHTS) {
-        let Some(value) = identifier_digit(*byte) else {
-            return false;
-        };
-        sum += value * weight;
-    }
-    (10 - sum % 10) % 10 == u32::from(bytes[6] - b'0')
+/// Where a column stands among the inputs, under the fold the binder
+/// resolves a name by.
+fn position_of(inputs: &[Input], name: &str) -> Option<usize> {
+    inputs
+        .iter()
+        .position(|input| input.field.name().eq_ignore_ascii_case(name))
 }
 
-/// Whether the average price this report states is one fill's price.
+/// A derivation refused at compile, naming the field that carries it.
 ///
-/// `AvgPx` over two fills is not derivable from one of them, so the rule runs
-/// only where the report says the whole done quantity arrived in this fill.
-fn single_fill(msg: &FixMsg) -> bool {
-    let (Some(done), Some(last)) = (msg.get_by_tag(14), msg.get_by_tag(32)) else {
-        return false;
-    };
-    match (done.as_f64(), last.as_f64()) {
-        (Some(done), Some(last)) => done == last && last > 0.0,
-        _ => false,
+/// What the registry keeps where it would have kept the compiled list: a
+/// registry whose rules do not compile refuses every ask - the enrichment
+/// and the row fill alike - with this, and compiles once until a field
+/// changes rather than once per ask.
+#[derive(Clone, Debug)]
+pub(super) struct Refused {
+    path: SmolStr,
+    reason: SmolStr,
+}
+
+impl Refused {
+    fn new(field: &str, reason: &dyn fmt::Display) -> Self {
+        Self {
+            path: SmolStr::new(field),
+            reason: format_smolstr!("{reason}"),
+        }
+    }
+
+    /// The refusal as the error a door answers with.
+    pub(super) fn error(&self) -> Error {
+        Error::InvalidRecord {
+            path: self.path.clone(),
+            reason: self.reason.clone(),
+        }
     }
 }
 
@@ -993,13 +614,15 @@ fn recovered(mut msg: FixMsg) -> FixMsg {
 
 /// Fills what `msg` implies, leaving what it stated and what arrived alone.
 ///
-/// Every answer lands through [`FixMsg::set`]: a row already holding the tag
-/// holds a stated null - a spelling the field reads as nothing sent - and the
-/// answer takes that child's place, anything else is appended. The
-/// dictionary's own field types the value on the way in, so a derived column
-/// is indistinguishable from a stated one and carries the same display,
-/// description and `fix:tag` a reader resolves it by - and a value it
-/// refuses, such as an identifier whose check digit does not close, is
+/// Four steps in order (decision 20, decision 38): what the row's projection
+/// dropped comes back off the arrival record; the message is restated at the
+/// dictionary's newest version; the registry's derivations fill what the
+/// message implies, to a fixpoint; and the component's identifier
+/// declaration fills the sorted `altids` Map. Every answer lands in the row
+/// alone, typed by the dictionary's own field for the tag, so a derived
+/// column is indistinguishable from a stated one and carries the same
+/// display, description and `fix:tag` a reader resolves it by - and a value
+/// it refuses, such as an identifier whose check digit does not close, is
 /// silence. Identifier Map construction propagates the shared text
 /// conversion's typed refusal if a declared member cannot spell text.
 pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
@@ -1007,51 +630,25 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // first, because restatement reads what the document stated and a row
     // states only its columns (decision 20).
     let msg = recovered(msg);
-    // Restatement next, and not as a step a caller may skip: every rule
-    // below reads by tag, and a child stored under an alias with no tag is
-    // invisible until it has been canonicalized (decision 20).
-    let msg = super::latest::restate(msg)?;
-    // Held compactly rather than as a `String`: a message type is one to
-    // three characters, which stays inside the value, so reading it costs
-    // the row nothing on the heap. It is copied out at all because the rules
-    // below write to the message it was read from.
-    let msgtype = SmolStr::new(
-        msg.get_by_tag(35)
-            .and_then(Scalar::as_str)
-            .unwrap_or_default(),
-    );
-
-    let mut held = msg;
-    for rule in RULES {
-        if !rule.msgtypes.is_empty() && !rule.msgtypes.iter().any(|known| *known == msgtype) {
-            continue;
-        }
-        // A stated value is never overwritten, which is what makes this
-        // idempotent: the second pass finds the first pass's answer stated.
-        if held
-            .get_by_tag(rule.tag)
-            .is_some_and(|value| !value.is_null())
-        {
-            continue;
-        }
-        if !rule.when.iter().all(|when| when.holds(&held)) {
-            continue;
-        }
-        if rule.tag == 6 && !single_fill(&held) {
-            continue;
-        }
-        let Some(value) = derive(registry, &held, &rule.from) else {
-            continue;
-        };
-        // A rule whose output another rule reads has to be visible to it, so
-        // each answer lands before the next rule runs rather than once at
-        // the end.
-        let _ = held.set(rule.tag, value);
-    }
+    // Restatement next, and not as a step a caller may skip: every
+    // derivation reads by canonical name, and a child stored under an alias
+    // is invisible until it has been canonicalized (decision 20).
+    let mut held = super::latest::restate(msg)?;
+    // The derivations, compiled and bound once per registry; a refused
+    // compile is the pass's to report, since a dictionary whose rules do not
+    // compile has no rules to fill by.
+    registry.derivations()?.fill_all(&mut held)?;
     if held
         .get_by_tag(super::ALTIDS_TAG_NAME.0)
         .is_none_or(Scalar::is_null)
     {
+        // Held compactly rather than as a `String`: a message type is one to
+        // three characters, which stays inside the value.
+        let msgtype = SmolStr::new(
+            held.get_by_tag(35)
+                .and_then(Scalar::as_str)
+                .unwrap_or_default(),
+        );
         if let Some(component) = registry.get_msgtype(&msgtype) {
             held.set(
                 super::ALTIDS_TAG_NAME.0,

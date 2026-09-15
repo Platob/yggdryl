@@ -229,6 +229,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
     ['isin', fields.isin('value')],
+    ['cusip', fields.cusip('value')],
+    ['sedol', fields.sedol('value')],
     ['side', fields.side('value')],
     ['state', fields.state('value')],
     ['timeinforce', fields.timeinforce('value')],
@@ -260,7 +262,7 @@ test('typed field factories cover every native datatype variant', () => {
   // The factories cover every datatype Arrow has a layout for. `int128` and
   // `uint128` are the two identifiers `Scalar` stores and `DataType` cannot,
   // so no field builds them.
-  assert.equal(byId.size, 61)
+  assert.equal(byId.size, 63)
   assert.deepEqual(
     [...byId.keys()].sort(),
     binding.enums.dataTypeIds.filter((id) => id !== 'int128' && id !== 'uint128').sort(),
@@ -446,16 +448,18 @@ test('the url factory builds a validated, canonical location column', () => {
 })
 
 test('the registered codes build their own datatype at their own width', () => {
-  // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six
-  // and ISO 6166 twelve: each factory builds the code, held to that width,
-  // never the ASCII width that would hold the same text without the
-  // identity.
+  // ISO 3166-1 is two letters, ISO 4217 three, ISO 10383 four, ISO 10962 six,
+  // ISO 6166 twelve, a CUSIP nine and a SEDOL seven: each factory builds the
+  // code, held to that width, never the ASCII width that would hold the same
+  // text without the identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
     ['currency', [fields.currency('settlement_ccy'), 3]],
     ['mic', [fields.mic('venue'), 4]],
     ['cfi', [fields.cfi('classification'), 6]],
     ['isin', [fields.isin('instrument'), 12]],
+    ['cusip', [fields.cusip('cusip'), 9]],
+    ['sedol', [fields.sedol('sedol'), 7]],
   ])
 
   for (const [name, [value, width]] of declared) {
@@ -469,6 +473,28 @@ test('the registered codes build their own datatype at their own width', () => {
   }
 
   assert.ok(!fields.currency('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
+  // A securities identifier is closed by its own check digit, and a column
+  // of them holds the canonical spelling: a cast lets in an identifier the
+  // check digit closes, in upper case; a typo or a lower-case spelling is
+  // null under the safe default and a refusal naming the row when strict.
+  const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
+  const strict = { safe: false }
+  assert.deepEqual(
+    [...fields.cusip('sid').castArrowArray(utf8(['037833100', '037833101', '38259p508']))],
+    ['037833100', null, null],
+  )
+  assert.deepEqual(
+    [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8', 'b0ybkj7']))],
+    ['B0YBKJ7', null, null],
+  )
+  assert.throws(
+    () => fields.cusip('sid').castArrowArray(utf8(['037833101']), strict),
+    /canonical spelling/,
+  )
+  assert.throws(
+    () => fields.sedol('sid').castArrowArray(utf8(['b0ybkj7']), strict),
+    /canonical spelling/,
+  )
   assert.equal(declared.get('country')[0].name, 'venue_country')
   assert.equal(fields.currency('ccy', { nullable: false }).nullable, false)
   assert.equal(fields.mic('venue', { metadata: { source: 'iso' } }).get('source'), 'iso')

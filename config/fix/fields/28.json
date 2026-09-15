@@ -1065,6 +1065,7 @@
       "description": "Identifies class or source of the Currency(15) value.",
       "display": "CurrencyCodeSource",
       "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:derivation": "case when currency is not null then '6' end",
       "fix:tag": "2897"
     }
   },

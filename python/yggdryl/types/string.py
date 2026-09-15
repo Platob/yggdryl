@@ -8,7 +8,7 @@ declaration. The bound is one number with one reading per layout - the exact
 width on the fixed layout, the maximum stored bytes everywhere else - so
 ``fixed`` and ``max`` are the two names it is spelled by.
 
-The eight registered codes are not strings: a currency is an identity over
+The ten registered codes are not strings: a currency is an identity over
 ISO 4217 that stores as the text it is, so its factory lives in
 :mod:`yggdryl.types.codes`.
 """

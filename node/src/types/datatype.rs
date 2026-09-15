@@ -120,6 +120,8 @@ impl JsDataType {
             "mic" => CoreDataType::Mic,
             "cfi" => CoreDataType::Cfi,
             "isin" => CoreDataType::Isin,
+            "cusip" => CoreDataType::Cusip,
+            "sedol" => CoreDataType::Sedol,
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,

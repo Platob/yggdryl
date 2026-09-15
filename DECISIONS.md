@@ -1904,13 +1904,16 @@ reopening; clear and replay; empty/stated maps and compiled fallback parity;
 integer-to-text identifiers, located invalid text/shape and atomic refusal;
 duplicates, null/empty/case/whitespace, unknown types and no nested promotion.
 The 129-line capture yields 83 messages and retains its four final live chains
-through the direct door. Enrichment derives terminal state at lines 35 and 73
-where the raw messages omit it. Its new final count is three, not the old
-four: the old hard-tag fallback reopened the closed ABBN.S chain from the
-untyped FIXML at line 101. That message states no MsgType and therefore has
-no declared identifier selection. Line 102 likewise supplies no selection;
-its HOLN chain opens from the typed order at line 107. Neither an order-only
-fallback nor a fabricated document type preserves the old enriched count.
+through the direct door (144 lines, 95 messages and five chains since the
+cancel/reject flow of decision 38's corpus entry, whose request opens a chain
+its instrument-less reject never meets). Enrichment derives terminal state at
+lines 35 and 73 where the raw messages omit it. Its new final count is three,
+not the old four (four with that fifth chain): the old hard-tag fallback
+reopened the closed ABBN.S chain from the untyped FIXML at line 101. That
+message states no MsgType and therefore has no declared identifier selection.
+Line 102 likewise supplies no selection; its HOLN chain opens from the typed
+order at line 107. Neither an order-only fallback nor a fabricated document
+type preserves the old enriched count.
 Pin these exact capture facts and each door's full replay independently;
 the direct and enriched messages do not state the same terminal information.
 No equivalence snapshot regeneration is expected for this lifecycle-only
@@ -1918,7 +1921,7 @@ change.
 
 ## 24. A chain carries only its previous message's clock and UUID
 
-**Rule.** Append `prevtimestamp` (65021, `PrevTimestamp`) and `prevuuid`
+**Rule.** Append `prevupdatedat` (65021, `PrevUpdatedAt`) and `prevuuid`
 (65022, `PrevUuid`) to the crate definitions. The former has the existing
 `timestamp` datatype, DateTime64 nanoseconds in UTC; the latter is Uuid.
 Both are nullable. There are twenty-three crate definitions: twenty-two
@@ -1942,7 +1945,7 @@ conversion failures are located at `$.timestamp`.
 **Stamps.** Resolve the selected chain by decision 23 before preparing its
 previous pair. Fill each absent/null previous field independently from that
 pair; preserve each non-null stated value independently.
-Stated `prevuuid` must be a native Uuid; stated `prevtimestamp` must be a
+Stated `prevuuid` must be a native Uuid; stated `prevupdatedat` must be a
 native DateTime64 in nanoseconds and UTC. Wrong shapes/parameters refuse at
 their field, rather than coercing a statement or bypassing validation.
 A first message or one belonging to no chain carries null previous fields
@@ -2338,7 +2341,8 @@ Pins: distinct explicit creation instants (first not the minimum or grid);
 explicit-code cross-scope joins and occupied-key isolation; aligned-first,
 suppressed and late arrivals; terminal/reopen/clear/no-name lifetimes; failed
 first/subsequent publication; raw and already-filled replay; equal projection
-through Arrow; the 83-message capture and its existing exact live-chain counts.
+through Arrow; the 83-message capture (95 since decision 38's corpus entry)
+and its existing exact live-chain counts.
 Extend the existing lifecycle benchmark inputs/assertions without executing
 measurements. Update Rust ownership docs and inventory; binding additions
 remain deferred until the complete Rust story per the user's stage order.
@@ -2410,7 +2414,8 @@ are the pipeline; add no alternate converter, entry family or representation.
   so re-emission does not duplicate the document, outside this converter
   change. The suite asserts the exact divergent pairs, never a broad exemption.
   Non-UTF8 entry bytes likewise retain the existing explicit UTF8 row bound.
-- The 129-line/83-message capture pins direct lazy composition and both Arrow
+- The 129-line/83-message capture (144 lines and 95 messages since decision
+  38's corpus entry) pins direct lazy composition and both Arrow
   directions, one decode, source error identity with fusion, restored row
   numbers, bodies and capture presence; the existing row-by-row/batch
   agreement keeps carried/lifted columns and LIFTED_OUT_OF_A_DOCUMENT exact.
@@ -2958,3 +2963,507 @@ a user function, its defaults filled and its null rule kept; a signature
 round-tripping through its field; a stored call reading back as its function
 and sources; an unregistered name refused where it is typed; a text read
 shaped by a select over the row header's captures and a where over an alias.
+
+## 38. `prevupdatedat`, `timepartition`, and the rules a registry carries
+
+Settled with the user's request to rename two crate columns and to keep the
+enriching pass while it moves out of Rust into the registry. Each part of
+this entry is appended by the change that lands it.
+
+### The previous clock is `prevupdatedat`
+
+**Rule.** Tag 65021 is `prevupdatedat` (`PrevUpdatedAt`), never
+`prevtimestamp`: the value it carries is the previous message's `updatedat`
+(decision 26 renamed the clock and this follows it). Same datatype, same
+position, same nullability, same stamps; no alias, no second spelling
+anywhere - Rust constants, Python, JavaScript, the CLI, the docs, the
+inventories and the equivalence snapshot all read the new name.
+
+### The partition is an hour, typed as the clock it is cut from
+
+**Rule.** Tag 65004 is `timepartition` (`TimePartition`): `updatedat`
+floored to the hour, as `DateTime64(ns, UTC)` - the exact layout every FIX
+clock has - rather than the whole seconds `unixpartition` held. A partition
+value is compared and ranged over, and an instant floored to its hour ranges
+exactly as the clock it was cut from, reads as a date in every catalog, and
+needs no arithmetic to compare against a clock.
+`FixMsg::time_partition()` answers it (Python `time_partition`, JavaScript
+`timePartition`); `DEFAULT_PARTITION_SECONDS` stays the one width, an hour.
+
+The crate field declares what it is in the protocols every catalog reads:
+`field:partition` marks it as the column a layout is cut on, so an Iceberg
+spec built from the fixed schema partitions by identity on it and prunes on
+its bounds; `partition:sources = ["updatedat"]` names what it reads; and its
+derivation is the expression layer's own `transform:expression =
+"truncate(updatedat, 'hour')"`, so `Field::apply_arrow_batch` fills a batch
+that lacks the column with exactly what `time_partition` answers for a row.
+The Iceberg `truncate[3600]` declaration goes with the integer it described.
+
+**What moves.** The equivalence snapshot moves on every row's
+`timepartition` (an instant where an integer was) and on every row's `uuid`:
+the message identity digests the named row content (decision 26), the column
+is part of that content, and both its name and its value changed. Nothing
+else moves - entries, wire, digests and every other column are byte for
+byte what they were.
+
+**Written in:** `fix/crated.rs`, `fix/schema.rs`, `fix/lifecycle.rs`, both
+bindings, `docs/fix/*`, `DECISIONS.md` 24 and 26 restated under the new
+names.
+**Fixtures:** `rust/tests/fix/schema.rs` - the fixed schema partitions by
+identity on `timepartition`, a batch missing the column is filled with the
+hour floor of `updatedat`, a pre-epoch clock lands in the hour that contains
+it; the regenerated equivalence snapshot with the two moved keys named.
+
+### The corpus
+
+**Rule.** `rust/tests/fix/ulbridge.log` is the one capture every FIX suite
+and benchmark reads, and it now ends on fifteen more lines of the bridge's
+own, transcribed from its log and anonymized the way the rest was
+(`FIRM.*`, `FIRMA9120`, `ULMSG_DMZ_FIRM`, `ULB_FIRM`, `FIRMB`, `FIRMAPRD`,
+`OMSVENDOR`, `trader3`, `0102TRADER3`; instruments, venues and vendor
+session names kept; `9=`, `212=` and `10=` recomputed over the `|`
+separator so every frame is consistent): a cancel request (`35=F`), its
+cancel reject (`35=9`, `434=1`, `39=8`, `58=`), the reject routed, enriched
+with five regulatory clocks and forwarded as a bridge row - `#`-marked keys,
+ten packed parties, two alternate identifiers, `FIRM.`, `OMSVENDOR.` and
+`ULLINK.` composed keys, once in parentheses after prose and once bare - the
+`35=UL` frame the row goes out in with an exact `212=`, and two Fidessa
+heartbeats, one saying `43=N`. The corpus is 144 lines and 95 messages;
+three of the new lines are prose and carry none.
+
+**What the lines pin, as the codec reads them today.** The frames are typed
+by their codes and the bridge rows by the spelling they call themselves,
+`cancelreject`; `ORDSTATUS=rejected` and `39=8` both read as the state
+`8`, on the message and in the crate's `state` column; a `#`-marked key
+with no bare twin is the key it marks, a marked twin restating the bare
+bytes is dropped, and `#SYMBOL=TW0002454006` beside `SYMBOL=2454` stays
+its own verbatim key. The ten parties replicate into `parties`, each role
+typed where FIX spells the bridge's word and null where it does not
+(`orderoriginatorsystem`, `buyside`), and `party` answers a role one party
+bears and none a role two bear. `#NOTRDREGTIMESTAMPS=4` over five indexed
+occurrences is a real bridge anomaly kept verbatim: the row holds the five
+occurrences, the counter holds the stated four, never renumbered, and
+`anomalies()` reports `Miscounted { 768, "trdregtimestamps", 4, 5 }`.
+`OMSVENDOR.ORDERQTY` fills `OrderQty` and `OMSVENDOR.TIMEINFORCE` fills
+`TimeInForce` (decision 20), while `FIRM.ACRONYM` and `ULLINK.INSTRUMENTID`
+name no field and stay under their namespaces. The prose-wrapped row and
+the bare row read as one message with one digest; two sessions' heartbeats
+digest equal, because a digest reads past the header and a heartbeat is
+nothing else. The batch door agrees with the line door on every tag of the
+new lines, and `LIFTED_OUT_OF_A_DOCUMENT` stays the two pairs it was.
+
+**What moves.** Every pinned count: 129 lines to 144 and 83 messages to 95
+in `rust/tests/fix/dataset.rs` (its `SILENT` list gains lines 136, 137 and
+139), `lifecycle.rs`, `lifecycle_previous.rs`, `rust/tests/iobase_calls.rs`
+and the pipeline benchmark's `95 * REPEATS`; the live-chain counts to five
+direct and four enriched, because the cancel request opens a chain under
+the instrument its `22=4|48=` names and the reject, naming the order but no
+instrument, scopes its keys under nothing and never meets it; the
+equivalence snapshot gains the keys `ulbridge[129]` to `ulbridge[143]` and
+no existing key moves. The codec needed no change.
+
+**Written in:** `rust/tests/fix/ulbridge.log`, `dataset.rs`, `lifecycle.rs`,
+`lifecycle_previous.rs`, `rust/tests/iobase_calls.rs`,
+`rust/benchmarks/fix/pipeline.rs`, `docs/fix/capture.md`, `decode.md`,
+`arrow.md`.
+
+### Iceberg defaults
+
+A merge into an Iceberg table joins on the identity partition columns first
+and the caller's `merge_by` after them, each named once, so a row can only
+update a row of its own partition and a merge into one partition of a
+thousand reads that partition's files and no other: the incoming rows are
+grouped by partition tuple - the grouping an append lays files out by - the
+plan opens the manifests and files of those partitions alone, the key bounds
+narrow them within the partition, and every other file is carried under its
+own path. A merge naming no key is keyed by the partition alone and replaces
+the partitions its rows fall in; an unpartitioned table refuses that by name,
+because with no partition and no key there is nothing to match on. Within
+one write the last of the rows arriving with one key wins. A live file under
+another partition spec belongs to no partition of the current one, so a merge
+the key bounds cannot keep away from it is refused naming the file and both
+spec ids rather than joined across partitions.
+
+Every data file holds one partition group in the table's default sort order.
+A table created without declaring one takes `SortOrder::for_spec`: the spec's
+source columns, in spec order, ascending, nulls first, recorded as order 1
+and made the default; an unpartitioned spec derives from nothing, so order 0
+stays. `Table::create_sorted` declares another, `SortOrder::unsorted()`
+included. A sort field is honoured through its source column, so a bucket
+orders by its source value and every other transform exactly as its source
+does. A group is sorted once and cut into files of about the target size by
+its Arrow bytes per row, which is what makes the bounds a file records tight.
+
+Partition groups are written on `write.parallelism` threads
+(`IcebergOptions::write_parallelism`, default the resolved
+`read.parallelism`, minimum 1); the manifest lists a commit's files in group
+order whatever order the threads finished in, so its bytes do not depend on
+scheduling, and a failing group fails the commit before any metadata is
+written. Each writer resolves its files against its own handle on the table
+folder; the table's root handle never crosses a thread.
+
+A `where` on a record read of a table is pushed into the scan plan whole -
+`in`, `between`, `is null` and `&holder.*` prune manifests and files as an
+equality pair does - the `select` and the `where` decide which columns each
+file decodes, and the pair spellings (`scan_where`, `plan`, the located
+partition directory) are sugar over the one predicate form. A `where` naming
+a column only the `select` publishes runs after the projection over an
+unfiltered scan, as DuckDB lets a `where` read an alias.
+
+### unknown is Null, variant is Variant, and they are not the same thing
+
+Iceberg v3 `unknown` is the absence of a type: a column whose every value is
+null, which the spec keeps optional and out of every data file. It is
+`DataType::Null` in both directions, the column is omitted when a data file
+is written and restored as null when one is read, and in v3 it promotes to
+any type. Iceberg v3 `variant` is semi-structured data whose every value
+carries its own type in the Parquet Variant binary encoding: it is
+`DataType::Variant`, the `metadata`/`value` binary pair the Arrow extension
+lays out, stored in a Parquet data file under the `VARIANT` logical type. A
+v1 or v2 table refuses either by name. Official Iceberg 0.10.1 models neither
+spelling, so at its boundary each such column crosses as `binary` under its
+own field identifier - in metadata documents and in manifest headers alike -
+and comes back as itself; the crate's own schema serde spells the two names.
+
+Pins: a range, a membership and a null test on a partition column skipping
+manifests as the equality does, and a record read opening only the surviving
+files; a merge into one partition of three resolving no other partition's
+data file and leaving their paths untouched; the same key in another
+partition appended rather than updated; a keyless merge replacing a
+partition and refused on an unpartitioned table; duplicate keys in one write
+keeping the last row; the default order recorded in metadata, explicit
+orders laying monotone bounds across files, an unsorted table keeping arrival
+order; `write.parallelism` resolving explicit, property, then the read
+parallelism, a four-thread commit listing eight groups in order, a failing
+writer leaving the version and snapshot untouched; `unknown` and `variant`
+round-tripping through schema JSON, a data file, a reopened table and the
+official validation, and refused by name in v2.
+
+### Enrichment rules are `fix:derivation` expressions the registry carries
+
+**Rule.** A field a message implies but need not carry declares how it
+derives, on itself, as `fix:derivation`: the canonical text of one term of
+the expression grammar over the message's fields by their canonical folded
+names, a group by its name and a member through a path
+(`secaltidgrp[securityaltidsource = '4'][0].securityaltid`), the crate's own
+columns by theirs. `FixField::derivation() -> Result<Option<Term>>` reads it
+(parsed through `Term::from_str`, budget-checked, a refusal naming the key),
+`FixFieldMut::set_derivation(&Term)` / `remove_derivation()` write it, the
+store dumps and loads it like every `fix:` key, a registry validates it at
+insert, update and load naming the field, `update` merges it as one term
+(incoming wins whole, a stored one the incoming omits is kept, as every
+`fix:` key), and the bindings cross it as text (`field.fix.derivation`,
+`None` / `null` removing it). The 29 rules the crate held as a Rust table -
+`FixRule`, `FixWhen`, `FixDerivation`, `RULES`, the CFI, security type and
+product tables, the check-digit readers - are deleted; they are
+`DERIVATION_RULES` in `scripts/generate_fix_dictionary.py`, validated at
+generation (every name a field, a group or a crate column), the CFI and
+`PutOrCall` tables rendered as searched `case` over `ilike`, the `Product`
+rule generated from the groups the dictionary's own `SecurityType` code set
+files each value under. The crate's three derived columns declare theirs in
+`fix/crated.rs`: `isincode` is `coalesce(case when securityidsource = '4'
+then try_cast(securityid as isin) end,
+try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid as isin))`
+- each identifier read through the `isin` datatype's own refusal, so a
+primary no check digit closes is null and the alternate is consulted behind
+it, which is the fall-through the deleted table had as two rules -
+`miccode` is `coalesce(securityexchange, exdestination, lastmkt)`, `state`
+is `coalesce(ordstatus, exectype)`, and `schema.rs::column_value` no longer
+duplicates them: a row of an unenriched message fills those three columns
+through the same compiled term and the same gather the pass runs.
+
+**The evaluator is the expression layer.** One grammar, one binder, one
+evaluator: a rule is a `Term`, it binds with `Term::bind` against the
+working schema, it evaluates with the scalar tier, and its answer is typed
+by the dictionary's own field for the tag exactly as `FixMsg::set` types a
+value. Nothing here interprets a rule; a `case`, a `coalesce`, a `try_cast`
+and a path predicate mean in a derivation what they mean in a `where`.
+The registry compiles its derivations once - `FixRegistry::derivations()`,
+a `OnceLock<Result<Arc<Derivations>, Refused>>` built on the first
+enrichment or row fill and forgotten by every field change (`index`,
+`remove_resolved`), by every catalog change (a clone starts empty and every
+mutation stages itself on a clone; the direct catalog writes forget
+explicitly) - rather than on the codec, because the row fill
+(`FixMsg::into_row`) has no codec in hand and evaluates the crate columns
+through the same compiled list, and because the cost of a mutation is then
+a pointer reset. Compiling proves every name a term reads is a field or a
+group of the registry and binds the term against the working schema,
+refusing by the field's name, never per message - and the refusal is kept
+exactly as a compiled list is, so a registry whose rules do not compile
+compiles once and refuses every ask on every door: `enrich_message`,
+`enrich_messages`, `into_row` (`column_value` is fallible for it) and the
+batch reader answer the same error naming the field, and none nulls the
+crate columns in silence. The crate's own columns are the one exception to
+the name check: their terms read the standard's fields by name and a
+registry built from a handful of fields holds none of them, so for a crate
+field a name the registry lacks is a null column of the working schema, and
+a term that cannot bind over such columns is silent.
+
+**Bound once per registry, against the working schema.** The working
+schema is the ordered union of every column any derivation reads or fills,
+each typed by the registry's field for it, a group by its group definition;
+every term is bound against it at compile and never against a message, so
+there is no shape to recognize and nothing cached per shape. Per message the
+pass gathers exactly those columns off the message by tag (`FixMsg::
+indexed_by_tag`, the index alone and never the name table a miss would
+build; a stated group laid out through `regrouped` as the registry declares
+its occurrence, so a member a term names stands where the definition puts
+it; an absent column null) into one working row, sweeps the derivations in
+tag order (a target the row holds non-null is skipped; a null answer, a
+value the field refuses and an evaluation the grammar refuses are silence;
+a non-null answer is typed and written where the next derivation reads it),
+repeats the sweep until one writes nothing - bounded by the derivation
+count - and lands everything through one `FixMsg::set_each`, one rebuild
+for the whole pass. `Bound::eval_values` is the crate-private door this
+reads through, the row as its column values rather than as a sequence, so
+a write into the working row is what the next term reads. The row fill
+gathers the same way, the columns the one term reads, and types the answer
+through the column's field as the pass does, so a refused value is a null
+column rather than a refused row. A message costs the same whatever came
+before it: the bridge corpus of 54 root shapes enriches at 224 allocations
+a message, and its second pass costs exactly its first less the compile.
+The fixpoint replaces the hand-laid rule order and settles a
+chain in either direction (`securityid` <-> `isincode`, `securityidsource`
+after `securityid`, `product` after `securitytype` after `cficode`,
+`leavesqty` after `ordstatus` after `exectype`); the primary identifier is
+read before the alternate ones because the `isincode` term says so.
+
+**What was kept, exactly.** Every case of `rust/tests/fix/enrich.rs`,
+`latest.rs`, `dataset.rs` and `pipeline.rs` answers as before, and the
+equivalence snapshot's `enrich` group does not move: the recovered
+arrival-record fields, restatement, every derivation the rule table stated
+(spelled as the design brief lists them, with `PeggedRefPrice(1095)` under
+its dictionary name), the `altids` Map and the stream's `Remembered` plugin
+memory. `CountryOfIssue(470)` keeps the whitelist the deleted
+`FixDerivation::Country` was, `StringEnum::COUNTRIES`: the `country`
+datatype validates width alone and stays so - it is the width its standard
+fixes, as every registered code is, and a stream carrying an unassigned
+code registers it - so the derivation states the membership, as an `in
+(...)` over the 249 assigned codes the generator reads off
+`rust/src/types/string/registries.rs` rather than copies; one owner, and a
+pin over all 676 pairs holds the term to the registry. (The first spelling
+stated ISO 3166's reservation rule instead and answered 381 unassigned
+pairs; that was wrong and is gone.) The `Product(460)` group lookup matched
+a `SecurityType` code exactly where the CFI lookup folded case; both now
+fold (`upper(securitytype)`), which changes no pinned answer.
+
+**What changed, on purpose.** Five answers differ from the deleted table,
+each pinned in `rust/tests/fix/enrich.rs` and stated in the capture page's
+edges. A report with nothing left that states a canceled quantity orders
+what it did plus what it canceled (`39=4|14=40|84=60` derives `OrderQty`
+100, and `151=0` stated beside them changes nothing): Appendix D's cancel,
+where the hand-laid order derived `LeavesQty` first and answered `CumQty`
+alone; the rule says it outright - `cxlqty > 0 and coalesce(leavesqty, 0) =
+0` - so the answer does not hinge on tag 38 being swept before 151. The
+fixpoint fills chains the single pass could not reach and was not idempotent
+over: `GrossTradeAmt` and `AvgPx` after a `LastPx` derived from spot and
+points, `LeavesQty` after an `OrderQty` derived from `CxlQty`, the
+multiplied and gross quantities after a `TotalTradeQty` derived from the
+period multiplier. `OrigSendingTime(122)` and `TotalTradeQty(2367)` fire: the
+deleted rules read `PossDupFlag` as text and `TradingUnitPeriodMultiplier`
+as a float, and a boolean and an integer never matched; a term reads each
+as what it is. `Symbol(55)` compares `SecurityIDSource` exactly - `A` is
+Bloomberg's source, `a` is no code of the set - because FIX codes are
+case-sensitive, where the deleted condition folded case. Each is the better
+answer, and none is an accident of order.
+
+**Pins.** A `fix:derivation` edited on a registry field changes what the
+reader fills (Rust doc example, Python and JavaScript tabs, and their tests);
+a malformed derivation refuses at insert and update, and at load through a
+store whose shard was corrupted and through a JSON snapshot, naming the
+field; an absent input is silence and a stated value is never overwritten, a
+stated null filled in place with the wire untouched; a chain resolves in one
+pass whichever way it runs; a derivation naming what the dictionary lacks, or
+one that does not bind, refuses on all four doors naming the field; every
+shipped derivation is stored as its canonical text and binds; the crate
+columns fill a row of an unenriched message as the pass fills the message;
+the ISIN fall-through, the 676-pair country whitelist and the five changed
+answers above; a registry of a handful of fields enriches and its crate
+columns are silent; the corpus of every bridge shape enriches to the same
+answers forwards, backwards and twice; and `rust/src/fix/tests.rs` pins the
+working schema - 57 columns for the committed dictionary, the group typed as
+the registry declares it, all 32 terms bound in tag order, every target a
+column - and that one registry compiles once, a clone compiles its own and
+an update recompiles. `rust/tests/allocations.rs` pins that a warm
+same-shaped message costs 146 allocations - the clone, restatement's rebuild
+and the working row, and nine derivations landing: their evaluations, the
+landed list sized once, nine writes staged and one rebuild through
+`set_each`, the `altids` Map and its rebuild - that a thousand
+cost exactly a thousand times that (nothing is bound or kept per message),
+that a settled message costs 46, that the bridge corpus of 54 root
+shapes costs the same on its second pass as on its first (nothing is kept
+per shape), and that a registry whose derivations refuse compiles once: the
+first refused ask pays the compile and the second 23, the clone, the
+restatement and the refusal's two string handles. `enrich_messages_same_shape` in the pipeline benchmark is the same
+pass over one shape, beside the corpus of every shape.
+
+**Written in:** `fix/enrich.rs`, `fix/field.rs`, `fix/registry.rs`,
+`fix/catalog.rs`, `fix/store.rs`, `fix/msg.rs`, `fix/schema.rs`,
+`fix/crated.rs`, `fix/mod.rs`, `expression/bind.rs`, `expression/eval.rs`,
+`scripts/generate_fix_dictionary.py`, `config/fix`, both bindings,
+`docs/fix/capture.md`, `registry.md`, `message.md`, `arrow.md`, `store.md`,
+the inventories.
+### Staging and the remote call budget
+
+**Rule.** A table touches only the files its metadata names, and names them
+as what they are. A handle the table resolves is the leaf or the container
+the layout says it is - `staging::leaf`, `staging::container` - never an
+undecided location the store is asked to classify, because a listing to
+learn what a manifest already states is a round trip for nothing. A data
+file's handle is told the length the manifest recorded
+(`File::with_known_size`, the one primitive the object backend was missing:
+a listing already taught a handle its size, a manifest can too), so a scan
+opens each file with one `GET`. A manifest and a manifest list stream out of
+one open read, the input limit enforced on what arrives rather than by a
+size question first. A commit re-checks its version by the hint alone and
+reads the document only when the hint names a newer one, and an attempt
+beaten on write re-uses the manifest list it already read. A projection
+opens a file's footer for its column names only when a schema the table
+ever had spells a current column under another name; a table that never
+renamed one projects by the read root's names.
+
+Every file a commit writes - data file, manifest, manifest list - goes
+through one `Staging`: with `write.staging` on it is encoded into a local
+file under a directory of the commit's own (`yggdryl-iceberg-<snapshot>-
+<uuid>` under the folder), its statistics read from that copy, and streamed
+from it as one upload - `File::upload_from`: one `PUT` below the store's
+multipart threshold, and above it one part-sized buffer at a time, read and
+sent before the next (`Client::put_streamed`, which the in-memory
+`put_chunked` goes through as well), so memory holds one part of one file
+per writer thread - with the copy removed once the upload ends; with it off
+the file is written in place. Either way the published file is recorded,
+and the staging is a transaction whose point of no return is the versioned
+metadata document: `commit_metadata` calls `Staging::commit` the moment
+`v{n}.metadata.json` is durable and before the hint is written, because a
+fresh handle resolves the version to that document whatever the hint write
+reports - a hint the store publishes and then reports failed leaves every
+file the document names - and a drop before that point (a refused upload, a
+beaten commit out of retries, a refused document write, a panic) removes
+every published file and the directory, so a failed commit leaves no local
+file and no file the metadata does not name. The attempt document is part
+of that rule: a failure between its write and the versioned document's
+removes it too, because left in place it would name removed files and
+claim the version against every later writer. A store handle whose upload
+was refused is discarded, not removed - a refused `PUT` stored nothing and
+an abandoned multipart upload is aborted, so no `DELETE` goes out for a key
+never written; any other handle is removed rather than dropped, because a
+leaf publishes what it holds when it is dropped. An attempt beaten on write
+withdraws the manifest list of the attempt it replaces (`Staging::withdraw`,
+one removal) before publishing its own, so a successful commit leaves
+nothing the metadata does not name either. A data file's recorded length of
+zero is never seeded as a known size (`staging::sized`): a real file's
+reader would take it for an empty one and answer no rows without an error,
+so the handle asks the file instead, one `HEAD` more. A bound filesystem
+location's child named `.` is the location itself (`BoundLocation::child`,
+as the empty name already was): the per-thread root handle a data commit
+takes with `child_by_path(".")` used to bind `table/./data/...` over an
+Arrow filesystem, a key no reader of `table/data/...` finds, so a data
+commit into a memory-backed table published its files where no scan could
+read them. The option is `IcebergOptions::write_staging` (`write.staging`:
+`off` or a local folder URL or path; a remote folder is refused naming the
+key), resolved explicit, then property, then the root's own default -
+`WriteStaging::Folder` of the platform temporary folder for a remote root,
+`WriteStaging::Off` for a local one, which `Table::write_staging` answers.
+It crosses the Python and Node bindings as text (`write_staging`,
+`writeStaging`), `None`/`null` being the unset default.
+
+**What it costs.** Over the in-process S3, exact and pinned: create 5 (was
+9), an append of one partition 9 (was 25), of three 12 (was 40), an upsert
+into one partition of three 14 (was 40), open 2 (was 5), a full scan of four
+files 7 (was 21), a pruned scan of one file 3 (was 9), a projected scan 7
+(was 29). What remains is the metadata chain, one upload per written file,
+one `GET` per read file, and the one listing that claims a version.
+
+**Written in:** `media/iceberg/staging.rs`, `table.rs`, `manifest.rs`,
+`scan.rs`, `options.rs`, `holder/object/file.rs`, `holder/object/client.rs`,
+`holder/fs/location.rs`, both bindings, `docs/media/iceberg/write.md`,
+`docs/media/iceberg/index.md`, `docs/holder/backends/object.md`.
+**Fixtures:** `holder/object/tests/accounting.rs` (the request shape of
+every operation above; a refused first upload publishing nothing and
+removing nothing - 1 `PUT`, 0 `DELETE` - and a refused second one removing
+the first - 2 `PUT`, 1 `DELETE`, the keys restored - leaving no staged
+file, the next commit whole; a manifest recording a length of zero read
+for its one row at one `HEAD` more),
+`media/iceberg/tests.rs` (the staging directory a commit's own and disjoint
+from a concurrent one's, removed on drop with its published files and on
+commit without them, off for a local root and under the temporary folder
+for a remote one, a failed publication rolling a partitioned commit back; a
+hint published and then reported failed keeping the data files the
+document names, with a fresh handle reading them; a refused document write
+removing the files and the attempt, the next commit taking the version; a
+commit beaten on write withdrawing the list of the attempt it replaces -
+one removal, one list left, the one the snapshot names),
+`rust/tests/media/iceberg.rs` (`write.staging` resolving explicit, property,
+then the root's default, refusing a remote folder by key, a staged commit
+leaving the staging folder empty), the oversized-container pin now reading
+past the limit by at most one chunk.
+
+### The identities are sixteen fixed bytes
+
+**Rule.** The four crate identity columns - `instuuid` (65016), `uuid`
+(65017), `puuid` (65018) and `prevuuid` (65022) - are
+`fixed_size_binary(16)` (grammar `fixedbinary(16)`, Arrow
+`FixedSizeBinary(16)` with no extension name), never `uuid`. Their names,
+tags, display names, roles, nullability and every identity semantic
+(decisions 19-28) are exactly what they were; what changed is the datatype
+and the byte layout. The reason is the lake: every engine reads `fixed[16]`,
+and none reads `uuid` the same way twice, so the FIX layer states the bytes
+themselves rather than an RFC identifier it would have to explain at each
+border. The core's `DataType::Uuid`, the `Uuid` scalar, `TxHash::into_uuid`
+(which the Python and JavaScript txhash bindings answer with) and the
+Iceberg `uuid` mapping are untouched: this is the FIX layer choosing plain
+bytes, not the crate retiring a type.
+
+The sixteen bytes are big-endian throughout, with no version or variant bits:
+
+- `uuid`: the signed `updatedat` nanoseconds with the sign bit flipped in
+  bytes 0..8 - so the bytes order as the instants do, across the epoch,
+  exactly as `Uuid::from_time_hash` ordered them - then the **full 64 bits**
+  of the XXH64 of the canonical named content in bytes 8..16. Fifty-eight
+  bits were kept before, because six went to the RFC's version and variant
+  slots; nothing is spent on a layout now, so all sixty-four survive. One
+  owner: the (instant, digest) pair is a `TxHash`, and
+  `TxHash::into_ordered_bytes` is the one rendering of these sixteen bytes.
+- `puuid`: `xxhash::xxh128(code.as_bytes()).to_be_bytes()`.
+- `instuuid`: the xxh128 digest `lifecycle::instrument_digest` computes,
+  `.to_be_bytes()`; a stated `instuuid` is kept as stated, and one of another
+  width, byte layout or family is refused at its own column, exactly where a
+  stated uuid of the wrong type was refused before.
+- `prevuuid`: the preceding message's `uuid`, copied.
+
+A chain code scopes an identifier under the instrument it reached (decision
+22); the scope is bytes now rather than an identifier with a canonical text,
+so a generated code spells it as the thirty-two lowercase hex digits of
+those bytes - `<scope hex or ->/<identifier>` - which is how this crate
+writes every binary value a name has to carry.
+
+**What moves.** The equivalence snapshot moves on exactly the `uuid` and
+`puuid` keys of every captured message - 304 of each, across the `bridge`,
+`enrich`, `enrich.ulbridge`, `frames`, `latest`, `lift`, `shapes`,
+`ulbridge` and `verbatim` corpora - and on nothing else: the same messages,
+the same content, a different rendering of the same two digests. The
+committed dictionary's pinned hash and the plugin dictionary's move with the
+four declarations. `instuuid`, `prevuuid` and `code` are not in that
+snapshot, because the lifecycle is not part of equivalence; a chain code
+scoped under an instrument does change, and the lifecycle suites pin the new
+spelling.
+
+**Written in:** `fix/crated.rs` (the four declarations and their
+descriptions), `fix/identity.rs` (`IDENTITY_DATATYPE`, `Identity`,
+`identity_scalar`, `stated_identity`, `persistent_identity`,
+`IdentityText`), `fix/lifecycle.rs` (the chain maps keyed by the bytes),
+`hashing/txhash/value.rs` (`into_ordered_bytes`), both bindings' surfaces,
+`docs/fix/{capture,message,lifecycle,arrow}.md`, `docs/hashing.md`,
+`docs/assets/fix.json` (hand-edited: the Node addon that generates it cannot
+be built here), the inventories.
+**Fixtures:** `rust/tests/fix/lifecycle.rs` - the bytes lead with the
+sign-flipped instant and carry the whole digest, a stated instrument
+identity of another width or layout is refused by name and changes no chain;
+`rust/tests/fix/schema.rs` - the identity columns cross an Iceberg table as
+`fixed[16]` and come back byte for byte, a renamed sixteen-byte column
+carrying a crate tag is that role and stays plain Arrow bytes;
+`rust/tests/fix/content_identity.rs` - `puuid` is the xxh128 of the code
+byte for byte, and one differing byte of content is a different `uuid`;
+`python/tests/fix/test_fix.py` and `node/tests/fix/fix.test.js` - the four
+columns answer `fixedbinary(16)`, and the message identity's first eight
+bytes are the sign-flipped `updatedat` nanoseconds.

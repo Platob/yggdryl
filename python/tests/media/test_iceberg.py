@@ -1176,6 +1176,37 @@ class TestIcebergOptions:
         with pytest.raises(TypeError, match="commit_retres"):
             IcebergOptions(commit_retres=2)
 
+        # The write parallelism defaults to the read parallelism, resolves on
+        # its own once set, and refuses zero naming its key.
+        assert options.write_parallelism == options.read_parallelism
+        options.read_parallelism = 3
+        assert options.write_parallelism == 3
+        options.write_parallelism = 5
+        assert options.write_parallelism == 5
+        assert IcebergOptions(write_parallelism=2).write_parallelism == 2
+        with pytest.raises(ValueError, match=r"write\.parallelism"):
+            IcebergOptions(write_parallelism=0)
+        with pytest.raises(ValueError, match=r"write\.parallelism"):
+            options.write_parallelism = 0
+        assert options.write_parallelism == 5
+
+        # The staging folder is unset until a layer speaks, reads back as the
+        # text it was given, takes a path as well as a URL, and refuses a
+        # remote folder naming its key.
+        assert options.write_staging is None
+        options.write_staging = "off"
+        assert options.write_staging == "off"
+        options.write_staging = pathlib.Path(__file__).resolve().parent / "stage"
+        assert options.write_staging.startswith("file:")
+        assert IcebergOptions(write_staging="off").write_staging == "off"
+        with pytest.raises(ValueError, match=r"write\.staging"):
+            IcebergOptions(write_staging="s3://trades/stage")
+        with pytest.raises(ValueError, match=r"write\.staging"):
+            options.write_staging = "s3://trades/stage"
+        assert options.write_staging.startswith("file:")
+        with pytest.raises(TypeError, match="write_staging"):
+            options.write_staging = 7
+
     def test_puffin_is_a_native_format_but_not_a_table_data_writer(
         self, table: Table
     ) -> None:
@@ -1221,6 +1252,8 @@ class TestIcebergOptions:
             ("read_parallelism", 1),
             ("read_parallel_min_files", 1),
             ("read_parallel_min_file_size", 1),
+            ("write_parallelism", 1),
+            ("write_staging", "off"),
             ("compact_after_commits", 1),
             ("data_mime_type", "avro"),
         ]:

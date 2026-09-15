@@ -152,13 +152,20 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert not hasattr(types, "msgtype")
     assert not hasattr(types, "MsgTypeField")
     assert "msgtype" not in enums.DATA_TYPE_IDS
-    # Sixty-three: decision 14 retired `msgdirection` (discriminant 58, never
-    # reused), so `url` keeps its byte 59 and sits one index earlier, and
-    # decision 34 appended `timezone`, `mimetype` and `mediatype` after it.
+    # Sixty-five: decision 14 retired `msgdirection` (discriminant 58, never
+    # reused), so `url` keeps its byte 59 and sits one index earlier, decision
+    # 34 appended `timezone`, `mimetype` and `mediatype` after it, and decision
+    # 38 appended `cusip` and `sedol` as code datatypes of their own.
     assert "msgdirection" not in enums.DATA_TYPE_IDS
-    assert len(enums.DATA_TYPE_IDS) == 63
+    assert len(enums.DATA_TYPE_IDS) == 65
     assert enums.DATA_TYPE_IDS.index("url") == 58
-    assert list(enums.DATA_TYPE_IDS[-3:]) == ["timezone", "mimetype", "mediatype"]
+    assert list(enums.DATA_TYPE_IDS[-5:]) == [
+        "timezone",
+        "mimetype",
+        "mediatype",
+        "cusip",
+        "sedol",
+    ]
     with pytest.raises(ValueError):
         DataType("msgtype")
     with pytest.raises(ValueError):

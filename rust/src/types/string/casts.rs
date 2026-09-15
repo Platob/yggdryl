@@ -389,13 +389,19 @@ fn code_cell<'a, const WIDTH: usize>(
         Ok(text) => text,
         Err(error) => return refused(error.to_string()),
     };
-    // A securities number carries its own check, and a column of them
+    // A securities identifier carries its own check, and a column of them
     // holds the canonical spelling: what a cast lets in is what a read
     // answers, so the check digit and the case are settled here rather
     // than on every read of the cell.
-    if matches!(field.dtype(), DataType::Isin) && !crate::types::Isin::is_canonical(text) {
+    let canonical = match field.dtype() {
+        DataType::Isin => crate::types::Isin::is_canonical(text),
+        DataType::Cusip => crate::types::Cusip::is_canonical(text),
+        DataType::Sedol => crate::types::Sedol::is_canonical(text),
+        _ => true,
+    };
+    if !canonical {
         return refused(format!(
-            "expected a securities number in its canonical spelling, got {text:?}"
+            "expected a securities identifier in its canonical spelling, got {text:?}"
         ));
     }
     Ok(Some(text))

@@ -158,13 +158,20 @@ test('Version field defaults and hints expose the native value with Arrow string
 test('generic MsgType datatype and field helpers are retired', () => {
   assert.equal('msgtype' in fields, false)
   assert.equal(enums.dataTypeIds.includes('msgtype'), false)
-  // Sixty-three: decision 14 retired `msgdirection` (discriminant 58, never
-  // reused), so `url` keeps its byte 59 and sits one index earlier, and
-  // decision 34 appended `timezone`, `mimetype` and `mediatype` after it.
+  // Sixty-five: decision 14 retired `msgdirection` (discriminant 58, never
+  // reused), so `url` keeps its byte 59 and sits one index earlier, decision
+  // 34 appended `timezone`, `mimetype` and `mediatype` after it, and decision
+  // 38 appended `cusip` and `sedol` as code datatypes of their own.
   assert.equal(enums.dataTypeIds.includes('msgdirection'), false)
-  assert.equal(enums.dataTypeIds.length, 63)
+  assert.equal(enums.dataTypeIds.length, 65)
   assert.equal(enums.dataTypeIds.indexOf('url'), 58)
-  assert.deepEqual(enums.dataTypeIds.slice(-3), ['timezone', 'mimetype', 'mediatype'])
+  assert.deepEqual(enums.dataTypeIds.slice(-5), [
+    'timezone',
+    'mimetype',
+    'mediatype',
+    'cusip',
+    'sedol',
+  ])
   assert.throws(() => new DataType('msgtype'))
   assert.throws(() => new Field('code', 'msgtype'))
   assert.equal(Scalar.from('UConfigurationPlugin').asJs(), 'UConfigurationPlugin')

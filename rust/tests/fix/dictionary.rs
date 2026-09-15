@@ -408,8 +408,9 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
     }
     assert_eq!(times, 57, "zone-less times of day");
     assert_eq!(naive, 369, "local values, stating no zone");
-    // Sixty-eight shipped fields, plus updatedat, createdat, snapshotat and prevtimestamp.
-    assert_eq!(utc, 72, "instants stated in UTC");
+    // Sixty-eight shipped fields, plus updatedat, timepartition, createdat,
+    // snapshotat and prevupdatedat.
+    assert_eq!(utc, 73, "instants stated in UTC");
 }
 
 #[test]
@@ -510,10 +511,21 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// Decision 26 retires msghash, renames updatedat, adds createdat/code/snapshotat,
 /// and replaces the identity recipes in the crate declarations. The shipped
 /// SendingTime/TransactTime definitions already supply the standard clock seeds.
+/// Decision 38 renames the previous clock to `prevupdatedat` and the partition
+/// to `timepartition`, types the partition as the hour instant, marks it as
+/// the partition column and declares its derivation as an expression; it
+/// then moves the enrichment rules out of Rust onto the 29 shipped fields
+/// that carry a `fix:derivation`, and onto the three crate columns that
+/// derive - `CountryOfIssue` listing the crate's 249 ISO 3166 codes,
+/// `OrderQty` reading a canceled quantity outright, `isincode` reading each
+/// identifier through `try_cast(... as isin)`. It then types the four
+/// identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - as
+/// `fixed_size_binary(16)` rather than `uuid`, which is the last thing to
+/// move this number.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 11_503_781_206_853_360_085);
+    assert_eq!(registry.stable_hash(), 2_559_683_158_366_975_942);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

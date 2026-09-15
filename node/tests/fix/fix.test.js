@@ -124,6 +124,10 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => {
       view.directions = [{ code: 'S', patterns: ['^TX '] }]
     }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.derivation, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
+      view.derivation = 'orderqty - cumqty'
+    }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.aliases = ['Ticker']
     }, { name: 'TypeError', message: new RegExp(scheme) })
@@ -173,6 +177,36 @@ test('identifier declaration refusals leave the entire field unchanged', () => {
     assert.throws(() => { declaration.fix.identifiers = invalid })
     assert.deepEqual(declaration.toJSON(), before)
   }
+})
+
+test('a derivation crosses as canonical text', () => {
+  // One term over the message's fields, stored as its canonical spelling;
+  // null removes it, and a text that is not a term throws.
+  const field = new Field('leavesqty', 'float64')
+  field.fix.tag = 151
+  assert.equal(field.fix.derivation, null)
+
+  field.fix.derivation = 'orderqty-cumqty'
+  assert.equal(field.fix.derivation, 'orderqty - cumqty')
+  assert.equal(field.get('fix:derivation'), 'orderqty - cumqty')
+
+  assert.throws(() => {
+    field.fix.derivation = 'orderqty -'
+  })
+  assert.equal(field.fix.derivation, 'orderqty - cumqty')
+
+  // An edited derivation is what the reader fills by (decision 38).
+  const registry = fix.FixRegistry.fromHandle(SEED)
+  const leaves = registry.getFieldByTag(151)
+  leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
+  registry.update(leaves)
+  const codec = fixedCodec(registry)
+  const held = codec.enrichMessage(codec.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|38=100|14=0|10=0|')).next().value)
+  assert.equal(held.byTag(151).toJSON(), 200)
+
+  field.fix.derivation = null
+  assert.equal(field.fix.derivation, null)
+  assert.equal(field.has('fix:derivation'), false)
 })
 
 test('direction rules cross as a typed list', () => {
@@ -1545,25 +1579,27 @@ const LIFE = [
 const INSTUUID = 65016
 const UUID = 65017
 const PUUID = 65018
-const PREVTIMESTAMP = 65021
+const PREVUPDATEDAT = 65021
 const PREVUUID = 65022
 const CODE = 65024
 const PIPE = '|'.charCodeAt(0)
 
 /**
- * The canonical text one UUID column holds, or null where it holds nothing.
+ * The sixteen bytes one identity column holds as lowercase hex, or null where
+ * it holds nothing.
  *
- * Every identity is a native UUID packed as version 8 with the RFC 9562
- * variant, which is what the Rust suite's `bytes` helper checks.
+ * Every identity is `fixedbinary(16)` - plain bytes with no version or
+ * variant bit, which is what the Rust suite's `bytes` helper checks - and a
+ * `Buffer` is what JavaScript gets. Hex keeps the bytes' own order, so a
+ * string comparison here is a byte comparison.
  */
 function identity(message, tag) {
   const held = message.getByTag(tag)
   if (held === null || held.kind === 'null') return null
-  assert.equal(held.id, 'uuid', `tag ${tag} holds a native UUID`)
-  const text = held.asJs()
-  assert.equal(text[14], '8', `tag ${tag} is version 8`)
-  assert.ok('89ab'.includes(text[19]), `tag ${tag} carries the RFC variant`)
-  return text
+  assert.equal(held.id, 'fixed_size_binary', `tag ${tag} holds sixteen fixed bytes`)
+  const bytes = held.asJs()
+  assert.equal(bytes.length, 16, `tag ${tag} is sixteen bytes wide`)
+  return Buffer.from(bytes).toString('hex')
 }
 
 /**
@@ -1607,14 +1643,14 @@ test('every message of one order carries the chain identity until it ends', () =
   for (let at = 1; at < ids.length; at += 1) {
     assert.notEqual(ids[at - 1], ids[at], 'different finalized message content')
     if (stamped[at - 1].updatedat().compare(stamped[at].updatedat()) < 0) {
-      assert.ok(ids[at - 1] < ids[at], 'UUIDs sort by the full grid instant')
+      assert.ok(ids[at - 1] < ids[at], 'identities sort by the full grid instant')
     }
   }
-  // A chain carries only its previous message's clock and UUID: none before
+  // A chain carries only its previous message's clock and identity: none before
   // the first message, then each message's predecessor.
-  for (const tag of [PREVTIMESTAMP, PREVUUID]) assert.equal(stamped[0].byTag(tag).kind, 'null')
+  for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(stamped[0].byTag(tag).kind, 'null')
   for (let at = 1; at < stamped.length; at += 1) {
-    assert.ok(stamped[at].byTag(PREVTIMESTAMP).equals(stamped[at - 1].updatedat()), `message ${at}`)
+    assert.ok(stamped[at].byTag(PREVUPDATEDAT).equals(stamped[at - 1].updatedat()), `message ${at}`)
     assert.ok(stamped[at].byTag(PREVUUID).equals(stamped[at - 1].uuid()), `message ${at}`)
   }
   // The chain is named by the instrument scope and the first identifier, and
@@ -1693,7 +1729,7 @@ test('a message naming no order has an id and no chain', () => {
   assert.ok(heartbeat.puuid().equals(persistentOf('')))
   assert.notEqual(identity(heartbeat, PUUID), null)
   assert.equal(identity(heartbeat, INSTUUID), null, 'no instrument, no identity')
-  for (const tag of [PREVTIMESTAMP, PREVUUID]) assert.equal(heartbeat.byTag(tag).kind, 'null')
+  for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(heartbeat.byTag(tag).kind, 'null')
   // The event is the stated sending time, already on the one-second grid.
   assert.ok(heartbeat.updatedat().equals(heartbeat.byTag(52)))
   // An undated message takes the configured intake clock, settled once.
@@ -1752,7 +1788,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   // FIX's own `MsgDirection` and the settled chain facts before it.
   const tail = []
   for (let at = schema.fieldLen - 7; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
-  assert.deepEqual(tail, ['prevtimestamp', 'prevuuid', 'createdat', 'code', 'snapshotat', 'msgdirection', 'nofixentries'])
+  assert.deepEqual(tail, ['prevupdatedat', 'prevuuid', 'createdat', 'code', 'snapshotat', 'msgdirection', 'nofixentries'])
   assert.equal(schema.indexOf('nounmappedfixentries'), null)
   assert.equal(schema.indexOf('timestamp'), null)
   assert.equal(schema.indexOf('msghash'), null)
@@ -1788,7 +1824,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
     if (!column.nullable) required.push(column.name)
   }
   assert.deepEqual(required, [
-    'beginstring', 'sendingtime', 'updatedat', 'unixpartition', 'uuid', 'puuid', 'createdat', 'code', 'snapshotat',
+    'beginstring', 'sendingtime', 'updatedat', 'timepartition', 'uuid', 'puuid', 'createdat', 'code', 'snapshotat',
   ])
 
   const reader = fixedCodec(registry)
@@ -1809,8 +1845,8 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   }
   assert.ok(message.updatedat().equals(message.getByTag(65003)))
   assert.ok(message.updatedat().equals(SENDING))
-  assert.ok(message.unixPartition(3600).equals(Scalar.from(1_704_189_600n)))
-  assert.equal(native.at(schema.indexOf('uuid')).id, 'uuid')
+  assert.ok(message.timePartition().equals(Scalar.datetime(1_704_189_600_000_000_000n, 'ns', 'UTC')))
+  assert.equal(native.at(schema.indexOf('uuid')).id, 'fixed_size_binary')
   // The row's uuid names the row's own content: padding and derived columns
   // may move it (decision 26), the row read back verifies it, and projection
   // leaves the message's own uuid alone. The chain name, puuid, keeps its code.
@@ -1889,7 +1925,7 @@ test('the crate fields declare their own protocols', () => {
       'version',
       'symbolticker',
       'updatedat',
-      'unixpartition',
+      'timepartition',
       'parentclordid',
       'parentorderid',
       'sendersessionid',
@@ -1906,7 +1942,7 @@ test('the crate fields declare their own protocols', () => {
       'puuid',
       'targetsessionid',
       'altids',
-      'prevtimestamp',
+      'prevupdatedat',
       'prevuuid',
       'createdat',
       'code',
@@ -1919,7 +1955,7 @@ test('the crate fields declare their own protocols', () => {
       'Version',
       'SymbolTicker',
       'UpdatedAt',
-      'UnixPartition',
+      'TimePartition',
       'ParentClOrdID',
       'ParentOrderID',
       'SenderSessionId',
@@ -1936,7 +1972,7 @@ test('the crate fields declare their own protocols', () => {
       'PUuid',
       'TargetSessionId',
       'AltIds',
-      'PrevTimestamp',
+      'PrevUpdatedAt',
       'PrevUuid',
       'CreatedAt',
       'Code',
@@ -1977,7 +2013,7 @@ test('the crate fields declare their own protocols', () => {
   assert.deepEqual(required, ['updatedat', 'uuid', 'puuid', 'createdat', 'code', 'snapshotat'])
   const clock = held[2].dtype
   for (const at of [20, 22, 24]) assert.ok(held[at].dtype.equals(clock), held[at].name)
-  assert.equal(held[21].dtype.id, 'uuid')
+  assert.ok(held[21].dtype.equals(DataType.fixedSizeBinary(16)))
   assert.ok(held[23].dtype.equals(DataType.from('utf8')))
   assert.ok(held.every((field) => field.description))
   // No crate field holds a digest any more: uuid is the one stored message
@@ -1986,9 +2022,9 @@ test('the crate fields declare their own protocols', () => {
 
   // The partition names the column it reads, which is the clock's own name.
   const partition = held[3]
-  assert.equal(partition.name, 'unixpartition')
+  assert.equal(partition.name, 'timepartition')
   assert.equal(partition.getProperty('partition', 'sources'), '["updatedat"]')
-  assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
+  assert.equal(partition.getProperty('transform', 'expression'), "truncate(updatedat, 'hour')")
 })
 
 test("the bridge's six facts are crate fields, and every registry holds them", () => {
@@ -2033,16 +2069,16 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   assert.equal(derived[2].dtype.codeWidth, 10)
 
   // And the three identities - the instrument, the message's time/content
-  // UUID and the event chain's - native UUIDs rather than untyped bytes, so
-  // a monitor joins on them as UUIDs. The message and chain identities are
+  // identity and the event chain's - sixteen plain bytes, which is what every
+  // lake engine reads as `fixed[16]`. The message and chain identities are
   // settled on every message, so they are never null; the instrument may be.
   const identities = fix.crateFields().slice(15, 18)
   assert.deepEqual(
-    identities.map((field) => [field.name, field.display, field.fix.tag, field.dtype.id, field.nullable]),
+    identities.map((field) => [field.name, field.display, field.fix.tag, field.dtype.toString(), field.nullable]),
     [
-      ['instuuid', 'InstUuid', 65016, 'uuid', true],
-      ['uuid', 'Uuid', 65017, 'uuid', false],
-      ['puuid', 'PUuid', 65018, 'uuid', false],
+      ['instuuid', 'InstUuid', 65016, 'fixed_size_binary(16)', true],
+      ['uuid', 'Uuid', 65017, 'fixed_size_binary(16)', false],
+      ['puuid', 'PUuid', 65018, 'fixed_size_binary(16)', false],
     ],
   )
   assert.ok(identities.every((field) => field.description))
@@ -2084,7 +2120,7 @@ test('a message says everything the core derives about it', () => {
 
   assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
   assert.equal('marketTimestamp' in message, false, 'the retired reader is gone')
-  assert.ok(message.unixPartition(3600) !== null)
+  assert.ok(message.timePartition() !== null)
   // The settled clocks are never null. TransactTime is the event, so the
   // update and creation instants are that event, and the partition floors
   // the update to the hour. The SendingTime the line did not state closes
@@ -2100,9 +2136,11 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.byTag(65025).equals(message.byTag(60)))
   assert.ok(message.uuid().equals(message.byTag(65017)))
   assert.ok(message.puuid().equals(message.byTag(65018)))
-  assert.equal(message.uuid().id, 'uuid')
-  assert.equal(message.puuid().id, 'uuid')
-  assert.ok(message.unixPartition(3600).equals(Scalar.from(1706788800n)))
+  assert.equal(message.uuid().id, 'fixed_size_binary')
+  assert.equal(message.puuid().id, 'fixed_size_binary')
+  // Sixteen bytes reach JavaScript as a Buffer, not as hyphenated text.
+  assert.equal(Buffer.from(message.uuid().asJs()).length, 16)
+  assert.ok(message.timePartition().equals(Scalar.datetime(1_706_788_800_000_000_000n, 'ns', 'UTC')))
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.
   const schema = fix.schema(registry, 'FixMessage')

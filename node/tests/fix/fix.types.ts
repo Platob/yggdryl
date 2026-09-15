@@ -221,6 +221,10 @@ field.fix.nulls = ['<none>']
 const directions: FixDirection[] = field.fix.directions
 field.fix.directions = [{ code: 'S', patterns: ['(?i)^TX\\b'] }, { code: 'R', patterns: ['(?i)^RX\\b'] }]
 field.fix.directions = []
+// A derivation is one term's canonical text, or null where nothing derives the field.
+const derivation: string | null = field.fix.derivation
+field.fix.derivation = 'orderqty - cumqty'
+field.fix.derivation = null
 
 void branches
 void member
@@ -232,6 +236,7 @@ void identifiers
 void description
 void nulls
 void directions
+void derivation
 
 // @ts-expect-error a tag crosses as a number, never a bigint
 field.fix.tag = 55n
@@ -257,6 +262,8 @@ field.fix.identifiers = [, '11']
 field.fix.directions = [{ code: 'S' }]
 // @ts-expect-error the patterns are a list, never one pattern
 field.fix.directions = [{ code: 'S', patterns: '^TX ' }]
+// @ts-expect-error a derivation is text, never a parsed term object
+field.fix.derivation = { term: 'orderqty - cumqty' }
 
 // The codec is a class over one dictionary, with every pin optional and
 // read back as it was given.
@@ -402,7 +409,7 @@ const messageUuid: Scalar = fromText.uuid()
 const chainUuid: Scalar = fromText.puuid()
 // @ts-expect-error the market timestamp reader is retired: updatedat is the settled clock
 fromText.marketTimestamp()
-const partition: Scalar | null = fromText.unixPartition(3600)
+const partition: Scalar | null = fromText.timePartition()
 const lifted: Scalar | null = fromText.lifted('bidpx')
 const liftSource: number | null = fromText.liftSource('bidpx')
 const lift: Array<[string, Scalar]> = fromText.lift()

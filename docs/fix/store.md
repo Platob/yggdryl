@@ -217,11 +217,11 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,285,138 bytes. Loading it adds the 24 crate scalars, the `altids` group and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,265 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,294,090 bytes. Loading it adds the 24 crate scalars, the `altids` group and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,265 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
 
 It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
 
-Thirty-eight fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all. No document states a `fix:branches` and no document stores the derived `FixId`.
+Thirty-eight fields are ones FIX has since removed, kept with the version that [removed them](registry.md#versions-are-a-filter-on-the-read); 37 carry [`fix:replacements`](registry.md#a-field-carries-what-replaced-it), 100 entries in all; 29 carry [`fix:derivation`](registry.md#a-field-carries-how-it-is-derived), one term each, and the crate's three derived columns declare theirs in Rust. No document states a `fix:branches` and no document stores the derived `FixId`.
 
 The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradingCommunity/orchestrations/blob/099914dd0edd49a699326f0441776d6e21cfaf93/FIX%20Standard/OrchestraFIXLatest.xml), with the [documented naming rules](registry.md#group-names). This is a complete resolved catalog workload, so its load/write timings are not comparable to a scalar-only seed or a small FIX-version subset.
 

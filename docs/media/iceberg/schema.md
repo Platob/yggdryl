@@ -503,8 +503,14 @@ assert_eq!(
     DataType::time(TimeUnit::Microsecond)?
 );
 
-// A v3 `unknown` column always reads as null, which Arrow spells exactly.
+// A v3 `unknown` column always reads as null, which Arrow spells exactly:
+// it is the absence of a type, never stored in a data file. A v3 `variant`
+// is the opposite - every value carries its own type - and it is the crate's
+// semi-structured datatype, the `metadata`/`value` binary pair.
 assert_eq!(PrimitiveType::from_str("unknown")?.into_dtype()?, DataType::Null);
+assert_eq!(PrimitiveType::from_dtype(&DataType::Null)?.to_string(), "unknown");
+assert_eq!(PrimitiveType::from_str("variant")?.into_dtype()?, DataType::Variant);
+assert_eq!(PrimitiveType::from_dtype(&DataType::Variant)?.to_string(), "variant");
 
 // A name round trips through `Display`.
 assert_eq!(PrimitiveType::from_str("fixed[16]")?.to_string(), "fixed[16]");
@@ -570,6 +576,7 @@ assert!(DataType::Interval(TimeUnit::YearMonth).into_scheme_compat(&Scheme::ICEB
 | `fixed[n]` | `fixed_size_binary(n)` | v1 |
 | `binary` | `binary()` | v1 |
 | `unknown` | `Null` | v3 |
+| `variant` | `Variant` | v3 |
 
 ## Nested types
 
@@ -672,7 +679,10 @@ assert!(!written.fields()[0].is_nullable());
 - `large_utf8`, `utf8_view`, `fixed_ascii(n)`, `utf8(n)` -> `string`; `binary_view`, `large_binary`, `binary(n)` -> `binary`, the maximum dropped; `decimal64` -> `decimal(p, s)`.
 - `string(windows-1252)` or any other charset off text storage -> refused naming the datatype; only UTF-8 and US-ASCII strings are Iceberg's `string`.
 - `fixed_size_binary(n)` -> `fixed[n]`, and back; a UUID is `uuid`, never `fixed[16]`.
-- `unknown` (v3) -> `DataType::Null`, every value reads as null.
+- `unknown` (v3) -> `DataType::Null`, every value reads as null; the column must be optional, is omitted from every data file, and promotes to any type.
+- `variant` (v3) -> `DataType::Variant`, the `metadata`/`value` binary pair; a data file stores it under Parquet's `VARIANT` logical type; it is not `unknown`, which has no values at all.
+- `unknown` or `variant` in a v1 or v2 table -> refused naming the column and the type; both were added in v3.
+- Official Iceberg 0.10.1 models neither name -> at its boundary each such column crosses as `binary` under its own field id and comes back as itself, in metadata documents and in manifest headers alike; the crate's own schema serde spells the two names.
 - `Uuid` -> `DataType::Uuid`, spelled `uuid` on the way back.
 - map key -> always required; absent `element-required` or `value-required` -> required.
 - Python or JavaScript caller -> sees the type mapping in the schema a table reports, and commits files through the table's append and overwrite.
@@ -686,6 +696,8 @@ assert!(!written.fields()[0].is_nullable());
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::schema_documents
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::types
     cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::datatype_coverage
+    cargo test --features "parquet iceberg" -p yggdryl --lib media::iceberg::tests::isolation
+    cargo test --features "parquet iceberg" -p yggdryl --test media iceberg
     ```
 
 === "Python"

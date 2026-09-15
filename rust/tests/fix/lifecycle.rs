@@ -1,13 +1,15 @@
 //! One order's life, code identity and the settled nanosecond clocks it carries.
 
-use super::SoleMessage;
+use super::{
+    SoleMessage, identity_bytes, identity_scalar, identity_text, numbered_identity,
+    persistent_identity,
+};
 
 use std::sync::Arc;
 
-use yggdryl::types::Uuid;
 use yggdryl::{
     CODE_TAG_NAME, DataType, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar,
     TimeUnit, Timezone, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
 
@@ -15,16 +17,11 @@ fn registry() -> Arc<FixRegistry> {
     super::committed_registry()
 }
 
-/// The bytes one identity column holds.
+/// The bytes one identity column holds: sixteen of them, with no version or
+/// variant bit set aside - every bit is the content's or the instant's.
 fn bytes(message: &FixMsg, tag: i32) -> Option<[u8; 16]> {
     let held = message.get_by_tag(tag).filter(|held| !held.is_null())?;
-    let Scalar::Uuid(uuid) = held else {
-        panic!("tag {tag} must hold a native UUID, got {held:?}");
-    };
-    let bytes = uuid.into_bytes();
-    assert_eq!(bytes[6] >> 4, 8);
-    assert_eq!(bytes[8] >> 6, 2);
-    Some(bytes)
+    Some(identity_bytes(held))
 }
 
 /// The messages of one order's life, as a venue and its client tell it.
@@ -87,12 +84,12 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
             assert!(pair[0] < pair[1], "UUIDs sort by the full grid instant");
         }
     }
-    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
         assert_eq!(stamped[0].by_tag(tag).unwrap(), &Scalar::Null);
     }
     for pair in stamped.windows(2) {
         assert_eq!(
-            pair[1].by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            pair[1].by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             pair[0].by_tag(UPDATEDAT_TAG_NAME.0).unwrap(),
         );
         assert_eq!(
@@ -105,10 +102,7 @@ fn every_message_of_one_order_carries_the_chains_identity_until_it_ends() {
         .unwrap()
         .as_str()
         .unwrap();
-    assert_eq!(
-        chains[0],
-        Uuid::from_v8(yggdryl::hashing::xxhash::xxh128(code.as_bytes())).into_bytes()
-    );
+    assert_eq!(chains[0], persistent_identity(code));
     assert_eq!(
         yggdryl::hashing::txhash::unix_from_scalar(
             stamped[0].by_tag(60).unwrap(),
@@ -164,13 +158,13 @@ fn a_message_naming_no_order_has_an_id_and_no_chain() {
     assert_eq!(held.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some(""));
     assert_eq!(
         bytes(&held, PUUID_TAG_NAME.0),
-        Some(Uuid::from_v8(yggdryl::hashing::xxhash::xxh128(b"")).into_bytes())
+        Some(persistent_identity(""))
     );
     assert!(
         bytes(&held, INSTUUID_TAG_NAME.0).is_none(),
         "no instrument, no identity"
     );
-    for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+    for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
         assert_eq!(held.by_tag(tag).unwrap(), &Scalar::Null);
     }
     assert_eq!(held.updatedat(), held.by_tag(52).unwrap());
@@ -284,26 +278,21 @@ fn instrument_payload_keeps_its_recipe_and_chain_payload_is_only_the_code() {
     let entries = original.entries().to_vec();
     let message = FixLifecycle::new(registry).fill(original).unwrap();
     let raw_instrument = yggdryl::hashing::xxhash::xxh128(b"XNAS\x1f\x1fAAPL\x1fUSD\x1f");
-    let instuuid = Uuid::from_v8(raw_instrument);
-    assert_ne!(
-        raw_instrument,
-        instuuid.get(),
-        "the version/variant replace payload bits"
-    );
+    let instuuid = raw_instrument.to_be_bytes();
     assert_eq!(
         message.by_tag(INSTUUID_TAG_NAME.0).unwrap(),
-        &Scalar::Uuid(instuuid)
+        &identity_scalar(instuuid),
+        "every digest bit survives: nothing is masked for a version or a variant"
     );
-    let code = format!("{instuuid}/A1");
+    // The scope a chain code names is the sixteen bytes as lowercase hex.
+    let code = format!("{}/A1", identity_text(&instuuid));
     assert_eq!(
         message.by_tag(CODE_TAG_NAME.0).unwrap().as_str(),
         Some(code.as_str())
     );
     assert_eq!(
         message.puuid(),
-        &Scalar::Uuid(Uuid::from_v8(yggdryl::hashing::xxhash::xxh128(
-            code.as_bytes()
-        )))
+        &identity_scalar(persistent_identity(&code))
     );
     assert_eq!(message.entries(), entries);
     assert_eq!(message.digest(), arrival_digest);
@@ -343,6 +332,33 @@ fn event_clock_precedence_is_transaction_then_sending_and_explicit_update_is_ind
         );
         assert_eq!(message.updatedat(), &clock(updated));
     }
+}
+
+/// The sixteen bytes are the instant first, ordered, then the whole digest.
+///
+/// Bytes 0..8 are `updatedat`'s signed nanoseconds big-endian with the sign
+/// bit flipped, so two messages a nanosecond apart order as their instants
+/// do and one before the epoch orders before one after it - the ordering
+/// [`TxHash::into_ordered_bytes`] lays down - and bytes 8..16 are all 64 bits
+/// of the named content's XXH64, none of them spent on a version or a
+/// variant.
+#[test]
+fn identity_bytes_lead_with_the_ordered_instant_and_carry_the_whole_digest() {
+    let registry = registry();
+    let mut life = FixLifecycle::new(Arc::clone(&registry))
+        .try_with_interval_ns(1)
+        .unwrap();
+    for time in [i64::MIN, -1, 0, 1, i64::MAX] {
+        let row = row_message(Arc::clone(&registry), [(60, clock(time))]).unwrap();
+        let message = life.fill(row).unwrap();
+        let held = bytes(&message, UUID_TAG_NAME.0).unwrap();
+        let ordered = u64::from_be_bytes(time.to_be_bytes()) ^ (1 << 63);
+        assert_eq!(&held[..8], &ordered.to_be_bytes(), "nanosecond {time}");
+        // The instant is the whole front; the digest owns the whole back and
+        // is never zero here, so the sixteen bytes are not the instant alone.
+        assert_ne!(&held[8..], &[0_u8; 8], "nanosecond {time}");
+    }
+    assert_eq!(life.alive(), 0);
 }
 
 #[test]
@@ -406,13 +422,17 @@ fn negative_clock_keeps_stated_instrument_but_mismatching_message_identities_ref
         [
             (60, clock(-1)),
             (CODE_TAG_NAME.0, Scalar::from("A")),
-            (INSTUUID_TAG_NAME.0, Scalar::Uuid(Uuid::from_v8(123))),
+            (INSTUUID_TAG_NAME.0, identity_scalar(numbered_identity(123))),
         ],
     )
     .unwrap();
     for tag in [UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
         let before = message.clone();
-        assert!(message.set(tag, Scalar::Uuid(Uuid::new(7))).is_err());
+        assert!(
+            message
+                .set(tag, identity_scalar(numbered_identity(7)))
+                .is_err()
+        );
         assert_eq!(message, before);
     }
     let instrument = message.by_tag(INSTUUID_TAG_NAME.0).unwrap().clone();
@@ -421,6 +441,65 @@ fn negative_clock_keeps_stated_instrument_but_mismatching_message_identities_ref
     assert_eq!(message.by_tag(INSTUUID_TAG_NAME.0).unwrap(), &instrument);
     assert_eq!(message.updatedat(), &clock(-1));
     assert_eq!(life.alive(), 1);
+}
+
+/// A stated identity is sixteen bytes or it is not one.
+///
+/// The optional `instuuid` is the one a caller states freely, so it is where
+/// a value of another width, another byte layout or another family is
+/// refused - named by its own column, with the whole chain untouched.
+#[test]
+fn a_stated_instrument_identity_of_another_width_or_layout_is_refused_by_name() {
+    let registry = registry();
+    let good = row_message(
+        Arc::clone(&registry),
+        [
+            (60, clock(1)),
+            (CODE_TAG_NAME.0, Scalar::from("A")),
+            (INSTUUID_TAG_NAME.0, identity_scalar(numbered_identity(1))),
+        ],
+    )
+    .unwrap();
+    for wrong in [
+        // Fifteen and seventeen bytes, under the same fixed layout.
+        DataType::fixed_size_binary(15)
+            .unwrap()
+            .scalar(Scalar::from(vec![7_u8; 15]))
+            .unwrap(),
+        DataType::fixed_size_binary(17)
+            .unwrap()
+            .scalar(Scalar::from(vec![7_u8; 17]))
+            .unwrap(),
+        // Sixteen bytes that do not declare the width.
+        Scalar::from(vec![7_u8; 16]),
+        // The RFC identifier the column used to hold.
+        Scalar::Uuid(yggdryl::types::Uuid::new(1)),
+        Scalar::from("00112233-4455-8677-8899-aabbccddeeff"),
+    ] {
+        let mut life = FixLifecycle::new(Arc::clone(&registry))
+            .try_with_interval_ns(1)
+            .unwrap();
+        let live = life.fill(good.clone()).unwrap();
+        let message = row_message(
+            Arc::clone(&registry),
+            [(60, clock(2)), (INSTUUID_TAG_NAME.0, wrong.clone())],
+        )
+        .unwrap();
+        let Error::InvalidRecord { path, reason } = life.fill(message).unwrap_err() else {
+            panic!("a located refusal for {wrong:?}");
+        };
+        assert_eq!(path, "$.instuuid", "{wrong:?}");
+        assert!(
+            reason.starts_with("expected fixed_size_binary(16) or null, got "),
+            "{reason}"
+        );
+        assert_eq!(life.alive(), 1, "the live chain is untouched");
+        assert_eq!(
+            life.fill(good.clone()).unwrap().puuid(),
+            live.puuid(),
+            "and still answers for its own messages"
+        );
+    }
 }
 
 #[test]
@@ -447,7 +526,7 @@ fn a_refused_mandatory_column_never_becomes_a_message_or_a_planned_chain() {
 fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
     let codec = super::dataset::codec();
     let lines = super::dataset::text_lines();
-    assert_eq!(lines.len(), 129);
+    assert_eq!(lines.len(), 144);
     let mut direct_life = FixLifecycle::new(Arc::clone(codec.registry()));
     let mut enriched_life = FixLifecycle::new(Arc::clone(codec.registry()));
     let mut direct_trace = Vec::new();
@@ -479,15 +558,22 @@ fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
             messages += 1;
         }
     }
-    assert_eq!(messages, 83);
-    assert_eq!(direct_life.alive(), 4);
+    assert_eq!(messages, 95);
+    // Four of the first 129 lines' chains, and the MEDIATEK order the
+    // cancel/reject flow the capture ends on is about: the cancel request at
+    // line 130 opens it under the instrument its `22=4|48=` names, and the
+    // reject at line 131 names the order but no instrument, so its keys fall
+    // under no scope, never meet the request's chain, and its `39=8` ends
+    // nothing that was open. The bridge rows and the `35=UL` frame after it
+    // resolve to no message declaring identifiers, and open nothing.
+    assert_eq!(direct_life.alive(), 5);
     // Line 73's derived terminal state closes ABBN.S. The untyped FIXML
     // at line 101 no longer reopens it through a hard-tag fallback.
-    assert_eq!(enriched_life.alive(), 3);
+    assert_eq!(enriched_life.alive(), 4);
     // Each door replays its own projection: enrichment may end a chain at a
     // different message and the untyped FIXML supplies no identifiers.
-    for (trace, expected) in [(direct_trace, 4), (enriched_trace, 3)] {
-        assert_eq!(trace.len(), 83);
+    for (trace, expected) in [(direct_trace, 5), (enriched_trace, 4)] {
+        assert_eq!(trace.len(), 95);
         let mut replay = FixLifecycle::new(Arc::clone(codec.registry()));
         for (message, alive) in trace {
             let stamped = replay

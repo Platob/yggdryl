@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use super::lifecycle_chains::{clock, row, try_row};
-use yggdryl::types::Uuid;
+use super::{identity_scalar, numbered_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
-    PREVTIMESTAMP_TAG_NAME, PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
     UPDATEDAT_TAG_NAME, arrow, fix_schema,
 };
 
@@ -32,7 +32,12 @@ fn event(
 ) -> FixMsg {
     let mut cells = vec![(UPDATEDAT_TAG_NAME.0, clock(nanos)), identifiers(entries)];
     cells.extend(code.map(|value| (CODE_TAG_NAME.0, Scalar::from(value))));
-    cells.extend(scope.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(value)))));
+    cells.extend(scope.map(|value| {
+        (
+            INSTUUID_TAG_NAME.0,
+            identity_scalar(numbered_identity(value)),
+        )
+    }));
     row(registry, cells)
 }
 
@@ -44,7 +49,7 @@ fn lifecycle(registry: &Arc<FixRegistry>) -> FixLifecycle {
 
 fn assert_pair(message: &FixMsg, expected: Option<&FixMsg>) {
     assert_eq!(
-        message.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+        message.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
         expected.map_or(&Scalar::Null, FixMsg::updatedat)
     );
     assert_eq!(
@@ -93,35 +98,37 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
         let mut first = event(&registry, 10, Some("A"), None, &[]);
         first
             .set_many([
-                (PREVTIMESTAMP_TAG_NAME.0, clock(800)),
-                (PREVUUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(801))),
+                (PREVUPDATEDAT_TAG_NAME.0, clock(800)),
+                (PREVUUID_TAG_NAME.0, identity_scalar(numbered_identity(801))),
             ])
             .unwrap();
         let first = life.fill(first).unwrap();
-        assert_eq!(first.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(), &clock(800));
+        assert_eq!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(), &clock(800));
         assert_eq!(
             first.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
-            &Scalar::Uuid(Uuid::new(801))
+            &identity_scalar(numbered_identity(801))
         );
         let mut second = event(&registry, 20, Some("A"), None, &[]);
         second
             .set_many([
                 (
-                    PREVTIMESTAMP_TAG_NAME.0,
+                    PREVUPDATEDAT_TAG_NAME.0,
                     stated_time.map_or(Scalar::Null, clock),
                 ),
                 (
                     PREVUUID_TAG_NAME.0,
-                    stated_uuid.map_or(Scalar::Null, |id| Scalar::Uuid(Uuid::new(id))),
+                    stated_uuid.map_or(Scalar::Null, |id| identity_scalar(numbered_identity(id))),
                 ),
             ])
             .unwrap();
         let second = life.fill(second).unwrap();
         let expected_clock = stated_time.map_or_else(|| first.updatedat().clone(), clock);
-        let expected_uuid =
-            stated_uuid.map_or_else(|| first.uuid().clone(), |id| Scalar::Uuid(Uuid::new(id)));
+        let expected_uuid = stated_uuid.map_or_else(
+            || first.uuid().clone(),
+            |id| identity_scalar(numbered_identity(id)),
+        );
         assert_eq!(
-            second.by_tag(PREVTIMESTAMP_TAG_NAME.0).unwrap(),
+            second.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             &expected_clock
         );
         assert_eq!(second.by_tag(PREVUUID_TAG_NAME.0).unwrap(), &expected_uuid);
@@ -318,14 +325,14 @@ fn an_earlier_message_into_advanced_state_is_an_arrival_not_a_rewind() {
 fn malformed_stated_previous_values_neither_advance_attach_nor_close() {
     let registry = Arc::new(FixRegistry::new());
     let invalid = [
-        (PREVTIMESTAMP_TAG_NAME, Scalar::from("界".repeat(128))),
-        (PREVTIMESTAMP_TAG_NAME, Scalar::date32(0)),
+        (PREVUPDATEDAT_TAG_NAME, Scalar::from("界".repeat(128))),
+        (PREVUPDATEDAT_TAG_NAME, Scalar::date32(0)),
         (
-            PREVTIMESTAMP_TAG_NAME,
+            PREVUPDATEDAT_TAG_NAME,
             Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
         ),
         (
-            PREVTIMESTAMP_TAG_NAME,
+            PREVUPDATEDAT_TAG_NAME,
             Scalar::datetime64(0, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
         (
@@ -432,9 +439,12 @@ fn orphan_and_terminal_messages_keep_full_signed_nanosecond_range_without_histor
 fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary() {
     let codec = super::dataset::codec();
     let lines = super::dataset::text_lines();
-    assert_eq!(lines.len(), 129);
+    assert_eq!(lines.len(), 144);
     let schema = fix_schema(codec.registry(), "fix").unwrap();
-    for (enrich, expected_alive) in [(false, 4), (true, 3)] {
+    // The lifecycle suite says why each door ends on its count: four and
+    // three of the first 129 lines' chains, and the one the cancel request
+    // opens that its instrument-less reject never meets.
+    for (enrich, expected_alive) in [(false, 5), (true, 4)] {
         let mut life = FixLifecycle::new(Arc::clone(codec.registry()));
         let mut trace = Vec::new();
         for line in &lines {
@@ -455,7 +465,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
                 trace.push((stamped, life.alive()));
             }
         }
-        assert_eq!(trace.len(), 83);
+        assert_eq!(trace.len(), 95);
         assert_eq!(life.alive(), expected_alive);
         life.clear();
         for (message, alive) in &trace {
@@ -482,7 +492,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
             assert!(slices.iter().all(|batch| batch.num_rows() <= boundary));
             assert_eq!(
                 slices.iter().map(|batch| batch.num_rows()).sum::<usize>(),
-                83
+                95
             );
             let restored = codec
                 .messages(arrow::batch_reader(Arc::clone(&arrow_schema), slices))
@@ -493,7 +503,7 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
             for (message, (original, alive)) in restored.into_iter().zip(&trace) {
                 let expected_row = original.into_row(&schema).unwrap();
                 assert_eq!(message.into_row(&schema).unwrap(), expected_row);
-                for tag in [PREVTIMESTAMP_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
+                for tag in [PREVUPDATEDAT_TAG_NAME.0, PREVUUID_TAG_NAME.0] {
                     assert_eq!(message.by_tag(tag).unwrap(), original.by_tag(tag).unwrap());
                 }
                 assert_eq!(message.entries(), original.entries());

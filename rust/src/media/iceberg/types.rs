@@ -6,6 +6,15 @@
 //! without loss. The other direction is not total - datatypes such as
 //! `int8`, `interval`, or `union` have no Iceberg spelling - so writing
 //! reports what cannot be represented rather than silently widening it.
+//!
+//! Two v3 spellings are not the same thing and are not mapped alike. An
+//! `unknown` column is the absence of a type: every value is null, nothing is
+//! stored in a data file, and it is [`DataType::Null`]. A `variant` column is
+//! semi-structured data - each value carries its own type in the Parquet
+//! Variant binary encoding - and it is [`DataType::Variant`], the
+//! `metadata`/`value` binary pair the Arrow extension lays out. The spec
+//! keeps `variant` outside its primitive list; it is spelled here because it
+//! is a bare type name in a schema document and every other bare name is one.
 
 use std::fmt;
 use std::str::FromStr;
@@ -62,6 +71,8 @@ pub enum PrimitiveType {
     TimestamptzNs,
     /// A column whose type is not yet known, always null. Added in v3.
     Unknown,
+    /// Semi-structured data in the Parquet Variant encoding. Added in v3.
+    Variant,
     /// UTF-8 text.
     String,
     /// A 16-byte universally unique identifier.
@@ -119,6 +130,9 @@ impl PrimitiveType {
             // An unknown column always reads as null, which is exactly Arrow's
             // null datatype rather than a placeholder of some other width.
             Self::Unknown => DataType::Null,
+            // A variant value carries its own type, so the column's datatype
+            // has no parameters: it is the metadata/value pair itself.
+            Self::Variant => DataType::Variant,
             Self::String => DataType::utf8(),
             // A UUID is a 16-byte fixed value on the wire, and the core has a
             // datatype that is exactly that, so the spelling survives without
@@ -186,6 +200,7 @@ impl PrimitiveType {
                 }
             }
             DataType::Null => Self::Unknown,
+            DataType::Variant => Self::Variant,
             // Iceberg's string is UTF-8, so a string whose bytes ride text
             // storage is one whatever its layout - a fixed width is storage,
             // never a value - and a string in any other charset is refused
@@ -213,8 +228,9 @@ impl PrimitiveType {
                     reason: format_smolstr!(
                         "expected a datatype Iceberg can express (boolean, int, long, float, \
                          double, decimal, date, time, timestamp, timestamptz, timestamp_ns, \
-                         timestamptz_ns, string, uuid, fixed, binary, unknown), got {other}; \
-                         into_scheme_compat(&Scheme::ICEBERG) widens the ones that widen losslessly"
+                         timestamptz_ns, string, uuid, fixed, binary, unknown, variant), got \
+                         {other}; into_scheme_compat(&Scheme::ICEBERG) widens the ones that \
+                         widen losslessly"
                     ),
                 });
             }
@@ -240,6 +256,7 @@ impl FromStr for PrimitiveType {
             "timestamp_ns" => return Ok(Self::TimestampNs),
             "timestamptz_ns" => return Ok(Self::TimestamptzNs),
             "unknown" => return Ok(Self::Unknown),
+            "variant" => return Ok(Self::Variant),
             "string" => return Ok(Self::String),
             "uuid" => return Ok(Self::Uuid),
             "binary" => return Ok(Self::Binary),
@@ -290,6 +307,7 @@ impl fmt::Display for PrimitiveType {
             Self::TimestampNs => formatter.write_str("timestamp_ns"),
             Self::TimestamptzNs => formatter.write_str("timestamptz_ns"),
             Self::Unknown => formatter.write_str("unknown"),
+            Self::Variant => formatter.write_str("variant"),
             Self::String => formatter.write_str("string"),
             Self::Uuid => formatter.write_str("uuid"),
             Self::Fixed(width) => write!(formatter, "fixed[{width}]"),

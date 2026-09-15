@@ -228,9 +228,17 @@ impl FakeS3 {
     }
 
     pub fn fail_next(&self, status: u16, code: &str, times: usize) {
+        self.fail_after(0, status, code, times);
+    }
+
+    /// Answer `skip` requests as usual, then the next `times` with `status`
+    /// and error `code`: the failure lands on a request the caller can name
+    /// by its position, e.g. the second upload of a commit.
+    pub fn fail_after(&self, skip: usize, status: u16, code: &str, times: usize) {
         self.inner.store().failure = (times > 0).then(|| Injected {
             status,
             code: code.to_owned(),
+            skip,
             remaining: times,
         });
     }
@@ -417,6 +425,10 @@ impl Inner {
     fn injected_failure(&self) -> Option<Response> {
         let mut store = self.store();
         let failure = store.failure.as_mut()?;
+        if failure.skip > 0 {
+            failure.skip -= 1;
+            return None;
+        }
         failure.remaining -= 1;
         let response = Response::error(failure.status, &failure.code, "Injected failure.", &[]);
         if failure.remaining == 0 {
@@ -810,6 +822,8 @@ struct Injected {
     status: u16,
     /// S3 error code inside it.
     code: String,
+    /// Requests still to let through first.
+    skip: usize,
     /// Requests still to fail.
     remaining: usize,
 }

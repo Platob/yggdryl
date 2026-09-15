@@ -2,6 +2,9 @@
 
 #[path = "media/avro.rs"]
 mod avro;
+#[cfg(feature = "iceberg")]
+#[path = "media/iceberg.rs"]
+mod iceberg;
 #[path = "media/inference.rs"]
 mod inference;
 #[path = "media/ipc.rs"]

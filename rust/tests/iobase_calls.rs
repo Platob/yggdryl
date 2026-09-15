@@ -95,15 +95,17 @@ fn a_capture_read_as_text_and_then_as_fix_is_one_decode() {
 
     /// How many lines the capture holds, which is how many rows the text
     /// reader answers.
-    const LINES: usize = 129;
+    const LINES: usize = 144;
     /// How many FIX rows they read as: a row for every message the capture
     /// carries - one a line, but for the wildcard Jolokia lines, which answer
     /// for each configuration they named, and the bridge's own prose, which
-    /// carries no message at all (decision 16). One less than the eighty-four
-    /// this was: the answer that came back with an error and no `value` names
-    /// no plugin, so it too is a line carrying no message (decision 17),
-    /// where it used to be a row holding the envelope alone.
-    const ROWS: usize = 83;
+    /// carries no message at all (decision 16). Eighty-three of the capture's
+    /// first 129 lines - one less than the eighty-four they were: the answer
+    /// that came back with an error and no `value` names no plugin, so it too
+    /// is a line carrying no message (decision 17), where it used to be a row
+    /// holding the envelope alone - and twelve of the fifteen lines of the
+    /// cancel/reject flow the capture ends on, whose other three are prose.
+    const ROWS: usize = 95;
     /// What one bounded stream over the capture costs, before a message is
     /// built from any of it.
     const DECODE: &str =

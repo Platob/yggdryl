@@ -1,5 +1,6 @@
 //! One S3 object as a byte leaf.
 
+use std::io::Read as _;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use super::answer::ObjectMeta;
@@ -96,15 +97,30 @@ impl File {
         })
     }
 
-    /// Retain a length a listing already reported.
+    /// Retain a length a listing - or a manifest - already reported.
     ///
     /// A listing states every entry's size, so a handle built from one starts
     /// out knowing it: asking a listed object for its size costs nothing,
     /// which is what lets a partition scan weigh a lake without a `HEAD` per
-    /// file. The value is what the listing saw, so it is dropped as soon as
-    /// anything writes through this handle.
+    /// file. A table's manifest states every data file's size the same way,
+    /// and a scan that hands it over here reads each file with one `GET` and
+    /// no `HEAD` before it. The value is what the listing saw, so it is
+    /// dropped as soon as anything writes through this handle.
+    ///
+    /// ```
+    /// use yggdryl::IOBase;
+    /// use yggdryl::holder::object;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let part = object::file("s3://trades/lake/part.parquet")?.with_known_size(4096);
+    /// // Answered from what the caller said, with no request.
+    /// assert_eq!(part.size(), 4096);
+    /// assert_eq!(part.stats().requests, 0);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
-    pub(super) fn with_known_size(self, size: u64) -> Self {
+    pub fn with_known_size(self, size: u64) -> Self {
         if let Ok(mut state) = self.state.lock() {
             state.meta = Some(Some(ObjectMeta {
                 size,
@@ -250,12 +266,66 @@ impl File {
             .put_chunked(&self.bucket, &self.key, bytes, content_type)
     }
 
+    /// Replace the whole object with the `length` bytes `source` yields.
+    ///
+    /// One `PUT` below the multipart threshold, the source read into one
+    /// buffer first. Above it, a multipart upload of `parts + 2` requests
+    /// holding one part-sized buffer at a time: each part is read from the
+    /// source and sent before the next is read, so an object of any length
+    /// costs the part size in memory. A source that ends before `length` is
+    /// refused, and an upload the store refuses stores nothing - an
+    /// abandoned multipart upload is aborted - so nothing is left to remove.
+    /// Whatever this handle had staged is superseded and dropped first.
+    ///
+    /// # Errors
+    ///
+    /// Returns the source's read failure, a short source, or the store's
+    /// refusal.
+    pub(crate) fn upload_from(
+        &mut self,
+        source: &mut dyn std::io::Read,
+        length: u64,
+    ) -> Result<()> {
+        let mut state = self.state()?;
+        state.stage = None;
+        let content_type = self.media_type().to_string();
+        let etag = if length == 0 || length < self.client.multipart_threshold() {
+            let capacity = usize::try_from(length).map_err(|_| crate::iobase::oversized(length))?;
+            let mut bytes = Vec::new();
+            bytes
+                .try_reserve_exact(capacity)
+                .map_err(|_| crate::iobase::oversized(length))?;
+            source.take(length).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 != length {
+                return Err(super::client::short_upload(length, bytes.len() as u64));
+            }
+            self.client
+                .put_object(&self.bucket, &self.key, &bytes, Some(&content_type))?
+        } else {
+            self.client
+                .put_streamed(&self.bucket, &self.key, source, length, &content_type)?
+        };
+        // What went out is the store's, exactly as after a staged publish.
+        if state.opened {
+            state.meta = Some(Some(ObjectMeta {
+                size: length,
+                etag,
+                content_type: Some(content_type),
+            }));
+        } else {
+            state.meta = None;
+        }
+        Ok(())
+    }
+
     /// Drop the stage without publishing it.
     ///
     /// The lifecycle pair uses this: a pending write on its way to being
     /// deleted must not be flushed, or the removal would race its own
-    /// resurrection.
-    pub(super) fn discard(&self) -> Result<()> {
+    /// resurrection. A commit uses it too, for a handle whose upload the
+    /// store refused: nothing landed, so nothing is deleted and nothing is
+    /// retried when the handle drops.
+    pub(crate) fn discard(&self) -> Result<()> {
         let mut state = self.state()?;
         state.stage = None;
         state.meta = None;

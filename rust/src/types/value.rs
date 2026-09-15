@@ -751,6 +751,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Mic
         | D::Cfi
         | D::Isin
+        | D::Cusip
+        | D::Sedol
         | D::Side
         | D::State
         | D::TimeInForce => {
@@ -767,6 +769,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Mic => Code::Mic(crate::types::Mic::new(text)?),
                 D::Cfi => Code::Cfi(crate::types::Cfi::new(text)?),
                 D::Isin => Code::Isin(crate::types::Isin::new(text)?),
+                D::Cusip => Code::Cusip(crate::types::Cusip::new(text)?),
+                D::Sedol => Code::Sedol(crate::types::Sedol::new(text)?),
                 D::Side => Code::Side(crate::types::Side::new(text)?),
                 // A state is read by its spelling: the wire code, the
                 // specification's name or a stored value all reach the one
@@ -1445,6 +1449,8 @@ fn validate_dtype_value(
         | D::Mic
         | D::Cfi
         | D::Isin
+        | D::Cusip
+        | D::Sedol
         | D::Side
         | D::State
         | D::TimeInForce => match ascii_bytes(value) {

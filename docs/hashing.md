@@ -25,9 +25,10 @@
 | Order | A value compares unit, then signed count, then digest, and never normalizes instants across units. Its bytes sort by time only within one unit, one algorithm, and one sign range: every negative count sorts after every nonnegative one ([Order](#order-and-uuidv8-projection)) |
 | Instant | UTC always: a zoned datetime already counts from the epoch, a naive one reads as if it were UTC, a date is its midnight. The unit is a clock resolution - `s`, `ms`, `us`, `ns` - microseconds when none is named; a coarser restatement floors, a finer one scales exactly |
 | UUIDv8 | `TxHash::into_uuid` is RFC 9562 UUIDv8: all 64 bits of the instant restated to signed nanoseconds, sign bit flipped, then the digest's low 58 bits. It needs a 64-bit digest, encodes neither unit nor algorithm, allocates nothing on success, and orders by instant across the epoch; a lossy fingerprint, not an inverse, and the raw bytes and value order do not change |
+| Ordered bytes | `TxHash::into_ordered_bytes` is the same ordering with nothing spent on a layout: the instant restated to signed nanoseconds with its sign bit flipped in bytes 0..8, then all 64 digest bits in bytes 8..16. It needs a 64-bit digest, encodes neither unit nor algorithm, and is what a `fixed[16]` column holds where `into_uuid` would have given an identifier. Rust-only |
 | Coupled columns | `txhash::arrow` answers `fixed_size_binary(12|16|24)`, one coupled value per row, whose digest half is exactly `row_digests` or `column_digests` of the same rows under the same algorithm; the instant column is read once as `int64` counts at the declared unit, nulls kept; `compose` and `decompose` are inverses ([Coupled columns](#coupled-columns)) |
 | Coupled holders | `digest:time` names the field whose instant a holder stores in front of its digest; `digest:unit` is its resolution, microseconds when absent, and only beside `digest:time` ([Coupled holders](#coupled-holders)) |
-| FIX identities | `FixMsg::uuid` is `into_uuid` over updatedat nanoseconds and an unseeded XXH64 of the named content; `FixMsg::puuid` and the lifecycle's instrument UUIDs hash with these same algorithms, never a second engine; the recipes live with [FIX messages](fix/message.md) |
+| FIX identities | `FixMsg::uuid` is `into_ordered_bytes` over updatedat nanoseconds and an unseeded XXH64 of the named content; `FixMsg::puuid` and the lifecycle's instrument identities hash with these same algorithms, never a second engine; all four are sixteen plain bytes rather than UUIDs, and the recipes live with [FIX messages](fix/message.md) |
 | Feature flag | `xxhash::arrow` and `txhash::arrow` need the default `arrow` feature |
 | Not | A cryptographic hash, an adversarial integrity check, or a uniqueness guarantee; not Iceberg `bucket[N]`, which is murmur3 x86_32 ([Iceberg](media/iceberg/index.md) never calls this module) |
 | Bindings | Bytes: Python `bytes`, `bytearray`, `memoryview`, any buffer, `str` as UTF-8; JavaScript `Buffer`, `Uint8Array`, `ArrayBuffer`, string as UTF-8. Every `unix` argument is an `int` / `bigint`, a `datetime` / `Date`, timestamp text, or a `Scalar`. Handle digests, `Scalar.digest`, `stable_hash`, a state's `write_scalar` and `apply_arrow_batch`, `TxHasher`, and `TxHash.into_uuid` (a `uuid` `Scalar`) are bound everywhere; `Digester`, `as_value_bytes`, the digest arrays, and the coupled columns are Rust and Python only; `DigestReader`, `DigestWriter`, and `Hashed<H>` are Rust only |
@@ -489,7 +490,7 @@ assert_eq!(
 
 The tag byte is a wire contract: inserting a `DataTypeId` variant anywhere but the end changes stored digests. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `string` (27) whatever its layout, charset or bound, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text.md) feeds `string` (27) whatever its layout, charset or bound, and a geography feeds `geometry`. A [code](types/codes.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
 This is where the one string family changed stored digests: a value read from an `ascii` or `ascii(n)` column used to feed the retired `ascii` tag (30) and now feeds `string` (27), the tag UTF-8 text always fed, and every code value used to feed that same `ascii` tag and now feeds its own id. Digests of UTF-8 text and of bytes did not change.
 
@@ -768,7 +769,7 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
 
 ## Order and UUIDv8 projection
 
-A value orders by unit, then signed count, then digest; its bytes agree with that order only within one unit, one algorithm, and one sign range. `into_uuid` restates the instant to signed nanoseconds and projects RFC 9562 UUIDv8, which orders by instant across the epoch in every unit and keeps only the digest's low 58 bits.
+A value orders by unit, then signed count, then digest; its bytes agree with that order only within one unit, one algorithm, and one sign range. `into_uuid` restates the instant to signed nanoseconds and projects RFC 9562 UUIDv8, which orders by instant across the epoch in every unit and keeps only the digest's low 58 bits. `into_ordered_bytes` is the same ordering with no layout over it - sixteen bytes, the flipped instant then the whole digest - and it is what the [FIX identities](fix/message.md#clocks-and-identity) hold.
 
 === "Rust"
 
@@ -799,6 +800,15 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     // A digest that is not 64 bits wide is refused, never narrowed.
     let refused = txhash::txh128(b"AAPL", 0).into_uuid().unwrap_err();
     assert!(matches!(refused, Error::InvalidRecord { ref path, .. } if path == "$.digest"));
+
+    // The same ordering as sixteen plain bytes: the flipped instant leads,
+    // and all 64 digest bits follow. Rust-only.
+    assert_eq!(
+        epoch.into_ordered_bytes()?,
+        [0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    );
+    assert!(before.into_ordered_bytes()? < epoch.into_ordered_bytes()?);
+    assert!(epoch.into_ordered_bytes()? < later.into_ordered_bytes()?);
     ```
 
 === "Python"
@@ -863,6 +873,8 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     ```
 
 With `t = (ns as u64) XOR 2^63`, the 128-bit payload before the version (`8`) and variant (`10`) bits are fixed is `(t >> 16) << 80 | ((t >> 4) & 0xfff) << 64 | (t & 0xf) << 58 | digest_low58`. Neither the unit nor the algorithm is encoded, so XXH64 and XXH3-64 with one payload project one UUID, and the six discarded digest bits cannot be recovered. A [`uuid`](types/uuid.md) is what comes back: a value `Scalar` in Python and JavaScript.
+
+`into_ordered_bytes` is the layout-free twin: `t` big-endian in bytes 0..8 and the whole 64-bit digest in bytes 8..16, so nothing is discarded and nothing is reserved. It answers `[u8; 16]`, a `fixed_size_binary(16)` column holds it, and it is Rust-only - the bindings reach it through the FIX identities that use it.
 
 ## Instants
 

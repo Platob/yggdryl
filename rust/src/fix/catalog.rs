@@ -739,6 +739,10 @@ impl FixRegistry {
             *self = staged;
             return Ok(prior);
         }
+        // A group a derivation reads through is a column of the widened
+        // root, so what was compiled before this definition landed is
+        // forgotten with it (decision 38).
+        self.forget_derivations();
         self.catalog.insert(category, field)
     }
 
@@ -1306,6 +1310,14 @@ impl FixRegistry {
         for code in view.codes() {
             code?;
         }
+        // A derivation is read at every enrichment and never re-checked, so
+        // a text that is not a term, or one past the budget, is refused here
+        // naming the field that carries it - at insert, update and load
+        // alike (decision 38).
+        view.derivation().map_err(|error| Error::InvalidRecord {
+            path: field.name().into(),
+            reason: format_smolstr!("{error}"),
+        })?;
         if view.field_ref().is_some() && (view.component().is_some() || view.group().is_some()) {
             return Err(invalid(
                 field,

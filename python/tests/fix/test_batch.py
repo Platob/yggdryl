@@ -259,8 +259,9 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     assert names[-2:] == ["msgdirection", "nofixentries"]
     assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
     assert reader.schema.field("msgtype").metadata[b"display"] == b"MsgType"
-    # The content identity's storage is sixteen bytes, not a string.
-    assert reader.schema.field("uuid").type == pa.uuid()
+    # The content identity's storage is sixteen plain bytes: `fixed[16]`
+    # everywhere a lake reads it, with no extension over it.
+    assert reader.schema.field("uuid").type == pa.binary(16)
     # And an empty capture yields no batch at all.
     assert reader.read_all().num_rows == 0
 

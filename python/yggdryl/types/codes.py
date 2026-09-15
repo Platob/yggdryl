@@ -1,15 +1,17 @@
-"""The registered code field factories: eight identities, one width each.
+"""The registered code field factories: ten identities, one width each.
 
-The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, ``isin``,
-and FIX's own ``side``, ``state`` and ``timeinforce`` - are datatypes of their
-own, each storing as the ASCII text it is and held to the width its standard
-fixes, so a code factory is not a bounded string wearing a name: the field it
-builds carries the code's identity across Arrow under its own extension name,
+The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, the three
+securities identifiers ``isin``, ``cusip`` and ``sedol``, and FIX's own
+``side``, ``state`` and ``timeinforce`` - are datatypes of their own, each
+storing as the ASCII text it is and held to the width its standard fixes, so
+a code factory is not a bounded string wearing a name: the field it builds
+carries the code's identity across Arrow under its own extension name,
 answers ``is_code`` and ``code_width``, and never ``string_parameters``. The
 width bounds a value rather than laying it out, so ``fixed_byte_width`` is
 ``None``. The declared vocabularies live in :mod:`yggdryl.enums`, whose
-classes carry their members onto the field they build; ``isin`` is an open
-identifier space closed by its own check digit, so no class declares it.
+classes carry their members onto the field they build; ``isin``, ``cusip``
+and ``sedol`` are open identifier spaces closed by their own check digits, so
+no class declares them.
 """
 
 from __future__ import annotations
@@ -26,19 +28,23 @@ if TYPE_CHECKING:
     MicField: TypeAlias = TypedField[Literal["mic"], str]
     CfiField: TypeAlias = TypedField[Literal["cfi"], str]
     IsinField: TypeAlias = TypedField[Literal["isin"], str]
+    CusipField: TypeAlias = TypedField[Literal["cusip"], str]
+    SedolField: TypeAlias = TypedField[Literal["sedol"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
-    CountryField = CurrencyField = MicField = CfiField = IsinField = SideField = (
-        StateField
-    ) = TimeInForceField = Field
+    CountryField = CurrencyField = MicField = CfiField = IsinField = CusipField = (
+        SedolField
+    ) = SideField = StateField = TimeInForceField = Field
 
 _COUNTRY = simple_dtype("country")
 _CURRENCY = simple_dtype("currency")
 _MIC = simple_dtype("mic")
 _CFI = simple_dtype("cfi")
 _ISIN = simple_dtype("isin")
+_CUSIP = simple_dtype("cusip")
+_SEDOL = simple_dtype("sedol")
 _SIDE = simple_dtype("side")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
@@ -74,6 +80,18 @@ def isin(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(IsinField, name, _ISIN, nullable, metadata)
 
 
+def cusip(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CusipField:
+    """CUSIP, the nine-character securities identifier closed by its check digit."""
+
+    return new_field(CusipField, name, _CUSIP, nullable, metadata)
+
+
+def sedol(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SedolField:
+    """SEDOL, the seven-character securities identifier closed by its check digit."""
+
+    return new_field(SedolField, name, _SEDOL, nullable, metadata)
+
+
 def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> SideField:
     """FIX ``Side(54)``, the wire value rather than a name for it."""
 
@@ -101,16 +119,20 @@ __all__ = [
     "CfiField",
     "CountryField",
     "CurrencyField",
+    "CusipField",
     "IsinField",
     "MicField",
+    "SedolField",
     "SideField",
     "StateField",
     "TimeInForceField",
     "cfi",
     "country",
     "currency",
+    "cusip",
     "isin",
     "mic",
+    "sedol",
     "side",
     "state",
     "timeinforce",

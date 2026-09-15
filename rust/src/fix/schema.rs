@@ -132,7 +132,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
 
 /// BeginString and the partition supplement the identity owner's replay bundle.
 fn is_required(tag: i32) -> bool {
-    tag == 8 || tag == super::UNIXPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
+    tag == 8 || tag == super::TIMEPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
 }
 
 /// The fixed root every message answers as.
@@ -732,6 +732,10 @@ impl super::FixMsg {
         }
         let mut front = front.into_iter();
         let mut values: Vec<crate::Scalar> = Vec::with_capacity(columns.len());
+        // The crate columns' derivations and the working row they read,
+        // gathered off this message once for the three of them, and only
+        // when one is asked for.
+        let mut derived: Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)> = None;
         for (column, planned) in columns.iter().zip(plan.iter()) {
             if let Some(value) = front.next() {
                 values.push(column.scalar(value)?);
@@ -760,7 +764,9 @@ impl super::FixMsg {
                         self.regrouped(counter, column, value)
                     } else {
                         match planned.tag {
-                            Some(tag) => self.regrouped(tag, column, self.column_value(tag)),
+                            Some(tag) => {
+                                self.regrouped(tag, column, self.column_value(tag, &mut derived)?)
+                            }
                             None => self
                                 .index_of_name(column.name())
                                 .and_then(|at| self.as_value().get(at))
@@ -782,8 +788,16 @@ impl super::FixMsg {
     /// members. Placing them by name is what lets an occurrence a bridge
     /// packed into one member land in the same column as one that spelled
     /// every member out. An unstated member becomes null; Field::scalar then
-    /// enforces the declared occurrence's types and nullability.
-    fn regrouped(&self, tag: i32, declared: &Field, held: crate::Scalar) -> crate::Scalar {
+    /// enforces the declared occurrence's types and nullability. The
+    /// [enriching pass](super::enrich) lays a group out the same way for
+    /// the working row its derivations read, so a member named in a term
+    /// stands where the registry's definition puts it.
+    pub(super) fn regrouped(
+        &self,
+        tag: i32,
+        declared: &Field,
+        held: crate::Scalar,
+    ) -> crate::Scalar {
         let Some(members) = item_fields(declared) else {
             return held;
         };
@@ -823,28 +837,44 @@ impl super::FixMsg {
     /// One column's value, derived where the message does not carry it.
     ///
     /// Three sources, in this order. What the message actually said, always,
-    /// because a stated value is never overridden. Then the derived facts
-    /// this crate computes - the version, the ticker and the partition.
-    /// Then the lift's own enrichment, which fills a column
-    /// the message did not state but forced: a buy order at a price is a
-    /// party willing to pay it, so a bid lane it never wrote is still true of
-    /// it, and a one-sided quote implies the side it never wrote either.
+    /// because a stated value is never overridden. Then the lift's own
+    /// enrichment, which fills a column the message did not state but
+    /// forced: a buy order at a price is a party willing to pay it, so a bid
+    /// lane it never wrote is still true of it, and a one-sided quote implies
+    /// the side it never wrote either. Then the derived facts this crate
+    /// computes - the version, the ticker and the partition here, and every
+    /// crate column whose field declares a `fix:derivation` through the one
+    /// evaluator the [enriching pass](super::enrich) runs, so `isincode`,
+    /// `miccode` and `state` fill a row of an unenriched message exactly as
+    /// the pass would fill the message (decision 38).
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
     ///
-    fn column_value(&self, tag: i32) -> crate::Scalar {
+    /// `derived` is the row's one gather for the crate columns: built on
+    /// the first crate column asked for and read by the ones after it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the registry's refusal of its own derivations, naming the
+    /// field whose `fix:derivation` does not compile: a dictionary whose
+    /// rules do not compile fills no row, exactly as it enriches no message.
+    fn column_value(
+        &self,
+        tag: i32,
+        derived: &mut Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)>,
+    ) -> Result<crate::Scalar> {
         // A stated value wins - a stated null is a value that would not
         // type, and the derivation still answers for it.
         if let Some(held) = self.get_by_tag(tag).filter(|held| !held.is_null()) {
-            return held.clone();
+            return Ok(held.clone());
         }
         if let Some(facet) = DERIVED_FACETS
             .iter()
             .find_map(|(held, facet)| (*held == tag).then_some(*facet))
         {
             if let Some(held) = self.lifted(facet) {
-                return held.clone();
+                return Ok(held.clone());
             }
         }
         // The columns every row fills, derived here for a message built from
@@ -853,94 +883,37 @@ impl super::FixMsg {
         // by name.
         let is = |held: (i32, &str)| held.0 == tag;
         if tag == 8 {
-            return crate::Scalar::from(format!(
+            return Ok(crate::Scalar::from(format!(
                 "FIX.{}",
                 self.registry()
                     .newest()
                     .map_or_else(|| "4.4".to_owned(), |held| held.version().to_string())
-            ));
+            )));
         }
-        if is(super::VERSION_TAG_NAME) {
+        Ok(if is(super::VERSION_TAG_NAME) {
             self.version().map_or(crate::Scalar::Null, |held| {
                 crate::Scalar::from(held.to_string())
             })
         } else if is(super::SYMBOLTICKER_TAG_NAME) {
             self.symbol_ticker()
-        } else if is(super::UNIXPARTITION_TAG_NAME) {
-            partition_of(self.updatedat(), super::DEFAULT_PARTITION_SECONDS)
-        } else if is(super::ISINCODE_TAG_NAME) {
-            self.isin_code()
-        } else if is(super::MICCODE_TAG_NAME) {
-            self.mic_code()
-        } else if is(super::STATE_TAG_NAME) {
-            self.state()
+        } else if is(super::TIMEPARTITION_TAG_NAME) {
+            partition_of(self.updatedat())
+        } else if super::is_crate_tag(tag) {
+            // The registry compiles every derivation once, and a refused
+            // compile refuses the row as it refuses the pass; a derivation
+            // that answers nothing is a null column, as on the message.
+            let (derivations, row) = match derived {
+                Some(held) => held,
+                None => {
+                    let compiled = self.registry().derivations()?;
+                    let row = compiled.crate_row(self);
+                    derived.insert((compiled, row))
+                }
+            };
+            derivations.fill(tag, row).unwrap_or(crate::Scalar::Null)
         } else {
             crate::Scalar::Null
-        }
-    }
-
-    /// The instrument's ISIN: `SecurityID(48)` under an ISIN source, else the
-    /// `SecurityAltID(455)` whose source says ISIN.
-    ///
-    /// The message's own `isincode` answered before this was asked, so this
-    /// reads the standard tags a venue states one in.
-    fn isin_code(&self) -> crate::Scalar {
-        if self.get_by_tag(22).and_then(crate::Scalar::as_str) == Some("4") {
-            if let Some(held) = self.get_by_tag(48).filter(|held| !held.is_null()) {
-                return held.clone();
-            }
-        }
-        self.group_member_where(454, 455, 456, "4")
-            .unwrap_or(crate::Scalar::Null)
-    }
-
-    /// The market the message names, as the MIC it states first: the
-    /// exchange the instrument is listed on, the destination it was routed to,
-    /// or the market it last traded on.
-    fn mic_code(&self) -> crate::Scalar {
-        [207, 100, 30]
-            .into_iter()
-            .find_map(|tag| self.get_by_tag(tag).filter(|held| !held.is_null()).cloned())
-            .unwrap_or(crate::Scalar::Null)
-    }
-
-    /// The order's state: `OrdStatus(39)`, else `ExecType(150)`, both typed
-    /// as the crate's one lifecycle vocabulary.
-    fn state(&self) -> crate::Scalar {
-        [39, 150]
-            .into_iter()
-            .find_map(|tag| self.get_by_tag(tag).filter(|held| !held.is_null()).cloned())
-            .unwrap_or(crate::Scalar::Null)
-    }
-
-    /// One member of the first occurrence of a group whose other member
-    /// states `wanted`: the `455` beside a `456` of `4`, say.
-    pub(super) fn group_member_where(
-        &self,
-        group: i32,
-        member: i32,
-        by: i32,
-        wanted: &str,
-    ) -> Option<crate::Scalar> {
-        // `group` is the counter's tag, and a group is reached by the counter
-        // it declares rather than by that tag: the tag names the counter's own
-        // column, which holds a count and not the occurrences.
-        let at = self.index_of_group(group)?;
-        let declared = item_fields(self.as_field().get_field_at(at)?)?;
-        let position = |tag: i32| {
-            declared
-                .iter()
-                .position(|field| field.as_fix().tag().ok().flatten() == Some(tag))
-        };
-        let (member, by) = (position(member)?, position(by)?);
-        self.as_value()
-            .get(at)?
-            .as_sequence()?
-            .iter()
-            .filter_map(crate::Scalar::as_sequence)
-            .find(|occurrence| occurrence.get(by).and_then(crate::Scalar::as_str) == Some(wanted))
-            .and_then(|occurrence| occurrence.get(member).cloned())
-            .filter(|held| !held.is_null())
+        })
     }
 }
 
@@ -1020,31 +993,34 @@ impl super::FixMsg {
 }
 
 impl super::FixMsg {
-    /// The partition [`Self::updatedat`] falls in, in whole seconds.
+    /// The partition [`Self::updatedat`] falls in: that instant floored to
+    /// the hour, the crate's one partition width
+    /// ([`DEFAULT_PARTITION_SECONDS`](super::DEFAULT_PARTITION_SECONDS)),
+    /// as the same nanosecond UTC clock.
     ///
-    /// Floor division rather than truncation, so a timestamp before the epoch
-    /// lands in the partition that contains it rather than the one after.
+    /// Floor division rather than truncation, so a clock before the epoch
+    /// lands in the hour that contains it rather than the one after. This is
+    /// the value the `timepartition` column carries, and the value the
+    /// column's own `transform:expression` computes when a batch arrives
+    /// without it.
     #[must_use]
-    pub fn unix_partition(&self, seconds: i64) -> crate::Scalar {
-        partition_of(self.updatedat(), seconds)
+    pub fn time_partition(&self) -> crate::Scalar {
+        partition_of(self.updatedat())
     }
 }
 
-/// The partition one market clock falls in, in whole seconds.
+/// The hour one market clock falls in, as an instant of the clock's layout.
 ///
-/// Floor division rather than truncation, so a timestamp before the epoch
-/// lands in the partition that contains it rather than the one after - and
-/// floored from the clock's own nanoseconds, so a clock stated to the
-/// microsecond still has a partition rather than a null for not being a
-/// whole second.
-fn partition_of(clock: &crate::Scalar, seconds: i64) -> crate::Scalar {
-    if seconds <= 0 {
-        return crate::Scalar::Null;
-    }
+/// Floor division rather than truncation, so a clock before the epoch lands
+/// in the hour that contains it rather than the one after - and floored from
+/// the clock's own nanoseconds, so a clock stated to the microsecond still
+/// has a partition rather than a null for not being a whole second.
+fn partition_of(clock: &crate::Scalar) -> crate::Scalar {
     let Some(nanoseconds) = clock.temporal_count_at(crate::TimeUnit::Nanosecond) else {
         return crate::Scalar::Null;
     };
-    let width = i128::from(seconds) * 1_000_000_000;
-    let floored = i128::from(nanoseconds).div_euclid(width) * i128::from(seconds);
-    i64::try_from(floored).map_or(crate::Scalar::Null, crate::Scalar::from)
+    let width = super::DEFAULT_PARTITION_SECONDS * 1_000_000_000;
+    let floored = nanoseconds.div_euclid(width) * width;
+    crate::Scalar::datetime64(floored, crate::TimeUnit::Nanosecond, crate::Timezone::UTC)
+        .unwrap_or(crate::Scalar::Null)
 }

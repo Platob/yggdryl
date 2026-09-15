@@ -855,4 +855,30 @@ fn explain_draws_every_section_as_a_branch() {
         ]
         .join("\n")
     );
+    // A predicate segment is drawn under the path that keeps elements by it,
+    // in a `where` and in a `select` alike.
+    let kept: Expression = "select legs[ccy = 'EUR'] as eur where size(legs[active]) > 0"
+        .parse()
+        .unwrap();
+    assert_eq!(
+        kept.explain(),
+        [
+            "plan",
+            "├─ where",
+            "│  └─ >",
+            "│     ├─ call size",
+            "│     │  └─ path legs[active]",
+            "│     │     └─ where",
+            "│     │        └─ column active",
+            "│     └─ literal 0",
+            "└─ select",
+            "   └─ eur",
+            "      └─ path legs[ccy = 'EUR']",
+            "         └─ where",
+            "            └─ =",
+            "               ├─ column ccy",
+            "               └─ literal 'EUR'",
+        ]
+        .join("\n")
+    );
 }

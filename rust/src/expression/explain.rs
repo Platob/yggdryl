@@ -35,9 +35,8 @@
 //! ```
 
 use std::fmt::Write as _;
-use std::sync::Arc;
 
-use super::bind::{Bound, Kind, Node};
+use super::bind::{Bound, Kind, Node, Step, StepKind};
 use super::filter::Filter;
 use super::path::{FieldPath, FieldSegment};
 use super::plan::{Ordering, Plan, Source, Target, Write};
@@ -88,16 +87,21 @@ impl Tree {
 }
 
 /// The steps of a path, spelled as the grammar spells them.
-fn steps(held: &Arc<[FieldSegment]>) -> String {
-    FieldPath::from_shared(Arc::clone(held), None).to_string()
+fn steps(held: impl IntoIterator<Item = FieldSegment>) -> String {
+    FieldPath::new(held).to_string()
 }
 
 /// The label of a path leaf: a bare column, or the path it walks.
-fn path_label(held: &Arc<[FieldSegment]>) -> String {
-    match held.as_ref() {
+fn path_label(held: &[FieldSegment]) -> String {
+    match held {
         [FieldSegment::Field(name)] => format!("column {name}"),
-        _ => format!("path {}", steps(held)),
+        _ => format!("path {}", steps(held.iter().cloned())),
     }
+}
+
+/// The branch a predicate segment hangs under its path.
+fn where_branch(predicate: Tree) -> Tree {
+    Tree::node("where", vec![predicate])
 }
 
 impl Term {
@@ -113,7 +117,15 @@ impl Term {
         let children = |terms: &[Self]| terms.iter().map(Self::tree).collect::<Vec<_>>();
         match self {
             Self::Literal(literal) => Tree::leaf(format!("literal {literal}")),
-            Self::Path(held) => Tree::leaf(path_label(held)),
+            // A predicate segment is the one step with a tree of its own,
+            // drawn under the path it keeps elements of.
+            Self::Path(held) => Tree::node(
+                path_label(held),
+                held.iter()
+                    .filter_map(FieldSegment::as_predicate)
+                    .map(|predicate| where_branch(predicate.tree()))
+                    .collect(),
+            ),
             Self::Attribute(attribute) => Tree::leaf(format!("attribute &holder.{attribute}")),
             Self::Parameter(name) => Tree::leaf(format!("parameter :{name}")),
             Self::And(operands) => Tree::node("and", children(operands)),
@@ -270,7 +282,18 @@ fn node_tree(node: &Node, schema: &Field) -> Tree {
             ),
             Vec::new(),
         ),
-        Kind::Path(base, held) => (format!("path {}", steps(held)), vec![one(base)]),
+        Kind::Path(base, held) => {
+            let mut branches = vec![one(base)];
+            for step in held {
+                if let (StepKind::Where(predicate), Some(element)) = (&step.kind, step.element()) {
+                    branches.push(where_branch(node_tree(predicate, element)));
+                }
+            }
+            (
+                format!("path {}", steps(held.iter().map(Step::segment))),
+                branches,
+            )
+        }
         Kind::Attribute(attribute) => (format!("attribute &holder.{attribute}"), Vec::new()),
         Kind::And(operands) => ("and".to_owned(), children(operands)),
         Kind::Or(operands) => ("or".to_owned(), children(operands)),

@@ -93,6 +93,7 @@ mod partition;
 mod scan;
 mod schema;
 mod snapshot;
+mod staging;
 mod statistics;
 mod table;
 mod types;
@@ -106,7 +107,7 @@ pub use manifest::{
     write_manifest_list,
 };
 pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
-pub use options::IcebergOptions;
+pub use options::{IcebergOptions, WriteStaging};
 pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform};
 pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};
@@ -143,18 +144,16 @@ impl Located {
     }
 
     /// Publish one already-shaped overwrite cadence.
-    pub(crate) fn overwrite_prepared(
-        &mut self,
-        batches: crate::arrow::BatchReader,
-        safe: bool,
-    ) -> Result<()> {
+    ///
+    /// The rows were cast when they were shaped, so nothing here is safe or
+    /// unsafe: the addressed partitions are replaced by what arrives.
+    pub(crate) fn overwrite_prepared(&mut self, batches: crate::arrow::BatchReader) -> Result<()> {
         let filters = self.filters.clone();
         let pairs: Vec<(&str, &str)> = filters
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        self.table
-            .commit_merge_where(&pairs, batches, &crate::Selector::all(), safe)
+        self.table.commit_overwrite_where(&pairs, batches)
     }
 
     /// Publish one already-shaped append cadence.
@@ -229,16 +228,22 @@ impl Located {
         }
     }
 
-    /// Read the table's rows, filtered by whatever the location addressed.
+    /// Read the table's rows the options ask for, within the addressed
+    /// partition.
+    ///
+    /// The directory's `column=value` pairs and the options' own `where`
+    /// clause are both pushed into the scan plan, the `select` and the limit
+    /// wrap the result: the returned reader is complete.
     ///
     /// # Errors
     ///
     /// Returns a metadata, manifest, or read failure.
     pub(crate) fn read(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
-        use crate::media::IORecordOptions;
-
-        self.table
-            .scan_where(&self.pairs(), options.field().as_ref())
+        let scope = crate::Filter::all_partitions_equal(
+            self.table.schema()?,
+            self.filters.iter().map(|(column, value)| (column, value)),
+        );
+        self.table.read_scoped(scope, options)
     }
 
     /// Replace the addressed table partition in one commit.
@@ -251,8 +256,6 @@ impl Located {
         batches: crate::arrow::BatchReader,
         options: &RecordOptions,
     ) -> Result<()> {
-        use crate::media::IORecordOptions;
-
         options.require_write_mode(crate::IOMode::Overwrite)?;
         let commit_row_size = options.require_commit_row_size()?;
         let stored = self.table.schema()?.clone();
@@ -263,24 +266,17 @@ impl Located {
             .iter()
             .map(|(column, value)| (column.as_str(), value.as_str()))
             .collect();
-        let overwrite = crate::Selector::all();
         if commit_row_size.is_none() {
-            return self
-                .table
-                .commit_merge_where(&pairs, batches, &overwrite, options.safe());
+            return self.table.commit_overwrite_where(&pairs, batches);
         }
         let schema = batches.schema();
         let mut commits = options.commit_arrow_readers(batches)?;
         let Some(first) = commits.next() else {
-            return self.table.commit_merge_where(
-                &pairs,
-                crate::arrow::batch_reader(schema, []),
-                &overwrite,
-                options.safe(),
-            );
+            return self
+                .table
+                .commit_overwrite_where(&pairs, crate::arrow::batch_reader(schema, []));
         };
-        self.table
-            .commit_merge_where(&pairs, first?, &overwrite, options.safe())?;
+        self.table.commit_overwrite_where(&pairs, first?)?;
         for commit in commits {
             self.table.commit_append(commit?)?;
         }

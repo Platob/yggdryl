@@ -241,6 +241,8 @@ export type DataTypeId =
   | 'mic'
   | 'cfi'
   | 'isin'
+  | 'cusip'
+  | 'sedol'
   | 'side'
   | 'state'
   | 'timeinforce'
@@ -326,6 +328,8 @@ interface DataTypeKindById {
   mic: 'code'
   cfi: 'code'
   isin: 'code'
+  cusip: 'code'
+  sedol: 'code'
   side: 'code'
   state: 'code'
   timeinforce: 'code'
@@ -782,6 +786,10 @@ export type MicField = FieldOf<'mic', string>
 export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
 export type IsinField = FieldOf<'isin', string>
+/** CUSIP, the nine-character securities identifier closed by its check digit. */
+export type CusipField = FieldOf<'cusip', string>
+/** SEDOL, the seven-character securities identifier closed by its check digit. */
+export type SedolField = FieldOf<'sedol', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1056,6 +1064,8 @@ export interface FieldsNamespace {
   mic(name: string, options?: FieldOptions): MicField
   cfi(name: string, options?: FieldOptions): CfiField
   isin(name: string, options?: FieldOptions): IsinField
+  cusip(name: string, options?: FieldOptions): CusipField
+  sedol(name: string, options?: FieldOptions): SedolField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
@@ -1581,6 +1591,14 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'isin', string, N, O>
+  cusip<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'cusip', string, N, O>
+  sedol<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'sedol', string, N, O>
   side<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -3164,7 +3182,7 @@ export interface Fix {
    * `fill` names each message's chain by `code` (else by identifier),
    * truncates `updatedat` to the `intervalNs` epoch grid while `snapshotat`
    * keeps the real instant, carries the chain's first `createdat` and the
-   * previous message's `prevtimestamp`/`prevuuid`, and finalizes `uuid`;
+   * previous message's `prevupdatedat`/`prevuuid`, and finalizes `uuid`;
    * `snapshot` and `snapshots` answer only new grid snapshots; `alive`
    * counts the chains a terminal state has not closed, and `clear` forgets
    * them all.
@@ -3203,7 +3221,7 @@ export interface Fix {
    * context, the plugins and plugin sessions a line moved between, the
    * ISIN, MIC and order state a row derives, the `instuuid`, `uuid` and
    * `puuid` identities, the direct identifiers enrichment records in
-   * `altids`, `prevtimestamp`/`prevuuid`, and `createdat`, `code` and
+   * `altids`, `prevupdatedat`/`prevuuid`, and `createdat`, `code` and
    * `snapshotat`. Every registry holds them in their category from
    * construction, beside the seeded `SendingTime` (52) and `TransactTime`
    * (60) clocks, so a new registry's `size` is 26.

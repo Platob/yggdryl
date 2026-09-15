@@ -21,7 +21,8 @@ use yggdryl::holder::Holder;
 use yggdryl::media::iceberg::{
     Catalog, Compaction, DataFile, FieldSummary, FormatVersion, IcebergOptions, ManifestContent,
     ManifestFile, PartitionField, PartitionSpec, ScanPlan, SchemaUpdate, Snapshot, Table,
-    assign_field_ids, can_promote, last_column_id, schema_from_json, schema_into_json,
+    WriteStaging, assign_field_ids, can_promote, last_column_id, schema_from_json,
+    schema_into_json,
 };
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar};
@@ -248,7 +249,7 @@ pub(crate) fn folder_holder_from_value(value: &Bound<'_, PyAny>) -> PyResult<Hol
 }
 
 /// The keyword fields accepted by the `IcebergOptions` constructor.
-const ICEBERG_OPTION_FIELDS: [&str; 10] = [
+const ICEBERG_OPTION_FIELDS: [&str; 12] = [
     "commit_retries",
     "commit_min_backoff_ms",
     "commit_max_backoff_ms",
@@ -257,9 +258,29 @@ const ICEBERG_OPTION_FIELDS: [&str; 10] = [
     "read_parallelism",
     "read_parallel_min_files",
     "read_parallel_min_file_size",
+    "write_parallelism",
+    "write_staging",
     "compact_after_commits",
     "data_mime_type",
 ];
+
+/// Read `write.staging` from the text or path-like value a caller hands over.
+///
+/// `off`, a folder URL, or a local path, each as `str`; a `pathlib.Path` or
+/// any other path-like crosses through its own `__fspath__`.
+fn write_staging_from_value(value: &Bound<'_, PyAny>) -> PyResult<WriteStaging> {
+    let text: String = if let Ok(text) = value.extract::<String>() {
+        text
+    } else if let Ok(path) = value.call_method0("__fspath__") {
+        path.extract::<String>()?
+    } else {
+        return Err(PyTypeError::new_err(format!(
+            "expected 'off', a folder URL, or a path for write_staging, got {}",
+            value.get_type().name()?
+        )));
+    };
+    WriteStaging::from_str(&text).map_err(value_error)
+}
 
 /// Set one Iceberg option field from the Python value a keyword carries.
 fn set_iceberg_option(
@@ -286,6 +307,12 @@ fn set_iceberg_option(
         "read_parallel_min_file_size" => {
             options.set_read_parallel_min_file_size_bytes(value.extract::<u64>()?);
         }
+        "write_parallelism" => options
+            .set_write_parallelism(value.extract::<usize>()?)
+            .map_err(value_error)?,
+        "write_staging" => options
+            .set_write_staging(write_staging_from_value(value)?)
+            .map_err(value_error)?,
         "compact_after_commits" => options.set_compact_after_commits(value.extract::<u32>()?),
         "data_mime_type" => options
             .set_data_mime_type(core_mime_type_from_value(value)?)
@@ -486,6 +513,12 @@ impl PyIcebergOptions {
         if let Some(value) = self.inner.read_parallel_min_file_size_bytes_option() {
             state.set_item("read_parallel_min_file_size", value)?;
         }
+        if let Some(value) = self.inner.write_parallelism_option() {
+            state.set_item("write_parallelism", value)?;
+        }
+        if let Some(value) = self.inner.write_staging() {
+            state.set_item("write_staging", value.to_string())?;
+        }
         if let Some(value) = self.inner.compact_after_commits_option() {
             state.set_item("compact_after_commits", value)?;
         }
@@ -621,6 +654,39 @@ impl PyIcebergOptions {
         self.require_mutable()?;
         self.inner.set_read_parallel_min_file_size_bytes(bytes);
         Ok(())
+    }
+
+    /// How many partition groups a commit writes at once. Default: the
+    /// resolved `read_parallelism`; 1 writes them one after another. The
+    /// manifest lists a commit's files in partition-group order whatever the
+    /// value.
+    #[getter]
+    fn write_parallelism(&self) -> usize {
+        self.inner.write_parallelism()
+    }
+
+    #[setter]
+    fn set_write_parallelism(&mut self, threads: usize) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_write_parallelism(threads)
+            .map_err(value_error)
+    }
+
+    /// Where a commit stages its files before uploading them: `"off"`, or a
+    /// local folder URL. `None` - the default - is the table's own: the
+    /// temporary folder for a remote root, off for a local one.
+    #[getter]
+    fn write_staging(&self) -> Option<String> {
+        self.inner.write_staging().map(ToString::to_string)
+    }
+
+    #[setter]
+    fn set_write_staging(&mut self, staging: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner
+            .set_write_staging(write_staging_from_value(staging)?)
+            .map_err(value_error)
     }
 
     /// After how many data commits an automatic compaction runs; `None` - the

@@ -37,7 +37,7 @@ use smol_str::{SmolStr, format_smolstr};
 use super::partition::PartitionSpec;
 use super::snapshot::{MAIN_BRANCH, Snapshot, SnapshotRef};
 use super::{Transform, schema_from_json, schema_into_json};
-use crate::{Error, Field, Result, Scalar};
+use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Which revision of the Iceberg table specification a table is written to.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -119,6 +119,37 @@ impl SortOrder {
         Self {
             order_id: 0,
             fields: Vec::new(),
+        }
+    }
+
+    /// The order a table takes when its creator declares none: the spec's
+    /// source columns, in spec order, ascending with nulls first.
+    ///
+    /// A data file holds one partition, so ordering its rows by the columns
+    /// the partition derives from is what makes the file's bounds on those
+    /// columns tight, and a filter on them prune files rather than read
+    /// them. A source column two spec fields share - `bucket(16, ts)` beside
+    /// `day(ts)` - is sorted on once. An unpartitioned spec derives from
+    /// nothing, so its default is [`Self::unsorted`], order zero.
+    pub fn for_spec(spec: &PartitionSpec) -> Self {
+        let mut fields: Vec<SortField> = Vec::with_capacity(spec.fields.len());
+        for field in &spec.fields {
+            if fields.iter().any(|sort| sort.source_id == field.source_id) {
+                continue;
+            }
+            fields.push(SortField {
+                source_id: field.source_id,
+                transform: Transform::Identity,
+                direction: SmolStr::new_static("asc"),
+                null_order: SmolStr::new_static("nulls-first"),
+            });
+        }
+        if fields.is_empty() {
+            return Self::unsorted();
+        }
+        Self {
+            order_id: 1,
+            fields,
         }
     }
 
@@ -506,7 +537,8 @@ impl TableMetadata {
         G: FnOnce(&OfficialTableMetadataBuildResult) -> Result<T>,
     {
         let document = self.clone().into_json_document()?;
-        let (metadata, mut v1_manifests) = super::official::parse_table_metadata(&document)?;
+        let (metadata, mut v1_manifests, v3_types) =
+            super::official::parse_table_metadata(&document)?;
         for (snapshot_id, manifests) in additional_v1_manifests.into_entries() {
             v1_manifests.insert(snapshot_id, manifests);
         }
@@ -514,7 +546,8 @@ impl TableMetadata {
             update(metadata.into_builder(current_file_location)).map_err(Error::from_iceberg)?;
         let built = builder.build().map_err(Error::from_iceberg)?;
         let extracted = extract(&built)?;
-        let document = super::official::table_metadata_document(&built.metadata, &v1_manifests)?;
+        let document =
+            super::official::table_metadata_document(&built.metadata, &v1_manifests, &v3_types)?;
         let mut replacement = Self::from_normalized_json(&document)?;
         // Apache Iceberg schemas do not carry Yggdryl's inert root protocol
         // properties. Preserve them across metadata-builder updates while the
@@ -607,8 +640,31 @@ impl TableMetadata {
     pub fn new(
         format_version: FormatVersion,
         location: impl Into<SmolStr>,
+        schema: Field,
+        spec: PartitionSpec,
+    ) -> Result<Self> {
+        let order = SortOrder::for_spec(&spec);
+        Self::new_sorted(format_version, location, schema, spec, order)
+    }
+
+    /// Build the first document of a table whose writers keep `order`.
+    ///
+    /// This is [`Self::new`] with the default sort order chosen by the caller
+    /// rather than derived from the spec: [`SortOrder::unsorted`] declares
+    /// that data files carry rows in the order they arrive, and any other
+    /// order is added to the document and made the default, under the
+    /// identifier the official builder assigns it.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Self::new`] failures, or an error when the order names a
+    /// column the schema does not have.
+    pub fn new_sorted(
+        format_version: FormatVersion,
+        location: impl Into<SmolStr>,
         mut schema: Field,
         spec: PartitionSpec,
+        order: SortOrder,
     ) -> Result<Self> {
         schema.validate_struct_root()?;
         // Iceberg resolves a column by identifier, so every column needs one
@@ -658,7 +714,29 @@ impl TableMetadata {
             next_row_id: (format_version >= FormatVersion::V3).then_some(0),
         };
         metadata.finalize_official(None)?;
+        if !order.fields.is_empty() {
+            let order_id = metadata.add_sort_order(order)?;
+            metadata.set_default_sort_order(order_id)?;
+        }
         Ok(metadata)
+    }
+
+    /// Return the sort order new data files are written in.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when no order carries `default-sort-order-id`.
+    pub fn default_sort_order(&self) -> Result<&SortOrder> {
+        self.sort_orders
+            .iter()
+            .find(|order| order.order_id == self.default_sort_order_id)
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "expected a sort order with id {}, got {} sort orders",
+                    self.default_sort_order_id,
+                    self.sort_orders.len()
+                ))
+            })
     }
 
     /// Return the schema new data is written against.
@@ -2340,9 +2418,7 @@ fn field_schema_id(schema: &Field) -> i32 {
 }
 
 fn official_schema(schema: &Field) -> Result<OfficialSchema> {
-    let document = schema_into_json(schema)?;
-    let bytes = crate::text::json::into_bytes(&document)?;
-    Ok(serde_json::from_slice(&bytes)?)
+    super::official::parse_schema(&schema_into_json(schema)?)
 }
 
 /// Match the identity Apache's builder uses, excluding its assigned schema id.
@@ -2427,6 +2503,7 @@ fn validate_schema_evolution(
     collect_field_parents(current, None, &mut current_parents)?;
     let mut candidate_parents = HashMap::new();
     collect_field_parents(candidate, None, &mut candidate_parents)?;
+    let current_field = current;
     let current = official_schema(current)?;
     let candidate = official_schema(candidate)?;
 
@@ -2482,7 +2559,14 @@ fn validate_schema_evolution(
                 new.name
             )));
         }
-        if !official_type_can_promote(&old.field_type, &new.field_type) {
+        // The official model sees the bridged placeholder for an `unknown`
+        // column, so the one promotion v3 grants it - to any type - is read
+        // off the crate's own field instead.
+        let was_unknown = version >= FormatVersion::V3
+            && current_field
+                .field_by_parquet_field_id(id)
+                .is_some_and(|field| field.dtype() == &DataType::Null);
+        if !was_unknown && !official_type_can_promote(&old.field_type, &new.field_type) {
             return Err(invalid(format_smolstr!(
                 "expected an Iceberg-legal promotion for field id {id}, got {} to {}",
                 old.field_type,
@@ -2798,6 +2882,7 @@ fn validate_schema_version(schema: &Field, version: FormatVersion) -> Result<()>
     if version >= FormatVersion::V3 {
         return Ok(());
     }
+    require_v3_types_absent(schema, version)?;
     let schema = official_schema(schema)?;
     for id in 1..=schema.highest_field_id() {
         let Some(field) = schema.field_by_id(id) else {
@@ -2808,6 +2893,34 @@ fn validate_schema_version(schema: &Field, version: FormatVersion) -> Result<()>
                 "expected no field defaults before Iceberg v3, got defaults on field id {id}"
             )));
         }
+    }
+    Ok(())
+}
+
+/// Refuse the column types v3 introduced in a v1 or v2 schema, by name.
+///
+/// `unknown` and `variant` have no meaning to a v1 or v2 reader - the spec
+/// adds both in v3 - so a table of an earlier version cannot carry them, and
+/// the refusal names the column and the type rather than the version alone.
+fn require_v3_types_absent(node: &Field, version: FormatVersion) -> Result<()> {
+    for index in 0..node.dtype().field_len() {
+        let Some(child) = node.dtype().get_field(index) else {
+            continue;
+        };
+        let spelled = match child.dtype() {
+            DataType::Null => Some("unknown"),
+            DataType::Variant => Some("variant"),
+            _ => None,
+        };
+        if let Some(spelled) = spelled {
+            return Err(invalid(format_smolstr!(
+                "expected a column type Iceberg format v{} can carry for {:?}, got {spelled} \
+                 (added in v3)",
+                version.number(),
+                child.name()
+            )));
+        }
+        require_v3_types_absent(child, version)?;
     }
     Ok(())
 }

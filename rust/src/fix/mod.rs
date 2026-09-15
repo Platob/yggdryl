@@ -21,6 +21,7 @@
 //! | codes | `fix:codes` | canonical JSON, by wire value | enumeration definitions owned by the field |
 //! | replacements | `fix:replacements` | canonical JSON, in order | how a value of this field is restated at a later version: the fields it fills and the values they take |
 //! | directions | `fix:directions` | canonical JSON, in stated order | on tag 385: per code of the set, the `regex::bytes` patterns that name it from the prose in front of a payload; absent reads by the built-in defaults |
+//! | derivation | `fix:derivation` | canonical term text | how this field's value is derived from the message where the message states none: one expression over the message's fields, evaluated by the enriching pass to a fixpoint (decision 38) |
 //! | counter | `fix:counter` | `i32` | the wire field counting a group's occurrences |
 //! | component | `fix:component` | name | the component defining a group occurrence |
 //!
@@ -181,10 +182,10 @@ pub use crated::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREATEDAT_TAG_NAME,
     DEFAULT_PARTITION_SECONDS, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
     MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGTYPE_TAG_NAME, PARENTCLORDID_TAG_NAME,
-    PARENTORDERID_TAG_NAME, PLUGINID_TAG_NAME, PREVPLUGINID_TAG_NAME, PREVTIMESTAMP_TAG_NAME,
+    PARENTORDERID_TAG_NAME, PLUGINID_TAG_NAME, PREVPLUGINID_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
     PREVUUID_TAG_NAME, PUUID_TAG_NAME, SENDERSESSIONID_TAG_NAME, SENDERSESSIONNAME_TAG_NAME,
     SNAPSHOTAT_TAG_NAME, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME, TARGETSESSIONID_TAG_NAME,
-    TARGETSESSIONNAME_TAG_NAME, UNIXPARTITION_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
+    TARGETSESSIONNAME_TAG_NAME, TIMEPARTITION_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
     VERSION_TAG_NAME, fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
