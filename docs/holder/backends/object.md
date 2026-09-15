@@ -96,8 +96,11 @@ Before local staging and the leaf handles, the same sequence cost 9, 25, 40,
 | projected scan | 7 | the same as the full scan: no footer is read for a column name unless the table ever renamed one |
 
 A commit stages every file it writes under a local directory of its own and
-uploads it once, so its request count is the file count plus the metadata chain
-whatever the file size, and a failed commit removes what it published - see
+streams it up once - one `PUT` below the multipart threshold, `parts + 2`
+requests above it, one part in memory at a time - so its request count is one
+upload per file plus the metadata chain, and a commit that fails before its
+versioned document is out removes what it published, with no removal for an
+upload the store refused - see
 [Iceberg writes](../../media/iceberg/write.md#staged-commits).
 
 ## Which store answers

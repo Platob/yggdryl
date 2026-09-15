@@ -124,7 +124,10 @@ impl BoundLocation {
 
     /// Bind a raw child name without URL decoding or path normalization.
     pub fn child(&self, name: &str) -> Result<Self> {
-        if name.is_empty() {
+        // The empty name and `.` both name this location: a caller asking
+        // for its own handle on a folder gets one, not a `./` the store
+        // would keep as a segment of its own.
+        if name.is_empty() || name == "." {
             return Ok(self.clone());
         }
         let path = if self.path.is_empty() {
@@ -422,6 +425,34 @@ mod tests {
 
     use super::*;
     use crate::holder::fs::MemoryFileSystem;
+
+    #[test]
+    fn a_dot_child_is_the_location_itself() {
+        let fs: Arc<dyn FileSystem> = Arc::new(MemoryFileSystem::new());
+        let location = BoundLocation::new(
+            fs,
+            "bucket/table",
+            Some("memory://bound/bucket/table".to_owned()),
+        )
+        .unwrap();
+        for name in ["", "."] {
+            let child = location.child(name).unwrap();
+            assert_eq!(child.path(), "bucket/table", "{name:?}");
+            assert_eq!(child.uri(), location.uri(), "{name:?}");
+        }
+        // A handle taken with `.` resolves what is below it where the
+        // location itself would, not under a `./` segment of its own.
+        let below = location
+            .child(".")
+            .unwrap()
+            .child("data/part.parquet")
+            .unwrap();
+        assert_eq!(below.path(), "bucket/table/data/part.parquet");
+        assert_eq!(
+            below.uri(),
+            Some("memory://bound/bucket/table/data/part.parquet")
+        );
+    }
 
     #[test]
     fn injected_paths_stay_opaque_and_diagnostics_mask_credentials() {

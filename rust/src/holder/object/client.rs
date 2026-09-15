@@ -1770,12 +1770,42 @@ impl Client {
         bytes: &[u8],
         content_type: &str,
     ) -> Result<Option<String>> {
+        let mut source = std::io::Cursor::new(bytes);
+        self.put_streamed(bucket, key, &mut source, bytes.len() as u64, content_type)
+    }
+
+    /// Write one large object in chunks read from `source` as they go out.
+    ///
+    /// [`Self::put_chunked`] with the value streamed rather than held: one
+    /// part-sized buffer is filled from the source and sent before the next
+    /// is read, so a value of any length costs one part of memory. `length`
+    /// is what the source holds, and a source that ends before it is
+    /// refused - with the upload abandoned where the store has a way to.
+    ///
+    /// # Errors
+    ///
+    /// Returns the source's read failure, a short source, or the store's
+    /// refusal.
+    pub(super) fn put_streamed(
+        &self,
+        bucket: &str,
+        key: &str,
+        source: &mut dyn Read,
+        length: u64,
+        content_type: &str,
+    ) -> Result<Option<String>> {
         let part_size = usize::try_from(self.part_size())
             .map_err(|_| crate::iobase::oversized(self.part_size()))?;
         match self.provider {
-            Provider::Aws => self.put_multipart(bucket, key, bytes, content_type, part_size),
-            Provider::Google => self.put_resumable(bucket, key, bytes, content_type, part_size),
-            Provider::Azure => self.put_blocks(bucket, key, bytes, content_type, part_size),
+            Provider::Aws => {
+                self.put_multipart(bucket, key, source, length, content_type, part_size)
+            }
+            Provider::Google => {
+                self.put_resumable(bucket, key, source, length, content_type, part_size)
+            }
+            Provider::Azure => {
+                self.put_blocks(bucket, key, source, length, content_type, part_size)
+            }
         }
     }
 
@@ -1784,21 +1814,34 @@ impl Client {
         &self,
         bucket: &str,
         key: &str,
-        bytes: &[u8],
+        source: &mut dyn Read,
+        length: u64,
         content_type: &str,
         part_size: usize,
     ) -> Result<Option<String>> {
         let upload = self.create_multipart(bucket, key, Some(content_type))?;
-        let mut parts = Vec::with_capacity(bytes.len().div_ceil(part_size));
-        for (index, chunk) in bytes.chunks(part_size).enumerate() {
-            let number = u32::try_from(index + 1).map_err(|_| too_many_parts())?;
-            match self.upload_part(bucket, key, &upload, number, chunk) {
-                Ok(etag) => parts.push((number, etag)),
-                Err(error) => {
-                    let _ = self.abort_multipart(bucket, key, &upload);
-                    return Err(error);
-                }
+        let mut pending = Parts::new(source, length, part_size);
+        let mut buffer = Vec::new();
+        let mut parts = Vec::new();
+        let mut number = 0_u32;
+        let sent = loop {
+            match pending.next(&mut buffer) {
+                Ok(true) => {}
+                Ok(false) => break Ok(()),
+                Err(error) => break Err(error),
             }
+            let Some(next) = number.checked_add(1) else {
+                break Err(too_many_parts());
+            };
+            number = next;
+            match self.upload_part(bucket, key, &upload, number, &buffer) {
+                Ok(etag) => parts.push((number, etag)),
+                Err(error) => break Err(error),
+            }
+        };
+        if let Err(error) = sent {
+            let _ = self.abort_multipart(bucket, key, &upload);
+            return Err(error);
         }
         match self.complete_multipart(bucket, key, &upload, &parts) {
             Ok(etag) => Ok(etag),
@@ -1817,14 +1860,15 @@ impl Client {
         &self,
         bucket: &str,
         key: &str,
-        bytes: &[u8],
+        source: &mut dyn Read,
+        length: u64,
         content_type: &str,
         part_size: usize,
     ) -> Result<Option<String>> {
         let granularity =
             usize::try_from(super::google::dialect::CHUNK_GRANULARITY).unwrap_or(usize::MAX);
         let part_size = (part_size / granularity).max(1) * granularity;
-        let total = bytes.len() as u64;
+        let total = length;
         let metadata = self.google_metadata(key, content_type)?;
         let request = self.common(super::google::dialect::initiate_request(
             bucket,
@@ -1848,10 +1892,22 @@ impl Client {
                     &super::google::json::missing_session().0,
                 )
             })?;
-        let mut start = 0u64;
-        for chunk in bytes.chunks(part_size) {
+        let mut pending = Parts::new(source, length, part_size);
+        let mut buffer = Vec::new();
+        let mut start = 0_u64;
+        loop {
+            match pending.next(&mut buffer) {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    let _ = self.send(&super::google::dialect::cancel_request(
+                        &session, bucket, key,
+                    ));
+                    return Err(error);
+                }
+            }
             let request =
-                super::google::dialect::chunk_request(&session, bucket, key, chunk, start, total);
+                super::google::dialect::chunk_request(&session, bucket, key, &buffer, start, total);
             let answer = self.send(&request)?;
             // 308 is the store saying the chunk landed and more is expected;
             // it is the protocol's own use of the code, not a redirect.
@@ -1861,7 +1917,7 @@ impl Client {
                 ));
                 return Err(self.failure(&request, &answer));
             }
-            start += chunk.len() as u64;
+            start += buffer.len() as u64;
         }
         Ok(None)
     }
@@ -1871,17 +1927,20 @@ impl Client {
         &self,
         bucket: &str,
         key: &str,
-        bytes: &[u8],
+        source: &mut dyn Read,
+        length: u64,
         content_type: &str,
         part_size: usize,
     ) -> Result<Option<String>> {
-        let mut ids = Vec::with_capacity(bytes.len().div_ceil(part_size));
-        for (index, chunk) in bytes.chunks(part_size).enumerate() {
-            let number = u32::try_from(index).map_err(|_| too_many_parts())?;
+        let mut pending = Parts::new(source, length, part_size);
+        let mut buffer = Vec::new();
+        let mut ids = Vec::new();
+        let mut number = 0_u32;
+        while pending.next(&mut buffer)? {
             let id = super::azure::dialect::block_id(number);
             let request = self
                 .common(super::azure::dialect::put_block_request(
-                    bucket, key, &id, chunk,
+                    bucket, key, &id, &buffer,
                 ))
                 .keyed(self.provider, self.encryption());
             let answer = self.send(&request)?;
@@ -1889,6 +1948,7 @@ impl Client {
                 return Err(self.failure(&request, &answer));
             }
             ids.push(id);
+            number = number.checked_add(1).ok_or_else(too_many_parts)?;
         }
         // Nothing is committed until the list is, so an abandoned upload leaves
         // uncommitted blocks the account's own rule expires; there is no abort.
@@ -2129,6 +2189,69 @@ impl Client {
         }
         Err(self.failure(&request, &answer))
     }
+}
+
+/// The parts of one upload, read from its source one at a time.
+///
+/// What bounds an upload's memory: a part-sized buffer is filled from the
+/// source and sent before the next is read, whatever the value's length. The
+/// source declared its length up front, so a source that ends early is a
+/// refusal rather than a shorter object.
+struct Parts<'source> {
+    source: &'source mut dyn Read,
+    part_size: usize,
+    total: u64,
+    remaining: u64,
+}
+
+impl<'source> Parts<'source> {
+    fn new(source: &'source mut dyn Read, length: u64, part_size: usize) -> Self {
+        Self {
+            source,
+            part_size: part_size.max(1),
+            total: length,
+            remaining: length,
+        }
+    }
+
+    /// Fill `buffer` with the next part, answering `false` once every byte
+    /// is out.
+    fn next(&mut self, buffer: &mut Vec<u8>) -> Result<bool> {
+        if self.remaining == 0 {
+            return Ok(false);
+        }
+        let length = usize::try_from(self.remaining)
+            .map_or(self.part_size, |remaining| remaining.min(self.part_size));
+        buffer.clear();
+        buffer
+            .try_reserve(length)
+            .map_err(|_| crate::iobase::oversized(length as u64))?;
+        buffer.resize(length, 0);
+        let mut filled = 0;
+        while filled < length {
+            match self.source.read(&mut buffer[filled..]) {
+                Ok(0) => {
+                    return Err(short_upload(
+                        self.total,
+                        self.total - self.remaining + filled as u64,
+                    ));
+                }
+                Ok(read) => filled += read,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) => return Err(Error::Io(error)),
+            }
+        }
+        self.remaining -= length as u64;
+        Ok(true)
+    }
+}
+
+/// Report a source that ended before the length it declared.
+pub(super) fn short_upload(expected: u64, got: u64) -> Error {
+    Error::Io(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        format!("expected {expected} bytes to upload, got {got}"),
+    ))
 }
 
 /// Refuse a value too large for the store's part count.

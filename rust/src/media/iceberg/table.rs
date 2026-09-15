@@ -208,7 +208,7 @@ impl<H: IOBase> Table<H> {
             metadata_file_name: SmolStr::new_static(""),
             options: None,
         };
-        table.commit_metadata()?;
+        table.commit_metadata(None)?;
         log::info!(
             "created iceberg table at {} (format v{}, {} columns)",
             table.metadata.location(),
@@ -744,12 +744,16 @@ impl<H: IOBase> Table<H> {
         &mut self,
         mut change: impl FnMut(&mut TableMetadata) -> Result<()>,
     ) -> Result<()> {
-        self.commit_document(OnConflict::Rebase, move |table| {
-            // The change runs on a copy, so a rejected change costs nothing.
-            let mut updated = table.metadata.clone();
-            change(&mut updated)?;
-            Ok(updated)
-        })
+        self.commit_document(
+            OnConflict::Rebase,
+            move |table| {
+                // The change runs on a copy, so a rejected change costs nothing.
+                let mut updated = table.metadata.clone();
+                change(&mut updated)?;
+                Ok(updated)
+            },
+            None,
+        )
     }
 
     /// Write one prepared document as the next version, retrying when beaten.
@@ -769,10 +773,15 @@ impl<H: IOBase> Table<H> {
     /// The check-then-write pair is not atomic - [`IOBase`] has no
     /// compare-and-swap - so a writer landing between the two still goes
     /// undetected; the module docs say so plainly.
+    ///
+    /// `staging` is the data commit's, when there is one: it is committed
+    /// the moment the versioned document is durable, so a failure after
+    /// that - the hint write, say - leaves every file the document names.
     fn commit_document(
         &mut self,
         on_conflict: OnConflict,
         mut apply: impl FnMut(&Self) -> Result<TableMetadata>,
+        staging: Option<&Staging>,
     ) -> Result<()> {
         let settings = IcebergOptions::commit_settings(self.options.as_ref(), &self.metadata)?;
         let saved_metadata = self.metadata.clone();
@@ -873,7 +882,7 @@ impl<H: IOBase> Table<H> {
                 Err(error) => return restore(self, error),
             };
             self.metadata = updated;
-            if let Err(error) = self.commit_metadata() {
+            if let Err(error) = self.commit_metadata(staging) {
                 if !error.is_conflict() {
                     return reconcile_visible(self, error);
                 }
@@ -1080,7 +1089,8 @@ impl<H: IOBase> Table<H> {
         let mut parts = Vec::with_capacity(tasks.len());
         for task in tasks {
             // The manifest recorded the file's length, so the handle knows it
-            // before the read asks.
+            // before the read asks - unless it recorded none, which is not
+            // believed: the file answers for itself then.
             let mut handle = sized(
                 self.child_at(&task.entry.data_file.file_path)?,
                 u64::try_from(task.entry.data_file.file_size_in_bytes).unwrap_or_default(),
@@ -1687,7 +1697,7 @@ impl<H: IOBase> Table<H> {
     }
 
     /// Write the current metadata as the next numbered document.
-    fn commit_metadata(&mut self) -> Result<()> {
+    fn commit_metadata(&mut self, staging: Option<&Staging>) -> Result<()> {
         // A bad in-memory state is refused before a document exists, so a
         // broken table can only be read, never written.
         self.metadata.validate()?;
@@ -1727,10 +1737,19 @@ impl<H: IOBase> Table<H> {
         // UUID filenames make the write itself the create/commit attempt.
         // Another document at this version means a table or concurrent writer
         // already won; remove only our unpublished candidate and report it.
-        let competitors = metadata_names_at_version(&metadata_dir, next_version)?
-            .into_iter()
-            .filter(|candidate| candidate != &attempt)
-            .collect::<Vec<_>>();
+        // A listing that fails removes it too: the attempt names files a
+        // data commit rolls back, and left behind it would claim the version
+        // against every later writer.
+        let competitors = match metadata_names_at_version(&metadata_dir, next_version) {
+            Ok(names) => names
+                .into_iter()
+                .filter(|candidate| candidate != &attempt)
+                .collect::<Vec<_>>(),
+            Err(error) => {
+                drop(handle.remove(false));
+                return Err(error);
+            }
+        };
         if !competitors.is_empty() {
             handle.remove(false)?;
             return Err(Error::conflict(
@@ -1749,7 +1768,20 @@ impl<H: IOBase> Table<H> {
         // counts both spellings, and one of them is always there.
         let name = format_smolstr!("v{next_version}{suffix}.metadata.json");
         let mut document = leaf(self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?)?;
-        document.write_all_bytes(&encoded)?;
+        if let Err(error) = document.write_all_bytes(&encoded) {
+            // Nothing durable names the commit's files yet, and the attempt
+            // - which does - goes with them rather than staying to claim the
+            // version.
+            drop(handle.remove(false));
+            return Err(error);
+        }
+        // The versioned document is durable and names every file the commit
+        // published: this is the point of no return. A fresh handle resolves
+        // the version to this document whatever the hint write reports next,
+        // so from here nothing is rolled back.
+        if let Some(staging) = staging {
+            staging.commit();
+        }
 
         // The hint is how a catalog-free reader finds the current document.
         let mut hint = leaf(
@@ -1898,8 +1930,11 @@ impl<H: IOBase> Table<H> {
         // beaten on write rather than on the version check re-uses the list
         // it already read; only a rebase onto a newer snapshot reads again.
         let mut listed: Option<(Option<i64>, Vec<ManifestFile>)> = None;
+        // The manifest list of the attempt before, when this one is a retry:
+        // it names nothing a document will ever name, so it is withdrawn.
+        let mut previous_list: Option<String> = None;
         let staged = &staging;
-        self.commit_document(on_conflict, move |table| {
+        let apply = move |table: &Self| {
             let sequence_number = next_sequence_number(&table.metadata)?;
             let mut manifests = match &kept {
                 Some(kept) => kept.clone(),
@@ -1939,9 +1974,16 @@ impl<H: IOBase> Table<H> {
             };
             let format_version = table.metadata.format_version;
             let parent_snapshot_id = table.metadata.current_snapshot_id;
+            if let Some(previous) = previous_list.take() {
+                // The attempt this one replaces lost: its list goes now, one
+                // removal, rather than staying as the orphan a successful
+                // commit would otherwise keep.
+                staged.withdraw(&previous)?;
+            }
+            let list_path = format!("{METADATA_DIR}/{list_name}");
             let (next_row_id, _) = staged.publish(
                 &table.root,
-                &format!("{METADATA_DIR}/{list_name}"),
+                &list_path,
                 &crate::MediaType::new(MimeType::AVRO),
                 |list| {
                     write_manifest_list(
@@ -2027,11 +2069,12 @@ impl<H: IOBase> Table<H> {
 
             let mut updated = table.metadata.clone();
             updated.set_current_snapshot(snapshot)?;
+            previous_list = Some(list_path);
             Ok(updated)
-        })?;
-        // The document names every file now: nothing is rolled back, and
-        // only the staging directory goes.
-        staging.finish();
+        };
+        // The staging is committed inside, the moment the versioned document
+        // is durable; what is left of it when it drops is the directory.
+        self.commit_document(on_conflict, apply, Some(&staging))?;
         self.maybe_auto_compact(compacting)?;
         Ok(files_written)
     }
