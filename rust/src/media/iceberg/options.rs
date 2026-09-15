@@ -21,7 +21,95 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::manifest::is_iceberg_mime_type;
 use super::metadata::TableMetadata;
-use crate::{Error, MimeType, Result};
+use crate::{Error, MimeType, Result, Url};
+
+/// Where a commit writes its files before they reach the table.
+///
+/// A data file, a manifest and a manifest list are each written whole, so a
+/// commit into a remote table either encodes every file in memory and uploads
+/// it, or writes it to a local staging file first and uploads that: one
+/// upload per file - multipart above the store's threshold - and never the
+/// whole commit in memory at once. The staging is a transaction: a directory
+/// per commit under the folder, every staged file removed as soon as it is
+/// uploaded, the directory removed when the commit ends however it ends, and
+/// every file the commit published removed again when it fails, so a failed
+/// commit leaves no local file and no remote file the metadata does not name.
+///
+/// ```
+/// use yggdryl::media::iceberg::WriteStaging;
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// assert_eq!(WriteStaging::from_str("off")?, WriteStaging::Off);
+/// let staged = WriteStaging::from_str("file:///var/tmp/stage")?;
+/// assert_eq!(staged.folder().map(ToString::to_string), Some("file:///var/tmp/stage".to_owned()));
+/// assert_eq!(staged.to_string(), "file:///var/tmp/stage");
+/// // A remote folder cannot hold a local staging file.
+/// assert!(WriteStaging::from_str("s3://trades/stage").is_err());
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum WriteStaging {
+    /// Every file is written straight to the table's folder.
+    Off,
+    /// Every file is written under this local folder, one directory per
+    /// commit, and uploaded whole once.
+    Folder(Url),
+}
+
+impl WriteStaging {
+    /// Parse `off`, a local folder URL, or a local path.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error naming the key when the text is neither `off`
+    /// nor a local folder.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(text: &str) -> Result<Self> {
+        let trimmed = text.trim();
+        if trimmed.eq_ignore_ascii_case("off") {
+            return Ok(Self::Off);
+        }
+        let url = Url::from_str(trimmed).or_else(|_| Url::from_path(trimmed))?;
+        if !url.is_local() {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(IcebergOptions::WRITE_STAGING_KEY),
+                reason: format_smolstr!("expected off or a local folder, got {url}"),
+            });
+        }
+        Ok(Self::Folder(url))
+    }
+
+    /// Return whether files are written straight to the table.
+    pub const fn is_off(&self) -> bool {
+        matches!(self, Self::Off)
+    }
+
+    /// Return the local folder files are staged under, when they are.
+    pub const fn folder(&self) -> Option<&Url> {
+        match self {
+            Self::Off => None,
+            Self::Folder(url) => Some(url),
+        }
+    }
+}
+
+impl std::str::FromStr for WriteStaging {
+    type Err = Error;
+
+    fn from_str(text: &str) -> Result<Self> {
+        Self::from_str(text)
+    }
+}
+
+impl std::fmt::Display for WriteStaging {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Off => formatter.write_str("off"),
+            Self::Folder(url) => write!(formatter, "{url}"),
+        }
+    }
+}
 
 /// Configuration for one table's commit retries, file sizing, and reads.
 ///
@@ -66,6 +154,8 @@ pub struct IcebergOptions {
     read_parallel_min_file_size_bytes: Option<u64>,
     /// How many partition groups a commit writes at once, when set.
     write_parallelism: Option<usize>,
+    /// Where a commit stages its files before they reach the table, when set.
+    write_staging: Option<WriteStaging>,
     /// After how many data commits an automatic compaction runs, when set.
     compact_after_commits: Option<u32>,
     /// The MIME type new data files are written with, when set.
@@ -110,6 +200,9 @@ impl IcebergOptions {
     pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
     /// The property naming how many partition groups a commit writes at once.
     pub const WRITE_PARALLELISM_KEY: &'static str = "write.parallelism";
+    /// The property naming where a commit stages its files: `off`, or a
+    /// local folder URL.
+    pub const WRITE_STAGING_KEY: &'static str = "write.staging";
 
     /// The retry count nothing configures: Iceberg's own default of 4.
     pub const DEFAULT_COMMIT_RETRIES: u32 =
@@ -275,6 +368,48 @@ impl IcebergOptions {
     /// Return the explicitly configured write parallelism.
     pub const fn write_parallelism_option(&self) -> Option<usize> {
         self.write_parallelism
+    }
+
+    /// Return where a commit stages its files, when a layer says.
+    ///
+    /// `None` is the default, which the table decides by its root:
+    /// [`WriteStaging::Folder`] of the platform temporary folder when the
+    /// root is remote - an object store, a foreign filesystem - and
+    /// [`WriteStaging::Off`] when it is local, where a staging file would be
+    /// a second copy of a file already on the same disk.
+    /// [`Table::write_staging`](super::Table::write_staging) answers the
+    /// resolved value for one table.
+    pub const fn write_staging(&self) -> Option<&WriteStaging> {
+        self.write_staging.as_ref()
+    }
+
+    /// Set where a commit stages its files.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error naming the key when the folder is not local;
+    /// the value is unchanged.
+    pub fn set_write_staging(&mut self, staging: WriteStaging) -> Result<()> {
+        if let Some(url) = staging.folder() {
+            if !url.is_local() {
+                return Err(Error::InvalidMetadataValue {
+                    key: SmolStr::new_static(Self::WRITE_STAGING_KEY),
+                    reason: format_smolstr!("expected off or a local folder, got {url}"),
+                });
+            }
+        }
+        self.write_staging = Some(staging);
+        Ok(())
+    }
+
+    /// Set where a commit stages its files, persistently.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Self::set_write_staging`] failure.
+    pub fn try_with_write_staging(mut self, staging: WriteStaging) -> Result<Self> {
+        self.set_write_staging(staging)?;
+        Ok(self)
     }
 
     /// Return the MIME type new data files are written with. Default: Parquet.
@@ -543,6 +678,7 @@ impl IcebergOptions {
                 explicit, metadata,
             )?,
             write_parallelism: write_parallelism_layer(explicit, metadata)?,
+            write_staging: write_staging_layer(explicit, metadata)?,
             compact_after_commits: compact_after_commits_layer(explicit, metadata)?,
             data_mime_type: data_mime_type_layer(explicit, metadata)?,
         })
@@ -593,6 +729,7 @@ impl IcebergOptions {
         let read = Self::read_settings(explicit, metadata)?;
         Ok(WriteSettings {
             parallelism: write_parallelism_layer(explicit, metadata)?.unwrap_or(read.parallelism),
+            staging: write_staging_layer(explicit, metadata)?,
             target_file_size_bytes: Self::target_size(explicit, metadata)?,
             mime_type: Self::write_mime_type(explicit, metadata)?,
             read,
@@ -632,6 +769,8 @@ pub(super) struct CommitSettings {
 pub(super) struct WriteSettings {
     /// How many partition groups are written at once; 1 is the calling thread.
     pub(super) parallelism: usize,
+    /// Where the files are staged, or `None` for the root's own default.
+    pub(super) staging: Option<WriteStaging>,
     /// The size a data file aims for, in bytes.
     pub(super) target_file_size_bytes: u64,
     /// The format every data file of the commit is encoded in.
@@ -774,6 +913,20 @@ fn write_parallelism_layer(
         IcebergOptions::WRITE_PARALLELISM_KEY,
         "a positive writer-thread count",
         |threads| *threads >= 1,
+    )
+}
+
+/// The one resolver for [`IcebergOptions::WRITE_STAGING_KEY`].
+fn write_staging_layer(
+    explicit: Option<&IcebergOptions>,
+    metadata: &TableMetadata,
+) -> Result<Option<WriteStaging>> {
+    layered(
+        explicit.and_then(|options| options.write_staging.clone()),
+        metadata,
+        IcebergOptions::WRITE_STAGING_KEY,
+        "off or a local folder",
+        |staging| staging.folder().is_none_or(Url::is_local),
     )
 }
 

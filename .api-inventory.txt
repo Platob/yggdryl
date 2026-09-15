@@ -1274,7 +1274,7 @@ pub struct Path
   pub struct Path / Folder / File
   Path: pub fn bucket, key, stats, exists, as_directory, as_file
   Folder: pub fn bucket, prefix, stats, exists, create
-  File: pub fn bucket, key, stats, exists
+  File: pub fn bucket, key, stats, exists, with_known_size
   pub struct StatsSnapshot { requests, heads, gets, puts, posts, deletes, lists, retries, retry_tokens }
 
   pub struct ObjectOptions
@@ -1686,6 +1686,7 @@ pub struct IcebergOptions
   pub const READ_PARALLEL_MIN_FILES_KEY: &'static str = "read.parallel.min-files";
   pub const READ_PARALLEL_MIN_FILE_SIZE_KEY: &'static str = "read.parallel.min-file-size-bytes";
   pub const WRITE_PARALLELISM_KEY: &'static str = "write.parallelism";
+  pub const WRITE_STAGING_KEY: &'static str = "write.staging";
   pub const DATA_MIME_TYPE_KEY: &'static str = "write.format.default";
   pub const DEFAULT_COMMIT_RETRIES: u32 = 4;
   pub const DEFAULT_COMMIT_MIN_BACKOFF_MS: u64 = 100;
@@ -1705,6 +1706,9 @@ pub struct IcebergOptions
   pub fn read_parallel_min_file_size_bytes(&self) -> u64
   pub fn write_parallelism(&self) -> usize
   pub const fn write_parallelism_option(&self) -> Option<usize>
+  pub const fn write_staging(&self) -> Option<&WriteStaging>
+  pub fn set_write_staging(&mut self, staging: WriteStaging) -> Result<()>
+  pub fn try_with_write_staging(mut self, staging: WriteStaging) -> Result<Self>
   pub fn data_mime_type(&self) -> MimeType
   pub const fn data_mime_type_option(&self) -> Option<&MimeType>
   pub fn set_data_mime_type(&mut self, mime_type: MimeType) -> Result<()>
@@ -1726,6 +1730,14 @@ pub struct IcebergOptions
   pub fn set_write_parallelism(&mut self, threads: usize) -> Result<()>
   pub fn try_with_write_parallelism(mut self, threads: usize) -> Result<Self>
   pub fn from_metadata(metadata: &TableMetadata) -> Result<Self>
+pub enum WriteStaging
+  Off
+  Folder(Url)
+  pub fn from_str(text: &str) -> Result<Self>
+  pub const fn is_off(&self) -> bool
+  pub const fn folder(&self) -> Option<&Url>
+  impl std::str::FromStr for WriteStaging
+  impl std::fmt::Display for WriteStaging
 
 ### yggdryl::media::iceberg::partition  [rust\src\media\iceberg\partition.rs]
 pub const FIRST_PARTITION_ID: i32 = 1000;
@@ -1821,6 +1833,7 @@ pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
 ### yggdryl::media::iceberg::table (options, refs, concurrency)  [rust\src\media\iceberg\table.rs]
 pub fn set_options(&mut self, options: IcebergOptions)
   pub fn options(&self) -> Result<IcebergOptions>
+  pub fn write_staging(&self) -> Result<WriteStaging>
   pub fn create_branch(&mut self, name: &str, snapshot_id: i64) -> Result<()>
   pub fn create_tag(&mut self, name: &str, snapshot_id: i64) -> Result<()>
   pub fn remove_snapshot_ref(&mut self, name: &str) -> Result<SnapshotRef>

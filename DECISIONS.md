@@ -3138,3 +3138,65 @@ parallelism, a four-thread commit listing eight groups in order, a failing
 writer leaving the version and snapshot untouched; `unknown` and `variant`
 round-tripping through schema JSON, a data file, a reopened table and the
 official validation, and refused by name in v2.
+
+### Staging and the remote call budget
+
+**Rule.** A table touches only the files its metadata names, and names them
+as what they are. A handle the table resolves is the leaf or the container
+the layout says it is - `staging::leaf`, `staging::container` - never an
+undecided location the store is asked to classify, because a listing to
+learn what a manifest already states is a round trip for nothing. A data
+file's handle is told the length the manifest recorded
+(`File::with_known_size`, the one primitive the object backend was missing:
+a listing already taught a handle its size, a manifest can too), so a scan
+opens each file with one `GET`. A manifest and a manifest list stream out of
+one open read, the input limit enforced on what arrives rather than by a
+size question first. A commit re-checks its version by the hint alone and
+reads the document only when the hint names a newer one, and an attempt
+beaten on write re-uses the manifest list it already read. A projection
+opens a file's footer for its column names only when a schema the table
+ever had spells a current column under another name; a table that never
+renamed one projects by the read root's names.
+
+Every file a commit writes - data file, manifest, manifest list - goes
+through one `Staging`: with `write.staging` on it is encoded into a local
+file under a directory of the commit's own (`yggdryl-iceberg-<snapshot>-
+<uuid>` under the folder), its statistics read from that copy, uploaded once
+- multipart above the store's threshold - and the copy removed before the
+upload starts; with it off the file is written in place. Either way the
+published file is recorded, and the staging is a transaction: `finish` keeps
+the published files and removes the directory, and a drop without it - a
+refused upload, a beaten commit out of retries, a panic - removes every
+published file and the directory, so a failed commit leaves no local file
+and no file the metadata does not name. A handle whose upload failed is
+removed rather than dropped, because a leaf publishes what it holds when it
+is dropped. The option is `IcebergOptions::write_staging` (`write.staging`:
+`off` or a local folder URL or path; a remote folder is refused naming the
+key), resolved explicit, then property, then the root's own default -
+`WriteStaging::Folder` of the platform temporary folder for a remote root,
+`WriteStaging::Off` for a local one, which `Table::write_staging` answers.
+It crosses the Python and Node bindings as text (`write_staging`,
+`writeStaging`), `None`/`null` being the unset default.
+
+**What it costs.** Over the in-process S3, exact and pinned: create 5 (was
+9), an append of one partition 9 (was 25), of three 12 (was 40), an upsert
+into one partition of three 14 (was 40), open 2 (was 5), a full scan of four
+files 7 (was 21), a pruned scan of one file 3 (was 9), a projected scan 7
+(was 29). What remains is the metadata chain, one upload per written file,
+one `GET` per read file, and the one listing that claims a version.
+
+**Written in:** `media/iceberg/staging.rs`, `table.rs`, `manifest.rs`,
+`scan.rs`, `options.rs`, `holder/object/file.rs`, both bindings,
+`docs/media/iceberg/write.md`, `docs/media/iceberg/index.md`,
+`docs/holder/backends/object.md`.
+**Fixtures:** `holder/object/tests/accounting.rs` (the request shape of
+every operation above; a refused upload publishing nothing, leaving no
+object and no staged file, the next commit whole),
+`media/iceberg/tests.rs` (the staging directory a commit's own and disjoint
+from a concurrent one's, removed on drop with its published files and on
+finish without them, off for a local root and under the temporary folder
+for a remote one, a failed publication rolling a partitioned commit back),
+`rust/tests/media/iceberg.rs` (`write.staging` resolving explicit, property,
+then the root's default, refusing a remote folder by key, a staged commit
+leaving the staging folder empty), the oversized-container pin now reading
+past the limit by at most one chunk.

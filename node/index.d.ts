@@ -2210,6 +2210,22 @@ export declare class IcebergOptions {
    * which would write nothing at all.
    */
   set writeParallelism(threads: number)
+  /**
+   * Where a commit stages its files before uploading them: `"off"`, or
+   * a local folder URL. `null` - the default - is the table's own: the
+   * temporary folder for a remote root, off for a local one.
+   */
+  get writeStaging(): string | null
+  /**
+   * Set where a commit stages its files: `"off"`, a local folder URL, or
+   * a local path.
+   *
+   * # Errors
+   *
+   * Throws the core's typed error naming the key when the folder is not
+   * local, which could hold no staging file.
+   */
+  set writeStaging(staging: string)
   /** How many large-enough files justify a parallel scan. Default: 16. */
   get readParallelMinFiles(): number
   /** Set how many large-enough files justify a parallel scan. */
@@ -5962,6 +5978,8 @@ export interface IcebergOptionsInput {
   readParallelMinFileSize?: number
   /** How many partition groups a commit writes at once. */
   writeParallelism?: number
+  /** Where a commit stages its files: `off`, or a local folder URL or path. */
+  writeStaging?: string
   /** After how many data commits an automatic compaction runs. */
   compactAfterCommits?: number
   /** The MIME type for new data files. Table writes encode Parquet and Avro. */

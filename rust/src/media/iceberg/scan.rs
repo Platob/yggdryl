@@ -514,6 +514,9 @@ struct Refine {
     target: Option<Field>,
     /// The conjuncts, indexed by every part's residual list.
     predicates: Vec<Bound>,
+    /// Whether a file may store a column under a name the read root does
+    /// not use, so its footer has to be read before its projection is made.
+    renamed: bool,
 }
 
 impl Refine {
@@ -541,7 +544,14 @@ impl Refine {
             .collect();
         match self.read_root.without_fields(&columns) {
             Ok(stored) if stored.field_len() > 0 => {
-                let projected = file_projection(&part.handle, &options, &stored);
+                // The footer is opened for the names only when a rename ever
+                // happened; otherwise the read root's names are the file's,
+                // and the read that follows is the file's one open.
+                let projected = if self.renamed {
+                    file_projection(&part.handle, &options, &stored)
+                } else {
+                    stored
+                };
                 Ok(options.with_field(projected))
             }
             // A read root that is nothing but partition columns leaves the file
@@ -609,6 +619,11 @@ struct Scan {
 /// strictly sequential single-open path answers. Either way the batches come
 /// back in exactly the plan's file order.
 ///
+/// `renamed` says whether a file may store a column under a name the read
+/// root does not use - a table that ever renamed one - so the projection has
+/// to read the file's footer first; a table that never did projects by the
+/// read root's names and opens each file once.
+///
 /// # Errors
 ///
 /// Returns an error when either root cannot be projected into Arrow.
@@ -619,6 +634,7 @@ pub(super) fn reader(
     target: Option<Field>,
     predicates: Vec<Bound>,
     parallel: &super::options::ReadSettings,
+    renamed: bool,
 ) -> Result<BatchReader> {
     let schema = crate::arrow::arrow_schema_from_field(&root)?;
     let refine = Arc::new(Refine {
@@ -627,6 +643,7 @@ pub(super) fn reader(
         root,
         target,
         predicates,
+        renamed,
     });
     let qualifying = parts
         .iter()

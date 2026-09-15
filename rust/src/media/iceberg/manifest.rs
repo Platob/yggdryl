@@ -709,20 +709,25 @@ pub fn read_manifest_list<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<Manifest
 /// Read one bounded object-container payload for the official byte parsers.
 fn manifest_bytes<H: IOBase + ?Sized>(handle: &H) -> Result<Vec<u8>> {
     let limit = crate::Limits::default().max_input_bytes();
-    let declared = handle.size();
-    let declared_exceeds_limit = usize::try_from(declared).map_or(true, |size| size > limit);
-    if declared_exceeds_limit {
-        return Err(invalid(format_smolstr!(
-            "expected an Iceberg object container of at most {limit} bytes, got {declared}"
-        )));
-    }
-
-    let bytes = handle.read_all_bytes()?;
-    if bytes.len() > limit {
-        return Err(invalid(format_smolstr!(
-            "expected an Iceberg object container of at most {limit} bytes, got {}",
-            bytes.len()
-        )));
+    // One request whatever the backend: the container streams in bounded
+    // chunks out of one open read - one `GET` on an object store - and the
+    // limit is enforced on what arrives, so nothing asks the size first,
+    // which on a store is a round trip of its own before the read that
+    // answers it anyway. A container past the limit is refused where the
+    // limit is crossed, never drained.
+    let mut bytes = Vec::new();
+    for chunk in handle.pstream_bytes(0, crate::DEFAULT_STREAM_BATCH_SIZE)? {
+        let chunk = chunk?;
+        bytes
+            .try_reserve(chunk.len())
+            .map_err(|_| crate::iobase::oversized((bytes.len() + chunk.len()) as u64))?;
+        bytes.extend_from_slice(&chunk);
+        if bytes.len() > limit {
+            return Err(invalid(format_smolstr!(
+                "expected an Iceberg object container of at most {limit} bytes, got {}",
+                bytes.len()
+            )));
+        }
     }
     Ok(bytes)
 }
@@ -2507,17 +2512,23 @@ mod official_read_tests {
         crate::impl_default_iomedia!();
     }
 
+    /// A handle holding `declared_size` bytes of filler, counting every
+    /// byte read out of it.
     impl IOBase for OversizedHandle {
-        crate::delegate_iobase!(handle: pread, pwrite, capacity, reserve, truncate, url,
+        crate::delegate_iobase!(handle: pwrite, capacity, reserve, truncate, url,
             media_type, set_media_type);
 
         fn size(&self) -> u64 {
             self.declared_size
         }
 
-        fn read_all_bytes(&self) -> Result<Vec<u8>> {
-            self.reads.fetch_add(1, Ordering::Relaxed);
-            Ok(Vec::new())
+        fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+            let available = usize::try_from(self.declared_size.saturating_sub(offset))
+                .unwrap_or(usize::MAX)
+                .min(buffer.len());
+            buffer[..available].fill(0xAA);
+            self.reads.fetch_add(available, Ordering::Relaxed);
+            Ok(available)
         }
     }
 
@@ -2789,7 +2800,7 @@ mod official_read_tests {
     }
 
     #[test]
-    fn manifest_rejects_oversized_declared_input_before_reading() {
+    fn manifest_rejects_an_oversized_container_where_the_limit_is_crossed() {
         let limit = crate::Limits::default().max_input_bytes();
         let handle = OversizedHandle {
             handle: Buffer::new(),
@@ -2797,10 +2808,19 @@ mod official_read_tests {
             reads: AtomicUsize::new(0),
         };
 
+        // The container is refused as soon as more than the limit has
+        // arrived - the one read stops there rather than draining it - and
+        // its size was never asked for first, because on a store that is a
+        // request of its own.
         let error = read_manifest(&handle).unwrap_err();
         assert!(error.to_string().contains("at most"));
         assert!(error.to_string().contains(&(limit + 1).to_string()));
-        assert_eq!(handle.reads.load(Ordering::Relaxed), 0);
+        let read = handle.reads.load(Ordering::Relaxed);
+        assert!(read > limit, "the limit was crossed: {read}");
+        assert!(
+            read <= limit + crate::DEFAULT_STREAM_BATCH_SIZE,
+            "the read stopped at the limit: {read}"
+        );
     }
 
     #[test]

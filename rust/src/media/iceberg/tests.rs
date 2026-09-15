@@ -7375,3 +7375,192 @@ mod isolation {
         let _ = std::fs::remove_dir_all(&path);
     }
 }
+
+/// The staging of one commit: a transaction over the files it writes.
+///
+/// `Staging` is private to the module, so its drop, rollback and default
+/// rules are pinned here; what a staged commit costs over a store is
+/// pinned in `holder::object::tests::accounting`.
+mod staging_transaction {
+    use std::path::{Path, PathBuf};
+
+    use super::super::WriteStaging;
+    use super::super::staging::Staging;
+    use super::{FormatVersion, IcebergOptions, PartitionSpec, Table, root, trade_schema, trades};
+    use crate::holder::Holder;
+    use crate::holder::local::Folder;
+    use crate::{IOBase, MediaType, MimeType, Url};
+
+    fn staging_folder(label: &str) -> (PathBuf, WriteStaging) {
+        let path = root(label);
+        let staging = WriteStaging::Folder(Url::from_path(&path).unwrap());
+        (path, staging)
+    }
+
+    fn is_empty_dir(path: &Path) -> bool {
+        !path.exists() || std::fs::read_dir(path).unwrap().next().is_none()
+    }
+
+    /// Every regular file under `path`, at any depth.
+    fn files_under(path: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries {
+                let entry = entry.unwrap().path();
+                if entry.is_dir() {
+                    pending.push(entry);
+                } else {
+                    files.push(entry);
+                }
+            }
+        }
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn staging_is_off_for_a_local_root_and_the_temporary_folder_for_a_remote_one() {
+        assert!(
+            Staging::begin(Some(&WriteStaging::Off), true, 1)
+                .unwrap()
+                .directory()
+                .is_none()
+        );
+        assert!(
+            Staging::begin(None, false, 1)
+                .unwrap()
+                .directory()
+                .is_none()
+        );
+        let remote = Staging::begin(None, true, 1).unwrap();
+        let directory = remote.directory().unwrap().to_path_buf();
+        assert!(directory.starts_with(Folder::temporary().unwrap().path().unwrap()));
+        assert!(
+            directory
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("yggdryl-iceberg-1-"),
+            "{}",
+            directory.display()
+        );
+        assert!(
+            !directory.exists(),
+            "nothing is created until a file is staged"
+        );
+    }
+
+    #[test]
+    fn a_staging_directory_is_the_commits_own_and_goes_when_the_commit_ends() {
+        let (base, staging) = staging_folder("staging-drop");
+        let table_path = root("staging-drop-table");
+        let root_handle = Holder::folder(&table_path).unwrap();
+        let media = MediaType::new(MimeType::FILE);
+
+        // Two commits of one snapshot id - a retry, a concurrent writer -
+        // stage apart, and neither can see the other's files.
+        let first = Staging::begin(Some(&staging), false, 7).unwrap();
+        let second = Staging::begin(Some(&staging), false, 7).unwrap();
+        let first_dir = first.directory().unwrap().to_path_buf();
+        let second_dir = second.directory().unwrap().to_path_buf();
+        assert_ne!(first_dir, second_dir);
+        assert!(first_dir.starts_with(&base) && second_dir.starts_with(&base));
+
+        let ((), size) = first
+            .publish(&root_handle, "data/venue=XNAS/part.bin", &media, |handle| {
+                handle.write_all_bytes(b"PAR1")
+            })
+            .unwrap();
+        assert_eq!(size, 4);
+        // The staged file went out and is already gone; the directory is
+        // the commit's until the commit ends; the other commit sees nothing.
+        assert!(first_dir.exists());
+        assert!(files_under(&first_dir).is_empty());
+        assert!(!second_dir.exists());
+        let published = table_path.join("data").join("venue=XNAS").join("part.bin");
+        assert_eq!(std::fs::read(&published).unwrap(), b"PAR1");
+
+        // Dropping a staging that never finished rolls its published file
+        // back and removes its directory: a failed commit leaves nothing.
+        drop(first);
+        assert!(!first_dir.exists());
+        assert!(!published.exists(), "the published file is removed again");
+
+        // A finished staging keeps what it published and removes only the
+        // directory.
+        let third = Staging::begin(Some(&staging), false, 8).unwrap();
+        let third_dir = third.directory().unwrap().to_path_buf();
+        third
+            .publish(&root_handle, "data/venue=XNYS/part.bin", &media, |handle| {
+                handle.write_all_bytes(b"PAR1")
+            })
+            .unwrap();
+        third.finish();
+        assert!(!third_dir.exists());
+        assert_eq!(
+            std::fs::read(table_path.join("data").join("venue=XNYS").join("part.bin")).unwrap(),
+            b"PAR1"
+        );
+        drop(second);
+        assert!(is_empty_dir(&base));
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&table_path);
+    }
+
+    #[test]
+    fn a_failed_publication_rolls_the_commit_back_and_leaves_no_staged_file() {
+        let (base, staging) = staging_folder("staging-rollback");
+        let path = root("staging-rollback-table");
+        let schema = trade_schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).unwrap();
+        let mut table =
+            Table::create(Folder::new(&path).unwrap(), FormatVersion::V2, schema, spec).unwrap();
+        // A regular file where the XNAS partition directory belongs: that
+        // partition's file is staged, and its publication is what fails.
+        std::fs::create_dir_all(path.join("data")).unwrap();
+        let blocker = path.join("data").join("venue=XNAS");
+        std::fs::write(&blocker, b"a file where a directory would be").unwrap();
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_staging(staging)
+                .unwrap()
+                .try_with_write_parallelism(1)
+                .unwrap(),
+        );
+        let version = table.metadata_version();
+
+        // XLON's file is staged and published first; XNAS's publication
+        // fails, and XNYS's is never attempted.
+        let batch = trades(
+            &[1, 2, 3],
+            &[Some("a"), Some("b"), Some("c")],
+            &[Some("XLON"), Some("XNAS"), Some("XNYS")],
+        );
+        table
+            .commit_append(crate::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap_err();
+        assert_eq!(table.metadata_version(), version);
+        assert!(table.current_snapshot().is_none());
+        assert_eq!(
+            files_under(&path.join("data")),
+            [blocker],
+            "the file the commit published is removed again"
+        );
+        assert!(
+            files_under(&path.join("metadata"))
+                .iter()
+                .all(|file| !file.to_string_lossy().ends_with(".avro")),
+            "no manifest and no manifest list were published"
+        );
+        assert!(is_empty_dir(&base), "no staged file survives");
+        let reopened = Table::open(Folder::new(&path).unwrap()).unwrap();
+        assert_eq!(reopened.metadata_version(), version);
+        assert!(reopened.current_snapshot().is_none());
+        let _ = std::fs::remove_dir_all(&base);
+        let _ = std::fs::remove_dir_all(&path);
+    }
+}

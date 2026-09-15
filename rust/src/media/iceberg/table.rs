@@ -102,10 +102,11 @@ use super::manifest::{
     read_manifest_list, read_v1_direct_manifest_file, write_manifest, write_manifest_list,
 };
 use super::metadata::{FormatVersion, SortOrder, TableMetadata, now_ms, uuid};
-use super::options::{CommitSettings, IcebergOptions, WriteSettings};
+use super::options::{CommitSettings, IcebergOptions, WriteSettings, WriteStaging};
 use super::partition::PartitionSpec;
 use super::scan::{ScanPart, ScanPlan, ScanTask, identity_column};
 use super::snapshot::{Snapshot, SnapshotRef};
+use super::staging::{Staging, container, leaf, sized};
 use super::value::{compare_single, is_portable, single_value};
 use crate::arrow::BatchReader;
 use crate::expression::Projection;
@@ -259,8 +260,9 @@ impl<H: IOBase> Table<H> {
     /// to do it. `Ok(Err(root))` is that answer: no table, and here is the
     /// handle you gave, untouched.
     pub(crate) fn locate_keeping(root: H) -> Result<std::result::Result<Self, H>> {
-        let metadata_dir = root.child_by_path(METADATA_DIR)?;
-        let Some((version, metadata_file_name, document)) = find_metadata(&metadata_dir)? else {
+        let metadata_dir = container(root.child_by_path(METADATA_DIR)?)?;
+        let Some((version, metadata_file_name, document)) = find_metadata_document(&metadata_dir)?
+        else {
             return Ok(Err(root));
         };
         let metadata = TableMetadata::from_json(&document)?;
@@ -406,6 +408,34 @@ impl<H: IOBase> Table<H> {
     /// explicit option shadows is present but does not parse.
     pub fn options(&self) -> Result<IcebergOptions> {
         IcebergOptions::resolved(self.options.as_ref(), &self.metadata)
+    }
+
+    /// Resolve where this table's commits stage their files.
+    ///
+    /// The explicit option, then the `write.staging` property, then the
+    /// root's own default: the platform temporary folder when the root is
+    /// remote - an object store, a foreign filesystem - and off when it is
+    /// local. See [`WriteStaging`] for what a staged commit does and what a
+    /// failed one leaves behind.
+    ///
+    /// # Errors
+    ///
+    /// Returns a typed error naming the key when the property is present but
+    /// does not spell `off` or a local folder.
+    pub fn write_staging(&self) -> Result<WriteStaging> {
+        let settings = IcebergOptions::write_settings(self.options.as_ref(), &self.metadata)?;
+        Ok(match settings.staging {
+            Some(staging) => staging,
+            None if self.is_remote() => {
+                WriteStaging::Folder(crate::holder::local::Folder::temporary()?.url().clone())
+            }
+            None => WriteStaging::Off,
+        })
+    }
+
+    /// Whether the table's folder is somewhere a local staging file is not.
+    fn is_remote(&self) -> bool {
+        self.root.url().is_some_and(|url| !url.is_local())
     }
 
     /// Return every manifest the current snapshot points at.
@@ -753,7 +783,7 @@ impl<H: IOBase> Table<H> {
                 "cannot commit metadata after version {saved_version}: the version overflows u32"
             ))
         })?;
-        let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
+        let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
         let restore = |table: &mut Self, error: Error| {
             table.metadata = saved_metadata.clone();
             table.version = saved_version;
@@ -767,7 +797,7 @@ impl<H: IOBase> Table<H> {
             // when it is sound. A failed reload must never mask `error`; the
             // saved state is the only conservative in-memory answer when
             // visibility itself is uncertain.
-            match find_metadata(&metadata_dir).and_then(|visible| {
+            match find_metadata_document(&metadata_dir).and_then(|visible| {
                 visible
                     .map(|(version, metadata_file_name, document)| {
                         TableMetadata::from_json(&document)
@@ -792,7 +822,10 @@ impl<H: IOBase> Table<H> {
         let mut beaten: u32 = 0;
         let mut backoff_spent_ms = 0_u64;
         loop {
-            match find_metadata(&metadata_dir) {
+            // The version this handle holds is the version it re-checks, so
+            // a hint naming it settles the check without reading the
+            // document again: the document is read only when it is newer.
+            match find_metadata(&metadata_dir, Some(self.version)) {
                 Ok(Some((version, metadata_file_name, document))) if version > self.version => {
                     let wait = match retry_wait_ms(
                         &settings,
@@ -805,7 +838,14 @@ impl<H: IOBase> Table<H> {
                         Err(error) => return restore(self, error),
                     };
                     if on_conflict == OnConflict::Rebase {
-                        match TableMetadata::from_json(&document) {
+                        let fresh = document
+                            .ok_or_else(|| {
+                                invalid(format_smolstr!(
+                                    "expected the newer metadata document {metadata_file_name} to be read, got none"
+                                ))
+                            })
+                            .and_then(|document| TableMetadata::from_json(&document));
+                        match fresh {
                             Ok(fresh) => {
                                 self.metadata = fresh;
                                 self.version = version;
@@ -837,7 +877,7 @@ impl<H: IOBase> Table<H> {
                 if !error.is_conflict() {
                     return reconcile_visible(self, error);
                 }
-                let winner = find_metadata(&metadata_dir).and_then(|visible| {
+                let winner = find_metadata_document(&metadata_dir).and_then(|visible| {
                     visible
                         .map(|(version, metadata_file_name, document)| {
                             TableMetadata::from_json(&document)
@@ -1031,6 +1071,7 @@ impl<H: IOBase> Table<H> {
             field.cloned(),
             predicates,
             &parallel,
+            columns_renamed(&self.metadata),
         )
     }
 
@@ -1038,7 +1079,12 @@ impl<H: IOBase> Table<H> {
     fn scan_parts(&self, tasks: Vec<ScanTask>, stored: &Field) -> Result<Vec<ScanPart>> {
         let mut parts = Vec::with_capacity(tasks.len());
         for task in tasks {
-            let mut handle = self.child_at(&task.entry.data_file.file_path)?;
+            // The manifest recorded the file's length, so the handle knows it
+            // before the read asks.
+            let mut handle = sized(
+                self.child_at(&task.entry.data_file.file_path)?,
+                u64::try_from(task.entry.data_file.file_size_in_bytes).unwrap_or_default(),
+            );
             // The manifest is the authority on a file's format, not its name:
             // a table whose files mix formats - or name them without an
             // extension - still decodes each file as the entry records it.
@@ -1637,7 +1683,7 @@ impl<H: IOBase> Table<H> {
     /// rewriting its locations rather than its code.
     pub(super) fn child_at(&self, location: &str) -> Result<Holder> {
         let relative = relative_location(&self.metadata.location, location)?;
-        self.root.child_by_path(&relative)
+        leaf(self.root.child_by_path(&relative)?)
     }
 
     /// Write the current metadata as the next numbered document.
@@ -1671,10 +1717,11 @@ impl<H: IOBase> Table<H> {
             }
         };
         let attempt = format_smolstr!("{next_version:05}-{}{suffix}.metadata.json", uuid());
-        let metadata_dir = self.root.child_by_path(METADATA_DIR)?;
-        let mut handle = self
-            .root
-            .child_by_path(&format!("{METADATA_DIR}/{attempt}"))?;
+        let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
+        let mut handle = leaf(
+            self.root
+                .child_by_path(&format!("{METADATA_DIR}/{attempt}"))?,
+        )?;
         handle.write_all_bytes(&encoded)?;
 
         // UUID filenames make the write itself the create/commit attempt.
@@ -1701,13 +1748,14 @@ impl<H: IOBase> Table<H> {
         // racing writer never sees the version free: `metadata_names_at_version`
         // counts both spellings, and one of them is always there.
         let name = format_smolstr!("v{next_version}{suffix}.metadata.json");
-        let mut document = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
+        let mut document = leaf(self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?)?;
         document.write_all_bytes(&encoded)?;
 
         // The hint is how a catalog-free reader finds the current document.
-        let mut hint = self
-            .root
-            .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?;
+        let mut hint = leaf(
+            self.root
+                .child_by_path(&format!("{METADATA_DIR}/{VERSION_HINT}"))?,
+        )?;
         hint.write_all_bytes(next_version.to_string().as_bytes())?;
 
         // The attempt has served its whole purpose. Its removal is the commit's
@@ -1758,6 +1806,9 @@ impl<H: IOBase> Table<H> {
         let initial_sequence = next_sequence_number(&self.metadata)?;
         let snapshot_id = snapshot_id();
         let location = self.metadata.location().trim_end_matches('/').to_owned();
+        // Every file below goes through the one staging, so a failure
+        // anywhere before the document is published rolls all of them back.
+        let staging = Staging::begin(settings.staging.as_ref(), self.is_remote(), snapshot_id)?;
 
         let write = CommitWrite {
             snapshot_id,
@@ -1767,6 +1818,7 @@ impl<H: IOBase> Table<H> {
             sort: &sort,
             sort_order_id,
             join,
+            staging: &staging,
         };
         log::debug!(
             "writing an iceberg {operation} snapshot {snapshot_id} to {} in {} partition groups",
@@ -1818,11 +1870,10 @@ impl<H: IOBase> Table<H> {
                 .collect();
             let mut manifest = self.write_manifest_file(
                 &format!("{snapshot_id}-m0.avro"),
-                &schema,
                 &spec,
                 &entries,
-                snapshot_id,
                 initial_sequence,
+                &write,
             )?;
             manifest.added_files_count = Some(added_files);
             manifest.added_rows_count = Some(added_records);
@@ -1836,23 +1887,33 @@ impl<H: IOBase> Table<H> {
             Retained::All => (OnConflict::Rebase, None),
             Retained::Only { manifests, entries } => {
                 let mut kept = manifests;
-                kept.extend(self.carried_manifests(
-                    &entries,
-                    &schema,
-                    snapshot_id,
-                    initial_sequence,
-                )?);
+                kept.extend(self.carried_manifests(&entries, initial_sequence, &write)?);
                 (OnConflict::Fail, Some(kept))
             }
         };
 
         let operation = SmolStr::new(operation);
         let compacting = operation == "replace";
+        // The live manifests of one snapshot never change, so an attempt
+        // beaten on write rather than on the version check re-uses the list
+        // it already read; only a rebase onto a newer snapshot reads again.
+        let mut listed: Option<(Option<i64>, Vec<ManifestFile>)> = None;
+        let staged = &staging;
         self.commit_document(on_conflict, move |table| {
             let sequence_number = next_sequence_number(&table.metadata)?;
             let mut manifests = match &kept {
                 Some(kept) => kept.clone(),
-                None => table.manifests()?,
+                None => {
+                    let current = table.metadata.current_snapshot_id;
+                    match &listed {
+                        Some((snapshot, manifests)) if *snapshot == current => manifests.clone(),
+                        _ => {
+                            let manifests = table.manifests()?;
+                            listed = Some((current, manifests.clone()));
+                            manifests
+                        }
+                    }
+                }
             };
             if let Some(manifest) = &new_manifest {
                 let mut row = manifest.clone();
@@ -1863,9 +1924,6 @@ impl<H: IOBase> Table<H> {
             }
 
             let list_name = format!("snap-{snapshot_id}-1-{}.avro", uuid());
-            let mut list = table
-                .root
-                .child_by_path(&format!("{METADATA_DIR}/{list_name}"))?;
             let first_row_id = if table.metadata.format_version >= FormatVersion::V3 {
                 Some(
                     table
@@ -1879,14 +1937,23 @@ impl<H: IOBase> Table<H> {
             } else {
                 None
             };
-            let next_row_id = write_manifest_list(
-                &mut list,
-                table.metadata.format_version,
-                snapshot_id,
-                table.metadata.current_snapshot_id,
-                sequence_number,
-                first_row_id,
-                &manifests,
+            let format_version = table.metadata.format_version;
+            let parent_snapshot_id = table.metadata.current_snapshot_id;
+            let (next_row_id, _) = staged.publish(
+                &table.root,
+                &format!("{METADATA_DIR}/{list_name}"),
+                &crate::MediaType::new(MimeType::AVRO),
+                |list| {
+                    write_manifest_list(
+                        list,
+                        format_version,
+                        snapshot_id,
+                        parent_snapshot_id,
+                        sequence_number,
+                        first_row_id,
+                        &manifests,
+                    )
+                },
             )?;
 
             let total_records = checked_manifest_total_i64(
@@ -1962,6 +2029,9 @@ impl<H: IOBase> Table<H> {
             updated.set_current_snapshot(snapshot)?;
             Ok(updated)
         })?;
+        // The document names every file now: nothing is rolled back, and
+        // only the staging directory goes.
+        staging.finish();
         self.maybe_auto_compact(compacting)?;
         Ok(files_written)
     }
@@ -2026,27 +2096,26 @@ impl<H: IOBase> Table<H> {
     fn write_manifest_file(
         &self,
         name: &str,
-        schema: &Field,
         spec: &PartitionSpec,
         entries: &[ManifestEntry],
-        snapshot_id: i64,
         sequence_number: i64,
+        write: &CommitWrite<'_>,
     ) -> Result<ManifestFile> {
-        let mut handle = self.root.child_by_path(&format!("{METADATA_DIR}/{name}"))?;
-        write_manifest(
-            &mut handle,
-            self.metadata.format_version,
-            schema,
-            spec,
-            entries,
+        let schema = write.schema;
+        let snapshot_id = write.snapshot_id;
+        let staging = write.staging;
+        let version = self.metadata.format_version;
+        let ((), length) = staging.publish(
+            &self.root,
+            &format!("{METADATA_DIR}/{name}"),
+            &crate::MediaType::new(MimeType::AVRO),
+            |handle| write_manifest(handle, version, schema, spec, entries),
         )?;
-        handle.flush()?;
         Ok(ManifestFile {
             manifest_path: SmolStr::new(self.location_of(METADATA_DIR, name)),
-            manifest_length: i64::try_from(handle.size()).map_err(|_| {
+            manifest_length: i64::try_from(length).map_err(|_| {
                 invalid(format_smolstr!(
-                    "expected a manifest size fitting i64, got {}",
-                    handle.size()
+                    "expected a manifest size fitting i64, got {length}"
                 ))
             })?,
             partition_spec_id: spec.spec_id,
@@ -2082,10 +2151,10 @@ impl<H: IOBase> Table<H> {
     fn carried_manifests(
         &self,
         tasks: &[ScanTask],
-        schema: &Field,
-        snapshot_id: i64,
         sequence_number: i64,
+        write: &CommitWrite<'_>,
     ) -> Result<Vec<ManifestFile>> {
+        let snapshot_id = write.snapshot_id;
         let mut grouped: Vec<(PartitionSpec, Vec<ManifestEntry>)> = Vec::new();
         for task in tasks {
             match grouped
@@ -2122,14 +2191,8 @@ impl<H: IOBase> Table<H> {
                     })
             })?;
             let name = format!("{snapshot_id}-m{suffix}.avro");
-            let mut manifest = self.write_manifest_file(
-                &name,
-                schema,
-                &spec,
-                &entries,
-                snapshot_id,
-                sequence_number,
-            )?;
+            let mut manifest =
+                self.write_manifest_file(&name, &spec, &entries, sequence_number, write)?;
             manifest.existing_files_count = Some(existing_files_count);
             manifest.existing_rows_count = Some(existing_rows_count);
             manifests.push(manifest);
@@ -2666,6 +2729,8 @@ struct CommitWrite<'a> {
     sort_order_id: Option<i32>,
     /// The match key, when the commit is a keyed merge.
     join: Option<&'a Join>,
+    /// The staging every file of the commit is published through.
+    staging: &'a Staging,
 }
 
 /// One column of the default sort order, resolved against the schema.
@@ -2792,6 +2857,7 @@ fn write_partition(job: PartitionJob, write: &CommitWrite<'_>) -> Result<Vec<Dat
                     None,
                     Vec::new(),
                     &write.settings.read,
+                    false,
                 )?
             };
             let merged = crate::media::merge::merged(
@@ -2928,38 +2994,54 @@ fn write_data_file(
         format!("{DATA_DIR}/{directory_path}/{name}")
     };
 
-    let mut handle = root.child_by_path(&relative)?;
-    handle.set_media_type(crate::MediaType::new(mime_type.clone()));
-    let options = handle
-        .record_options()?
-        .with_safe(false)
-        .with_field(stored.clone());
+    // The statistics are read back from the file the writer just wrote -
+    // the staged copy when the commit stages, so the footer read costs the
+    // store nothing - before the file reaches the table.
     let arrow_schema = crate::arrow::arrow_schema_from_field(&stored)?;
-    let mut file = if mime_type == &MimeType::PARQUET {
-        handle
-            .overwrite_arrow_reader(crate::arrow::batch_reader(arrow_schema, [batch]), &options)?;
-        handle.flush()?;
-        let statistics = crate::media::parquet::read_statistics(&handle)?;
-        super::statistics::data_file(schema, &statistics)?
-    } else {
-        // The batch is measured before it is consumed by the write, because
-        // this format's file carries no footer to read them from.
-        let file = super::statistics::data_file_from_batches(schema, std::slice::from_ref(&batch))?;
-        handle
-            .overwrite_arrow_reader(crate::arrow::batch_reader(arrow_schema, [batch]), &options)?;
-        handle.flush()?;
-        file
-    };
+    let parquet = mime_type == &MimeType::PARQUET;
+    let (mut file, size) = write.staging.publish(
+        root,
+        &relative,
+        &crate::MediaType::new(mime_type.clone()),
+        |handle| {
+            let options = handle
+                .record_options()?
+                .with_safe(false)
+                .with_field(stored.clone());
+            if parquet {
+                handle.overwrite_arrow_reader(
+                    crate::arrow::batch_reader(arrow_schema, [batch]),
+                    &options,
+                )?;
+                handle.flush()?;
+                let statistics = crate::media::parquet::read_statistics(handle)?;
+                super::statistics::data_file(schema, &statistics)
+            } else {
+                // The batch is measured before it is consumed by the write,
+                // because this format's file carries no footer to read them
+                // from.
+                let file = super::statistics::data_file_from_batches(
+                    schema,
+                    std::slice::from_ref(&batch),
+                )?;
+                handle.overwrite_arrow_reader(
+                    crate::arrow::batch_reader(arrow_schema, [batch]),
+                    &options,
+                )?;
+                handle.flush()?;
+                Ok(file)
+            }
+        },
+    )?;
     file.file_path = SmolStr::new(if directory_path.is_empty() {
         format!("{}/{DATA_DIR}/{name}", write.location)
     } else {
         format!("{}/{DATA_DIR}/{directory_path}/{name}", write.location)
     });
     file.mime_type = mime_type.clone();
-    file.file_size_in_bytes = i64::try_from(handle.size()).map_err(|_| {
+    file.file_size_in_bytes = i64::try_from(size).map_err(|_| {
         invalid(format_smolstr!(
-            "expected a data file size fitting i64, got {}",
-            handle.size()
+            "expected a data file size fitting i64, got {size}"
         ))
     })?;
     file.partition = values.to_vec();
@@ -3608,18 +3690,40 @@ fn source_value(
     .map_err(|error| invalid(format_smolstr!("{error}")))
 }
 
+/// Return the current metadata document with its exact name and number.
+///
+/// [`find_metadata`] with the document always read.
+fn find_metadata_document(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>> {
+    match find_metadata(metadata_dir, None)? {
+        Some((version, name, Some(document))) => Ok(Some((version, name, document))),
+        Some((version, name, None)) => Err(invalid(format_smolstr!(
+            "expected the metadata document {name} of version {version} to be read, got none"
+        ))),
+        None => Ok(None),
+    }
+}
+
 /// Return the metadata document with the highest version, exact name, and number.
 ///
 /// A folder that holds none is `None` rather than an error, because that is the
 /// question "is this a table" and the answer "no" is not a failure.
-fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>> {
+///
+/// `known` is the version the caller already holds: when the hint names
+/// exactly it, the document is not read again and the answer carries `None`
+/// in its place - the version is what the caller asked, and a document it
+/// already has is not worth a round trip. Every other answer carries the
+/// document.
+fn find_metadata(
+    metadata_dir: &Holder,
+    known: Option<u32>,
+) -> Result<Option<(u32, SmolStr, Option<Scalar>)>> {
     // A folder that is not a table has no metadata directory at all, and the
     // laziness contract makes that a handle that simply is not a container.
     if !metadata_dir.is_container() {
         return Ok(None);
     }
 
-    let hint = metadata_dir.child_by_path(VERSION_HINT)?;
+    let hint = leaf(metadata_dir.child_by_path(VERSION_HINT)?)?;
     let hinted_version = String::from_utf8_lossy(&hint.read_all_bytes()?)
         .trim()
         .parse::<u32>()
@@ -3627,17 +3731,24 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>
 
     // Prefer the conventional Hadoop filename named by a usable hint.
     if let Some(version) = hinted_version {
+        if known == Some(version) {
+            return Ok(Some((
+                version,
+                format_smolstr!("v{version}.metadata.json"),
+                None,
+            )));
+        }
         for name in [
             format!("v{version}.metadata.json"),
             format!("v{version}.gz.metadata.json"),
         ] {
-            let document = metadata_dir.child_by_path(&name)?;
+            let document = leaf(metadata_dir.child_by_path(&name)?)?;
             let bytes = document.read_all_bytes()?;
             if !bytes.is_empty() {
                 return Ok(Some((
                     version,
                     SmolStr::new(name),
-                    parse_metadata_bytes(&bytes)?,
+                    Some(parse_metadata_bytes(&bytes)?),
                 )));
             }
         }
@@ -3685,7 +3796,31 @@ fn find_metadata(metadata_dir: &Holder) -> Result<Option<(u32, SmolStr, Scalar)>
         })?;
     let (version, name, document) = candidates.swap_remove(chosen);
     let bytes = document.read_all_bytes()?;
-    Ok(Some((version, name, parse_metadata_bytes(&bytes)?)))
+    Ok(Some((version, name, Some(parse_metadata_bytes(&bytes)?))))
+}
+
+/// Whether any schema the table ever had spells a column of the current
+/// schema under another name.
+///
+/// A data file stores its columns under the names of the schema it was
+/// written with, so a table whose schemas all agree on every name holds no
+/// file a scan has to open the footer of just to learn what it calls a
+/// column; only a table that renamed one pays that read per file.
+fn columns_renamed(metadata: &TableMetadata) -> bool {
+    let Ok(current) = metadata.current_schema() else {
+        return true;
+    };
+    metadata.schemas().iter().any(|schema| {
+        schema.fields().iter().any(|field| {
+            let Ok(Some(id)) = field.parquet_field_id() else {
+                return false;
+            };
+            current.fields().iter().any(|now| {
+                matches!(now.parquet_field_id(), Ok(Some(now_id)) if now_id == id)
+                    && now.name() != field.name()
+            })
+        })
+    })
 }
 
 /// Parse the version prefix of Hadoop (`v3`) and official UUID (`00003-id`) names.

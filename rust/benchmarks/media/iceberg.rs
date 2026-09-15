@@ -29,6 +29,13 @@ use yggdryl::{DataType, Field, MediaType, MimeType, Scalar};
 
 use crate::bench_profile;
 
+/// The in-process S3 the object backend's own suites run on, shared with the
+/// `holder` benchmark: one fixture, so the counts printed here are the counts
+/// pinned in `holder::object::tests::accounting`.
+#[cfg(feature = "object")]
+#[path = "../../src/holder/object/tests/server.rs"]
+mod server;
+
 /// Distinct venue values the planning tables partition on.
 const VENUES: usize = 8;
 
@@ -1270,7 +1277,369 @@ fn catalog_resolve_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// The same table over an in-process S3, with every request counted.
+///
+/// One store, one bucket, a fresh table per measured commit. Each leg's
+/// request count is printed once, by shape, beside Criterion's wall time:
+/// on a real store the round trips *are* the cost, and the loopback timing
+/// only shows that nothing else is hiding in them. The counts are the ones
+/// `holder::object::tests::accounting` pins.
+#[cfg(feature = "object")]
+mod s3 {
+    use std::cell::Cell;
+    use std::hint::black_box;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use arrow_array::RecordBatch;
+    use criterion::{BatchSize, Criterion, Throughput};
+    use yggdryl::arrow::BatchReader;
+    use yggdryl::holder::local::Folder as LocalFolder;
+    use yggdryl::holder::object::{
+        Credentials, File, Folder, ObjectOptions, file_with, folder_with,
+    };
+    use yggdryl::media::RecordOptions;
+    use yggdryl::media::iceberg::{FormatVersion, PartitionSpec, Table, assign_field_ids};
+    use yggdryl::media::text::TextOptions;
+    use yggdryl::{
+        DataType, Field, FixCodec, FixRegistry, IOBase, IOMedia, Selector, TimeUnit, Timezone,
+        fix_schema, fix_schema_carrying,
+    };
+
+    use super::server::FakeS3;
+    use super::{partitioned_commit_batch, plan_schema, venue};
+    use crate::bench_profile;
+
+    const BUCKET: &str = "bench";
+    const ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
+    const SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+    /// Partitions of the eight-way commits and of the scanned table.
+    const PARTITIONS: usize = 8;
+    /// Rows in each partition group of one measured commit.
+    const ROWS_PER_PARTITION: usize = bench_profile::corpus(5_000, 50);
+    /// The bridge's own log, the capture every FIX suite reads.
+    const LOG: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fix/ulbridge.log"
+    ));
+    /// How many times the capture is repeated in the uploaded `.log` object.
+    const LOG_REPEATS: usize = bench_profile::corpus(16, 1);
+
+    fn store() -> FakeS3 {
+        let store = FakeS3::start();
+        store.create_bucket(BUCKET);
+        store.set_recording(false);
+        store
+    }
+
+    fn options(store: &FakeS3) -> ObjectOptions {
+        ObjectOptions::default()
+            .with_environment(false)
+            .with_endpoint(store.endpoint())
+            .with_region("us-east-1")
+            .with_path_style(true)
+            .with_credentials(Credentials::new(ACCESS_KEY, SECRET_KEY))
+    }
+
+    fn folder(store: &FakeS3, key: &str) -> Folder {
+        folder_with(&format!("s3://{BUCKET}/{key}/"), options(store)).expect("a prefix handle")
+    }
+
+    fn log_object(store: &FakeS3) -> File {
+        file_with(&format!("s3://{BUCKET}/logs/ulbridge.log"), options(store))
+            .expect("an object handle")
+    }
+
+    /// The requests the store handled since the last clear, by shape.
+    fn shape(store: &FakeS3) -> String {
+        let (mut put, mut get, mut head, mut list, mut delete, mut post) = (0, 0, 0, 0, 0, 0);
+        let requests = store.requests();
+        for request in &requests {
+            let listing = request
+                .query
+                .iter()
+                .any(|(name, value)| name == "list-type" && value == "2");
+            match request.method.as_str() {
+                "PUT" => put += 1,
+                "GET" if listing => list += 1,
+                "GET" => get += 1,
+                "HEAD" => head += 1,
+                "DELETE" => delete += 1,
+                "POST" => post += 1,
+                _ => {}
+            }
+        }
+        format!(
+            "{} requests (PUT {put}, GET {get}, HEAD {head}, LIST {list}, DELETE {delete}, POST {post})",
+            requests.len()
+        )
+    }
+
+    /// Run `prepare`, then `operation` with the request log on, and print
+    /// what the operation alone cost.
+    fn probe<T>(
+        store: &FakeS3,
+        label: &str,
+        prepare: impl FnOnce() -> T,
+        operation: impl FnOnce(T),
+    ) {
+        let prepared = prepare();
+        store.set_recording(true);
+        store.clear_requests();
+        operation(prepared);
+        println!("s3 requests: {label} = {}", shape(store));
+        store.set_recording(false);
+    }
+
+    /// A fresh venue-partitioned table under `key`.
+    fn table(store: &FakeS3, key: &str) -> Table<Folder> {
+        let schema = plan_schema();
+        let spec =
+            PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a schema column");
+        Table::create(folder(store, key), FormatVersion::V2, schema, spec)
+            .expect("the table creates")
+    }
+
+    fn reader(batch: &RecordBatch) -> BatchReader {
+        yggdryl::arrow::batch_reader(batch.schema(), [batch.clone()])
+    }
+
+    fn scan_rows(table: &Table<Folder>, filters: &[(&str, &str)]) -> usize {
+        table
+            .scan_where(filters, None)
+            .expect("the scan plans")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum()
+    }
+
+    /// The text options a bridge log is read under, as the FIX pipeline
+    /// benchmark reads it.
+    fn text() -> RecordOptions {
+        let mut options = TextOptions::new()
+            .try_with_rowheader(yggdryl::ULBRIDGE_ROWHEADER)
+            .expect("the row header compiles")
+            .with_timezone(Timezone::UTC);
+        options.start_rownum = Some(1);
+        options.parse_mimetype = true;
+        options.into()
+    }
+
+    fn text_rows(log: &File) -> usize {
+        log.read_arrow_reader(&text())
+            .expect("a reader")
+            .map(|batch| batch.expect("a batch").num_rows())
+            .sum()
+    }
+
+    /// The tracked seed dictionary, relative to the crate manifest.
+    fn seed_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("config")
+            .join("fix")
+    }
+
+    pub(super) fn benchmarks(criterion: &mut Criterion) {
+        let store = store();
+        let sequence = Cell::new(0_usize);
+        let next = |label: &str| {
+            sequence.set(sequence.get() + 1);
+            format!("lake/{label}-{}", sequence.get())
+        };
+        let mut group = criterion.benchmark_group("s3");
+        group.sample_size(10);
+
+        // Commits: one partition group, then eight, each into a fresh table.
+        for partitions in [1, PARTITIONS] {
+            let batch = partitioned_commit_batch(partitions, ROWS_PER_PARTITION);
+            let label = format!("commit_append/{partitions}_partitions");
+            probe(
+                &store,
+                &label,
+                || table(&store, &next("append")),
+                |mut table| {
+                    table
+                        .commit_append(reader(&batch))
+                        .expect("the append commits");
+                },
+            );
+            group.throughput(Throughput::Elements(batch.num_rows() as u64));
+            group.bench_function(label.as_str(), |bencher| {
+                bencher.iter_batched(
+                    || table(&store, &next("append")),
+                    |mut table| {
+                        table
+                            .commit_append(reader(&batch))
+                            .expect("the append commits");
+                    },
+                    BatchSize::PerIteration,
+                );
+            });
+        }
+
+        // An upsert into one partition of eight: the plan reads that
+        // partition's manifest and file and carries the other seven.
+        let seeded = partitioned_commit_batch(PARTITIONS, ROWS_PER_PARTITION);
+        let upsert = partitioned_commit_batch(1, 10);
+        let merge_by = Selector::from_columns(["id"]);
+        let primed = |label: &str| {
+            let mut table = table(&store, &next(label));
+            table
+                .commit_append(reader(&seeded))
+                .expect("the seed commits");
+            table
+        };
+        probe(
+            &store,
+            "upsert/one_partition_of_8",
+            || primed("upsert"),
+            |mut table| {
+                table
+                    .commit_merge(reader(&upsert), &merge_by, true)
+                    .expect("the merge commits");
+            },
+        );
+        group.throughput(Throughput::Elements(upsert.num_rows() as u64));
+        group.bench_function("upsert/one_partition_of_8", |bencher| {
+            bencher.iter_batched(
+                || primed("upsert"),
+                |mut table| {
+                    table
+                        .commit_merge(reader(&upsert), black_box(&merge_by), true)
+                        .expect("the merge commits");
+                },
+                BatchSize::PerIteration,
+            );
+        });
+
+        // Scans of one eight-partition table: whole, and one partition.
+        let scanned = primed("scan");
+        let two = venue(2);
+        let pruned = [("venue", two.as_str())];
+        assert_eq!(scan_rows(&scanned, &[]), seeded.num_rows());
+        assert_eq!(scan_rows(&scanned, &pruned), ROWS_PER_PARTITION);
+        probe(
+            &store,
+            "scan/full_8_partitions",
+            || (),
+            |()| {
+                scan_rows(&scanned, &[]);
+            },
+        );
+        group.throughput(Throughput::Elements(seeded.num_rows() as u64));
+        group.bench_function("scan/full_8_partitions", |bencher| {
+            bencher.iter(|| scan_rows(black_box(&scanned), &[]));
+        });
+        probe(
+            &store,
+            "scan/pruned_1_of_8",
+            || (),
+            |()| {
+                scan_rows(&scanned, &pruned);
+            },
+        );
+        group.throughput(Throughput::Elements(ROWS_PER_PARTITION as u64));
+        group.bench_function("scan/pruned_1_of_8", |bencher| {
+            bencher.iter(|| scan_rows(black_box(&scanned), black_box(&pruned)));
+        });
+
+        // The bridge's log as one object: read as text records, then parsed,
+        // enriched and written back as FIX rows into a table on the store.
+        let mut log = log_object(&store);
+        let corpus = LOG.repeat(LOG_REPEATS);
+        log.write_all_bytes(&corpus).expect("the log uploads");
+        let lines = text_rows(&log);
+        assert!(lines > 0, "the log reads as lines");
+        probe(
+            &store,
+            "log/text_read",
+            || (),
+            |()| {
+                text_rows(&log);
+            },
+        );
+        group.throughput(Throughput::Bytes(corpus.len() as u64));
+        group.bench_function("log/text_read", |bencher| {
+            bencher.iter(|| text_rows(black_box(&log)));
+        });
+
+        let registry = Arc::new(
+            FixRegistry::from_handle(&LocalFolder::new(seed_root()).expect("a local path"))
+                .expect("the tracked seed loads"),
+        );
+        let codec = FixCodec::new(Arc::clone(&registry));
+        let carrier = log.read_arrow_field(&text()).expect("the text field");
+        let fixed = fix_schema(&registry, "row").expect("the fixed schema");
+        let carried = fix_schema_carrying(&carrier, &fixed).expect("the carried schema");
+        // The capture's millisecond stamp is declared at the microsecond
+        // resolution Iceberg spells - the write casts it - and the FIX
+        // clocks are nanosecond instants, which only a v3 table stores.
+        let columns = carried.fields().iter().cloned().map(|mut column| {
+            if column.name() == "timestamp" {
+                column
+                    .set_dtype(
+                        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)
+                            .expect("a microsecond clock"),
+                    )
+                    .expect("the stamp takes the resolution");
+            }
+            column
+        });
+        let mut schema = Field::from_parts(
+            carried.name(),
+            DataType::from_fields(columns).expect("the columns are distinct"),
+            carried.is_nullable(),
+            carried.metadata_iter(),
+        )
+        .expect("the schema rebuilds");
+        assign_field_ids(&mut schema, 1).expect("the schema numbers");
+        let spec = PartitionSpec::identity(1, &schema, &["timepartition"])
+            .expect("timepartition is a column");
+        let fix_table = |label: &str| {
+            Table::create(
+                folder(&store, &next(label)),
+                FormatVersion::V3,
+                schema.clone(),
+                spec.clone(),
+            )
+            .expect("the FIX table creates")
+        };
+        let fix_rows = |table: &mut Table<Folder>| {
+            let read = log.read_arrow_reader(&text()).expect("a reader");
+            let parsed = codec
+                .parse_text_arrow_reader(read)
+                .expect("the lines parse");
+            let enriched = codec
+                .enrich_messages_arrow_reader(parsed)
+                .expect("the messages enrich");
+            table.commit_append(enriched).expect("the FIX rows commit");
+        };
+        probe(
+            &store,
+            "log/fix_rows_append",
+            || fix_table("fix"),
+            |mut table| {
+                fix_rows(&mut table);
+                println!(
+                    "s3 log: {lines} lines read, {} FIX rows written back",
+                    table.row_size().expect("the row count")
+                );
+            },
+        );
+        group.bench_function("log/fix_rows_append", |bencher| {
+            bencher.iter_batched(
+                || fix_table("fix"),
+                |mut table| fix_rows(&mut table),
+                BatchSize::PerIteration,
+            );
+        });
+        group.finish();
+    }
+}
+
 pub(crate) fn benchmarks(criterion: &mut Criterion) {
+    #[cfg(feature = "object")]
+    s3::benchmarks(criterion);
     plan_benchmarks(criterion);
     metadata_benchmarks(criterion);
     manifest_benchmarks(criterion);

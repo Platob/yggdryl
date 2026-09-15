@@ -752,6 +752,8 @@ Each worker decodes one file end to end: the cast, the partition restore and the
 - `where` on the record options -> pushed into the plan whole; `venue in (...)`, `ts between ... and ...`, `venue is null` and `&holder.partition['venue']` prune as the equality pair does, and nothing is re-filtered after the scan.
 - `where` naming a column only the `select` publishes -> runs after the projection over an unfiltered scan.
 - `select` on the record options -> each data file decodes only the selected columns and the columns the `where` reads.
+- Projected read of a table that never renamed a column -> each file is opened once, by the read root's names; a table that ever renamed one reads each file's footer first for the stored names, so a renamed file's column is decoded rather than filled with nulls.
+- Data file over an object store -> one `GET`, no `HEAD`: the handle is told the size the manifest recorded, and a manifest streams out of one read.
 - Filter on a non-partition column -> prunes on per-file bounds only; scattered values exclude nothing, and a plan that skips nothing says so.
 - `scan_at` -> a column added later is absent; a column dropped later is still present.
 - `commit_metadata_changes` (a property, a new ref, an evolved schema) -> one new metadata document; a failed change or write leaves the table untouched.

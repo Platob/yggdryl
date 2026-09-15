@@ -93,6 +93,7 @@ mod partition;
 mod scan;
 mod schema;
 mod snapshot;
+mod staging;
 mod statistics;
 mod table;
 mod types;
@@ -106,7 +107,7 @@ pub use manifest::{
     write_manifest_list,
 };
 pub use metadata::{FormatVersion, SortField, SortOrder, TableMetadata};
-pub use options::IcebergOptions;
+pub use options::{IcebergOptions, WriteStaging};
 pub use partition::{FIRST_PARTITION_ID, PartitionField, PartitionSpec, Transform};
 pub use scan::{ScanPlan, ScanTask};
 pub use schema::{assign_field_ids, last_column_id, schema_from_json, schema_into_json};

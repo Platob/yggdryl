@@ -580,3 +580,348 @@ fn a_scan_that_reads_a_header_out_of_each_object_keeps_one_connection() {
         "an abandoned body gives its connection back rather than burning it"
     );
 }
+
+/// What an Iceberg table costs over the store, per operation.
+///
+/// The table never lists `data/` and never asks a file its role or its
+/// size: every file it touches is one the metadata names, so the counts
+/// below are the metadata chain - the hint, the document, the manifest list,
+/// the manifests - plus the data files a scan opens or a commit uploads, and
+/// the one listing a commit makes to claim its version, and nothing else.
+#[cfg(feature = "iceberg")]
+mod iceberg {
+    use std::sync::Arc;
+
+    use arrow_array::{Int64Array, RecordBatch, StringArray};
+
+    use super::super::BUCKET;
+    use super::super::server::FakeS3;
+    use crate::holder::object::Folder;
+    use crate::media::iceberg::{
+        FormatVersion, IcebergOptions, PartitionSpec, Table, WriteStaging, assign_field_ids,
+    };
+    use crate::{DataType, Field};
+
+    /// The requests the store handled since the last clear, by shape.
+    ///
+    /// A listing is a `GET` carrying `list-type=2`, counted apart from the
+    /// `GET`s that read bytes, because a listing is the one request the
+    /// table has no business making of a directory a manifest names.
+    #[derive(Debug, Default, PartialEq, Eq)]
+    struct Tally {
+        total: usize,
+        put: usize,
+        get: usize,
+        head: usize,
+        list: usize,
+        delete: usize,
+        post: usize,
+    }
+
+    fn tally(store: &FakeS3) -> Tally {
+        let mut tally = Tally::default();
+        for request in store.requests() {
+            tally.total += 1;
+            let listing = request
+                .query
+                .iter()
+                .any(|(name, value)| name == "list-type" && value == "2");
+            match request.method.as_str() {
+                "PUT" => tally.put += 1,
+                "GET" if listing => tally.list += 1,
+                "GET" => tally.get += 1,
+                "HEAD" => tally.head += 1,
+                "DELETE" => tally.delete += 1,
+                "POST" => tally.post += 1,
+                _ => {}
+            }
+        }
+        tally
+    }
+
+    /// Run `operation` and answer what it cost.
+    fn cost<T>(store: &FakeS3, operation: impl FnOnce() -> T) -> (T, Tally) {
+        store.clear_requests();
+        let answer = operation();
+        (answer, tally(store))
+    }
+
+    fn schema() -> Field {
+        let mut schema = DataType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::utf8().nullable_field("venue"),
+        ])
+        .expect("distinct columns")
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).expect("the schema numbers");
+        schema
+    }
+
+    fn rows(ids: &[i64], venues: &[&str]) -> crate::arrow::BatchReader {
+        let batch = RecordBatch::try_new(
+            schema().into_arrow_schema().expect("an Arrow schema"),
+            vec![
+                Arc::new(Int64Array::from(ids.to_vec())),
+                Arc::new(StringArray::from(vec!["AAPL"; ids.len()])),
+                Arc::new(StringArray::from(venues.to_vec())),
+            ],
+        )
+        .expect("the batch matches the schema");
+        crate::arrow::batch_reader(batch.schema(), [batch])
+    }
+
+    fn drain(reader: crate::arrow::BatchReader) -> usize {
+        reader.map(|batch| batch.expect("a batch").num_rows()).sum()
+    }
+
+    /// Assert one operation's exact shape, printing it beside the check so
+    /// a run reports the numbers the docs quote.
+    fn pin(label: &str, tally: &Tally, expected: Tally) {
+        println!("iceberg over s3: {label} = {tally:?}");
+        assert_eq!(*tally, expected, "{label}");
+    }
+
+    /// The exact request shape a fresh table's create, commits, open and
+    /// scans cost. Before staging and the leaf handles, the same sequence
+    /// cost 9, 25, 40, 40, 5, 21, 9 and 29 requests: a listing to settle
+    /// every handle's role, a `HEAD` for every size, and the data file's
+    /// footer read back from the store after each upload.
+    #[test]
+    fn what_a_table_costs_over_the_store() {
+        let store = super::super::store();
+        let root: Folder = super::super::folder(&store, "lake/trades/");
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
+
+        // The claim, the document and the hint, the one listing that
+        // detects a competing claim, and the claim's removal.
+        let (mut table, create) = cost(&store, || {
+            Table::create(root.clone(), FormatVersion::V2, schema.clone(), spec).expect("creates")
+        });
+        pin(
+            "create",
+            &create,
+            Tally {
+                total: 5,
+                put: 3,
+                list: 1,
+                delete: 1,
+                ..Tally::default()
+            },
+        );
+        assert!(
+            table.write_staging().expect("resolves").folder().is_some(),
+            "a remote root stages by default"
+        );
+
+        // One upload per file - the data file, the manifest, the manifest
+        // list - then the hint read that re-checks the version and the
+        // create's own five. Nothing reads a footer or a size back.
+        let ((), append_one) = cost(&store, || {
+            table.commit_append(rows(&[1], &["XNAS"])).expect("appends")
+        });
+        pin(
+            "append one partition",
+            &append_one,
+            Tally {
+                total: 9,
+                put: 6,
+                get: 1,
+                list: 1,
+                delete: 1,
+                ..Tally::default()
+            },
+        );
+
+        // Three data files, and the manifest list of the snapshot before
+        // is read once to carry its manifests forward.
+        let ((), append_three) = cost(&store, || {
+            table
+                .commit_append(rows(&[2, 3, 4], &["XNAS", "XNYS", "XLON"]))
+                .expect("appends")
+        });
+        pin(
+            "append three partitions",
+            &append_three,
+            Tally {
+                total: 12,
+                put: 8,
+                get: 2,
+                list: 1,
+                delete: 1,
+                ..Tally::default()
+            },
+        );
+
+        // The plan reads the list and both manifests, the join reads the one
+        // file the key bounds keep, and the commit writes one data file, its
+        // manifest, the carried manifest, the list and the document.
+        let merge_by = crate::Selector::from_columns(["id"]);
+        let ((), upsert) = cost(&store, || {
+            table
+                .commit_merge(rows(&[2, 5], &["XNAS", "XNAS"]), &merge_by, true)
+                .expect("merges")
+        });
+        pin(
+            "upsert one partition of three",
+            &upsert,
+            Tally {
+                total: 14,
+                put: 7,
+                get: 5,
+                list: 1,
+                delete: 1,
+                ..Tally::default()
+            },
+        );
+
+        // The hint and the document, and no listing of the directory.
+        let (opened, open) = cost(&store, || Table::open(root.clone()).expect("opens"));
+        pin(
+            "open",
+            &open,
+            Tally {
+                total: 2,
+                get: 2,
+                ..Tally::default()
+            },
+        );
+
+        // The list, two manifests, four data files: one `GET` each.
+        let (read, full) = cost(&store, || drain(opened.scan(None).expect("a scan")));
+        assert_eq!(read, 5);
+        pin(
+            "full scan",
+            &full,
+            Tally {
+                total: 7,
+                get: 7,
+                ..Tally::default()
+            },
+        );
+
+        // The list, the one manifest the summary keeps, the one file.
+        let (read, pruned) = cost(&store, || {
+            drain(
+                opened
+                    .scan_where(&[("venue", "XNYS")], None)
+                    .expect("a pruned scan"),
+            )
+        });
+        assert_eq!(read, 1);
+        pin(
+            "pruned scan",
+            &pruned,
+            Tally {
+                total: 3,
+                get: 3,
+                ..Tally::default()
+            },
+        );
+
+        // A projection opens each file once too: the table never renamed a
+        // column, so no footer is read for the names first.
+        let target: Field = DataType::from_fields([DataType::Int64.required_field("id")])
+            .expect("one column")
+            .required_field("row");
+        let (read, projected) = cost(&store, || {
+            drain(opened.scan(Some(&target)).expect("a projected scan"))
+        });
+        assert_eq!(read, 5);
+        pin(
+            "projected scan",
+            &projected,
+            Tally {
+                total: 7,
+                get: 7,
+                ..Tally::default()
+            },
+        );
+        assert!(root.stats().lists >= 1);
+    }
+
+    /// A refused upload fails the commit before anything else goes out: no
+    /// manifest, no manifest list, no document, no orphan under `data/`,
+    /// and nothing left in the staging folder.
+    #[test]
+    fn a_failed_upload_publishes_nothing_and_leaves_no_staged_file() {
+        let store = super::super::store();
+        let root: Folder = super::super::folder(&store, "lake/trades/");
+        let schema = schema();
+        let spec = PartitionSpec::identity(1, &schema, &["venue"]).expect("venue is a column");
+        let mut table =
+            Table::create(root.clone(), FormatVersion::V2, schema, spec).expect("creates");
+        let version = table.metadata_version();
+        let stage = crate::holder::local::Folder::temporary()
+            .expect("the temporary folder")
+            .path()
+            .expect("a platform path")
+            .join(format!("yggdryl-s3-staging-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&stage);
+        table.set_options(
+            IcebergOptions::new()
+                .try_with_write_staging(
+                    WriteStaging::from_str(&stage.to_string_lossy()).expect("a local folder"),
+                )
+                .expect("a local folder is accepted")
+                .try_with_write_parallelism(1)
+                .expect("one writer thread"),
+        );
+        let before = store.keys(BUCKET);
+
+        // The second data file's upload is refused; the first was uploaded
+        // and is removed again.
+        store.clear_requests();
+        store.fail_next(403, "AccessDenied", 1);
+        let error = table
+            .commit_append(rows(&[1, 2, 3], &["XLON", "XNAS", "XNYS"]))
+            .expect_err("a refused upload fails the commit");
+        assert!(error.to_string().contains("AccessDenied"), "{error}");
+        assert_eq!(table.metadata_version(), version);
+        assert!(table.current_snapshot().is_none());
+        assert_eq!(
+            store.keys(BUCKET),
+            before,
+            "no data file, manifest, list or document survives the failure"
+        );
+        let requests = tally(&store);
+        assert_eq!(
+            (requests.put, requests.post),
+            (1, 0),
+            "the refused upload was the only write attempted"
+        );
+        assert!(
+            !stage.exists()
+                || std::fs::read_dir(&stage)
+                    .expect("the staging folder lists")
+                    .next()
+                    .is_none(),
+            "the staging folder is empty"
+        );
+
+        // A commit after the failure is whole again, and stages nothing
+        // behind it either.
+        table
+            .commit_append(rows(&[1, 2, 3], &["XLON", "XNAS", "XNYS"]))
+            .expect("the next commit succeeds");
+        assert_eq!(table.metadata_version(), version + 1);
+        assert_eq!(
+            store
+                .keys(BUCKET)
+                .iter()
+                .filter(|key| key.starts_with("lake/trades/data/"))
+                .count(),
+            3
+        );
+        assert!(
+            !stage.exists()
+                || std::fs::read_dir(&stage)
+                    .expect("the staging folder lists")
+                    .next()
+                    .is_none(),
+            "a successful commit leaves no staged file either"
+        );
+        let _ = std::fs::remove_dir_all(&stage);
+    }
+}

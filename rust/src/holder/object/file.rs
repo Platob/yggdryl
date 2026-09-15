@@ -96,15 +96,30 @@ impl File {
         })
     }
 
-    /// Retain a length a listing already reported.
+    /// Retain a length a listing - or a manifest - already reported.
     ///
     /// A listing states every entry's size, so a handle built from one starts
     /// out knowing it: asking a listed object for its size costs nothing,
     /// which is what lets a partition scan weigh a lake without a `HEAD` per
-    /// file. The value is what the listing saw, so it is dropped as soon as
-    /// anything writes through this handle.
+    /// file. A table's manifest states every data file's size the same way,
+    /// and a scan that hands it over here reads each file with one `GET` and
+    /// no `HEAD` before it. The value is what the listing saw, so it is
+    /// dropped as soon as anything writes through this handle.
+    ///
+    /// ```
+    /// use yggdryl::IOBase;
+    /// use yggdryl::holder::object;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let part = object::file("s3://trades/lake/part.parquet")?.with_known_size(4096);
+    /// // Answered from what the caller said, with no request.
+    /// assert_eq!(part.size(), 4096);
+    /// assert_eq!(part.stats().requests, 0);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[must_use]
-    pub(super) fn with_known_size(self, size: u64) -> Self {
+    pub fn with_known_size(self, size: u64) -> Self {
         if let Ok(mut state) = self.state.lock() {
             state.meta = Some(Some(ObjectMeta {
                 size,
