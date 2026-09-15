@@ -1702,7 +1702,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 34] = [
+    let seeds: [(DataTypeId, Scalar); 35] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -1731,6 +1731,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Isin, Scalar::from("US0378331005")),
         (DataTypeId::Cusip, Scalar::from("037833100")),
         (DataTypeId::Sedol, Scalar::from("B0YBKJ7")),
+        (DataTypeId::Bloomberg, Scalar::from("AAPL US EQUITY")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
@@ -2592,9 +2593,10 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
     // read borrowed from the registry.
     //
     // Nine more than before the crate grew `recordedat`, `expiredat` and
-    // the two lane currencies: the wider working row and the evaluations
-    // and writes those four add.
-    assert_eq!(warm, 155, "a warm same-shaped message");
+    // the two lane currencies, and nine more again for the three identifier
+    // columns beside `isincode` and the struct that joins them: the wider
+    // working row, and the evaluations and writes each of them adds.
+    assert_eq!(warm, 164, "a warm same-shaped message");
     let (thousand, _) = counted(|| {
         for _ in 0..1_000 {
             black_box(codec.enrich_message(message.clone()).expect("enriches"));
@@ -2619,12 +2621,12 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
             .enrich_message(enriched.clone())
             .expect("a second pass")
     });
-    // Three more than before the crate grew its four new columns: the
-    // working row is eight columns wider and gathering it costs that much,
-    // while the derivations themselves still land nothing on a message that
-    // already states everything.
+    // Six more than before the crate grew its new columns: the working row
+    // is that much wider and gathering it costs that much, while the
+    // derivations themselves still land nothing on a message that already
+    // states everything.
     assert_eq!(
-        settled, 49,
+        settled, 52,
         "a settled message pays restatement, the working row and nothing per derivation"
     );
     // For scale: one clone, and one `set` on the same message - the clone
@@ -2655,14 +2657,14 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
     black_box(codec.enrich_message(mapped.clone()).expect("a second pass"));
     let (mapped_settled, _) =
         counted(|| codec.enrich_message(mapped.clone()).expect("a second pass"));
-    assert_eq!(mapped_settled, 74, "a settled two-field report");
+    assert_eq!(mapped_settled, 77, "a settled two-field report");
     // The altids Map and the rebuild that lands it, and now also the four
     // columns the crate grew: a report that states a currency and a clock
     // lands `recordedat`, `expiredat` and both lane currencies on the warm
     // pass, and finds them stated on the settled one.
     assert_eq!(
         mapped_warm - mapped_settled,
-        79,
+        82,
         "the altids Map and the rebuild that lands it"
     );
 
@@ -2703,22 +2705,23 @@ fn enriching_costs_one_working_row_per_message_and_nothing_per_shape() {
         second, third,
         "a pass over every shape costs the same every time"
     );
-    // Four more crate terms to compile, each with its sources bound against
-    // the working schema, so the one-off compile is that much larger; it is
-    // still paid exactly once, which is what the equality above pins.
+    // Seven more crate terms to compile than before, each with its sources
+    // bound against the working schema, so the one-off compile is that much
+    // larger; it is still paid exactly once, which is what the equality above
+    // pins.
     assert_eq!(
         first - second,
-        13_760,
+        14_928,
         "the first pass pays the bridge registry's compile and nothing else"
     );
-    // 238 per message on average, the 451 allocations of cloning the 95
+    // 244 per message on average, the 451 allocations of cloning the 95
     // messages included: the clone, the working row, the sweeps and the
     // rebuilds of each, and the `Remembered` plugin memory of the stream.
-    // Fourteen more per message than before the crate grew `recordedat`,
-    // `expiredat` and the two lane currencies - a wider working row and
-    // four more terms swept over it.
+    // Twenty more per message than before the crate grew `recordedat`,
+    // `expiredat`, the lane currencies and the three identifier columns - a
+    // wider working row and seven more terms swept over it.
     assert_eq!(
-        second, 22_642,
+        second, 23_215,
         "95 messages of 54 shapes, each its own working row"
     );
     let (clones, _) = counted(|| black_box(messages.clone()));

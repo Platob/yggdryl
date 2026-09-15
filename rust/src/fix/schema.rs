@@ -253,6 +253,30 @@ pub(super) fn rooted(
                 fields.push(held);
             }
         }
+        // A crate column the registry files under neither door. A definition
+        // is categorized by its shape - a Map is a group, a Struct a
+        // component - so `instids` is a component and no tag lookup reaches
+        // it. The crate's own listing is where it is, and a column of this
+        // crate's belongs in this crate's row whatever the catalog calls it.
+        if super::is_crate_tag(tag)
+            && registry.get_field_by_tag(tag).is_none()
+            && registry.get_group_by_tag(tag).is_none()
+        {
+            if let Some(held) = super::fix_crate_fields()
+                .unwrap_or_default()
+                .iter()
+                .find(|field| field.as_fix().tag().ok().flatten() == Some(tag))
+            {
+                let mut held = held.clone();
+                held.set_nullable(!is_required(tag));
+                if !fields
+                    .iter()
+                    .any(|known| crate::types::folds_equal(known.name(), held.name()))
+                {
+                    fields.push(held);
+                }
+            }
+        }
         // A native Map group owns its counter; no scalar has to precede it.
         if let Some(group) = registry.get_group_by_tag(tag) {
             let mut group = group.clone();
@@ -1120,6 +1144,12 @@ impl super::FixMsg {
             })
         } else if is(super::SYMBOLTICKER_TAG_NAME) {
             self.symbol_ticker()
+        } else if is(super::SESSIONMSGID_TAG_NAME) {
+            self.session_scoped(&SESSION_MSG_PARTS)
+        } else if is(super::SESSIONMSGSEQID_TAG_NAME) {
+            self.session_scoped(&SESSION_MSG_SEQ_PARTS)
+        } else if is(super::INSTIDS_TAG_NAME) {
+            self.instrument_ids(derived)?
         } else if tag == super::cfi::CFICODE_TAG {
             // FIX's own tag rather than a column of this crate's: 461 is
             // already where a message states its classification, so filling
@@ -1290,6 +1320,104 @@ const DERIVED_FACETS: [(i32, &str); 5] = [
 /// alone is last, because an identifier whose scheme is unstated could be
 /// anything.
 const TICKER_SOURCES: [i32; 2] = [55, 48];
+
+/// The tag FIX publishes a message's sequence number under.
+const MSGSEQNUM_TAG: i32 = 34;
+
+/// What joins the parts of a session-scoped name.
+///
+/// The colon the bridge itself writes between them in its row header, so a
+/// reader grepping a log for `e7254b20:9f015ed023` finds the same string the
+/// column holds.
+const SESSION_SEPARATOR: char = ':';
+
+/// The columns [`SESSIONMSGID_TAG_NAME`](super::SESSIONMSGID_TAG_NAME) joins,
+/// in the order the bridge's own bracket writes them.
+pub(super) const SESSION_MSG_PARTS: [i32; 2] = [
+    super::BRIDGESESSIONID_TAG_NAME.0,
+    super::MSGCTXID_TAG_NAME.0,
+];
+
+/// The columns
+/// [`SESSIONMSGSEQID_TAG_NAME`](super::SESSIONMSGSEQID_TAG_NAME) joins, which
+/// are [`SESSION_MSG_PARTS`] and the occurrence.
+pub(super) const SESSION_MSG_SEQ_PARTS: [i32; 3] = [
+    super::BRIDGESESSIONID_TAG_NAME.0,
+    super::MSGCTXID_TAG_NAME.0,
+    MSGSEQNUM_TAG,
+];
+
+impl super::FixMsg {
+    /// The parts of a session-scoped name, joined, or null where any is
+    /// missing.
+    ///
+    /// All or nothing rather than best effort, which is the opposite of how
+    /// most of this crate fills - and deliberately. A name with a hole in it
+    /// looks like a name, so two messages missing different parts would join
+    /// to each other; a null says outright that this message cannot be named
+    /// that way.
+    pub(super) fn session_scoped(&self, tags: &[i32]) -> crate::Scalar {
+        let mut held = String::new();
+        for tag in tags {
+            let Some(part) = self
+                .get_by_tag(*tag)
+                .filter(|held| !held.is_null())
+                .and_then(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_owned)
+                        .or_else(|| value.as_i128().map(|held| held.to_string()))
+                })
+            else {
+                return crate::Scalar::Null;
+            };
+            if !held.is_empty() {
+                held.push(SESSION_SEPARATOR);
+            }
+            held.push_str(part.trim());
+        }
+        if held.is_empty() {
+            return crate::Scalar::Null;
+        }
+        crate::Scalar::from(held)
+    }
+
+    /// Every identifier this instrument is known by, as one struct value.
+    ///
+    /// Each member answers exactly as the column beside it does - through
+    /// [`Self::column_value`], the one place that says how an identifier
+    /// fills - rather than by reading whatever the message happens to hold.
+    /// A message and its own fixed-row projection must agree here: a row
+    /// carries `isincode` because the derivation filled it, and a struct
+    /// reading only stated columns would be empty on the message and full on
+    /// the row, which is two answers to one question. Null where the message
+    /// names the instrument in no way at all, because a struct of five nulls
+    /// is not a fact.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::column_value`] returns for a member.
+    fn instrument_ids(
+        &self,
+        derived: &mut Option<(Arc<super::enrich::Derivations>, Vec<crate::Scalar>)>,
+    ) -> Result<crate::Scalar> {
+        let members = [
+            super::cfi::CFICODE_TAG,
+            super::ISINCODE_TAG_NAME.0,
+            super::BLOOMBERGCODE_TAG_NAME.0,
+            super::CUSIPCODE_TAG_NAME.0,
+            super::SEDOLCODE_TAG_NAME.0,
+        ];
+        let mut held = Vec::with_capacity(members.len());
+        for tag in members {
+            held.push(self.column_value(tag, derived)?);
+        }
+        if held.iter().all(crate::Scalar::is_null) {
+            return Ok(crate::Scalar::Null);
+        }
+        Ok(crate::Scalar::from_sequence(held))
+    }
+}
 
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
 pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {

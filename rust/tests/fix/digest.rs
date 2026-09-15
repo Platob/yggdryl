@@ -248,6 +248,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "expiredat",
             "bidcurrency",
             "offercurrency",
+            "bridgesessionid",
+            "bloombergcode",
+            "cusipcode",
+            "sedolcode",
+            "instids",
+            "sessionmsgid",
+            "sessionmsgseqid",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -284,6 +291,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("ExpiredAt"),
             Some("BidCurrency"),
             Some("OfferCurrency"),
+            Some("BridgeSessionId"),
+            Some("BloombergCode"),
+            Some("CUSIPCode"),
+            Some("SEDOLCode"),
+            Some("InstIds"),
+            Some("SessionMsgId"),
+            Some("SessionMsgSeqId"),
         ],
     );
 
@@ -329,10 +343,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             .find(|field| field.name() == name)
             .unwrap_or_else(|| panic!("{name}"))
     };
-    for name in ["updatedat", "createdat", "snapshotat"] {
+    for name in ["updatedat", "createdat"] {
         assert_eq!(typed(name), typed("prevupdatedat"), "{name}");
         assert!(!field(name).is_nullable(), "{name}");
     }
+    // A snapshot's clock is the one thing only a snapshot has, so it carries
+    // the same instant as the others and is null on every row that is not one.
+    assert_eq!(typed("snapshotat"), typed("prevupdatedat"));
+    assert!(field("snapshotat").is_nullable());
     assert_eq!(typed("code"), &DataType::utf8());
     assert!(!field("code").is_nullable());
     // Where a line was read from is the URL it is, so a row joins on it and
@@ -425,8 +443,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 30);
-    assert_eq!(scalar_count, 29);
+    assert_eq!(held.len(), 37);
+    assert_eq!(scalar_count, 35);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);
@@ -444,11 +462,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     ] {
         assert!(registry.get_field_by_name(retired).is_none(), "{retired}");
     }
+    // A definition is filed by the shape it has: a Map is a group, a Struct
+    // is a component, and everything else is a scalar field.
     for field in held {
-        let category = if field.dtype().is_nested() {
-            yggdryl::FixCategory::Groups
-        } else {
-            yggdryl::FixCategory::Fields
+        let category = match field.dtype() {
+            DataType::Struct(_) => yggdryl::FixCategory::Components,
+            dtype if dtype.is_nested() => yggdryl::FixCategory::Groups,
+            _ => yggdryl::FixCategory::Fields,
         };
         assert_eq!(registry.definition(category, field.name()).unwrap(), field);
         registry.insert_definition(category, field.clone()).unwrap();

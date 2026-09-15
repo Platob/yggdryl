@@ -127,6 +127,21 @@ impl Role {
 }
 
 pub(super) fn is_mandatory(tag: i32) -> bool {
+    // `snapshotat` is a role - replay reads it back where a snapshot wrote
+    // one - without being a value every message has, so it is the one role
+    // whose column is nullable.
+    Role::of(tag).is_some_and(|role| !matches!(role, Role::Snapshot))
+}
+
+/// Whether a column is one the replay bundle holds, whatever it is spelled.
+///
+/// [`is_mandatory`] says the *value* must be there; this says the *column*
+/// must. They differ on `snapshotat` alone: a row that is not a snapshot
+/// carries the column empty, and a row that cannot carry it at all could not
+/// replay a snapshot that was taken. So a holder is never removed and is
+/// always reached by its tag under whatever name it was renamed to, while
+/// only the values a message always has refuse a null.
+pub(super) fn is_held(tag: i32) -> bool {
     Role::of(tag).is_some()
 }
 
@@ -166,7 +181,7 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
             .and_then(|known| registry.identity_of(known).map(|(tag, _)| tag))
     });
     if let (Some(tag), Some(claim)) = (explicit, named) {
-        if tag != claim && is_mandatory(claim) {
+        if tag != claim && is_held(claim) {
             return Err(refused(
                 field.name(),
                 format_args!("FIX tag {claim} claimed by its name"),
@@ -273,7 +288,14 @@ impl Plan {
 
     pub(super) fn require_bundle(&self, schema: &Field) -> Result<()> {
         for role in Role::ALL {
+            // Every role's column is required - the holder is what replay
+            // reads back - but `snapshotat` is the one whose value is not:
+            // it says this row is a reading the lifecycle took, and an
+            // ordinary message is not one.
             let at = self.index(role)?;
+            if matches!(role, Role::Snapshot) {
+                continue;
+            }
             if schema.fields()[at].is_nullable() {
                 return Err(refused(
                     schema.fields()[at].name(),
@@ -298,6 +320,9 @@ impl Plan {
             };
             match value {
                 Some(value) if !value.is_null() => validate_value(name, &role.dtype(), value)?,
+                // The snapshot clock is empty on every row no snapshot took,
+                // so what replay needs from it is the holder and not a value.
+                Some(_) if matches!(role, Role::Snapshot) => {}
                 _ => {
                     return Err(refused(
                         name,
@@ -322,7 +347,9 @@ impl Plan {
         }
         for role in Role::ALL {
             let at = self.index(role)?;
-            if matches!(role, Role::MsgHash | Role::Persistent) && values[at].is_null() {
+            if matches!(role, Role::MsgHash | Role::Persistent | Role::Snapshot)
+                && values[at].is_null()
+            {
                 continue;
             }
             validate_value(schema.fields()[at].name(), &role.dtype(), &values[at])?;
@@ -479,10 +506,19 @@ pub(super) fn fresh(
             .cloned()
     };
     let transact = stated_clock(60);
-    let snapshot = source(Role::Snapshot)
+    // The instant the event happened, which is what the clocks below default
+    // to. It is not the same thing as the `snapshotat` column: this is always
+    // knowable, and the column says something narrower.
+    let event = source(Role::Snapshot)
         .or(transact)
         .unwrap_or_else(|| sending.clone());
-    let updated = source(Role::Updated).unwrap_or_else(|| snapshot.clone());
+    // `snapshotat` is a *stated* value or nothing. A snapshot is a reading
+    // the lifecycle takes of a chain at a grid instant; an ordinary message
+    // is not one, and filling the column on every message made "this row is
+    // a snapshot" unanswerable from the row. The lifecycle stamps it where
+    // it takes one; intake only keeps what the message itself said.
+    let snapshot = source(Role::Snapshot).unwrap_or(Scalar::Null);
+    let updated = source(Role::Updated).unwrap_or_else(|| event.clone());
     // What a message says about its own creation, strongest first: a stated
     // `createdat`, then `OrigSendingTime(122)`, then the snapshot instant.
     //
@@ -496,7 +532,7 @@ pub(super) fn fresh(
     // rather than when the message was made.
     let created = source(Role::Created)
         .or_else(|| stated_clock(122))
-        .unwrap_or_else(|| snapshot.clone());
+        .unwrap_or_else(|| event.clone());
     let defaults = [
         updated,
         created,
@@ -527,7 +563,10 @@ pub(super) fn fresh(
         if members[at].as_fix().tag()? != Some(role.identity().0) {
             members[at].as_fix_mut().set_tag(role.identity().0)?;
         }
-        members[at].set_nullable(false);
+        // Every role but the snapshot is a value the message always has, so
+        // its column cannot be null. `snapshotat` is the reading rather than
+        // the message, and stays nullable.
+        members[at].set_nullable(matches!(role, Role::Snapshot));
         if values[at].is_null() {
             values[at] = defaults[role as usize].clone();
         }

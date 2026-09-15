@@ -67,6 +67,9 @@ pub(crate) const STATE_EXTENSION_NAME: &str = "yggdryl.state";
 /// The Arrow extension name of how long an order stands.
 pub(crate) const TIMEINFORCE_EXTENSION_NAME: &str = "yggdryl.timeinforce";
 
+/// The extension name a Bloomberg identifier rides.
+pub(crate) const BLOOMBERG_EXTENSION_NAME: &str = "yggdryl.bloomberg";
+
 /// The most bytes ISO 3166-1's country code may be.
 pub(crate) const COUNTRY_WIDTH: usize = 2;
 
@@ -110,6 +113,16 @@ pub(crate) const SIDE_WIDTH: usize = 4;
 /// later would change a discriminant, which is a wire contract.
 pub(crate) const STATE_WIDTH: usize = 10;
 
+/// The most bytes a Bloomberg identifier may be.
+///
+/// The one code here whose width is a bound rather than a shape. An ISIN is
+/// twelve characters because the standard says twelve; a Bloomberg
+/// identifier is a ticker, a market and a yellow key with spaces between
+/// them - `AAPL US Equity`, `EURUSD Curncy`, `SPX Index` - or a twelve-byte
+/// FIGI, and no two are the same length. Thirty-two holds every spelling a
+/// terminal writes and still fits one `SmolStr` allocation.
+pub(crate) const BLOOMBERG_WIDTH: usize = 32;
+
 /// The most bytes how long an order stands may be.
 ///
 /// The standard's values are one character; eight leaves room for venue codes.
@@ -131,6 +144,7 @@ impl DataType {
         ("side", DataType::Side, SIDE_WIDTH),
         ("state", DataType::State, STATE_WIDTH),
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
+        ("bloomberg", DataType::Bloomberg, BLOOMBERG_WIDTH),
     ];
 
     /// Creates ISO 3166-1's two-letter country code.
@@ -258,6 +272,7 @@ impl DataType {
             Self::Side => Some("side"),
             Self::State => Some("state"),
             Self::TimeInForce => Some("timeinforce"),
+            Self::Bloomberg => Some("bloomberg"),
             _ => None,
         }
     }
@@ -305,6 +320,7 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Currency => Some(CURRENCY_EXTENSION_NAME),
         DataType::Mic => Some(MIC_EXTENSION_NAME),
         DataType::Cfi => Some(CFI_EXTENSION_NAME),
+        DataType::Bloomberg => Some(BLOOMBERG_EXTENSION_NAME),
         DataType::Isin => Some(ISIN_EXTENSION_NAME),
         DataType::Cusip => Some(CUSIP_EXTENSION_NAME),
         DataType::Sedol => Some(SEDOL_EXTENSION_NAME),
@@ -326,6 +342,7 @@ pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
         CURRENCY_EXTENSION_NAME => Some(DataType::Currency),
         MIC_EXTENSION_NAME => Some(DataType::Mic),
         CFI_EXTENSION_NAME => Some(DataType::Cfi),
+        BLOOMBERG_EXTENSION_NAME => Some(DataType::Bloomberg),
         ISIN_EXTENSION_NAME => Some(DataType::Isin),
         CUSIP_EXTENSION_NAME => Some(DataType::Cusip),
         SEDOL_EXTENSION_NAME => Some(DataType::Sedol),
@@ -368,6 +385,7 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Currency => code_text::<CURRENCY_WIDTH>(bytes),
         DataType::Mic => code_text::<MIC_WIDTH>(bytes),
         DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
+        DataType::Bloomberg => code_text::<BLOOMBERG_WIDTH>(bytes),
         DataType::Isin => code_text::<ISIN_WIDTH>(bytes),
         DataType::Cusip => code_text::<CUSIP_WIDTH>(bytes),
         DataType::Sedol => code_text::<SEDOL_WIDTH>(bytes),

@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 use super::codes::{
-    CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH,
-    SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 use crate::{DataType, DataTypeId, DataTypeKind, Result, Scalar, ScalarFamily, ScalarValue, types};
 
@@ -78,6 +78,25 @@ code_leaf!(Country, COUNTRY_WIDTH);
 code_leaf!(Currency, CURRENCY_WIDTH);
 code_leaf!(Mic, MIC_WIDTH);
 code_leaf!(Cfi, CFI_WIDTH);
+code_leaf!(Bloomberg, BLOOMBERG_WIDTH);
+
+impl Bloomberg {
+    /// Whether `text` is already the canonical spelling of an identifier.
+    ///
+    /// The one code here with no shape to check: a Bloomberg identifier is a
+    /// ticker, a market and a yellow key with spaces between them, or a
+    /// FIGI, and the standard that would say which is a terminal's rather
+    /// than a registry's. So canonical is what it is for every code - ASCII
+    /// that fits the width, in upper case - and no more, because refusing a
+    /// spelling nobody published would be a guess.
+    #[must_use]
+    pub fn is_canonical(text: &str) -> bool {
+        !text.is_empty()
+            && text.len() <= BLOOMBERG_WIDTH
+            && text.is_ascii()
+            && !text.bytes().any(|byte| byte.is_ascii_lowercase())
+    }
+}
 
 /// One validated ISO 6166 international securities identification number.
 ///
@@ -800,6 +819,7 @@ pub enum Code {
     Cusip(Cusip),
     /// SEDOL securities identifier.
     Sedol(Sedol),
+    Bloomberg(Bloomberg),
     /// FIX's side of a trade.
     Side(Side),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
@@ -831,6 +851,7 @@ impl Code {
             Self::Isin(value) => value.storage(),
             Self::Cusip(value) => value.storage(),
             Self::Sedol(value) => value.storage(),
+            Self::Bloomberg(value) => value.storage(),
             Self::Side(value) => value.storage(),
             Self::State(value) => value.storage(),
             Self::TimeInForce(value) => value.storage(),
@@ -848,6 +869,7 @@ impl Code {
             Self::Isin(_) => ISIN_WIDTH,
             Self::Cusip(_) => CUSIP_WIDTH,
             Self::Sedol(_) => SEDOL_WIDTH,
+            Self::Bloomberg(_) => BLOOMBERG_WIDTH,
             Self::Side(_) => SIDE_WIDTH,
             Self::State(_) => STATE_WIDTH,
             Self::TimeInForce(_) => TIMEINFORCE_WIDTH,
@@ -865,6 +887,7 @@ impl Code {
             Self::Isin(_) => DataTypeId::Isin,
             Self::Cusip(_) => DataTypeId::Cusip,
             Self::Sedol(_) => DataTypeId::Sedol,
+            Self::Bloomberg(_) => DataTypeId::Bloomberg,
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
@@ -882,6 +905,7 @@ impl Code {
             Self::Isin(_) => DataType::Isin,
             Self::Cusip(_) => DataType::Cusip,
             Self::Sedol(_) => DataType::Sedol,
+            Self::Bloomberg(_) => DataType::Bloomberg,
             Self::Side(_) => DataType::Side,
             Self::State(_) => DataType::State,
             Self::TimeInForce(_) => DataType::TimeInForce,
@@ -954,6 +978,7 @@ code_value!(Country, Country, COUNTRY_WIDTH);
 code_value!(Currency, Currency, CURRENCY_WIDTH);
 code_value!(Mic, Mic, MIC_WIDTH);
 code_value!(Cfi, Cfi, CFI_WIDTH);
+code_value!(Bloomberg, Bloomberg, BLOOMBERG_WIDTH);
 code_value!(Isin, Isin, ISIN_WIDTH);
 code_value!(Cusip, Cusip, CUSIP_WIDTH);
 code_value!(Sedol, Sedol, SEDOL_WIDTH);

@@ -220,10 +220,8 @@ fn previous_timestamp_is_the_normalized_update_not_the_real_event_clock() {
     let first = life.fill(first).unwrap();
     assert_pair(&first, None);
     assert_eq!(first.updatedat(), &clock(5_000_000_120));
-    assert_eq!(
-        first.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(),
-        &clock(1_000_002_000)
-    );
+    assert_eq!(first.createdat(), &clock(1_000_002_000));
+    assert!(first.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap().is_null());
     let mut second = codec
         .sole_line(
             b"8=FIX.4.4|35=D|11=EVENT-1|60=19700101-00:00:02.000004|10=0|",
@@ -236,10 +234,11 @@ fn previous_timestamp_is_the_normalized_update_not_the_real_event_clock() {
     let second = life.fill(second).unwrap();
     assert_pair(&second, Some(&first));
     assert_eq!(second.updatedat(), &clock(6_000_000_780));
-    assert_eq!(
-        second.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(),
-        &clock(2_000_004_000)
-    );
+    // The event clock stays where the message stated it; `createdat` belongs
+    // to the chain's first incarnation, and no snapshot was taken of either.
+    assert_eq!(second.by_tag(60).unwrap(), &clock(2_000_004_000));
+    assert_eq!(second.createdat(), &clock(1_000_002_000));
+    assert!(second.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap().is_null());
 }
 
 #[test]
@@ -449,9 +448,10 @@ fn both_capture_doors_replay_previous_pairs_through_arrow_at_every_row_boundary(
     assert_eq!(lines.len(), 144);
     let schema = fix_schema(codec.registry(), "fix").unwrap();
     // The lifecycle suite says why each door ends on its count: four and
-    // three of the first 129 lines' chains, and the one the cancel request
-    // opens that its instrument-less reject never meets.
-    for (enrich, expected_alive) in [(false, 5), (true, 4)] {
+    // three of the first 129 lines' chains, the one the cancel request opens
+    // that its instrument-less reject never meets, and the three the bridge
+    // named itself where the dictionary declared no identifier.
+    for (enrich, expected_alive) in [(false, 8), (true, 7)] {
         let mut life = FixLifecycle::new(Arc::clone(codec.registry()));
         let mut trace = Vec::new();
         for line in &lines {

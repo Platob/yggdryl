@@ -130,13 +130,23 @@ fn every_generated_name_is_folded_and_no_two_collide() {
                     .expect("valid tag")
                     .expect("a derived definition tag");
                 assert!(
-                    yggdryl::FixId::is_definition_tag(derived)
-                        || (category == FixCategory::Groups
-                            && matches!(field.dtype(), DataType::Map(_))
-                            && yggdryl::is_crate_tag(derived)
-                            && field.as_fix().counter().unwrap() == Some(derived)),
+                    yggdryl::FixId::is_definition_tag(derived) || yggdryl::is_crate_tag(derived),
                     "{category}/{name} tag {derived}"
                 );
+                // A crate tag on a named definition means the definition is
+                // one of this crate's own columns, reached by the tag the
+                // fixed row files it under: `altids` is the Map whose counter
+                // is that tag, `instids` the Struct beside it.
+                if yggdryl::is_crate_tag(derived) {
+                    assert!(
+                        yggdryl::fix_crate_fields()
+                            .expect("the crate's own fields")
+                            .iter()
+                            .any(|own| own.name() == name
+                                && own.as_fix().tag().unwrap() == Some(derived)),
+                        "{category}/{name} holds crate tag {derived} without being one"
+                    );
+                }
                 assert!(
                     derived_tags.insert(derived),
                     "{category}/{name} repeats derived tag {derived}"
@@ -534,15 +544,25 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// the fixed row so the crate's own clocks and identities lead it. It then
 /// retires `timepartition` - how a layout is cut is the target's, and an
 /// Iceberg table takes an `hour` transform over `updatedat` - and marks the
-/// columns settled to one message with `fix:transient`.
+/// columns settled to one message with `fix:transient`. It then adds the
+/// session the bridge handled a line on, the three instrument identifiers
+/// beside `isincode`, the `instids` component that joins all five, and the
+/// two session message identifiers - seven columns, each declaring on the
+/// field itself how it fills. `instids` is a component rather than a scalar,
+/// so it is the first named definition to answer to a crate tag rather than
+/// to a derived one, and the components count moves with it. The bracket's
+/// session is `bridgesessionid`, not `sessionid`: a bridge row spells its own
+/// `SESSIONID` for the counterparty session, which `sendersessionid` already
+/// owns. `snapshotat` moves with them: it is what a snapshot stamps and
+/// nothing else, so its description says so and its column is nullable.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 16_943_954_268_509_475_520);
+    assert_eq!(registry.stable_hash(), 12_951_011_944_693_588_924);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        928 + super::crated_messages()
+        928 + super::crated_messages() + super::crated_components()
     );
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
 }

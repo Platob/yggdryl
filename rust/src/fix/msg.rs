@@ -783,7 +783,7 @@ impl FixMsg {
             return Ok(None);
         };
         if super::identity::resolve_tag(&self.field.fields()[at], &self.registry)?
-            .is_some_and(super::identity::is_mandatory)
+            .is_some_and(super::identity::is_held)
         {
             return Err(super::identity::refused(
                 self.field.fields()[at].name(),
@@ -831,7 +831,7 @@ impl FixMsg {
         if let Some(at) = self.index_of_key(key) {
             let field = &self.field.fields()[at];
             if let Some(tag) = super::identity::resolve_tag(field, &self.registry)?
-                .filter(|tag| super::identity::is_mandatory(*tag))
+                .filter(|tag| super::identity::is_held(*tag))
             {
                 let mut field = field.clone();
                 field.as_fix_mut().set_tag(tag)?;
@@ -913,7 +913,7 @@ impl FixMsg {
 
     fn mandatory_index(&self, known: &Field) -> Option<usize> {
         let (tag, _) = self.registry.identity_of(known)?;
-        super::identity::is_mandatory(tag)
+        super::identity::is_held(tag)
             .then(|| self.index_of_tag(tag))
             .flatten()
     }

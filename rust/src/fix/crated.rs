@@ -170,6 +170,34 @@ pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");
 /// The tag and name carrying the currency the offer lane is denominated in.
 pub const OFFERCURRENCY_TAG_NAME: (i32, &str) = (65_031, "offercurrency");
 
+/// The tag and name carrying the session instance a bridge handled a line on.
+///
+/// Not `sessionid`: that spelling is a bridge row's own `SESSIONID` key,
+/// which names the counterparty session a message states it is on, and
+/// [`SENDERSESSIONID_TAG_NAME`] already owns it. This is the bridge's own
+/// connection instance, and the two are separate facts - one message states
+/// its session once, while two connections to one counterparty are two
+/// instances.
+pub const BRIDGESESSIONID_TAG_NAME: (i32, &str) = (65_032, "bridgesessionid");
+
+/// The tag and name carrying the instrument's Bloomberg identifier.
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_033, "bloombergcode");
+
+/// The tag and name carrying the instrument's CUSIP.
+pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_034, "cusipcode");
+
+/// The tag and name carrying the instrument's SEDOL.
+pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_035, "sedolcode");
+
+/// The tag and name carrying every identifier the instrument is known by.
+pub const INSTIDS_TAG_NAME: (i32, &str) = (65_036, "instids");
+
+/// The tag and name naming one message within its session.
+pub const SESSIONMSGID_TAG_NAME: (i32, &str) = (65_037, "sessionmsgid");
+
+/// The tag and name naming one occurrence of one message within its session.
+pub const SESSIONMSGSEQID_TAG_NAME: (i32, &str) = (65_038, "sessionmsgseqid");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -190,10 +218,34 @@ pub const MSGDIRECTION_TAG_NAME: (i32, &str) = (385, "MsgDirection");
 /// primary did not. Each is read through `try_cast(... as isin)`, so a
 /// primary no check digit closes is null rather than an answer, and the
 /// alternate is consulted behind it; a spelling neither closes is silence.
-const ISINCODE_DERIVATION: &str = "coalesce(case when securityidsource = '4' then \
-                                   try_cast(securityid as isin) end, \
-                                   try_cast(secaltidgrp[securityaltidsource = '4'][0].securityaltid \
-                                   as isin))";
+/// How an instrument identifier derives, for one `SecurityIDSource` code and
+/// the type the identifier is.
+///
+/// One shape for all four, because there is only one rule: the message's own
+/// `SecurityID` when its source says this is what it is, else the first
+/// `SecurityAltID` occurrence whose source says so. `isincode` has read this
+/// way since decision 38; `cusipcode`, `sedolcode` and `bloombergcode` are
+/// the same sentence with a different letter in it, and writing them as a
+/// second mechanism in Rust would be four hand-maintained copies of a
+/// declaration the registry already evaluates.
+fn identifier_derivation(sources: &[&str], code: &str) -> String {
+    let arms: Vec<String> = sources
+        .iter()
+        .flat_map(|source| {
+            [
+                format!(
+                    "case when securityidsource = '{source}' then \
+                     try_cast(securityid as {code}) end"
+                ),
+                format!(
+                    "try_cast(secaltidgrp[securityaltidsource = '{source}'][0].securityaltid \
+                     as {code})"
+                ),
+            ]
+        })
+        .collect();
+    format!("coalesce({})", arms.join(", "))
+}
 
 /// How `miccode` derives: the exchange the instrument is listed on, the
 /// destination it was routed to, or the market it last traded on, the first
@@ -418,15 +470,14 @@ fn build() -> Result<Vec<Field>> {
         )?,
         // The session a message came from, and half of a pair whose target
         // side takes the block's next free tag below. A bridge row spells only
-        // its own `SESSIONID`, which this side keeps as an alias; where a row
-        // spells none, the session instance the bridge's own row header
-        // brackets fills it, never over a reading the message stated itself.
+        // its own `SESSIONID`, which this side keeps as an alias; the instance
+        // a bridge's row header brackets is a second fact and has a column of
+        // its own ([`BRIDGESESSIONID_TAG_NAME`]).
         aliased(
             SENDERSESSIONID_TAG_NAME,
             "SenderSessionId",
             DataType::utf8(),
-            "The session a message came from: the message's own statement, \
-             else the session instance its bridge handled the line on.",
+            "The session a message came from, as the message states it.",
             &["SessionId"],
         )?,
         // The message context a bridge handled the line in, from the bracket
@@ -495,7 +546,7 @@ fn build() -> Result<Vec<Field>> {
             DataType::Isin,
             "The instrument's ISIN: the message's own, else SecurityID or a \
              SecurityAltID whose source is ISIN.",
-            ISINCODE_DERIVATION,
+            &identifier_derivation(&["4"], "isin"),
         )?,
         derived(
             MICCODE_TAG_NAME,
@@ -578,7 +629,8 @@ fn build() -> Result<Vec<Field>> {
             SNAPSHOTAT_TAG_NAME,
             "SnapshotAt",
             super::schema::CLOCK_DATATYPE,
-            "The real event's instant, independent of the snapshot grid.",
+            "The instant a reading of this chain was taken at, ungridded; empty \
+             on every row that is not a snapshot.",
         )?,
         // Where the line was read from, typed as the URL it is. A text read
         // names its own column `sourceurl` too, so a capture fills this
@@ -651,12 +703,119 @@ fn build() -> Result<Vec<Field>> {
              Currency, else SettlCurrency.",
             LANE_CURRENCY_DERIVATION,
         )?,
-        // The classification of record, beside `isincode` and `miccode` and
-        // for the same reason: what the message said about the instrument,
-        // read once into one typed column a table partitions and joins on.
-        // `detailedcficode` is the spelling a bridge writes it under.
+        // The session instance the bridge handled a line on, which its own
+        // row header states and no FIX message carries: `SenderCompID` names
+        // a counterparty, and two connections to one counterparty are two
+        // sessions. It is filled from the bracket alone, because the joined
+        // identifiers below must be the same string on every leg of one
+        // message and a leg that spelled its own session would split them.
+        crated(
+            BRIDGESESSIONID_TAG_NAME,
+            "BridgeSessionId",
+            DataType::utf8(),
+            "The session instance a bridge handled a line on, as its own row \
+             header brackets it - never what the message states about itself.",
+        )?,
+        // The three identifiers beside `isincode`, each typed as the code it
+        // is so a row joins on it rather than on text that looks like one.
+        derived(
+            BLOOMBERGCODE_TAG_NAME,
+            "BloombergCode",
+            DataType::Bloomberg,
+            "The instrument's Bloomberg identifier: the message's own, else a \
+             SecurityID or SecurityAltID whose source is Bloomberg.",
+            &identifier_derivation(&["A", "S"], "bloomberg"),
+        )?,
+        derived(
+            CUSIPCODE_TAG_NAME,
+            "CUSIPCode",
+            DataType::Cusip,
+            "The instrument's CUSIP: the message's own, else a SecurityID or \
+             SecurityAltID whose source is CUSIP.",
+            &identifier_derivation(&["1"], "cusip"),
+        )?,
+        derived(
+            SEDOLCODE_TAG_NAME,
+            "SEDOLCode",
+            DataType::Sedol,
+            "The instrument's SEDOL: the message's own, else a SecurityID or \
+             SecurityAltID whose source is SEDOL.",
+            &identifier_derivation(&["2"], "sedol"),
+        )?,
+        instids()?,
+        // One message within its session, and one occurrence of it. Built by
+        // concatenation rather than hashed, because a reader grepping a log
+        // for `e7254b20:9f015ed023` must find the same string the row holds.
+        crated(
+            SESSIONMSGID_TAG_NAME,
+            "SessionMsgId",
+            DataType::utf8(),
+            "The session and the message context that name one message within \
+             it, joined by a colon.",
+        )?,
+        crated(
+            SESSIONMSGSEQID_TAG_NAME,
+            "SessionMsgSeqId",
+            DataType::utf8(),
+            "The session, the message context and the sequence number that \
+             name one occurrence of one message, joined by colons.",
+        )?,
     ])
 }
+
+/// Every identifier one instrument is known by, as one column.
+///
+/// A Struct rather than five columns beside each other, because they are one
+/// fact with five spellings: a reader joining two captures wants "the same
+/// instrument", and a venue that publishes an ISIN while another publishes a
+/// SEDOL is describing the same thing. The five stay *also* available as
+/// their own columns, because a table partitions and filters on a column and
+/// not on a struct member - this is the joined view of them, not a second
+/// owner: [`FixMsg::instrument_ids`](super::FixMsg) fills it from those
+/// columns rather than from anything of its own.
+///
+/// Built once and shared: the members are this crate's own types and owe
+/// nothing to a dictionary, so every registry and every row holds the same
+/// field.
+fn instids() -> Result<Field> {
+    static FIELD: LazyLock<Option<Field>> = LazyLock::new(|| match build_instids() {
+        Ok(field) => Some(field),
+        Err(error) => {
+            log::warn!("building the FIX instrument identifier struct: {error}");
+            None
+        }
+    });
+    FIELD.clone().ok_or_else(|| crate::Error::InvalidRecord {
+        path: smol_str::SmolStr::new_static(INSTIDS_TAG_NAME.1),
+        reason: crate::text::expected_got("an instrument identifier struct", "a refused build"),
+    })
+}
+
+/// The members, in the order a reader reads them: what the instrument *is*,
+/// then what each registry calls it.
+fn build_instids() -> Result<Field> {
+    let member = |name: &str, dtype: DataType| dtype.nullable_field(name);
+    let mut field = DataType::from_fields([
+        member(CFICODE_MEMBER, DataType::Cfi),
+        member(ISINCODE_TAG_NAME.1, DataType::Isin),
+        member(BLOOMBERGCODE_TAG_NAME.1, DataType::Bloomberg),
+        member(CUSIPCODE_TAG_NAME.1, DataType::Cusip),
+        member(SEDOLCODE_TAG_NAME.1, DataType::Sedol),
+    ])?
+    .nullable_field(INSTIDS_TAG_NAME.1);
+    field.as_fix_mut().set_tag(INSTIDS_TAG_NAME.0)?;
+    field.set_display("InstIds")?;
+    field.set_description(
+        "Every identifier this instrument is known by, filled from the columns \
+         beside it.",
+    )?;
+    Ok(field)
+}
+
+/// What the classification member of [`instids`] is called.
+///
+/// FIX's own name for it, because that is the column it is filled from.
+const CFICODE_MEMBER: &str = "cficode";
 
 /// The fields this crate defines, in tag order.
 ///
@@ -667,7 +826,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 30);
+/// assert_eq!(held.len(), 37);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// // No partition column: how a layout is cut is the target's to decide -

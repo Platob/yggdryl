@@ -1026,8 +1026,9 @@ impl FixRegistry {
     ///     .required_field("Instrument");
     /// assert_eq!(registry.add_fields([symbol, price, instrument])?, (2, 1));
     /// assert_eq!(registry.field_by_tag(55)?.description(), Some("Ticker symbol"));
-    /// // `Instrument`, beside the crate's own `pluginconfig` (decision 19).
-    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 2);
+    /// // `Instrument`, beside the crate's own `pluginconfig` (decision 19)
+    /// // and its `instids`, which is a component for the same reason.
+    /// assert_eq!(registry.definitions(FixCategory::Components).count(), 3);
     /// # Ok(())
     /// # }
     /// ```

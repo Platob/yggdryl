@@ -397,6 +397,7 @@ fn code_cell<'a, const WIDTH: usize>(
         DataType::Isin => crate::types::Isin::is_canonical(text),
         DataType::Cusip => crate::types::Cusip::is_canonical(text),
         DataType::Sedol => crate::types::Sedol::is_canonical(text),
+        DataType::Bloomberg => crate::types::Bloomberg::is_canonical(text),
         _ => true,
     };
     if !canonical {

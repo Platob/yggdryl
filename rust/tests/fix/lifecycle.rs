@@ -326,10 +326,11 @@ fn event_clock_precedence_is_transaction_then_sending_and_explicit_update_is_ind
             .unwrap()
             .fill(row)
             .unwrap();
-        assert_eq!(
-            message.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(),
-            &clock(event)
-        );
+        // The event instant is what the clocks default to, and `createdat`
+        // is where it stays readable: `updatedat` is cut to the grid, and
+        // `snapshotat` is empty until a snapshot is taken of this chain.
+        assert_eq!(message.createdat(), &clock(event));
+        assert!(message.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap().is_null());
         assert_eq!(message.updatedat(), &clock(updated));
     }
 }
@@ -548,7 +549,28 @@ fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
                 let stamped = life.fill(message).expect("the capture message stamps");
                 if [101, 102].contains(&(index + 1)) {
                     assert!(stamped.get_by_tag(35).is_none());
-                    assert_eq!(stamped.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some(""));
+                    // A message the dictionary says nothing about is still
+                    // one the bridge named: the bracket's own session and
+                    // message context scope it, so the legs of one routed
+                    // message meet instead of each opening nothing.
+                    let part = |tag: i32| {
+                        stamped
+                            .get_by_tag(tag)
+                            .and_then(Scalar::as_str)
+                            .expect("the bracket names it")
+                            .to_owned()
+                    };
+                    let named = format!(
+                        "{}:{}",
+                        part(yggdryl::BRIDGESESSIONID_TAG_NAME.0),
+                        part(yggdryl::MSGCTXID_TAG_NAME.0)
+                    );
+                    let code = stamped.by_tag(CODE_TAG_NAME.0).unwrap();
+                    assert!(
+                        code.as_str()
+                            .is_some_and(|code| code.ends_with(&format!("/{named}"))),
+                        "{code:?} is named after {named}"
+                    );
                 }
                 assert_eq!(stamped.entries(), entries);
                 assert_eq!(stamped.digest(), digest);
@@ -564,15 +586,17 @@ fn the_committed_capture_keeps_its_direct_count_and_each_doors_full_replay() {
     // line 130 opens it under the instrument its `22=4|48=` names, and the
     // reject at line 131 names the order but no instrument, so its keys fall
     // under no scope, never meet the request's chain, and its `39=8` ends
-    // nothing that was open. The bridge rows and the `35=UL` frame after it
-    // resolve to no message declaring identifiers, and open nothing.
-    assert_eq!(direct_life.alive(), 5);
-    // Line 73's derived terminal state closes ABBN.S. The untyped FIXML
-    // at line 101 no longer reopens it through a hard-tag fallback.
-    assert_eq!(enriched_life.alive(), 4);
+    // nothing that was open. Three more are the bridge's own: the `35=UL`
+    // frame and the two untyped FIXML lines declare no identifier the
+    // dictionary knows, and each is now named by the bracket that carried
+    // it - which is the point of naming them, since the legs of one routed
+    // message share that name and meet under it.
+    assert_eq!(direct_life.alive(), 8);
+    // Line 73's derived terminal state closes ABBN.S.
+    assert_eq!(enriched_life.alive(), 7);
     // Each door replays its own projection: enrichment may end a chain at a
-    // different message and the untyped FIXML supplies no identifiers.
-    for (trace, expected) in [(direct_trace, 5), (enriched_trace, 4)] {
+    // different message.
+    for (trace, expected) in [(direct_trace, 8), (enriched_trace, 7)] {
         assert_eq!(trace.len(), 95);
         let mut replay = FixLifecycle::new(Arc::clone(codec.registry()));
         for (message, alive) in trace {

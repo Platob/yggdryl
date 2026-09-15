@@ -95,6 +95,18 @@ fn crated_messages() -> usize {
     usize::from(crate::fix_plugin_message().is_ok())
 }
 
+/// The named components this crate defines beside the dictionary's own.
+///
+/// A definition is filed by the shape it has, so every crate column shaped as
+/// a Struct is a component: `instids` is one.
+fn crated_components() -> usize {
+    crate::fix_crate_fields()
+        .expect("the crate's own fields")
+        .iter()
+        .filter(|field| matches!(field.dtype(), DataType::Struct(_)))
+        .count()
+}
+
 /// The crate's own field names, in the order every registry iterates them:
 /// last, because their tags are above every tag a test claims.
 fn crate_names() -> Vec<&'static str> {
@@ -956,10 +968,12 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // `uuid`/`puuid`/`prevuuid` on the same tags and layouts, and then the
     // four columns after them: `recordedat`, `expiredat` and the two lane
     // currencies, each declaring how it fills on the field itself. It moved
-    // last when `timepartition` went - how a layout is cut is the target's -
-    // and when the columns settled to one message said so with
-    // `fix:transient`.
-    assert_eq!(carrying.stable_hash(), 11_531_988_328_019_777_117);
+    // when `timepartition` went - how a layout is cut is the target's - and
+    // when the columns settled to one message said so with `fix:transient`.
+    // It moved last for the bridge's own names, the three identifiers beside
+    // `isincode`, the struct that joins them, and `snapshotat` saying that
+    // only a snapshot stamps it.
+    assert_eq!(carrying.stable_hash(), 18_403_013_702_931_979_337);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -1830,12 +1844,15 @@ fn one_message_code_namespace_folds_a_restated_name_and_keeps_a_second_one() {
     assert_eq!(registry.msgtype("VenueOrder").unwrap().name(), "VenueOrder");
     assert_eq!(registry.msgtype("venue_order").unwrap().as_str(), "D");
     assert_eq!(registry.msgtype("neworder_single").unwrap().as_str(), "D");
-    // The two this test added, behind the one every registry starts with.
+    // The two this test added, behind the ones every registry starts with -
+    // the crate's own message and its `instids` component.
     assert_eq!(
         registry
             .definitions(FixCategory::Components)
             .map(Field::name)
-            .filter(|name| *name != crate::PLUGINCONFIG_CODE_NAME.1)
+            .filter(|name| {
+                *name != crate::PLUGINCONFIG_CODE_NAME.1 && *name != crate::INSTIDS_TAG_NAME.1
+            })
             .collect::<Vec<_>>(),
         ["NewOrderSingle", "VenueOrder"]
     );
@@ -5034,7 +5051,7 @@ fn the_catalog_names_every_shipped_group_and_entry_without_field_collisions() {
     // which every registry carries (decision 19).
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        928 + crated_messages()
+        928 + crated_messages() + crated_components()
     );
     assert_eq!(registry.msgtypes().count(), 181 + crated_messages());
 }
@@ -5789,7 +5806,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // recognized per message, and nothing is bound past this.
     let schema = compiled.schema().expect("a bound term");
     let names: Vec<&str> = schema.fields().iter().map(Field::name).collect();
-    assert_eq!(names.len(), 62, "{names:?}");
+    assert_eq!(names.len(), 65, "{names:?}");
     for read in [
         "cumqty",
         "cxlqty",
@@ -5810,8 +5827,8 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     let derived: Vec<(i32, bool)> = compiled.derived().collect();
     assert_eq!(
         derived.len(),
-        36,
-        "29 shipped fields and the crate's seven columns"
+        39,
+        "29 shipped fields and the crate's ten columns"
     );
     assert!(
         derived.iter().all(|(_, bound)| *bound),
@@ -5856,7 +5873,7 @@ fn the_derivations_bind_once_against_the_working_schema_and_recompile_on_a_chang
     // The four columns added after `state` read eight sources between them -
     // the expiry chain's four tags, the lane currencies' two, and the two
     // clocks - so the working schema is that much wider.
-    assert_eq!(names.len(), 62, "the edit reads a column another rule read");
+    assert_eq!(names.len(), 65, "the edit reads a column another rule read");
 }
 
 #[test]
@@ -5878,6 +5895,9 @@ fn a_handful_of_fields_compiles_the_crate_terms_over_columns_no_message_states()
             super::EXPIREDAT_TAG_NAME.0,
             super::BIDCURRENCY_TAG_NAME.0,
             super::OFFERCURRENCY_TAG_NAME.0,
+            super::BLOOMBERGCODE_TAG_NAME.0,
+            super::CUSIPCODE_TAG_NAME.0,
+            super::SEDOLCODE_TAG_NAME.0,
         ]
     );
     // A stated crate column is never overwritten and never re-derived, and

@@ -403,6 +403,7 @@ impl TryFrom<&DataType> for ArrowDataType {
             | R::Isin
             | R::Cusip
             | R::Sedol
+            | R::Bloomberg
             | R::Side
             | R::State
             | R::TimeInForce
@@ -539,6 +540,7 @@ impl TryFrom<DataType> for ArrowDataType {
             | R::Isin
             | R::Cusip
             | R::Sedol
+            | R::Bloomberg
             | R::Side
             | R::State
             | R::TimeInForce

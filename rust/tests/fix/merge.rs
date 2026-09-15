@@ -553,11 +553,11 @@ fn add_fields_counts_what_arrived_and_what_folded() {
         .unwrap();
     assert_eq!(instrument.description(), Some("by name"));
     assert_eq!(names(instrument), ["Symbol"]);
-    // The crate's own message is a component too, so it counts here beside
-    // `Instrument` and `Header`.
+    // The crate's own message is a component too, and so is its `instids`,
+    // so both count here beside `Instrument` and `Header`.
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),
-        2 + super::crated_messages()
+        2 + super::crated_messages() + super::crated_components()
     );
 
     // One mutation: a refusal in the middle writes nothing.

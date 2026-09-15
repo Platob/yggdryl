@@ -11,7 +11,25 @@ use yggdryl::{
 };
 
 const CLOCK: i64 = 123_456_789;
-const BUNDLE: [i32; 7] = [
+
+/// The columns whose *value* every message carries.
+///
+/// `snapshotat` is not one: a row that is not a snapshot says so by leaving
+/// it empty, so it is held rather than mandatory.
+const BUNDLE: [i32; 6] = [
+    UPDATEDAT_TAG_NAME.0,
+    CREATEDAT_TAG_NAME.0,
+    MSGHASH_TAG_NAME.0,
+    MSGPHASH_TAG_NAME.0,
+    CODE_TAG_NAME.0,
+    52,
+];
+
+/// The columns the replay bundle *holds*: [`BUNDLE`] and the snapshot clock.
+///
+/// A holder is never removed and is always reached by its tag under whatever
+/// name it was renamed to, whether or not a message fills it.
+const HELD: [i32; 7] = [
     UPDATEDAT_TAG_NAME.0,
     CREATEDAT_TAG_NAME.0,
     MSGHASH_TAG_NAME.0,
@@ -50,7 +68,7 @@ fn payload(value: Scalar) -> (Field, Scalar) {
 
 fn aliased_message() -> FixMsg {
     let mut registry = FixRegistry::new();
-    for tag in BUNDLE {
+    for tag in HELD {
         let mut field = declared(&registry, tag);
         field
             .as_fix_mut()
@@ -165,7 +183,9 @@ fn fixed_intake_clock_settles_native_hard_values_and_replays_exactly() {
     assert_eq!(first.clone(), first);
     assert_eq!(first.updatedat(), &clock(CLOCK));
     assert_eq!(first.createdat(), &clock(CLOCK));
-    assert_eq!(first.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(), &clock(CLOCK));
+    // A read is not a snapshot: only `FixLifecycle::snapshot` stamps that
+    // clock, so an ordinary message leaves it empty.
+    assert!(first.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap().is_null());
     assert_eq!(first.by_tag(52).unwrap(), &clock(CLOCK));
     assert_eq!(first.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some(""));
     assert_eq!(first.into_bytes(b'|'), bytes);
@@ -187,10 +207,7 @@ fn message_sending_and_transact_clocks_precede_the_fixed_default() {
         .unwrap();
     assert_eq!(message.by_tag(52).unwrap(), &clock(2_123_456_789));
     assert_eq!(message.by_tag(60).unwrap(), &clock(3_987_654_321));
-    assert_eq!(
-        message.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(),
-        &clock(3_987_654_321)
-    );
+    assert!(message.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap().is_null());
     assert_eq!(message.updatedat(), &clock(3_987_654_321));
     assert_eq!(message.createdat(), &clock(3_987_654_321));
     assert_mirrors(&message);
@@ -399,20 +416,32 @@ fn explicit_identity_writes_assert_the_complete_candidate_atomically() {
 #[test]
 fn mandatory_null_writes_and_removals_refuse_without_changing_any_state() {
     let mut held = message([payload(Scalar::from("first"))]);
-    for tag in BUNDLE {
+    for tag in HELD {
         let before = held.clone();
         let name = held.as_field().fields()[position(&held, tag)]
             .name()
             .to_owned();
-        located(
-            held.set(tag, Scalar::Null).unwrap_err(),
-            &format!("$.{name}"),
-        );
-        assert_eq!(held, before);
+        if BUNDLE.contains(&tag) {
+            located(
+                held.set(tag, Scalar::Null).unwrap_err(),
+                &format!("$.{name}"),
+            );
+            assert_eq!(held, before);
+        }
         located(held.remove(tag).unwrap_err(), &format!("$.{name}"));
         assert_eq!(held, before);
         assert_mirrors(&held);
     }
+    // The snapshot clock is held rather than mandatory: the column is not
+    // removable, and clearing it is how a row says no snapshot took it. A
+    // stamp and a clear return the row it started as, identity included.
+    let before = held.clone();
+    assert!(before.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap().is_null());
+    held.set(SNAPSHOTAT_TAG_NAME.0, clock(CLOCK)).unwrap();
+    assert_eq!(held.by_tag(SNAPSHOTAT_TAG_NAME.0).unwrap(), &clock(CLOCK));
+    assert_ne!(held.msghash(), before.msghash());
+    held.set(SNAPSHOTAT_TAG_NAME.0, Scalar::Null).unwrap();
+    assert_eq!(held, before);
     let old = held.msghash().clone();
     assert_eq!(held.remove("payload").unwrap(), Some(Scalar::from("first")));
     assert_ne!(held.msghash(), &old);
@@ -424,7 +453,7 @@ fn mandatory_null_writes_and_removals_refuse_without_changing_any_state() {
 #[test]
 fn mandatory_names_numeric_spellings_and_renamed_tags_resolve_once_in_place() {
     let original = message([]);
-    for tag in BUNDLE {
+    for tag in HELD {
         for style in 0..3 {
             let at = position(&original, tag);
             let mut fields = original.as_field().fields().to_vec();
@@ -503,7 +532,7 @@ fn tagless_replay_holders_keep_resolved_roles_and_repeat_the_same_export() {
     let original = aliased_message();
     for style in 0..3 {
         let mut fields = original.as_field().fields().to_vec();
-        for tag in BUNDLE {
+        for tag in HELD {
             let field = &mut fields[position(&original, tag)];
             match style {
                 1 => field.set_name(tag.to_string()),
@@ -515,7 +544,7 @@ fn tagless_replay_holders_keep_resolved_roles_and_repeat_the_same_export() {
         let schema = root(fields);
         let row = original.into_row(&schema).unwrap();
         let held = FixMsg::from_row(Arc::clone(original.registry()), &schema, &row).unwrap();
-        for tag in BUNDLE {
+        for tag in HELD {
             let at = position(&original, tag);
             let known = declared(original.registry(), tag);
             let alias = format!("alias_{tag}");
@@ -547,7 +576,7 @@ fn tagless_replay_holders_keep_resolved_roles_and_repeat_the_same_export() {
 #[test]
 fn every_key_spelling_keeps_a_renamed_mandatory_holder_and_refuses_its_removal() {
     let original = aliased_message();
-    for tag in BUNDLE {
+    for tag in HELD {
         let known = declared(original.registry(), tag);
         let alias = format!("alias_{tag}");
         let at = position(&original, tag);
@@ -586,8 +615,10 @@ fn every_key_spelling_keeps_a_renamed_mandatory_holder_and_refuses_its_removal()
             }
             located(held.remove(key).unwrap_err(), "$.holder");
             assert_eq!(held, original, "removal is atomic: {key}");
-            located(held.set(key, Scalar::Null).unwrap_err(), "$.holder");
-            assert_eq!(held, original, "null refusal is atomic: {key}");
+            if BUNDLE.contains(&tag) {
+                located(held.set(key, Scalar::Null).unwrap_err(), "$.holder");
+                assert_eq!(held, original, "null refusal is atomic: {key}");
+            }
             assert_mirrors(&held);
         }
     }
@@ -623,7 +654,7 @@ fn conflicting_malformed_duplicate_and_mistyped_mandatory_declarations_refuse() 
         matches!(error, Error::InvalidMetadataValue { .. }),
         "{error}"
     );
-    for tag in BUNDLE {
+    for tag in HELD {
         let at = position(&original, tag);
         for value in [Scalar::Null, original.as_value().get(at).unwrap().clone()] {
             let mut fields = original.as_field().fields().to_vec();
@@ -658,7 +689,7 @@ fn conflicting_malformed_duplicate_and_mistyped_mandatory_declarations_refuse() 
 #[test]
 fn replay_bundle_is_required_before_record_defaults_can_supply_a_value() {
     let original = message([payload(Scalar::from("value"))]);
-    for tag in BUNDLE {
+    for tag in HELD {
         let at = position(&original, tag);
         let name = original.as_field().fields()[at].name();
         let path = format!("$.{name}");
@@ -677,6 +708,12 @@ fn replay_bundle_is_required_before_record_defaults_can_supply_a_value() {
             .unwrap_err(),
             &path,
         );
+        // The rest is about the *value*, which the snapshot clock need not
+        // have: a nullable column holding null is exactly how a row that no
+        // snapshot took says so.
+        if !BUNDLE.contains(&tag) {
+            continue;
+        }
         let mut fields = original.as_field().fields().to_vec();
         fields[at].set_nullable(true);
         located(
@@ -725,7 +762,7 @@ fn replay_bundle_is_required_before_record_defaults_can_supply_a_value() {
 #[test]
 fn replay_refuses_tampered_identity_and_non_native_mandatory_values() {
     let original = message([]);
-    for tag in BUNDLE {
+    for tag in HELD {
         let at = position(&original, tag);
         let mut values = original.as_value().as_sequence().unwrap().to_vec();
         values[at] = match tag {

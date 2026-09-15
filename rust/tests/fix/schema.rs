@@ -5,15 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::{
-    DataType, Field, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, fix_column_of, fix_schema,
-};
-
-/// One nanosecond UTC instant, the layout every settled clock and the
-/// partition have.
-fn clock(nanoseconds: i64) -> Scalar {
-    Scalar::datetime64(nanoseconds, TimeUnit::Nanosecond, Timezone::UTC).unwrap()
-}
+use yggdryl::{DataType, Field, FixCodec, FixRegistry, Scalar, fix_column_of, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -51,17 +43,18 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 110);
+    assert_eq!(tags.len(), 117);
     // The crate's own lead the row in three groups - clocks, identities,
     // then the rest - and the protocol's own follow them.
-    let (crated, message) = tags.split_at(29);
+    let (crated, message) = tags.split_at(36);
     assert_eq!(
         crated,
         [
             65_003, 65_021, 65_023, 65_025, 65_028, 65_029, // clocks
             65_016, 65_017, 65_018, 65_022, 65_024, // identities, and the code
             65_001, 65_002, 65_005, 65_006, 65_007, 65_008, 65_009, 65_010, 65_011, 65_012, 65_013,
-            65_014, 65_015, 65_019, 65_020, 65_026, 65_030, 65_031,
+            65_014, 65_015, 65_019, 65_020, 65_026, 65_030, 65_031, 65_032, 65_033, 65_034, 65_035,
+            65_036, 65_037, 65_038,
         ]
     );
     // The arrival record closes the row, so its counter waits for the end
@@ -186,7 +179,9 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         assert_eq!(field.display(), Some(display), "tag {tag}");
     }
 
-    // The seven replay holders, BeginString and derived partition are required.
+    // The replay bundle and BeginString are required, and nothing else:
+    // `snapshotat` is only what a snapshot stamps, so it is nullable like
+    // every other column a message may not state.
     let required: Vec<&str> = fields
         .iter()
         .filter(|field| !field.is_nullable())
@@ -197,7 +192,6 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         [
             "updatedat",
             "createdat",
-            "snapshotat",
             "msghash",
             "msgphash",
             "code",

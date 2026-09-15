@@ -7,8 +7,11 @@
 //! never a second tag list. Occupied keys are not stolen, and empty code opens
 //! no chain. The message's identity owner hashes the settled code into `msgphash`.
 //!
-//! Every accepted message has `updatedat` truncated to its epoch bucket; its
-//! real event instant remains `snapshotat`. One transition finalizes the whole
+//! Every accepted message has `updatedat` truncated to its epoch bucket; the
+//! real event instant it was cut from is its `createdat`. `snapshotat` is
+//! narrower: `snapshot` stamps it with the instant the reading was taken, and
+//! every row no snapshot was taken of leaves it empty, so "is this row a
+//! snapshot" is answerable from the row. One transition finalizes the whole
 //! message before remembering its previous-message pair. `fill` returns every
 //! result; `snapshot` emits only an off-grid arrival above its live chain's
 //! highest consumed bucket. Suppression changes neither processing nor history.
@@ -17,8 +20,12 @@
 //! every later join carries it, even when late, suppressed or terminal.
 //!
 //! State is bounded to live chains and their distinct attached identifiers:
-//! code, first creation clock, last clock/identity and highest bucket, never pending
-//! rows or historical tombstones. A terminal receives its previous pair and
+//! code, highest bucket and the chain's last accepted message, which is what
+//! the next one is paired to - its `createdat` is the chain's first creation
+//! instant, its `updatedat` the chain's last clock and its `msghash` the
+//! chain's last identity, so keeping copies of the three beside it made this
+//! a second owner of what the message already states. Never pending rows or
+//! historical tombstones. A terminal receives its previous pair and
 //! creation clock, then closes the chain even when suppressed. Reopening starts
 //! fresh and may emit in the same bucket. Late arrivals advance history but
 //! cannot lower the high-water mark or replace the first creation instant.
@@ -32,7 +39,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::hashing::xxhash::Xxh128;
 use crate::path::{Path, Segment};
 use crate::types::{Code, State};
-use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::identity::{self, Identity};
 use super::msg::FixMsg;
@@ -40,7 +47,7 @@ use super::registry::FixRegistry;
 use super::schema::CLOCK_DATATYPE;
 use super::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixKey, INSTUUID_TAG_NAME,
-    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGHASH_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME,
+    ISINCODE_TAG_NAME, MICCODE_TAG_NAME, MSGPHASH_TAG_NAME, PREVMSGHASH_TAG_NAME,
     PREVUPDATEDAT_TAG_NAME, STATE_TAG_NAME, UPDATEDAT_TAG_NAME,
 };
 
@@ -105,11 +112,16 @@ struct Chain {
     code: SmolStr,
     /// Every attached scope is forgotten together when this chain closes.
     keys: Vec<(Option<Identity>, SmolStr)>,
-    /// The first successful arrival, never replaced by a later join.
-    createdat: Scalar,
-    /// Only the last successful message, under the shared clock datatype.
-    timestamp: Scalar,
-    msghash: Identity,
+    /// The last successful message, which is what the next one is paired to.
+    ///
+    /// The message rather than a copy of three of its values: its
+    /// `createdat` is the chain's first accepted creation instant (every
+    /// later join is stamped with it, so the last one carries it), its
+    /// `updatedat` is the chain's last clock and its `msghash` the chain's
+    /// last identity. Keeping the three beside it made this struct a second
+    /// owner of facts the message already states, and
+    /// [`FixMsg::with_previous`] reads them off it directly.
+    previous: FixMsg,
     /// Includes aligned and suppressed arrivals, never decreases while live.
     highest_bucket: i64,
 }
@@ -218,8 +230,22 @@ impl FixLifecycle {
     ///
     /// Returns the same atomic refusal as [`Self::fill`].
     pub fn snapshot(&mut self, message: FixMsg) -> Result<Option<FixMsg>> {
-        self.transition(message)
-            .map(|(message, emitted)| emitted.then_some(message))
+        let (mut message, emitted) = self.transition(message)?;
+        if !emitted {
+            return Ok(None);
+        }
+        // This row *is* a snapshot, so it says so: `snapshotat` is the real
+        // instant the reading was taken at, beside the grid `updatedat` the
+        // bucket is cut on. An ordinary message leaves the column null, which
+        // is what makes "is this row a snapshot" answerable from the row.
+        if message
+            .get_by_tag(super::SNAPSHOTAT_TAG_NAME.0)
+            .is_none_or(Scalar::is_null)
+        {
+            let taken = message.createdat().clone();
+            message.set_many([(super::SNAPSHOTAT_TAG_NAME.0, taken)])?;
+        }
+        Ok(Some(message))
     }
 
     /// Owns this configured lifecycle over a fallible stream, without buffering.
@@ -265,23 +291,22 @@ impl FixLifecycle {
             stated_instrument.or_else(|| instrument_digest(&message).map(u128::to_be_bytes));
         let keys = self.chain_keys(&message, instrument)?;
         let (code, persistent) = self.chain_name(&message, &keys)?;
-        let previous = persistent.and_then(|held| self.chains.get(&held));
+        let chain = persistent.and_then(|held| self.chains.get(&held));
         let emitted = persistent.is_some()
             && incoming != grid
-            && previous.is_none_or(|chain| grid > chain.highest_bucket);
+            && chain.is_none_or(|chain| grid > chain.highest_bucket);
         let terminal = is_terminal(&message);
         message.stamp_lifecycle(
             &code,
             Scalar::datetime64(grid, TimeUnit::Nanosecond, Timezone::UTC)?,
             instrument.filter(|_| stated_instrument.is_none()),
-            previous,
+            chain.map(|chain| &chain.previous),
         )?;
         if let Some(persistent) = persistent {
             if terminal {
                 self.close(persistent);
             } else {
-                let msghash = identity::stated_identity(MSGHASH_TAG_NAME.1, message.msghash())?;
-                self.join(persistent, code, keys, &message, msghash, grid);
+                self.join(persistent, code, keys, &message, grid);
             }
         }
         Ok((message, emitted))
@@ -344,7 +369,6 @@ impl FixLifecycle {
         code: SmolStr,
         mut keys: Vec<(Option<Identity>, SmolStr)>,
         message: &FixMsg,
-        msghash: Identity,
         bucket: i64,
     ) {
         keys.retain(|key| match self.keys.entry(key.clone()) {
@@ -362,17 +386,14 @@ impl FixLifecycle {
                 entry.insert(Chain {
                     code,
                     keys,
-                    createdat: message.createdat().clone(),
-                    timestamp: message.updatedat().clone(),
-                    msghash,
+                    previous: message.clone(),
                     highest_bucket: bucket,
                 });
             }
             Entry::Occupied(mut entry) => {
                 let chain = entry.get_mut();
                 chain.keys.extend(keys);
-                chain.timestamp = message.updatedat().clone();
-                chain.msghash = msghash;
+                chain.previous = message.clone();
                 chain.highest_bucket = chain.highest_bucket.max(bucket);
             }
         }
@@ -394,21 +415,31 @@ impl FixLifecycle {
         instrument: Option<Identity>,
     ) -> Result<Vec<(Option<Identity>, SmolStr)>> {
         let derived;
-        let held = if let Some(held) = message
+        let stated = message
             .get_by_tag(ALTIDS_TAG_NAME.0)
-            .filter(|held| !held.is_null())
-        {
-            held
-        } else {
-            let code = message
-                .get_by_tag(35)
-                .and_then(Scalar::as_str)
-                .unwrap_or_default();
-            let Some(component) = self.registry.get_msgtype(code) else {
-                return Ok(Vec::new());
-            };
-            derived = component.identifier_mapping(message)?;
-            &derived
+            .filter(|held| !held.is_null());
+        // A message type the dictionary does not publish declares no
+        // identifiers, which used to end the search here. It no longer does:
+        // the bridge's own names for the message are appended below whatever
+        // the dictionary found, and they are exactly what such a message has.
+        let held = match stated {
+            Some(held) => Some(held),
+            None => {
+                let code = message
+                    .get_by_tag(35)
+                    .and_then(Scalar::as_str)
+                    .unwrap_or_default();
+                match self.registry.get_msgtype(code) {
+                    Some(component) => {
+                        derived = component.identifier_mapping(message)?;
+                        Some(&derived)
+                    }
+                    None => None,
+                }
+            }
+        };
+        let Some(held) = held else {
+            return self.session_keys(message, instrument, Vec::new());
         };
         let root = Path::root();
         let path = root.field(ALTIDS_TAG_NAME.1);
@@ -460,72 +491,203 @@ impl FixLifecycle {
                 keys.push((instrument, value.storage().clone()));
             }
         }
+        self.session_keys(message, instrument, keys)
+    }
+
+    /// Appends the bridge's own names for a message to whatever the
+    /// dictionary found.
+    ///
+    /// A message the dictionary gave identifiers to is joined by those;
+    /// these are what a message the dictionary says nothing about still has,
+    /// and they are exact rather than heuristic - the bridge wrote them.
+    ///
+    /// Order matters twice over. Last, because `chain_name` names a *new*
+    /// chain after the first key, and a name nobody else will ever state
+    /// would open a chain of one. And `sessionmsgid` before
+    /// `sessionmsgseqid`, because the message context is shared by the
+    /// legs of one routed message - the receive and the send join on it -
+    /// while the sequence number makes the name one occurrence's, which
+    /// joins nothing but matches exactly.
+    fn session_keys(
+        &self,
+        message: &FixMsg,
+        instrument: Option<Identity>,
+        mut keys: Vec<(Option<Identity>, SmolStr)>,
+    ) -> Result<Vec<(Option<Identity>, SmolStr)>> {
+        for (tag, parts) in [
+            (
+                super::SESSIONMSGID_TAG_NAME.0,
+                super::schema::SESSION_MSG_PARTS.as_slice(),
+            ),
+            (
+                super::SESSIONMSGSEQID_TAG_NAME.0,
+                super::schema::SESSION_MSG_SEQ_PARTS.as_slice(),
+            ),
+        ] {
+            // Joined from the bracket's own parts where the column is not
+            // materialized, because a message and its fixed-row projection
+            // must scope to the same chain: the column is derived from those
+            // parts, and a row that carries it carries them too.
+            let held = message
+                .get_by_tag(tag)
+                .filter(|held| !held.is_null())
+                .cloned()
+                .unwrap_or_else(|| message.session_scoped(parts));
+            if let Some(held) = held
+                .as_str()
+                .map(str::trim)
+                .filter(|held| !held.is_empty())
+                .map(SmolStr::new)
+            {
+                if !keys.iter().any(|(_, name)| name == &held) {
+                    keys.push((instrument, held));
+                }
+            }
+        }
         Ok(keys)
     }
 }
 
 impl FixMsg {
+    /// This message carrying the one before it in its chain, or `None` where
+    /// nothing moved.
+    ///
+    /// What a message takes from its predecessor is the message's own
+    /// business, so this is where it is said: the creation instant the chain
+    /// settled on, the predecessor's clock and the predecessor's identity,
+    /// each landing only where this message states nothing of its own. A
+    /// message that already states all three - the one a replay hands back -
+    /// answers `None`, because rebuilding it would recompute an identity to
+    /// the same sixteen bytes.
+    ///
+    /// [`FixLifecycle::fill`] answers for every message, so it writes these
+    /// stamps beside its own in one pass rather than through this door; a
+    /// stream that only wants what moved flattens the `None` away.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// use std::sync::Arc;
+    /// let registry = Arc::new(yggdryl::FixRegistry::new());
+    /// let codec = yggdryl::FixCodec::new(registry);
+    /// let line = b"8=FIX.4.4|35=D|11=A1|52=20240102-10:15:30.000|10=0|";
+    /// let first = codec.parse_fix_line(line)?;
+    /// let paired = first.clone().with_previous(Some(&first))?.expect("it moved");
+    /// assert_eq!(
+    ///     paired.by_tag(yggdryl::PREVMSGHASH_TAG_NAME.0)?,
+    ///     first.msghash(),
+    /// );
+    /// // Nothing moves twice: the pair is already what it would be written to.
+    /// assert!(paired.clone().with_previous(Some(&first))?.is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a located refusal for a malformed previous stamp this message
+    /// states, or for a column declared under the wrong datatype.
+    pub fn with_previous(mut self, previous: Option<&Self>) -> Result<Option<Self>> {
+        let writes = self.previous_writes(previous)?;
+        if writes.is_empty() {
+            return Ok(None);
+        }
+        self.set_many_with(writes, lifecycle_declared)?;
+        Ok(Some(self))
+    }
+
+    /// The stamps this message takes from the one before it in its chain.
+    ///
+    /// The one owner of that fact: [`Self::with_previous`] publishes them on
+    /// their own and [`Self::stamp_lifecycle`] publishes them beside the
+    /// lifecycle's, and both ask here what they are. Empty where nothing
+    /// moved, which is what makes a replay free.
+    fn previous_writes(&self, previous: Option<&Self>) -> Result<Vec<(i32, Scalar)>> {
+        let stated_clock = stated_previous_clock(self)?.is_some();
+        let stated_id = stated_identity_of(self, PREVMSGHASH_TAG_NAME)?.is_some();
+        let held = [
+            previous.map(|previous| (CREATEDAT_TAG_NAME.0, previous.createdat().clone())),
+            (!stated_clock).then(|| {
+                (
+                    PREVUPDATEDAT_TAG_NAME.0,
+                    previous.map_or(Scalar::Null, |previous| previous.updatedat().clone()),
+                )
+            }),
+            (!stated_id).then(|| {
+                (
+                    PREVMSGHASH_TAG_NAME.0,
+                    previous.map_or(Scalar::Null, |previous| previous.msghash().clone()),
+                )
+            }),
+        ];
+        // A write landing the value the column already holds is not a write:
+        // it would rebuild the row and recompute the identity to the same
+        // bytes, which is the whole cost of replaying a stamped stream. A
+        // column declared as something else is not that case - a clock
+        // column holding text is refused rather than left alone, so the
+        // write is kept and `lifecycle_declared` answers for it.
+        Ok(held
+            .into_iter()
+            .flatten()
+            .filter(|(tag, value)| !self.settled(*tag, value))
+            .collect())
+    }
+
+    /// Whether a stamp would land on a column that already holds it, under
+    /// the datatype that stamp is declared with.
+    fn settled(&self, tag: i32, value: &Scalar) -> bool {
+        self.get_by_tag(tag) == Some(value)
+            && self
+                .index_of_tag(tag)
+                .and_then(|at| self.as_field().fields().get(at))
+                .is_some_and(|field| lifecycle_declared(&FixKey::Tag(tag), field).is_ok())
+    }
+
     /// Preserve stated previous values and publish all native stamps together.
     fn stamp_lifecycle(
         &mut self,
         code: &SmolStr,
         updatedat: Scalar,
         instrument: Option<Identity>,
-        previous: Option<&Chain>,
+        previous: Option<&Self>,
     ) -> Result<()> {
-        let previous_id_stated = stated_identity_of(self, PREVMSGHASH_TAG_NAME)?.is_some();
-        let previous_clock_stated = stated_previous_clock(self)?.is_some();
-        let created = previous.map(|chain| (CREATEDAT_TAG_NAME.0, chain.createdat.clone()));
-        let previous = [
-            (!previous_clock_stated).then(|| {
-                (
-                    PREVUPDATEDAT_TAG_NAME.0,
-                    previous.map_or(Scalar::Null, |chain| chain.timestamp.clone()),
-                )
-            }),
-            (!previous_id_stated).then(|| {
-                (
-                    PREVMSGHASH_TAG_NAME.0,
-                    previous.map_or(Scalar::Null, |chain| {
-                        identity::identity_scalar(chain.msghash)
-                    }),
-                )
-            }),
-        ];
+        let previous = self.previous_writes(previous)?;
         self.set_many_with(
             [
                 (CODE_TAG_NAME.0, Scalar::from(code.clone())),
                 (UPDATEDAT_TAG_NAME.0, updatedat),
             ]
             .into_iter()
-            .chain(created)
             .chain(instrument.map(|value| (INSTUUID_TAG_NAME.0, identity::identity_scalar(value))))
-            .chain(previous.into_iter().flatten()),
-            |key, field| {
-                let expected = match key {
-                    FixKey::Tag(tag) if *tag == CODE_TAG_NAME.0 => &DataType::utf8(),
-                    FixKey::Tag(tag)
-                        if *tag == UPDATEDAT_TAG_NAME.0
-                            || *tag == CREATEDAT_TAG_NAME.0
-                            || *tag == PREVUPDATEDAT_TAG_NAME.0 =>
-                    {
-                        &CLOCK_DATATYPE
-                    }
-                    _ => &identity::IDENTITY_DATATYPE,
-                };
-                if field.dtype() == expected {
-                    Ok(())
-                } else {
-                    Err(Error::InvalidRecord {
-                        path: Path::root().field(field.name()).render().into(),
-                        reason: crate::text::expected_got(
-                            expected,
-                            crate::text::elide_display(field.dtype()),
-                        ),
-                    })
-                }
-            },
+            .chain(previous),
+            lifecycle_declared,
         )
+    }
+}
+
+/// Every column a lifecycle stamp lands in is declared as what it holds.
+///
+/// A row that renamed one keeps it - the tag is the identity - but a row that
+/// retyped one is refused rather than coerced: a clock column holding text is
+/// not a clock, and a stamp that widened it would make the row lie.
+fn lifecycle_declared(key: &FixKey<'_>, field: &Field) -> Result<()> {
+    let expected = match key {
+        FixKey::Tag(tag) if *tag == CODE_TAG_NAME.0 => &DataType::utf8(),
+        FixKey::Tag(tag)
+            if *tag == UPDATEDAT_TAG_NAME.0
+                || *tag == CREATEDAT_TAG_NAME.0
+                || *tag == PREVUPDATEDAT_TAG_NAME.0 =>
+        {
+            &CLOCK_DATATYPE
+        }
+        _ => &identity::IDENTITY_DATATYPE,
+    };
+    if field.dtype() == expected {
+        Ok(())
+    } else {
+        Err(Error::InvalidRecord {
+            path: Path::root().field(field.name()).render().into(),
+            reason: crate::text::expected_got(expected, crate::text::elide_display(field.dtype())),
+        })
     }
 }
 
@@ -670,7 +832,6 @@ mod tests {
                 SmolStr::new("same"),
                 vec![(None, SmolStr::new("same")); count],
                 &message,
-                numbered(2),
                 0,
             );
             let chain = &life.chains[&persistent];
@@ -714,16 +875,18 @@ mod tests {
                 SmolStr::new("a different live code"),
                 vec![(None, SmolStr::new("OWNED"))],
                 &message,
-                numbered(7),
                 0,
             );
-            let Error::InvalidRecord { path, .. } = life.snapshot(message).unwrap_err() else {
+            let Error::InvalidRecord { path, .. } = life.snapshot(message.clone()).unwrap_err()
+            else {
                 panic!("a located code collision");
             };
             assert_eq!(path, "$.msgphash");
             let chain = &life.chains[&persistent];
             assert_eq!(chain.code, "a different live code");
-            assert_eq!(chain.msghash, numbered(7));
+            // The chain still holds the message it was joined with, so the
+            // refused arrival advanced nothing about it.
+            assert_eq!(&chain.previous, &message);
             assert_eq!(chain.highest_bucket, 0);
             assert_eq!(chain.keys, [(None, SmolStr::new("OWNED"))]);
             assert_eq!(life.keys.len(), 1);
