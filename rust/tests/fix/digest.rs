@@ -244,6 +244,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "code",
             "snapshotat",
             "sourceurl",
+            "nofixentries",
         ],
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -276,6 +277,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Code"),
             Some("SnapshotAt"),
             Some("SourceUrl"),
+            Some("NoFixEntries"),
         ],
     );
 
@@ -313,6 +315,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(held[25].name(), yggdryl::SOURCEURL_TAG_NAME.1);
     assert_eq!(held[25].dtype(), &DataType::Url);
     assert!(held[25].is_nullable());
+    // The arrival record is a group, so it has a counter like any other.
+    assert_eq!(held[26].name(), yggdryl::NOFIXENTRIES_TAG_NAME.1);
+    assert_eq!(held[26].dtype(), &DataType::Int32);
+    assert!(held[26].is_nullable());
     // The partition is the hour `updatedat` falls in, typed as that clock
     // is; it is marked as the column a layout is cut on, names the clock it
     // reads, and declares its derivation in the expression layer's own
@@ -395,8 +401,8 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .iter()
         .filter(|field| !field.dtype().is_nested())
         .count();
-    assert_eq!(held.len(), 26);
-    assert_eq!(scalar_count, 25);
+    assert_eq!(held.len(), 27);
+    assert_eq!(scalar_count, 26);
     let (mut registry, warnings) = super::warned::during(FixRegistry::new);
     assert!(warnings.is_empty(), "builtin registration: {warnings:?}");
     assert_eq!(registry.len(), scalar_count + 2);

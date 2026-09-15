@@ -865,7 +865,7 @@ fn a_frame_carrying_a_row_in_its_xmldata_fills_the_columns_the_frame_left_unsaid
         );
         // The arrival record is the frame's ten pairs and nothing the row
         // inside one of them said: the nested row fills, and records nothing.
-        let entries = held[at(&names, "nofixentries")]
+        let entries = held[at(&names, "fixentries")]
             .as_sequence()
             .expect("entries");
         assert_eq!(entries.len(), 10, "row {row}: {entries:?}");

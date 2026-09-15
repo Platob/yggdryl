@@ -562,7 +562,7 @@ impl Remembered {
 /// for the tags a book, a blotter, a quote feed and a monitor read, and a
 /// field outside that list reaches a message rebuilt from a row only through
 /// the arrival record - which the row carries whole, under
-/// [`ENTRIES_COLUMN`](super::schema::ENTRIES_COLUMN), whatever the columns
+/// [`FIXENTRIES_COLUMN`](super::schema::FIXENTRIES_COLUMN), whatever the columns
 /// made of it. `ExecBroker(76)` and `ClientID(109)` are two such fields, and
 /// the replacements that restate them write the `parties` group and its
 /// `NoPartyIDs(453)` counter, which do have columns. A pass reading only the

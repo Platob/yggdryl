@@ -28,9 +28,11 @@
 //! The categories are scalar wire fields, components and groups. A message
 //! is a component carrying `fix:msgtype`. List groups hold non-null Struct
 //! occurrences and reference a separate int32 counter: `NoPartyIDs` is tag
-//! 453, while `Parties` contains `Party` values. A crate-owned Map group
-//! holds its native entries under its own counter, without a scalar count
-//! column. Each field keeps its enumeration in `fix:codes` metadata.
+//! 453, while `Parties` contains `Party` values, and `NoFixEntries` is the
+//! crate's own 65027 while `FixEntries` contains `FixEntry` values. A
+//! crate-owned Map group holds its native entries under its own counter,
+//! without a scalar count column. Each field keeps its enumeration in
+//! `fix:codes` metadata.
 //!
 //! # Identity
 //!
@@ -181,12 +183,13 @@ pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREATEDAT_TAG_NAME,
     DEFAULT_PARTITION_SECONDS, INSTUUID_TAG_NAME, ISINCODE_TAG_NAME, MICCODE_TAG_NAME,
-    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGTYPE_TAG_NAME, PARENTCLORDID_TAG_NAME,
-    PARENTORDERID_TAG_NAME, PLUGINID_TAG_NAME, PREVPLUGINID_TAG_NAME, PREVUPDATEDAT_TAG_NAME,
-    PREVUUID_TAG_NAME, PUUID_TAG_NAME, SENDERSESSIONID_TAG_NAME, SENDERSESSIONNAME_TAG_NAME,
-    SNAPSHOTAT_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME, SYMBOLTICKER_TAG_NAME,
-    TARGETSESSIONID_TAG_NAME, TARGETSESSIONNAME_TAG_NAME, TIMEPARTITION_TAG_NAME,
-    UPDATEDAT_TAG_NAME, UUID_TAG_NAME, VERSION_TAG_NAME, fix_crate_fields, is_crate_tag,
+    MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME,
+    PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME, PLUGINID_TAG_NAME, PREVPLUGINID_TAG_NAME,
+    PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, SENDERSESSIONID_TAG_NAME,
+    SENDERSESSIONNAME_TAG_NAME, SNAPSHOTAT_TAG_NAME, SOURCEURL_TAG_NAME, STATE_TAG_NAME,
+    SYMBOLTICKER_TAG_NAME, TARGETSESSIONID_TAG_NAME, TARGETSESSIONNAME_TAG_NAME,
+    TIMEPARTITION_TAG_NAME, UPDATEDAT_TAG_NAME, UUID_TAG_NAME, VERSION_TAG_NAME, fix_crate_fields,
+    is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
@@ -212,7 +215,7 @@ pub use replacements::{
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{
-    BODY_TAGS, ENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, fix_column_of,
+    BODY_TAGS, FIXENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, fix_column_of,
     fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 

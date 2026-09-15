@@ -21,11 +21,11 @@ const { DataType, Field, IOBase, MimeType, Scalar, Url, fields, fix, hashing } =
 
 const SEED = path.join(__dirname, '..', '..', '..', 'config', 'fix')
 
-// The crate's own twenty-five scalar fields, at 65001-65019 and 65021-65026
+// The crate's own twenty-six scalar fields, at 65001-65019 and 65021-65027
 // (`rust/tests/fix/digest.rs`); the complete `fix.crateFields()` inventory
 // also lists the altids Map group at 65020, and 65000 - the retired msghash -
 // is not reused. A loaded dictionary holds these beside its stored fields.
-const CRATED = 25
+const CRATED = 26
 // What a new registry holds before anything is inserted: the crate's own
 // scalar fields and the seeded SendingTime (52) and TransactTime (60) clocks
 // (`seeded_fields()` in `rust/tests/fix.rs`).
@@ -33,7 +33,7 @@ const SEEDED = CRATED + 2
 // The crate's scalar tags, in order: the altids group's counter sits between.
 const CRATE_TAGS = [
   ...Array.from({ length: 19 }, (_, at) => 65001 + at),
-  ...Array.from({ length: 6 }, (_, at) => 65021 + at),
+  ...Array.from({ length: 7 }, (_, at) => 65021 + at),
 ]
 // The one intake clock the Rust suites read undated bytes under
 // (`fixed_codec` in `rust/tests/fix.rs`): 2024-01-02T10:15:30Z. Without it an
@@ -1784,11 +1784,11 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.equal(schema.fieldAt(0).fix.tag, 8)
   assert.equal(schema.fieldAt(2).name, 'msgtype')
   assert.equal(schema.fieldAt(2).fix.tag, 35)
-  // One list closes the row: `nofixentries`, the whole arrival record, with
-  // FIX's own `MsgDirection`, where the line was read from, and the settled
-  // chain facts before it.
+  // One group closes the row: `fixentries`, the whole arrival record, under
+  // the `nofixentries` that counts it, with FIX's own `MsgDirection`, where
+  // the line was read from, and the settled chain facts before them.
   const tail = []
-  for (let at = schema.fieldLen - 8; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
+  for (let at = schema.fieldLen - 9; at < schema.fieldLen; at += 1) tail.push(schema.fieldAt(at).name)
   assert.deepEqual(tail, [
     'prevupdatedat',
     'prevuuid',
@@ -1798,19 +1798,22 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
     'sourceurl',
     'msgdirection',
     'nofixentries',
+    'fixentries',
   ])
   assert.equal(schema.indexOf('nounmappedfixentries'), null)
   assert.equal(schema.indexOf('timestamp'), null)
   assert.equal(schema.indexOf('msghash'), null)
   assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
   // The crate's own facts close the tagged columns - 65001 through 65026,
-  // the altids group at 65020 among them, 65000 retired - and FIX's own
-  // `MsgDirection` after them, because it is read off the line where the wire
-  // states none. The closing list has no tag.
-  assert.equal(fix.schemaTags().length, 106)
-  assert.deepEqual(fix.schemaTags().slice(-27), [
+  // the altids group at 65020 among them, 65000 retired - then FIX's own
+  // `MsgDirection`, because it is read off the line where the wire states
+  // none, and last the arrival record's counter, which closes the row with
+  // the group it counts.
+  assert.equal(fix.schemaTags().length, 107)
+  assert.deepEqual(fix.schemaTags().slice(-28), [
     ...Array.from({ length: 26 }, (_, at) => 65001 + at),
     385,
+    65027,
   ])
 
   // A column is found by its folded name, and nothing else is needed.

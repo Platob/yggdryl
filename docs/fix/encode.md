@@ -85,7 +85,7 @@ This section renders `assets/fix.json` and needs JavaScript.
 - An arrival entry no dictionary resolved carries tag 0 and is emitted under its raw key, exactly where it arrived.
 - Direction verbs and surrounding capture prose are outside the emitted frame.
 - For streamed Arrow output, [`write_arrow_reader`](arrow.md#back-to-the-wire)
-  writes each row's `nofixentries` back as one line, with the codec's separator.
+  writes each row's `fixentries` back as one line, with the codec's separator.
 
 ## Commands
 

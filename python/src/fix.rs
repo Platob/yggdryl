@@ -1335,7 +1335,7 @@ impl PyFixMsg {
     /// mapping of names, a sequence in the schema's order. The columns are
     /// the message's children under the schema's names, reached by tag as a
     /// parsed message's are, and the entries are rebuilt from the
-    /// `nofixentries` column, so `into_bytes` re-emits the line the row was
+    /// `fixentries` column, so `into_bytes` re-emits the line the row was
     /// read from; a row without that column has no entries. Nothing is
     /// parsed again and no clock is read: a replayable row carries the whole
     /// non-null bundle - `updatedat`, `createdat`, `uuid`, `puuid`, `code`,
@@ -1703,7 +1703,7 @@ impl PyFixMsg {
     /// shifting its neighbours, which is what makes two rows of one capture
     /// comparable at all. A column no tag or group counter names is the
     /// capture's: it takes the child of that name where the message has one
-    /// and is null otherwise. The `nofixentries` list closes the row with the
+    /// and is null otherwise. The `fixentries` list closes the row with the
     /// whole arrival record. A schema missing or mistyping a member of the
     /// settled bundle, or a cell its column cannot hold, is a `ValueError`,
     /// and the projected `uuid` is recomputed over what the row holds.
@@ -2185,7 +2185,7 @@ impl PyFixCodec {
     /// `separator` - `SOH` when none is pinned - then a newline, into `sink`,
     /// a binary file-like object with `write`. The wire is rebuilt from the
     /// arrival record, never from the columns, so a batch without the
-    /// `nofixentries` column is refused before a row is read. One batch is
+    /// `fixentries` column is refused before a row is read. One batch is
     /// held at a time.
     fn write_arrow_reader(
         &self,
@@ -2388,7 +2388,7 @@ fn version_from_py(text: &str) -> PyResult<CoreVersion> {
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own definitions in tag order with `MsgDirection`
-/// (385) after them, and the one `nofixentries` list that closes every row
+/// (385) after them, and the one `fixentries` list that closes every row
 /// with the whole arrival record. Columns are spelled by the dictionary's
 /// folded canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `fix:tag`, and

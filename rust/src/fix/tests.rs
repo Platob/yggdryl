@@ -949,9 +949,10 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // `isincode`, `miccode` and `state` derive on the fields themselves -
     // `isincode` reading each identifier through `try_cast(... as isin)` -
     // and finally types the four identity columns as `fixed_size_binary(16)`
-    // rather than `uuid`. The crate's own `sourceurl` moved it last: where a
-    // line was read from is a column of the row.
-    assert_eq!(carrying.stable_hash(), 17_490_854_726_421_900_252);
+    // rather than `uuid`. The crate's own `sourceurl` and `nofixentries`
+    // moved it last: where a line was read from is a column of the row, and
+    // the arrival record is a group with a counter of its own.
+    assert_eq!(carrying.stable_hash(), 16_480_440_802_188_505_214);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");
@@ -5530,7 +5531,7 @@ fn an_entry_is_a_range_of_its_line_and_the_registry_names_its_field() {
 #[test]
 fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     let root = super::fix_schema(&FixRegistry::new(), "row").unwrap();
-    let column = super::ENTRIES_COLUMN;
+    let column = super::FIXENTRIES_COLUMN;
     let held = root
         .fields()
         .iter()
@@ -5542,7 +5543,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
     // Exactly three fixentry levels on every root-to-leaf path, each with
     // the same four members - what the line said and what FIX added, and
     // nothing the message already answers - the fourth a non-null
-    // nofixentries that is a deeper list twice and the binary leaf at the
+    // fixentries that is a deeper list twice and the binary leaf at the
     // bottom.
     let mut held = item;
     for level in 1..=3 {
@@ -5552,7 +5553,7 @@ fn the_entry_column_holds_the_pair_and_what_arrived_under_it() {
         let names: Vec<&str> = members.iter().map(Field::name).collect();
         assert_eq!(
             names,
-            ["tag", "key", "value", "nofixentries"],
+            ["tag", "key", "value", "fixentries"],
             "{column} level {level}",
         );
         assert_eq!(

@@ -66,7 +66,7 @@ use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH};
 use super::msg::FixMsg;
-use super::{ENTRIES_COLUMN, FixEntry, FixMessages, FixRegistry};
+use super::{FIXENTRIES_COLUMN, FixEntry, FixMessages, FixRegistry};
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -203,7 +203,7 @@ impl FixCodec {
     ///
     /// Each row is one message through [`FixMsg::from_row`] under the
     /// source's schema, its entries rebuilt from the
-    /// [`ENTRIES_COLUMN`](super::ENTRIES_COLUMN) where the schema carries it,
+    /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) where the schema carries it,
     /// so a batch written by [`Self::parse_text_arrow_reader`] comes back as
     /// the messages that made it - re-emitting its lines, digesting, restating
     /// and stamping as they did - at the cost of the values it already holds
@@ -284,7 +284,7 @@ impl FixCodec {
     /// arrival record, never from the columns: the facets are a lossy
     /// projection by construction, and rebuilding a frame from them would
     /// emit a message that was never sent. A batch without the
-    /// [`ENTRIES_COLUMN`](super::ENTRIES_COLUMN) cannot be written and says
+    /// [`FIXENTRIES_COLUMN`](super::FIXENTRIES_COLUMN) cannot be written and says
     /// so before a row is read. A row in is a line out - a row whose message
     /// held no pairs is an empty line - and the count of lines is answered.
     ///
@@ -302,9 +302,9 @@ impl FixCodec {
         mut sink: impl std::io::Write,
     ) -> Result<u64> {
         let field = Self::row_field(source.schema().as_ref())?;
-        if field.index_of(ENTRIES_COLUMN).is_none() {
+        if field.index_of(FIXENTRIES_COLUMN).is_none() {
             return Err(Error::InvalidRecord {
-                path: smol_str::SmolStr::new_static(ENTRIES_COLUMN),
+                path: smol_str::SmolStr::new_static(FIXENTRIES_COLUMN),
                 reason: crate::text::expected_got(
                     "a batch carrying its arrival record",
                     "one holding only lifted columns",

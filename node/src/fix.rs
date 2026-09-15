@@ -823,7 +823,7 @@ impl JsFixMsg {
     /// row under it, which the loader widens from whatever `Scalar.fromJs`
     /// reads. The columns are the message's children under the schema's
     /// names, reached by tag as a parsed message's are, and the entries are
-    /// rebuilt from the `nofixentries` column, so `intoBytes` re-emits the
+    /// rebuilt from the `fixentries` column, so `intoBytes` re-emits the
     /// line the row was read from; a row without that column has no entries.
     /// Nothing is parsed again and no clock is read: the row must carry the
     /// seven non-null replay fields - `updatedat`, `createdat`, `uuid`,
@@ -1177,7 +1177,7 @@ impl JsFixMsg {
     /// carried nothing at a column answers null there rather than shifting its
     /// neighbours. A column no tag names is the capture's: it takes the child
     /// of that name where the message has one, else null. The arrival record
-    /// closes the row under `nofixentries`, unresolved keys at tag 0.
+    /// closes the row under `fixentries`, unresolved keys at tag 0.
     ///
     /// A replayable row keeps the seven replay fields; a schema missing or
     /// mistyping one, or a cell its column cannot represent, throws the
@@ -1931,7 +1931,7 @@ impl JsFixCodec {
     /// `separator` - `SOH` when none is pinned - then a newline, into `sink`,
     /// anything with `write(chunk: Uint8Array)`. The wire is rebuilt from the
     /// arrival record, never from the columns, so a batch without the
-    /// `nofixentries` column is refused before a row is read. One batch is
+    /// `fixentries` column is refused before a row is read. One batch is
     /// held at a time, and the source is consumed.
     #[allow(clippy::cast_precision_loss)]
     #[napi(ts_args_type = "source: BatchReader, sink: { write(chunk: Uint8Array): unknown }")]
@@ -2219,7 +2219,7 @@ pub fn fix_lifecycle_default_interval_ns_native() -> BigInt {
 ///
 /// Header, the fields a consumer reads, the groups worth persisting whole, the
 /// trailer, this crate's own derived facts through tag 65025, `MsgDirection`
-/// (385), and the one list that closes every row: `nofixentries`, the whole
+/// (385), and the one list that closes every row: `fixentries`, the whole
 /// arrival record, unresolved keys at tag 0. Columns are spelled by the
 /// dictionary's folded canonical names - `msgtype`, never `35` - so a row
 /// reads the way a message reads; the tag stays each column's identity, on

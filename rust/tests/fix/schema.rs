@@ -51,8 +51,8 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    assert_eq!(tags.len(), 106);
-    let (message, crated) = tags.split_at(tags.len() - 27);
+    assert_eq!(tags.len(), 107);
+    let (message, crated) = tags.split_at(tags.len() - 28);
     assert_eq!(
         message,
         [
@@ -63,13 +63,18 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         ]
         .concat()
     );
-    assert_eq!(crated, (65_001..=65_026).chain([385]).collect::<Vec<_>>());
+    // The arrival record closes the row, so its counter waits for the end
+    // with it rather than standing among the crate's other columns.
+    assert_eq!(
+        crated,
+        (65_001..=65_026).chain([385, 65_027]).collect::<Vec<_>>()
+    );
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     assert_eq!(
-        &names[names.len() - 8..],
+        &names[names.len() - 9..],
         [
             "prevupdatedat",
             "prevuuid",
@@ -79,6 +84,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             "sourceurl",
             "msgdirection",
             "nofixentries",
+            "fixentries",
         ]
     );
     for tag in [
@@ -110,7 +116,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(schema.index_of("msgtype"), Some(2));
     assert_eq!(column_of(&schema, 35), 2);
     assert_eq!(names[column_of(&schema, 32)], "lastqty");
-    assert_eq!(names.last(), Some(&"nofixentries"));
+    assert_eq!(names.last(), Some(&"fixentries"));
 
     // The dictionary's own typing reaches the column, so a currency column is
     // the packed currency and a side is the packed side.

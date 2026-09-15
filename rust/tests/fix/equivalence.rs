@@ -69,7 +69,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use yggdryl::fix::ENTRIES_COLUMN;
+use yggdryl::fix::FIXENTRIES_COLUMN;
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::text::{TextLine, TextOptions, read_text_lines};
@@ -195,7 +195,7 @@ impl Pinned {
         let values = row.as_sequence().expect("a row is a sequence");
         for (column, value) in schema.fields().iter().zip(values) {
             let name = column.name();
-            if name == ENTRIES_COLUMN || value.is_null() {
+            if name == FIXENTRIES_COLUMN || value.is_null() {
                 continue;
             }
             self.push(

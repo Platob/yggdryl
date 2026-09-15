@@ -118,7 +118,7 @@ fn expected_uuid(message: &FixMsg) -> Scalar {
             .iter()
             .zip(message.as_value().as_sequence().unwrap())
             .filter(|(field, _)| {
-                field.name() != yggdryl::fix::ENTRIES_COLUMN
+                field.name() != yggdryl::fix::FIXENTRIES_COLUMN
                     && !field.as_fix().tag().unwrap().is_some_and(|tag| {
                         [UUID_TAG_NAME.0, UPDATEDAT_TAG_NAME.0, CREATEDAT_TAG_NAME.0].contains(&tag)
                     })

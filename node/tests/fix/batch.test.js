@@ -306,7 +306,7 @@ test('the schema is decided before the first row is read', () => {
   assert.deepEqual(names.slice(0, 6), ['body', 'beginstring', 'bodylength', 'msgtype', 'sendercompid', 'targetcompid'])
   // One list closes the row - the whole arrival record, unresolved keys at
   // tag 0 - behind FIX's own `MsgDirection`.
-  assert.deepEqual(names.slice(-2), ['msgdirection', 'nofixentries'])
+  assert.deepEqual(names.slice(-3), ['msgdirection', 'nofixentries', 'fixentries'])
   assert.equal(names.includes('nounmappedfixentries'), false)
   assert.equal(reader.field.fieldAt(3).fix.tag, 35)
   // And an empty capture yields no batch at all.
@@ -398,7 +398,7 @@ test('the filling reader fills what the filling pass fills and leaves the record
   // The schema is the same schema: the carried column still leads.
   assert.deepEqual(filled.schema.fields.map((field) => field.name), bare.schema.fields.map((field) => field.name))
   // The arrival record is untouched either way.
-  assert.deepEqual(JSON.stringify(column(filled, 'nofixentries')), JSON.stringify(column(bare, 'nofixentries')))
+  assert.deepEqual(JSON.stringify(column(filled, 'fixentries')), JSON.stringify(column(bare, 'fixentries')))
 })
 
 test('messages and arrowReader invert each other', () => {
@@ -500,7 +500,7 @@ test('altids filling agrees between message and Arrow streams for all three rows
   const filled = codec.enrichMessagesArrowReader(bare).intoTable()
   const expected = [[['clordid', 'C-001'], ['execid', 'E-09'], ['orderid', 'O-01']], [], null]
   assert.deepEqual(mapColumn(filled, 'altids'), expected)
-  assert.equal(JSON.stringify(column(filled, 'nofixentries')), JSON.stringify(column(bare, 'nofixentries')))
+  assert.equal(JSON.stringify(column(filled, 'fixentries')), JSON.stringify(column(bare, 'fixentries')))
   assert.deepEqual(filled.schema, bare.schema)
   const second = codec.enrichMessagesArrowReader(filled).intoTable()
   assert.deepEqual(mapColumn(second, 'altids'), expected)
@@ -824,7 +824,7 @@ test('a row without the entries column has no entries', () => {
   const columns = []
   for (let at = 0; at < wideSchema.fieldLen; at += 1) {
     const held = wideSchema.fieldAt(at)
-    if (held.name !== 'nofixentries') columns.push(held)
+    if (held.name !== 'fixentries' && held.name !== 'nofixentries') columns.push(held)
   }
   const narrow = fields.struct('fix', columns, { nullable: false })
   const parsed = one(codec, ORDER)

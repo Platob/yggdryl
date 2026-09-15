@@ -3135,7 +3135,7 @@ export interface FixMsgConstructor {
   ): FixMsg
   /**
    * The message a fixed row holds: the inverse of `intoRow`, its entries
-   * rebuilt from the `nofixentries` column without a parse. The row carries
+   * rebuilt from the `fixentries` column without a parse. The row carries
    * the seven non-null replay fields and no clock is read.
    */
   fromRow(schema: Field, row: FixValueInput, registry?: FixRegistry | null): FixMsg
@@ -3210,7 +3210,7 @@ export interface Fix {
   schemaCarrying(carrier: Field, read: Field): Field
   /**
    * One row's tagged columns, in order, ending `..., 65025, 385`; the
-   * `nofixentries` list that closes the row has no tag.
+   * `fixentries` list that closes the row has no tag.
    */
   schemaTags(): number[]
   /**

@@ -8,11 +8,11 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `fix:tag`, and a named group column's counter on its `fix:counter` |
-| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 25 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `nofixentries` record: 106 tags from `fix_schema_tags`, 110 columns with the shipped registry, each List group adding its column beside its counter |
+| Shape | standard header, the fields a consumer reads, three List groups, the trailer, the crate's 26 scalar fields and the `altids` Map group, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 107 tags from `fix_schema_tags`, 112 columns with the shipped registry, each List group adding its column beside its counter |
 | Identifiers | enrichment fills the nullable, sorted `altids` Map from the message's direct `fix:identifiers`; a stated map is preserved, including an empty one |
 | Non-null | `beginstring`, `sendingtime`, `updatedat`, `timepartition`, `uuid`, `puuid`, `createdat`, `code`, `snapshotat`; `version` is populated at construction but its column remains nullable |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
-| Lossless | `nofixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
+| Lossless | `fixentries` is the whole arrival record, so the wire is rebuilt from it and never from the columns |
 | Expansion | a line yields one message per [frame it carries](decode.md#a-line-yields-none-one-or-many-messages) and none where it carries none; a bulk configuration yields one per configuration a response named, and none for a response that named none - an error-only answer, a request-only document, an empty bulk or wildcard answer |
 | Refuses | no parseable row's content: a payload that was there and would not parse is a message with nothing in it, so it never fails the batch it arrives in; a stated mandatory clock that is not an instant is a located error item. The row count is the capture's messages rather than its lines |
 | Found | a column is `index_of("msgtype")` on the schema itself, and `fix_column_of(&schema, 35)` is the same position read off the column's own `fix:tag`; nothing is cached, resolved or invalidated |
@@ -279,8 +279,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
 
     let columns: Vec<&str> = schema.fields().iter().map(yggdryl::Field::name).collect();
     assert_eq!(&columns[..3], ["beginstring", "bodylength", "msgtype"]);
-    assert_eq!(columns.last(), Some(&"nofixentries"));
-    assert_eq!(fix_schema_tags().len(), 106);
+    assert_eq!(columns.last(), Some(&"fixentries"));
+    assert_eq!(fix_schema_tags().len(), 107);
     assert_eq!(&fix_schema_tags()[..3], [8, 9, 35]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -303,8 +303,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
 
     columns = [child.name for child in schema]
     assert columns[:3] == ["beginstring", "bodylength", "msgtype"]
-    assert columns[-1] == "nofixentries"
-    assert len(fix_schema_tags()) == 106
+    assert columns[-1] == "fixentries"
+    assert len(fix_schema_tags()) == 107
     assert fix_schema_tags()[:3] == [8, 9, 35]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -324,8 +324,8 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
 
     assert.equal(schema.fieldAt(0).name, 'beginstring')
     assert.equal(schema.fieldAt(2).name, 'msgtype')
-    assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'nofixentries')
-    assert.equal(fix.schemaTags().length, 106)
+    assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'fixentries')
+    assert.equal(fix.schemaTags().length, 107)
     assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -337,7 +337,7 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
 
 One record closes every row.
 
-`nofixentries` is the whole arrival record: every pair the reader read as sent - a stated absence and a bridge's marked restatement of a bare pair are read as never sent, as the [edges](#edges) above state - in arrival order, untranslated, and a group's members riding under the counter pair that heads them. It is a list of `fixentry` structs, each the tag its key resolved to, that key, its value, and what arrived under it. It is what makes a row lossless - the fixed columns are a *reading* of the message and the entries *are* the message, so the wire is rebuilt from them and never from the columns.
+`fixentries` is the whole arrival record: every pair the reader read as sent - a stated absence and a bridge's marked restatement of a bare pair are read as never sent, as the [edges](#edges) above state - in arrival order, untranslated, and a group's members riding under the counter pair that heads them. It is a list of `fixentry` structs, each the tag its key resolved to, that key, its value, and what arrived under it. It is what makes a row lossless - the fixed columns are a *reading* of the message and the entries *are* the message, so the wire is rebuilt from them and never from the columns.
 
 An entry says what arrived and only that. A key and a value are ranges of the line the message was read from, so an entry never carries a key that appears nowhere in that line: a bridge packing a whole occurrence into one value - `#NOPARTYIDS[0]=PARTYID=BUYSIDE...PARTYROLE=1` - is recorded as the pair the bridge wrote, and the members read out of it fill `parties[0].partyid` and its siblings in the row. No dialect is there either: a message is not a dictionary member, and which dictionaries a field belongs to is the field's own `fix:branches` in the registry.
 
@@ -404,7 +404,7 @@ The root's children are the standard header in its declared order, the body as i
     use yggdryl::{CODE_TAG_NAME, FixCodec, FixRegistry, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 26);
+    assert_eq!(fields.len(), 27);
     let partition = &fields[3];
     assert_eq!(partition.name(), "timepartition");
     assert_eq!(partition.display(), Some("TimePartition"));
@@ -463,7 +463,7 @@ The root's children are the standard header in its declared order, the body as i
 
     CODE, SNAPSHOTAT = 65024, 65025
     fields = list(fix_crate_fields())
-    assert len(fields) == 26
+    assert len(fields) == 27
     partition = fields[3]
     assert partition.name == "timepartition"
     assert partition.metadata["display"] == "TimePartition"
@@ -513,7 +513,7 @@ The root's children are the standard header in its declared order, the body as i
 
     const [CODE, SNAPSHOTAT] = [65024, 65025]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 26)
+    assert.equal(fields.length, 27)
     const partition = fields[3]
     assert.equal(partition.name, 'timepartition')
     assert.equal(partition.display, 'TimePartition')

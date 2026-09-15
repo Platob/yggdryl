@@ -225,7 +225,7 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
 
     // And the arrival record - the fact the wire is rebuilt from - is the same
     // on both paths, so the round trip closes either way.
-    let entries = column(batch, "nofixentries");
+    let entries = column(batch, "fixentries");
     for (at, message) in one_at_a_time.iter().enumerate() {
         assert_eq!(
             message.entries().len(),

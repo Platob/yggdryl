@@ -27,10 +27,11 @@
 //!
 //! # Nothing is lost at the end
 //!
-//! `nofixentries` closes every row with the whole arrival record: every pair, in arrival order,
-//! untranslated. It is what makes a row lossless - the fixed columns are a
-//! reading of the message and the entries are the message, so the wire is
-//! rebuilt from them and never from the columns.
+//! `fixentries` closes every row with the whole arrival record: every pair, in
+//! arrival order, untranslated, under the `nofixentries` that counts them. It
+//! is what makes a row lossless - the fixed columns are a reading of the
+//! message and the entries are the message, so the wire is rebuilt from them
+//! and never from the columns.
 //!
 //! Unresolved keys have tag zero in that same record; their original key,
 //! value and children remain in place. No second projection duplicates them.
@@ -89,14 +90,25 @@ pub const BODY_TAGS: [i32; 49] = [
 /// instrument's other identifiers were, and when each regulatory clock ran.
 pub const GROUP_TAGS: [i32; 3] = [453, 454, 768];
 
-/// The column holding the arrival record.
+/// The group holding the arrival record.
 ///
-/// This arrival-record column carries no `fix:tag` or `fix:counter`: it belongs
-/// to the fixed row, outside the registry and its dictionary shards.
-pub const ENTRIES_COLUMN: &str = "nofixentries";
+/// Named as a group is named, because it is one: a List of `fixentry`
+/// occurrences counted by [`NOFIXENTRIES_TAG_NAME`](super::NOFIXENTRIES_TAG_NAME),
+/// exactly as `Parties` holds `Party` occurrences counted by `NoPartyIDs`. A
+/// group spelled after its own counter was the one place this crate named a
+/// thing after the thing beside it.
+///
+/// It is the one group the registry does not define. A `fixentry` contains
+/// `fixentries`, and a catalog definition that referenced itself would be the
+/// cyclic reference the store refuses to load; the shape is bounded by
+/// [`ENTRY_DEPTH`] instead, here, where the bound can be read.
+pub const FIXENTRIES_COLUMN: &str = "fixentries";
 
 /// What one arrival record is called wherever it is materialized.
 const ENTRY_COMPONENT: &str = "fixentry";
+
+/// The counter column's name, as a pattern a row fill matches on.
+const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 
 /// One row's columns, in order, as tags.
 ///
@@ -119,14 +131,19 @@ pub fn fix_schema_tags() -> Vec<i32> {
     tags.extend_from_slice(&GROUP_TAGS);
     tags.extend_from_slice(&TRAILER_TAGS);
     for field in crated {
+        // The arrival record closes the row, so its counter waits for the end
+        // with it rather than standing among the crate's other columns.
         if let Ok(Some(tag)) = field.as_fix().tag() {
-            tags.push(tag);
+            if tag != super::crated::NOFIXENTRIES_TAG_NAME.0 {
+                tags.push(tag);
+            }
         }
     }
     // `MsgDirection` is FIX's own and already sits in the header's dialect,
     // but no message carries it on the wire - it is read from the line - so
     // it is appended here rather than expected among the header's tags.
     tags.push(super::MSGDIRECTION_TAG_NAME.0);
+    tags.push(super::crated::NOFIXENTRIES_TAG_NAME.0);
     tags
 }
 
@@ -375,17 +392,23 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
 /// this constant, not rewriting shapes by hand.
 const ENTRY_DEPTH: usize = 3;
 
-/// The single counter-named list of arrival records.
+/// The one group of arrival records, under the counter that counts them.
 fn entries_field() -> Result<Field> {
-    let mut field = DataType::list(entry_item(1)?).nullable_field(ENTRIES_COLUMN);
-    field.set_display("NoFixEntries")?;
+    let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
+    field.set_display("FixEntries")?;
     field.set_description("Every pair the message carried, in arrival order and untranslated.")?;
+    // A group says which counter counts it and which component one occurrence
+    // is, the way every other group in this crate says it.
+    field
+        .as_fix_mut()
+        .set_counter(super::NOFIXENTRIES_TAG_NAME.0)?;
+    field.as_fix_mut().set_component(ENTRY_COMPONENT)?;
     Ok(field)
 }
 
 /// One `fixentry` struct at one materialization level.
 ///
-/// The fourth member is `nofixentries` at every level and the meaning is
+/// The fourth member is `fixentries` at every level and the meaning is
 /// invariant; the type alone says where materialization stops - a list of
 /// deeper occurrences above [`ENTRY_DEPTH`], the binary leaf at it. Every
 /// occurrence, both inner lists and the leaf are non-null: an empty child
@@ -393,9 +416,9 @@ fn entries_field() -> Result<Field> {
 /// neither needs a validity bitmap to say so.
 fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
-        DataType::list(entry_item(level + 1)?).required_field(ENTRIES_COLUMN)
+        DataType::list(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
     } else {
-        DataType::binary().required_field(ENTRIES_COLUMN)
+        DataType::binary().required_field(FIXENTRIES_COLUMN)
     };
     Ok(DataType::from_fields([
         DataType::Int32.nullable_field("tag"),
@@ -523,7 +546,7 @@ fn entry_from_scalar(
             crate::media::text::TextBytes::from_bytes(text)
         }
     };
-    let children = entries_from_scalar(tail, &path.field(ENTRIES_COLUMN))?;
+    let children = entries_from_scalar(tail, &path.field(FIXENTRIES_COLUMN))?;
     let entry = super::FixEntry::new(tag, text(key, "key")?, text(value, "value")?);
     Ok(entry.with_children(children))
 }
@@ -574,7 +597,7 @@ impl super::FixMsg {
     /// message's children under the names the schema gave them and every
     /// lookup reaches them by tag as it reaches a parsed message's. The
     /// branches are the schema's own `fix:branches`. The entries are rebuilt from
-    /// the [`ENTRIES_COLUMN`] - every level the row materialized, and the
+    /// the [`FIXENTRIES_COLUMN`] - every level the row materialized, and the
     /// leaf the deepest level folded into decoded through the crate's own
     /// JSON reader - so [`Self::into_bytes`] re-emits the line the row was
     /// read from, and a row without that column has no entries. Nothing is
@@ -638,12 +661,12 @@ impl super::FixMsg {
             super::identity::Assertions::STATED,
         )?;
         let entries = schema
-            .index_of(ENTRIES_COLUMN)
+            .index_of(FIXENTRIES_COLUMN)
             .and_then(|at| built.as_value().get(at))
             .and_then(crate::Scalar::as_sequence)
             .map(|held| {
                 let root = crate::path::Path::root();
-                let path = root.field(ENTRIES_COLUMN);
+                let path = root.field(FIXENTRIES_COLUMN);
                 held.iter()
                     .enumerate()
                     .map(|(index, entry)| {
@@ -669,7 +692,7 @@ impl super::FixMsg {
     /// left null otherwise, which a required column refuses. The capture reader
     /// supplies its prefix before validation, not after projection.
     ///
-    /// The arrival record closes the row under [`ENTRIES_COLUMN`], so the row
+    /// The arrival record closes the row under [`FIXENTRIES_COLUMN`], so the row
     /// stays lossless whatever the columns made of it. Keys no dictionary
     /// explained have tag zero in that same record, with their raw text intact.
     ///
@@ -750,12 +773,18 @@ impl super::FixMsg {
                 continue;
             }
             let value = match column.name() {
-                ENTRIES_COLUMN => crate::Scalar::from_sequence(
+                FIXENTRIES_COLUMN => crate::Scalar::from_sequence(
                     self.entries()
                         .iter()
                         .map(|entry| entry_scalar(entry, 1))
                         .collect::<Result<Vec<_>>>()?,
                 ),
+                // The group's counter counts the occurrences beside it, as
+                // every counter does: read off the record rather than derived,
+                // so a reader prunes on it without opening the list.
+                NOFIXENTRIES_COLUMN => {
+                    crate::Scalar::from(i32::try_from(self.entries().len()).unwrap_or(i32::MAX))
+                }
                 // A column declaring a group's `fix:counter` answers with
                 // that group, read from the message's own occurrences. Any
                 // other column answers for the tag its field carries; one that

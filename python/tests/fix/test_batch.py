@@ -256,7 +256,7 @@ def test_the_schema_is_decided_before_the_first_row_is_read(seed: FixRegistry) -
     # folded names, each carrying its tag on the field.
     assert names[:6] == ["body", "beginstring", "bodylength", "msgtype", "sendercompid", "targetcompid"]
     # FIX's own `msgdirection`, then the one arrival record closes the row.
-    assert names[-2:] == ["msgdirection", "nofixentries"]
+    assert names[-3:] == ["msgdirection", "nofixentries", "fixentries"]
     assert reader.schema.field("msgtype").metadata[b"fix:tag"] == b"35"
     assert reader.schema.field("msgtype").metadata[b"display"] == b"MsgType"
     # The content identity's storage is sixteen plain bytes: `fixed[16]`
@@ -274,7 +274,7 @@ def test_a_capture_answers_one_row_per_message_not_one_per_line(seed: FixRegistr
     assert msgtype[0] == "D", "a framed row states its type"
     assert msgtype[-1] is None, "a document that states no type is `unknown`"
     # The arrival record closes every row that carried one.
-    assert len(_column(parsed, "nofixentries")[0]) == 7
+    assert len(_column(parsed, "fixentries")[0]) == 7
 
 
 def test_several_small_input_batches_accumulate_into_one_output_batch(seed: FixRegistry) -> None:
@@ -354,7 +354,7 @@ def test_the_filling_reader_fills_what_the_filling_pass_fills_and_leaves_the_rec
     # The schema is the same schema: the carried column still leads.
     assert filled.schema == bare.schema
     # The arrival record is untouched either way.
-    assert _column(filled, "nofixentries") == _column(bare, "nofixentries")
+    assert _column(filled, "fixentries") == _column(bare, "fixentries")
 
 
 def test_messages_and_arrow_reader_invert_each_other(seed: FixRegistry) -> None:
@@ -435,7 +435,7 @@ def test_altids_fill_agrees_between_message_and_arrow_streams(seed: FixRegistry)
     filled = codec.enrich_messages_arrow_reader(bare).read_all()
     expected = [[("clordid", "C-001"), ("execid", "E-09"), ("orderid", "O-01")], [], None]
     assert _column(filled, "altids") == expected
-    assert _column(filled, "nofixentries") == _column(bare, "nofixentries")
+    assert _column(filled, "fixentries") == _column(bare, "fixentries")
     assert filled.schema == bare.schema
     assert codec.enrich_messages_arrow_reader(filled).read_all().equals(filled)
     native = codec.arrow_reader(fix_schema(seed), direct).read_all()
@@ -722,7 +722,7 @@ def test_a_row_without_the_entries_column_has_no_entries(seed: FixRegistry) -> N
     wide = fix_schema(seed)
     narrow = Field(
         "fix",
-        DataType.from_fields([column for column in wide if column.name != "nofixentries"]),
+        DataType.from_fields([column for column in wide if column.name not in ("fixentries", "nofixentries")]),
         nullable=False,
     )
     parsed = _one(codec, ORDER)

@@ -6,7 +6,7 @@ use crate::hashing::{txhash::TxHash, xxhash};
 use crate::types::{Bytes, BytesLayout, BytesParameters};
 use crate::{DataType, Digest, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
-use super::schema::{CLOCK_DATATYPE, ENTRIES_COLUMN};
+use super::schema::{CLOCK_DATATYPE, FIXENTRIES_COLUMN};
 use super::{
     CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME,
     UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
@@ -181,17 +181,23 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 ///
 /// Three of them are the identity itself and would hash themselves:
 /// `uuid` is what is being computed, and `updatedat` and `createdat` are the
-/// clocks it is computed against. The fourth is `sourceurl`, and it is
-/// outside for the opposite reason: where a line was read from is a fact
-/// about the capture, not about the message. The same message read out of a
-/// re-cut file, a replayed archive or a second copy of one day's log is the
-/// same message, and it must digest to the same sixteen bytes in all of them.
+/// clocks it is computed against. `sourceurl` is outside for the opposite
+/// reason: where a line was read from is a fact about the capture, not about
+/// the message. The same message read out of a re-cut file, a replayed
+/// archive or a second copy of one day's log is the same message, and it must
+/// digest to the same sixteen bytes in all of them.
+///
+/// `nofixentries` is outside because the record it counts is: the arrival
+/// record is the message rather than a reading of it, and a count of it is
+/// the same fact one integer shorter. A row projected without the record
+/// would otherwise identify differently from the row that carries it.
 fn outside_content(tag: i32) -> bool {
     [
         UUID_TAG_NAME.0,
         UPDATEDAT_TAG_NAME.0,
         CREATEDAT_TAG_NAME.0,
         super::SOURCEURL_TAG_NAME.0,
+        super::NOFIXENTRIES_TAG_NAME.0,
     ]
     .contains(&tag)
 }
@@ -234,7 +240,7 @@ impl Plan {
                     }
                 }
             }
-            if field.name() != ENTRIES_COLUMN && !tag.is_some_and(outside_content) {
+            if field.name() != FIXENTRIES_COLUMN && !tag.is_some_and(outside_content) {
                 order.push(index);
             }
         }

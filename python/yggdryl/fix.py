@@ -106,7 +106,7 @@ direction, re-emitting every row's wire. A pin - ``version``,
 spelled by the dictionary's folded canonical names, ``msgtype`` and never
 ``35``, so a column is found with ``schema.index_of("msgtype")`` and nothing has
 to be resolved per row; the tag stays on each column's ``fix:tag``. Its tags
-end with the crate's own and ``MsgDirection`` (385), and one ``nofixentries``
+end with the crate's own and ``MsgDirection`` (385), and one ``fixentries``
 list closes the row with the whole arrival record, where an unresolved key has
 tag 0; ``beginstring``, ``sendingtime``, ``updatedat``, ``timepartition``,
 ``uuid``, ``puuid``, ``createdat``, ``code`` and ``snapshotat`` are its non-null

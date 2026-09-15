@@ -38,7 +38,7 @@
 //! read past for the same reason: the crate's own definition is the one that
 //! types a row. Folding another dictionary in never counts them either.
 //!
-//! Twenty-five scalar fields and one Map group, each registered by its shape.
+//! Twenty-six scalar fields and one Map group, each registered by its shape.
 
 use std::sync::LazyLock;
 
@@ -152,6 +152,14 @@ pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
 /// object once per line and the row carries it typed rather than as text
 /// nobody can resolve.
 pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
+
+/// The tag and name counting the arrival records one message carried.
+///
+/// The counter of the `fixentries` group, and a counter in the ordinary FIX
+/// sense: `NoPartyIDs` counts `Parties`, and this counts the pairs a line
+/// stated. A reader prunes on it without opening the list, which is what a
+/// count column is for.
+pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
 /// Whether a tag is one of this crate's own.
 #[must_use]
@@ -550,6 +558,16 @@ fn build() -> Result<Vec<Field>> {
             DataType::Url,
             "The object this message's line was read from.",
         )?,
+        // The arrival record's counter. The group it counts is not a registry
+        // definition - a `fixentry` contains `fixentries`, and a definition
+        // that referenced itself would be a cycle - so the counter is here
+        // and the group is built beside the fixed row it closes.
+        crated(
+            NOFIXENTRIES_TAG_NAME,
+            "NoFixEntries",
+            DataType::Int32,
+            "How many pairs the message carried, in arrival order.",
+        )?,
     ])
 }
 
@@ -562,7 +580,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 26);
+/// assert_eq!(held.len(), 27);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// assert_eq!(held[20].dtype(), held[2].dtype());

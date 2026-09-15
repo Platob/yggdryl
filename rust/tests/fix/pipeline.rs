@@ -271,7 +271,7 @@ fn the_schema_is_the_captures_columns_then_the_fixed_ones_and_never_depends_on_t
     // Which way a line moved is FIX's own `msgdirection` (decision 14).
     assert!(names.contains(&"msgdirection"), "{names:?}");
     assert!(!names.contains(&"direction"), "{names:?}");
-    assert_eq!(names.last(), Some(&"nofixentries"));
+    assert_eq!(names.last(), Some(&"fixentries"));
 
     // The timestamp capture was typed from its pattern before a byte was
     // read and took the zone the options declared; updatedat is independently
@@ -766,7 +766,7 @@ fn a_configuration_document_lands_typed_on_the_bridges_own_tags() {
     // arrival record, one entry per field under the key the document spelled
     // it by, and nothing the answer wrapped them in.
     let read = read(&CAPTURE);
-    let entries = column(&read, "nofixentries");
+    let entries = column(&read, "fixentries");
     let held = entries[RESPONSE_ROW].as_sequence().expect("the entries");
     let keyed: Vec<(i32, String)> = held
         .iter()
@@ -848,7 +848,7 @@ fn the_batched_read_agrees_with_the_line_read_and_re_emits_the_wire() {
     let alone = codec.sole_line(routed, false).expect("the routed row");
     assert!(alone.get_by_tag(34).is_none());
     assert_eq!(tag_column(&read, 34)[ROUTED_ROW].as_i64(), Some(4_507));
-    let entries = column(&read, "nofixentries");
+    let entries = column(&read, "fixentries");
     let recorded: Vec<i64> = entries[ROUTED_ROW]
         .as_sequence()
         .expect("the entries")
