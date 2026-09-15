@@ -222565,10 +222565,12 @@
       },
       {
         "dtype": {
-          "type": "uuid"
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
         },
         "metadata": {
-          "description": "The instrument's version-8 UUID over the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
+          "description": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency.",
           "display": "InstUuid",
           "fix:tag": "65016"
         },
@@ -222577,10 +222579,12 @@
       },
       {
         "dtype": {
-          "type": "uuid"
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
         },
         "metadata": {
-          "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+          "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
           "display": "Uuid",
           "fix:tag": "65017"
         },
@@ -222589,10 +222593,12 @@
       },
       {
         "dtype": {
-          "type": "uuid"
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
         },
         "metadata": {
-          "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+          "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
           "display": "PUuid",
           "fix:tag": "65018"
         },
@@ -222627,10 +222633,12 @@
       },
       {
         "dtype": {
-          "type": "uuid"
+          "fixed": 16,
+          "layout": "fixed_size_binary",
+          "type": "binary"
         },
         "metadata": {
-          "description": "The preceding message's UUID in the selected event chain.",
+          "description": "The preceding message's sixteen identity bytes in the selected event chain.",
           "display": "PrevUuid",
           "fix:tag": "65022"
         },
@@ -237305,22 +237313,22 @@
         "c": "instuuid",
         "t": 65016,
         "n": "InstUuid",
-        "y": "uuid",
-        "x": "The instrument's version-8 UUID over the xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
+        "y": "fixed_size_binary(16)",
+        "x": "The instrument's sixteen bytes: the big-endian xxh128 digest of its market, its classification, its ISIN - else its symbol - and its currency."
       },
       {
         "c": "uuid",
         "t": 65017,
         "n": "Uuid",
-        "y": "uuid",
-        "x": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64."
+        "y": "fixed_size_binary(16)",
+        "x": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64."
       },
       {
         "c": "puuid",
         "t": 65018,
         "n": "PUuid",
-        "y": "uuid",
-        "x": "The event chain's version-8 UUID over XXH3-128 of code alone."
+        "y": "fixed_size_binary(16)",
+        "x": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone."
       },
       {
         "c": "targetsessionid",
@@ -237347,8 +237355,8 @@
         "c": "prevuuid",
         "t": 65022,
         "n": "PrevUuid",
-        "y": "uuid",
-        "x": "The preceding message's UUID in the selected event chain."
+        "y": "fixed_size_binary(16)",
+        "x": "The preceding message's sixteen identity bytes in the selected event chain."
       },
       {
         "c": "createdat",
@@ -237684,10 +237692,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -237696,10 +237706,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -238317,10 +238329,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -238329,10 +238343,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -239023,10 +239039,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -239035,10 +239053,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -242303,10 +242323,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -242315,10 +242337,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -242948,10 +242972,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -242960,10 +242986,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -243384,10 +243412,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -243396,10 +243426,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -243745,10 +243777,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -243757,10 +243791,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -244134,10 +244170,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -244146,10 +244184,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -244616,10 +244656,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -244628,10 +244670,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -245116,10 +245160,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -245128,10 +245174,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -245641,10 +245689,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -245653,10 +245703,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -246102,10 +246154,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -246114,10 +246168,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -246456,10 +246512,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -246468,10 +246526,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -246813,10 +246873,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -246825,10 +246887,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -247170,10 +247234,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -247182,10 +247248,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -247455,10 +247523,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -247467,10 +247537,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },
@@ -247738,10 +247810,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The version-8 UUID of signed updatedat nanoseconds and 58 bits of the canonical named message content's XXH64.",
+                "description": "The message's sixteen bytes: signed updatedat nanoseconds with the sign bit flipped, then all 64 bits of the canonical named message content's XXH64.",
                 "display": "Uuid",
                 "fix:tag": "65017"
               },
@@ -247750,10 +247824,12 @@
             },
             {
               "dtype": {
-                "type": "uuid"
+                "fixed": 16,
+                "layout": "fixed_size_binary",
+                "type": "binary"
               },
               "metadata": {
-                "description": "The event chain's version-8 UUID over XXH3-128 of code alone.",
+                "description": "The event chain's sixteen bytes: the big-endian XXH3-128 of code alone.",
                 "display": "PUuid",
                 "fix:tag": "65018"
               },

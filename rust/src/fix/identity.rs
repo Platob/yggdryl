@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::hashing::{txhash::TxHash, xxhash};
-use crate::types::Uuid;
+use crate::types::{Bytes, BytesLayout, BytesParameters};
 use crate::{DataType, Digest, Error, Field, Result, Scalar, TimeUnit, Timezone};
 
 use super::schema::{CLOCK_DATATYPE, ENTRIES_COLUMN};
@@ -11,6 +11,72 @@ use super::{
     CODE_TAG_NAME, CREATEDAT_TAG_NAME, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME,
     UPDATEDAT_TAG_NAME, UUID_TAG_NAME,
 };
+
+/// The bytes every FIX identity column holds.
+///
+/// Sixteen of them, big-endian, with no version or variant bit: a lake engine
+/// reads `fixed[16]` everywhere and `uuid` nowhere consistently, so the FIX
+/// layer states plain bytes and keeps every identity semantic (decisions
+/// 19-28) exactly as it was.
+pub(super) type Identity = [u8; IDENTITY_WIDTH as usize];
+
+/// The one width, as the datatype spells it.
+pub(super) const IDENTITY_WIDTH: u32 = 16;
+
+/// The datatype every FIX identity column declares.
+pub(super) const IDENTITY_DATATYPE: DataType = match std::num::NonZeroU32::new(IDENTITY_WIDTH) {
+    Some(width) => {
+        DataType::Bytes(BytesParameters::new(BytesLayout::FixedSizeBinary).with_bound(width))
+    }
+    // The width above is a literal greater than zero.
+    None => DataType::binary(),
+};
+
+/// One identity as the value a row carries, under the fixed layout so it
+/// types as [`IDENTITY_DATATYPE`] rather than as unbounded bytes.
+pub(super) fn identity_scalar(bytes: Identity) -> Scalar {
+    let parameters = IDENTITY_DATATYPE
+        .bytes_parameters()
+        .expect("the identity datatype is a byte layout");
+    Scalar::Bytes(
+        Bytes::new(bytes)
+            .try_with_parameters(parameters)
+            .expect("sixteen bytes under the sixteen-byte layout"),
+    )
+}
+
+/// The sixteen bytes a stated identity holds, refusing every other value at
+/// the column that stated it.
+pub(super) fn stated_identity(name: &str, held: &Scalar) -> Result<Identity> {
+    let bytes = match held {
+        Scalar::Bytes(held) if held.fixed() == Some(IDENTITY_WIDTH) => held.as_bytes(),
+        held => {
+            return Err(refused(
+                name,
+                format_args!("{IDENTITY_DATATYPE} or null"),
+                crate::text::elide_display(&format_args!("{held:?}")),
+            ));
+        }
+    };
+    Ok(Identity::try_from(bytes).expect("the fixed layout proved the width"))
+}
+
+/// The sixteen bytes as the lowercase hex a name spells them with.
+///
+/// A chain code scopes an identifier under the instrument it reached
+/// (decision 22); the scope is now bytes rather than an RFC identifier, so
+/// the name carries the bytes the way every binary literal in this crate is
+/// written - thirty-two lowercase hex digits, no separators.
+pub(super) struct IdentityText(pub(super) Identity);
+
+impl std::fmt::Display for IdentityText {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for byte in self.0 {
+            write!(formatter, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
 
 /// The replay bundle, in one fixed internal order unrelated to column order.
 #[derive(Clone, Copy)]
@@ -53,7 +119,7 @@ impl Role {
 
     fn dtype(self) -> DataType {
         match self {
-            Self::Uuid | Self::Persistent => DataType::Uuid,
+            Self::Uuid | Self::Persistent => IDENTITY_DATATYPE,
             Self::Code => DataType::utf8(),
             _ => CLOCK_DATATYPE,
         }
@@ -242,7 +308,7 @@ impl Plan {
                 values[code_at].kind(),
             )
         })?;
-        let persistent = Scalar::Uuid(persistent_uuid(code));
+        let persistent = identity_scalar(persistent_identity(code));
         let persistent_at = self.index(Role::Persistent)?;
         assert_identity(
             &schema.fields()[persistent_at],
@@ -269,13 +335,13 @@ impl Plan {
                 .map(|at| (schema.fields()[*at].name(), &values[*at])),
             0,
         );
-        let uuid = Scalar::Uuid(
+        let uuid = identity_scalar(
             TxHash::new_in(
                 nanos,
                 TimeUnit::Nanosecond,
                 Digest::new(crate::DigestAlgorithm::Xxh64, u128::from(state.as_u64())),
             )?
-            .into_uuid()?,
+            .into_ordered_bytes()?,
         );
         let uuid_at = self.index(Role::Uuid)?;
         assert_identity(
@@ -315,8 +381,10 @@ pub(super) struct Hard {
     pub(super) puuid: Scalar,
 }
 
-pub(super) fn persistent_uuid(code: &str) -> Uuid {
-    Uuid::from_v8(xxhash::xxh128(code.as_bytes()))
+/// The event chain's sixteen bytes: the XXH3-128 of the exact code bytes,
+/// big-endian, with nothing masked out of them.
+pub(super) fn persistent_identity(code: &str) -> Identity {
+    xxhash::xxh128(code.as_bytes()).to_be_bytes()
 }
 
 fn assert_identity(field: &Field, stated: &Scalar, computed: &Scalar, assert: bool) -> Result<()> {
@@ -332,7 +400,9 @@ fn assert_identity(field: &Field, stated: &Scalar, computed: &Scalar, assert: bo
 
 pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Result<()> {
     let exact = match dtype {
-        DataType::Uuid => matches!(value, Scalar::Uuid(_)),
+        dtype if dtype == &IDENTITY_DATATYPE => {
+            matches!(value, Scalar::Bytes(held) if held.fixed() == Some(IDENTITY_WIDTH))
+        }
         dtype if dtype == &CLOCK_DATATYPE => {
             matches!(value.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC)
         }

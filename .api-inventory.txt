@@ -732,13 +732,13 @@ pub const TARGETSESSIONNAME_TAG_NAME: (i32, &str) = (65_012, "targetsessionname"
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_013, "isincode");
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
-pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
-pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
-pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
+pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");  (nullable fixed_size_binary(16): the instrument digest's sixteen big-endian bytes)
+pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");  (non-null fixed_size_binary(16): the sign-flipped updatedat nanoseconds then the whole XXH64 of the named content)
+pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");  (non-null fixed_size_binary(16): the code's XXH3-128, big-endian)
 pub const TARGETSESSIONID_TAG_NAME: (i32, &str) = (65_019, "targetsessionid");
 pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");  (nullable sorted Map group; self-countered)
 pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");  (nullable nanosecond UTC clock of the preceding message in the selected event chain)
-pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable native UUID of the preceding message in the selected event chain)
+pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");  (nullable fixed_size_binary(16): the preceding message's uuid bytes in the selected event chain)
 pub const CREATEDAT_TAG_NAME: (i32, &str) = (65_023, "createdat");
 pub const CODE_TAG_NAME: (i32, &str) = (65_024, "code");
 pub const SNAPSHOTAT_TAG_NAME: (i32, &str) = (65_025, "snapshotat");
@@ -780,8 +780,8 @@ pub struct FixMsg
   pub fn remove<'key>(&mut self, key: impl Into<FixKey<'key>>) -> Result<Option<Scalar>>  (row only; mandatory fields refuse removal atomically)
   pub const fn updatedat(&self) -> &Scalar
   pub const fn createdat(&self) -> &Scalar
-  pub const fn uuid(&self) -> &Scalar
-  pub const fn puuid(&self) -> &Scalar
+  pub const fn uuid(&self) -> &Scalar  (fixed_size_binary(16), never null)
+  pub const fn puuid(&self) -> &Scalar  (fixed_size_binary(16), never null)
   impl Clone, Debug, PartialEq, Eq, Hash for FixMsg
 
 ### yggdryl::fix::lift  [rust\src\fix\lift.rs]
@@ -1024,6 +1024,7 @@ pub const UNIX_WIDTH: usize = 8;
   pub const fn dtype(&self) -> DataType
   pub fn with_unit(self, unit: TimeUnit) -> Result<Self>
   pub fn into_uuid(self) -> Result<crate::types::Uuid>  (RFC 9562 v8; exact signed i64 nanoseconds and low 58 digest bits; requires a 64-bit digest; checked unit conversion; zero successful allocations; raw TxHash bytes and ordering unchanged)
+  pub fn into_ordered_bytes(self) -> Result<[u8; 16]>  (the same ordering with no layout: sign-flipped signed i64 nanoseconds big-endian in 0..8, all 64 digest bits in 8..16; requires a 64-bit digest; checked unit conversion; what the FIX identity columns hold; Rust-only)
   pub fn into_bytes(self) -> TxHashBytes
   pub fn from_bytes(unit: TimeUnit, algorithm: DigestAlgorithm, bytes: &[u8]) -> Result<Self>
   pub fn from_str(value: &str) -> Result<Self>

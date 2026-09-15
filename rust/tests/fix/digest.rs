@@ -279,12 +279,12 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
 
     // The columns a message answers from what it said are typed as the thing
     // they hold, not as the text a venue spelled it in; the three lifecycle
-    // identities carry UUID identity rather than untyped digest bytes.
+    // identities are sixteen fixed bytes, which is what a lake engine reads.
     assert_eq!(held[12].dtype(), &DataType::Isin);
     assert_eq!(held[13].dtype(), &DataType::Mic);
     assert_eq!(held[14].dtype(), &DataType::State);
     for identity in &held[15..18] {
-        assert_eq!(identity.dtype(), &DataType::Uuid);
+        assert_eq!(identity.dtype(), &super::identity_dtype());
         assert_eq!(identity.as_fix().aliases().count(), 0);
     }
     assert_eq!(held[20].dtype(), held[2].dtype());
@@ -295,7 +295,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             timezone: yggdryl::Timezone::UTC,
         }
     );
-    assert_eq!(held[21].dtype(), &DataType::Uuid);
+    assert_eq!(held[21].dtype(), &super::identity_dtype());
     for previous in &held[20..22] {
         assert!(previous.is_nullable());
         assert_eq!(previous.as_fix().aliases().count(), 0);

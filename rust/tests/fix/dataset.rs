@@ -677,9 +677,10 @@ fn every_row_is_dated_versioned_and_named_by_its_bracket() {
             "row {row} says which FIX it was read as: {:?}",
             held[column(8)]
         );
-        assert!(
-            matches!(held[column(yggdryl::UUID_TAG_NAME.0)], Scalar::Uuid(_)),
-            "row {row} has a native content identity"
+        assert_eq!(
+            super::identity_bytes(&held[column(yggdryl::UUID_TAG_NAME.0)]).len(),
+            16,
+            "row {row} has a sixteen-byte content identity"
         );
         // The bracket names the context, which fills `msgctxid`; its session
         // uid is the bridge's own and is carried in front, so `sendersessionid`

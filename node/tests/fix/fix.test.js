@@ -1585,19 +1585,21 @@ const CODE = 65024
 const PIPE = '|'.charCodeAt(0)
 
 /**
- * The canonical text one UUID column holds, or null where it holds nothing.
+ * The sixteen bytes one identity column holds as lowercase hex, or null where
+ * it holds nothing.
  *
- * Every identity is a native UUID packed as version 8 with the RFC 9562
- * variant, which is what the Rust suite's `bytes` helper checks.
+ * Every identity is `fixedbinary(16)` - plain bytes with no version or
+ * variant bit, which is what the Rust suite's `bytes` helper checks - and a
+ * `Buffer` is what JavaScript gets. Hex keeps the bytes' own order, so a
+ * string comparison here is a byte comparison.
  */
 function identity(message, tag) {
   const held = message.getByTag(tag)
   if (held === null || held.kind === 'null') return null
-  assert.equal(held.id, 'uuid', `tag ${tag} holds a native UUID`)
-  const text = held.asJs()
-  assert.equal(text[14], '8', `tag ${tag} is version 8`)
-  assert.ok('89ab'.includes(text[19]), `tag ${tag} carries the RFC variant`)
-  return text
+  assert.equal(held.id, 'fixed_size_binary', `tag ${tag} holds sixteen fixed bytes`)
+  const bytes = held.asJs()
+  assert.equal(bytes.length, 16, `tag ${tag} is sixteen bytes wide`)
+  return Buffer.from(bytes).toString('hex')
 }
 
 /**
@@ -1641,10 +1643,10 @@ test('every message of one order carries the chain identity until it ends', () =
   for (let at = 1; at < ids.length; at += 1) {
     assert.notEqual(ids[at - 1], ids[at], 'different finalized message content')
     if (stamped[at - 1].updatedat().compare(stamped[at].updatedat()) < 0) {
-      assert.ok(ids[at - 1] < ids[at], 'UUIDs sort by the full grid instant')
+      assert.ok(ids[at - 1] < ids[at], 'identities sort by the full grid instant')
     }
   }
-  // A chain carries only its previous message's clock and UUID: none before
+  // A chain carries only its previous message's clock and identity: none before
   // the first message, then each message's predecessor.
   for (const tag of [PREVUPDATEDAT, PREVUUID]) assert.equal(stamped[0].byTag(tag).kind, 'null')
   for (let at = 1; at < stamped.length; at += 1) {
@@ -1844,7 +1846,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   assert.ok(message.updatedat().equals(message.getByTag(65003)))
   assert.ok(message.updatedat().equals(SENDING))
   assert.ok(message.timePartition().equals(Scalar.datetime(1_704_189_600_000_000_000n, 'ns', 'UTC')))
-  assert.equal(native.at(schema.indexOf('uuid')).id, 'uuid')
+  assert.equal(native.at(schema.indexOf('uuid')).id, 'fixed_size_binary')
   // The row's uuid names the row's own content: padding and derived columns
   // may move it (decision 26), the row read back verifies it, and projection
   // leaves the message's own uuid alone. The chain name, puuid, keeps its code.
@@ -2011,7 +2013,7 @@ test('the crate fields declare their own protocols', () => {
   assert.deepEqual(required, ['updatedat', 'uuid', 'puuid', 'createdat', 'code', 'snapshotat'])
   const clock = held[2].dtype
   for (const at of [20, 22, 24]) assert.ok(held[at].dtype.equals(clock), held[at].name)
-  assert.equal(held[21].dtype.id, 'uuid')
+  assert.ok(held[21].dtype.equals(DataType.fixedSizeBinary(16)))
   assert.ok(held[23].dtype.equals(DataType.from('utf8')))
   assert.ok(held.every((field) => field.description))
   // No crate field holds a digest any more: uuid is the one stored message
@@ -2067,16 +2069,16 @@ test("the bridge's six facts are crate fields, and every registry holds them", (
   assert.equal(derived[2].dtype.codeWidth, 10)
 
   // And the three identities - the instrument, the message's time/content
-  // UUID and the event chain's - native UUIDs rather than untyped bytes, so
-  // a monitor joins on them as UUIDs. The message and chain identities are
+  // identity and the event chain's - sixteen plain bytes, which is what every
+  // lake engine reads as `fixed[16]`. The message and chain identities are
   // settled on every message, so they are never null; the instrument may be.
   const identities = fix.crateFields().slice(15, 18)
   assert.deepEqual(
-    identities.map((field) => [field.name, field.display, field.fix.tag, field.dtype.id, field.nullable]),
+    identities.map((field) => [field.name, field.display, field.fix.tag, field.dtype.toString(), field.nullable]),
     [
-      ['instuuid', 'InstUuid', 65016, 'uuid', true],
-      ['uuid', 'Uuid', 65017, 'uuid', false],
-      ['puuid', 'PUuid', 65018, 'uuid', false],
+      ['instuuid', 'InstUuid', 65016, 'fixed_size_binary(16)', true],
+      ['uuid', 'Uuid', 65017, 'fixed_size_binary(16)', false],
+      ['puuid', 'PUuid', 65018, 'fixed_size_binary(16)', false],
     ],
   )
   assert.ok(identities.every((field) => field.description))
@@ -2134,8 +2136,10 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.byTag(65025).equals(message.byTag(60)))
   assert.ok(message.uuid().equals(message.byTag(65017)))
   assert.ok(message.puuid().equals(message.byTag(65018)))
-  assert.equal(message.uuid().id, 'uuid')
-  assert.equal(message.puuid().id, 'uuid')
+  assert.equal(message.uuid().id, 'fixed_size_binary')
+  assert.equal(message.puuid().id, 'fixed_size_binary')
+  // Sixteen bytes reach JavaScript as a Buffer, not as hyphenated text.
+  assert.equal(Buffer.from(message.uuid().asJs()).length, 16)
   assert.ok(message.timePartition().equals(Scalar.datetime(1_706_788_800_000_000_000n, 'ns', 'UTC')))
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.

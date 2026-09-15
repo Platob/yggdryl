@@ -3397,3 +3397,73 @@ one removal, one list left, the one the snapshot names),
 then the root's default, refusing a remote folder by key, a staged commit
 leaving the staging folder empty), the oversized-container pin now reading
 past the limit by at most one chunk.
+
+### The identities are sixteen fixed bytes
+
+**Rule.** The four crate identity columns - `instuuid` (65016), `uuid`
+(65017), `puuid` (65018) and `prevuuid` (65022) - are
+`fixed_size_binary(16)` (grammar `fixedbinary(16)`, Arrow
+`FixedSizeBinary(16)` with no extension name), never `uuid`. Their names,
+tags, display names, roles, nullability and every identity semantic
+(decisions 19-28) are exactly what they were; what changed is the datatype
+and the byte layout. The reason is the lake: every engine reads `fixed[16]`,
+and none reads `uuid` the same way twice, so the FIX layer states the bytes
+themselves rather than an RFC identifier it would have to explain at each
+border. The core's `DataType::Uuid`, the `Uuid` scalar, `TxHash::into_uuid`
+(which the Python and JavaScript txhash bindings answer with) and the
+Iceberg `uuid` mapping are untouched: this is the FIX layer choosing plain
+bytes, not the crate retiring a type.
+
+The sixteen bytes are big-endian throughout, with no version or variant bits:
+
+- `uuid`: the signed `updatedat` nanoseconds with the sign bit flipped in
+  bytes 0..8 - so the bytes order as the instants do, across the epoch,
+  exactly as `Uuid::from_time_hash` ordered them - then the **full 64 bits**
+  of the XXH64 of the canonical named content in bytes 8..16. Fifty-eight
+  bits were kept before, because six went to the RFC's version and variant
+  slots; nothing is spent on a layout now, so all sixty-four survive. One
+  owner: the (instant, digest) pair is a `TxHash`, and
+  `TxHash::into_ordered_bytes` is the one rendering of these sixteen bytes.
+- `puuid`: `xxhash::xxh128(code.as_bytes()).to_be_bytes()`.
+- `instuuid`: the xxh128 digest `lifecycle::instrument_digest` computes,
+  `.to_be_bytes()`; a stated `instuuid` is kept as stated, and one of another
+  width, byte layout or family is refused at its own column, exactly where a
+  stated uuid of the wrong type was refused before.
+- `prevuuid`: the preceding message's `uuid`, copied.
+
+A chain code scopes an identifier under the instrument it reached (decision
+22); the scope is bytes now rather than an identifier with a canonical text,
+so a generated code spells it as the thirty-two lowercase hex digits of
+those bytes - `<scope hex or ->/<identifier>` - which is how this crate
+writes every binary value a name has to carry.
+
+**What moves.** The equivalence snapshot moves on exactly the `uuid` and
+`puuid` keys of every captured message - 304 of each, across the `bridge`,
+`enrich`, `enrich.ulbridge`, `frames`, `latest`, `lift`, `shapes`,
+`ulbridge` and `verbatim` corpora - and on nothing else: the same messages,
+the same content, a different rendering of the same two digests. The
+committed dictionary's pinned hash and the plugin dictionary's move with the
+four declarations. `instuuid`, `prevuuid` and `code` are not in that
+snapshot, because the lifecycle is not part of equivalence; a chain code
+scoped under an instrument does change, and the lifecycle suites pin the new
+spelling.
+
+**Written in:** `fix/crated.rs` (the four declarations and their
+descriptions), `fix/identity.rs` (`IDENTITY_DATATYPE`, `Identity`,
+`identity_scalar`, `stated_identity`, `persistent_identity`,
+`IdentityText`), `fix/lifecycle.rs` (the chain maps keyed by the bytes),
+`hashing/txhash/value.rs` (`into_ordered_bytes`), both bindings' surfaces,
+`docs/fix/{capture,message,lifecycle,arrow}.md`, `docs/hashing.md`,
+`docs/assets/fix.json` (hand-edited: the Node addon that generates it cannot
+be built here), the inventories.
+**Fixtures:** `rust/tests/fix/lifecycle.rs` - the bytes lead with the
+sign-flipped instant and carry the whole digest, a stated instrument
+identity of another width or layout is refused by name and changes no chain;
+`rust/tests/fix/schema.rs` - the identity columns cross an Iceberg table as
+`fixed[16]` and come back byte for byte, a renamed sixteen-byte column
+carrying a crate tag is that role and stays plain Arrow bytes;
+`rust/tests/fix/content_identity.rs` - `puuid` is the xxh128 of the code
+byte for byte, and one differing byte of content is a different `uuid`;
+`python/tests/fix/test_fix.py` and `node/tests/fix/fix.test.js` - the four
+columns answer `fixedbinary(16)`, and the message identity's first eight
+bytes are the sign-flipped `updatedat` nanoseconds.

@@ -322,7 +322,7 @@ fn a_tagless_canonical_map_outranks_ordinary_and_mandatory_scalar_aliases() {
             Scalar::from_mapping([(Scalar::from("clordid"), Scalar::from("O-1"))]).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
         assert_eq!(source.by_tag(65_020).unwrap(), &mapping);
-        assert!(matches!(source.uuid(), Scalar::Uuid(_)));
+        super::identity_bytes(source.uuid());
         let row = source.into_row(source.as_field()).unwrap();
         let restored = FixMsg::from_row(Arc::clone(&registry), source.as_field(), &row).unwrap();
         assert_eq!(restored.by_tag(65_020).unwrap(), &mapping);

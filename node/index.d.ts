@@ -1493,7 +1493,7 @@ export type JsFixFieldIterator = FixFieldIterator
  * otherwise the first identifier - stated `altids`, else the message type's
  * declared identifiers - reaching a live chain under the effective
  * `instuuid` scope supplies its code, and a new chain is named
- * `<scope UUID or ->/<first identifier>`. Occupied identifiers are never
+ * `<scope hex or ->/<first identifier>`. Occupied identifiers are never
  * stolen, and an empty code opens no chain. `puuid` hashes the settled code.
  *
  * Every accepted message has `updatedat` truncated to its epoch grid bucket
@@ -1501,7 +1501,7 @@ export type JsFixFieldIterator = FixFieldIterator
  * carries its first message's `createdat` and hands each later message the
  * previous message's `prevupdatedat` and `prevuuid`. A terminal state closes
  * the chain; what is held is the live chains, their code, first creation
- * instant, last clock and UUID, and highest consumed bucket - never pending
+ * instant, last clock and identity, and highest consumed bucket - never pending
  * messages. `FixCodec.lifecycle` runs one at the default cadence over an
  * iterable.
  */
@@ -1755,20 +1755,22 @@ export declare class FixMsg {
    */
   createdat(): JsScalar
   /**
-   * The message's time/content UUID, never null.
+   * The message's time/content identity, never null.
    *
-   * A version-8 UUID of `updatedat`'s signed nanoseconds and 58 bits of
-   * the canonical named content's XXH64; `updatedat`, `createdat`, `uuid`
-   * itself and the arrival record are not content. A stated `uuid` must
-   * match it.
+   * Sixteen `fixedbinary(16)` bytes - a `Buffer` in JavaScript:
+   * `updatedat`'s signed nanoseconds with the sign bit flipped in bytes
+   * 0..8, then all 64 bits of the canonical named content's XXH64;
+   * `updatedat`, `createdat`, `uuid` itself and the arrival record are not
+   * content. A stated `uuid` must match it.
    */
   uuid(): JsScalar
   /**
-   * The event chain's UUID, never null.
+   * The event chain's identity, never null.
    *
-   * A version-8 UUID over XXH3-128 of the exact `code` bytes alone, so the
-   * empty (unknown) code has one deterministic `puuid` too. A stated
-   * `puuid` must match it.
+   * The sixteen big-endian `fixedbinary(16)` bytes of the XXH3-128 of the
+   * exact `code` bytes alone - a `Buffer` in JavaScript - so the empty
+   * (unknown) code has one deterministic `puuid` too. A stated `puuid`
+   * must match it.
    */
   puuid(): JsScalar
   /** The partition `updatedat` falls in, in whole seconds. */

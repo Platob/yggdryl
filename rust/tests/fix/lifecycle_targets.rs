@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::types::Uuid;
+use super::{identity_bytes, identity_dtype, identity_scalar, numbered_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, DataType, Error, Field, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
     PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
@@ -68,11 +68,8 @@ fn custom_registry(base: &FixRegistry, target: &Field, registered: bool) -> Arc<
     Arc::new(registry)
 }
 
-fn uuid(message: &FixMsg, tag: i32) -> Uuid {
-    let Scalar::Uuid(value) = message.by_tag(tag).unwrap() else {
-        panic!("tag {tag} must hold a native UUID");
-    };
-    *value
+fn uuid(message: &FixMsg, tag: i32) -> [u8; 16] {
+    identity_bytes(message.by_tag(tag).unwrap())
 }
 
 fn located(error: Error, name: &str, expected: &DataType) {
@@ -91,9 +88,9 @@ fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
     let registry = Arc::new(FixRegistry::new());
     for identity in IDENTITIES {
         for dtype in [DataType::utf8(), DataType::binary()] {
-            let coerced = dtype.scalar(Scalar::Uuid(Uuid::new(7))).unwrap();
+            let coerced = dtype.scalar(identity_scalar(numbered_identity(7))).unwrap();
             assert!(
-                !matches!(coerced, Scalar::Uuid(_)),
+                !matches!(&coerced, Scalar::Bytes(held) if held.fixed() == Some(16)),
                 "the generic value contract permits this coercion"
             );
             let target = field(identity, dtype);
@@ -123,7 +120,7 @@ fn mandatory_intake_and_instrument_stamps_refuse_coercible_uuid_targets() {
                         "expected a registered mandatory definition, got missing definition"
                     );
                 } else {
-                    located(error, identity.1, &DataType::Uuid);
+                    located(error, identity.1, &identity_dtype());
                 }
                 assert_eq!(life.alive(), 0);
                 let accepted = life
@@ -164,7 +161,7 @@ fn refused_uuid_targets_neither_attach_aliases_nor_close_a_corrected_chain() {
                 } else {
                     message.unwrap_err()
                 };
-                located(error, identity.1, &DataType::Uuid);
+                located(error, identity.1, &identity_dtype());
                 assert_eq!(life.alive(), 1, "a refusal cannot close the live chain");
                 let independent = life
                     .fill(event(Arc::clone(&registry), &[("id", "NEW")], None, false).unwrap())
@@ -194,7 +191,7 @@ fn mandatory_null_columns_require_native_layout_but_optional_instrument_can_rety
                 false,
             );
             if identity != INSTUUID_TAG_NAME {
-                located(message.unwrap_err(), identity.1, &DataType::Uuid);
+                located(message.unwrap_err(), identity.1, &identity_dtype());
                 continue;
             }
             let mut life = FixLifecycle::new(Arc::clone(&registry))
@@ -204,7 +201,7 @@ fn mandatory_null_columns_require_native_layout_but_optional_instrument_can_rety
             uuid(&message, identity.0);
             assert_eq!(
                 message.as_field().get_field(identity.1).unwrap().dtype(),
-                &DataType::Uuid,
+                &identity_dtype(),
             );
             assert_eq!(life.alive(), 1);
             life.clear();
@@ -244,9 +241,9 @@ fn timed_event(
     message
 }
 
-fn previous(message: &FixMsg, expected: Option<(i64, Uuid)>) {
+fn previous(message: &FixMsg, expected: Option<(i64, [u8; 16])>) {
     let (timestamp, uuid) = expected.map_or((Scalar::Null, Scalar::Null), |(instant, uuid)| {
-        (clock(instant), Scalar::Uuid(uuid))
+        (clock(instant), identity_scalar(uuid))
     });
     assert_eq!(
         message.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
@@ -280,6 +277,7 @@ fn invalid_previous_targets() -> impl Iterator<Item = ((i32, &'static str), Data
                 clock_type(),
                 DataType::utf8(),
                 DataType::binary(),
+                DataType::Uuid,
                 DataType::Int64,
             ],
         ),
@@ -295,7 +293,7 @@ fn first_null_previous_stamps_refuse_wrong_layouts_before_opening_a_chain() {
         let expected = if identity == PREVUPDATEDAT_TAG_NAME {
             clock_type()
         } else {
-            DataType::Uuid
+            identity_dtype()
         };
         for name in [identity.1, "custom_previous"] {
             let target = field((identity.0, name), dtype.clone());
@@ -341,7 +339,7 @@ fn refused_previous_targets_do_not_advance_history_attach_keys_or_close() {
         let expected = if identity == PREVUPDATEDAT_TAG_NAME {
             clock_type()
         } else {
-            DataType::Uuid
+            identity_dtype()
         };
         for name in [identity.1, "custom_previous"] {
             let target = field((identity.0, name), dtype.clone());
@@ -409,7 +407,7 @@ fn previous_stamps_use_the_input_tag_role_not_the_resolved_columns_name() {
     let registry = Arc::new(FixRegistry::new());
     for (identity, dtype) in [
         (PREVUPDATEDAT_TAG_NAME, clock_type()),
-        (PREVUUID_TAG_NAME, DataType::Uuid),
+        (PREVUUID_TAG_NAME, identity_dtype()),
     ] {
         let target = field((identity.0, "custom_previous"), dtype.clone());
         for registered in [false, true] {

@@ -364,16 +364,18 @@ Twenty-four scalar fields and one Map group carry capture facts that no dictiona
 | `isincode` | `ISINCode` | 65013 | the instrument's ISIN, as an [`isin`](../types/codes.md): `SecurityID(48)` where `SecurityIDType(22)` says ISIN, else the `SecurityAltID(455)` whose `SecurityAltIDType(456)` does |
 | `miccode` | `MICCode` | 65014 | the market the message names, as a `mic`: `SecurityExchange(207)`, else `ExDestination(100)`, else `LastMkt(30)` |
 | `state` | `State` | 65015 | the order's state, as a `state`: `OrdStatus(39)`, else `ExecType(150)` |
-| `instuuid` | `InstUuid` | 65016 | the instrument's version-8 UUID over the xxh128 digest of its market, classification, ISIN - else symbol - and currency, the same across venues that spell it alike; stamped by the lifecycle |
-| `uuid` | `Uuid` | 65017 | the message's identity: a version-8 UUID of signed `updatedat` nanoseconds and 58 bits of the XXH64 of its named content; non-null |
-| `puuid` | `PUuid` | 65018 | the chain's identity: a version-8 UUID over the XXH3-128 of `code` alone; non-null |
+| `instuuid` | `InstUuid` | 65016 | the instrument's sixteen bytes, `fixedbinary(16)`: the big-endian xxh128 digest of its market, classification, ISIN - else symbol - and currency, the same across venues that spell it alike; stamped by the lifecycle |
+| `uuid` | `Uuid` | 65017 | the message's identity, `fixedbinary(16)`: signed `updatedat` nanoseconds with the sign bit flipped in bytes 0..8, then all 64 bits of the XXH64 of its named content in bytes 8..16; non-null |
+| `puuid` | `PUuid` | 65018 | the chain's identity, `fixedbinary(16)`: the big-endian XXH3-128 of `code` alone; non-null |
 | `targetsessionid` | `TargetSessionId` | 65019 | the session the message went to, as the message itself states it |
 | `altids` | `AltIds` | 65020 | a nullable sorted Map of this message's direct declared identifiers, keyed by canonical member name; group members are not flattened |
 | `prevupdatedat` | `PrevUpdatedAt` | 65021 | the previous message's `updatedat` in the selected chain; nullable |
-| `prevuuid` | `PrevUuid` | 65022 | the previous message's `uuid` in the selected chain; nullable |
+| `prevuuid` | `PrevUuid` | 65022 | the previous message's `uuid` in the selected chain, `fixedbinary(16)`; nullable |
 | `createdat` | `CreatedAt` | 65023 | the creation instant: `snapshotat` at intake, the first accepted message's in a live chain; non-null |
 | `code` | `Code` | 65024 | the exact chain name, empty when unknown; non-null |
 | `snapshotat` | `SnapshotAt` | 65025 | the real event instant: a stated one, else `TransactTime(60)`, else `SendingTime(52)`; non-null |
+
+The four identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - are `fixedbinary(16)`, sixteen plain big-endian bytes with no version or variant bit and no Arrow extension over them, because every lake engine reads `fixed[16]` and none reads `uuid` the same way twice. Their names, tags, roles, nullability and every identity semantic are what they always were; only the type and the byte layout are stated outright.
 
 `uuid` is the one stored message identity and `puuid` the chain's; what each hashes, and why a projection that adds or renames columns may move `uuid` while unchanged named content keeps it, is the [message's identity](message.md#clocks-and-identity). `FixMsg::digest` is a separate contract: the XXH3-128 of the arrival record with the standard header, the standard trailer and the crate's own tags left out, `MsgType` excepted, so two identical orders sent a second apart, or relayed through two sessions, digest equal.
 
@@ -408,6 +410,14 @@ The root's children are the standard header in its declared order, the body as i
     assert!(partition.is_partition());
     assert_eq!(partition.as_partition().sources()?, Some(vec!["updatedat".to_owned()]));
     assert_eq!(partition.get_metadata("transform:expression"), Some("truncate(updatedat, 'hour')"));
+
+    // The four identity columns are sixteen plain bytes, not a UUID.
+    let identity = yggdryl::DataType::fixed_size_binary(16)?;
+    for name in ["instuuid", "uuid", "puuid", "prevuuid"] {
+        let column = fields.iter().find(|field| field.name() == name).expect("a crate column");
+        assert_eq!(column.dtype(), &identity);
+        assert_eq!(column.dtype().to_string(), "fixed_size_binary(16)");
+    }
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -447,6 +457,7 @@ The root's children are the standard header in its declared order, the body as i
     from datetime import datetime, timezone
     from pathlib import Path
 
+    from yggdryl import DataType
     from yggdryl.fix import FixCodec, FixRegistry, fix_crate_fields
 
     CODE, SNAPSHOTAT = 65024, 65025
@@ -458,6 +469,12 @@ The root's children are the standard header in its declared order, the body as i
     assert partition.is_partition
     assert partition.metadata["partition:sources"] == '["updatedat"]'
     assert partition.metadata["transform:expression"] == "truncate(updatedat, 'hour')"
+
+    # The four identity columns are sixteen plain bytes, not a UUID.
+    identity = DataType("fixedbinary(16)")
+    by_name = {field.name: field for field in fields}
+    for name in ("instuuid", "uuid", "puuid", "prevuuid"):
+        assert by_name[name].dtype == identity
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
     reader = FixCodec(
@@ -491,7 +508,7 @@ The root's children are the standard header in its declared order, the body as i
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { fix, Scalar } = require('yggdryl')
+    const { DataType, fix, Scalar } = require('yggdryl')
 
     const [CODE, SNAPSHOTAT] = [65024, 65025]
     const fields = fix.crateFields()
@@ -502,6 +519,13 @@ The root's children are the standard header in its declared order, the body as i
     assert.ok(partition.isPartition)
     assert.equal(partition.getProperty('partition', 'sources'), '["updatedat"]')
     assert.equal(partition.getProperty('transform', 'expression'), "truncate(updatedat, 'hour')")
+
+    // The four identity columns are sixteen plain bytes, not a UUID.
+    const identity = DataType.fixedSizeBinary(16)
+    for (const name of ['instuuid', 'uuid', 'puuid', 'prevuuid']) {
+      const column = fields.find((field) => field.name === name)
+      assert.ok(column.dtype.equals(identity))
+    }
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry, {
@@ -1363,7 +1387,7 @@ A carried column whose folded name a FIX column already takes - a `msgCtxId` cap
 - A column whose field carries neither a `fix:tag` nor a `fix:counter`, and whose name spells no tag, is the capture's own, so `into_row` answers null there; whoever read the capture fills it.
 - `SendingTime(52)` and `TransactTime(60)` are typed by the registry's own declarations - `FixRegistry::new` seeds both where a dictionary defines neither - and a declaration that is not a nanosecond UTC instant is refused at intake; a stated clock that does not read as an instant is a located error item, never a default.
 - `timepartition` is floored from `updatedat`'s nanoseconds, so a clock stated to the microsecond has a partition rather than a null for not being a whole second.
-- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `updatedat` is an instant, `uuid` a UUID, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
+- A column of the crate's own is typed by the crate's definition, on a tag from 65001 that no dictionary publishes: `updatedat` is an instant, `uuid` sixteen fixed bytes, `miccode` a `mic`, `state` a `state`, whatever text a venue spelled them in.
 - A capture's own `timestamp` is context, not a FIX clock: it leads the row as a carried column and never overrides the message's `TransactTime`, then `SendingTime`, reading.
 - `altids` is filled by enrichment, never derived by `into_row` alone. A known message with no stated identifiers gets an empty map; an unknown message remains null in the fixed row. Invalid UTF-8 in a selected binary identifier raises the core's located conversion error.
 - Typed text drops the replacement character and every control character but tab, so a byte a transport mangled does not become a mangled column; the entry keeps the bytes exactly as they arrived.

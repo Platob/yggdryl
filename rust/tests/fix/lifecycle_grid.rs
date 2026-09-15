@@ -4,8 +4,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use yggdryl::hashing::xxhash::xxh128;
-use yggdryl::types::Uuid;
+use super::{identity_scalar, identity_text, numbered_identity, persistent_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, Error, FixCodec, FixLifecycle,
     FixMsg, FixRegistry, INSTUUID_TAG_NAME, PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME,
@@ -20,7 +19,7 @@ fn event(
     registry: &Arc<FixRegistry>,
     nanos: i64,
     code: &str,
-    scope: Option<Uuid>,
+    scope: Option<[u8; 16]>,
     identifiers: &[(&str, &str)],
 ) -> FixMsg {
     let mut fields = [
@@ -58,7 +57,7 @@ fn event(
                 .unwrap()
                 .clone(),
         );
-        values.push(Scalar::Uuid(scope));
+        values.push(identity_scalar(scope));
     }
     FixMsg::with_registry(
         Arc::clone(registry),
@@ -250,7 +249,7 @@ fn full_and_filtered_doors_share_finalized_history_and_consume_aligned_buckets()
 fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = lifecycle(&registry);
-    let scope = Uuid::new(1);
+    let scope = numbered_identity(1);
     let first = life
         .fill(event(&registry, 1, "A", Some(scope), &[("id", "OWNED")]))
         .unwrap();
@@ -274,7 +273,7 @@ fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
             &registry,
             21,
             "A",
-            Some(Uuid::new(2)),
+            Some(numbered_identity(2)),
             &[("id", "NEW")],
         ))
         .unwrap();
@@ -286,7 +285,7 @@ fn explicit_codes_are_global_and_never_steal_scoped_identifier_ownership() {
             &registry,
             31,
             "",
-            Some(Uuid::new(2)),
+            Some(numbered_identity(2)),
             &[("id", "NEW")],
         ))
         .unwrap();
@@ -324,9 +323,12 @@ fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
     let mut life = lifecycle(&registry);
     let text = "Mixed/Case/界";
     let mut ids = Vec::new();
-    let scopes = [None, Some(Uuid::new(0)), Some(Uuid::new(1))];
+    let scopes = [None, Some(numbered_identity(0)), Some(numbered_identity(1))];
     for (time, scope) in (1..).zip(scopes) {
-        let expected = scope.map_or_else(|| format!("-/{text}"), |id| format!("{id}/{text}"));
+        let expected = scope.map_or_else(
+            || format!("-/{text}"),
+            |id| format!("{}/{text}", identity_text(&id)),
+        );
         let value = life
             .fill(event(&registry, time, "", scope, &[("id", text)]))
             .unwrap();
@@ -336,7 +338,7 @@ fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
         );
         assert_eq!(
             value.puuid(),
-            &Scalar::Uuid(Uuid::from_v8(xxh128(expected.as_bytes())))
+            &identity_scalar(persistent_identity(&expected))
         );
         previous(&value, None);
         assert_eq!(value.createdat(), &clock(time));
@@ -353,7 +355,7 @@ fn derived_codes_preserve_scope_identifier_text_and_empty_is_not_whitespace() {
     }
     let unknown = event(&registry, 1, "", None, &[]);
     let filled = life.fill(unknown.clone()).unwrap();
-    assert_eq!(filled.puuid(), &Scalar::Uuid(Uuid::from_v8(xxh128(b""))));
+    assert_eq!(filled.puuid(), &identity_scalar(persistent_identity("")));
     assert_eq!(filled.updatedat(), &clock(0));
     assert_eq!(filled.createdat(), unknown.createdat());
     previous(&filled, None);
@@ -484,7 +486,7 @@ fn native_previous_target_failures_cannot_consume_a_bucket_or_close_and_attach()
         (PREVUUID_TAG_NAME, DataType::utf8()),
         (PREVUUID_TAG_NAME, DataType::binary()),
         (PREVUUID_TAG_NAME, clock(0).dtype().unwrap()),
-        (PREVUPDATEDAT_TAG_NAME, DataType::Uuid),
+        (PREVUPDATEDAT_TAG_NAME, super::identity_dtype()),
         (PREVUPDATEDAT_TAG_NAME, DataType::utf8()),
     ] {
         let custom = wrong_previous_registry(&registry, tag, dtype);
@@ -542,7 +544,7 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
                 (
                     PREVUUID_TAG_NAME.0,
                     if stated_uuid {
-                        Scalar::Uuid(Uuid::new(987))
+                        identity_scalar(numbered_identity(987))
                     } else {
                         Scalar::Null
                     },
@@ -556,7 +558,7 @@ fn independently_stated_previous_values_are_not_used_as_current_history() {
             first.updatedat().clone()
         };
         let expected_uuid = if stated_uuid {
-            Scalar::Uuid(Uuid::new(987))
+            identity_scalar(numbered_identity(987))
         } else {
             first.uuid().clone()
         };

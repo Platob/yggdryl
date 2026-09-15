@@ -43,10 +43,12 @@ use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Ver
 /// Every message stores non-null `updatedat`, `createdat`, `uuid`, `puuid`,
 /// `code`, `snapshotat` and `SendingTime(52)`. Initial intake settles clocks;
 /// replay never reads now. The four direct accessors borrow their stored
-/// values without lookup or allocation. `puuid` hashes exact code bytes;
-/// `uuid` combines signed updatedat nanoseconds with 58 bits of named-content
-/// XXH64 in a UUIDv8. These non-cryptographic identities are separate from
-/// the immutable arrival record's [`Self::digest`].
+/// values without lookup or allocation. `uuid` and `puuid` are sixteen fixed
+/// bytes each, never RFC identifiers: `puuid` is the big-endian XXH3-128 of
+/// the exact code bytes, and `uuid` the signed updatedat nanoseconds with
+/// the sign bit flipped in bytes 0..8 beside all 64 bits of the named
+/// content's XXH64 in bytes 8..16. These non-cryptographic identities are
+/// separate from the immutable arrival record's [`Self::digest`].
 ///
 /// Serialization is inherited, not written: `field.clone().into_json()`
 /// renders the schema, [`into_json_scalar`](crate::into_json_scalar) the

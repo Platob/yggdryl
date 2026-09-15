@@ -65,11 +65,11 @@ real event instant, ``TransactTime`` else ``SendingTime``; ``updatedat`` and
 ``uuid`` and ``puuid`` are computed. No clock is read after that intake, so
 replay carries the settled row or pins the same ``default_sending_time``, and
 :meth:`FixMsg.updatedat`, :meth:`FixMsg.createdat`, :meth:`FixMsg.uuid` and
-:meth:`FixMsg.puuid` always answer. ``uuid`` is a version-8 UUID of
-``updatedat``'s nanoseconds and the message's named content, and ``puuid`` a
-version-8 UUID of ``code`` alone; a row change recomputes both, a stated one
-that disagrees is refused, and :meth:`FixMsg.remove` refuses a mandatory
-field with ``ValueError``.
+:meth:`FixMsg.puuid` always answer. ``uuid`` is sixteen ``fixedbinary(16)``
+bytes over ``updatedat``'s nanoseconds and the message's named content, and
+``puuid`` sixteen bytes over ``code`` alone; a row change recomputes both, a
+stated one that disagrees is refused, and :meth:`FixMsg.remove` refuses a
+mandatory field with ``ValueError``.
 :meth:`FixCodec.parse_text_arrow_reader` turns a whole Arrow capture into
 batches of FIX rows - the capture's own columns first, the dictionary's fixed
 columns after, one source row's columns repeated for each message a bulk
@@ -125,7 +125,7 @@ sessions the message itself names, ``msgctxid``, the plugin ``pluginid`` that
 logged it and the ``prevpluginid`` it came through before that, and the session
 names ``sendersessionname`` and ``targetsessionname`` the line spells; the three
 facts a row derives from what the message said - ``isincode``, ``miccode`` and
-``state``; the ``uuid``-typed ``instuuid``, ``uuid`` and ``puuid``; the previous
+``state``; the ``fixedbinary(16)`` ``instuuid``, ``uuid`` and ``puuid``; the previous
 message's ``prevupdatedat`` and ``prevuuid``; and ``createdat``, ``code`` and
 ``snapshotat``. ``updatedat``, ``uuid``, ``puuid``, ``createdat``, ``code`` and
 ``snapshotat`` are non-null, and ``timepartition`` partitions ``updatedat``. The
@@ -137,7 +137,7 @@ through :meth:`FixLifecycle.fill`: a nonempty ``code`` selects its live chain
 globally; otherwise the first identifier - stated ``altids``, else the message
 type's declared identifiers - reaching a live chain under the message's
 ``instuuid`` lends that chain's code, and a new chain is named
-``<scope uuid or ->/<identifier>``, never taking an identifier another live
+``<scope hex or ->/<identifier>``, never taking an identifier another live
 chain holds. ``puuid`` hashes that code. Every accepted message has
 ``updatedat`` floored to its epoch grid - :attr:`FixLifecycle.DEFAULT_INTERVAL_NS`,
 one second, unless ``interval_ns`` says otherwise - while ``snapshotat`` keeps

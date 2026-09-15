@@ -117,7 +117,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         typed(yggdryl::PREVUPDATEDAT_TAG_NAME.0),
         typed(yggdryl::UPDATEDAT_TAG_NAME.0)
     );
-    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), DataType::Uuid);
+    assert_eq!(typed(yggdryl::PREVUUID_TAG_NAME.0), super::identity_dtype());
 
     // Crate-owned columns follow the same contract as FIX's: the stable
     // identity is the folded name, while renderers receive the FIX-style
@@ -171,7 +171,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
 }
 
 #[test]
-fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
+fn identity_columns_keep_their_bytes_through_rows_and_record_writers() {
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::media::ipc::{Ipc, IpcOptions};
@@ -185,14 +185,20 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
     let mut message = codec.sole_line(wire, false).unwrap();
     let digest = message.digest();
     let identities = [
-        (INSTUUID_TAG_NAME, "00112233-4455-8677-8899-aabbccddeeff"),
-        (PREVUUID_TAG_NAME, "01941f29-7dff-7fff-bfff-ffffffffffff"),
+        (
+            INSTUUID_TAG_NAME,
+            [
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x86, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+                0xee, 0xff,
+            ],
+        ),
+        (PREVUUID_TAG_NAME, [0xff; 16]),
     ];
     message
         .set_many(
             identities
                 .iter()
-                .map(|((tag, _), text)| (*tag, Scalar::from(*text))),
+                .map(|((tag, _), bytes)| (*tag, super::identity_scalar(*bytes))),
         )
         .unwrap();
     let previous_clock = Scalar::from_datetime(
@@ -210,20 +216,17 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
     let schema = fix_schema(&registry, "fix").unwrap();
     let row = message.into_row(&schema).unwrap();
     for (tag, _) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
-        assert!(matches!(at(&row, &schema, tag), Scalar::Uuid(_)));
+        super::identity_bytes(at(&row, &schema, tag));
     }
     assert_eq!(
         at(&row, &schema, yggdryl::PREVUPDATEDAT_TAG_NAME.0),
         &previous_clock
     );
-    for ((tag, name), text) in identities {
+    for ((tag, name), bytes) in identities {
         let field = &schema.fields()[column_of(&schema, tag)];
         assert_eq!(field.name(), name);
-        assert_eq!(field.dtype(), &DataType::Uuid);
-        let Scalar::Uuid(value) = at(&row, &schema, tag) else {
-            panic!("{name} must remain a native UUID")
-        };
-        assert_eq!(value.to_string(), text);
+        assert_eq!(field.dtype(), &super::identity_dtype());
+        assert_eq!(super::identity_bytes(at(&row, &schema, tag)), bytes);
     }
     let restored = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(restored.into_row(&schema).unwrap(), row);
@@ -245,18 +248,14 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
         PUUID_TAG_NAME,
         PREVUUID_TAG_NAME,
     ] {
+        // Plain sixteen bytes, with no extension name over them: a lake
+        // engine reads the storage and nothing has to know the extension.
         let field = arrow_schema.field_with_name(name).unwrap();
         assert_eq!(
             field.data_type(),
             &arrow_schema::DataType::FixedSizeBinary(16)
         );
-        assert_eq!(
-            field
-                .metadata()
-                .get("ARROW:extension:name")
-                .map(String::as_str),
-            Some("arrow.uuid")
-        );
+        assert!(!field.metadata().contains_key("ARROW:extension:name"));
     }
 
     let options: RecordOptions = IpcOptions::default().into();
@@ -280,24 +279,30 @@ fn uuid_columns_keep_their_identity_through_rows_and_record_writers() {
 }
 
 #[test]
-fn plain_binary_columns_remain_plain_arrow_but_cannot_claim_fix_uuid_roles() {
+fn renamed_identity_columns_are_their_tags_roles_and_stay_plain_arrow_bytes() {
     use yggdryl::FixMsg;
 
     let registry = Arc::new(FixRegistry::new());
+    // The identity columns are typed by their tag, never by their name: a
+    // renamed sixteen-byte column carrying 65016/65017/65018 is that role,
+    // and the row it belongs to still owes the whole replay bundle.
     let columns = [(65_016, "instid"), (65_017, "id"), (65_018, "persistentid")];
     let fields = columns.map(|(tag, name)| {
-        let mut field = DataType::fixed_size_binary(16)
-            .unwrap()
-            .required_field(name);
+        let mut field = super::identity_dtype().required_field(name);
         field.as_fix_mut().set_tag(tag).unwrap();
         field
     });
     let schema = DataType::from_fields(fields)
         .unwrap()
         .required_field("stored");
-    let row = Scalar::from_sequence((0..3_u8).map(|byte| Scalar::from(vec![byte; 16])));
+    let row = Scalar::from_sequence((0..3_u8).map(|byte| super::identity_scalar([byte; 16])));
     let error = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap_err();
-    assert!(error.to_string().contains("id"));
+    assert_eq!(
+        error.to_string(),
+        "invalid record value at $.updatedat: expected a mandatory replay field, got missing field"
+    );
+    // Sixteen bytes and no extension name: the storage is the whole story,
+    // which is what a lake engine reads.
     let arrow_schema = schema.into_arrow_schema().unwrap();
     for (_, old_name) in columns {
         assert!(registry.get_field_by_name(old_name).is_none());
@@ -385,10 +390,7 @@ fn projections_derive_facets_but_keep_the_hard_identity_bundle() {
         .unwrap();
     let row = order.into_row(&schema).unwrap();
 
-    assert!(matches!(
-        at(&row, &schema, yggdryl::UUID_TAG_NAME.0),
-        Scalar::Uuid(_)
-    ));
+    super::identity_bytes(at(&row, &schema, yggdryl::UUID_TAG_NAME.0));
 
     // One ticker for one instrument, qualified by the venue that named it.
     assert_eq!(
@@ -652,4 +654,133 @@ fn the_fixed_schema_partitions_by_identity_on_timepartition() {
         Some(fields[0].source_id),
         source.parquet_field_id().unwrap()
     );
+}
+
+/// The four identity columns cross a lake as `fixed[16]`, byte for byte.
+///
+/// This is the whole reason they are bytes: an Iceberg table maps
+/// `fixed_size_binary(16)` to the spec's `fixed[16]`, which every engine
+/// reads, where `uuid` is read consistently by none. The round trip writes
+/// stamped messages, reads them back, and compares the bytes.
+#[cfg(feature = "iceberg")]
+#[test]
+fn the_identity_columns_cross_an_iceberg_table_as_sixteen_fixed_bytes() {
+    use yggdryl::holder::local::Folder;
+    use yggdryl::media::iceberg::{
+        FormatVersion, PartitionSpec, PrimitiveType, Table, assign_field_ids,
+    };
+    use yggdryl::{INSTUUID_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, UUID_TAG_NAME};
+
+    let (registry, codec) = reader();
+    let codec = codec.with_separator(b'|');
+    // Two messages of one order, so the chain stamps `instuuid` on both and
+    // `prevuuid` on the second.
+    let lines: [&[u8]; 2] = [
+        b"8=FIX.4.4|35=D|11=LAKE-1|55=AAPL|207=XNAS|15=USD|54=1|38=100|52=20260102-10:15:30.000|10=0|",
+        b"8=FIX.4.4|35=8|11=LAKE-1|37=O-1|17=E-1|39=2|150=F|55=AAPL|207=XNAS|15=USD|14=100|52=20260102-10:15:31.000|10=0|",
+    ];
+    let messages: Vec<_> = lines
+        .iter()
+        .map(|line| Ok(codec.sole_line(line, false).unwrap()))
+        .collect();
+    let fixed = fix_schema(&registry, "fix").unwrap();
+    let stamped: Vec<_> = codec
+        .lifecycle(messages)
+        .map(|held| held.unwrap())
+        .collect();
+    let identities = [
+        INSTUUID_TAG_NAME,
+        UUID_TAG_NAME,
+        PUUID_TAG_NAME,
+        PREVUUID_TAG_NAME,
+    ];
+    // Read off the projected row, because the fixed schema is what the table
+    // holds and a projection is content: `uuid` digests the row it lands in
+    // (see `message.md#clocks-and-identity`), and the table's business is to
+    // carry those bytes back unchanged.
+    let expected: Vec<Vec<Option<[u8; 16]>>> = stamped
+        .iter()
+        .map(|held| {
+            let row = held.into_row(&fixed).unwrap();
+            identities
+                .iter()
+                .map(|(tag, _)| {
+                    let value = at(&row, &fixed, *tag);
+                    (!value.is_null()).then(|| super::identity_bytes(value))
+                })
+                .collect()
+        })
+        .collect();
+    assert!(
+        expected[1].iter().all(Option::is_some),
+        "the second message states all four"
+    );
+
+    let mut schema = fixed.clone();
+    assign_field_ids(&mut schema, 1).unwrap();
+    for (_, name) in identities {
+        assert_eq!(
+            PrimitiveType::from_dtype(schema.get_field(name).unwrap().dtype())
+                .unwrap()
+                .to_string(),
+            "fixed[16]",
+        );
+    }
+    let path = Folder::temporary()
+        .unwrap()
+        .path()
+        .unwrap()
+        .join(format!("yggdryl-fix-identity-lake-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    std::fs::create_dir_all(&path).unwrap();
+    // Unpartitioned: what is pinned here is the identity columns' storage,
+    // not the layout the hour is cut on, which
+    // `the_fixed_schema_partitions_by_identity_on_timepartition` owns.
+    let mut table = Table::create(
+        Folder::new(&path).unwrap(),
+        FormatVersion::V2,
+        schema,
+        PartitionSpec::unpartitioned(),
+    )
+    .unwrap();
+    let reader = codec
+        .arrow_reader(fixed.clone(), stamped.into_iter().map(Ok))
+        .unwrap();
+    table.commit_append(reader).unwrap();
+
+    let read = table.scan(None).unwrap();
+    for (_, name) in identities {
+        assert_eq!(
+            read.schema().field_with_name(name).unwrap().data_type(),
+            &arrow_schema::DataType::FixedSizeBinary(16),
+        );
+    }
+    let mut rows: Vec<Vec<Option<[u8; 16]>>> = Vec::new();
+    for batch in read {
+        let batch = batch.unwrap();
+        let columns: Vec<&arrow_array::FixedSizeBinaryArray> = identities
+            .iter()
+            .map(|(_, name)| {
+                batch
+                    .column_by_name(name)
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref()
+                    .expect("sixteen fixed bytes, read back as they were written")
+            })
+            .collect();
+        for row in 0..batch.num_rows() {
+            rows.push(
+                columns
+                    .iter()
+                    .map(|column| {
+                        (!arrow_array::Array::is_null(*column, row))
+                            .then(|| <[u8; 16]>::try_from(column.value(row)).unwrap())
+                    })
+                    .collect(),
+            );
+        }
+    }
+    assert_eq!(rows, expected, "the bytes come back exactly as they went");
+    let _ = std::fs::remove_dir_all(&path);
 }

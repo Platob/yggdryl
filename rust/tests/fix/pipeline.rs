@@ -532,11 +532,16 @@ fn every_framed_line_fills_its_tag_columns_typed() {
     assert_eq!(tag_column(&read, 38)[ROUTED_ROW].as_f64(), Some(982.0));
     assert_eq!(tag_column(&read, 31)[ROUTED_ROW].as_f64(), Some(547.77));
 
-    // Every projected row carries a native content identity. Distinct real
-    // messages remain distinct, independently of the separate arrival digest.
+    // Every projected row carries its sixteen content identity bytes.
+    // Distinct real messages remain distinct, independently of the separate
+    // arrival digest.
     let identities = tag_column(&read, yggdryl::UUID_TAG_NAME.0);
     for (row, held) in identities.iter().enumerate() {
-        assert!(matches!(held, Scalar::Uuid(_)), "row {row} has a UUID");
+        assert_eq!(
+            super::identity_bytes(held).len(),
+            16,
+            "row {row} has sixteen identity bytes"
+        );
     }
     assert_ne!(identities[FILL_ROW], identities[ROUTED_ROW]);
     let stamp = tag_column(&read, yggdryl::UPDATEDAT_TAG_NAME.0);

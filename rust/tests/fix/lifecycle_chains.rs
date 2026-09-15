@@ -2,9 +2,10 @@
 
 use std::sync::Arc;
 
-use super::SoleMessage;
-use yggdryl::hashing::xxhash::xxh128;
-use yggdryl::types::Uuid;
+use super::{
+    SoleMessage, identity_bytes, identity_scalar, identity_text, numbered_identity,
+    persistent_identity,
+};
 use yggdryl::types::nested::Mapping;
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, DataType, Error, Field, FixCategory, FixLifecycle, FixMsg,
@@ -78,7 +79,7 @@ fn mapping(entries: &[(&str, &str)]) -> Scalar {
 
 fn event(
     registry: &Arc<FixRegistry>,
-    scope: Option<Uuid>,
+    scope: Option<[u8; 16]>,
     code: Option<&str>,
     time: i64,
     entries: &[(&str, &str)],
@@ -87,29 +88,20 @@ fn event(
         (ALTIDS_TAG_NAME.0, mapping(entries)),
         (UPDATEDAT_TAG_NAME.0, clock(time)),
     ];
-    cells.extend(scope.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(value))));
+    cells.extend(scope.map(|value| (INSTUUID_TAG_NAME.0, identity_scalar(value))));
     cells.extend(code.map(|value| (CODE_TAG_NAME.0, Scalar::from(value))));
     row(registry, cells)
 }
 
-fn uuid(message: &FixMsg, tag: i32) -> Option<Uuid> {
+fn uuid(message: &FixMsg, tag: i32) -> Option<[u8; 16]> {
     message
         .get_by_tag(tag)
         .filter(|value| !value.is_null())
-        .map(|value| {
-            let Scalar::Uuid(value) = value else {
-                panic!("tag {tag} must retain its native UUID, got {value:?}");
-            };
-            *value
-        })
+        .map(identity_bytes)
 }
 
-fn chain(message: &FixMsg) -> Uuid {
+fn chain(message: &FixMsg) -> [u8; 16] {
     uuid(message, PUUID_TAG_NAME.0).expect("every message has its code identity")
-}
-
-fn persistent(code: &str) -> Uuid {
-    Uuid::from_v8(xxh128(code.as_bytes()))
 }
 
 fn located(error: Error, expected: &str) {
@@ -126,7 +118,7 @@ fn explicit_code_opens_without_keys_and_direct_join_outranks_identifier_lookup()
     let first = life
         .fill(event(&registry, None, Some("direct"), 0, &[]))
         .unwrap();
-    assert_eq!(chain(&first), persistent("direct"));
+    assert_eq!(chain(&first), persistent_identity("direct"));
     life.fill(event(&registry, None, Some("other"), 1, &[("a", "OWNED")]))
         .unwrap();
     let joined = life
@@ -148,17 +140,17 @@ fn explicit_code_opens_without_keys_and_direct_join_outranks_identifier_lookup()
         .unwrap();
     assert_eq!(
         chain(&owner),
-        persistent("other"),
+        persistent_identity("other"),
         "direct joins cannot steal keys"
     );
-    assert_eq!(chain(&attached), persistent("direct"));
+    assert_eq!(chain(&attached), persistent_identity("direct"));
 }
 
 #[test]
 fn scoped_identifier_resolves_code_but_foreign_identity_assertions_refuse_atomically() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
-    let scope = Uuid::new(123);
+    let scope = numbered_identity(123);
     let original = life
         .fill(event(&registry, Some(scope), None, 0, &[("id", "A")]))
         .unwrap();
@@ -166,7 +158,9 @@ fn scoped_identifier_resolves_code_but_foreign_identity_assertions_refuse_atomic
     for tag in [UUID_TAG_NAME.0, PUUID_TAG_NAME.0] {
         let before = message.clone();
         located(
-            message.set(tag, Scalar::Uuid(Uuid::new(456))).unwrap_err(),
+            message
+                .set(tag, identity_scalar(numbered_identity(456)))
+                .unwrap_err(),
             if tag == UUID_TAG_NAME.0 {
                 "$.uuid"
             } else {
@@ -188,15 +182,18 @@ fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
     let mut chains = Vec::new();
     for scope in [
         None,
-        Some(Uuid::new(0)),
-        Some(Uuid::new(1)),
-        Some(Uuid::new(2)),
+        Some(numbered_identity(0)),
+        Some(numbered_identity(1)),
+        Some(numbered_identity(2)),
     ] {
         let message = life
             .fill(event(&registry, scope, None, 456, &[("id", "SAME")]))
             .unwrap();
-        let code = scope.map_or_else(|| "-/SAME".to_owned(), |scope| format!("{scope}/SAME"));
-        let expected = persistent(&code);
+        let code = scope.map_or_else(
+            || "-/SAME".to_owned(),
+            |scope| format!("{}/SAME", identity_text(&scope)),
+        );
+        let expected = persistent_identity(&code);
         assert_eq!(chain(&message), expected);
         assert_eq!(uuid(&message, INSTUUID_TAG_NAME.0), scope);
         assert!(!chains.contains(&expected));
@@ -212,7 +209,7 @@ fn absent_nil_and_distinct_stated_scopes_have_distinct_generated_chains() {
 #[test]
 fn stated_scope_controls_identity_independently_of_raw_instrument_fields() {
     let registry = super::committed_registry();
-    let scope = Uuid::new(17);
+    let scope = numbered_identity(17);
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let mut first = event(&registry, Some(scope), None, 0, &[("id", "A")]);
     first.set(55, Scalar::from("ALPHA")).unwrap();
@@ -221,7 +218,13 @@ fn stated_scope_controls_identity_independently_of_raw_instrument_fields() {
     second.set(55, Scalar::from("BETA")).unwrap();
     let second = life.fill(second).unwrap();
     assert_eq!(chain(&first), chain(&second));
-    let mut elsewhere = event(&registry, Some(Uuid::new(18)), None, 0, &[("id", "A")]);
+    let mut elsewhere = event(
+        &registry,
+        Some(numbered_identity(18)),
+        None,
+        0,
+        &[("id", "A")],
+    );
     elsewhere.set(55, Scalar::from("ALPHA")).unwrap();
     assert_ne!(chain(&first), chain(&life.fill(elsewhere).unwrap()));
     assert_eq!(life.alive(), 2);
@@ -289,8 +292,8 @@ fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
     let registry = Arc::new(FixRegistry::new());
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let scopes = [
-        (Some(Uuid::new(1)), "A"),
-        (Some(Uuid::new(2)), "B"),
+        (Some(numbered_identity(1)), "A"),
+        (Some(numbered_identity(2)), "B"),
         (None, "C"),
     ];
     for (scope, key) in scopes {
@@ -307,7 +310,7 @@ fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
         let message = life
             .fill(event(&registry, scope, None, 2, &[("id", key)]))
             .unwrap();
-        assert_ne!(chain(&message), persistent("shared"));
+        assert_ne!(chain(&message), persistent_identity("shared"));
         reopened.push(message);
     }
     assert_eq!(life.alive(), 3);
@@ -326,7 +329,7 @@ fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
     terminal.set(39, Scalar::from("2")).unwrap();
     assert_eq!(
         chain(&life.fill(terminal).unwrap()),
-        persistent("first-terminal")
+        persistent_identity("first-terminal")
     );
     assert_eq!(life.alive(), 3);
     assert_ne!(
@@ -335,7 +338,7 @@ fn terminal_cleanup_removes_all_directly_attached_scopes_and_clear_replays() {
                 .fill(event(&registry, None, None, 4, &[("id", "FIRST-TERMINAL")]))
                 .unwrap()
         ),
-        persistent("first-terminal")
+        persistent_identity("first-terminal")
     );
 }
 
@@ -351,7 +354,7 @@ fn null_empty_duplicate_case_and_whitespace_values_keep_their_exact_meanings() {
     let empty = life
         .fill(row(&registry, [(ALTIDS_TAG_NAME.0, no_ids)]))
         .unwrap();
-    assert_eq!(chain(&empty), persistent(""));
+    assert_eq!(chain(&empty), persistent_identity(""));
     assert_eq!(empty.by_tag(CODE_TAG_NAME.0).unwrap().as_str(), Some(""));
     assert_eq!(life.alive(), 0);
     let mut chains = Vec::new();
@@ -396,7 +399,7 @@ fn stated_altids_including_empty_overrides_compiled_fallback_and_null_does_not()
     };
     let mut life = FixLifecycle::new(Arc::clone(&registry));
     let empty = life.fill(make(mapping(&[]))).unwrap();
-    assert_eq!(chain(&empty), persistent(""));
+    assert_eq!(chain(&empty), persistent_identity(""));
     assert_eq!(empty.by_tag(ALTIDS_TAG_NAME.0).unwrap(), &mapping(&[]));
     let raw = life.fill(make(Scalar::Null)).unwrap();
     assert_eq!(life.alive(), 1);
@@ -509,7 +512,7 @@ fn unknown_message_types_have_no_hard_tag_or_nested_identifier_fallback() {
             (37, Scalar::from("B")),
         ],
     );
-    assert_eq!(chain(&life.fill(unknown).unwrap()), persistent(""));
+    assert_eq!(chain(&life.fill(unknown).unwrap()), persistent_identity(""));
     assert_eq!(life.alive(), 0);
     let nested_member = field("innerid", 71_003, DataType::utf8());
     let mut item = DataType::from_fields([nested_member])
@@ -543,7 +546,7 @@ fn unknown_message_types_have_no_hard_tag_or_nested_identifier_fallback() {
     )
     .unwrap();
     let mut life = FixLifecycle::new(custom);
-    assert_eq!(chain(&life.fill(message).unwrap()), persistent(""));
+    assert_eq!(chain(&life.fill(message).unwrap()), persistent_identity(""));
     assert_eq!(life.alive(), 0);
 }
 
@@ -633,7 +636,7 @@ fn malformed_identifier_and_uuid_reasons_bound_ascii_and_multibyte_payloads() {
                     INSTUUID_TAG_NAME.0,
                     Scalar::from(long.clone()),
                     "$.instuuid",
-                    "a native UUID or null",
+                    "fixed_size_binary(16) or null",
                     true,
                 ),
                 (
@@ -735,7 +738,10 @@ fn a_stated_foreign_hash_cannot_manufacture_an_unrelated_chain_collision() {
     let before = message.clone();
     located(
         message
-            .set(PUUID_TAG_NAME.0, Scalar::Uuid(persistent("-/NEW")))
+            .set(
+                PUUID_TAG_NAME.0,
+                identity_scalar(persistent_identity("-/NEW")),
+            )
             .unwrap_err(),
         "$.puuid",
     );
@@ -777,18 +783,18 @@ fn a_fresh_replay_rebuilds_direct_and_identifier_chains_without_touching_arrival
     let registry = super::committed_registry();
     let codec = super::fixed_codec(Arc::clone(&registry));
     let specs = [
-        (Some(Uuid::new(1)), Some("joined"), "A", false),
-        (Some(Uuid::new(2)), Some("joined"), "B", false),
+        (Some(numbered_identity(1)), Some("joined"), "A", false),
+        (Some(numbered_identity(2)), Some("joined"), "B", false),
         (None, Some("other"), "C", false),
-        (Some(Uuid::new(2)), None, "B", true),
-        (Some(Uuid::new(1)), None, "A", false),
+        (Some(numbered_identity(2)), None, "B", true),
+        (Some(numbered_identity(1)), None, "A", false),
     ];
     let mut input = Vec::new();
     for (at, (scope, code, key, terminal)) in specs.into_iter().enumerate() {
         let line = format!("8=FIX.4.4|35=D|11={key}|60=20260102-10:15:3{at}|10=0|");
         let mut message = codec.sole_line(line.as_bytes(), false).unwrap();
         let mut writes = vec![(ALTIDS_TAG_NAME.0, mapping(&[("id", key)]))];
-        writes.extend(scope.map(|scope| (INSTUUID_TAG_NAME.0, Scalar::Uuid(scope))));
+        writes.extend(scope.map(|scope| (INSTUUID_TAG_NAME.0, identity_scalar(scope))));
         writes.extend(code.map(|code| (CODE_TAG_NAME.0, Scalar::from(code))));
         if terminal {
             writes.push((39, Scalar::from("2")));

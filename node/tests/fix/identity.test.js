@@ -72,8 +72,8 @@ function assertMirrors(held) {
   for (const instant of [held.updatedat(), held.createdat()]) {
     assert.ok(instant.dtype.equals(clock(0).dtype), 'DateTime64(ns, UTC)')
   }
-  assert.equal(held.uuid().id, 'uuid')
-  assert.equal(held.puuid().id, 'uuid')
+  assert.equal(held.uuid().id, 'fixed_size_binary')
+  assert.equal(held.puuid().id, 'fixed_size_binary')
 }
 
 test('a fixed default sending time settles every clock and replays exactly', () => {
@@ -181,7 +181,10 @@ test('named content ignores root order and metadata, never names or nulls', () =
   const nulled = message([payload(null)])
   const empty = message([payload('')])
   const renamed = message([[fields.utf8('renamed', { nullable: true }), null]])
-  assert.equal(new Set([absent, nulled, empty, renamed].map((held) => held.uuid().asJs())).size, 4)
+  assert.equal(
+    new Set([absent, nulled, empty, renamed].map((held) => Buffer.from(held.uuid().asJs()).toString('hex'))).size,
+    4,
+  )
 })
 
 test('ordinary mutation recomputes identity and excludes only the owned clocks', () => {
@@ -280,8 +283,9 @@ test('replay refuses tampered identity and non-native mandatory values', () => {
   for (const tag of BUNDLE) {
     const at = position(original, tag)
     const cells = Array.from({ length: original.field.fieldLen }, (_, index) => original.value.at(index))
-    // A native UUID another message computed is a tampered identity; an
-    // integer is no code; a microsecond instant is no replay clock.
+    // The sixteen identity bytes another message computed are a tampered
+    // identity; an integer is no code; a microsecond instant is no replay
+    // clock.
     cells[at] = tag === 65017 || tag === 65018
       ? other.uuid()
       : tag === 65024

@@ -518,11 +518,14 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// that carry a `fix:derivation`, and onto the three crate columns that
 /// derive - `CountryOfIssue` listing the crate's 249 ISO 3166 codes,
 /// `OrderQty` reading a canceled quantity outright, `isincode` reading each
-/// identifier through `try_cast(... as isin)`.
+/// identifier through `try_cast(... as isin)`. It then types the four
+/// identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - as
+/// `fixed_size_binary(16)` rather than `uuid`, which is the last thing to
+/// move this number.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 7_166_947_808_242_523_749);
+    assert_eq!(registry.stable_hash(), 2_559_683_158_366_975_942);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

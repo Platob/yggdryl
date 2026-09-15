@@ -5,7 +5,7 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::types::Uuid;
+use yggdryl::types::{Bytes, BytesLayout, BytesParameters};
 use yggdryl::{
     ALTIDS_TAG_NAME, CREATEDAT_TAG_NAME, FixCodec, FixLifecycle, INSTUUID_TAG_NAME,
     PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, PUUID_TAG_NAME, Scalar, TimeUnit, Timezone,
@@ -13,6 +13,19 @@ use yggdryl::{
 };
 
 use super::seed;
+
+/// One instrument scope as the sixteen bytes the column holds.
+fn identity(payload: u128) -> Scalar {
+    Scalar::Bytes(
+        Bytes::new(payload.to_be_bytes())
+            .try_with_parameters(
+                BytesParameters::new(BytesLayout::FixedSizeBinary)
+                    .try_with_bound(16)
+                    .unwrap(),
+            )
+            .unwrap(),
+    )
+}
 
 const SCOPES: usize = crate::bench_profile::corpus(128, 4);
 
@@ -37,10 +50,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
         let mut scoped = message.clone();
         scoped
             .set_many([
-                (
-                    INSTUUID_TAG_NAME.0,
-                    Scalar::Uuid(Uuid::from_v8(scope as u128)),
-                ),
+                (INSTUUID_TAG_NAME.0, identity(scope as u128)),
                 (
                     CREATEDAT_TAG_NAME.0,
                     Scalar::datetime64(
@@ -109,10 +119,10 @@ pub fn benchmarks(criterion: &mut Criterion) {
             }
             previous = Some((stamped.updatedat().clone(), stamped.uuid().clone()));
             if expected_chains != 0 {
-                let Scalar::Uuid(value) = stamped.by_tag(PUUID_TAG_NAME.0).unwrap() else {
-                    panic!("a native code identity");
+                let Scalar::Bytes(value) = stamped.by_tag(PUUID_TAG_NAME.0).unwrap() else {
+                    panic!("sixteen code identity bytes");
                 };
-                identities.insert(*value);
+                identities.insert(value.as_bytes().to_vec());
             }
         }
         assert_eq!(life.alive(), expected_chains, "{name}");

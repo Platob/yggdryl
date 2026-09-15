@@ -5045,11 +5045,11 @@ class FixMsg:
     ``createdat`` default to ``snapshotat``; ``code`` is the empty unknown
     name. No clock is read after intake. A message built here appends any
     member its root lacks. ``updatedat()``, ``createdat()``, ``uuid()`` and
-    ``puuid()`` always answer: ``uuid`` is a version-8 UUID of ``updatedat``'s
-    nanoseconds and the named content, ``puuid`` a version-8 UUID of
-    ``code`` alone, both recomputed when the row changes, and a stated one
-    that disagrees is a ``ValueError``. None of these is an entry unless the
-    wire sent it, so ``into_bytes`` re-emits the line byte for byte.
+    ``puuid()`` always answer: ``uuid`` is sixteen ``fixedbinary(16)`` bytes
+    over ``updatedat``'s nanoseconds and the named content, ``puuid`` sixteen
+    bytes over ``code`` alone, both recomputed when the row changes, and a
+    stated one that disagrees is a ``ValueError``. None of these is an entry
+    unless the wire sent it, so ``into_bytes`` re-emits the line byte for byte.
 
     The row is written through ``set`` and ``remove``, typed by the field the
     key resolves to; the entries never are. A mandatory field refuses
@@ -5248,7 +5248,7 @@ class FixLifecycle:
     live chain globally; otherwise the first identifier - stated ``altids``,
     else the message type's declared identifiers - reaching a live chain under
     the message's ``instuuid`` lends that chain's code, and a new chain is
-    named ``<scope uuid or ->/<identifier>``. ``puuid`` hashes that code.
+    named ``<scope hex or ->/<identifier>``. ``puuid`` hashes that code.
     Every accepted message has ``updatedat`` floored to its grid instant
     while ``snapshotat`` keeps the real one, takes its live chain's first
     ``createdat``, and fills each absent ``prevupdatedat`` and ``prevuuid``

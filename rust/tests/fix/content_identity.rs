@@ -2,9 +2,8 @@
 
 use std::sync::Arc;
 
-use super::SoleMessage;
-use yggdryl::hashing::{txhash::TxHash, xxhash};
-use yggdryl::types::Uuid;
+use super::{SoleMessage, identity_bytes, identity_scalar, numbered_identity, persistent_identity};
+use yggdryl::hashing::txhash::TxHash;
 use yggdryl::{
     CODE_TAG_NAME, CREATEDAT_TAG_NAME, DataType, DigestAlgorithm, Error, Field, FixCodec, FixKey,
     FixMsg, FixRegistry, PUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
@@ -106,8 +105,8 @@ fn assert_mirrors(message: &FixMsg) {
             matches!(value.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC)
         );
     }
-    assert!(matches!(message.uuid(), Scalar::Uuid(_)));
-    assert!(matches!(message.puuid(), Scalar::Uuid(_)));
+    identity_bytes(message.uuid());
+    identity_bytes(message.puuid());
 }
 
 /// The public Scalar record feed is the independent framing oracle.
@@ -127,7 +126,7 @@ fn expected_uuid(message: &FixMsg) -> Scalar {
             .map(|(field, value)| (field.name(), value.clone())),
     )
     .unwrap();
-    Scalar::Uuid(
+    identity_scalar(
         TxHash::new_in(
             message
                 .updatedat()
@@ -137,7 +136,7 @@ fn expected_uuid(message: &FixMsg) -> Scalar {
             content.digest(DigestAlgorithm::Xxh64),
         )
         .unwrap()
-        .into_uuid()
+        .into_ordered_bytes()
         .unwrap(),
     )
 }
@@ -240,14 +239,14 @@ fn fixed_default_clock_intake_is_exact_and_atomic() {
 }
 
 #[test]
-fn persistent_uuid_hashes_only_exact_code_bytes_including_the_empty_name() {
+fn the_persistent_identity_hashes_only_exact_code_bytes_including_the_empty_name() {
     let registry = FixRegistry::new();
     let mut identities = Vec::new();
     for code in ["", " ", "alpha", "alpha ", "é"] {
         let mut held = message([(declared(&registry, CODE_TAG_NAME.0), Scalar::from(code))]);
-        let expected = Scalar::Uuid(Uuid::from_v8(xxhash::xxh128(code.as_bytes())));
+        let expected = identity_scalar(persistent_identity(code));
         assert_eq!(held.puuid(), &expected);
-        assert_ne!(held.puuid(), &Scalar::Uuid(Uuid::new(0)));
+        assert_ne!(held.puuid(), &identity_scalar(numbered_identity(0)));
         held.set(UPDATEDAT_TAG_NAME.0, clock(-1)).unwrap();
         held.set(7777, Scalar::from("different content")).unwrap();
         assert_eq!(held.puuid(), &expected);
@@ -340,7 +339,8 @@ fn explicit_identity_writes_assert_the_complete_candidate_atomically() {
     let before = held.clone();
     for (tag, name) in [UUID_TAG_NAME, PUUID_TAG_NAME] {
         located(
-            held.set(tag, Scalar::Uuid(Uuid::new(0))).unwrap_err(),
+            held.set(tag, identity_scalar(numbered_identity(0)))
+                .unwrap_err(),
             &format!("$.{name}"),
         );
         assert_eq!(held, before);
@@ -701,7 +701,9 @@ fn replay_refuses_tampered_identity_and_non_native_mandatory_values() {
         let at = position(&original, tag);
         let mut values = original.as_value().as_sequence().unwrap().to_vec();
         values[at] = match tag {
-            tag if tag == UUID_TAG_NAME.0 || tag == PUUID_TAG_NAME.0 => Scalar::Uuid(Uuid::new(0)),
+            tag if tag == UUID_TAG_NAME.0 || tag == PUUID_TAG_NAME.0 => {
+                identity_scalar(numbered_identity(0))
+            }
             tag if tag == CODE_TAG_NAME.0 => Scalar::from(7_i32),
             _ => Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
         };

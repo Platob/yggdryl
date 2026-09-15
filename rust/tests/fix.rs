@@ -261,6 +261,44 @@ fn crated_messages() -> usize {
     usize::from(yggdryl::fix_plugin_message().is_ok())
 }
 
+/// The datatype every FIX identity column - `instuuid`, `uuid`, `puuid`,
+/// `prevuuid` - answers: sixteen plain bytes, no RFC identity.
+fn identity_dtype() -> yggdryl::DataType {
+    yggdryl::DataType::fixed_size_binary(16).expect("sixteen is a width")
+}
+
+/// One identity as a row carries it, under the fixed layout.
+fn identity_scalar(bytes: [u8; 16]) -> yggdryl::Scalar {
+    identity_dtype()
+        .scalar(yggdryl::Scalar::from(bytes.as_slice()))
+        .expect("sixteen bytes under the sixteen-byte layout")
+}
+
+/// One distinguishable identity per number, the way an integer named a UUID.
+fn numbered_identity(last: u128) -> [u8; 16] {
+    last.to_be_bytes()
+}
+
+/// The sixteen bytes a column holds, refusing every other value.
+#[track_caller]
+fn identity_bytes(held: &yggdryl::Scalar) -> [u8; 16] {
+    let yggdryl::Scalar::Bytes(bytes) = held else {
+        panic!("a sixteen-byte identity, got {held:?}");
+    };
+    assert_eq!(bytes.fixed(), Some(16), "{held:?}");
+    <[u8; 16]>::try_from(bytes.as_bytes()).expect("the fixed layout proved the width")
+}
+
+/// The sixteen bytes as the lowercase hex a chain code spells a scope with.
+fn identity_text(bytes: &[u8; 16]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The `puuid` a chain code hashes to: the XXH3-128 of its exact bytes.
+fn persistent_identity(code: &str) -> [u8; 16] {
+    yggdryl::hashing::xxhash::xxh128(code.as_bytes()).to_be_bytes()
+}
+
 const ISOLATED_FIX_TEST: &str = "YGGDRYL_ISOLATED_FIX_TEST";
 
 /// Run a process-global case in a child containing only that selected test.

@@ -109,13 +109,13 @@ pub const MICCODE_TAG_NAME: (i32, &str) = (65_014, "miccode");
 /// The tag and name carrying the state the order is in.
 pub const STATE_TAG_NAME: (i32, &str) = (65_015, "state");
 
-/// The tag and name carrying the instrument's version-8 UUID.
+/// The tag and name carrying the instrument's sixteen identity bytes.
 pub const INSTUUID_TAG_NAME: (i32, &str) = (65_016, "instuuid");
 
-/// The tag and name carrying the message's time/content version-8 UUID.
+/// The tag and name carrying the message's time/content identity bytes.
 pub const UUID_TAG_NAME: (i32, &str) = (65_017, "uuid");
 
-/// The tag and name carrying the event chain's UUID.
+/// The tag and name carrying the event chain's identity bytes.
 pub const PUUID_TAG_NAME: (i32, &str) = (65_018, "puuid");
 
 /// The tag and name carrying the session a message went to, as the message
@@ -129,7 +129,8 @@ pub const ALTIDS_TAG_NAME: (i32, &str) = (65_020, "altids");
 /// chain.
 pub const PREVUPDATEDAT_TAG_NAME: (i32, &str) = (65_021, "prevupdatedat");
 
-/// The tag and name carrying the preceding message's UUID in its event chain.
+/// The tag and name carrying the preceding message's identity bytes in its
+/// event chain.
 pub const PREVUUID_TAG_NAME: (i32, &str) = (65_022, "prevuuid");
 
 /// The tag and name carrying the message's creation instant.
@@ -463,26 +464,31 @@ fn build() -> Result<Vec<Field>> {
              lifecycle vocabulary.",
             STATE_DERIVATION,
         )?,
-        // UUID owns the RFC layout and Arrow extension.
+        // Sixteen plain bytes, big-endian, with no version or variant bit:
+        // every lake engine reads `fixed[16]` and none reads `uuid` the same
+        // way twice, so the FIX identities state the bytes themselves.
         crated(
             INSTUUID_TAG_NAME,
             "InstUuid",
-            DataType::Uuid,
-            "The instrument's version-8 UUID over the xxh128 digest of its market, \
-             its classification, its ISIN - else its symbol - and its currency.",
+            super::identity::IDENTITY_DATATYPE,
+            "The instrument's sixteen bytes: the big-endian xxh128 digest of \
+             its market, its classification, its ISIN - else its symbol - and \
+             its currency.",
         )?,
         crated(
             UUID_TAG_NAME,
             "Uuid",
-            DataType::Uuid,
-            "The version-8 UUID of signed updatedat nanoseconds and 58 bits \
-             of the canonical named message content's XXH64.",
+            super::identity::IDENTITY_DATATYPE,
+            "The message's sixteen bytes: signed updatedat nanoseconds with \
+             the sign bit flipped, then all 64 bits of the canonical named \
+             message content's XXH64.",
         )?,
         crated(
             PUUID_TAG_NAME,
             "PUuid",
-            DataType::Uuid,
-            "The event chain's version-8 UUID over XXH3-128 of code alone.",
+            super::identity::IDENTITY_DATATYPE,
+            "The event chain's sixteen bytes: the big-endian XXH3-128 of code \
+             alone.",
         )?,
         // The target side of the session pair, which the block's next free tag
         // takes rather than displacing a tag already published.
@@ -502,8 +508,9 @@ fn build() -> Result<Vec<Field>> {
         crated(
             PREVUUID_TAG_NAME,
             "PrevUuid",
-            DataType::Uuid,
-            "The preceding message's UUID in the selected event chain.",
+            super::identity::IDENTITY_DATATYPE,
+            "The preceding message's sixteen identity bytes in the selected \
+             event chain.",
         )?,
         crated(
             CREATEDAT_TAG_NAME,
@@ -539,7 +546,7 @@ fn build() -> Result<Vec<Field>> {
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// assert_eq!(held[20].dtype(), held[2].dtype());
-/// assert_eq!(held[21].dtype(), &yggdryl::DataType::Uuid);
+/// assert_eq!(held[21].dtype(), &yggdryl::DataType::fixed_size_binary(16)?);
 /// assert!(held[20].is_nullable() && held[21].is_nullable());
 /// // The partition is the hour `updatedat` falls in, typed as that clock is,
 /// // marked as the column a layout is cut on, and derived by the expression

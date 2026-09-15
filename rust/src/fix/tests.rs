@@ -940,14 +940,17 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // Decision 19 moved it again, and for the same reason: every registry
     // now also carries the `pluginconfig` component, which is more text.
     let carrying = FixRegistry::new().with_plugin_fields().unwrap();
-    // Decisions 21–23 add altids, UUID types and the scoped chain description;
-    // decision 24 adds the previous clock and UUID declarations.
+    // Decisions 21–23 add altids, the identity types and the scoped chain
+    // description; decision 24 adds the previous clock and identity
+    // declarations.
     // Decision 26 changes the clock/code/identity declarations and seeds standard clocks.
     // Decision 38 renames the partition and previous-clock columns,
     // registers the cusip and sedol codes beside isin, and declares how
     // `isincode`, `miccode` and `state` derive on the fields themselves -
-    // `isincode` reading each identifier through `try_cast(... as isin)`.
-    assert_eq!(carrying.stable_hash(), 318_981_572_616_015_665);
+    // `isincode` reading each identifier through `try_cast(... as isin)` -
+    // and finally types the four identity columns as `fixed_size_binary(16)`
+    // rather than `uuid`.
+    assert_eq!(carrying.stable_hash(), 10_038_847_448_497_322_741);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

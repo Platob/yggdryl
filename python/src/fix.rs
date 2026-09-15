@@ -1611,19 +1611,22 @@ impl PyFixMsg {
 
     /// The message's time and content identity.
     ///
-    /// The crate's non-null `uuid` (65017): a version-8 UUID packing the
-    /// signed nanoseconds of `updatedat` with 58 bits of the XXH64 of the
-    /// message's named content - `uuid`, `updatedat`, `createdat` and the
-    /// arrival record excluded. Recomputed whenever the row changes.
+    /// The crate's non-null `uuid` (65017): sixteen `fixedbinary(16)` bytes,
+    /// the signed nanoseconds of `updatedat` with the sign bit flipped in
+    /// bytes 0..8 and all 64 bits of the XXH64 of the message's named
+    /// content - `uuid`, `updatedat`, `createdat` and the arrival record
+    /// excluded - in bytes 8..16. `bytes` in Python. Recomputed whenever the
+    /// row changes.
     fn uuid(&self) -> PyScalar {
         PyScalar::from_inner(self.inner.uuid().clone())
     }
 
     /// The event chain's identity.
     ///
-    /// The crate's non-null `puuid` (65018): a version-8 UUID over the
-    /// XXH3-128 of `code`'s exact UTF-8 bytes alone, so one chain name is
-    /// one `puuid` and the empty unknown name hashes the empty bytes.
+    /// The crate's non-null `puuid` (65018): the sixteen big-endian
+    /// `fixedbinary(16)` bytes of the XXH3-128 of `code`'s exact UTF-8 bytes
+    /// alone, so one chain name is one `puuid` and the empty unknown name
+    /// hashes the empty bytes. `bytes` in Python.
     fn puuid(&self) -> PyScalar {
         PyScalar::from_inner(self.inner.puuid().clone())
     }
@@ -2275,7 +2278,7 @@ impl PyFixLifecycle {
     /// scope it names; otherwise the first identifier - from a stated
     /// `altids`, else the message type's declared identifiers - reaching a
     /// live chain under the message's `instuuid` lends that chain's code, and
-    /// the first identifier names a new chain `<scope uuid or ->/<identifier>`
+    /// the first identifier names a new chain `<scope hex or ->/<identifier>`
     /// when none does. No identifier and no code opens nothing, and an
     /// identifier another live chain holds is never taken from it.
     ///

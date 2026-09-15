@@ -19,7 +19,6 @@ import pathlib
 import pickle
 import subprocess
 import sys
-import uuid as uuid_module
 from typing import Any, Iterable, Iterator
 
 import pyarrow as pa
@@ -2206,7 +2205,7 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema[schema.index_of("miccode")].dtype == DataType("mic")
     assert schema[schema.index_of("state")].dtype == DataType("state")
     assert schema[schema.index_of("prevupdatedat")].dtype == schema[schema.index_of("updatedat")].dtype
-    assert schema[schema.index_of("prevuuid")].dtype == DataType("uuid")
+    assert schema[schema.index_of("prevuuid")].dtype == DataType("fixedbinary(16)")
     assert schema[schema.index_of("prevupdatedat")].nullable
     assert schema[schema.index_of("prevuuid")].nullable
     # BeginString, the partition and the seven members of the settled bundle
@@ -2241,8 +2240,12 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert row[schema.index_of("timepartition")] == CLOCK_PARTITION
     assert row[schema.index_of("code")] == ""
     for identity in ("uuid", "puuid"):
-        held = uuid_module.UUID(row[schema.index_of(identity)])
-        assert held.version == 8 and held.variant == uuid_module.RFC_4122, identity
+        held = row[schema.index_of(identity)]
+        assert isinstance(held, bytes) and len(held) == 16, identity
+    # The message identity leads with `updatedat`'s signed nanoseconds, sign
+    # bit flipped, so the bytes order as the instants do.
+    ordered = (CLOCK_NS ^ (1 << 63)) & ((1 << 64) - 1)
+    assert row[schema.index_of("uuid")][:8] == ordered.to_bytes(8, "big")
     # The projected row's uuid is recomputed over what the row holds; the
     # retained code keeps the chain's puuid.
     assert row[schema.index_of("puuid")] == message.puuid().as_py()
@@ -2439,9 +2442,10 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert fields["miccode"].dtype == DataType("mic")
     assert fields["state"].dtype == DataType("state")
     # The instrument, the message, the chain and the previous message are
-    # UUID values, never untyped digest bytes, and no alias reaches them.
+    # sixteen plain bytes - what every lake engine reads as `fixed[16]` -
+    # and no alias reaches them.
     for name in ("instuuid", "uuid", "puuid", "prevuuid"):
-        assert fields[name].dtype == DataType("uuid"), name
+        assert fields[name].dtype == DataType("fixedbinary(16)"), name
         assert fields[name].fix.aliases == [], name
 
     # Every registry holds them from construction beside the two seeded
@@ -2587,9 +2591,9 @@ def test_the_settled_bundle_answers_directly_and_refuses_what_would_break_it(
     assert message.updatedat().dtype == DataType('datetime64(ns,"UTC")')
     assert message.createdat().dtype == DataType('datetime64(ns,"UTC")')
     for identity in (message.uuid(), message.puuid()):
-        assert identity.dtype == DataType("uuid")
-        held = uuid_module.UUID(identity.as_py())
-        assert held.version == 8 and held.variant == uuid_module.RFC_4122
+        assert identity.dtype == DataType("fixedbinary(16)")
+        held = identity.as_py()
+        assert isinstance(held, bytes) and len(held) == 16
     # The unknown code is the empty name, and every message naming no chain
     # hashes that same empty name.
     assert message.puuid() == next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|")).puuid()
@@ -2799,16 +2803,14 @@ LIFE = [
 ]
 
 
-def _uuid_text(message: FixMsg, tag: int) -> str | None:
-    """The version-8 UUID one identity column holds, as text, or ``None`` where it is null."""
+def _identity_bytes(message: FixMsg, tag: int) -> bytes | None:
+    """The sixteen bytes one identity column holds, or ``None`` where it is null."""
     held = message.get_by_tag(tag)
     if held is None or held.is_null():
         return None
-    text = held.as_py()
-    assert isinstance(text, str)
-    parsed = uuid_module.UUID(text)
-    assert parsed.version == 8 and parsed.variant == uuid_module.RFC_4122, text
-    return text
+    value = held.as_py()
+    assert isinstance(value, bytes) and len(value) == 16, value
+    return value
 
 
 def _ns(count: int) -> Scalar:
@@ -2862,10 +2864,10 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
 
     # One instrument, one chain, six messages: the replace's new identifier
     # joined the chain the old one opened.
-    instruments = [_uuid_text(held, INSTUUID_TAG) for held in stamped]
+    instruments = [_identity_bytes(held, INSTUUID_TAG) for held in stamped]
     assert instruments[0] is not None
     assert all(held == instruments[0] for held in instruments)
-    chains = [_uuid_text(held, PUUID_TAG) for held in stamped]
+    chains = [_identity_bytes(held, PUUID_TAG) for held in stamped]
     assert chains[0] is not None
     assert all(held == chains[0] for held in chains)
     # The chain is named by its instrument scope and its first identifier,
@@ -2880,7 +2882,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     # Every message has its own identity, and identities sort by the grid
     # instant `updatedat` is floored to; `snapshotat` keeps the real one.
     ids = [held.uuid() for held in stamped]
-    assert all(_uuid_text(held, UUID_TAG) is not None for held in stamped)
+    assert all(_identity_bytes(held, UUID_TAG) is not None for held in stamped)
     for earlier, later in zip(stamped, stamped[1:]):
         assert earlier.uuid() != later.uuid()
         if earlier.updatedat() < later.updatedat():
@@ -2938,11 +2940,11 @@ def test_a_message_naming_no_order_has_an_id_and_no_chain(seed: FixRegistry) -> 
     (held,) = stamped
     # Every message has an id; no identifier, no chain name, and the empty
     # name every unnamed message hashes; no instrument, no identity.
-    assert _uuid_text(held, UUID_TAG) is not None
+    assert _identity_bytes(held, UUID_TAG) is not None
     assert held.by_tag(CODE_TAG).as_py() == ""
     undated = next(reader.parse_line(b"8=FIX.4.4|35=0|10=0|"))
     assert held.puuid() == undated.puuid()
-    assert _uuid_text(held, INSTUUID_TAG) is None
+    assert _identity_bytes(held, INSTUUID_TAG) is None
     _previous(held, None)
     # The event clock is the sending time where no transaction time is
     # stated, and the codec's default where the message states no clock.
@@ -2969,7 +2971,7 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     life = FixLifecycle(seed)
 
     def identity(line: bytes) -> str | None:
-        return _uuid_text(life.fill(next(reader.parse_line(line))), INSTUUID_TAG)
+        return _identity_bytes(life.fill(next(reader.parse_line(line))), INSTUUID_TAG)
 
     # An ISIN outranks a symbol, so the same security under two symbols is
     # one instrument, and case is not a difference.
@@ -2997,7 +2999,7 @@ def test_a_stamped_stream_read_again_keeps_what_it_carries(seed: FixRegistry) ->
     assert len(once) == len(twice) == len(LIFE)
     for first, second in zip(once, twice):
         for tag in (INSTUUID_TAG, UUID_TAG, PUUID_TAG):
-            assert _uuid_text(first, tag) == _uuid_text(second, tag), tag
+            assert _identity_bytes(first, tag) == _identity_bytes(second, tag), tag
         assert first.createdat() == second.createdat()
         assert len(first.entries()) == len(second.entries())
     assert once == twice

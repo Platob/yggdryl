@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::SoleMessage;
 use super::lifecycle_chains::{clock, row, try_row};
-use yggdryl::types::Uuid;
+use super::{identity_scalar, numbered_identity};
 use yggdryl::{
     ALTIDS_TAG_NAME, CODE_TAG_NAME, Error, FixLifecycle, FixMsg, FixRegistry, INSTUUID_TAG_NAME,
     PREVUPDATEDAT_TAG_NAME, PREVUUID_TAG_NAME, SNAPSHOTAT_TAG_NAME, Scalar, TimeUnit, Timezone,
@@ -32,7 +32,12 @@ fn event(
 ) -> FixMsg {
     let mut cells = vec![(UPDATEDAT_TAG_NAME.0, clock(nanos)), identifiers(entries)];
     cells.extend(code.map(|value| (CODE_TAG_NAME.0, Scalar::from(value))));
-    cells.extend(scope.map(|value| (INSTUUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(value)))));
+    cells.extend(scope.map(|value| {
+        (
+            INSTUUID_TAG_NAME.0,
+            identity_scalar(numbered_identity(value)),
+        )
+    }));
     row(registry, cells)
 }
 
@@ -94,14 +99,14 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
         first
             .set_many([
                 (PREVUPDATEDAT_TAG_NAME.0, clock(800)),
-                (PREVUUID_TAG_NAME.0, Scalar::Uuid(Uuid::new(801))),
+                (PREVUUID_TAG_NAME.0, identity_scalar(numbered_identity(801))),
             ])
             .unwrap();
         let first = life.fill(first).unwrap();
         assert_eq!(first.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(), &clock(800));
         assert_eq!(
             first.by_tag(PREVUUID_TAG_NAME.0).unwrap(),
-            &Scalar::Uuid(Uuid::new(801))
+            &identity_scalar(numbered_identity(801))
         );
         let mut second = event(&registry, 20, Some("A"), None, &[]);
         second
@@ -112,14 +117,16 @@ fn previous_fields_are_independent_statements_not_the_stored_current_pair() {
                 ),
                 (
                     PREVUUID_TAG_NAME.0,
-                    stated_uuid.map_or(Scalar::Null, |id| Scalar::Uuid(Uuid::new(id))),
+                    stated_uuid.map_or(Scalar::Null, |id| identity_scalar(numbered_identity(id))),
                 ),
             ])
             .unwrap();
         let second = life.fill(second).unwrap();
         let expected_clock = stated_time.map_or_else(|| first.updatedat().clone(), clock);
-        let expected_uuid =
-            stated_uuid.map_or_else(|| first.uuid().clone(), |id| Scalar::Uuid(Uuid::new(id)));
+        let expected_uuid = stated_uuid.map_or_else(
+            || first.uuid().clone(),
+            |id| identity_scalar(numbered_identity(id)),
+        );
         assert_eq!(
             second.by_tag(PREVUPDATEDAT_TAG_NAME.0).unwrap(),
             &expected_clock

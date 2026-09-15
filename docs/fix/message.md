@@ -10,7 +10,7 @@
 | Constructors | `FixMsg::new` links `FixRegistry::global()`; `FixMsg::with_registry` keeps the `Arc` it is given; `FixMsg::from_row` reads a [fixed row](#a-row-is-a-message-again) back, entries included |
 | Writes | `set`, `set_many`, `with_value` and `remove` [change the row](#written-into-the-row) and never the entries; a key resolves as a lookup does, a value types through the registry's field, and a refusal leaves the message unchanged. `set_many` and `with_value` are Rust-only; Python and JavaScript expose `set` and `remove` |
 | Validates | the row through `Field::scalar`, so a `Scalar::Record` input becomes that sequence |
-| Settled | every message holds non-null `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime(52)`, appended where the root lacks them and [dated once at construction](capture.md#every-message-is-dated-and-versioned); a write recomputes `uuid` and `puuid`, a stated one must match, and a mandatory field refuses a null or a removal |
+| Settled | every message holds non-null `updatedat`, `createdat`, `uuid`, `puuid`, `code`, `snapshotat` and `SendingTime(52)` - the two identities `fixedbinary(16)`, sixteen plain bytes - appended where the root lacks them and [dated once at construction](capture.md#every-message-is-dated-and-versioned); a write recomputes `uuid` and `puuid`, a stated one must match, and a mandatory field refuses a null or a removal |
 | Borrows | `registry()`, `as_field()`, `as_value()`, and `updatedat()`, `createdat()`, `uuid()`, `puuid()` without a lookup |
 | Identity | a field is its tag and its name; a message speaks no dialect and carries no membership, so a bare tag or name resolves in the registry's [one namespace](#one-namespace) |
 | Bare key | a tag answers the canonical holder, then an alternate; a name the canonical fold, then an alias fold; an id (`FixKey::Id`, `get_by_id`) is exact |
@@ -275,12 +275,14 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 
 ## Clocks and identity
 
-A message's clocks are settled once, when it is first built - `SendingTime`, then `snapshotat`, `updatedat` and `createdat`, as the [capture](capture.md#every-message-is-dated-and-versioned) reads them - and never read from a wall clock again. Its two identities are derived from the settled row, never stored beside it:
+A message's clocks are settled once, when it is first built - `SendingTime`, then `snapshotat`, `updatedat` and `createdat`, as the [capture](capture.md#every-message-is-dated-and-versioned) reads them - and never read from a wall clock again. Its two identities are derived from the settled row, never stored beside it. Both are `fixedbinary(16)`: sixteen big-endian bytes with no version or variant bit, because a lake engine reads `fixed[16]` everywhere and `uuid` nowhere consistently.
 
 | identity | recipe |
 | --- | --- |
-| `puuid` | UUIDv8 of the unseeded XXH3-128 of the exact `code` bytes alone; an empty code hashes empty bytes, and whitespace is a real name |
-| `uuid` | the row's named cells sorted by exact field-name bytes - `uuid`, `updatedat`, `createdat` and `nofixentries` left out, every other cell in, `code`, `puuid`, `snapshotat`, `SendingTime` and carried capture context included - fed through the canonical scalar record framing into an unseeded XXH64, then packed with `updatedat`'s signed nanoseconds by [`TxHash::into_uuid`](../hashing.md) |
+| `puuid` | the sixteen big-endian bytes of the unseeded XXH3-128 of the exact `code` bytes alone; an empty code hashes empty bytes, and whitespace is a real name |
+| `uuid` | the row's named cells sorted by exact field-name bytes - `uuid`, `updatedat`, `createdat` and `nofixentries` left out, every other cell in, `code`, `puuid`, `snapshotat`, `SendingTime` and carried capture context included - fed through the canonical scalar record framing into an unseeded XXH64, then laid out beside `updatedat`'s signed nanoseconds by [`TxHash::into_ordered_bytes`](../hashing.md): the instant with its sign bit flipped in bytes 0..8, all 64 digest bits in bytes 8..16 |
+
+Because the instant leads the sixteen bytes and its sign bit is flipped, two identities compare as their `updatedat` instants do, across the epoch, whatever the digests say.
 
 An omitted cell differs from a null one and an empty value from a null, while root column order does not matter; so a projection that pads, renames or regroups columns may move `uuid`, and unchanged named content keeps it. Every write, enrichment and projection recomputes both before publishing; a stated `uuid` or `puuid` is an assertion that must match the complete candidate. These hashes are non-cryptographic fingerprints, and `digest` - the arrival record's - is a separate contract.
 
