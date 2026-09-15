@@ -28,12 +28,14 @@ use crate::{Metadata, Result, Scheme};
 mod http;
 mod partition;
 mod python;
+mod xml;
 
 pub(crate) use python::{
     PYTHON_KIND_KEY, PYTHON_MODULE_KEY, PYTHON_QUALNAME_KEY, canonicalize_python_kind,
     validate_python_module, validate_python_qualname,
 };
 pub use python::{PythonKind, PythonMetadata};
+pub use xml::XmlKind;
 
 /// A field borrowed as one protocol: its properties by bare name, and the
 /// field itself.

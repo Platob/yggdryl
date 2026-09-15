@@ -236,6 +236,14 @@ macro_rules! for_each_well_known_protocol {
             "pandas"
         );
         $emit!(
+            as_xml,
+            as_xml_mut,
+            XML,
+            XmlField,
+            XmlFieldMut,
+            "XML document"
+        );
+        $emit!(
             as_python,
             as_python_mut,
             PYTHON,

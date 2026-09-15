@@ -72,6 +72,66 @@ pub(crate) fn read_document(input: &[u8], limits: Limits) -> Result<Scalar> {
     }
 }
 
+/// How one document spelled each of a row's columns.
+///
+/// Collected while the rows are read, because that is the only time it is
+/// known, and applied to the inferred field so a write can put a document back
+/// the way it was found. A column spelled two ways across rows keeps the first
+/// spelling; the read already refuses the two spellings that actually collide,
+/// inside one element.
+#[derive(Debug, Default)]
+pub(crate) struct Spelling {
+    columns: Vec<(SmolStr, Kind, Option<SmolStr>)>,
+}
+
+impl Spelling {
+    /// Record one column's spelling, keeping the first seen.
+    fn observe(&mut self, name: &str, kind: Kind, namespace: Option<&str>) {
+        if self.columns.iter().any(|(held, _, _)| held == name) {
+            return;
+        }
+        self.columns
+            .push((SmolStr::new(name), kind, namespace.map(SmolStr::new)));
+    }
+
+    /// Restate a field so each column says how a document spells it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a metadata failure.
+    pub(crate) fn apply(&self, field: crate::Field) -> Result<crate::Field> {
+        use crate::DataType;
+        use crate::types::protocol::XmlKind;
+
+        let DataType::Struct(children) = field.dtype() else {
+            return Ok(field);
+        };
+        let mut rebuilt = Vec::with_capacity(children.len());
+        for child in children.iter() {
+            let mut child = child.clone();
+            if let Some((_, kind, namespace)) = self
+                .columns
+                .iter()
+                .find(|(held, _, _)| held.as_str() == child.name())
+            {
+                let spelling = match kind {
+                    Kind::Attribute => XmlKind::Attribute,
+                    Kind::Element => XmlKind::Element,
+                };
+                let mut view = child.as_xml_mut();
+                view.set_kind(spelling)?;
+                view.set_namespace(namespace.as_deref())?;
+            }
+            rebuilt.push(child);
+        }
+        Ok(crate::Field::new(
+            field.name(),
+            DataType::from_fields(rebuilt)?,
+            field.is_nullable(),
+        ))
+    }
+}
+
 /// Read every row the document element holds.
 ///
 /// Rows are the document element's element children. They all name one
@@ -88,7 +148,7 @@ pub(crate) fn read_rows(
     input: &[u8],
     limits: Limits,
     row_element: Option<&str>,
-) -> Result<(SmolStr, Vec<Scalar>)> {
+) -> Result<(SmolStr, Vec<Scalar>, Spelling)> {
     let mut cursor = Cursor::new(input, limits);
     let Step::Open { empty, .. } = cursor.next()? else {
         return Err(codec_error(
@@ -97,13 +157,14 @@ pub(crate) fn read_rows(
         ));
     };
     let mut rows = Vec::new();
+    let mut spelling = Spelling::default();
     let mut row_name: Option<SmolStr> = row_element.map(SmolStr::new);
     let mut row_namespace: Option<Option<SmolStr>> = None;
     if empty {
         // A document element that closed in its own tag still has to be the
         // whole document.
         finish_document(&mut cursor)?;
-        return Ok((row_name.unwrap_or_default(), rows));
+        return Ok((row_name.unwrap_or_default(), rows, spelling));
     }
     loop {
         match cursor.next()? {
@@ -157,7 +218,14 @@ pub(crate) fn read_rows(
                             ));
                         }
                     }
-                    let row = element(&mut cursor, &name, attributes, empty, nil)?;
+                    let row = element_spelled(
+                        &mut cursor,
+                        &name,
+                        attributes,
+                        empty,
+                        nil,
+                        Some(&mut spelling),
+                    )?;
                     rows.push(row_value(row));
                 } else if !empty && row_element.is_none() {
                     // Nothing but rows is expected here, so a sibling costs
@@ -189,7 +257,7 @@ pub(crate) fn read_rows(
         }
     }
     finish_document(&mut cursor)?;
-    Ok((row_name.unwrap_or_default(), rows))
+    Ok((row_name.unwrap_or_default(), rows, spelling))
 }
 
 /// Require that the document ended where its element did.
@@ -235,6 +303,18 @@ fn element(
     empty: bool,
     nil: bool,
 ) -> Result<Scalar> {
+    element_spelled(cursor, name, attributes, empty, nil, None)
+}
+
+/// Read one open element, recording how it spelled its own columns.
+fn element_spelled(
+    cursor: &mut Cursor<'_>,
+    name: &Name,
+    attributes: Vec<Attr>,
+    empty: bool,
+    nil: bool,
+    mut spelling: Option<&mut Spelling>,
+) -> Result<Scalar> {
     // Columns are collected in document order and grouped once at the close,
     // because a repeat is only known to be one after the second occurrence.
     let mut columns: Vec<(SmolStr, Scalar)> = Vec::new();
@@ -246,6 +326,13 @@ fn element(
             cursor.position(),
             Kind::Attribute,
         )?;
+        if let Some(spelling) = spelling.as_deref_mut() {
+            spelling.observe(
+                attribute.name.local(),
+                Kind::Attribute,
+                attribute.name.namespace(),
+            );
+        }
         columns.push((
             SmolStr::new(attribute.name.local()),
             Scalar::from(attribute.value.as_str()),
@@ -266,6 +353,9 @@ fn element(
                 nil,
             } => {
                 claim(&mut claimed, &child, cursor.position(), Kind::Element)?;
+                if let Some(spelling) = spelling.as_deref_mut() {
+                    spelling.observe(child.local(), Kind::Element, child.namespace());
+                }
                 let value = element(cursor, &child, attributes, empty, nil)?;
                 columns.push((SmolStr::new(child.local()), value));
             }
@@ -298,7 +388,7 @@ fn element(
 
 /// Which spelling claimed a column name.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Kind {
+pub(crate) enum Kind {
     Attribute,
     Element,
 }

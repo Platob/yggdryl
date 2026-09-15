@@ -32,9 +32,9 @@ use crate::arrow::{ArrowScalar, BatchReader, Result};
 use crate::media::IORecordOptions;
 use crate::{Field, IOBase, Scalar};
 
-use super::document::{DEFAULT_ROW_NAME, read_rows};
+use super::document::{DEFAULT_ROW_NAME, Spelling, read_rows};
 use super::options::XmlOptions;
-use super::writer::write_document;
+use super::writer::write_rows;
 
 /// Read the canonical Struct field the document's rows prove.
 ///
@@ -45,8 +45,8 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlOptions) -> Resul
     if let Some(field) = options.declared() {
         return Ok(field.clone());
     }
-    let (name, rows) = rows_of(handle, options)?;
-    Ok(field_of(&name, &rows, options)?)
+    let (name, rows, spelling) = rows_of(handle, options)?;
+    Ok(spelling.apply(field_of(&name, &rows, options)?)?)
 }
 
 /// Count the rows a document holds.
@@ -55,7 +55,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlOptions) -> Resul
 ///
 /// Returns a read, decompression, or parse failure.
 pub(crate) fn row_size<H: IOBase + ?Sized>(handle: &H, options: &XmlOptions) -> crate::Result<u64> {
-    let (_, rows) = rows_of(handle, options)?;
+    let (_, rows, _) = rows_of(handle, options)?;
     Ok(rows.len() as u64)
 }
 
@@ -69,10 +69,10 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &XmlOptions,
 ) -> Result<BatchReader> {
-    let (name, rows) = rows_of(handle, options)?;
+    let (name, rows, spelling) = rows_of(handle, options)?;
     let root = match field {
         Some(field) => field.clone(),
-        None => field_of(&name, &rows, options)?,
+        None => spelling.apply(field_of(&name, &rows, options)?)?,
     };
     // Every row crosses the field's own value contract, which is what types
     // an all-text encoding's leaves. The batch build canonicalizes again on
@@ -118,11 +118,14 @@ where
         .iter()
         .map(|row| root.into_natural_value(row.clone()))
         .collect::<crate::Result<Vec<_>>>()?;
+    // The declared field carries what each column was spelled as, so a write
+    // under the field a read produced puts the document back the way it was.
+    let spelled = root.clone().with_name(row_name.as_str());
     let mut encoded = Vec::new();
-    write_document(
+    write_rows(
         &mut encoded,
         &options.document,
-        &row_name,
+        &spelled,
         &rendered,
         options.formatting(),
     )?;
@@ -134,10 +137,14 @@ where
 fn rows_of<H: IOBase + ?Sized>(
     handle: &H,
     options: &XmlOptions,
-) -> crate::Result<(SmolStr, Vec<Scalar>)> {
+) -> crate::Result<(SmolStr, Vec<Scalar>, Spelling)> {
     let bytes = handle.read_all_bytes()?;
     if bytes.is_empty() {
-        return Ok((SmolStr::new_static(DEFAULT_ROW_NAME), Vec::new()));
+        return Ok((
+            SmolStr::new_static(DEFAULT_ROW_NAME),
+            Vec::new(),
+            Spelling::default(),
+        ));
     }
     // The byte budget bounds what a record read decodes exactly as it bounds
     // what a value read does; a document reached through a handle is not a
@@ -146,7 +153,7 @@ fn rows_of<H: IOBase + ?Sized>(
     read_rows(&bytes, options.limits, options.row_element.as_deref())
 }
 
-/// Infer the Struct field a document's rows prove.
+/// Infer the Struct field a document's rows prove, and how it spelled them.
 ///
 /// The rows are borrowed: inference reads their shape and a copy of every
 /// decoded row would be the largest allocation a schemaless read makes.

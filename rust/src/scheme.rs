@@ -42,6 +42,7 @@ enum SchemeValue {
     Polars,
     Pandas,
     Python,
+    Xml,
     Custom(SmolStr),
 }
 
@@ -87,6 +88,8 @@ impl Scheme {
     pub const PARTITION: Self = Self(SchemeValue::Partition);
     /// The `transform:` field namespace: how a column is computed.
     pub const TRANSFORM: Self = Self(SchemeValue::Transform);
+    /// The XML metadata namespace: what a document spells a column as.
+    pub const XML: Self = Self(SchemeValue::Xml);
     /// The Amazon S3 object protocol scheme.
     pub const S3: Self = Self(SchemeValue::S3);
     /// The Hadoop `s3a` spelling of the same Amazon S3 protocol.
@@ -169,6 +172,7 @@ impl Scheme {
             SchemeValue::Polars => "polars",
             SchemeValue::Pandas => "pandas",
             SchemeValue::Python => "python",
+            SchemeValue::Xml => "xml",
             SchemeValue::Custom(value) => value.as_str(),
         }
     }
@@ -334,6 +338,7 @@ impl FromStr for Scheme {
             6 if value.eq_ignore_ascii_case("digest") => Some(Self::DIGEST),
             6 if value.eq_ignore_ascii_case("polars") => Some(Self::POLARS),
             6 if value.eq_ignore_ascii_case("pandas") => Some(Self::PANDAS),
+            3 if value.eq_ignore_ascii_case("xml") => Some(Self::XML),
             6 if value.eq_ignore_ascii_case("python") => Some(Self::PYTHON),
             7 if value.eq_ignore_ascii_case("iceberg") => Some(Self::ICEBERG),
             8 if value.eq_ignore_ascii_case("postgres") => Some(Self::POSTGRES),

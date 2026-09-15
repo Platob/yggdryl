@@ -15,6 +15,7 @@ fn document(input: &str) -> Result<Scalar> {
 
 fn rows(input: &str) -> Result<(smol_str::SmolStr, Vec<Scalar>)> {
     read_rows(input.as_bytes(), Limits::default(), None)
+        .map(|(name, rows, _)| (name, rows))
 }
 
 #[test]
@@ -128,15 +129,19 @@ fn the_budgets_bound_a_document_and_say_where_they_stopped() {
     assert!(error.contains("decoded node limit exceeded"), "{error}");
 }
 
-use super::writer::{escape_text, write_document};
+use super::writer::{escape_text, write_rows};
 use crate::text::{Formatting, Indent};
 
 fn written(rows: &[Scalar]) -> String {
+    let field = Scalar::from_sequence(rows.to_vec())
+        .inferred_struct_field()
+        .unwrap()
+        .with_name("row");
     let mut out = Vec::new();
-    write_document(
+    write_rows(
         &mut out,
         "rows",
-        "row",
+        &field,
         rows,
         Formatting::new().with_indent(Indent::None),
     )
@@ -164,7 +169,7 @@ fn a_written_document_reads_back_to_the_value_that_was_written() {
         Scalar::from_record([("id", Scalar::from("2")), ("note", Scalar::from("\ttab"))]).unwrap(),
     ];
     let encoded = written(&rows);
-    let (name, read) = read_rows(encoded.as_bytes(), Limits::default(), None).unwrap();
+    let (name, read, _) = read_rows(encoded.as_bytes(), Limits::default(), None).unwrap();
     assert_eq!(name, "row");
     assert_eq!(read, rows, "{encoded}");
 }
@@ -172,8 +177,12 @@ fn a_written_document_reads_back_to_the_value_that_was_written() {
 #[test]
 fn a_name_no_element_can_be_called_is_refused_rather_than_written() {
     let rows = vec![Scalar::from_record([("not a name", Scalar::from("1"))]).unwrap()];
+    let field = Scalar::from_sequence(rows.clone())
+        .inferred_struct_field()
+        .unwrap()
+        .with_name("row");
     let mut out = Vec::new();
-    let error = write_document(&mut out, "rows", "row", &rows, Formatting::new())
+    let error = write_rows(&mut out, "rows", &field, &rows, Formatting::new())
         .unwrap_err()
         .to_string();
     assert!(error.contains("an XML element can be called"), "{error}");
@@ -208,7 +217,7 @@ fn characters_beside_attributes_are_the_elements_own_value() {
 fn a_prefixed_sibling_is_skipped_without_eating_the_document() {
     // `read_to_end` matches the end tag as written, so a local name would
     // never find `</p:meta>` and would run to the end of the input.
-    let (name, rows) = read_rows(
+    let (name, rows, _) = read_rows(
         b"<feed xmlns:p='u'><p:meta>x</p:meta><Trade><id>1</id></Trade></feed>",
         Limits::default(),
         Some("Trade"),
@@ -224,7 +233,7 @@ fn a_prefixed_sibling_is_skipped_without_eating_the_document() {
 
 #[test]
 fn a_named_row_element_is_found_wherever_the_wrapper_puts_it() {
-    let (_, rows) = read_rows(
+    let (_, rows, _) = read_rows(
         b"<feed><data><Trade><id>1</id></Trade><Trade><id>2</id></Trade></data></feed>",
         Limits::default(),
         Some("Trade"),

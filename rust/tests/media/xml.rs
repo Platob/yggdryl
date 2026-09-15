@@ -258,3 +258,43 @@ fn the_byte_budget_bounds_a_record_read_as_well_as_a_value_read() {
         ),
     }
 }
+
+#[test]
+fn a_document_read_and_written_back_keeps_the_spelling_it_arrived_in() {
+    // The read records how each column was spelled; the field carries it; the
+    // write puts it back. Without that, an attribute returns as a child
+    // element and a document stops being the document it was.
+    let handle = written(
+        "spelled.xml",
+        "<rows><Amt Ccy=\"EUR\"><Sub>1</Sub></Amt><Amt Ccy=\"USD\"><Sub>2</Sub></Amt></rows>",
+    );
+    let options = handle.record_options().unwrap();
+    let field = handle.read_arrow_field(&options).unwrap();
+
+    // The field says which column the document spelled as an attribute.
+    let children = field.dtype().as_fields().unwrap();
+    let ccy = children.iter().find(|child| child.name() == "Ccy").unwrap();
+    assert_eq!(
+        ccy.as_xml().kind().unwrap(),
+        yggdryl::types::protocol::XmlKind::Attribute
+    );
+    let sub = children.iter().find(|child| child.name() == "Sub").unwrap();
+    assert_eq!(
+        sub.as_xml().kind().unwrap(),
+        yggdryl::types::protocol::XmlKind::Element
+    );
+
+    // And a write under that field puts the attribute back as an attribute.
+    let value = handle.read_arrow(Some(&options)).unwrap();
+    let mut target = handle_named("respelled.xml");
+    let out_options = handle_named("respelled.xml")
+        .record_options()
+        .unwrap()
+        .with_field(field);
+    target
+        .overwrite_arrow_reader(value.into_reader().unwrap(), &out_options)
+        .unwrap();
+    let encoded = String::from_utf8(target.read_all_bytes().unwrap()).unwrap();
+    assert!(encoded.contains("Ccy=\"EUR\""), "{encoded}");
+    assert!(encoded.contains("<Sub>1</Sub>"), "{encoded}");
+}

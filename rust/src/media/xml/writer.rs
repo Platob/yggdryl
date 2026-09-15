@@ -146,21 +146,27 @@ pub(crate) fn write_value<W: Write>(
     out.write_all(text.as_bytes()).map_err(Error::from)
 }
 
-/// Write one document: a root element holding `rows`.
+/// Write one document whose rows are spelled as `field` declares.
+///
+/// The declaration is what carries the spellings a document used - which
+/// columns were attributes, which were the element's own characters, what each
+/// was called on the wire - so a document read under a field and written back
+/// under the same field comes out the way it went in.
 ///
 /// # Errors
 ///
 /// Returns a write failure, or a refusal naming a value or a column name XML
 /// cannot spell.
-pub(crate) fn write_document<W: Write>(
+pub(crate) fn write_rows<W: Write>(
     out: &mut W,
     root: &str,
-    row: &str,
+    field: &crate::Field,
     rows: &[Scalar],
     formatting: Formatting,
 ) -> Result<()> {
     check_name(root)?;
-    check_name(row)?;
+    let row = field.as_xml().wire_name().to_owned();
+    check_name(&row)?;
     let mut text = String::new();
     text.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
     let newline = !matches!(formatting.indent(), Indent::None);
@@ -174,7 +180,7 @@ pub(crate) fn write_document<W: Write>(
         if newline {
             text.push('\n');
         }
-        write_element(&mut text, row, value, 1, formatting)?;
+        write_declared(&mut text, &row, field, value, 1, formatting)?;
     }
     if newline {
         text.push('\n');
@@ -186,6 +192,109 @@ pub(crate) fn write_document<W: Write>(
         text.push('\n');
     }
     out.write_all(text.as_bytes()).map_err(Error::from)
+}
+
+/// Write one value under the field that says how it is spelled.
+fn write_declared(
+    out: &mut String,
+    name: &str,
+    field: &crate::Field,
+    value: &Scalar,
+    depth: usize,
+    formatting: Formatting,
+) -> Result<()> {
+    use crate::DataType;
+
+    let children = match field.dtype() {
+        DataType::Struct(children) => children,
+        // Only a struct carries per-column spellings; anything else is written
+        // the way an undeclared value is.
+        _ => return write_element(out, name, value, depth, formatting),
+    };
+    let Some(record) = value.as_record() else {
+        return write_element(out, name, value, depth, formatting);
+    };
+
+    indent(out, depth, formatting);
+    out.push('<');
+    out.push_str(name);
+    // Attributes are written into the open tag, so they are collected first.
+    for child in children.iter() {
+        let spelling = child.as_xml();
+        if !spelling.kind()?.is_attribute() {
+            continue;
+        }
+        let Some(held) = record.get(child.name()).filter(|held| !held.is_null()) else {
+            continue;
+        };
+        let wire = spelling.wire_name().to_owned();
+        check_name(&wire)?;
+        let rendered = leaf_text(held)?;
+        check_text(&rendered)?;
+        out.push(' ');
+        out.push_str(&wire);
+        out.push_str("=\"");
+        escape_attribute(&rendered, out);
+        out.push('"');
+    }
+    out.push('>');
+
+    // Then the element's own characters, if a column claims them.
+    let mut wrote_child = false;
+    for child in children.iter() {
+        if !child.as_xml().kind()?.is_text() {
+            continue;
+        }
+        if let Some(held) = record.get(child.name()).filter(|held| !held.is_null()) {
+            let rendered = leaf_text(held)?;
+            check_text(&rendered)?;
+            escape_text(&rendered, out);
+        }
+    }
+
+    for child in children.iter() {
+        let spelling = child.as_xml();
+        let kind = spelling.kind()?;
+        if kind.is_attribute() || kind.is_text() {
+            continue;
+        }
+        let Some(held) = record.get(child.name()).filter(|held| !held.is_null()) else {
+            continue;
+        };
+        let wire = spelling.wire_name().to_owned();
+        if !matches!(formatting.indent(), Indent::None) {
+            out.push('\n');
+        }
+        wrote_child = true;
+        write_declared(out, &wire, child, held, depth.saturating_add(1), formatting)?;
+    }
+    if wrote_child && !matches!(formatting.indent(), Indent::None) {
+        out.push('\n');
+        indent(out, depth, formatting);
+    }
+    out.push_str("</");
+    out.push_str(name);
+    out.push('>');
+    Ok(())
+}
+
+/// Escape one attribute value's characters into `out`.
+///
+/// Attribute-value normalization replaces a literal tab, newline or carriage
+/// return with a space before any reader sees it, so those three are written
+/// as character references, which normalization leaves alone.
+fn escape_attribute(value: &str, out: &mut String) {
+    for character in value.chars() {
+        match character {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '"' => out.push_str("&quot;"),
+            '\t' => out.push_str("&#x9;"),
+            '\n' => out.push_str("&#xA;"),
+            '\r' => out.push_str("&#xD;"),
+            other => out.push(other),
+        }
+    }
 }
 
 /// Write the indentation one level asks for.
