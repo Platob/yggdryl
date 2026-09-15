@@ -161,6 +161,18 @@ pub const SOURCEURL_TAG_NAME: (i32, &str) = (65_026, "sourceurl");
 /// count column is for.
 pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 
+/// The tag and name carrying the instant the capture itself recorded the line.
+pub const RECORDEDAT_TAG_NAME: (i32, &str) = (65_028, "recordedat");
+
+/// The tag and name carrying the instant the message says it stops being good.
+pub const EXPIREDAT_TAG_NAME: (i32, &str) = (65_029, "expiredat");
+
+/// The tag and name carrying the currency the bid lane is denominated in.
+pub const BIDCURRENCY_TAG_NAME: (i32, &str) = (65_030, "bidcurrency");
+
+/// The tag and name carrying the currency the offer lane is denominated in.
+pub const OFFERCURRENCY_TAG_NAME: (i32, &str) = (65_031, "offercurrency");
+
 /// Whether a tag is one of this crate's own.
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
@@ -212,6 +224,38 @@ const MICCODE_DERIVATION: &str = "coalesce(securityexchange, exdestination, last
 /// How `state` derives: the order's status, else what the report said
 /// happened, both read as the crate's one lifecycle vocabulary.
 const STATE_DERIVATION: &str = "coalesce(ordstatus, exectype)";
+
+/// What dated the line, where the capture did not.
+///
+/// The capture's own instant reaches this column by name (see the aliases on
+/// the field), so this is only the fallback: a message whose line carried no
+/// timestamp is recorded at the instant it says it was sent. Enrichment fills
+/// and never overwrites, so a line that *was* dated keeps that date.
+const RECORDEDAT_DERIVATION: &str = "sendingtime";
+
+/// What a message says about when it stops being good, strongest first.
+///
+/// `ExpireTime(126)` is the order's own instant and the only one of these
+/// that is already a point in time, so it leads. `ValidUntilTime(62)` is the
+/// same statement made by a quote. `ExpireDate(432)` is the order's expiry
+/// stated as a day rather than an instant, which is weaker because it needs a
+/// session close to mean anything exact. `MaturityDate(541)` is last and is
+/// not the order's statement at all - it is the instrument's, and an order
+/// cannot outlive the thing it trades, so it bounds the answer when nothing
+/// closer was said.
+const EXPIREDAT_DERIVATION: &str =
+    "coalesce(expiretime, validuntiltime, expiredate, maturitydate)";
+
+/// What denominates a quote lane.
+///
+/// FIX states no currency per lane: a two-sided quote carries one
+/// `Currency(15)` and both lanes are in it, with `SettlCurrency(120)` behind
+/// it for a message that separates settlement from quotation. So both lanes
+/// derive from the same pair and answer the same value on an ordinary
+/// message - which is the point, because the column is there for the dialect
+/// that *does* split them. Enrichment fills and never overwrites, so a bridge
+/// stating one lane's currency keeps it and only the other lane derives.
+const LANE_CURRENCY_DERIVATION: &str = "coalesce(currency, settlcurrency)";
 
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
@@ -270,6 +314,21 @@ fn derived(
 ) -> Result<Field> {
     let mut field = crated(identity, display, dtype, description)?;
     field.as_fix_mut().set_derivation(&derivation.parse()?)?;
+    Ok(field)
+}
+
+/// One field a bridge spells under its own names *and* that derives where
+/// none of them arrived - the two halves of a fill, on one field.
+fn aliased_derived(
+    identity: (i32, &str),
+    display: &str,
+    dtype: DataType,
+    description: &str,
+    aliases: &[&str],
+    derivation: &str,
+) -> Result<Field> {
+    let mut field = derived(identity, display, dtype, description, derivation)?;
+    field.as_fix_mut().set_aliases(aliases.iter().copied())?;
     Ok(field)
 }
 
@@ -568,6 +627,52 @@ fn build() -> Result<Vec<Field>> {
             DataType::Int32,
             "How many pairs the message carried, in arrival order.",
         )?,
+        // When the capture wrote the line down, which is a fact about the
+        // capture and not about the message - so it is outside the content
+        // hash for the same reason `sourceurl` is: one day's log re-cut,
+        // replayed or copied records the same message at a second instant,
+        // and both copies must digest alike.
+        // The text reader already carries the line's own instant, under the
+        // name it gives that column - so the fill is an alias, the way every
+        // other capture column reaches its field, rather than a second
+        // mapping. `mtime` is the reader's own spelling and the rest are the
+        // ones it accepts for it, so a batch from anywhere lands here too.
+        // What no line dated is the message's own `SendingTime`, which is
+        // where the derivation picks up.
+        aliased_derived(
+            RECORDEDAT_TAG_NAME,
+            "RecordedAt",
+            super::schema::CLOCK_DATATYPE,
+            "The instant the capture recorded this line: the line's own text \
+             timestamp, else SendingTime.",
+            &["mtime", "written_at", "event_time"],
+            RECORDEDAT_DERIVATION,
+        )?,
+        derived(
+            EXPIREDAT_TAG_NAME,
+            "ExpiredAt",
+            super::schema::CLOCK_DATATYPE,
+            "The instant the message stops being good: ExpireTime, else \
+             ValidUntilTime, else ExpireDate, else the instrument's \
+             MaturityDate.",
+            EXPIREDAT_DERIVATION,
+        )?,
+        derived(
+            BIDCURRENCY_TAG_NAME,
+            "BidCurrency",
+            DataType::Currency,
+            "The currency the bid lane is denominated in: the message's own \
+             Currency, else SettlCurrency.",
+            LANE_CURRENCY_DERIVATION,
+        )?,
+        derived(
+            OFFERCURRENCY_TAG_NAME,
+            "OfferCurrency",
+            DataType::Currency,
+            "The currency the offer lane is denominated in: the message's own \
+             Currency, else SettlCurrency.",
+            LANE_CURRENCY_DERIVATION,
+        )?,
     ])
 }
 
@@ -580,7 +685,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 27);
+/// assert_eq!(held.len(), 31);
 /// assert_eq!(held[0].name(), "version");
 /// assert_eq!(held[0].display(), Some("Version"));
 /// assert_eq!(held[20].dtype(), held[2].dtype());

@@ -187,6 +187,11 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
 /// archive or a second copy of one day's log is the same message, and it must
 /// digest to the same sixteen bytes in all of them.
 ///
+/// `recordedat` is outside for the same reason as `sourceurl` and beside it:
+/// *when* a capture wrote the line down is a fact about the capture, not
+/// about the message. The same message re-cut, replayed or copied is recorded
+/// at a second instant and must still digest to the same sixteen bytes.
+///
 /// `nofixentries` is outside because the record it counts is: the arrival
 /// record is the message rather than a reading of it, and a count of it is
 /// the same fact one integer shorter. A row projected without the record
@@ -197,6 +202,7 @@ fn outside_content(tag: i32) -> bool {
         UPDATEDAT_TAG_NAME.0,
         CREATEDAT_TAG_NAME.0,
         super::SOURCEURL_TAG_NAME.0,
+        super::RECORDEDAT_TAG_NAME.0,
         super::NOFIXENTRIES_TAG_NAME.0,
     ]
     .contains(&tag)
@@ -464,17 +470,33 @@ pub(super) fn fresh(
         .or_else(|| fallback.filter(|value| !value.is_null()).cloned())
         .map_or_else(now, Ok)?;
     validate_value("sendingtime", &CLOCK_DATATYPE, &sending)?;
-    let transact = initial
-        .iter()
-        .position(|column| column.tag == Some(60))
-        .and_then(|at| values.get(at))
-        .filter(|value| !value.is_null())
-        .cloned();
+    let stated_clock = |tag: i32| {
+        initial
+            .iter()
+            .position(|column| column.tag == Some(tag))
+            .and_then(|at| values.get(at))
+            .filter(|value| !value.is_null())
+            .cloned()
+    };
+    let transact = stated_clock(60);
     let snapshot = source(Role::Snapshot)
         .or(transact)
         .unwrap_or_else(|| sending.clone());
     let updated = source(Role::Updated).unwrap_or_else(|| snapshot.clone());
-    let created = source(Role::Created).unwrap_or_else(|| snapshot.clone());
+    // What a message says about its own creation, strongest first: a stated
+    // `createdat`, then `OrigSendingTime(122)`, then the snapshot instant.
+    //
+    // 122 is in the middle because of what it means. A resend carries the
+    // instant the original was sent, and that original is when this message
+    // came into being - so a replayed message dated only by the resend would
+    // otherwise be created at the moment it was replayed, and the chain's
+    // first `createdat` would move every time a session gapped. It is below a
+    // stated `createdat` because that is the caller's own statement, and
+    // above the snapshot because the snapshot is when the event happened
+    // rather than when the message was made.
+    let created = source(Role::Created)
+        .or_else(|| stated_clock(122))
+        .unwrap_or_else(|| snapshot.clone());
     let defaults = [
         updated,
         created,
