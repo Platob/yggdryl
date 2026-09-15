@@ -174,7 +174,8 @@
     }
     if (meta['fix:codes']) {
       // This is a stored native metadata document, not a second enum registry.
-      const codes = JSON.parse(meta['fix:codes']).codes
+      // The store writes it as the array it is, so nothing is parsed here.
+      const codes = meta['fix:codes']
       const details = panel('Inline codes', `${codes.length}`)
       let filled = false
       details.element.addEventListener('toggle', () => {
@@ -184,7 +185,7 @@
       })
       body.append(details.element)
     }
-    if (meta['fix:lineage']) body.append(jsonPanel('Native lineage metadata', JSON.parse(meta['fix:lineage'])))
+    if (meta['fix:lineage']) body.append(jsonPanel('Native lineage metadata', meta['fix:lineage']))
     body.append(jsonPanel('Native Field document', field))
     return body
   }

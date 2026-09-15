@@ -182,6 +182,35 @@ function dictionary() {
   return fix.FixRegistry.fromHandle(CONFIG)
 }
 
+/** The `fix:` properties a store writes as the JSON they are. */
+const DOCUMENT_KEYS = ['fix:codes', 'fix:lineage', 'fix:replacements', 'fix:directions']
+
+/**
+ * One native Field document in the shape a store writes.
+ *
+ * `registry.toJSON()` already answers it; a definition only the package
+ * itself carries comes from `field.toJSON()`, which is the core spelling
+ * with those four properties still escaped. One manifest, one shape.
+ */
+function storeDocument(field) {
+  if (field === null || typeof field !== 'object') return field
+  if (Array.isArray(field)) return field.map(storeDocument)
+  const held = {}
+  for (const [key, value] of Object.entries(field)) {
+    if (key === 'metadata' && value !== null && typeof value === 'object') {
+      const metadata = {}
+      for (const [property, text] of Object.entries(value)) {
+        metadata[property] =
+          DOCUMENT_KEYS.includes(property) && typeof text === 'string' ? JSON.parse(text) : text
+      }
+      held[key] = metadata
+      continue
+    }
+    held[key] = storeDocument(value)
+  }
+  return held
+}
+
 /** Live definitions, retaining persisted references and native-only builtins. */
 function liveCatalog(registry) {
   const catalog = {}
@@ -196,7 +225,7 @@ function liveCatalog(registry) {
       const name = field.name
       if (names.has(name)) throw new Error(`native ${category} repeat ${name}`)
       names.add(name)
-      live.push(compact.get(name) ?? field.toJSON())
+      live.push(compact.get(name) ?? storeDocument(field.toJSON()))
       compact.delete(name)
     }
     if (compact.size !== 0) {
@@ -232,7 +261,7 @@ function fieldRecords(registry) {
     if (tag === null) continue
     const codes = document(field, 'fix:codes')
     const lineage = document(field, 'fix:lineage')
-    const entries = lineage === null ? [] : lineage.entries
+    const entries = lineage === null ? [] : lineage
     const record = { t: tag, n: field.name, y: field.dtype.toString() }
     if (field.display !== null && field.display !== field.name) record.d = field.display
     const memberships = view.branches
@@ -243,7 +272,7 @@ function fieldRecords(registry) {
     const alternates = view.tags
     if (alternates.length > 0) record.g = alternates
 
-    if (codes !== null) record.c = codes.codes.length
+    if (codes !== null) record.c = codes.length
     if (entries.length > 0) {
       record.s = entries[0].since ?? ''
       const closed = entries[entries.length - 1]

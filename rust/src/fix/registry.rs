@@ -1108,8 +1108,22 @@ impl FixRegistry {
     /// adopted together, so a refusal anywhere leaves this dictionary exactly
     /// as it was.
     pub fn merge_with(&mut self, other: &Self) -> Result<(usize, usize)> {
-        other.validate_catalog()?;
         let mut staged = self.clone();
+        let counts = staged.fold_registry(other)?;
+        *self = staged;
+        Ok(counts)
+    }
+
+    /// Folds another dictionary in, the way [`Self::merge_with`] folds one,
+    /// without the staging.
+    ///
+    /// The fold itself: [`Self::merge_with`] is this plus the copy that makes
+    /// it one mutation, and a caller folding several sources into one staged
+    /// dictionary calls this so the copy is paid once rather than once per
+    /// source. That is the same relationship [`Self::add_fields`] has to
+    /// [`Self::fold`], one level up.
+    fn fold_registry(&mut self, other: &Self) -> Result<(usize, usize)> {
+        other.validate_catalog()?;
         // In the order the other dictionary *answers*, never the order it
         // happens to be stored in. The fold's precedence is its input order,
         // and a caller merging a registry supplies no order of its own - so
@@ -1118,9 +1132,8 @@ impl FixRegistry {
         // removal swaps the last field into the hole, and a store round trip
         // writes in `iter` order and loads in file order, so two dictionaries
         // that compare equal could merge to two different answers.
-        let counts = staged.fold(other.iter().cloned())?;
-        staged.merge_catalog(other)?;
-        *self = staged;
+        let counts = self.fold(other.iter().cloned())?;
+        self.merge_catalog(other)?;
         Ok(counts)
     }
 
@@ -1154,10 +1167,82 @@ impl FixRegistry {
     ) -> Result<(usize, usize)> {
         let dialect = dialect.or_else(|| super::cfb::stem_dialect(handle));
         let (parsed, _) = Self::from_cfb_file(handle, dialect)?;
+        self.merge_with(&parsed)
+    }
+
+    /// Reads every Ullink `CBlock` a pattern selects into this dictionary.
+    ///
+    /// The plural of [`Self::add_cfb_file`], over the crate's one glob walk:
+    /// `pattern` is anchored at `root` exactly as [`IOBase::glob`] anchors
+    /// it - a fixed prefix is descended rather than listed and filtered, `**`
+    /// spans any number of levels - and a pattern that selects nothing folds
+    /// nothing. Private entries are never matched: a dot-prefixed file is not
+    /// a dictionary.
+    ///
+    /// **Files fold in ascending URL order**, whatever order the listing
+    /// arrived in, because the fold's precedence is its input order and a
+    /// glob's sequence is not a caller's to see: it varies with how the
+    /// pattern decomposed and with the backend beneath. So where two files
+    /// disagree about one tag the last-sorting file wins, and
+    /// `cblocks/*.cfb`, `cblocks/**/*.cfb` and `**/venue-*.cfb` over the same
+    /// files all answer the same dictionary.
+    ///
+    /// **`dialect` is resolved per file.** A name supplied here stamps every
+    /// matched file with the one membership; `None` lets each file's own stem
+    /// stand in, which is what globbing a folder of counterparty files is
+    /// for - `cblocks/*.cfb` over `MSFIX44.cfb` and `BLPFIX44.cfb` stamps
+    /// `msfix44` and `blpfix44` rather than one name for both.
+    ///
+    /// Answers the count of files folded, the count of fields added and the
+    /// count merged. The file count is a fact only this call holds: an empty
+    /// match and a match whose files all folded into stored fields both
+    /// answer zeroes for the other two, so without it a mistyped pattern
+    /// reads as a silent success.
+    ///
+    /// One mutation, and one copy of the dictionary for the whole call rather
+    /// than one per file: nothing is adopted until every matched file has
+    /// parsed and folded, so a file that is not well-formed XML, a tag whose
+    /// datatype disagrees with a stored one, or a name the core will not
+    /// store leaves this dictionary exactly as it was and the refusal names
+    /// the file among however many matched.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`IOBase::glob`] returns for a pattern it cannot
+    /// decompose or a fixed prefix it cannot resolve, what a failing listing
+    /// entry carries, and what [`Self::add_cfb_file`] returns for each
+    /// matched file, located at that file's URL.
+    pub fn add_cfb_files(
+        &mut self,
+        root: &dyn IOBase,
+        pattern: &str,
+        dialect: Option<&str>,
+    ) -> Result<(usize, usize, usize)> {
+        // Collected before anything is parsed, so a listing that fails part
+        // way is a refusal rather than a half-read dictionary. What is held
+        // is one handle per match, never a registry per file.
+        let mut files: Vec<crate::holder::Holder> =
+            root.glob(pattern, false)?.collect::<Result<Vec<_>>>()?;
+        // A pattern may select a directory; a dictionary is a file.
+        files.retain(|file| !file.is_container());
+        files.sort_by_key(|file| file.url().map(ToString::to_string));
         let mut staged = self.clone();
-        let counts = staged.merge_with(&parsed)?;
+        let (mut added, mut merged) = (0_usize, 0_usize);
+        for file in &files {
+            let handle = file.as_io();
+            let named = dialect.or_else(|| super::cfb::stem_dialect(handle));
+            let (parsed, _) = Self::from_cfb_file(handle, named)
+                .map_err(|error| super::store::located(error, handle))?;
+            let (file_added, file_merged) = staged
+                .fold_registry(&parsed)
+                .map_err(|error| super::store::located(error, handle))?;
+            added += file_added;
+            merged += file_merged;
+        }
         *self = staged;
-        Ok(counts)
+        let count = files.len();
+        log::debug!("added {added} and merged {merged} fix fields from {count} cblock files");
+        Ok((count, added, merged))
     }
 
     /// Adds every field, the way [`Self::fold_field`] adds one.

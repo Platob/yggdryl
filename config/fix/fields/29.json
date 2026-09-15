@@ -8,7 +8,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegSettlCurrency(675) value.",
       "display": "LegSettlCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2900"
     }
   },
@@ -21,7 +64,50 @@
     "metadata": {
       "description": "Identifies class or source of the SideCurrency(1154) value.",
       "display": "SideCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2901"
     }
   },
@@ -34,7 +120,50 @@
     "metadata": {
       "description": "Identifies class or source of the SideSettlCurrency(1155) value.",
       "display": "SideSettlCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2902"
     }
   },
@@ -47,7 +176,50 @@
     "metadata": {
       "description": "Identifies class or source of the SettlementAmountCurrency(1702) value.",
       "display": "SettlementAmountCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2903"
     }
   },
@@ -60,7 +232,50 @@
     "metadata": {
       "description": "Identifies class or source of the StrikeCurrency(947) value.",
       "display": "StrikeCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2904"
     }
   },
@@ -73,7 +288,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnitOfMeasureCurrency(1716) value.",
       "display": "UnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2905"
     }
   },
@@ -86,7 +344,50 @@
     "metadata": {
       "description": "Identifies class or source of the PriceUnitOfMeasureCurrency(1717) value.",
       "display": "PriceUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2906"
     }
   },
@@ -99,7 +400,50 @@
     "metadata": {
       "description": "Identifies class or source of the PriceQuoteCurrency(1524) value.",
       "display": "PriceQuoteCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2907"
     }
   },
@@ -112,7 +456,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegStrikeCurrency(942) value.",
       "display": "LegStrikeCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2908"
     }
   },
@@ -125,7 +512,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegUnitOfMeasureCurrency(1720) value.",
       "display": "LegUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2909"
     }
   },
@@ -138,7 +568,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegPriceUnitOfMeasureCurrency(1721) value.",
       "display": "LegPriceUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2910"
     }
   },
@@ -151,7 +624,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegPriceQuoteCurrency(1528) value.",
       "display": "LegPriceQuoteCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2911"
     }
   },
@@ -164,7 +680,50 @@
     "metadata": {
       "description": "Identifies class or source of the DerivativeStrikeCurrency(1262) value.",
       "display": "DerivativeStrikeCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2912"
     }
   },
@@ -177,7 +736,50 @@
     "metadata": {
       "description": "Identifies class or source of the DerivativeUnitOfMeasureCurrency(1722) value.",
       "display": "DerivativeUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2913"
     }
   },
@@ -190,7 +792,50 @@
     "metadata": {
       "description": "Identifies class or source of the DerivativePriceUnitOfMeasureCurrency(1723) value.",
       "display": "DerivativePriceUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2914"
     }
   },
@@ -203,7 +848,50 @@
     "metadata": {
       "description": "Identifies class or source of the DerivativePriceQuoteCurrency(1576) value.",
       "display": "DerivativePriceQuoteCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2915"
     }
   },
@@ -216,7 +904,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingCurrency(318) value.",
       "display": "UnderlyingCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2916"
     }
   },
@@ -229,7 +960,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingStrikeCurrency(941) value.",
       "display": "UnderlyingStrikeCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2917"
     }
   },
@@ -242,7 +1016,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingUnitOfMeasureCurrency(1718) value.",
       "display": "UnderlyingUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2918"
     }
   },
@@ -255,7 +1072,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingPriceUnitOfMeasureCurrency(1719) value.",
       "display": "UnderlyingPriceUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2919"
     }
   },
@@ -268,7 +1128,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingPriceQuoteCurrency(1526) value.",
       "display": "UnderlyingPriceQuoteCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2920"
     }
   },
@@ -281,7 +1184,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingNotionalCurrency(2615) value.",
       "display": "UnderlyingNotionalCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2921"
     }
   },
@@ -294,7 +1240,50 @@
     "metadata": {
       "description": "Identifies class or source of the CommCurrency(479) value.",
       "display": "CommCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2922"
     }
   },
@@ -307,7 +1296,50 @@
     "metadata": {
       "description": "Identifies class or source of the CommissionCurrency(2643) value.",
       "display": "CommissionCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2923"
     }
   },
@@ -320,7 +1352,50 @@
     "metadata": {
       "description": "Identifies class or source of the CommissionUnitOfMeasureCurrency(2645) value.",
       "display": "CommissionUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2924"
     }
   },
@@ -333,7 +1408,50 @@
     "metadata": {
       "description": "Identifies class or source of the AllocCommissionCurrency(2657) value.",
       "display": "AllocCommissionCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2925"
     }
   },
@@ -346,7 +1464,50 @@
     "metadata": {
       "description": "Identifies class or source of the AllocCommissionUnitOfMeasureCurrency(2659) value.",
       "display": "AllocCommissionUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2926"
     }
   },
@@ -359,7 +1520,50 @@
     "metadata": {
       "description": "Identifies class or source of the AllocSettlCurrency(736) value.",
       "display": "AllocSettlCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2927"
     }
   },
@@ -372,7 +1576,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegAllocSettlCurrency(1367) value.",
       "display": "LegAllocSettlCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2928"
     }
   },
@@ -385,7 +1632,50 @@
     "metadata": {
       "description": "Identifies class or source of the CollateralCurrency(1705) value.",
       "display": "CollateralCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2929"
     }
   },
@@ -398,7 +1688,50 @@
     "metadata": {
       "description": "Identifies class or source of the SideCollateralCurrency(2695) value.",
       "display": "SideCollateralCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2930"
     }
   },
@@ -411,7 +1744,50 @@
     "metadata": {
       "description": "Identifies class or source of the CollateralReinvestmentCurrency(2843) value.",
       "display": "CollateralReinvestmentCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2931"
     }
   },
@@ -424,7 +1800,50 @@
     "metadata": {
       "description": "Identifies class or source of the SideCollateralReinvestmentCurrency(2866) value.",
       "display": "SideCollateralReinvestmentCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2932"
     }
   },
@@ -437,7 +1856,50 @@
     "metadata": {
       "description": "Identifies class or source of the TradeAllocCurrency(1847) value.",
       "display": "TradeAllocCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2933"
     }
   },
@@ -450,7 +1912,50 @@
     "metadata": {
       "description": "Identifies class or source of the TradingCurrency(1245) value.",
       "display": "TradingCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2934"
     }
   },
@@ -463,7 +1968,50 @@
     "metadata": {
       "description": "Identifies class or source of the LimitAmtCurrency(1634) value.",
       "display": "LimitAmtCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2935"
     }
   },
@@ -476,7 +2024,50 @@
     "metadata": {
       "description": "Identifies class or source of the PosQtyUnitOfMeasureCurrency(1835) value.",
       "display": "PosQtyUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2936"
     }
   },
@@ -489,7 +2080,50 @@
     "metadata": {
       "description": "Identifies class or source of the PositionCurrency(1055) value.",
       "display": "PositionCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2937"
     }
   },
@@ -502,7 +2136,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegPosCurrency(1589) value.",
       "display": "LegPosCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2938"
     }
   },
@@ -515,7 +2192,50 @@
     "metadata": {
       "description": "Identifies class or source of the RiskLimitCurrency(1532) value.",
       "display": "RiskLimitCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2939"
     }
   },
@@ -528,7 +2248,50 @@
     "metadata": {
       "description": "Identifies class or source of the EntitlementAttribCurrency(1781) value.",
       "display": "EntitlementAttribCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2940"
     }
   },
@@ -541,7 +2304,50 @@
     "metadata": {
       "description": "Identifies class or source of the ComplexOptPayoutCurrency(2122) value.",
       "display": "ComplexOptPayoutCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2941"
     }
   },
@@ -554,7 +2360,50 @@
     "metadata": {
       "description": "Identifies class or source of the ComplexEventCurrencyOne(2124) value.",
       "display": "ComplexEventCurrencyOneCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2942"
     }
   },
@@ -567,7 +2416,50 @@
     "metadata": {
       "description": "Identifies class or source of the ComplexEventCurrencyTwo(2125) value.",
       "display": "ComplexEventCurrencyTwoCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2943"
     }
   },
@@ -580,7 +2472,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegComplexOptPayoutCurrency(2226) value.",
       "display": "LegComplexOptPayoutCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2944"
     }
   },
@@ -593,7 +2528,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegComplexEventCurrencyOne(2233) value.",
       "display": "LegComplexEventCurrencyOneCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2945"
     }
   },
@@ -606,7 +2584,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegComplexEventCurrencyTwo(2234) value.",
       "display": "LegComplexEventCurrencyTwoCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2946"
     }
   },
@@ -619,7 +2640,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingComplexOptPayoutCurrency(2266) value.",
       "display": "UnderlyingComplexOptPayoutCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2947"
     }
   },
@@ -632,7 +2696,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingComplexEventCurrencyOne(2268) value.",
       "display": "UnderlyingComplexEventCurrencyOneCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2948"
     }
   },
@@ -645,7 +2752,50 @@
     "metadata": {
       "description": "Identifies class or source of the UnderlyingComplexEventCurrencyTwo(2269) value.",
       "display": "UnderlyingComplexEventCurrencyTwoCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2949"
     }
   },
@@ -658,7 +2808,50 @@
     "metadata": {
       "description": "Identifies class or source of the BenchmarkCurveCurrency(220) value.",
       "display": "BenchmarkCurveCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2950"
     }
   },
@@ -671,7 +2864,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegBenchmarkCurveCurrency(676) value.",
       "display": "LegBenchmarkCurveCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2951"
     }
   },
@@ -684,7 +2920,50 @@
     "metadata": {
       "description": "Identifies class or source of the AgreementCurrency(918) value.",
       "display": "AgreementCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2952"
     }
   },
@@ -697,7 +2976,50 @@
     "metadata": {
       "description": "Identifies class or source of the LegAgreementCurrency(2495) value.",
       "display": "LegAgreementCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2953"
     }
   },
@@ -710,7 +3032,50 @@
     "metadata": {
       "description": "Identifies class or source of the FundingSourceCurrency(2847) value.",
       "display": "FundingSourceCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2954"
     }
   },
@@ -723,7 +3088,50 @@
     "metadata": {
       "description": "Identifies class or source of the PayCollectCurrency(1709) value.",
       "display": "PayCollectCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2955"
     }
   },
@@ -736,7 +3144,50 @@
     "metadata": {
       "description": "Identifies class or source of the PostTradePaymentCurrency(2818) value.",
       "display": "PostTradePaymentCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2956"
     }
   },
@@ -785,7 +3236,50 @@
     "metadata": {
       "description": "Identifies the class or source of the SettlPriceUnitOfMeasureCurrency(1887) value.",
       "display": "SettlPriceUnitOfMeasureCurrencyCodeSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CUSIP",
+          "ep": 273,
+          "sort": 1,
+          "doc": "CUSIP"
+        },
+        {
+          "value": "2",
+          "name": "SEDOL",
+          "ep": 273,
+          "sort": 2,
+          "doc": "SEDOL"
+        },
+        {
+          "value": "4",
+          "name": "ISINNumber",
+          "ep": 273,
+          "sort": 4,
+          "doc": "ISIN"
+        },
+        {
+          "value": "6",
+          "name": "ISOCurrencyCode",
+          "ep": 273,
+          "sort": 6,
+          "doc": "ISO Currency Code (ISO 4217)"
+        },
+        {
+          "value": "S",
+          "name": "FinancialInstrumentGlobalIdentifier",
+          "ep": 273,
+          "sort": 27,
+          "doc": "Financial Instrument Global Identifier"
+        },
+        {
+          "value": "Y",
+          "name": "DigitalTokenIdentifier",
+          "ep": 273,
+          "sort": 33,
+          "doc": "Digital Token Identifier (ISO 24165)"
+        }
+      ],
       "fix:tag": "2960"
     }
   },
@@ -822,7 +3316,21 @@
     "metadata": {
       "description": "Indicate whether a trade is eligible to be reported to more than one regulatory jurisdictions, e.g. due to overlapping reporting rules that require reporting to different jurisdictions.",
       "display": "MultiJurisdictionReportingIndicator",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"NotMultiJrsdctnEligible\",\"ep\":277,\"doc\":\"Trade not eligible for multi-jurisdiction reporting\"},{\"value\":\"1\",\"name\":\"MultiJrsdctnEligible\",\"ep\":277,\"sort\":1,\"doc\":\"Trade eligible for multi-jurisdiction reporting\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "NotMultiJrsdctnEligible",
+          "ep": 277,
+          "doc": "Trade not eligible for multi-jurisdiction reporting"
+        },
+        {
+          "value": "1",
+          "name": "MultiJrsdctnEligible",
+          "ep": 277,
+          "sort": 1,
+          "doc": "Trade eligible for multi-jurisdiction reporting"
+        }
+      ],
       "fix:tag": "2963"
     }
   },
@@ -835,7 +3343,29 @@
     "metadata": {
       "description": "Indicate the instruction for self-match prevention when the incoming (aggressive) order has the same SelfMatchPreventionID(2362) as a resting (passive) order.",
       "display": "SelfMatchPreventionInstruction",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CancelAggressive\",\"ep\":280,\"sort\":1,\"doc\":\"Cancel aggressive\"},{\"value\":\"2\",\"name\":\"CancelPassive\",\"ep\":280,\"sort\":2,\"doc\":\"Cancel passive\"},{\"value\":\"3\",\"name\":\"CancelAggressivePassive\",\"ep\":280,\"sort\":3,\"doc\":\"Cancel aggressive and passive\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "CancelAggressive",
+          "ep": 280,
+          "sort": 1,
+          "doc": "Cancel aggressive"
+        },
+        {
+          "value": "2",
+          "name": "CancelPassive",
+          "ep": 280,
+          "sort": 2,
+          "doc": "Cancel passive"
+        },
+        {
+          "value": "3",
+          "name": "CancelAggressivePassive",
+          "ep": 280,
+          "sort": 3,
+          "doc": "Cancel aggressive and passive"
+        }
+      ],
       "fix:tag": "2964"
     }
   },
@@ -860,7 +3390,28 @@
     "metadata": {
       "description": "Status of the SettlementStatusRequest(35=EC) message being responded to.",
       "display": "SettlStatusRequestStatus",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"ep\":281,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":281,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":281,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Received",
+          "ep": 281,
+          "doc": "Received, not yet processed"
+        },
+        {
+          "value": "1",
+          "name": "Accepted",
+          "ep": 281,
+          "sort": 1,
+          "doc": "Accepted"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "ep": 281,
+          "sort": 2,
+          "doc": "Rejected"
+        }
+      ],
       "fix:tag": "2966"
     }
   },
@@ -945,7 +3496,28 @@
     "metadata": {
       "description": "Status of the report being responded to.",
       "display": "SettlStatusReportStatus",
-      "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Received\",\"ep\":281,\"doc\":\"Received, not yet processed\"},{\"value\":\"1\",\"name\":\"Accepted\",\"ep\":281,\"sort\":1,\"doc\":\"Accepted\"},{\"value\":\"2\",\"name\":\"Rejected\",\"ep\":281,\"sort\":2,\"doc\":\"Rejected\"}]}",
+      "fix:codes": [
+        {
+          "value": "0",
+          "name": "Received",
+          "ep": 281,
+          "doc": "Received, not yet processed"
+        },
+        {
+          "value": "1",
+          "name": "Accepted",
+          "ep": 281,
+          "sort": 1,
+          "doc": "Accepted"
+        },
+        {
+          "value": "2",
+          "name": "Rejected",
+          "ep": 281,
+          "sort": 2,
+          "doc": "Rejected"
+        }
+      ],
       "fix:tag": "2973"
     }
   },
@@ -1030,7 +3602,29 @@
     "metadata": {
       "description": "Type of trade attribute defining a subgroup in an allocation group.",
       "display": "AllocGroupSubQtyType",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"TradeType\",\"ep\":285,\"sort\":1,\"doc\":\"Trade type\"},{\"value\":\"2\",\"name\":\"TradePublicationIndicator\",\"ep\":285,\"sort\":2,\"doc\":\"Trade publication indicator\"},{\"value\":\"3\",\"name\":\"OrderHandlingInstruction\",\"ep\":285,\"sort\":3,\"doc\":\"Order handling instruction\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "TradeType",
+          "ep": 285,
+          "sort": 1,
+          "doc": "Trade type"
+        },
+        {
+          "value": "2",
+          "name": "TradePublicationIndicator",
+          "ep": 285,
+          "sort": 2,
+          "doc": "Trade publication indicator"
+        },
+        {
+          "value": "3",
+          "name": "OrderHandlingInstruction",
+          "ep": 285,
+          "sort": 3,
+          "doc": "Order handling instruction"
+        }
+      ],
       "fix:tag": "2980"
     }
   },
@@ -1055,7 +3649,78 @@
     "metadata": {
       "description": "Time unit associated with the minimum frequency of the instrument maturity intervals.",
       "display": "MaturityFrequencyUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0.2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "4.4",
+          "sort": 3,
+          "doc": "Day"
+        },
+        {
+          "value": "EOM",
+          "name": "EndOfMonth",
+          "ep": 287,
+          "sort": 8,
+          "doc": "End of Month"
+        },
+        {
+          "value": "F",
+          "name": "Flexible",
+          "ep": 287,
+          "sort": 9,
+          "doc": "Flexible"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "since": "4.4",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "since": "4.4",
+          "sort": 1,
+          "doc": "Minute"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "4.4",
+          "sort": 5,
+          "doc": "Month"
+        },
+        {
+          "value": "Q",
+          "name": "Quarter",
+          "since": "5.0.2",
+          "ep": 191,
+          "sort": 7,
+          "doc": "Quarter"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "since": "4.4",
+          "sort": 2,
+          "doc": "Second"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "4.4",
+          "sort": 4,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "4.4",
+          "sort": 6,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "2982"
     }
   },
@@ -1080,7 +3745,78 @@
     "metadata": {
       "description": "Time unit associated with the minimum frequency of the instrument maturity intervals.",
       "display": "UnderlyingMaturityFrequencyUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0.2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "4.4",
+          "sort": 3,
+          "doc": "Day"
+        },
+        {
+          "value": "EOM",
+          "name": "EndOfMonth",
+          "ep": 287,
+          "sort": 8,
+          "doc": "End of Month"
+        },
+        {
+          "value": "F",
+          "name": "Flexible",
+          "ep": 287,
+          "sort": 9,
+          "doc": "Flexible"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "since": "4.4",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "since": "4.4",
+          "sort": 1,
+          "doc": "Minute"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "4.4",
+          "sort": 5,
+          "doc": "Month"
+        },
+        {
+          "value": "Q",
+          "name": "Quarter",
+          "since": "5.0.2",
+          "ep": 191,
+          "sort": 7,
+          "doc": "Quarter"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "since": "4.4",
+          "sort": 2,
+          "doc": "Second"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "4.4",
+          "sort": 4,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "4.4",
+          "sort": 6,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "2984"
     }
   },
@@ -1105,7 +3841,78 @@
     "metadata": {
       "description": "Time unit associated with the minimum frequency of the instrument maturity intervals.",
       "display": "LegMaturityFrequencyUnit",
-      "fix:codes": "{\"codes\":[{\"value\":\"D\",\"name\":\"Day\",\"since\":\"4.4\",\"sort\":3,\"doc\":\"Day\"},{\"value\":\"EOM\",\"name\":\"EndOfMonth\",\"ep\":287,\"sort\":8,\"doc\":\"End of Month\"},{\"value\":\"F\",\"name\":\"Flexible\",\"ep\":287,\"sort\":9,\"doc\":\"Flexible\"},{\"value\":\"H\",\"name\":\"Hour\",\"since\":\"4.4\",\"doc\":\"Hour\"},{\"value\":\"Min\",\"name\":\"Minute\",\"since\":\"4.4\",\"sort\":1,\"doc\":\"Minute\"},{\"value\":\"Mo\",\"name\":\"Month\",\"since\":\"4.4\",\"sort\":5,\"doc\":\"Month\"},{\"value\":\"Q\",\"name\":\"Quarter\",\"since\":\"5.0.2\",\"ep\":191,\"sort\":7,\"doc\":\"Quarter\"},{\"value\":\"S\",\"name\":\"Second\",\"since\":\"4.4\",\"sort\":2,\"doc\":\"Second\"},{\"value\":\"Wk\",\"name\":\"Week\",\"since\":\"4.4\",\"sort\":4,\"doc\":\"Week\"},{\"value\":\"Yr\",\"name\":\"Year\",\"since\":\"4.4\",\"sort\":6,\"doc\":\"Year\"}]}",
+      "fix:codes": [
+        {
+          "value": "D",
+          "name": "Day",
+          "since": "4.4",
+          "sort": 3,
+          "doc": "Day"
+        },
+        {
+          "value": "EOM",
+          "name": "EndOfMonth",
+          "ep": 287,
+          "sort": 8,
+          "doc": "End of Month"
+        },
+        {
+          "value": "F",
+          "name": "Flexible",
+          "ep": 287,
+          "sort": 9,
+          "doc": "Flexible"
+        },
+        {
+          "value": "H",
+          "name": "Hour",
+          "since": "4.4",
+          "doc": "Hour"
+        },
+        {
+          "value": "Min",
+          "name": "Minute",
+          "since": "4.4",
+          "sort": 1,
+          "doc": "Minute"
+        },
+        {
+          "value": "Mo",
+          "name": "Month",
+          "since": "4.4",
+          "sort": 5,
+          "doc": "Month"
+        },
+        {
+          "value": "Q",
+          "name": "Quarter",
+          "since": "5.0.2",
+          "ep": 191,
+          "sort": 7,
+          "doc": "Quarter"
+        },
+        {
+          "value": "S",
+          "name": "Second",
+          "since": "4.4",
+          "sort": 2,
+          "doc": "Second"
+        },
+        {
+          "value": "Wk",
+          "name": "Week",
+          "since": "4.4",
+          "sort": 4,
+          "doc": "Week"
+        },
+        {
+          "value": "Yr",
+          "name": "Year",
+          "since": "4.4",
+          "sort": 6,
+          "doc": "Year"
+        }
+      ],
       "fix:tag": "2986"
     }
   },
@@ -1190,7 +3997,22 @@
     "metadata": {
       "description": "Specifies the source of the price(s) of the security used in the calculation of the metrics or analytics data.",
       "display": "MetricsCalculationPriceSource",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"Realtime\",\"ep\":288,\"sort\":1,\"doc\":\"Real-time\"},{\"value\":\"2\",\"name\":\"EndOfDay\",\"ep\":288,\"sort\":2,\"doc\":\"End of day\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "Realtime",
+          "ep": 288,
+          "sort": 1,
+          "doc": "Real-time"
+        },
+        {
+          "value": "2",
+          "name": "EndOfDay",
+          "ep": 288,
+          "sort": 2,
+          "doc": "End of day"
+        }
+      ],
       "fix:tag": "2993"
     }
   },
@@ -1203,7 +4025,64 @@
     "metadata": {
       "description": "Identifies the model used for asset valuation or pricing calculations.",
       "display": "AssetValuationModel",
-      "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"BlackScholes\",\"ep\":288,\"sort\":1,\"doc\":\"Black-Scholes\"},{\"value\":\"2\",\"name\":\"Whaley\",\"ep\":288,\"sort\":2,\"doc\":\"Whaley\"},{\"value\":\"3\",\"name\":\"Bachelier\",\"ep\":288,\"sort\":3,\"doc\":\"Bachelier\"},{\"value\":\"4\",\"name\":\"Kirk\",\"ep\":288,\"sort\":4,\"doc\":\"Kirk\"},{\"value\":\"5\",\"name\":\"Curran\",\"ep\":288,\"sort\":5,\"doc\":\"Curran\"},{\"value\":\"6\",\"name\":\"Black76\",\"ep\":288,\"sort\":6,\"doc\":\"Black-76\"},{\"value\":\"7\",\"name\":\"Binomial\",\"ep\":288,\"sort\":7,\"doc\":\"Binomial\"},{\"value\":\"99\",\"name\":\"OtherModel\",\"ep\":288,\"sort\":99,\"doc\":\"Other model\"}]}",
+      "fix:codes": [
+        {
+          "value": "1",
+          "name": "BlackScholes",
+          "ep": 288,
+          "sort": 1,
+          "doc": "Black-Scholes"
+        },
+        {
+          "value": "2",
+          "name": "Whaley",
+          "ep": 288,
+          "sort": 2,
+          "doc": "Whaley"
+        },
+        {
+          "value": "3",
+          "name": "Bachelier",
+          "ep": 288,
+          "sort": 3,
+          "doc": "Bachelier"
+        },
+        {
+          "value": "4",
+          "name": "Kirk",
+          "ep": 288,
+          "sort": 4,
+          "doc": "Kirk"
+        },
+        {
+          "value": "5",
+          "name": "Curran",
+          "ep": 288,
+          "sort": 5,
+          "doc": "Curran"
+        },
+        {
+          "value": "6",
+          "name": "Black76",
+          "ep": 288,
+          "sort": 6,
+          "doc": "Black-76"
+        },
+        {
+          "value": "7",
+          "name": "Binomial",
+          "ep": 288,
+          "sort": 7,
+          "doc": "Binomial"
+        },
+        {
+          "value": "99",
+          "name": "OtherModel",
+          "ep": 288,
+          "sort": 99,
+          "doc": "Other model"
+        }
+      ],
       "fix:tag": "2994"
     }
   },

@@ -95,7 +95,7 @@ def _config_registry() -> FixRegistry:
     # Tag 385 as the dictionary types it: text carrying its code set.
     direction = Field("MsgDirection", "utf8")
     direction.fix.tag = 385
-    direction.metadata["fix:codes"] = '{"codes":[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]}'
+    direction.metadata["fix:codes"] = '[{"value":"R","name":"Receive"},{"value":"S","name":"Send"}]'
     registry.insert(direction)
     return registry
 

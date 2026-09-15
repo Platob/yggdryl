@@ -57,6 +57,25 @@ enum GroupStep {
     Item,
 }
 
+/// The wire value one declared message type spelling carries.
+///
+/// A message type is alphanumeric and never holds a space, so a spelling that
+/// holds one is a wire value and a qualifier: `AR Inbound` and `AR Outbound`
+/// are tag 35 `AR` in the two directions, `J Report` is `J` used as a report,
+/// `c SDR` and `c SLR` are `c` used two ways. The value is the first word and
+/// the qualifier is what the dialect calls that use of it, so the qualified
+/// spelling reaches the type as a spelling of it and never declares a second
+/// one.
+///
+/// The one owner of that split: every intake taking a spelling a person or a
+/// configuration wrote resolves it here, so `6 Inbound` is tag 35 `6`
+/// wherever it arrives.
+///
+/// The full first word is retained without a datatype width limit.
+pub(super) fn wire_value(spelling: &str) -> &str {
+    spelling.split_whitespace().next().unwrap_or(spelling)
+}
+
 pub(super) fn validate_code(value: &str) -> Result<()> {
     if value.is_empty() || value.chars().any(char::is_control) {
         return Err(Error::InvalidMetadataValue {

@@ -23,9 +23,6 @@ use crate::{DataType, Error, Result, Version};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix lineage";
 
-/// The one array the document holds.
-const ENTRIES: &str = "entries";
-
 /// The version an entry dates itself at; the only required key.
 const SINCE: &str = "since";
 /// The extension pack that dated the change, beside the version.
@@ -45,7 +42,7 @@ const DOC: &str = "doc";
 ///
 /// `since` leads because it is what every read keys on: a version filter
 /// compares it and stops, so nothing past the entry asked for is read.
-const KEYS: [&str; 7] = [SINCE, EP, NAME, TYPE, DEPRECATED, REMOVED, DOC];
+pub(super) const KEYS: [&str; 7] = [SINCE, EP, NAME, TYPE, DEPRECATED, REMOVED, DOC];
 
 /// One dated point in a field's history.
 ///
@@ -450,7 +447,7 @@ impl<'field> FixLineage<'field> {
         }
         back_type(&mut typed);
 
-        let mut writer = Writer::open_array(ENTRIES);
+        let mut writer = Writer::open_array();
         let mut kept: Option<(FixLineageEntry<'_>, Option<DataType>)> = None;
         for (entry, dtype) in ordered.into_iter().zip(typed) {
             if let Some((held, ref typed)) = kept {
@@ -461,23 +458,12 @@ impl<'field> FixLineage<'field> {
             entry.write_into(&mut writer, dtype.as_ref())?;
             kept = Some((entry, dtype));
         }
-        writer.close_array();
         Ok(writer.finish())
     }
 
     /// Advances one step: the next entry, the document's end, or a refusal.
     fn step(&mut self) -> Scan<Option<FixLineageEntry<'field>>> {
-        if !self.started {
-            self.started = true;
-            if !self.cursor.open_array(ENTRIES)? {
-                self.cursor.expect(b'}')?;
-                return Ok(None);
-            }
-        } else if !self.cursor.next_element()? {
-            self.cursor.expect(b'}')?;
-            if !self.cursor.is_done() {
-                return Err(Refusal::Trailing);
-            }
+        if !self.cursor.next_entry(&mut self.started)? {
             return Ok(None);
         }
         self.read_entry().map(Some)

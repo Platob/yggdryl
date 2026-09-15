@@ -984,7 +984,7 @@ direction.fix.directions = [
   { code: 'R', patterns: ['(?i)^RX\\b'] },
 ]
 assert.deepEqual(direction.fix.directions[0], { code: 'S', patterns: ['(?i)^TX\\b'] })
-assert.ok(direction.get('fix:directions').startsWith('{"directions":[{"code":"S"'))
+assert.ok(direction.get('fix:directions').startsWith('[{"code":"S"'))
 registry.update(direction)
 const codec = new fix.FixCodec(registry)
 assert.equal(read(codec, 'TX 8=FIX.4.4|35=D|10=0|').byTag(385).asJs(), 'S')

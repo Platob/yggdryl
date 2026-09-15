@@ -42,9 +42,6 @@ use crate::{Error, Result, Version};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
 
-/// The one array the document holds.
-const CODES: &str = "codes";
-
 /// The wire value, and the key every lookup keys on.
 const VALUE: &str = "value";
 /// The symbolic name.
@@ -75,7 +72,7 @@ const NEEDLE_CAPACITY: usize = 64;
 ///
 /// `value` leads because it is the key every lookup keys on and the one a
 /// code set is ordered by, so tier 1 reads one key per record and stops.
-const KEYS: [&str; 9] = [
+pub(super) const KEYS: [&str; 9] = [
     VALUE, NAME, SINCE, EP, DEPRECATED, SORT, GROUP, ALIASES, DOC,
 ];
 
@@ -116,6 +113,26 @@ impl FixCode {
     #[must_use]
     pub fn with_description(mut self, description: impl Into<SmolStr>) -> Self {
         self.description = Some(description.into());
+        self
+    }
+
+    /// Whether this code carries no name beyond the wire value it is.
+    ///
+    /// A source that knows a value exists but not what anyone calls it names
+    /// it after itself - an Ullink `CBlock` declaring `6 Inbound` states tag
+    /// 35 `6` and a qualifier, never a name for the type - and that is a
+    /// placeholder rather than a name. A merge is where a real one takes its
+    /// place, which is what [`FixCodes`] states under merging.
+    pub(super) fn is_unnamed(&self) -> bool {
+        self.name == self.value
+    }
+
+    /// This code under `name`, everything else untouched.
+    ///
+    /// The value already answers to itself, so a placeholder name it replaces
+    /// leaves no spelling behind to keep.
+    pub(super) fn with_name(mut self, name: impl Into<SmolStr>) -> Self {
+        self.name = name.into();
         self
     }
 
@@ -473,30 +490,16 @@ impl<'field> FixCodes<'field> {
                 });
             }
         }
-        let mut writer = Writer::open_array(CODES);
+        let mut writer = Writer::open_array();
         for code in ordered {
             code.write_into(&mut writer)?;
         }
-        writer.close_array();
         Ok(writer.finish())
     }
 
     /// Advances one step: the next code, the document's end, or a refusal.
     fn step(&mut self) -> Scan<Option<FixCodeValue<'field>>> {
-        if !self.started {
-            self.started = true;
-            if !self.cursor.open_array(CODES)? {
-                self.cursor.expect(b'}')?;
-                if !self.cursor.is_done() {
-                    return Err(Refusal::Trailing);
-                }
-                return Ok(None);
-            }
-        } else if !self.cursor.next_element()? {
-            self.cursor.expect(b'}')?;
-            if !self.cursor.is_done() {
-                return Err(Refusal::Trailing);
-            }
+        if !self.cursor.next_entry(&mut self.started)? {
             return Ok(None);
         }
         self.read_code().map(Some)

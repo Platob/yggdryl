@@ -27,9 +27,6 @@ use crate::{Error, Result};
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix directions";
 
-/// The one array the document holds.
-const DIRECTIONS: &str = "directions";
-
 /// The code of tag 385's set the entry names; required, and the key every
 /// lookup keys on.
 const CODE: &str = "code";
@@ -37,7 +34,7 @@ const CODE: &str = "code";
 const PATTERNS: &str = "patterns";
 
 /// The keys one entry states, in the order it states them.
-const KEYS: [&str; 2] = [CODE, PATTERNS];
+pub(super) const KEYS: [&str; 2] = [CODE, PATTERNS];
 
 /// One rule naming a code of tag 385's set, as a caller states it.
 ///
@@ -349,30 +346,16 @@ impl<'field> FixDirections<'field> {
     /// pattern, or a pattern is empty or one the regex crate refuses.
     pub(super) fn render(directions: &[FixDirection]) -> Result<String> {
         directions.iter().try_for_each(FixDirection::validate)?;
-        let mut writer = Writer::open_array(DIRECTIONS);
+        let mut writer = Writer::open_array();
         for direction in directions {
             direction.write_into(&mut writer)?;
         }
-        writer.close_array();
         Ok(writer.finish())
     }
 
     /// Advances one step: the next entry, the document's end, or a refusal.
     fn step(&mut self) -> Scan<Option<FixDirectionEntry<'field>>> {
-        if !self.started {
-            self.started = true;
-            if !self.cursor.open_array(DIRECTIONS)? {
-                self.cursor.expect(b'}')?;
-                if !self.cursor.is_done() {
-                    return Err(Refusal::Trailing);
-                }
-                return Ok(None);
-            }
-        } else if !self.cursor.next_element()? {
-            self.cursor.expect(b'}')?;
-            if !self.cursor.is_done() {
-                return Err(Refusal::Trailing);
-            }
+        if !self.cursor.next_entry(&mut self.started)? {
             return Ok(None);
         }
         self.read_direction().map(Some)
@@ -415,7 +398,7 @@ impl<'field> FixDirections<'field> {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut field = DataType::utf8().nullable_field("msgdirection");
-    /// field.set_metadata([("fix:directions", r#"{"directions":[{"code":"S"}]}"#)])?;
+    /// field.set_metadata([("fix:directions", r#"[{"code":"S"}]"#)])?;
     /// // The entry states no `patterns`, which the grammar requires.
     /// assert!(field.as_fix().directions().next_ok().is_none());
     /// assert!(field.as_fix().directions().next().expect("a refusal").is_err());

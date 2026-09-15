@@ -152,7 +152,7 @@ test('addDefinition folds a definition into the one its name reaches', () => {
 test('inline codes and the complete native catalog survive snapshots', () => {
   const registry = catalog()
   const coded = registry.field(448)
-  coded.set('fix:codes', '{"codes":[{"value":"B","name":"Broker"}]}')
+  coded.set('fix:codes', '[{"value":"B","name":"Broker"}]')
   registry.updateDefinition('fields', coded)
   assert.match(registry.fieldByPath('NewOrderSingle.Parties.PartyID').get('fix:codes'), /Broker/)
   const vendor = tagged('Vendor', 9001)

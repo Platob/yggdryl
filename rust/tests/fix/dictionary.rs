@@ -520,14 +520,18 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// `OrderQty` reading a canceled quantity outright, `isincode` reading each
 /// identifier through `try_cast(... as isin)`. It then types the four
 /// identity columns - `instuuid`, `uuid`, `puuid`, `prevuuid` - as
-/// `fixed_size_binary(16)` rather than `uuid`. The last things to move this
-/// number are the crate's own `sourceurl` - where a line was read from is a
-/// column of the row, typed as the URL it is - and `nofixentries`, the
-/// counter the arrival record group is counted by.
+/// `fixed_size_binary(16)` rather than `uuid`. Then the crate's own
+/// `sourceurl` - where a line was read from is a column of the row, typed as
+/// the URL it is - and `nofixentries`, the counter the arrival record group
+/// is counted by. The last thing to move it is the canonical documents
+/// becoming the arrays they always were: `fix:codes` is `[{...}]` where it
+/// was `{"codes":[{...}]}`, and `fix:lineage`, `fix:replacements` and
+/// `fix:directions` lose the same wrapper, so every shipped field carrying
+/// one holds different text for the same facts.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 13_715_550_792_597_346_458);
+    assert_eq!(registry.stable_hash(), 7_300_787_928_050_199_931);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

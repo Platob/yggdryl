@@ -3621,10 +3621,10 @@ fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
     assert_eq!(
         stored,
         concat!(
-            r#"{"entries":["#,
+            r#"["#,
             r#"{"since":"2.7","name":"LastShares","type":{"type":"int32"}},"#,
             r#"{"since":"4.2","name":"LastShares","type":{"type":"float64"}},"#,
-            r#"{"since":"4.3","name":"LastQty","type":{"type":"float64"}}]}"#,
+            r#"{"since":"4.3","name":"LastQty","type":{"type":"float64"}}]"#,
         )
     );
 
@@ -3644,7 +3644,7 @@ fn a_lineage_round_trips_canonically_and_a_hand_edit_names_its_byte_position() {
 
     // Keys follow the document's declared order, so a reordered one is
     // refused rather than mis-scanned.
-    let reordered = r#"{"entries":[{"name":"LastShares","since":"2.7"}]}"#;
+    let reordered = r#"[{"name":"LastShares","since":"2.7"}]"#;
     let mut edited = DataType::utf8().nullable_field("LastShares");
     edited.set_metadata([("fix:lineage", reordered)]).unwrap();
     let error = edited.as_fix().dtype_at(version("4.2")).unwrap_err();
@@ -3877,7 +3877,7 @@ fn a_lineage_stores_the_type_a_spelling_resolves_to_and_drops_a_rename_of_it() {
         .unwrap();
     assert_eq!(
         field.as_metadata().get("fix:lineage"),
-        Some(r#"{"entries":[{"since":"2.7","name":"account","type":{"type":"string"}}]}"#)
+        Some(r#"[{"since":"2.7","name":"account","type":{"type":"string"}}]"#)
     );
     // The oldest entry survives, so `since` still dates the field.
     assert_eq!(field.as_fix().since(), Some(version("2.7")));
@@ -3944,10 +3944,7 @@ fn only_a_type_equivalent_entry_collapses() {
         FixLineageEntry::new(FixPedigree::new(version("5.0.2"), Some(309))).with_dtype("String"),
     ])
     .expect("the entries render");
-    assert_eq!(
-        rendered,
-        r#"{"entries":[{"since":"5.0.2","type":{"type":"string"}}]}"#
-    );
+    assert_eq!(rendered, r#"[{"since":"5.0.2","type":{"type":"string"}}]"#);
 }
 
 #[test]
@@ -4193,12 +4190,12 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     assert_eq!(
         stored,
         concat!(
-            r#"{"codes":["#,
+            r#"["#,
             r#"{"value":"1","name":"Buy","since":"2.7","ep":254},"#,
             r#"{"value":"2","name":"Sell","since":"2.7","ep":254},"#,
             r#"{"value":"7","name":"Undisclosed","since":"4.1"},"#,
             r#"{"value":"9","name":"CrossShort","since":"4.2"},"#,
-            r#"{"value":"A","name":"CrossShortExempt","since":"4.3"}]}"#,
+            r#"{"value":"A","name":"CrossShortExempt","since":"4.3"}]"#,
         )
     );
 
@@ -4214,7 +4211,7 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
 
     // Keys follow the document's declared order, so a reordered one is
     // refused rather than mis-scanned.
-    let reordered = r#"{"codes":[{"name":"Buy","value":"1"}]}"#;
+    let reordered = r#"[{"name":"Buy","value":"1"}]"#;
     let mut edited = DataType::utf8().nullable_field("Side");
     edited.set_metadata([("fix:codes", reordered)]).unwrap();
     let error = edited.as_fix().codes().next().unwrap().unwrap_err();
@@ -4226,6 +4223,34 @@ fn a_code_set_round_trips_canonically_and_a_hand_edit_names_its_byte_position() 
     // A read that cannot parse answers nothing rather than a wrong answer.
     assert_eq!(edited.as_fix().code_value("Buy"), None);
     assert_eq!(edited.as_fix().code("1"), None);
+
+    // A document is the array of its entries, so the wrapper object an older
+    // writer put around one is refused on its first byte like any other
+    // hand edit - there is one shape, and this is not it.
+    for (property, wrapped) in [
+        ("fix:codes", r#"{"codes":[{"value":"1","name":"Buy"}]}"#),
+        ("fix:lineage", r#"{"entries":[{"since":"4.4"}]}"#),
+        (
+            "fix:directions",
+            r#"{"directions":[{"code":"S","patterns":["^TX"]}]}"#,
+        ),
+        ("fix:replacements", r#"{"replacements":[{"since":"4.3"}]}"#),
+    ] {
+        let mut wrapper = DataType::utf8().nullable_field("Side");
+        wrapper.set_metadata([(property, wrapped)]).unwrap();
+        let view = wrapper.as_fix();
+        let error = match property {
+            "fix:codes" => view.codes().next().unwrap().unwrap_err(),
+            "fix:lineage" => view.lineage().next().unwrap().unwrap_err(),
+            "fix:directions" => view.directions().next().unwrap().unwrap_err(),
+            _ => view.replacements().next().unwrap().unwrap_err(),
+        };
+        assert!(
+            matches!(&error, Error::Parse { position, .. } if *position == 0),
+            "{property}: {error}"
+        );
+        assert!(error.to_string().contains("'['"), "{property}: {error}");
+    }
 }
 
 #[test]
@@ -4542,13 +4567,13 @@ fn rule80a_rules() -> Vec<FixReplacement> {
 
 /// The one text fixture C renders to.
 const RULE80A_DOCUMENT: &str = concat!(
-    r#"{"replacements":["#,
+    r#"["#,
     r#"{"since":"4.3","when":"C","fills":[{"tag":528,"value":"P"},{"tag":529,"value":"1 3"}],"#,
     r#""doc":"Program order, non-index arbitrage, for \"other\" agency"},"#,
     r#"{"since":"4.3","ep":12,"msgtypes":["8","AE"],"in":["allocgrp"],"when":"A","#,
     r#""fills":[{"tag":528,"value":"A"}]},"#,
     r#"{"since":"4.3","fills":[{"group":"parties","members":[{"tag":448},{"tag":628,"from":115},"#,
-    r#"{"group":"ptyssubgrp","members":[{"tag":523,"join":[200,205]}]}]}]}]}"#,
+    r#"{"group":"ptyssubgrp","members":[{"tag":523,"join":[200,205]}]}]}]}]"#,
 );
 
 fn rule80a() -> Field {
@@ -4782,101 +4807,89 @@ fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
     // first byte the refusal must name.
     for (document, reason, at) in [
         (
-            r#"{"replacements":[{"fills":[{"tag":528}],"since":"4.3"}]}"#,
+            r#"[{"fills":[{"tag":528}],"since":"4.3"}]"#,
             "out of order",
             Some(r#""since""#),
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528}],"note":"x"}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":528}],"note":"x"}]"#,
             r#"unknown key "note""#,
             Some(r#""note""#),
         ),
+        (r#"[{"fills":[{"tag":528}]}]"#, r#"state "since""#, None),
+        (r#"[{"since":"4.3"}]"#, r#"state "fills""#, None),
         (
-            r#"{"replacements":[{"fills":[{"tag":528}]}]}"#,
-            r#"state "since""#,
-            None,
-        ),
-        (
-            r#"{"replacements":[{"since":"4.3"}]}"#,
-            r#"state "fills""#,
-            None,
-        ),
-        (
-            r#"{"replacements":[{"since":"4.3","fills":[]}]}"#,
+            r#"[{"since":"4.3","fills":[]}]"#,
             r#""fills" to hold at least 1"#,
             Some(r#"[]"#),
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"group":"parties","members":[{"tag":1}]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":528,"group":"parties","members":[{"tag":1}]}]}]"#,
             r#""tag" and "group" never together"#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"value":"A"}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"value":"A"}]}]"#,
             r#"state "tag""#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"value":"A","from":1}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":528,"value":"A","from":1}]}]"#,
             r#""value" and "from" never together"#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"from":1,"join":[2,3]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":528,"from":1,"join":[2,3]}]}]"#,
             r#""from" and "join" never together"#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":528,"members":[{"tag":1}]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":528,"members":[{"tag":1}]}]}]"#,
             r#""tag" and "members" never together"#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"value":"A","group":"parties","members":[{"tag":1}]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"value":"A","group":"parties","members":[{"tag":1}]}]}]"#,
             r#""group" and "value" never together"#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties"}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"group":"parties"}]}]"#,
             r#"state "members""#,
             None,
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":[]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"group":"parties","members":[]}]}]"#,
             r#""members" to hold at least 1"#,
             Some(r#"[]"#),
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":541,"join":[200]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":541,"join":[200]}]}]"#,
             r#""join" to hold at least 2"#,
             Some(r#"[200]"#),
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":541,"join":[200,4294967295]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":541,"join":[200,4294967295]}]}]"#,
             r#""join" to fit in 32 bits"#,
             Some("4294967295"),
         ),
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"tag":2147483648}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"tag":2147483648}]}]"#,
             r#""tag" to fit in 32 bits"#,
             Some("2147483648"),
         ),
         (
-            r#"{"replacements":[{"since":"4.3","when":"a\"b","fills":[{"tag":528}]}]}"#,
+            r#"[{"since":"4.3","when":"a\"b","fills":[{"tag":528}]}]"#,
             r#""when" to hold no escape"#,
             Some(r#""a\"b""#),
         ),
-        (
-            r#"{"replacements":[]}x"#,
-            "expected the document to end",
-            Some("x"),
-        ),
+        (r#"[]x"#, "expected the document to end", Some("x")),
         // A refusal inside a nested member names its byte in the whole
         // document, not in the slice the member walk was reading.
         (
-            r#"{"replacements":[{"since":"4.3","fills":[{"group":"parties","members":[{"tag":1,"value":"A","from":2}]}]}]}"#,
+            r#"[{"since":"4.3","fills":[{"group":"parties","members":[{"tag":1,"value":"A","from":2}]}]}]"#,
             r#""value" and "from" never together"#,
-            Some("]}]}]}"),
+            Some("]}]}]"),
         ),
     ] {
         let field = replacing(document);
@@ -4913,8 +4926,7 @@ fn a_hand_edited_replacement_document_is_refused_at_its_own_byte() {
     }
 
     // A refusal is fused: the walk ends where it stopped.
-    let field =
-        replacing(r#"{"replacements":[{"since":"4.3"},{"since":"4.4","fills":[{"tag":1}]}]}"#);
+    let field = replacing(r#"[{"since":"4.3"},{"since":"4.4","fills":[{"tag":1}]}]"#);
     let mut walk = field.as_fix().replacements();
     assert!(walk.next().unwrap().is_err());
     assert!(walk.next().is_none());
@@ -5079,8 +5091,8 @@ fn a_temporal_type_is_adopted_backward_and_no_other_family_is() {
     assert_eq!(
         rendered,
         concat!(
-            r#"{"entries":[{"since":"4.2","type":"#,
-            r#"{"type":"datetime64","unit":"nanosecond","timezone":"UTC"}}]}"#,
+            r#"[{"since":"4.2","type":"#,
+            r#"{"type":"datetime64","unit":"nanosecond","timezone":"UTC"}}]"#,
         )
     );
 
@@ -5095,8 +5107,8 @@ fn a_temporal_type_is_adopted_backward_and_no_other_family_is() {
     assert_eq!(
         rendered,
         concat!(
-            r#"{"entries":[{"since":"4","type":{"type":"datetime64","unit":"nanosecond"}},"#,
-            r#"{"since":"4.3","type":{"type":"time64","unit":"nanosecond"}}]}"#,
+            r#"[{"since":"4","type":{"type":"datetime64","unit":"nanosecond"}},"#,
+            r#"{"since":"4.3","type":{"type":"time64","unit":"nanosecond"}}]"#,
         )
     );
 
