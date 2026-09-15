@@ -1162,7 +1162,7 @@ impl<'input> Parser<'input> {
                          value; a predicate keeps the elements of the list a column holds",
                     ));
                 }
-                base = base.path([segment]);
+                base = base.path([segment])?;
                 continue;
             }
             return Ok(base);

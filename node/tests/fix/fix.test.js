@@ -1809,7 +1809,7 @@ test('the fixed row is spelled by name, filled by tag and never shifts', () => {
   }
   assert.ok(message.updatedat().equals(message.getByTag(65003)))
   assert.ok(message.updatedat().equals(SENDING))
-  assert.ok(message.timePartition(3600).equals(Scalar.from(1_704_189_600n)))
+  assert.ok(message.timePartition().equals(Scalar.datetime(1_704_189_600_000_000_000n, 'ns', 'UTC')))
   assert.equal(native.at(schema.indexOf('uuid')).id, 'uuid')
   // The row's uuid names the row's own content: padding and derived columns
   // may move it (decision 26), the row read back verifies it, and projection
@@ -2084,7 +2084,7 @@ test('a message says everything the core derives about it', () => {
 
   assert.equal(message.symbolTicker().toJSON(), 'AAPL@XNAS')
   assert.equal('marketTimestamp' in message, false, 'the retired reader is gone')
-  assert.ok(message.timePartition(3600) !== null)
+  assert.ok(message.timePartition() !== null)
   // The settled clocks are never null. TransactTime is the event, so the
   // update and creation instants are that event, and the partition floors
   // the update to the hour. The SendingTime the line did not state closes
@@ -2102,7 +2102,7 @@ test('a message says everything the core derives about it', () => {
   assert.ok(message.puuid().equals(message.byTag(65018)))
   assert.equal(message.uuid().id, 'uuid')
   assert.equal(message.puuid().id, 'uuid')
-  assert.ok(message.timePartition(3600).equals(Scalar.from(1706788800n)))
+  assert.ok(message.timePartition().equals(Scalar.datetime(1_706_788_800_000_000_000n, 'ns', 'UTC')))
   // A row derives the market from the first MIC the message names, and
   // leaves the ISIN and the state null when it stated no source for either.
   const schema = fix.schema(registry, 'FixMessage')

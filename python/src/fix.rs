@@ -1628,10 +1628,10 @@ impl PyFixMsg {
         PyScalar::from_inner(self.inner.puuid().clone())
     }
 
-    /// The partition `updatedat` falls in, in whole seconds.
-    #[pyo3(signature = (seconds=3600))]
-    fn time_partition(&self, seconds: i64) -> Option<PyScalar> {
-        Self::answered(Some(&self.inner.time_partition(seconds)))
+    /// The hour `updatedat` falls in, as an instant: the partition a row is
+    /// stored under.
+    fn time_partition(&self) -> Option<PyScalar> {
+        Self::answered(Some(&self.inner.time_partition()))
     }
 
     /// The one value a facet names, or `None` where it is not unambiguous.

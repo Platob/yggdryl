@@ -1090,11 +1090,11 @@ impl JsFixMsg {
         JsScalar::from_core(self.inner.puuid().clone())
     }
 
-    /// The partition `updatedat` falls in, in whole seconds.
+    /// The hour `updatedat` falls in, as an instant: the partition a row is
+    /// stored under.
     #[napi]
-    pub fn time_partition(&self, seconds: f64) -> Result<Option<JsScalar>> {
-        let seconds = exact_i64(seconds, "seconds")?;
-        Ok(answered(&self.inner.time_partition(seconds)))
+    pub fn time_partition(&self) -> Option<JsScalar> {
+        answered(&self.inner.time_partition())
     }
 
     /// One lifted facet's value, or `null` where nothing carries it.

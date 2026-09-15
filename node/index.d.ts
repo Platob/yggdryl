@@ -1772,7 +1772,7 @@ export declare class FixMsg {
    */
   puuid(): JsScalar
   /** The partition `updatedat` falls in, in whole seconds. */
-  timePartition(seconds: number): JsScalar | null
+  timePartition(): JsScalar | null
   /** One lifted facet's value, or `null` where nothing carries it. */
   lifted(facet: string): JsScalar | null
   /**

@@ -2510,9 +2510,8 @@ def test_every_built_message_carries_its_version_and_its_settled_bundle(
     assert clocked.createdat().as_py() == instant
     assert clocked.by_tag(SNAPSHOTAT_TAG).as_py() == instant
     partition = clocked.time_partition()
-    assert partition is not None and partition.as_py() == 1767344400  # 09:00Z
-    partition = clocked.time_partition(60)
-    assert partition is not None and partition.as_py() == 1767346140  # 09:29Z
+    assert partition is not None
+    assert partition.as_py() == dt.datetime(2026, 1, 2, 9, 0, tzinfo=dt.timezone.utc)
 
     # A message that stated no version is read at one all the same, and the
     # version it was read at is not sent: it is not an entry either.

@@ -402,7 +402,7 @@ const messageUuid: Scalar = fromText.uuid()
 const chainUuid: Scalar = fromText.puuid()
 // @ts-expect-error the market timestamp reader is retired: updatedat is the settled clock
 fromText.marketTimestamp()
-const partition: Scalar | null = fromText.timePartition(3600)
+const partition: Scalar | null = fromText.timePartition()
 const lifted: Scalar | null = fromText.lifted('bidpx')
 const liftSource: number | null = fromText.liftSource('bidpx')
 const lift: Array<[string, Scalar]> = fromText.lift()

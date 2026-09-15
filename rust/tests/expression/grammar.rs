@@ -699,10 +699,19 @@ fn a_predicate_segment_is_refused_where_it_cannot_keep_elements() {
 }
 
 #[test]
-#[should_panic(expected = "computed value")]
 fn a_predicate_step_on_a_computed_value_has_no_term_to_build() {
-    let _ = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
-        .path([yggdryl::FieldSegment::filter("x = 1".parse().unwrap())]);
+    let refused = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+        .path([yggdryl::FieldSegment::filter("x = 1".parse().unwrap())])
+        .expect_err("a computed value");
+    assert!(refused.to_string().contains("computed value"), "{refused}");
+    // Every other step reads a computed value through the call that reads it.
+    let read = Term::call(yggdryl::expression::Function::Lower, [Term::column("s")])
+        .path([
+            yggdryl::FieldSegment::field("k"),
+            yggdryl::FieldSegment::index(0),
+        ])
+        .unwrap();
+    assert_eq!(read.to_string(), "get(get(lower(s), 'k'), 0)");
 }
 
 #[test]

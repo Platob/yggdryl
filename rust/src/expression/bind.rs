@@ -1143,7 +1143,11 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         Kind::Literal(value) => Literal::new(node.field.dtype().clone(), value.clone())
             .map_or_else(|_| Term::literal(value.clone()), Term::Literal),
         Kind::Column(_) => Term::column(node.field.name()),
-        Kind::Path(base, steps) => rebuild(base).path(steps.iter().map(Step::segment)),
+        // A bound path always starts at a column, and a path extends by any
+        // step, so this cannot refuse.
+        Kind::Path(base, steps) => rebuild(base)
+            .path(steps.iter().map(Step::segment))
+            .expect("a bound path starts at a column"),
         Kind::Attribute(attribute) => Term::attribute(attribute.clone()),
         Kind::And(operands) => Term::And(operands.iter().map(rebuild).collect()),
         Kind::Or(operands) => Term::Or(operands.iter().map(rebuild).collect()),

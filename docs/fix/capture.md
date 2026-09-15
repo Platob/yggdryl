@@ -379,7 +379,7 @@ Twenty-four scalar fields and one Map group carry capture facts that no dictiona
 
 Session columns come from bridge pairs or [row-header captures](arrow.md#a-bridge-log-names-what-it-fills), without overwriting a value the message stated. `isincode`, `miccode` and `state` are derived when a message becomes a row; `code`, `instuuid`, `prevupdatedat`, `prevuuid` and the grid `updatedat` are stamped by the [lifecycle](lifecycle.md). `altids` is filled by [enrichment](#a-messages-direct-identifiers-fill-one-map), not by row projection. FIX's `SenderCompID` and `TargetCompID` name counterparties; the plugin carrying a message inside a bridge is a separate fact.
 
-`timepartition` declares more than a type, in the protocol the crate already has rather than in a spelling only a FIX reader would know to look for: it is a derived partition column, so it says which column it derives from and how - `updatedat`, through `truncate[3600]`, because the value is seconds floored to a multiple of the width.
+`timepartition` declares more than a type, in the protocols the crate already has rather than in a spelling only a FIX reader would know to look for: `field:partition` marks it as the column a layout is cut on and an Iceberg spec partitions by identity, `partition:sources` says it reads `updatedat`, and `transform:expression` says how - `truncate(updatedat, 'hour')`, the expression layer's own floor to the hour, which is what `time_partition()` answers for a row and what `Field::apply_arrow_batch` fills into a batch that lacks the column.
 
 ### Every message is dated and versioned
 
@@ -405,8 +405,9 @@ The root's children are the standard header in its declared order, the body as i
     let partition = &fields[3];
     assert_eq!(partition.name(), "timepartition");
     assert_eq!(partition.display(), Some("TimePartition"));
+    assert!(partition.is_partition());
     assert_eq!(partition.as_partition().sources()?, Some(vec!["updatedat".to_owned()]));
-    assert_eq!(partition.get_metadata("iceberg:transform"), Some("truncate[3600]"));
+    assert_eq!(partition.get_metadata("transform:expression"), Some("truncate(updatedat, 'hour')"));
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
@@ -437,7 +438,7 @@ The root's children are the standard header in its declared order, the body as i
     assert_eq!(sent.by_tag(52)?.temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_200_415));
     assert_eq!(sent.updatedat().temporal_count_at(TimeUnit::Millisecond), Some(1_787_308_199_900));
     assert_eq!(sent.by_tag(SNAPSHOTAT_TAG_NAME.0)?, sent.updatedat());
-    assert_eq!(sent.time_partition(3_600).as_i64(), Some(1_787_306_400));
+    assert_eq!(sent.time_partition().temporal_count_at(TimeUnit::Second), Some(1_787_306_400));
     ```
 
 === "Python"
@@ -454,8 +455,9 @@ The root's children are the standard header in its declared order, the body as i
     partition = fields[3]
     assert partition.name == "timepartition"
     assert partition.metadata["display"] == "TimePartition"
+    assert partition.is_partition
     assert partition.metadata["partition:sources"] == '["updatedat"]'
-    assert partition.metadata["iceberg:transform"] == "truncate[3600]"
+    assert partition.metadata["transform:expression"] == "truncate(updatedat, 'hour')"
 
     default = datetime(2024, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
     reader = FixCodec(
@@ -481,7 +483,7 @@ The root's children are the standard header in its declared order, the body as i
     assert sent.by_tag(52).as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
     assert sent.updatedat().as_py() == datetime(2026, 8, 21, 10, 29, 59, 900000, tzinfo=timezone.utc)
     assert sent.by_tag(SNAPSHOTAT) == sent.updatedat()
-    assert sent.time_partition(3_600).as_py() == 1_787_306_400
+    assert sent.time_partition().as_py() == datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)
     ```
 
 === "JavaScript"
@@ -489,7 +491,7 @@ The root's children are the standard header in its declared order, the body as i
     ```javascript
     const assert = require('node:assert/strict')
     const path = require('node:path')
-    const { fix } = require('yggdryl')
+    const { fix, Scalar } = require('yggdryl')
 
     const [CODE, SNAPSHOTAT] = [65024, 65025]
     const fields = fix.crateFields()
@@ -497,8 +499,9 @@ The root's children are the standard header in its declared order, the body as i
     const partition = fields[3]
     assert.equal(partition.name, 'timepartition')
     assert.equal(partition.display, 'TimePartition')
+    assert.ok(partition.isPartition)
     assert.equal(partition.getProperty('partition', 'sources'), '["updatedat"]')
-    assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
+    assert.equal(partition.getProperty('transform', 'expression'), "truncate(updatedat, 'hour')")
 
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const reader = new fix.FixCodec(registry, {
@@ -525,7 +528,7 @@ The root's children are the standard header in its declared order, the body as i
     assert.equal(sent.byTag(8).toJSON(), 'FIX.4.2')
     assert.ok(sent.updatedat().equals(sent.byTag(60)))
     assert.ok(sent.byTag(SNAPSHOTAT).equals(sent.updatedat()))
-    assert.equal(Number(sent.timePartition(3600).asJs()), 1_787_306_400)
+    assert.ok(sent.timePartition().equals(Scalar.datetime(1_787_306_400_000_000_000n, 'ns', 'UTC')))
     ```
 
 ## What a message implied is filled in

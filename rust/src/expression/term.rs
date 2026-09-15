@@ -140,6 +140,14 @@ pub enum Term {
     Map(Arc<[(Term, Term)]>),
 }
 
+/// One path with one more step, the steps copied once.
+fn extended(held: &[FieldSegment], segment: FieldSegment) -> Arc<[FieldSegment]> {
+    let mut steps: Vec<FieldSegment> = Vec::with_capacity(held.len() + 1);
+    steps.extend(held.iter().cloned());
+    steps.push(segment);
+    Arc::from(steps)
+}
+
 impl Term {
     /// Return a deterministic hash of the canonical term text.
     pub fn stable_hash(&self) -> u64 {
@@ -221,47 +229,29 @@ impl Term {
     /// [`Function::Get`] for a child, a position or a key, [`Function::Slice`]
     /// for a run - because only a column has a place to push a path down to.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics on a predicate step after a computed value: a
+    /// Returns [`Error::Parse`] on a predicate step after a computed value: a
     /// [`FieldSegment::Where`] keeps the elements of the list a column holds,
     /// and no call in the closed function set reads a predicate, so there is
-    /// no term to build. The parser refuses the spelling before it reaches
-    /// here, and [`Self::filter_elements`] is the builder that refuses it as
-    /// an error.
-    #[must_use]
-    pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Self {
-        segments.into_iter().fold(self, |base, segment| {
-            base.step(segment).unwrap_or_else(|error| panic!("{error}"))
-        })
+    /// no term to build. [`Self::filter_elements`] is the same refusal for one
+    /// step.
+    pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Result<Self> {
+        segments.into_iter().try_fold(self, Self::step)
     }
 
     /// Take one step, the way [`Self::path`] takes each of its steps.
     fn step(self, segment: FieldSegment) -> Result<Self> {
-        Ok(match self {
-            Self::Path(held) => {
-                let mut steps: Vec<FieldSegment> = held.iter().cloned().collect();
-                steps.push(segment);
-                Self::Path(Arc::from(steps))
-            }
-            base => match segment {
-                FieldSegment::Field(name) => Self::call(
-                    Function::Get,
-                    [base, Self::literal(Scalar::from(name.as_str()))],
-                ),
-                FieldSegment::Index(position) => {
-                    Self::call(Function::Get, [base, Self::literal(position)])
-                }
-                FieldSegment::Key(key) => Self::call(Function::Get, [base, Self::Literal(key)]),
-                FieldSegment::Range { start, end } => Self::call(
-                    Function::Slice,
-                    [
-                        base,
-                        start.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
-                        end.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
-                    ],
-                ),
-                FieldSegment::Where(predicate) => {
+        Ok(match segment {
+            FieldSegment::Field(name) => self.child(name),
+            FieldSegment::Index(position) => self.at(position),
+            FieldSegment::Range { start, end } => self.slice(start, end),
+            FieldSegment::Key(key) => self.extend_or(FieldSegment::Key(key.clone()), |base| {
+                Self::call(Function::Get, [base, Self::Literal(key)])
+            }),
+            FieldSegment::Where(predicate) => match self {
+                Self::Path(held) => Self::Path(extended(&held, FieldSegment::Where(predicate))),
+                base => {
                     return Err(Error::Parse {
                         target: "expression",
                         position: 0,
@@ -276,22 +266,51 @@ impl Term {
         })
     }
 
+    /// Extend a path by one step, or read a computed value through `call`.
+    ///
+    /// The one place a step meets a base that is not a path: a child, a
+    /// position, a key and a run each have a call that reads them off any
+    /// value, so these steps never refuse.
+    fn extend_or(self, segment: FieldSegment, call: impl FnOnce(Self) -> Self) -> Self {
+        match self {
+            Self::Path(held) => Self::Path(extended(&held, segment)),
+            base => call(base),
+        }
+    }
+
     /// Reach one struct child, or one string-keyed map entry.
     #[must_use]
     pub fn child(self, name: impl Into<SmolStr>) -> Self {
-        self.path([FieldSegment::Field(name.into())])
+        let name = name.into();
+        self.extend_or(FieldSegment::Field(name.clone()), |base| {
+            Self::call(
+                Function::Get,
+                [base, Self::literal(Scalar::from(name.as_str()))],
+            )
+        })
     }
 
     /// Reach one list element by position, 0-based.
     #[must_use]
     pub fn at(self, index: i64) -> Self {
-        self.path([FieldSegment::Index(index)])
+        self.extend_or(FieldSegment::Index(index), |base| {
+            Self::call(Function::Get, [base, Self::literal(index)])
+        })
     }
 
     /// Reach a half-open run of list elements.
     #[must_use]
     pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self {
-        self.path([FieldSegment::Range { start, end }])
+        self.extend_or(FieldSegment::Range { start, end }, |base| {
+            Self::call(
+                Function::Slice,
+                [
+                    base,
+                    start.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
+                    end.map_or_else(|| Self::literal(Scalar::Null), Self::literal),
+                ],
+            )
+        })
     }
 
     /// Keep the elements of the list this path reaches that `predicate`

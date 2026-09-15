@@ -4127,7 +4127,7 @@ pub enum Term
   pub fn column(name: impl Into<SmolStr>) -> Self
   pub const fn attribute(attribute: Attribute) -> Self
   pub fn parameter(name: impl Into<SmolStr>) -> Self
-  pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Self
+  pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Result<Self>
   pub fn child(self, name: impl Into<SmolStr>) -> Self
   pub fn at(self, index: i64) -> Self
   pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self
