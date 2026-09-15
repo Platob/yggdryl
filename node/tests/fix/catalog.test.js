@@ -94,12 +94,13 @@ test('category CRUD refreshes references and refuses invalid changes atomically'
   // Only what seeds every registry is left: the crate's own twenty-six
   // scalar fields and the standard SendingTime (52) and TransactTime (60)
   // clocks (`seeded_fields()` in `rust/tests/fix.rs`), all of them in the
-  // fields category. The crate's twenty-seven definitions add the altids group.
-  assert.equal(registry.size, 28)
-  assert.equal([...registry.definitions('fields')].length, 28)
+  // fields category. The crate's thirty-seven definitions add the altids
+  // group and the instids struct, which are filed by the shapes they have.
+  assert.equal(registry.size, 37)
+  assert.equal([...registry.definitions('fields')].length, 37)
   assert.equal(registry.fieldByTag(52).name, 'sendingtime')
   assert.equal(registry.fieldByTag(60).name, 'transacttime')
-  assert.equal(fix.crateFields().length, 27)
+  assert.equal(fix.crateFields().length, 37)
   assert.equal(registry.groupByTag(65020).name, 'altids')
 })
 
@@ -192,8 +193,11 @@ test('native category cursors release holds on exhaustion and early close', () =
   assert.equal(cursor.next().value.name, 'NewOrderSingle')
   assert.throws(() => registry.insert(tagged('Extra', 9000)), /shared/)
   assert.equal(cursor.next().value.name, 'Party')
-  // The crate's own message is behind them: every registry carries
-  // `pluginconfig` as it carries the crate's own fields (decision 19).
+  // The crate's own are behind them, in name order: `instids`, the Struct
+  // that joins an instrument's identifiers, then the `pluginconfig` message
+  // every registry carries as it carries the crate's own fields
+  // (decision 19).
+  assert.equal(cursor.next().value.name, 'instids')
   assert.equal(cursor.next().value.name, 'pluginconfig')
   assert.equal(cursor.next().done, true)
   assert.equal(cursor.next().done, true)

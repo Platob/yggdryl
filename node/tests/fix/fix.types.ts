@@ -406,7 +406,6 @@ const messageUuid: Scalar = fromText.msghash()
 const chainUuid: Scalar = fromText.msgphash()
 // @ts-expect-error the market timestamp reader is retired: updatedat is the settled clock
 fromText.marketTimestamp()
-const partition: Scalar | null = fromText.timePartition()
 const lifted: Scalar | null = fromText.lifted('bidpx')
 const liftSource: number | null = fromText.liftSource('bidpx')
 const lift: Array<[string, Scalar]> = fromText.lift()
@@ -438,7 +437,6 @@ void clock
 void created
 void messageUuid
 void chainUuid
-void partition
 void lifted
 void liftSource
 void lift

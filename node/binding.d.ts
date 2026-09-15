@@ -243,6 +243,7 @@ export type DataTypeId =
   | 'isin'
   | 'cusip'
   | 'sedol'
+  | 'bloomberg'
   | 'side'
   | 'state'
   | 'timeinforce'
@@ -330,6 +331,7 @@ interface DataTypeKindById {
   isin: 'code'
   cusip: 'code'
   sedol: 'code'
+  bloomberg: 'code'
   side: 'code'
   state: 'code'
   timeinforce: 'code'
@@ -803,6 +805,8 @@ export type IsinField = FieldOf<'isin', string>
 export type CusipField = FieldOf<'cusip', string>
 /** SEDOL, the seven-character securities identifier closed by its check digit. */
 export type SedolField = FieldOf<'sedol', string>
+/** A Bloomberg identifier - a ticker, a market and a yellow key, or a FIGI - bounded at thirty-two bytes. */
+export type BloombergField = FieldOf<'bloomberg', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1079,6 +1083,7 @@ export interface FieldsNamespace {
   isin(name: string, options?: FieldOptions): IsinField
   cusip(name: string, options?: FieldOptions): CusipField
   sedol(name: string, options?: FieldOptions): SedolField
+  bloomberg(name: string, options?: FieldOptions): BloombergField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
@@ -1612,6 +1617,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'sedol', string, N, O>
+  bloomberg<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'bloomberg', string, N, O>
   side<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,

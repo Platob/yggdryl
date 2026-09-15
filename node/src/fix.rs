@@ -2309,11 +2309,10 @@ pub fn fix_generic_message(
 /// a monitor orders and joins on. A carried column whose folded name a FIX
 /// column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
 /// rather than renamed: the FIX column is the one a reader spelling it means.
-/// A bridge's own row header spells the session instance it handled a line on
-/// as `MsgCtxId` for that reason, so the value reaches the FIX column
-/// rather than leading the row - and never over a reading the message stated
-/// itself. Its `pluginid` capture reaches the crate's own column of that name
-/// the same way.
+/// A bridge's own row header names every capture for the field it fills -
+/// `bridgesessionid`, `msgctxid`, `msgseqnum`, `pluginid` - for that reason,
+/// so each value reaches its column rather than leading the row, and never
+/// over a reading the message stated itself.
 #[napi(js_name = "fixSchemaCarrying")]
 pub fn fix_schema_carrying(carrier: &JsField, read: &JsField) -> Result<JsField> {
     yggdryl::fix_schema_carrying(&carrier.inner, &read.inner)

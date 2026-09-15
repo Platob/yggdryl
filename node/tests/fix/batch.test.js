@@ -32,15 +32,19 @@ const PIPE = '|'.charCodeAt(0)
 // SendingTime so two builds settle the same identity.
 const SENDING = Scalar.datetime(1_704_190_530_000_000_000n, 'ns', 'UTC')
 // The replay fields a message's root declares or has appended, by tag.
+// The columns whose value every message carries. `snapshotat` (65025) is not
+// one: a row that is not a snapshot says so by leaving it empty, so it is
+// held rather than mandatory.
 const BUNDLE = [
   [65003, 'updatedat'],
   [65023, 'createdat'],
-  [65017, 'uuid'],
+  [65017, 'msghash'],
   [65018, 'msgphash'],
   [65024, 'code'],
-  [65025, 'snapshotat'],
   [52, 'sendingtime'],
 ]
+// The columns the replay bundle holds: `BUNDLE` and the snapshot clock.
+const HELD = [...BUNDLE, [65025, 'snapshotat']]
 
 const BULK_CONFIG =
   '{"request":{"mbean":"com.ullink.ulbridge.sessioninterfaces.plugins:name=*,plugin-type=FIX,type=Plugin","type":"read"},' +
@@ -300,14 +304,17 @@ test('the schema is decided before the first row is read', () => {
   const reader = new fix.FixCodec(seed()).parseTextArrowReader(capture([], 1))
   const names = []
   for (let at = 0; at < reader.field.fieldLen; at += 1) names.push(reader.field.fieldAt(at).name)
-  // The capture's own column leads; the fixed columns follow, named by their
-  // folded names, each carrying its tag on the field.
-  assert.deepEqual(names.slice(0, 6), ['body', 'beginstring', 'bodylength', 'msgtype', 'sendercompid', 'targetcompid'])
+  // The capture's own column leads; the fixed columns follow, the crate's own
+  // first - a table is read by time and joined by identity - then the
+  // protocol's, each named by its folded name and carrying its tag.
+  assert.deepEqual(names.slice(0, 4), ['body', 'updatedat', 'prevupdatedat', 'createdat'])
+  const header = names.indexOf('beginstring')
+  assert.deepEqual(names.slice(header, header + 4), ['beginstring', 'bodylength', 'msgtype', 'sendercompid'])
   // One list closes the row - the whole arrival record, unresolved keys at
   // tag 0 - behind FIX's own `MsgDirection`.
   assert.deepEqual(names.slice(-3), ['msgdirection', 'nofixentries', 'fixentries'])
   assert.equal(names.includes('nounmappedfixentries'), false)
-  assert.equal(reader.field.fieldAt(3).fix.tag, 35)
+  assert.equal(reader.field.fieldAt(header + 2).fix.tag, 35)
   // And an empty capture yields no batch at all.
   assert.equal(reader.intoTable().numRows, 0)
 })
@@ -732,13 +739,14 @@ test('a mandatory replay field refuses removal and a null write, atomically', ()
   // settled on every message, so neither door can take one away, and the
   // refusal names the field it met and changes nothing - by tag or by name.
   const message = one(new fix.FixCodec(seed()), ORDER)
-  for (const [tag, name] of BUNDLE) {
+  for (const [tag, name] of HELD) {
     const before = message.clone()
     const located = new RegExp(`at \\$\\.${name}:`)
     assert.throws(() => message.remove(tag), located, `remove ${name}`)
     assert.ok(message.equals(before), `remove ${name}`)
     assert.throws(() => message.remove(name), located, `remove ${name} by name`)
     assert.ok(message.equals(before), `remove ${name} by name`)
+    if (name === 'snapshotat') continue
     assert.throws(() => message.set(tag, null), located, `null ${name}`)
     assert.ok(message.equals(before), `null ${name}`)
     assert.notEqual(message.byTag(tag).kind, 'null', name)

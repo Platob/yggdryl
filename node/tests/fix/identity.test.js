@@ -25,8 +25,14 @@ function seed() {
 
 // The instant the Rust suite settles its hand-built messages at.
 const CLOCK = 123_456_789n
-// The replay bundle by tag, in the core's order.
-const BUNDLE = [65003, 65023, 65017, 65018, 65024, 65025, 52]
+// The columns whose value every message carries, by tag, in the core's order.
+// `snapshotat` (65025) is not one: a row that is not a snapshot says so by
+// leaving it empty, so it is held rather than mandatory.
+const BUNDLE = [65003, 65023, 65017, 65018, 65024, 52]
+// The columns the replay bundle holds: `BUNDLE` and the snapshot clock. A
+// holder is never removed and is always reached by its tag under whatever
+// name it was renamed to, whether or not a message fills it.
+const HELD = [65003, 65023, 65017, 65018, 65024, 65025, 52]
 const NIL = Buffer.alloc(16)
 
 function clock(count) {
@@ -86,7 +92,8 @@ test('a fixed default sending time settles every clock and replays exactly', () 
   assert.ok(first.clone().equals(first))
   assert.ok(first.updatedat().equals(clock(CLOCK)))
   assert.ok(first.createdat().equals(clock(CLOCK)))
-  assert.ok(first.byTag(65025).equals(clock(CLOCK)))
+  // A read is not a snapshot, so that column stays empty.
+  assert.equal(first.byTag(65025).kind, 'null')
   assert.ok(first.byTag(52).equals(clock(CLOCK)))
   assert.equal(first.byTag(65024).asJs(), '')
   assert.ok(first.msghash().equals(second.msghash()))
@@ -102,7 +109,7 @@ test("the message's own SendingTime and TransactTime precede the default", () =>
   ).next().value
   assert.ok(held.byTag(52).equals(clock(2_123_456_789)))
   assert.ok(held.byTag(60).equals(clock(3_987_654_321)))
-  assert.ok(held.byTag(65025).equals(clock(3_987_654_321)))
+  assert.equal(held.byTag(65025).kind, 'null')
   assert.ok(held.updatedat().equals(clock(3_987_654_321)))
   assert.ok(held.createdat().equals(clock(3_987_654_321)))
   assertMirrors(held)
@@ -213,7 +220,7 @@ test('ordinary mutation recomputes identity and excludes only the owned clocks',
 test('an explicit identity write asserts the complete candidate atomically', () => {
   const held = message([payload('first')])
   const before = held.clone()
-  for (const [tag, name] of [[65017, 'uuid'], [65018, 'puuid']]) {
+  for (const [tag, name] of [[65017, 'msghash'], [65018, 'msgphash']]) {
     assert.throws(() => held.set(tag, NIL), located(name))
     assert.ok(held.equals(before))
   }
@@ -230,15 +237,27 @@ test('an explicit identity write asserts the complete candidate atomically', () 
 
 test('mandatory null writes and removals refuse without changing any state', () => {
   const held = message([payload('first')])
-  for (const tag of BUNDLE) {
+  for (const tag of HELD) {
     const before = held.clone()
     const name = held.field.fieldAt(position(held, tag)).name
-    assert.throws(() => held.set(tag, null), located(name))
-    assert.ok(held.equals(before), name)
+    if (BUNDLE.includes(tag)) {
+      assert.throws(() => held.set(tag, null), located(name))
+      assert.ok(held.equals(before), name)
+    }
     assert.throws(() => held.remove(tag), located(name))
     assert.ok(held.equals(before), name)
     assertMirrors(held)
   }
+  // The snapshot clock is held rather than mandatory: the column is not
+  // removable, and clearing it is how a row says no snapshot took it. A stamp
+  // and a clear return the row it started as, identity included.
+  const unstamped = held.clone()
+  assert.equal(held.byTag(65025).kind, 'null')
+  held.set(65025, clock(CLOCK))
+  assert.ok(held.byTag(65025).equals(clock(CLOCK)))
+  assert.equal(held.msghash().equals(unstamped.msghash()), false)
+  held.set(65025, null)
+  assert.ok(held.equals(unstamped))
   const old = held.msghash()
   assert.equal(held.remove('payload').asJs(), 'first')
   assert.equal(held.msghash().equals(old), false)
@@ -251,7 +270,7 @@ test('the replay bundle is required before record defaults can supply a value', 
   const original = message([payload('value')])
   const cells = () => Array.from({ length: original.field.fieldLen }, (_, at) => original.value.at(at))
   const members = () => Array.from({ length: original.field.fieldLen }, (_, at) => original.field.fieldAt(at))
-  for (const tag of BUNDLE) {
+  for (const tag of HELD) {
     const at = position(original, tag)
     const name = original.field.fieldAt(at).name
     // A schema without the field neither exports nor replays a row.
@@ -262,6 +281,10 @@ test('the replay bundle is required before record defaults can supply a value', 
     narrowCells.splice(at, 1)
     assert.throws(() => original.intoRow(narrow), located(name))
     assert.throws(() => fix.FixMsg.fromRow(narrow, narrowCells, original.registry), located(name))
+    // The rest is about the *value*, which the snapshot clock need not have:
+    // a nullable column holding null is exactly how a row that no snapshot
+    // took says so.
+    if (!BUNDLE.includes(tag)) continue
     // A nullable declaration of it is refused too.
     const loose = members()
     loose[at] = loose[at].clone()
@@ -280,7 +303,7 @@ test('the replay bundle is required before record defaults can supply a value', 
 test('replay refuses tampered identity and non-native mandatory values', () => {
   const original = message()
   const other = message([payload('other')])
-  for (const tag of BUNDLE) {
+  for (const tag of HELD) {
     const at = position(original, tag)
     const cells = Array.from({ length: original.field.fieldLen }, (_, index) => original.value.at(index))
     // The sixteen identity bytes another message computed are a tampered

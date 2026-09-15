@@ -1776,11 +1776,6 @@ export declare class FixMsg {
    * must match it.
    */
   msgphash(): JsScalar
-  /**
-   * The hour `updatedat` falls in, as an instant: the partition a row is
-   * stored under.
-   */
-  timePartition(): JsScalar | null
   /** One lifted facet's value, or `null` where nothing carries it. */
   lifted(facet: string): JsScalar | null
   /**
@@ -5963,9 +5958,10 @@ export declare function fixPluginMessage(): JsField
  * arrival record, unresolved keys at tag 0. Columns are spelled by the
  * dictionary's folded canonical names - `msgtype`, never `35` - so a row
  * reads the way a message reads; the tag stays each column's identity, on
- * its `fix:tag`, and is what fills it. `beginstring`, `timepartition` and
+ * its `fix:tag`, and is what fills it. `beginstring` and
  * the replay fields - `sendingtime`, `updatedat`, `createdat`, `msghash`,
- * `msgphash`, `code`, `snapshotat` - are required.
+ * `msgphash`, `code` - are required; `snapshotat` is the one the bundle
+ * holds without requiring, because only a snapshot stamps it.
  */
 export declare function fixSchema(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
@@ -5975,13 +5971,12 @@ export declare function fixSchema(registry?: FixRegistry | undefined | null, nam
  * `carrier` is a capture's own root - where a line was read from, which line
  * it was, what stamped it - and its columns lead the row, because that is what
  * a monitor orders and joins on. A carried column whose folded name a FIX
- * column already takes - `senderSessionId` and `sendersessionid` are one name - is dropped
+ * column already takes - `MsgCtxId` and `msgctxid` are one name - is dropped
  * rather than renamed: the FIX column is the one a reader spelling it means.
- * A bridge's own row header spells the session instance it handled a line on
- * as `senderSessionId` for that reason, so the value reaches the FIX column
- * rather than leading the row - and never over a reading the message stated
- * itself. Its `pluginid` capture reaches the crate's own column of that name
- * the same way.
+ * A bridge's own row header names every capture for the field it fills -
+ * `bridgesessionid`, `msgctxid`, `msgseqnum`, `pluginid` - for that reason,
+ * so each value reaches its column rather than leading the row, and never
+ * over a reading the message stated itself.
  */
 export declare function fixSchemaCarrying(carrier: JsField, read: JsField): JsField
 
