@@ -66,6 +66,10 @@ pub mod partition;
 #[cfg(feature = "arrow")]
 pub(crate) mod structured;
 pub mod text;
+// XML's writer renders a leaf through the crate's one scalar-as-text
+// renderer, which is part of the Arrow-gated record layer, so the whole
+// module rides that feature the way IPC and Parquet do.
+#[cfg(feature = "arrow")]
 pub mod xml;
 
 pub use magic::MAGIC_PROBE_LEN;
