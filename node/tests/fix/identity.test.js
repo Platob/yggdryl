@@ -27,7 +27,7 @@ function seed() {
 const CLOCK = 123_456_789n
 // The replay bundle by tag, in the core's order.
 const BUNDLE = [65003, 65023, 65017, 65018, 65024, 65025, 52]
-const NIL = '00000000-0000-0000-0000-000000000000'
+const NIL = Buffer.alloc(16)
 
 function clock(count) {
   return Scalar.datetime(BigInt(count), 'ns', 'UTC')
@@ -160,7 +160,7 @@ test('puuid hashes only the exact code bytes, the empty name included', () => {
     assert.ok(held.puuid().equals(expected), JSON.stringify(code))
     // Every message naming the same code answers the same puuid.
     assert.ok(message([payload('other'), [registry.fieldByTag(65024), code]], registry).puuid().equals(expected))
-    identities.add(expected.asJs())
+    identities.add(expected.asJs().toString('hex'))
   }
   assert.equal(identities.size, 5)
 })

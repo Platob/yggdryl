@@ -2024,7 +2024,7 @@ test('the crate fields declare their own protocols', () => {
   const partition = held[3]
   assert.equal(partition.name, 'timepartition')
   assert.equal(partition.getProperty('partition', 'sources'), '["updatedat"]')
-  assert.equal(partition.getProperty('iceberg', 'transform'), 'truncate[3600]')
+  assert.equal(partition.getProperty('transform', 'expression'), "truncate(updatedat, 'hour')")
 })
 
 test("the bridge's six facts are crate fields, and every registry holds them", () => {

@@ -945,3 +945,70 @@ fn a_coupled_value_of_every_width_reads_back_through_its_datatype() {
         );
     }
 }
+
+/// The sixteen ordered bytes carry the whole instant and the whole digest,
+/// and they sort as the instants do - including across the epoch, where the
+/// two's-complement bytes of [`TxHash::into_bytes`] sort the other way.
+///
+/// Decision 38: this is what a FIX identity column holds, so the ordering is
+/// the column's ordering and the digest is not the lossy 58 bits
+/// [`TxHash::into_uuid`] keeps.
+#[test]
+fn ordered_bytes_lead_with_the_instant_and_keep_every_digest_bit() {
+    let value = TxHash::new_in(
+        1,
+        TimeUnit::Nanosecond,
+        Digest::new(DigestAlgorithm::Xxh64, u64::MAX.into()),
+    )
+    .unwrap();
+    let held = value.into_ordered_bytes().unwrap();
+    // The instant leads, its sign bit flipped so that negatives sort first.
+    assert_eq!(&held[..8], &[0x80, 0, 0, 0, 0, 0, 0, 1]);
+    // Every one of the digest's 64 bits survives, where a UUID keeps 58.
+    assert_eq!(&held[8..], &[0xff; 8]);
+    assert_ne!(
+        held,
+        value.into_uuid().unwrap().into_bytes(),
+        "the uuid spends six of those bits on its version and variant"
+    );
+
+    // The bytes order as the instants do, across the epoch.
+    let mut sorted: Vec<[u8; 16]> = [1_i64, -1, 0, i64::MIN, i64::MAX]
+        .into_iter()
+        .map(|unix| {
+            TxHash::new_in(unix, TimeUnit::Nanosecond, value.digest())
+                .unwrap()
+                .into_ordered_bytes()
+                .unwrap()
+        })
+        .collect();
+    sorted.sort_unstable();
+    let instants: Vec<i64> = sorted
+        .iter()
+        .map(|held| {
+            let mut bytes = [0_u8; 8];
+            bytes.copy_from_slice(&held[..8]);
+            i64::from_be_bytes((u64::from_be_bytes(bytes) ^ (1 << 63)).to_be_bytes())
+        })
+        .collect();
+    assert_eq!(instants, [i64::MIN, -1, 0, 1, i64::MAX]);
+
+    // A digest of another width has nothing to lay down, and says so where
+    // `into_uuid` says it too.
+    let wide = TxHash::new_in(
+        0,
+        TimeUnit::Nanosecond,
+        Digest::new(DigestAlgorithm::Xxh128, 1),
+    )
+    .unwrap();
+    let refused = wide.into_ordered_bytes().expect_err("a 128-bit digest");
+    assert!(
+        matches!(&refused, Error::InvalidRecord { path, .. } if path == "$.digest"),
+        "{refused}"
+    );
+
+    // An instant no signed nanosecond count can hold refuses the same way
+    // `into_uuid` refuses it.
+    let far = TxHash::new_in(i64::MAX, TimeUnit::Second, value.digest()).unwrap();
+    assert!(far.into_ordered_bytes().is_err());
+}

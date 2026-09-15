@@ -457,12 +457,12 @@ impl FixMsg {
         &self.createdat
     }
 
-    /// Borrow the time/content UUID without a lookup.
+    /// Borrow the time/content identity, sixteen bytes, without a lookup.
     pub const fn uuid(&self) -> &Scalar {
         &self.uuid
     }
 
-    /// Borrow the code-only chain UUID without a lookup.
+    /// Borrow the code-only chain identity, sixteen bytes, without a lookup.
     pub const fn puuid(&self) -> &Scalar {
         &self.puuid
     }

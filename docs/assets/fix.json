@@ -141,7 +141,7 @@
       ],
       [
         "datetime64(ns,\"UTC\")",
-        72
+        73
       ],
       [
         "time64(ns)",
@@ -157,14 +157,14 @@
       ],
       [
         "int64",
-        15
+        14
       ],
       [
         "country",
         12
       ],
       [
-        "uuid",
+        "fixed_size_binary(16)",
         4
       ],
       [
@@ -222413,14 +222413,17 @@
       },
       {
         "dtype": {
-          "type": "int64"
+          "timezone": "UTC",
+          "type": "datetime64",
+          "unit": "nanosecond"
         },
         "metadata": {
-          "description": "The partition updatedat falls in, as whole seconds since the epoch floored to the partition width.",
+          "description": "The hour updatedat falls in: updatedat floored to the partition width, as an instant.",
           "display": "TimePartition",
+          "field:partition": "true",
           "fix:tag": "65004",
-          "iceberg:transform": "truncate[3600]",
-          "partition:sources": "[\"updatedat\"]"
+          "partition:sources": "[\"updatedat\"]",
+          "transform:expression": "truncate(updatedat, 'hour')"
         },
         "name": "timepartition",
         "nullable": true
@@ -222624,7 +222627,7 @@
           "unit": "nanosecond"
         },
         "metadata": {
-          "description": "The preceding message's timestamp in the selected event chain.",
+          "description": "The preceding message's updatedat in the selected event chain.",
           "display": "PrevUpdatedAt",
           "fix:tag": "65021"
         },
@@ -237229,8 +237232,8 @@
         "c": "timepartition",
         "t": 65004,
         "n": "TimePartition",
-        "y": "int64",
-        "x": "The partition updatedat falls in, as whole seconds since the epoch floored to the partition width."
+        "y": "datetime64(ns,\"UTC\")",
+        "x": "The hour updatedat falls in: updatedat floored to the partition width, as an instant."
       },
       {
         "c": "parentclordid",
@@ -237349,7 +237352,7 @@
         "t": 65021,
         "n": "PrevUpdatedAt",
         "y": "datetime64(ns,\"UTC\")",
-        "x": "The preceding message's timestamp in the selected event chain."
+        "x": "The preceding message's updatedat in the selected event chain."
       },
       {
         "c": "prevuuid",
@@ -237520,6 +237523,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -237560,6 +237564,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -237602,6 +237607,7 @@
                 "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                 "display": "TimeInForce",
                 "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Day\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"since\":\"4.0\",\"sort\":7,\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"since\":\"5.0\",\"ep\":61,\"sort\":9,\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"since\":\"5.0\",\"ep\":61,\"sort\":10,\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":11,\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"since\":\"5.0.2\",\"ep\":131,\"sort\":12,\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":13,\"doc\":\"Good for this Month (GFM)\"}]}",
+                "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"timeinforce\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "59"
               },
@@ -237773,8 +237779,8 @@
         "029",
         "2024-02-01T12:34:56.123000000Z",
         "2024-02-01T12:34:56.123000000Z",
-        "97afbd46-ed48-834c-81c1-33c5be5a5166",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+9Ru1INMDVQL5u+Csaxw==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:34:56.123000000Z"
       ],
@@ -238003,7 +238009,7 @@
       "digest": "9696554ac611d41091e56e98a4f561d2",
       "ticker": "AAPL@XNAS",
       "clock": "2024-02-01T12:34:56.123000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"sending >> 8=FIX.4.4|9=139|35=D|49=BUYSIDE|56=VENUE|34=12|52=20240201-12:34:56.000|11=ORDER-1|55=AAPL|207=XNAS|54=1|38=100|44=10.5|40=2|59=0|60=20240201-12:34:56.123|10=029|\", 'binary'))]"
     },
@@ -238160,6 +238166,7 @@
                 "description": "Identifies current status of order. *** SOME VALUES HAVE BEEN REPLACED - See \"Replaced Features and Supported Approach\" *** (see Volume : \"Glossary\" for value definitions)",
                 "display": "OrdStatus",
                 "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"New\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"New\"},{\"value\":\"1\",\"name\":\"PartiallyFilled\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Partially filled\"},{\"value\":\"2\",\"name\":\"Filled\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"Filled\"},{\"value\":\"3\",\"name\":\"DoneForDay\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Done for day\"},{\"value\":\"4\",\"name\":\"Canceled\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Canceled\"},{\"value\":\"5\",\"name\":\"Replaced\",\"since\":\"4.4\",\"ep\":35,\"deprecated\":\"4.3\",\"sort\":6,\"doc\":\"Replaced (No longer used)\"},{\"value\":\"6\",\"name\":\"PendingCancel\",\"since\":\"2.7\",\"sort\":7,\"doc\":\"Pending Cancel (i.e. result of Order Cancel Request)\"},{\"value\":\"7\",\"name\":\"Stopped\",\"since\":\"2.7\",\"sort\":8,\"doc\":\"Stopped\"},{\"value\":\"8\",\"name\":\"Rejected\",\"since\":\"2.7\",\"sort\":9,\"doc\":\"Rejected\"},{\"value\":\"9\",\"name\":\"Suspended\",\"since\":\"3.0\",\"sort\":10,\"doc\":\"Suspended\"},{\"value\":\"A\",\"name\":\"PendingNew\",\"since\":\"3.0\",\"sort\":11,\"doc\":\"Pending New\"},{\"value\":\"B\",\"name\":\"Calculated\",\"since\":\"4.0\",\"sort\":12,\"doc\":\"Calculated\"},{\"value\":\"C\",\"name\":\"Expired\",\"since\":\"4.0\",\"sort\":13,\"doc\":\"Expired\"},{\"value\":\"D\",\"name\":\"AcceptedForBidding\",\"since\":\"4.2\",\"sort\":14,\"doc\":\"Accepted for Bidding\"},{\"value\":\"E\",\"name\":\"PendingReplace\",\"since\":\"4.2\",\"sort\":15,\"doc\":\"Pending Replace (i.e. result of Order Cancel/Replace Request)\"}]}",
+                "fix:derivation": "case when msgtype in ('8', '9') and exectype in ('0', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'E') then exectype when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty = 0 then '2' when msgtype in ('8', '9') and exectype in ('F', 'G') and leavesqty > 0 and cumqty > 0 then '1' end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"ordstatus\",\"type\":{\"type\":\"string\"}},{\"since\":\"5.0.2\",\"name\":\"ordstatus\",\"type\":{\"type\":\"state\"}}]}",
                 "fix:tag": "39"
               },
@@ -238173,6 +238180,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -238200,6 +238208,7 @@
               "metadata": {
                 "description": "Price of this (last) fill.",
                 "display": "LastPx",
+                "fix:derivation": "lastspotrate + lastforwardpoints",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"lastpx\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "31"
               },
@@ -238227,6 +238236,7 @@
               "metadata": {
                 "description": "Total quantity (e.g. number of shares) filled.",
                 "display": "CumQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and orderqty - leavesqty >= 0 then orderqty - leavesqty end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"cumqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"cumqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "14"
               },
@@ -238240,6 +238250,7 @@
               "metadata": {
                 "description": "Quantity open for further execution. If the OrdStatus (39) is Canceled, DoneForTheDay, Expired, Calculated, or Rejected (in which case the order is no longer active) then LeavesQty could be 0, otherwise LeavesQty = OrderQty (38) - CumQty (14).",
                 "display": "LeavesQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and ordstatus in ('2', '3', '4', '8', 'C') then 0 when msgtype in ('8', '9') and ordstatus in ('0', '1', '6', 'E', '5', '7', '9') and orderqty - cumqty >= 0 then orderqty - cumqty end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"leavesqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"leavesqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "151"
               },
@@ -238253,6 +238264,7 @@
               "metadata": {
                 "description": "Calculated average price of all fills on this order.",
                 "display": "AvgPx",
+                "fix:derivation": "case when msgtype in ('8', '9') and cumqty = lastqty and lastqty > 0 then lastpx end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"avgpx\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "6"
               },
@@ -238412,8 +238424,8 @@
         "249",
         "2024-02-01T12:34:57.900000000Z",
         "2024-02-01T12:34:57.900000000Z",
-        "97afbd47-5733-8130-81e4-d828437f8142",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+9R1czEwAZzLDU8iIWkQ==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:34:57.900000000Z"
       ],
@@ -238657,7 +238669,7 @@
       "digest": "20fa7bfae629c075e5e13241d3b2059c",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:34:57.900000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=154|35=8|49=VENUE|56=BUYSIDE|34=98|52=20240201-12:34:57.880|37=O-9|17=E-1|150=F|39=2|55=AAPL|54=1|31=10.5|32=100|14=100|151=0|6=10.5|60=20240201-12:34:57.900|10=249|\", 'binary'))]"
     },
@@ -238756,6 +238768,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -238783,6 +238796,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -239148,8 +239162,8 @@
         "055",
         "2024-02-01T12:35:02.000000000Z",
         "2024-02-01T12:35:02.000000000Z",
-        "97afbd48-4b94-81c0-83f3-ab6aab3c2ebc",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+9SEuUHADAWT6mJ4tAww==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:35:02.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -239372,7 +239386,7 @@
       "digest": "d945e237f1e044ec2fa94e2bf862c3b4",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:02.000000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=141|35=D|49=BUYSIDE|56=VENUE|11=ORDER-2|55=BRN|54=1|38=50|44=41.25|453=2|448=BUYSIDE|447=D|452=1|448=VENUE|447=D|452=17|60=20240201-12:35:02.000|10=055|\", 'binary'))]"
     },
@@ -239458,6 +239472,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -239878,6 +239893,7 @@
                         "metadata": {
                           "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                           "display": "Currency",
+                          "fix:derivation": "settlcurrency",
                           "fix:field": "currency",
                           "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"currency\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"currency\",\"type\":{\"type\":\"currency\"}}]}",
                           "fix:tag": "15"
@@ -239893,6 +239909,7 @@
                           "description": "Identifies class or source of the Currency(15) value.",
                           "display": "CurrencyCodeSource",
                           "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"ep\":273,\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"ep\":273,\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"ep\":273,\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"ep\":273,\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"ep\":273,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+                          "fix:derivation": "case when currency is not null then '6' end",
                           "fix:field": "currencycodesource",
                           "fix:tag": "2897"
                         },
@@ -239906,6 +239923,7 @@
                         "metadata": {
                           "description": "Currency code of settlement denomination.",
                           "display": "SettlCurrency",
+                          "fix:derivation": "currency",
                           "fix:field": "settlcurrency",
                           "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"settlcurrency\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"settlcurrency\",\"type\":{\"type\":\"currency\"}}]}",
                           "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"in\":[\"allocgrp\"],\"fills\":[{\"tag\":736}]}]}",
@@ -240534,6 +240552,7 @@
                           "description": "Specifies how long the order remains in effect. Absence of this field is interpreted as DAY. NOTE not applicable to CIV Orders.",
                           "display": "TimeInForce",
                           "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Day\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"Day (or session)\"},{\"value\":\"1\",\"name\":\"GoodTillCancel\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"Good Till Cancel (GTC)\"},{\"value\":\"2\",\"name\":\"AtTheOpening\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"At the Opening (OPG)\"},{\"value\":\"3\",\"name\":\"ImmediateOrCancel\",\"since\":\"2.7\",\"sort\":4,\"doc\":\"Immediate Or Cancel (IOC)\"},{\"value\":\"4\",\"name\":\"FillOrKill\",\"since\":\"2.7\",\"sort\":5,\"doc\":\"Fill Or Kill (FOK)\"},{\"value\":\"5\",\"name\":\"GoodTillCrossing\",\"since\":\"2.7\",\"sort\":6,\"doc\":\"Good Till Crossing (GTX)\"},{\"value\":\"6\",\"name\":\"GoodTillDate\",\"since\":\"4.0\",\"sort\":7,\"doc\":\"Good Till Date (GTD)\"},{\"value\":\"7\",\"name\":\"AtTheClose\",\"since\":\"4.3\",\"sort\":8,\"doc\":\"At the Close\"},{\"value\":\"8\",\"name\":\"GoodThroughCrossing\",\"since\":\"5.0\",\"ep\":61,\"sort\":9,\"doc\":\"Good Through Crossing\"},{\"value\":\"9\",\"name\":\"AtCrossing\",\"since\":\"5.0\",\"ep\":61,\"sort\":10,\"doc\":\"At Crossing\"},{\"value\":\"A\",\"name\":\"GoodForTime\",\"since\":\"5.0.2\",\"ep\":100,\"sort\":11,\"doc\":\"Good for Time (GFT)\"},{\"value\":\"B\",\"name\":\"GoodForAuction\",\"since\":\"5.0.2\",\"ep\":131,\"sort\":12,\"doc\":\"Good for Auction (GFA)\"},{\"value\":\"C\",\"name\":\"GoodForMonth\",\"since\":\"5.0.2\",\"ep\":253,\"sort\":13,\"doc\":\"Good for this Month (GFM)\"}]}",
+                          "fix:derivation": "case when msgtype in ('D', 'G', '8') then '0' end",
                           "fix:field": "timeinforce",
                           "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"timeinforce\",\"type\":{\"type\":\"string\"}}]}",
                           "fix:tag": "59"
@@ -241541,6 +241560,7 @@
                         "metadata": {
                           "description": "Price of this (last) fill.",
                           "display": "LastPx",
+                          "fix:derivation": "lastspotrate + lastforwardpoints",
                           "fix:field": "lastpx",
                           "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"lastpx\",\"type\":{\"type\":\"float64\"}}]}",
                           "fix:tag": "31"
@@ -242645,8 +242665,8 @@
         "026",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-8242-a6c1f25b0722",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FACQ0SudgIqa+w==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -242784,7 +242804,7 @@
       "digest": "948e968e4353a7779eb307909c4d96bc",
       "ticker": "BRN",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=86|35=W|49=VENUE|56=BUYSIDE|55=BRN|268=2|269=0|270=41.20|271=500|269=1|270=41.30|271=400|10=026|\", 'binary'))]"
     },
@@ -242844,6 +242864,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -242857,6 +242878,7 @@
               "metadata": {
                 "description": "Bid price/rate",
                 "display": "BidPx",
+                "fix:derivation": "bidspotrate + bidforwardpoints",
                 "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"bidpx\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "132"
               },
@@ -242870,6 +242892,7 @@
               "metadata": {
                 "description": "Offer price/rate",
                 "display": "OfferPx",
+                "fix:derivation": "offerspotrate + offerforwardpoints",
                 "fix:lineage": "{\"entries\":[{\"since\":\"4.0\",\"name\":\"offerpx\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "133"
               },
@@ -243060,8 +243083,8 @@
         "240",
         "2024-02-01T12:35:00.000000000Z",
         "2024-02-01T12:35:00.000000000Z",
-        "97afbd47-d45e-8880-8336-d2e4ad580008",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+9R9ReiABTJXuBhbyMgw==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:35:00.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -243195,7 +243218,7 @@
       "digest": "16e9b46a1e5af695cf5485c23d08ff7d",
       "ticker": "BRN",
       "clock": "2024-02-01T12:35:00.000000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=69|35=S|55=BRN|132=41.20|133=41.30|134=500|135=500|60=20240201-12:35:00|10=240|\", 'binary'))]"
     },
@@ -243487,8 +243510,8 @@
         "228",
         "2024-02-01T12:00:00.000000000Z",
         "2024-02-01T12:00:00.000000000Z",
-        "97afbb5e-e29d-8800-82ac-335528966c78",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+7XuKdgACMH4j9Y0ZgpA==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:00:00.000000000Z"
       ],
@@ -243615,7 +243638,7 @@
       "digest": "31564381679a398b2e7472ff52a70c81",
       "ticker": null,
       "clock": "2024-02-01T12:00:00.000000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=80|35=A|49=BUYSIDE|56=VENUE|34=1|52=20240201-12:00:00.000|98=0|108=30|141=Y|1137=9|10=228|\", 'binary'))]"
     },
@@ -243848,8 +243871,8 @@
         "151",
         "2024-02-01T12:35:01.000000000Z",
         "2024-02-01T12:35:01.000000000Z",
-        "97afbd48-0ff9-8520-82d1-a51ca6874d26",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+9SA/5UgAitc4JfZyR5g==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:35:01.000000000Z"
       ],
@@ -243956,7 +243979,7 @@
       "digest": "13ad44e6cf85d1be05046be3db50369f",
       "ticker": null,
       "clock": "2024-02-01T12:35:01.000000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.2|9=51|35=0|49=VENUE|56=BUYSIDE|34=7|52=20240201-12:35:01|10=151|\", 'binary'))]"
     },
@@ -244260,8 +244283,8 @@
         "179",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-83ec-5bd6934eae21",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FABuh1z+h2hvZg==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -244399,7 +244422,7 @@
       "digest": "8822601c8c9d30edb2547aec5aaae324",
       "ticker": null,
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=91|35=3|49=VENUE|56=BUYSIDE|34=99|45=12|371=44|372=D|373=6|58=Incorrect data format for value|10=179|\", 'binary'))]"
     },
@@ -244525,6 +244548,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -244552,6 +244576,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -244749,8 +244774,8 @@
         "104",
         "2024-02-01T12:36:00.000000000Z",
         "2024-02-01T12:36:00.000000000Z",
-        "97afbd55-cca5-8e00-8255-f9b89bc30fe8",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6+9Vcyl4ADDoXkRqOX9Ig==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-02-01T12:36:00.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -244958,7 +244983,7 @@
       "digest": "d74995bbc3a1525298c1e22fcf71023d",
       "ticker": "AAPL",
       "clock": "2024-02-01T12:36:00.000000000Z",
-      "partition": "1706788800",
+      "partition": "2024-02-01T12:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=113|35=G|49=BUYSIDE|56=VENUE|11=ORDER-3|41=ORDER-1|37=O-9|55=AAPL|54=1|38=150|44=10.75|40=2|60=20240201-12:36:00.000|10=104|\", 'binary'))]"
     },
@@ -245018,6 +245043,7 @@
               "metadata": {
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID",
+                "fix:derivation": "isincode",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"securityid\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "48"
               },
@@ -245033,6 +245059,7 @@
                 "display": "SecurityIDSource",
                 "fix:aliases": "idsource",
                 "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+                "fix:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"idsource\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"name\":\"securityidsource\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "22"
               },
@@ -245073,6 +245100,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -245099,6 +245127,7 @@
               "metadata": {
                 "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                 "display": "Currency",
+                "fix:derivation": "settlcurrency",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"currency\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"currency\",\"type\":{\"type\":\"currency\"}}]}",
                 "fix:tag": "15"
               },
@@ -245249,8 +245278,8 @@
         "045",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-8270-86489a719c08",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FABk0hduK0MPgw==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -245417,7 +245446,7 @@
       "digest": "f03766f963a31ac8a60e5fb3f77fc1f5",
       "ticker": "4:US0378331005@XNAS",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=62|35=D|48=US0378331005|22=4|207=XNAS|54=1|38=100|44=10.5|15=USD|10=045|\", 'binary'))]"
     },
@@ -245543,6 +245572,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -245556,6 +245586,7 @@
               "metadata": {
                 "description": "Security identifier value of SecurityIDSource (22) type (e.g. CUSIP, SEDOL, ISIN, etc). Requires SecurityIDSource.",
                 "display": "SecurityID",
+                "fix:derivation": "isincode",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"securityid\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "48"
               },
@@ -245571,6 +245602,7 @@
                 "display": "SecurityIDSource",
                 "fix:aliases": "idsource",
                 "fix:codes": "{\"codes\":[{\"value\":\"1\",\"name\":\"CUSIP\",\"since\":\"2.7\",\"sort\":1,\"doc\":\"CUSIP\"},{\"value\":\"2\",\"name\":\"SEDOL\",\"since\":\"2.7\",\"sort\":2,\"doc\":\"SEDOL\"},{\"value\":\"3\",\"name\":\"QUIK\",\"since\":\"2.7\",\"sort\":3,\"doc\":\"QUIK\"},{\"value\":\"4\",\"name\":\"ISINNumber\",\"since\":\"3.0\",\"sort\":4,\"doc\":\"ISIN\"},{\"value\":\"5\",\"name\":\"RICCode\",\"since\":\"3.0\",\"sort\":5,\"doc\":\"RIC\"},{\"value\":\"6\",\"name\":\"ISOCurrencyCode\",\"since\":\"4.1\",\"sort\":6,\"doc\":\"ISO Currency Code (ISO 4217)\"},{\"value\":\"7\",\"name\":\"ISOCountryCode\",\"since\":\"4.1\",\"sort\":7,\"doc\":\"ISO Country Code\"},{\"value\":\"8\",\"name\":\"ExchangeSymbol\",\"since\":\"4.2\",\"sort\":8,\"doc\":\"Exchange symbol\"},{\"value\":\"9\",\"name\":\"ConsolidatedTapeAssociation\",\"since\":\"4.2\",\"sort\":9,\"doc\":\"Consolidated Tape Association (CTA) Symbol (SIAC CTS/CQS line format)\"},{\"value\":\"A\",\"name\":\"BloombergSymbol\",\"since\":\"4.3\",\"sort\":10,\"doc\":\"Bloomberg Symbol\"},{\"value\":\"B\",\"name\":\"Wertpapier\",\"since\":\"4.3\",\"sort\":11,\"doc\":\"Wertpapier\"},{\"value\":\"C\",\"name\":\"Dutch\",\"since\":\"4.3\",\"sort\":12,\"doc\":\"Dutch\"},{\"value\":\"D\",\"name\":\"Valoren\",\"since\":\"4.3\",\"sort\":13,\"doc\":\"Valoren\"},{\"value\":\"E\",\"name\":\"Sicovam\",\"since\":\"4.3\",\"sort\":14,\"doc\":\"Sicovam\"},{\"value\":\"F\",\"name\":\"Belgian\",\"since\":\"4.3\",\"sort\":15,\"doc\":\"Belgian\"},{\"value\":\"G\",\"name\":\"Common\",\"since\":\"4.3\",\"sort\":16,\"doc\":\"\\\"Common\\\" (Clearstream and Euroclear)\"},{\"value\":\"H\",\"name\":\"ClearingHouse\",\"since\":\"4.4\",\"sort\":17,\"doc\":\"Clearing house / Clearing organization\"},{\"value\":\"I\",\"name\":\"ISDAFpMLSpecification\",\"since\":\"4.4\",\"sort\":18,\"doc\":\"ISDA/FpML product specification (XML in SecurityXML(1185))\"},{\"value\":\"J\",\"name\":\"OptionPriceReportingAuthority\",\"since\":\"4.4\",\"sort\":19,\"doc\":\"Option Price Reporting Authority\"},{\"value\":\"K\",\"name\":\"ISDAFpMLURL\",\"since\":\"4.4\",\"ep\":15,\"sort\":20,\"doc\":\"ISDA/FpML product URL (URL in SecurityID(48))\"},{\"value\":\"L\",\"name\":\"LetterOfCredit\",\"since\":\"4.4\",\"ep\":8,\"sort\":21,\"doc\":\"Letter of credit\"},{\"value\":\"M\",\"name\":\"MarketplaceAssignedIdentifier\",\"since\":\"5.0\",\"ep\":58,\"sort\":22,\"doc\":\"Marketplace-assigned Identifier\"},{\"value\":\"N\",\"name\":\"MarkitREDEntityCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":23,\"doc\":\"Markit RED entity CLIP\"},{\"value\":\"P\",\"name\":\"MarkitREDPairCLIP\",\"since\":\"5.0.2\",\"ep\":119,\"sort\":24,\"doc\":\"Markit RED pair CLIP\"},{\"value\":\"Q\",\"name\":\"CFTCCommodityCode\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":25,\"doc\":\"CFTC commodity code\"},{\"value\":\"R\",\"name\":\"ISDACommodityReferencePrice\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":26,\"doc\":\"ISDA Commodity Reference Price\"},{\"value\":\"S\",\"name\":\"FinancialInstrumentGlobalIdentifier\",\"since\":\"5.0.2\",\"ep\":158,\"sort\":27,\"doc\":\"Financial Instrument Global Identifier\"},{\"value\":\"T\",\"name\":\"LegalEntityIdentifier\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":28,\"doc\":\"Legal entity identifier\"},{\"value\":\"U\",\"name\":\"Synthetic\",\"since\":\"5.0.2\",\"ep\":187,\"sort\":29,\"doc\":\"Synthetic\"},{\"value\":\"V\",\"name\":\"FidessaInstrumentMnemonic\",\"since\":\"5.0.2\",\"ep\":220,\"sort\":30,\"doc\":\"Fidessa Instrument Mnemonic (FIM)\"},{\"value\":\"W\",\"name\":\"IndexName\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":31,\"doc\":\"Index name\"},{\"value\":\"X\",\"name\":\"UniformSymbol\",\"since\":\"5.0.2\",\"ep\":242,\"sort\":32,\"doc\":\"Uniform Symbol (UMTF Symbol)\"},{\"value\":\"Y\",\"name\":\"DigitalTokenIdentifier\",\"ep\":273,\"sort\":33,\"doc\":\"Digital Token Identifier (ISO 24165)\"}]}",
+                "fix:derivation": "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"idsource\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.3\",\"name\":\"securityidsource\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "22"
               },
@@ -245585,6 +245617,7 @@
                 "description": "Indicates type of security. Security type enumerations are grouped by Product(460) field value. NOTE: Additional values may be used by mutual agreement of the counterparties.",
                 "display": "SecurityType",
                 "fix:codes": "{\"codes\":[{\"value\":\"?\",\"name\":\"Wildcard\",\"since\":\"4.2\",\"sort\":5,\"group\":\"Other\",\"doc\":\"Wildcard entry for use on Security Definition Request\"},{\"value\":\"ABS\",\"name\":\"AssetBackedSecurities\",\"since\":\"4.3\",\"group\":\"Mortgage\",\"doc\":\"Asset-backed Securities\"},{\"value\":\"AMENDED\",\"name\":\"Amended\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Loan\",\"doc\":\"Amended and restated\"},{\"value\":\"AN\",\"name\":\"OtherAnticipationNotes\",\"since\":\"4.3\",\"group\":\"Municipal\",\"doc\":\"Other Anticipation Notes (BAN, GAN, etc.)\"},{\"value\":\"BA\",\"name\":\"BankersAcceptance\",\"since\":\"4.1\",\"group\":\"Money Market\",\"doc\":\"Bankers Acceptance\"},{\"value\":\"BAB\",\"name\":\"BankAcceptedBill\",\"ep\":272,\"sort\":22,\"group\":\"Money Market\",\"doc\":\"Bank Accepted Bill\"},{\"value\":\"BDBSKT\",\"name\":\"BondBasket\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":20,\"group\":\"Derivatives\",\"doc\":\"Bond basket\"},{\"value\":\"BDN\",\"name\":\"BankDepositoryNote\",\"since\":\"5.0\",\"ep\":68,\"sort\":1,\"group\":\"Money Market\",\"doc\":\"Bank Depository Note\"},{\"value\":\"BN\",\"name\":\"BankNotes\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Money Market\",\"doc\":\"Bank Notes\"},{\"value\":\"BNST\",\"name\":\"ShortTermBankNote\",\"ep\":272,\"sort\":23,\"group\":\"Money Market\",\"doc\":\"Short Term Bank Note\"},{\"value\":\"BOX\",\"name\":\"BillOfExchanges\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Money Market\",\"doc\":\"Bill Of Exchanges\"},{\"value\":\"BRADY\",\"name\":\"BradyBond\",\"since\":\"4.3\",\"group\":\"Government\",\"doc\":\"Brady Bond\"},{\"value\":\"BRIDGE\",\"name\":\"BridgeLoan\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Loan\",\"doc\":\"Bridge Loan\"},{\"value\":\"BUYSELL\",\"name\":\"BuySellback\",\"since\":\"4.4\",\"sort\":2,\"group\":\"Financing\",\"doc\":\"Buy Sellback\"},{\"value\":\"CAMM\",\"name\":\"CanadianMoneyMarkets\",\"since\":\"5.0\",\"ep\":68,\"sort\":4,\"group\":\"Money Market\",\"doc\":\"Canadian Money Markets\"},{\"value\":\"CAN\",\"name\":\"CanadianTreasuryNotes\",\"since\":\"5.0\",\"ep\":68,\"sort\":1,\"group\":\"Government\",\"doc\":\"Canadian Treasury Notes\"},{\"value\":\"CAP\",\"name\":\"Cap\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":1,\"group\":\"Derivatives\",\"doc\":\"Cap\"},{\"value\":\"CASH\",\"name\":\"Cash\",\"since\":\"4.4\",\"ep\":28,\"sort\":6,\"group\":\"Other\",\"doc\":\"Cash\"},{\"value\":\"CB\",\"name\":\"ConvertibleBond\",\"since\":\"4.2\",\"sort\":2,\"group\":\"Corporate\",\"doc\":\"Convertible Bond\"},{\"value\":\"CD\",\"name\":\"CertificateOfDeposit\",\"since\":\"4.1\",\"sort\":5,\"group\":\"Money Market\",\"doc\":\"Certificate Of Deposit\"},{\"value\":\"CDS\",\"name\":\"CreditDefaultSwap\",\"since\":\"5.0\",\"ep\":68,\"sort\":2,\"group\":\"Derivatives\",\"doc\":\"Credit Default Swap\"},{\"value\":\"CFD\",\"name\":\"ContractForDifference\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":21,\"group\":\"Derivatives\",\"doc\":\"Contract for difference\"},{\"value\":\"CL\",\"name\":\"CallLoans\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Money Market\",\"doc\":\"Call Loans\"},{\"value\":\"CLCP\",\"name\":\"CallableCommercialPaper\",\"ep\":272,\"sort\":24,\"group\":\"Money Market\",\"doc\":\"Callable Commercial Paper\"},{\"value\":\"CLLR\",\"name\":\"Collar\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":3,\"group\":\"Derivatives\",\"doc\":\"Collar\"},{\"value\":\"CMB\",\"name\":\"CanadianMortgageBonds\",\"since\":\"5.0\",\"ep\":68,\"sort\":1,\"group\":\"Mortgage\",\"doc\":\"Canadian Mortgage Bonds\"},{\"value\":\"CMBS\",\"name\":\"Corp\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Mortgage\",\"doc\":\"Corp. Mortgage-backed Securities\"},{\"value\":\"CMDTYSWAP\",\"name\":\"CommoditySwap\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":4,\"group\":\"Derivatives\",\"doc\":\"Commodity swap\"},{\"value\":\"CMO\",\"name\":\"CollateralizedMortgageObligation\",\"since\":\"4.1\",\"sort\":3,\"group\":\"Mortgage\",\"doc\":\"Collateralized Mortgage Obligation\"},{\"value\":\"CN\",\"name\":\"CommercialNote\",\"ep\":272,\"sort\":25,\"group\":\"Money Market\",\"doc\":\"Commercial Note\"},{\"value\":\"COFO\",\"name\":\"CertificateOfObligation\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Municipal\",\"doc\":\"Certificate Of Obligation\"},{\"value\":\"COFP\",\"name\":\"CertificateOfParticipation\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Municipal\",\"doc\":\"Certificate Of Participation\"},{\"value\":\"COLLBSKT\",\"name\":\"CollateralBasket\",\"since\":\"5.0.2\",\"ep\":197,\"sort\":6,\"group\":\"Financing\",\"doc\":\"Collateral basket\"},{\"value\":\"CORP\",\"name\":\"CorporateBond\",\"since\":\"4.1\",\"group\":\"Corporate\",\"doc\":\"Corporate Bond\"},{\"value\":\"CP\",\"name\":\"CommercialPaper\",\"since\":\"4.1\",\"sort\":7,\"group\":\"Money Market\",\"doc\":\"Commercial Paper\"},{\"value\":\"CPIB\",\"name\":\"InterestBearingCommercialPaper\",\"ep\":272,\"sort\":26,\"group\":\"Money Market\",\"doc\":\"Interest Bearing Commercial Paper\"},{\"value\":\"CPP\",\"name\":\"CorporatePrivatePlacement\",\"since\":\"4.1\",\"sort\":1,\"group\":\"Corporate\",\"doc\":\"Corporate Private Placement\"},{\"value\":\"CRLTNSWAP\",\"name\":\"CorrelationSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":22,\"group\":\"Derivatives\",\"doc\":\"Correlation swap\"},{\"value\":\"CS\",\"name\":\"CommonStock\",\"since\":\"4.1\",\"group\":\"Equity\",\"doc\":\"Common Stock\"},{\"value\":\"CTB\",\"name\":\"CanadianTreasuryBills\",\"since\":\"5.0\",\"ep\":68,\"sort\":2,\"group\":\"Government\",\"doc\":\"Canadian Treasury Bills\"},{\"value\":\"DEFLTED\",\"name\":\"Defaulted\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Loan\",\"doc\":\"Defaulted\"},{\"value\":\"DIGITAL\",\"name\":\"DigitalAsset\",\"ep\":273,\"sort\":12,\"group\":\"Other\",\"doc\":\"Digital Asset\"},{\"value\":\"DIMSUMCORP\",\"name\":\"OffshoreIssuedChineseYuanCorporateBond\",\"ep\":272,\"sort\":10,\"group\":\"Corporate\",\"doc\":\"Offshore issued Chinese Yuan (CNY) denominated corporate bond\"},{\"value\":\"DIMSUMSOV\",\"name\":\"OffshoreIssuedChineseYuanSovereignBond\",\"ep\":272,\"sort\":12,\"group\":\"Government\",\"doc\":\"Offshore issued Chinese Yuan (CNY) denominated sovereign bond\"},{\"value\":\"DINP\",\"name\":\"DebtorInPossession\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Loan\",\"doc\":\"Debtor In Possession\"},{\"value\":\"DN\",\"name\":\"DepositNotes\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Money Market\",\"doc\":\"Deposit Notes\"},{\"value\":\"DR\",\"name\":\"DepositoryReceipts\",\"since\":\"5.0.2\",\"ep\":236,\"sort\":2,\"group\":\"Equity\",\"doc\":\"Depository Receipts\"},{\"value\":\"DUAL\",\"name\":\"DualCurrency\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Corporate\",\"doc\":\"Dual Currency\"},{\"value\":\"DVDNDSWAP\",\"name\":\"DiviendSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":23,\"group\":\"Derivatives\",\"doc\":\"Dividend swap\"},{\"value\":\"DVPLDG\",\"name\":\"DeliveryVersusPledge\",\"since\":\"5.0.2\",\"ep\":132,\"sort\":5,\"group\":\"Financing\",\"doc\":\"Delivery versus pledge\"},{\"value\":\"EQBSKT\",\"name\":\"EquityBasket\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":24,\"group\":\"Derivatives\",\"doc\":\"Equity basket\"},{\"value\":\"EQFWD\",\"name\":\"EquityForward\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":25,\"group\":\"Derivatives\",\"doc\":\"Equity forward\"},{\"value\":\"ETC\",\"name\":\"ExchangeTradedCommodity\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":33,\"group\":\"Derivatives\",\"doc\":\"Exchange traded commodity\"},{\"value\":\"ETF\",\"name\":\"ExchangeTradedFund\",\"ep\":272,\"sort\":11,\"group\":\"Other\",\"doc\":\"Exchange Traded Fund\"},{\"value\":\"ETN\",\"name\":\"ExchangeTradedNote\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":8,\"group\":\"Other\",\"doc\":\"Exchange traded note\"},{\"value\":\"EUCD\",\"name\":\"EuroCertificateOfDeposit\",\"since\":\"4.4\",\"sort\":9,\"group\":\"Money Market\",\"doc\":\"Euro Certificate Of Deposit\"},{\"value\":\"EUCORP\",\"name\":\"EuroCorporateBond\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Corporate\",\"doc\":\"Euro Corporate Bond\"},{\"value\":\"EUCP\",\"name\":\"EuroCommercialPaper\",\"since\":\"4.4\",\"sort\":10,\"group\":\"Money Market\",\"doc\":\"Euro Commercial Paper\"},{\"value\":\"EUFRN\",\"name\":\"EuroCorporateFloatingRateNotes\",\"since\":\"5.0\",\"ep\":68,\"sort\":5,\"group\":\"Corporate\",\"doc\":\"Euro Corporate Floating Rate Notes\"},{\"value\":\"EUMTN\",\"name\":\"EuroMediumTermNote\",\"ep\":272,\"sort\":27,\"group\":\"Money Market\",\"doc\":\"Euro Medium Term Note\"},{\"value\":\"EUNCP\",\"name\":\"EuroNegotiableCommercialPaper\",\"ep\":272,\"sort\":28,\"group\":\"Money Market\",\"doc\":\"Euro Negotiable Commercial Paper\"},{\"value\":\"EUSOV\",\"name\":\"EuroSovereigns\",\"since\":\"4.4\",\"sort\":3,\"group\":\"Government\",\"doc\":\"Euro Sovereigns\"},{\"value\":\"EUSTLQN\",\"name\":\"EuroStructuredLiquidityNote\",\"ep\":272,\"sort\":29,\"group\":\"Money Market\",\"doc\":\"Euro Structured Liquidity Note\"},{\"value\":\"EUSUPRA\",\"name\":\"EuroSupranationalCoupons\",\"since\":\"4.4\",\"group\":\"Agency\",\"doc\":\"Euro Supranational Coupons\"},{\"value\":\"EUTD\",\"name\":\"EuroTimeDeposit\",\"ep\":272,\"sort\":30,\"group\":\"Money Market\",\"doc\":\"Euro Time Deposit\"},{\"value\":\"EXOTIC\",\"name\":\"Exotic\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":5,\"group\":\"Derivatives\",\"doc\":\"Exotic\"},{\"value\":\"FAC\",\"name\":\"FederalAgencyCoupon\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Agency\",\"doc\":\"Federal Agency Coupon\"},{\"value\":\"FADN\",\"name\":\"FederalAgencyDiscountNote\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Agency\",\"doc\":\"Federal Agency Discount Note\"},{\"value\":\"FHA\",\"name\":\"FederalHousingAuthority\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"FHL\",\"name\":\"FederalHomeLoan\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"FLR\",\"name\":\"Floor\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":6,\"group\":\"Derivatives\",\"doc\":\"Floor\"},{\"value\":\"FN\",\"name\":\"FederalNationalMortgageAssociation\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"FOR\",\"name\":\"ForeignExchangeContract\",\"since\":\"4.1\",\"deprecated\":\"5.0.1\",\"group\":\"Currency\",\"doc\":\"Foreign Exchange Contract\"},{\"value\":\"FORWARD\",\"name\":\"Forward\",\"since\":\"4.4\",\"sort\":1,\"group\":\"Financing\",\"doc\":\"Forward\"},{\"value\":\"FRA\",\"name\":\"FRA\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":7,\"group\":\"Derivatives\",\"doc\":\"Forward Rate Agreement\"},{\"value\":\"FRN\",\"name\":\"USCorporateFloatingRateNotes\",\"since\":\"5.0\",\"ep\":68,\"sort\":6,\"group\":\"Corporate\",\"doc\":\"US Corporate Floating Rate Notes\"},{\"value\":\"FUT\",\"name\":\"Future\",\"since\":\"4.1\",\"sort\":8,\"group\":\"Derivatives\",\"doc\":\"Future\"},{\"value\":\"FUTSWAP\",\"name\":\"FuturesOnASwap\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":29,\"group\":\"Derivatives\",\"doc\":\"Futures on a Swap\"},{\"value\":\"FWD\",\"name\":\"DerivativeForward\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":9,\"group\":\"Derivatives\",\"doc\":\"Derivative forward\"},{\"value\":\"FWDFRTAGMT\",\"name\":\"ForwardFreightAgreement\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":31,\"group\":\"Derivatives\",\"doc\":\"Forward Freight Agreement\"},{\"value\":\"FWDSWAP\",\"name\":\"ForwardsOnASwap\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":30,\"group\":\"Derivatives\",\"doc\":\"Forwards on a Swap\"},{\"value\":\"FXBN\",\"name\":\"FXBankNote\",\"ep\":272,\"sort\":6,\"group\":\"Currency\",\"doc\":\"FX Bank Note\"},{\"value\":\"FXDN\",\"name\":\"ForeignCurrencyDiscountNote\",\"ep\":272,\"sort\":7,\"group\":\"Currency\",\"doc\":\"Foreign Currency Discount Note\"},{\"value\":\"FXFWD\",\"name\":\"FXForward\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":3,\"group\":\"Currency\",\"doc\":\"FX Forward\"},{\"value\":\"FXNDF\",\"name\":\"NonDeliverableForward\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":1,\"group\":\"Currency\",\"doc\":\"Non-deliverable forward\"},{\"value\":\"FXNDS\",\"name\":\"NonDeliverableSwap\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":5,\"group\":\"Currency\",\"doc\":\"Non-deliverable Swap\"},{\"value\":\"FXSPOT\",\"name\":\"FXSpot\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":2,\"group\":\"Currency\",\"doc\":\"FX Spot\"},{\"value\":\"FXSWAP\",\"name\":\"FXSwap\",\"since\":\"5.0.1\",\"ep\":82,\"sort\":4,\"group\":\"Currency\",\"doc\":\"FX Swap\"},{\"value\":\"GN\",\"name\":\"GovernmentNationalMortgageAssociation\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"GO\",\"name\":\"GeneralObligationBonds\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Municipal\",\"doc\":\"General Obligation Bonds\"},{\"value\":\"GOVT\",\"name\":\"TreasuriesAgencyDebenture\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"IET\",\"name\":\"IOETTEMortgage\",\"since\":\"4.2\",\"sort\":4,\"group\":\"Mortgage\",\"doc\":\"IOETTE Mortgage\"},{\"value\":\"INDEX\",\"name\":\"Index\",\"since\":\"5.0.2\",\"ep\":179,\"sort\":19,\"group\":\"Derivatives\",\"doc\":\"General type for a contract based on an established index\"},{\"value\":\"IRS\",\"name\":\"InterestRateSwap\",\"since\":\"5.0\",\"ep\":54,\"sort\":10,\"group\":\"Derivatives\",\"doc\":\"Interest Rate Swap\"},{\"value\":\"JCD\",\"name\":\"JumboCertificateOfDeposit\",\"ep\":272,\"sort\":31,\"group\":\"Money Market\",\"doc\":\"Jumbo Certificate of Deposit\"},{\"value\":\"LOANLEASE\",\"name\":\"LoanLease\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":11,\"group\":\"Derivatives\",\"doc\":\"Loan/lease\"},{\"value\":\"LOFC\",\"name\":\"LetterOfCredit\",\"since\":\"4.3\",\"sort\":4,\"group\":\"Loan\",\"doc\":\"Letter Of Credit\"},{\"value\":\"LQN\",\"name\":\"LiquidityNote\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Money Market\",\"doc\":\"Liquidity Note\"},{\"value\":\"MATURED\",\"name\":\"Matured\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Loan\",\"doc\":\"Matured\"},{\"value\":\"MBS\",\"name\":\"MortgageBackedSecurities\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Mortgage\",\"doc\":\"Mortgage-backed Securities\"},{\"value\":\"MCPIB\",\"name\":\"MunicipalInterestBearingCommercialPaper\",\"ep\":272,\"sort\":17,\"group\":\"Municipal\",\"doc\":\"Municipal Interest Bearing Commercial Paper\"},{\"value\":\"MF\",\"name\":\"MutualFund\",\"since\":\"4.1\",\"group\":\"Other\",\"doc\":\"Mutual Fund\"},{\"value\":\"MIO\",\"name\":\"MortgageInterestOnly\",\"since\":\"4.1\",\"sort\":6,\"group\":\"Mortgage\",\"doc\":\"Mortgage Interest Only\"},{\"value\":\"MLEG\",\"name\":\"MultilegInstrument\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Other\",\"doc\":\"Multileg Instrument\"},{\"value\":\"MMF\",\"name\":\"MoneyMarketFund\",\"ep\":272,\"sort\":32,\"group\":\"Money Market\",\"doc\":\"Money Market Fund\"},{\"value\":\"MN\",\"name\":\"MasterNote\",\"ep\":272,\"sort\":33,\"group\":\"Money Market\",\"doc\":\"Master Note\"},{\"value\":\"MPO\",\"name\":\"MortgagePrincipalOnly\",\"since\":\"4.1\",\"sort\":7,\"group\":\"Mortgage\",\"doc\":\"Mortgage Principal Only\"},{\"value\":\"MPP\",\"name\":\"MortgagePrivatePlacement\",\"since\":\"4.1\",\"sort\":8,\"group\":\"Mortgage\",\"doc\":\"Mortgage Private Placement\"},{\"value\":\"MPT\",\"name\":\"MiscellaneousPassThrough\",\"since\":\"4.1\",\"sort\":9,\"group\":\"Mortgage\",\"doc\":\"Miscellaneous Pass-through\"},{\"value\":\"MRGNLOAN\",\"name\":\"MarginLoan\",\"since\":\"5.0.2\",\"ep\":254,\"sort\":9,\"group\":\"Financing\",\"doc\":\"Margin loan\"},{\"value\":\"MT\",\"name\":\"MandatoryTender\",\"since\":\"4.3\",\"sort\":4,\"group\":\"Municipal\",\"doc\":\"Mandatory Tender\"},{\"value\":\"MTN\",\"name\":\"MediumTermNotes\",\"since\":\"4.3\",\"sort\":12,\"group\":\"Money Market\",\"doc\":\"Medium Term Notes\"},{\"value\":\"MUNI\",\"name\":\"MunicipalBond\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"NCD\",\"name\":\"NegotiableCertificateOfDeposit\",\"ep\":272,\"sort\":34,\"group\":\"Money Market\",\"doc\":\"Negotiable Certificate of Deposit\"},{\"value\":\"NCP\",\"name\":\"NegotiableCommercialPaper\",\"ep\":272,\"sort\":35,\"group\":\"Money Market\",\"doc\":\"Negotiable Commercial Paper\"},{\"value\":\"NONE\",\"name\":\"NoSecurityType\",\"since\":\"4.1\",\"sort\":2,\"group\":\"Other\",\"doc\":\"No Security Type\"},{\"value\":\"ONITE\",\"name\":\"Overnight\",\"since\":\"4.3\",\"sort\":13,\"group\":\"Money Market\",\"doc\":\"Overnight\"},{\"value\":\"OOC\",\"name\":\"OptionsOnCombo\",\"since\":\"5.0\",\"sort\":6,\"group\":\"Derivatives\",\"doc\":\"Options on Combo\"},{\"value\":\"OOF\",\"name\":\"OptionsOnFutures\",\"since\":\"4.4\",\"ep\":19,\"sort\":13,\"group\":\"Derivatives\",\"doc\":\"Options on Futures\"},{\"value\":\"OOP\",\"name\":\"OptionsOnPhysical\",\"since\":\"4.4\",\"ep\":19,\"sort\":14,\"group\":\"Derivatives\",\"doc\":\"Options on Physical - use not recommended\"},{\"value\":\"OPT\",\"name\":\"Option\",\"since\":\"4.1\",\"sort\":15,\"group\":\"Derivatives\",\"doc\":\"Option\"},{\"value\":\"Other\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":7,\"group\":\"Other\",\"doc\":\"Other\"},{\"value\":\"PEF\",\"name\":\"PrivateExportFunding\",\"since\":\"4.3\",\"sort\":3,\"group\":\"Agency\",\"doc\":\"Private Export Funding\"},{\"value\":\"PFAND\",\"name\":\"Pfandbrief\",\"since\":\"4.4\",\"sort\":10,\"group\":\"Mortgage\",\"aliases\":[\"Pfandbriefe\"],\"doc\":\"Pfandbrief\"},{\"value\":\"PN\",\"name\":\"PromissoryNote\",\"since\":\"4.3\",\"sort\":14,\"group\":\"Money Market\",\"doc\":\"Promissory Note\"},{\"value\":\"POOL\",\"name\":\"AgencyPools\",\"since\":\"4.3\",\"deprecated\":\"4.4\"},{\"value\":\"PRCORP\",\"name\":\"PreferredCorporateBond\",\"ep\":272,\"sort\":11,\"group\":\"Corporate\",\"doc\":\"Preferred Corporate Bond\"},{\"value\":\"PROV\",\"name\":\"CanadianProvincialBonds\",\"since\":\"5.0\",\"ep\":68,\"sort\":4,\"group\":\"Government\",\"doc\":\"Canadian Provincial Bonds\"},{\"value\":\"PRTFLIOSWAP\",\"name\":\"PortfolioSwaps\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":28,\"group\":\"Derivatives\",\"doc\":\"Portfolio swap\"},{\"value\":\"PS\",\"name\":\"PreferredStock\",\"since\":\"4.1\",\"sort\":1,\"group\":\"Equity\",\"doc\":\"Preferred Stock\"},{\"value\":\"PZFJ\",\"name\":\"PlazosFijos\",\"since\":\"4.3\",\"sort\":15,\"group\":\"Money Market\",\"doc\":\"Plazos Fijos\"},{\"value\":\"RAN\",\"name\":\"RevenueAnticipationNote\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Municipal\",\"doc\":\"Revenue Anticipation Note\"},{\"value\":\"RCD\",\"name\":\"RetailCertificateOfDeposit\",\"ep\":272,\"sort\":36,\"group\":\"Money Market\",\"doc\":\"Retail Certificate of Deposit\"},{\"value\":\"REPLACD\",\"name\":\"Replaced\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Loan\",\"doc\":\"Replaced\"},{\"value\":\"REPO\",\"name\":\"Repurchase\",\"since\":\"4.4\",\"group\":\"Financing\",\"doc\":\"Repurchase\"},{\"value\":\"RETIRED\",\"name\":\"Retired\",\"since\":\"4.3\",\"sort\":12,\"group\":\"Loan\",\"doc\":\"Retired\"},{\"value\":\"REV\",\"name\":\"RevenueBonds\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Municipal\",\"doc\":\"Revenue Bonds\"},{\"value\":\"RP\",\"name\":\"RepurchaseAgreement\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"RTRNSWAP\",\"name\":\"ReturnSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":26,\"group\":\"Derivatives\",\"doc\":\"Return swap\"},{\"value\":\"RVLV\",\"name\":\"RevolverLoan\",\"since\":\"4.3\",\"sort\":1,\"group\":\"Loan\",\"doc\":\"Revolver Loan\"},{\"value\":\"RVLVTRM\",\"name\":\"Revolver\",\"since\":\"4.3\",\"sort\":2,\"group\":\"Loan\",\"doc\":\"Revolver/Term Loan\"},{\"value\":\"RVRP\",\"name\":\"ReverseRepurchaseAgreement\",\"since\":\"4.1\",\"deprecated\":\"4.4\"},{\"value\":\"SECDERIV\",\"name\":\"SecuritizedDerivative\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":10,\"group\":\"Other\",\"doc\":\"Securitized derivative\"},{\"value\":\"SECLOAN\",\"name\":\"SecuritiesLoan\",\"since\":\"4.4\",\"sort\":3,\"group\":\"Financing\",\"doc\":\"Securities Loan\"},{\"value\":\"SECPLEDGE\",\"name\":\"SecuritiesPledge\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Financing\",\"doc\":\"Securities Pledge\"},{\"value\":\"SFP\",\"name\":\"StructuredFinanceProduct\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":7,\"group\":\"Financing\",\"doc\":\"Structured finance product\"},{\"value\":\"SL\",\"name\":\"StudentLoanMarketingAssociation\",\"since\":\"4.1\",\"deprecated\":\"4.3\"},{\"value\":\"SLQN\",\"name\":\"SecuredLiquidityNote\",\"since\":\"5.0\",\"ep\":68,\"sort\":16,\"group\":\"Money Market\",\"doc\":\"Secured Liquidity Note\"},{\"value\":\"SOV\",\"name\":\"SovereignBond\",\"ep\":272,\"sort\":13,\"group\":\"Government\",\"doc\":\"Sovereign Bond\"},{\"value\":\"SPCLA\",\"name\":\"SpecialAssessment\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Municipal\",\"doc\":\"Special Assessment\"},{\"value\":\"SPCLO\",\"name\":\"SpecialObligation\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Municipal\",\"doc\":\"Special Obligation\"},{\"value\":\"SPCLT\",\"name\":\"SpecialTax\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Municipal\",\"doc\":\"Special Tax\"},{\"value\":\"SPOTFWD\",\"name\":\"SpotForward\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":16,\"group\":\"Derivatives\",\"doc\":\"Spot forward\"},{\"value\":\"SPREADBET\",\"name\":\"SpreadBetting\",\"since\":\"5.0.2\",\"ep\":235,\"sort\":32,\"group\":\"Derivatives\",\"doc\":\"Spread Betting\"},{\"value\":\"STN\",\"name\":\"ShortTermLoanNote\",\"since\":\"4.3\",\"sort\":14,\"group\":\"Money Market\",\"doc\":\"Short Term Loan Note\"},{\"value\":\"STRUCT\",\"name\":\"StructuredNotes\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Corporate\",\"doc\":\"Structured Notes\"},{\"value\":\"SUPRA\",\"name\":\"USDSupranationalCoupons\",\"since\":\"4.4\",\"sort\":4,\"group\":\"Agency\",\"doc\":\"USD Supranational Coupons\"},{\"value\":\"SWAPTION\",\"name\":\"SwapOption\",\"since\":\"5.0.2\",\"ep\":140,\"sort\":17,\"group\":\"Derivatives\",\"doc\":\"Swap option\"},{\"value\":\"SWING\",\"name\":\"SwingLineFacility\",\"since\":\"4.3\",\"sort\":5,\"group\":\"Loan\",\"doc\":\"Swing Line Facility\"},{\"value\":\"TAN\",\"name\":\"TaxAnticipationNote\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Municipal\",\"doc\":\"Tax Anticipation Note\"},{\"value\":\"TAXA\",\"name\":\"TaxAllocation\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Municipal\",\"doc\":\"Tax Allocation\"},{\"value\":\"TB\",\"name\":\"TreasuryBill\",\"since\":\"5.0\",\"ep\":68,\"sort\":5,\"group\":\"Government\",\"doc\":\"Treasury Bill - non US\"},{\"value\":\"TBA\",\"name\":\"ToBeAnnounced\",\"since\":\"4.3\",\"sort\":11,\"group\":\"Mortgage\",\"doc\":\"To Be Announced\"},{\"value\":\"TBILL\",\"name\":\"USTreasuryBill\",\"since\":\"4.4\",\"sort\":8,\"group\":\"Government\",\"doc\":\"US Treasury Bill\"},{\"value\":\"TBOND\",\"name\":\"USTreasuryBond\",\"since\":\"4.3\",\"sort\":6,\"group\":\"Government\",\"doc\":\"US Treasury Bond\"},{\"value\":\"TCAL\",\"name\":\"PrincipalStripOfACallableBondOrNote\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Government\",\"doc\":\"Principal Strip Of A Callable Bond Or Note\"},{\"value\":\"TD\",\"name\":\"TimeDeposit\",\"since\":\"4.1\",\"sort\":17,\"group\":\"Money Market\",\"doc\":\"Time Deposit\"},{\"value\":\"TDR\",\"name\":\"TermDepositReceipt\",\"ep\":272,\"sort\":37,\"group\":\"Money Market\",\"doc\":\"Term Deposit Receipt\"},{\"value\":\"TECP\",\"name\":\"TaxExemptCommercialPaper\",\"since\":\"4.3\",\"sort\":12,\"group\":\"Municipal\",\"doc\":\"Tax Exempt Commercial Paper\"},{\"value\":\"TERM\",\"name\":\"TermLoan\",\"since\":\"4.3\",\"group\":\"Loan\",\"doc\":\"Term Loan\"},{\"value\":\"TFRN\",\"name\":\"USTreasuryFloatingRateNote\",\"ep\":272,\"sort\":14,\"group\":\"Government\",\"doc\":\"US Treasury Floating Rate Note\"},{\"value\":\"TINT\",\"name\":\"InterestStripFromAnyBondOrNote\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Government\",\"doc\":\"Interest Strip From Any Bond Or Note\"},{\"value\":\"TIPS\",\"name\":\"TreasuryInflationProtectedSecurities\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Government\",\"doc\":\"Treasury Inflation Protected Securities\"},{\"value\":\"TLQN\",\"name\":\"TermLiquidityNote\",\"since\":\"5.0\",\"ep\":68,\"sort\":19,\"group\":\"Money Market\",\"doc\":\"Term Liquidity Note\"},{\"value\":\"TMB\",\"name\":\"TaxableMunicipalBond\",\"ep\":272,\"sort\":18,\"group\":\"Municipal\",\"doc\":\"Taxable Municipal Bond\"},{\"value\":\"TMCP\",\"name\":\"TaxableMunicipalCP\",\"since\":\"5.0\",\"ep\":68,\"sort\":13,\"group\":\"Municipal\",\"doc\":\"Taxable Municipal CP\"},{\"value\":\"TNOTE\",\"name\":\"USTreasuryNote\",\"since\":\"4.4\",\"sort\":11,\"group\":\"Government\",\"doc\":\"US Treasury Note\"},{\"value\":\"TPRN\",\"name\":\"PrincipalStripFromANonCallableBondOrNote\",\"since\":\"4.3\",\"sort\":10,\"group\":\"Government\",\"doc\":\"Principal Strip From A Non-Callable Bond Or Note\"},{\"value\":\"TRAN\",\"name\":\"TaxRevenueAnticipationNote\",\"since\":\"4.3\",\"sort\":14,\"group\":\"Municipal\",\"doc\":\"Tax Revenue Anticipation Note\"},{\"value\":\"TRS\",\"name\":\"TotalReturnSwap\",\"since\":\"5.0.2\",\"ep\":161,\"sort\":10,\"group\":\"Derivatives\",\"doc\":\"Total return swap\"},{\"value\":\"UST\",\"name\":\"USTreasuryNoteOld\",\"since\":\"4.3\",\"deprecated\":\"4.4\",\"sort\":3,\"doc\":\"US Treasury Note (Deprecated Value Use TNOTE)\"},{\"value\":\"USTB\",\"name\":\"USTreasuryBillOld\",\"since\":\"4.1\",\"deprecated\":\"4.4\",\"sort\":4,\"doc\":\"US Treasury Bill (Deprecated Value Use TBILL)\"},{\"value\":\"VARSWAP\",\"name\":\"VarianceSwap\",\"since\":\"5.0.2\",\"ep\":208,\"sort\":27,\"group\":\"Derivatives\",\"doc\":\"Variance swap\"},{\"value\":\"VRDN\",\"name\":\"VariableRateDemandNote\",\"since\":\"4.3\",\"sort\":15,\"group\":\"Municipal\",\"doc\":\"Variable Rate Demand Note\"},{\"value\":\"VRDO\",\"name\":\"VariableRateDemandObligation\",\"ep\":272,\"sort\":19,\"group\":\"Municipal\",\"doc\":\"Variable Rate Demand Obligation\"},{\"value\":\"WAR\",\"name\":\"Warrant\",\"since\":\"4.1\",\"sort\":16,\"group\":\"Municipal\",\"doc\":\"Warrant\"},{\"value\":\"WITHDRN\",\"name\":\"Withdrawn\",\"since\":\"4.3\",\"sort\":8,\"group\":\"Loan\",\"doc\":\"Withdrawn\"},{\"value\":\"WLD\",\"name\":\"WildcardEntry\",\"since\":\"5.0\",\"deprecated\":\"5.0.1\"},{\"value\":\"XCN\",\"name\":\"ExtendedCommNote\",\"since\":\"4.3\",\"sort\":20,\"group\":\"Money Market\",\"doc\":\"Extended Comm Note\"},{\"value\":\"XLINKD\",\"name\":\"IndexedLinked\",\"since\":\"4.3\",\"sort\":7,\"group\":\"Corporate\",\"doc\":\"Indexed Linked\"},{\"value\":\"XMISSION\",\"name\":\"Transmission\",\"since\":\"5.0.2\",\"ep\":169,\"sort\":18,\"group\":\"Derivatives\",\"doc\":\"Transmission\"},{\"value\":\"YANK\",\"name\":\"YankeeCorporateBond\",\"since\":\"4.3\",\"sort\":9,\"group\":\"Corporate\",\"doc\":\"Yankee Corporate Bond\"},{\"value\":\"YCD\",\"name\":\"YankeeCertificateOfDeposit\",\"since\":\"4.4\",\"sort\":21,\"group\":\"Money Market\",\"doc\":\"Yankee Certificate Of Deposit\"},{\"value\":\"ZOO\",\"name\":\"CatsTigersAndLions\",\"since\":\"4.1\",\"deprecated\":\"4.3\"}]}",
+                "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"securitytype\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:replacements": "{\"replacements\":[{\"since\":\"4.4\",\"when\":\"UST\",\"fills\":[{\"tag\":167,\"value\":\"TNOTE\"}],\"doc\":\"SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)\"},{\"since\":\"4.4\",\"when\":\"USTB\",\"fills\":[{\"tag\":167,\"value\":\"TBILL\"}],\"doc\":\"SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)\"}]}",
                 "fix:tag": "167"
@@ -245612,6 +245645,7 @@
               "metadata": {
                 "description": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent.",
                 "display": "Currency",
+                "fix:derivation": "settlcurrency",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"currency\",\"type\":{\"type\":\"string\"}},{\"since\":\"4.2\",\"name\":\"currency\",\"type\":{\"type\":\"currency\"}}]}",
                 "fix:tag": "15"
               },
@@ -245783,8 +245817,8 @@
         "042",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-80a4-a99ec83b1f49",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FACrL1C7dZDsDg==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -245955,7 +245989,7 @@
       "digest": "5095235cdd04feda1527428a535bfcbb",
       "ticker": "BRN@XLON",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=115|35=d|49=VENUE|56=BUYSIDE|320=REQ-1|322=RESP-1|323=1|55=BRN|48=GB00BN7SWP63|22=4|167=FUT|207=XLON|15=GBP|200=202403|10=042|\", 'binary'))]"
     },
@@ -245988,6 +246022,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -246015,6 +246050,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -246245,8 +246281,8 @@
         "5.0.2",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-8387-e57e1f890596",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FAAniMGHYlXaBQ==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -246351,7 +246387,7 @@
       "digest": "3453421e1590f50e8050f00d019b5c82",
       "ticker": "TTF",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "SYMBOL=TTF|SIDE=1|ORDERQTY=1200|PRICE=41.2500|NOPARTYIDS=2|NOPARTYIDS[0]=PARTYID=BUYSIDE\\x04\\x03PARTYIDSOURCE=D\\x04\\x03PARTYROLE=1|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"|#SYMBOL=TTF|#SIDE=1|#ORDERQTY=1200|#PRICE=41.2500|#NOPARTYIDS=2|#NOPARTYIDS[0]=PARTYID=BUYSIDE\\u0004\\u0003PARTYIDSOURCE=D\\u0004\\u0003PARTYROLE=1|\", 'binary'))]"
     },
@@ -246424,6 +246460,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -246451,6 +246488,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -246598,8 +246636,8 @@
         "122",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-82eb-0f7c9045d8fd",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FABXOfH9ssmqjg==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -246717,7 +246755,7 @@
       "digest": "1c8e0f1914ec2b3c2c234d9b635b209a",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=48|35=D|11=ORDER-4|SYMBOL=AAPL|SIDE=1|ORDERQTY=100|10=122|\", 'binary'))]"
     },
@@ -246777,6 +246815,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -246804,6 +246843,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -246959,8 +246999,8 @@
         "204",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-8103-91e06117d373",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FADG8T8GVoDv4w==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -247073,7 +247113,7 @@
       "digest": "b7512dfb3ab7518e3742f082a095d3e0",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=41|35=D|55=AAPL|54=1|38=100|9999=house-flag|10=204|\", 'binary'))]"
     },
@@ -247133,6 +247173,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -247160,6 +247201,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -247320,8 +247362,8 @@
         "029",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-80f4-3370b8ad701f",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FADVpn724BZzAA==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -247421,7 +247463,7 @@
       "digest": "3b30ede943bb27d750388e53d2ae5dac",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=40|35=D|55=AAPL|54=1|38=one hundred|44=n/a|10=029|\", 'binary'))]"
     },
@@ -247605,8 +247647,8 @@
         "5.0.2",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-8277-c81941b9becf",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FADR5hJVzUGKDA==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -247649,7 +247691,7 @@
       "digest": "070d81d9300f0d2932ca48fdea0a0537",
       "ticker": null,
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"ACCOUNT=ACCT-000117|CLIENTID=MCFP2|VENUE=XPAR\", 'binary'))]"
     },
@@ -247709,6 +247751,7 @@
               "metadata": {
                 "description": "Ticker symbol. Common, \"human understood\" representation of the security. SecurityID (48) value can be specified if no symbol exists (e.g. non-exchange traded Collective Investment Vehicles)",
                 "display": "Symbol",
+                "fix:derivation": "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"symbol\",\"type\":{\"type\":\"string\"}}]}",
                 "fix:tag": "55"
               },
@@ -247736,6 +247779,7 @@
               "metadata": {
                 "description": "Quantity ordered. This represents the number of shares for equities or par, face or nominal value for FI instruments.",
                 "display": "OrderQty",
+                "fix:derivation": "case when msgtype in ('8', '9') and cxlqty > 0 and coalesce(leavesqty, 0) = 0 then cumqty + cxlqty when msgtype in ('8', '9') then coalesce(cumqty + leavesqty, cumqty + cxlqty) end",
                 "fix:lineage": "{\"entries\":[{\"since\":\"2.7\",\"name\":\"orderqty\",\"type\":{\"type\":\"int32\"}},{\"since\":\"4.2\",\"name\":\"orderqty\",\"type\":{\"type\":\"float64\"}}]}",
                 "fix:tag": "38"
               },
@@ -247896,8 +247940,8 @@
         "999",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z",
-        "97a68042-023c-8140-83cb-f6d332c56abf",
-        "99aa06d3-0147-88d8-a001-c324468d497f",
+        "l6aAQgI8FABpc1mewUWVGg==",
+        "maoG0wFHmNhgAcMkRo1Jfw==",
         "",
         "2024-01-02T10:15:30.000000000Z",
         "2024-01-02T10:15:30.000000000Z"
@@ -248032,7 +248076,7 @@
       "digest": "3dc6316f635adb56b2e58b2ab9e48aa1",
       "ticker": "AAPL",
       "clock": "2024-01-02T10:15:30.000000000Z",
-      "partition": "1704189600",
+      "partition": "2024-01-02T10:00:00.000000000Z",
       "emitted": "8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|",
       "call": "[...new fix.FixCodec(registry, { defaultSendingTime: new Date('2024-01-02T10:15:30Z') }).parseLine(Buffer.from(\"8=FIX.4.4|9=42|35=D|55=AAPL|54=1|38=100|44=10.5|10=999|\", 'binary'))]"
     }

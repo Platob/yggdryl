@@ -2,7 +2,7 @@
 //!
 //! An explicit nonempty `code` names one chain globally. Otherwise the first
 //! identifier reaching a live chain under the effective `instuuid` supplies
-//! its code; a new chain is named `<scope UUID or ->/<first identifier>`.
+//! its code; a new chain is named `<scope hex or ->/<first identifier>`.
 //! Identifiers come from stated `altids` or the registered compiled selector,
 //! never a second tag list. Occupied keys are not stolen, and empty code opens
 //! no chain. The message's identity owner hashes the settled code into `puuid`.
@@ -17,7 +17,7 @@
 //! every later join carries it, even when late, suppressed or terminal.
 //!
 //! State is bounded to live chains and their distinct attached identifiers:
-//! code, first creation clock, last clock/UUID and highest bucket, never pending
+//! code, first creation clock, last clock/identity and highest bucket, never pending
 //! rows or historical tombstones. A terminal receives its previous pair and
 //! creation clock, then closes the chain even when suppressed. Reopening starts
 //! fresh and may emit in the same bucket. Late arrivals advance history but

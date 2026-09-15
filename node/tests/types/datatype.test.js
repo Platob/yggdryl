@@ -266,7 +266,7 @@ test('ASCII is one variable form and one fixed width', () => {
 
   assert.throws(() => DataType.fixedAscii(0), /expected a width of at least one byte, got 0/)
   assert.throws(() => DataType.fixedAscii(2.5), /width must be an unsigned 32-bit integer/)
-  assert.throws(() => DataType.fromLogicalName('sedol'), /currency/)
+  assert.equal(DataType.fromLogicalName('sedol').toString(), 'sedol')
 })
 
 test('every byte column is one datatype: a layout and a bound', () => {

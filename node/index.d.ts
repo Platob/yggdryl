@@ -1773,7 +1773,10 @@ export declare class FixMsg {
    * must match it.
    */
   puuid(): JsScalar
-  /** The partition `updatedat` falls in, in whole seconds. */
+  /**
+   * The hour `updatedat` falls in, as an instant: the partition a row is
+   * stored under.
+   */
   timePartition(): JsScalar | null
   /** One lifted facet's value, or `null` where nothing carries it. */
   lifted(facet: string): JsScalar | null
@@ -2196,6 +2199,10 @@ export declare class IcebergOptions {
    * which would read nothing at all.
    */
   set readParallelism(threads: number)
+  /** How many large-enough files justify a parallel scan. Default: 16. */
+  get readParallelMinFiles(): number
+  /** Set how many large-enough files justify a parallel scan. */
+  set readParallelMinFiles(files: number)
   /**
    * How many partition groups a commit writes at once. Default: the
    * resolved `readParallelism`; 1 writes them one after another. The
@@ -2228,10 +2235,6 @@ export declare class IcebergOptions {
    * local, which could hold no staging file.
    */
   set writeStaging(staging: string)
-  /** How many large-enough files justify a parallel scan. Default: 16. */
-  get readParallelMinFiles(): number
-  /** Set how many large-enough files justify a parallel scan. */
-  set readParallelMinFiles(files: number)
   /**
    * The recorded size below which a file does not count toward justifying a
    * parallel scan, in bytes. Default: 4 MiB.

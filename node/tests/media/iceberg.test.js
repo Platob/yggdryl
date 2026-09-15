@@ -1282,11 +1282,11 @@ test('merge updates the rows whose key is stored and appends the rest', (t) => {
   assert.equal(venues.get(2n), 'XASE')
   assert.equal(venues.get(3n), 'XLON')
 
-  // Nothing identifies a row when no column is named, so an empty match key is
-  // an overwrite rather than an append that can never find anything.
-  table.merge(rows([7n], ['XPAR']), [])
-  assert.equal(table.scan().intoTable().numRows, 1)
-  assert.deepEqual([...table.scan().intoTable().getChild('venue')], ['XPAR'])
+  // Nothing identifies a row when no column is named and no partition stands
+  // in for one, so an empty match key on an unpartitioned table is refused
+  // rather than silently replacing everything stored.
+  assert.throws(() => table.merge(rows([7n], ['XPAR']), []), /empty match key/)
+  assert.equal(table.scan().intoTable().numRows, 3)
 })
 
 test('mergeWhere narrows a merge to the files its filters admit', (t) => {

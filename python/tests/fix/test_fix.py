@@ -68,8 +68,8 @@ SEEDED = CRATED + 2
 CLOCK_NS = 1_704_190_530_000_000_000
 CLOCK = Scalar.datetime(CLOCK_NS, "ns", "UTC")
 CLOCK_INSTANT = dt.datetime(2024, 1, 2, 10, 15, 30, tzinfo=dt.timezone.utc)
-# The hour ``CLOCK`` falls in: 2024-01-02T10:00Z.
-CLOCK_PARTITION = 1_704_189_600
+# The hour ``CLOCK`` falls in, as the instant it is: 2024-01-02T10:00Z.
+CLOCK_PARTITION = dt.datetime(2024, 1, 2, 10, 0, tzinfo=dt.timezone.utc)
 
 # The seven members every message carries, non-null, in the order a message
 # built without them appends them.
@@ -2412,9 +2412,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert fields["code"].dtype == DataType("utf8")
     # The partition names the column it reads by that column's name.
     held = fields["timepartition"]
-    assert held.dtype == DataType("int64")
+    assert held.dtype == DataType('datetime64(ns,"UTC")')
     assert held.metadata["partition:sources"] == '["updatedat"]'
-    assert held.metadata["iceberg:transform"] == "truncate[3600]"
+    assert held.metadata["transform:expression"] == "truncate(updatedat, 'hour')"
 
     # What a bridge's own log states about a line - the session the message
     # itself names, its message context, the plugin that logged it and the one
@@ -2689,7 +2689,10 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert parsed.column("timestamp").to_pylist() == [clock, None]
     assert parsed.column("updatedat").to_pylist() == [CLOCK_INSTANT, instant]
     assert parsed.column("sendingtime").to_pylist() == [CLOCK_INSTANT, instant]
-    assert parsed.column("timepartition").to_pylist() == [CLOCK_PARTITION, 1767344400]
+    assert parsed.column("timepartition").to_pylist() == [
+        CLOCK_PARTITION,
+        dt.datetime(2026, 1, 2, 9, 0, tzinfo=dt.timezone.utc),
+    ]
 
     # A column spelled `senderSessionId` is the crate's `sendersessionid` under the fold,
     # so it fills that column; the sequence fills `MsgSeqNum` where the frame
@@ -2872,7 +2875,7 @@ def test_every_message_of_one_order_carries_the_chains_identity_until_it_ends(
     assert all(held == chains[0] for held in chains)
     # The chain is named by its instrument scope and its first identifier,
     # and `puuid` hashes that name.
-    assert stamped[0].by_tag(CODE_TAG).as_py() == f"{instruments[0]}/A1"
+    assert stamped[0].by_tag(CODE_TAG).as_py() == f"{instruments[0].hex()}/A1"
     assert all(held.by_tag(CODE_TAG) == stamped[0].by_tag(CODE_TAG) for held in stamped)
     # The first creation instant survives the replacement and the terminal
     # fill: the order's own transaction time.
@@ -2970,7 +2973,7 @@ def test_the_instrument_identity_is_the_same_across_spellings_and_venues(
     reader = _fixed(seed)
     life = FixLifecycle(seed)
 
-    def identity(line: bytes) -> str | None:
+    def identity(line: bytes) -> bytes | None:
         return _identity_bytes(life.fill(next(reader.parse_line(line))), INSTUUID_TAG)
 
     # An ISIN outranks a symbol, so the same security under two symbols is

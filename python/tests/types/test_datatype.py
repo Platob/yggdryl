@@ -550,8 +550,7 @@ def test_every_string_is_one_datatype_with_a_layout_a_charset_and_a_bound() -> N
     assert DataType("int") == DataType("int32")
     assert DataType("float") == DataType("float32")
 
-    with pytest.raises(ValueError, match="currency"):
-        DataType.from_logical_name("sedol")
+    assert DataType.from_logical_name("sedol") == DataType("sedol")
     with pytest.raises(ValueError, match="at least one byte, got 0"):
         DataType.fixed_ascii(0)
     with pytest.raises(ValueError, match="fixed_string"):

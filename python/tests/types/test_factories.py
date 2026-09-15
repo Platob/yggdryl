@@ -91,7 +91,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "geography": types.geography("value", "OGC:CRS84", "vincenty"),
     }
 
-    assert len(values_by_kind) == 61
+    assert len(values_by_kind) == 63
     assert set(values_by_kind) == {
         value.dtype.id for value in values_by_kind.values()
     }

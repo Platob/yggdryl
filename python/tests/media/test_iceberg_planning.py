@@ -332,11 +332,13 @@ class TestMerging:
         )
 
         rows = table.scan().read_all().sort_by("id").to_pydict()
-        # 2 was stored, so it moved partitions rather than doubling; 9 was not,
-        # so it arrived. Everything else is exactly as it was.
+        # A merge joins on the partition columns before the caller's key, so a
+        # row only ever updates a row of its own partition: the stored 2 sits
+        # under `XNYS` and the arriving 2 names `XPAR`, a partition of its own,
+        # so both stand. 9 was stored nowhere, so it arrived.
         assert rows == {
-            "id": [1, 2, 3, 9],
-            "venue": ["XNAS", "XPAR", None, "XLON"],
+            "id": [1, 2, 2, 3, 9],
+            "venue": ["XNAS", "XNYS", "XPAR", None, "XLON"],
         }
 
     def test_a_merge_scoped_to_one_partition_leaves_the_others_as_they_were(
