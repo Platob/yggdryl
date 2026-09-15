@@ -262,6 +262,28 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+    // The same pass over one shape a thousand times: what the derivations
+    // cost once their terms are bound, which the registry does once per
+    // root shape and keeps (decision 38). The corpus above is every shape a
+    // bridge writes; this is the stream a venue writes.
+    let report = messages
+        .iter()
+        .find(|message| message.as_field().name() == "executionreport")
+        .expect("the corpus carries an execution report")
+        .clone();
+    let same_shape: Vec<FixMsg> = std::iter::repeat_n(report, 1_000).collect();
+    group.bench_function("enrich_messages_same_shape", |bencher| {
+        bencher.iter_batched(
+            || same_shape.clone(),
+            |held| {
+                codec
+                    .enrich_messages(held)
+                    .map(|message| message.expect("enriched").entries().len())
+                    .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
     for (name, rows) in [("lifecycle", &messages), ("lifecycle_altids", &enriched)] {
         group.bench_function(name, |bencher| {
             bencher.iter_batched(

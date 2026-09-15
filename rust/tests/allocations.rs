@@ -2550,3 +2550,76 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
         black_box(Charset::Cp1252.transcribe_smol(black_box(wire.as_slice())));
     });
 }
+
+#[test]
+fn enriching_same_shaped_messages_binds_once() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let folder = yggdryl::holder::local::Folder::new(root).expect("the local seed path");
+    let registry =
+        Arc::new(FixRegistry::from_handle(&folder).expect("the committed dictionary loads"));
+    let codec = FixCodec::new(Arc::clone(&registry));
+    // A fill naming an unsourced ISIN, a CFI and a market: nine derivations
+    // land on it (the source, the ISIN column and its country, the security
+    // type and the product, the market, the status and the state, and the
+    // day order).
+    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|461=ESVTFR|207=XNAS|150=F|151=0|14=100|10=0|";
+    let message = codec
+        .parse_line(line)
+        .expect("a row")
+        .next()
+        .expect("one frame")
+        .expect("a message");
+    // The first message of a shape pays that shape's bind - every derivation
+    // of the dictionary bound against the root widened with the columns it
+    // lacks - which is thousands of allocations, and the reason it is paid
+    // once per shape rather than once per message (decision 38).
+    let (cold, enriched) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
+    let (warm, _) = counted(|| codec.enrich_message(message.clone()).expect("enriches"));
+    assert!(
+        cold > 10 * warm,
+        "a shape's bind is paid by its first message: {cold} cold, {warm} warm"
+    );
+    // What a same-shaped message costs after that, exactly: the clone (2),
+    // restatement's rebuild of the row at the dictionary's newest version,
+    // the working row and the one rebuild that lands every derived value,
+    // and the `altids` Map and the rebuild that lands it - three row
+    // rebuilds, each a new children list, a new value list and the plan
+    // and identities they resolve through. Nothing in it is a parse or a
+    // bind: the terms were bound above and are read borrowed from the
+    // registry's cache.
+    assert_eq!(warm, 159, "a warm same-shaped message");
+    let (thousand, _) = counted(|| {
+        for _ in 0..1_000 {
+            black_box(codec.enrich_message(message.clone()).expect("enriches"));
+        }
+    });
+    assert_eq!(
+        thousand,
+        1_000 * warm,
+        "a thousand same-shaped messages bind nothing and grow nothing"
+    );
+    // A stated value is never overwritten, so a second pass over the
+    // enriched message derives nothing: it pays its own shape's bind once,
+    // then restatement's rebuild alone.
+    black_box(
+        codec
+            .enrich_message(enriched.clone())
+            .expect("a second pass"),
+    );
+    let (settled, _) = counted(|| {
+        codec
+            .enrich_message(enriched.clone())
+            .expect("a second pass")
+    });
+    assert_eq!(
+        settled, 46,
+        "a settled message pays restatement and nothing per derivation"
+    );
+    // For scale: one `set` on the same message.
+    let (set_once, _) = counted(|| {
+        let mut held = message.clone();
+        held.set(59, Scalar::from("0")).expect("a write");
+        black_box(held)
+    });
+    assert_eq!(set_once, 18, "one clone and one write");
+}

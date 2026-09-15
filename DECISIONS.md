@@ -2968,7 +2968,7 @@ shaped by a select over the row header's captures and a where over an alias.
 
 Settled with the user's request to rename two crate columns and to keep the
 enriching pass while it moves out of Rust into the registry. Each part of
-this entry is appended by the change that lands it; the first two are below.
+this entry is appended by the change that lands it.
 
 ### The previous clock is `prevupdatedat`
 
@@ -3138,3 +3138,115 @@ parallelism, a four-thread commit listing eight groups in order, a failing
 writer leaving the version and snapshot untouched; `unknown` and `variant`
 round-tripping through schema JSON, a data file, a reopened table and the
 official validation, and refused by name in v2.
+
+### Enrichment rules are `fix:derivation` expressions the registry carries
+
+**Rule.** A field a message implies but need not carry declares how it
+derives, on itself, as `fix:derivation`: the canonical text of one term of
+the expression grammar over the message's fields by their canonical folded
+names, a group by its name and a member through a path
+(`secaltidgrp[securityaltidsource = '4'][0].securityaltid`), the crate's own
+columns by theirs. `FixField::derivation() -> Result<Option<Term>>` reads it
+(parsed through `Term::from_str`, budget-checked, a refusal naming the key),
+`FixFieldMut::set_derivation(&Term)` / `remove_derivation()` write it, the
+store dumps and loads it like every `fix:` key, a registry validates it at
+insert, update and load naming the field, `update` merges it as one term
+(incoming wins whole, a stored one the incoming omits is kept, as every
+`fix:` key), and the bindings cross it as text (`field.fix.derivation`,
+`None` / `null` removing it). The 29 rules the crate held as a Rust table -
+`FixRule`, `FixWhen`, `FixDerivation`, `RULES`, the CFI, security type and
+product tables, the check-digit readers - are deleted; they are
+`DERIVATION_RULES` in `scripts/generate_fix_dictionary.py`, validated at
+generation (every name a field, a group or a crate column), the CFI and
+`PutOrCall` tables rendered as searched `case` over `ilike`, the `Product`
+rule generated from the groups the dictionary's own `SecurityType` code set
+files each value under. The crate's three derived columns declare theirs in
+`fix/crated.rs`: `isincode` is `coalesce(case when securityidsource = '4'
+then securityid end, secaltidgrp[securityaltidsource = '4'][0].securityaltid)`,
+`miccode` is `coalesce(securityexchange, exdestination, lastmkt)`, `state`
+is `coalesce(ordstatus, exectype)`, and `schema.rs::column_value` no longer
+duplicates them: a row of an unenriched message fills those three columns
+through the same evaluator the pass runs.
+
+**The evaluator is the expression layer.** One grammar, one binder, one
+evaluator: a rule is a `Term`, it binds with `Term::bind` against the
+message's root, it evaluates with the scalar tier, and its answer is typed
+by the dictionary's own field for the tag exactly as `FixMsg::set` types a
+value. Nothing here interprets a rule; a `case`, a `coalesce`, a `try_cast`
+and a path predicate mean in a derivation what they mean in a `where`.
+The registry compiles its derivations once - `FixRegistry::derivations()`,
+a `OnceLock<Arc<Derivations>>` built on the first enrichment or row fill and
+forgotten by every field change (`index`, `remove_resolved`), by every
+catalog change (a clone starts empty and every mutation stages itself on a
+clone; the direct catalog writes forget explicitly) - rather than on the
+codec, because the row fill (`FixMsg::into_row`) has no codec in hand and
+evaluates the crate columns through the same compiled list, and because the
+cost of a mutation is then a pointer reset. Compiling proves every name a
+term reads is a field or a group of the registry and types the term against
+those fields, refusing by the field's name, never per message. The crate's
+own columns are the one exception: their terms read the standard's fields
+by name and a registry built from a handful of fields holds none of them,
+so for a crate field a name the registry lacks is widened as a null input
+the term answers null over, and a term that cannot bind over such inputs is
+silent.
+
+**Bound once per root shape.** A message's root is widened with every
+column the derivations read or fill that it lacks, typed by the registry's
+field, and every term is bound against that widened root; the bound shape
+is memoized on the compiled derivations, keyed as `column_plan_of` keys the
+column plan - the root's `Fields` by storage identity, then structurally -
+in a bounded cache of sixteen shapes. Per message the pass copies the row
+into a working row over the widened schema, the absent columns null, sweeps
+the derivations in tag order (a target the row holds non-null is skipped; a
+null answer, a value the field refuses, an evaluation the grammar refuses
+and a shape the term cannot bind against are silence; a non-null answer is
+typed and written where the next derivation reads it), repeats the sweep
+until one writes nothing - bounded by the derivation count - and lands
+everything through one `FixMsg::set_each`, one rebuild for the whole pass.
+`Bound::eval_padded` is the crate-private door this reads through: a
+working row whose trailing columns are absent reads them as null, so a row
+fill evaluates over the message's own values without building a row. The
+fixpoint replaces the hand-laid rule order and settles a chain in either
+direction (`securityid` <-> `isincode`, `securityidsource` after
+`securityid`, `product` after `securitytype` after `cficode`, `leavesqty`
+after `ordstatus` after `exectype`); the primary identifier is read before
+the alternate ones because the `isincode` term says so.
+
+**What was kept, exactly.** Every case of `rust/tests/fix/enrich.rs`,
+`latest.rs`, `dataset.rs` and `pipeline.rs` answers as before, and the
+equivalence snapshot's `enrich` group does not move: the recovered
+arrival-record fields, restatement, every derivation the rule table stated
+(spelled as the design brief lists them, with `PeggedRefPrice(1095)` under
+its dictionary name), the `altids` Map and the stream's `Remembered` plugin
+memory. Two spellings deserve a note. `CountryOfIssue(470)` used the crate's
+ISO 3166 registry as a whitelist; the `country` datatype validates width
+alone, so the term states ISO 3166's own reservation rule - the user-assigned
+range `AA`, `QM`-`QZ`, `XA`-`XZ`, `ZZ`, the transitionally reserved `AN`,
+`CS`, `YU`, and `EU` - which is exactly what that registry excludes, so
+`XS` and `EU` answer nothing as before. The `Product(460)` group lookup
+matched a `SecurityType` code exactly where the CFI lookup folded case; both
+now fold (`upper(securitytype)`), which changes no pinned answer.
+
+**Pins.** A `fix:derivation` edited on a registry field changes what the
+reader fills (Rust doc example, Python and JavaScript tabs, and their tests);
+a malformed derivation refuses at insert, update and load naming the field;
+an absent input is silence and a stated value is never overwritten, a stated
+null filled in place with the wire untouched; a chain resolves in one pass
+whichever way it runs; a derivation naming what the dictionary lacks, or one
+that does not type, refuses the first enrichment naming the field; every
+shipped derivation is stored as its canonical text and binds against the
+fields it reads; the crate columns fill a row of an unenriched message as
+the pass fills the message; and `rust/tests/allocations.rs` pins that a warm
+same-shaped message costs 159 allocations - the clone, restatement's rebuild,
+the working row and the derivation rebuild, the `altids` Map and its rebuild -
+that a thousand cost exactly a thousand times that (nothing binds per
+message), that a settled message costs 46, and that a shape's bind is paid
+once by its first message. `enrich_messages_same_shape` in the pipeline
+benchmark isolates the bound path.
+
+**Written in:** `fix/enrich.rs`, `fix/field.rs`, `fix/registry.rs`,
+`fix/catalog.rs`, `fix/store.rs`, `fix/msg.rs`, `fix/schema.rs`,
+`fix/crated.rs`, `fix/mod.rs`, `expression/bind.rs`, `expression/eval.rs`,
+`scripts/generate_fix_dictionary.py`, `config/fix`, both bindings,
+`docs/fix/capture.md`, `registry.md`, `message.md`, `arrow.md`, `store.md`,
+the inventories.

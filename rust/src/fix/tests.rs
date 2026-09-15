@@ -943,9 +943,10 @@ fn plugin_fields_are_a_dictionary_of_their_own() {
     // Decisions 21–23 add altids, UUID types and the scoped chain description;
     // decision 24 adds the previous clock and UUID declarations.
     // Decision 26 changes the clock/code/identity declarations and seeds standard clocks.
-    // Decision 38 renames the partition and previous-clock columns and
-    // registers the cusip and sedol codes beside isin.
-    assert_eq!(carrying.stable_hash(), 3_354_563_269_306_141_048);
+    // Decision 38 renames the partition and previous-clock columns,
+    // registers the cusip and sedol codes beside isin, and declares how
+    // `isincode`, `miccode` and `state` derive on the fields themselves.
+    assert_eq!(carrying.stable_hash(), 9_985_971_198_859_573_369);
     // The envelope is gone, so the dictionary opens on the ObjectName the
     // answer named a plugin by, which is the smallest tag it defines.
     assert_eq!(held[0].name(), "SessionInterface");

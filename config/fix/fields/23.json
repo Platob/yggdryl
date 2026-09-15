@@ -843,6 +843,7 @@
     "metadata": {
       "description": "Expresses the total quantity traded over the life of the contract when LastQty(32) is repeated periodically over the term of the contract. The value is the product of LastQty(32) and TradingUnitPeriodMultiplier(2353).",
       "display": "TotalTradeQty",
+      "fix:derivation": "lastqty * tradingunitperiodmultiplier",
       "fix:tag": "2367"
     }
   },
@@ -855,6 +856,7 @@
     "metadata": {
       "description": "Expresses the quantity bought or sold when LastQty(32) is expressed in number of contracts. Used in addition to LastQty(32). It is the product of LastQty(32) and ContractMultiplier(231).",
       "display": "LastMultipliedQty",
+      "fix:derivation": "lastqty * contractmultiplier",
       "fix:tag": "2368"
     }
   },
@@ -867,6 +869,7 @@
     "metadata": {
       "description": "Expresses the full total monetary value of the traded contract. The value is the product of LastPx(31) and TotalTradeQty(2367) or TotalTradeMultipliedQty(2370), if priced in units instead of contracts.",
       "display": "TotalGrossTradeAmt",
+      "fix:derivation": "lastpx * totaltradeqty",
       "fix:tag": "2369"
     }
   },
@@ -879,6 +882,7 @@
     "metadata": {
       "description": "Expresses the total trade quantity in units where ContractMultiplier(231) is not 1. The value is the product of TotalTradeQty(2367) and ContractMultiplier(231).",
       "display": "TotalTradeMultipliedQty",
+      "fix:derivation": "totaltradeqty * contractmultiplier",
       "fix:tag": "2370"
     }
   },

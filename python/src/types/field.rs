@@ -2993,6 +2993,48 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
+    /// How this field's value is derived from the message where the message
+    /// states none: one expression over the message's fields, in its
+    /// canonical text, or `None` for a field nothing derives.
+    ///
+    /// Assigning text records it (a text that is not a term, or one past the
+    /// grammar's budget, is a `ValueError` that leaves the field unchanged);
+    /// assigning `None` removes the property.
+    #[getter]
+    fn derivation(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        self.require_fix("derivation")?;
+        let field = self.borrow_field(py)?;
+        Ok(field
+            .inner
+            .as_fix()
+            .derivation()
+            .map_err(value_error)?
+            .map(|term| term.to_string()))
+    }
+
+    #[setter]
+    fn set_derivation(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("derivation")?;
+        let text = value.extract::<Option<String>>()?;
+        let mut field = self.borrow_field_mut(value.py())?;
+        match text {
+            Some(text) => {
+                let term: yggdryl::expression::Term = text.parse().map_err(value_error)?;
+                field
+                    .inner
+                    .as_fix_mut()
+                    .set_derivation(&term)
+                    .map_err(value_error)
+            }
+            None => field
+                .inner
+                .as_fix_mut()
+                .remove_derivation()
+                .map(|_| ())
+                .map_err(value_error),
+        }
+    }
+
     /// The specification's own wording for this field.
     #[getter]
     fn description(&self, py: Python<'_>) -> PyResult<Option<String>> {

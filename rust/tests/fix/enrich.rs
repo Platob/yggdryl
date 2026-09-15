@@ -1,15 +1,16 @@
-//! The specification's tables read as implications: each rule answered once
-//! from a hand-written line, refused where the answer is not certain, and
-//! settled in one pass.
+//! The specification's tables read as implications: each carried by the
+//! field it fills as a `fix:derivation`, answered once from a hand-written
+//! line, refused where the answer is not certain, and settled in one pass.
 
 use super::SoleMessage;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use yggdryl::expression::Term;
 use yggdryl::holder::local::Folder;
 use yggdryl::types::State;
-use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar};
+use yggdryl::{DataType, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar};
 
 fn reader() -> FixCodec {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -447,4 +448,315 @@ fn a_value_that_would_not_type_is_filled_in_place_and_the_wire_is_untouched() {
         .find(|entry| entry.tag() == 201)
         .expect("the pair still arrived");
     assert_eq!(entry.value().as_str(), Some("abc"));
+}
+
+/// The committed dictionary, owned, for the cases that edit a field.
+fn committed() -> FixRegistry {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("config")
+        .join("fix");
+    let folder = Folder::new(root).expect("the seed folder is a local path");
+    FixRegistry::from_handle(&folder).expect("the committed dictionary loads")
+}
+
+#[test]
+fn a_derivation_edited_on_a_registry_field_is_what_the_reader_fills_by() {
+    let mut registry = committed();
+    // The shipped rule: what is left is what was ordered minus what was
+    // done. A desk whose venue reports `LeavesQty` in lots of ten edits the
+    // field, and nothing else.
+    let mut leaves = registry.field_by_tag(151).expect("LeavesQty").clone();
+    let shipped = leaves
+        .as_fix()
+        .derivation()
+        .expect("a readable derivation")
+        .expect("a shipped derivation");
+    assert!(shipped.to_string().contains("orderqty - cumqty"));
+    leaves
+        .as_fix_mut()
+        .set_derivation(
+            &"case when msgtype in ('8', '9') then (orderqty - cumqty) / 10 end"
+                .parse::<Term>()
+                .expect("a term"),
+        )
+        .expect("a derivation is stored");
+    registry.update(leaves).expect("the field updates");
+
+    let reader = super::fixed_codec(Arc::new(registry));
+    let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
+    assert_eq!(held.by_tag(151).unwrap(), &Scalar::from(8.0_f64));
+
+    // Removing it silences the fill. `update` merges, and a stored key the
+    // incoming field omits is kept as every `fix:` key is, so the removal
+    // lands through `update_definition`, which replaces the definition
+    // whole; a reader built over the registry as it stands then fills by
+    // the registry as it stands then.
+    let mut registry = committed();
+    let mut leaves = registry.field_by_tag(151).expect("LeavesQty").clone();
+    assert!(
+        leaves
+            .as_fix_mut()
+            .remove_derivation()
+            .expect("removable")
+            .is_some()
+    );
+    registry.update(leaves.clone()).expect("the field updates");
+    assert!(
+        registry
+            .field_by_tag(151)
+            .expect("still there")
+            .as_fix()
+            .derivation()
+            .expect("readable")
+            .is_some(),
+        "a merge keeps the stored derivation"
+    );
+    registry
+        .update_definition(FixCategory::Fields, leaves)
+        .expect("the definition is replaced whole");
+    assert!(
+        registry
+            .field_by_tag(151)
+            .expect("still there")
+            .as_fix()
+            .derivation()
+            .expect("readable")
+            .is_none()
+    );
+    let reader = super::fixed_codec(Arc::new(registry));
+    let held = settled(&reader, b"8=FIX.4.4|35=8|39=0|38=100|14=20|10=0|");
+    assert_eq!(held.get_by_tag(151), None, "nothing derives it now");
+}
+
+#[test]
+fn a_malformed_derivation_refuses_at_load_naming_the_field() {
+    // Insert, update and load validate alike: a text that is not a term is
+    // refused by the registry, naming the field, and the registry stands.
+    let mut registry = committed();
+    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
+    gross
+        .insert_metadata("fix:derivation", "lastqty *")
+        .expect("any text can be stored on a field");
+    let refused = registry.update(gross).expect_err("a malformed derivation");
+    let rendered = refused.to_string();
+    assert!(rendered.contains("grosstradeamt"), "{rendered}");
+    assert!(rendered.contains("fix:derivation"), "{rendered}");
+    assert!(
+        registry
+            .field_by_tag(381)
+            .expect("still there")
+            .as_fix()
+            .derivation()
+            .expect("readable")
+            .is_some(),
+        "the stored field is untouched"
+    );
+
+    let mut fresh = DataType::Float64.nullable_field("notional");
+    fresh.as_fix_mut().set_tag(9_381).expect("a tag");
+    fresh
+        .insert_metadata("fix:derivation", "case when")
+        .expect("stored");
+    let refused = registry.insert(fresh).expect_err("refused at insert");
+    assert!(refused.to_string().contains("notional"), "{refused}");
+    assert!(registry.get_field_by_tag(9_381).is_none());
+
+    // The field's own reader says the same of the same text.
+    let mut broken = DataType::Float64.nullable_field("notional");
+    broken.as_fix_mut().set_tag(9_381).expect("a tag");
+    broken
+        .insert_metadata("fix:derivation", "lastqty *")
+        .expect("stored");
+    let refused = broken.as_fix().derivation().expect_err("not a term");
+    assert!(refused.to_string().contains("fix:derivation"), "{refused}");
+}
+
+#[test]
+fn a_derivation_naming_what_the_dictionary_lacks_is_refused_at_compile() {
+    // A name no field or group of the registry answers to is a fact about
+    // the dictionary, not about any message: the first enrichment refuses,
+    // naming the field, and no message is read for it.
+    let mut registry = committed();
+    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
+    gross
+        .as_fix_mut()
+        .set_derivation(&"lastqty * nosuchfield".parse::<Term>().expect("a term"))
+        .expect("a well-formed term is stored");
+    registry.update(gross).expect("the text is a term");
+    let reader = super::fixed_codec(Arc::new(registry));
+    let read = reader
+        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|", false)
+        .expect("a readable line");
+    let refused = reader.enrich_message(read).expect_err("refused at compile");
+    let rendered = refused.to_string();
+    assert!(rendered.contains("grosstradeamt"), "{rendered}");
+    assert!(rendered.contains("nosuchfield"), "{rendered}");
+
+    // So is one that names a real field the term cannot read that way.
+    let mut registry = committed();
+    let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
+    gross
+        .as_fix_mut()
+        .set_derivation(&"lastqty * symbol".parse::<Term>().expect("a term"))
+        .expect("stored");
+    registry.update(gross).expect("the text is a term");
+    let reader = super::fixed_codec(Arc::new(registry));
+    let read = reader
+        .sole_line(b"8=FIX.4.4|35=8|37=A|32=10|31=2|10=0|", false)
+        .expect("a readable line");
+    let refused = reader.enrich_message(read).expect_err("refused at compile");
+    assert!(refused.to_string().contains("grosstradeamt"), "{refused}");
+}
+
+#[test]
+fn an_absent_input_is_silence_and_a_stated_value_is_never_overwritten() {
+    let reader = reader();
+    // Every input absent: nothing derives, nothing refuses.
+    let bare = settled(&reader, b"8=FIX.4.4|35=8|37=A|10=0|");
+    for tag in [
+        6, 14, 22, 31, 38, 39, 48, 55, 119, 120, 151, 167, 381, 460, 461, 470,
+    ] {
+        assert_eq!(bare.get_by_tag(tag), None, "tag {tag}");
+    }
+    // One input absent of two: the product is silent, not a guess.
+    let half = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|10=0|");
+    assert_eq!(half.get_by_tag(381), None);
+    let whole = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|10=0|");
+    assert_eq!(whole.by_tag(381).unwrap(), &Scalar::from(25.0_f64));
+
+    // A stated value stands whatever the derivation would say, and a stated
+    // null is not a stated value: the derivation fills it in place.
+    let stated = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=99|10=0|");
+    assert_eq!(stated.by_tag(381).unwrap(), &Scalar::from(99.0_f64));
+    let nulled = settled(&reader, b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|");
+    assert_eq!(nulled.by_tag(381).unwrap(), &Scalar::from(25.0_f64));
+    assert_eq!(
+        nulled.into_bytes(b'|'),
+        b"8=FIX.4.4|35=8|37=A|32=10|31=2.5|381=abc|10=0|"
+    );
+}
+
+#[test]
+fn a_chain_resolves_in_one_pass_whatever_order_its_fields_fall_in() {
+    let reader = reader();
+    // `securityid` -> `securityidsource` -> `isincode` -> `countryofissue`:
+    // the source is read off the identifier, the column off the source, the
+    // country off the column.
+    let chain = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=GB0002634946|10=0|");
+    assert_eq!(text(&chain, 22), Some("4"));
+    assert_eq!(
+        text(&chain, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("GB0002634946")
+    );
+    assert_eq!(text(&chain, 470), Some("GB"));
+    // The other way round, from the crate's column: `isincode` ->
+    // `securityid` -> `securityidsource`, a lower tag filled off a higher.
+    let reversed = settled(&reader, b"MSGTYPE=D|CLORDID=A|ISINCODE=GB0002634946");
+    assert_eq!(text(&reversed, 48), Some("GB0002634946"));
+    assert_eq!(text(&reversed, 22), Some("4"));
+    // `cficode` -> `securitytype` -> `product`, and `exectype` ->
+    // `ordstatus` -> `leavesqty` -> `state`.
+    let typed = settled(&reader, b"8=FIX.4.4|35=D|11=A|461=LRXXXX|10=0|");
+    assert_eq!(text(&typed, 167), Some("REPO"));
+    assert_eq!(integer(&typed, 460), Some(13));
+    let report = settled(&reader, b"8=FIX.4.4|35=8|150=0|38=100|14=0|10=0|");
+    assert_eq!(text(&report, 39), Some(state("0").as_str()));
+    assert_eq!(report.by_tag(151).unwrap(), &Scalar::from(100.0_f64));
+    assert_eq!(
+        text(&report, yggdryl::STATE_TAG_NAME.0),
+        Some(state("0").as_str())
+    );
+}
+
+#[test]
+fn every_shipped_derivation_is_canonical_and_binds_against_the_fields_it_reads() {
+    // The dictionary stores each term as the grammar prints it, so what a
+    // reader parses is byte for byte what a writer would store; and every
+    // one binds against the registry's own fields for the columns it reads,
+    // a group by its name, so no shipped rule is silent for want of a type.
+    let registry = committed();
+    let mut carried = 0;
+    for field in registry.iter() {
+        let Some(term) = field.as_fix().derivation().expect("readable") else {
+            continue;
+        };
+        carried += 1;
+        assert_eq!(
+            field.get_metadata("fix:derivation"),
+            Some(term.to_string().as_str()),
+            "{} stores the canonical text",
+            field.name()
+        );
+        let inputs: Vec<_> = term
+            .columns()
+            .iter()
+            .map(|name| {
+                registry
+                    .get_definition(FixCategory::Groups, name)
+                    .or_else(|| registry.get_field_by_name(name))
+                    .unwrap_or_else(|| {
+                        panic!("{} reads {name}, which the dictionary names", field.name())
+                    })
+                    .clone()
+            })
+            .collect();
+        let schema = DataType::from_fields(inputs)
+            .expect("distinct columns")
+            .required_field("row");
+        term.bind(&schema).unwrap_or_else(|error| {
+            panic!("{} binds against what it reads: {error}", field.name())
+        });
+    }
+    // 29 shipped fields and the crate's three columns.
+    assert_eq!(carried, 32);
+    for (tag, _) in [
+        yggdryl::ISINCODE_TAG_NAME,
+        yggdryl::MICCODE_TAG_NAME,
+        yggdryl::STATE_TAG_NAME,
+    ] {
+        assert!(
+            registry
+                .field_by_tag(tag)
+                .expect("a crate field")
+                .as_fix()
+                .derivation()
+                .expect("readable")
+                .is_some(),
+            "tag {tag} derives"
+        );
+    }
+    let _ = registry
+        .get_definition(FixCategory::Groups, "secaltidgrp")
+        .expect("the group a rule reads");
+}
+
+#[test]
+fn the_crates_columns_fill_a_row_of_an_unenriched_message_as_the_pass_fills_it() {
+    // The row door evaluates the crate columns' own derivations, the same
+    // terms the pass evaluates, so a row of a message nobody enriched holds
+    // what the pass would have stated.
+    let reader = reader();
+    let schema = yggdryl::fix_schema(reader.registry(), "fix").expect("the fixed schema");
+    let line = b"8=FIX.4.4|35=8|37=A|48=US0378331005|22=4|100=XNAS|150=F|10=0|";
+    let bare = reader.sole_line(line, false).expect("a readable line");
+    assert_eq!(bare.get_by_tag(yggdryl::ISINCODE_TAG_NAME.0), None);
+    let row = bare.clone().into_row(&schema).expect("a row");
+    let column = |name: &str| {
+        let at = schema.index_of(name).expect(name);
+        row.as_sequence().expect("a row")[at].clone()
+    };
+    assert_eq!(column("isincode").as_str(), Some("US0378331005"));
+    assert_eq!(column("miccode").as_str(), Some("XNAS"));
+    assert_eq!(column("state").as_str(), Some(state("F").as_str()));
+    let filled = reader.enrich_message(bare).expect("enriches");
+    assert_eq!(
+        text(&filled, yggdryl::ISINCODE_TAG_NAME.0),
+        Some("US0378331005")
+    );
+    assert_eq!(text(&filled, yggdryl::MICCODE_TAG_NAME.0), Some("XNAS"));
+    assert_eq!(
+        text(&filled, yggdryl::STATE_TAG_NAME.0),
+        Some(state("F").as_str())
+    );
 }

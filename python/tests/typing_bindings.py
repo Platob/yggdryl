@@ -1527,6 +1527,11 @@ fix_direction.fix.directions = [
 fix_directions: list[FixDirection] = fix_direction.fix.directions
 fix_direction_code: str = fix_directions[0]["code"]
 fix_direction_patterns: list[str] = fix_directions[0]["patterns"]
+fix_derived: Field = Field("leavesqty", "float64")
+fix_derived.fix.tag = 151
+fix_derived.fix.derivation = "orderqty - cumqty"
+fix_derivation: str | None = fix_derived.fix.derivation
+fix_derived.fix.derivation = None
 fix_catalog = fix.FixRegistry.from_fields([fix_counter])
 fix_catalog.create_definition("components", fix_component)
 fix_added_definition: bool = fix_catalog.add_definition("components", fix_component)
@@ -1612,6 +1617,7 @@ assert fix_plugin_dialect == "plugin" and fix_dialects
 assert fix_id is not None and fix_vendor_id is not None
 assert fix_direction_code == "S"
 assert fix_direction_patterns == ["(?i)^TX\\b"] and len(fix_directions) == 2
+assert fix_derivation == "orderqty - cumqty" and fix_derived.fix.derivation is None
 assert fix_read_cblock[0] is not None
 assert python_declared is not None and python_declared.kind == "field"
 assert python_module == "trading.execution" and python_qualname == "Book.Fill"

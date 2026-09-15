@@ -513,11 +513,14 @@ fn the_committed_lineage_keeps_only_the_retypes_that_are_real() {
 /// SendingTime/TransactTime definitions already supply the standard clock seeds.
 /// Decision 38 renames the previous clock to `prevupdatedat` and the partition
 /// to `timepartition`, types the partition as the hour instant, marks it as
-/// the partition column and declares its derivation as an expression.
+/// the partition column and declares its derivation as an expression; it
+/// then moves the enrichment rules out of Rust onto the 29 shipped fields
+/// that carry a `fix:derivation`, and onto the three crate columns that
+/// derive.
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 17_281_414_671_393_725_658);
+    assert_eq!(registry.stable_hash(), 11_687_013_810_517_068_997);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

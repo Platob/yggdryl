@@ -673,13 +673,13 @@ What a message costs after it is built, each pass over fresh clones of the 7,232
 | --- | --- | --- |
 | `into_row`, the message read against the fixed schema | 362 ms | 50.0 us |
 | `arrow_reader`, the rows landed in batches | 622 ms | 86.0 us |
-| `enrich_messages`, the rules that fill what a message implies | 774 ms | 107 us |
+| `enrich_messages`, the derivations that fill what a message implies | 774 ms | 107 us |
 | `lifecycle`, the stamp that joins a message to its order's life | 231 ms | 32.0 us |
 | `digest`, the arrival record's hash | 29.6 ms | 4.10 us |
 
 The `enrich_messages` figure is that same run's, taken before restatement became the pass's first step, so it is the fills alone and is due the regeneration below with the rest.
 
-A row pays `into_row` and its share of the batch; it pays for enrichment and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is every child resolved against the dictionary once and the rules its fields carry read borrowed, then one walk of the row's own child names for the composed keys, then the rule table walked once, most of it lookups that answer nothing on a message that stated everything and each answer a write into the row; the lifecycle is an instrument digest, a chain lookup, one write of up to six stamps (`code`, `updatedat`, `createdat`, `instuuid`, `prevupdatedat`, `prevuuid`) and the `uuid`/`puuid` recompute. The digest is a hash over the arrival record and nothing else.
+A row pays `into_row` and its share of the batch; it pays for enrichment and the lifecycle only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call). Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. Enrichment is every child resolved against the dictionary once and the replacements its fields carry read borrowed, then the registry's [derivations](registry.md#a-field-carries-how-it-is-derived) - compiled once per registry and bound once per root shape, which `enrich_messages_same_shape` in the pipeline benchmark isolates - swept to a fixpoint over a working row, most answers null on a message that stated everything, and one rebuild landing what derived; the lifecycle is an instrument digest, a chain lookup, one write of up to six stamps (`code`, `updatedat`, `createdat`, `instuuid`, `prevupdatedat`, `prevuuid`) and the `uuid`/`puuid` recompute. The digest is a hash over the arrival record and nothing else.
 
 Regenerate with:
 

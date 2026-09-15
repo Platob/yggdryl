@@ -170,6 +170,25 @@ pub const DEFAULT_PARTITION_SECONDS: i64 = 3_600;
 /// contains it - before the epoch as after it.
 const TIMEPARTITION_DERIVATION: &str = "truncate(updatedat, 'hour')";
 
+/// How `isincode` derives from the message where it states none, as the
+/// crate field declares it in its `fix:derivation` (decision 38): the
+/// primary identifier under the ISIN source, else the alternate identifier
+/// whose source says ISIN - the primary first, so a message stating both
+/// states its ISIN in `SecurityID` and the alternate answers only where the
+/// primary did not. The column's own `isin` type refuses a spelling no check
+/// digit closes, and a refused value is silence.
+const ISINCODE_DERIVATION: &str = "coalesce(case when securityidsource = '4' then securityid \
+                                   end, secaltidgrp[securityaltidsource = '4'][0].securityaltid)";
+
+/// How `miccode` derives: the exchange the instrument is listed on, the
+/// destination it was routed to, or the market it last traded on, the first
+/// stated.
+const MICCODE_DERIVATION: &str = "coalesce(securityexchange, exdestination, lastmkt)";
+
+/// How `state` derives: the order's status, else what the report said
+/// happened, both read as the crate's one lifecycle vocabulary.
+const STATE_DERIVATION: &str = "coalesce(ordstatus, exectype)";
+
 /// The fields, built once and shared.
 static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
     Ok(fields) => Some(fields),
@@ -212,6 +231,21 @@ fn crated(
     field.as_fix_mut().set_tag(tag)?;
     field.set_display(display)?;
     field.set_description(description)?;
+    Ok(field)
+}
+
+/// One field the message implies where it states none, deriving as
+/// `derivation` spells it in the expression grammar over the message's
+/// fields (decision 38).
+fn derived(
+    identity: (i32, &str),
+    display: &str,
+    dtype: DataType,
+    description: &str,
+    derivation: &str,
+) -> Result<Field> {
+    let mut field = crated(identity, display, dtype, description)?;
+    field.as_fix_mut().set_derivation(&derivation.parse()?)?;
     Ok(field)
 }
 
@@ -397,28 +431,33 @@ fn build() -> Result<Vec<Field>> {
         )?,
         // The instrument and the market, one spelling each: an ISIN as a
         // bridge row states it or as `SecurityID` with an ISIN source, and
-        // the market as the MIC the message names first.
-        crated(
+        // the market as the MIC the message names first. Each declares how
+        // it derives on the field itself, and the enriching pass and the row
+        // fill evaluate that declaration and nothing else.
+        derived(
             ISINCODE_TAG_NAME,
             "ISINCode",
             DataType::Isin,
             "The instrument's ISIN: the message's own, else SecurityID or a \
              SecurityAltID whose source is ISIN.",
+            ISINCODE_DERIVATION,
         )?,
-        crated(
+        derived(
             MICCODE_TAG_NAME,
             "MICCode",
             DataType::Mic,
             "The market the message names, as an ISO 10383 MIC: the message's \
              own, else SecurityExchange, ExDestination or LastMkt.",
+            MICCODE_DERIVATION,
         )?,
         // The state the order is in, whatever code set or word stated it.
-        crated(
+        derived(
             STATE_TAG_NAME,
             "State",
             DataType::State,
             "The state the order is in: OrdStatus, else ExecType, read as one \
              lifecycle vocabulary.",
+            STATE_DERIVATION,
         )?,
         // UUID owns the RFC layout and Arrow extension.
         crated(
@@ -507,6 +546,12 @@ fn build() -> Result<Vec<Field>> {
 /// assert_eq!(
 ///     held[3].as_transform().term()?.map(|term| term.to_string()),
 ///     Some("truncate(updatedat, 'hour')".to_owned()),
+/// );
+/// // The three columns a message implies declare how, on the field itself.
+/// assert_eq!(held[14].name(), "state");
+/// assert_eq!(
+///     held[14].as_fix().derivation()?.map(|term| term.to_string()),
+///     Some("coalesce(ordstatus, exectype)".to_owned()),
 /// );
 /// // Above every tag FIX or a venue publishes, and its tag and name are
 /// // its identity.

@@ -124,6 +124,10 @@ test('the typed vocabulary answers only on the fix view', () => {
     assert.throws(() => {
       view.directions = [{ code: 'S', patterns: ['^TX '] }]
     }, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => view.derivation, { name: 'TypeError', message: new RegExp(scheme) })
+    assert.throws(() => {
+      view.derivation = 'orderqty - cumqty'
+    }, { name: 'TypeError', message: new RegExp(scheme) })
     assert.throws(() => {
       view.aliases = ['Ticker']
     }, { name: 'TypeError', message: new RegExp(scheme) })
@@ -173,6 +177,36 @@ test('identifier declaration refusals leave the entire field unchanged', () => {
     assert.throws(() => { declaration.fix.identifiers = invalid })
     assert.deepEqual(declaration.toJSON(), before)
   }
+})
+
+test('a derivation crosses as canonical text', () => {
+  // One term over the message's fields, stored as its canonical spelling;
+  // null removes it, and a text that is not a term throws.
+  const field = new Field('leavesqty', 'float64')
+  field.fix.tag = 151
+  assert.equal(field.fix.derivation, null)
+
+  field.fix.derivation = 'orderqty-cumqty'
+  assert.equal(field.fix.derivation, 'orderqty - cumqty')
+  assert.equal(field.get('fix:derivation'), 'orderqty - cumqty')
+
+  assert.throws(() => {
+    field.fix.derivation = 'orderqty -'
+  })
+  assert.equal(field.fix.derivation, 'orderqty - cumqty')
+
+  // An edited derivation is what the reader fills by (decision 38).
+  const registry = fix.FixRegistry.fromHandle(SEED)
+  const leaves = registry.getFieldByTag(151)
+  leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
+  registry.update(leaves)
+  const codec = fixedCodec(registry)
+  const held = codec.enrichMessage(codec.parseLine(Buffer.from('8=FIX.4.4|35=8|37=A|38=100|14=0|10=0|')).next().value)
+  assert.equal(held.byTag(151).toJSON(), 200)
+
+  field.fix.derivation = null
+  assert.equal(field.fix.derivation, null)
+  assert.equal(field.has('fix:derivation'), false)
 })
 
 test('direction rules cross as a typed list', () => {

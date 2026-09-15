@@ -972,6 +972,302 @@ def attach_replacements(
     return {tag: len(entries) for tag, entries in per_tag.items()}
 
 
+# ---- Derivations: what a message implies, as expressions -------------------
+#
+# Every field a message implies but need not carry declares how it derives,
+# as one term of the crate's expression grammar in its `fix:derivation`
+# (decision 38): the enriching pass evaluates the terms to a fixpoint, so a
+# chain (`cficode` -> `securitytype` -> `product`) settles in whatever order
+# the fields fall. A term reads fields by their canonical folded names, a
+# group by its name (`secaltidgrp[securityaltidsource = '4'][0].securityaltid`
+# is the alternate identifier whose source says ISIN), and the crate's own
+# columns by theirs. An absent input is a null the term answers null over, so
+# a rule states only what makes its answer certain. The three crate columns
+# (`isincode`, `miccode`, `state`) declare theirs in `rust/src/fix/crated.rs`.
+
+# The crate's own columns a rule may read.
+CRATE_COLUMNS = ("isincode", "miccode", "state")
+
+# The message types that report an order's state, and the ones that carry a
+# `TimeInForce`: an order, a replace and the report on either.
+REPORTS = ("8", "9")
+TIMED = ("D", "G", "8")
+
+# Appendix D's matrices: the statuses that leave quantity still working
+# (`Suspended` too - the order is not working, but its remainder stands),
+# and the ones that leave nothing.
+WORKING = ("0", "1", "6", "E", "5", "7", "9")
+CLOSED = ("2", "3", "4", "8", "C")
+
+# The execution types whose value `OrdStatus` spells with the same meaning.
+# `D` is left out because it is `Restated` in one and `AcceptedForBidding` in
+# the other, and a trade says what happened rather than what the order is.
+AGREED = ("0", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "E")
+TRADES = ("F", "G")
+
+# Appendix 6-D read at its category level: the one `SecurityType` a CFI
+# category or group names, first match answering, so `O?F` - an option on a
+# future - is read before the `O` every other listed option opens with. A
+# category several types share, such as the `DB` of every plain bond, is
+# absent because no one type is certain of it. `?` stands for any one
+# character.
+SECURITYTYPE_OF_CFI = (
+    ("ES", "CS"), ("EP", "PS"), ("ED", "DR"), ("EU", "MF"), ("CE", "ETF"), ("CI", "MF"),
+    ("F", "FUT"), ("O?F", "OOF"), ("O", "OPT"), ("H", "OPT"), ("DC", "CB"), ("DT", "MTN"),
+    ("DA", "ABS"), ("DG", "MBS"), ("SR", "IRS"), ("SC", "CDS"), ("ST", "CMDTYSWAP"),
+    ("SF", "FXSWAP"), ("IF", "FXSPOT"), ("JF", "FXFWD"), ("JR", "FRA"), ("JE", "EQFWD"),
+    ("LR", "REPO"), ("LS", "SECLOAN"), ("TI", "INDEX"),
+)
+
+# The exercise character of a listed or an unlisted option, and what it says
+# about `PutOrCall`.
+PUTORCALL_OF_CFI = (("OC", 1), ("OP", 0), ("HC", 1), ("HP", 0))
+
+# The `Product` a CFI category alone decides: an equity, or a financing.
+PRODUCT_OF_CFI = (("E", 5), ("L", 13))
+
+# The security type families that share one CFI category and group.
+MORTGAGE = ("MBS", "CMBS", "CMO", "TBA", "PFAND", "MPT", "IET", "MIO", "MPO", "MPP", "CMB")
+CORPORATE = ("CORP", "EUCORP", "YANK", "PRCORP", "DUAL", "XLINKD", "DIMSUMCORP")
+FLOATING = ("FRN", "EUFRN", "TFRN")
+GOVERNMENT = ("TBOND", "TNOTE", "SOV", "EUSOV", "BRADY", "PROV", "CAN", "DIMSUMSOV", "TIPS")
+MONEY_MARKET = (
+    "TBILL", "TB", "CTB", "CP", "CD", "BA", "BN", "CL", "DN", "EUCD", "EUCP", "LQN", "ONITE",
+    "PN", "STN", "TD", "XCN", "YCD", "NCD", "NCP", "JCD", "RCD", "TDR", "TLQN", "SLQN", "CPIB",
+    "CLCP", "CAMM", "BAB", "BDN", "BNST", "BOX", "CN", "EUNCP", "EUSTLQN", "EUTD", "MN", "PZFJ",
+)
+MUNICIPAL = (
+    "GO", "REV", "AN", "COFO", "COFP", "MT", "RAN", "SPCLA", "SPCLO", "SPCLT", "TAN", "TAXA",
+    "TECP", "TRAN", "VRDN", "VRDO", "TMB", "TMCP", "MCPIB",
+)
+
+# Appendix 6-D the other way: the CFI a `SecurityType` states, down to the
+# category and group the type names and `X` where it says nothing more. `?`
+# is the exercise character an option's `PutOrCall` supplies.
+CFI_OF_SECURITYTYPE = (
+    (("CS",), "ESXXXX"), (("PS",), "EPXXXX"), (("DR",), "EDXXXX"), (("MF", "MMF"), "CIXXXX"),
+    (("ETF",), "CEXXXX"), (("FUT",), "FXXXXX"), (("OPT", "OOP", "OOC"), "O?XXXX"),
+    (("OOF",), "O?FXXX"), (("CB",), "DCXXXX"), (("MTN", "EUMTN"), "DTXXXX"), (("ABS",), "DAXXXX"),
+    (MORTGAGE, "DGXXXX"), (CORPORATE, "DBXXXX"), (FLOATING, "DBVXXX"), (GOVERNMENT, "DBXXXX"),
+    (MONEY_MARKET, "DYXXXX"), (MUNICIPAL, "DNXXXX"), (("IRS",), "SRXXXX"), (("CDS",), "SCXXXX"),
+    (("CMDTYSWAP",), "STXXXX"), (("FXSWAP",), "SFXXXX"), (("FXSPOT",), "IFXXXX"),
+    (("FXFWD",), "JFXXXX"), (("FRA",), "JRXXXX"), (("EQFWD",), "JEXXXX"), (("REPO",), "LRXXXX"),
+    (("SECLOAN",), "LSXXXX"), (("INDEX",), "TIXXXX"),
+)
+
+# The `Product` code each group of the `SecurityType` code set names. The
+# dictionary files every security type under the group the specification
+# lists it in, and the `Product` code set spells those groups. `Derivatives`
+# and `Other` are absent: the first spans products the specification codes
+# separately, and the second is where the specification put what it could
+# not place.
+PRODUCT_OF_GROUP = (
+    ("Agency", 1), ("Corporate", 3), ("Currency", 4), ("Equity", 5), ("Government", 6),
+    ("Loan", 8), ("Money Market", 9), ("Mortgage", 10), ("Municipal", 11), ("Financing", 13),
+)
+
+# The exercise character an option's `PutOrCall` supplies to its CFI: `1` is
+# a call, `0` a put, and an option stating neither leaves its exercise open,
+# which `X` is the code for.
+EXERCISE = "case when putorcall = 1 then 'C' when putorcall = 0 then 'P' else 'X' end"
+
+
+def quoted(values: Iterable[str]) -> str:
+    """A membership list in the grammar's canonical spelling."""
+    return "(" + ", ".join(f"'{value}'" for value in values) + ")"
+
+
+def case(branches: Iterable[tuple[str, str]]) -> str:
+    """A searched `case` over `(when, then)` pairs, no `else`: an unmatched
+    value answers null, which is the rule staying silent."""
+    return "case " + " ".join(f"when {when} then {then}" for when, then in branches) + " end"
+
+
+def prefix_case(table: Iterable[tuple[str, Any]]) -> str:
+    """A table read by the prefix `cficode` opens with, case not counting:
+    `ilike` reads `?` as `_`, any one character, and the first pattern to
+    match answers, so a longer pattern is listed before the shorter one it
+    refines."""
+    return case(
+        (f"cficode ilike '{pattern.replace('?', '_')}%'", repr(answer) if isinstance(answer, str) else str(answer))
+        for pattern, answer in table
+    )
+
+
+def cfi_case() -> str:
+    """The CFI a security type states, the exercise character supplied by
+    `PutOrCall` where the pattern leaves one open."""
+    branches = []
+    for types, pattern in CFI_OF_SECURITYTYPE:
+        when = f"upper(securitytype) in {quoted(types)}"
+        if "?" in pattern:
+            head, tail = pattern.split("?")
+            then = f"concat('{head}', {EXERCISE}, '{tail}')"
+        else:
+            then = f"'{pattern}'"
+        branches.append((when, then))
+    return case(branches)
+
+
+def product_case(codes: list[dict[str, Any]]) -> str:
+    """The `Product` the dictionary's own `SecurityType` groups name, read
+    off the code set the dictionary carries, else the two CFI categories that
+    are one product alone."""
+    by_group: dict[str, list[str]] = {}
+    for code in codes:
+        if code.get("group"):
+            by_group.setdefault(code["group"], []).append(code["value"])
+    branches = []
+    for group, product in PRODUCT_OF_GROUP:
+        members = by_group.get(group)
+        if not members:
+            raise ValueError(f"the SecurityType code set files nothing under {group!r}")
+        branches.append((f"upper(securitytype) in {quoted(sorted(members))}", str(product)))
+    branches.extend((f"cficode ilike '{category}%'", str(product)) for category, product in PRODUCT_OF_CFI)
+    return case(branches)
+
+
+# The ISIN prefixes ISO 3166 does not assign to a country, as the crate's own
+# registry of countries excludes them: the user-assigned range (`AA`, `QM`
+# through `QZ`, `XA` through `XZ`, `ZZ`), the transitionally reserved codes
+# (`AN`, `CS`, `YU`) and the exceptionally reserved `EU`. `XS` and `EU` are
+# numbering agencies, not countries, and say nothing about the issue.
+UNASSIGNED_PREFIXES = ("AA", "AN", "CS", "EU", "YU", "ZZ")
+
+# Target tag -> the term, in the grammar's canonical spelling. `Product(460)`
+# is generated from the dictionary's own code set by `attach_derivations`.
+DERIVATION_RULES: tuple[tuple[int, str], ...] = (
+    # The average of one fill is that fill's price, stated only where the
+    # report says the whole done quantity is this fill: an average over two
+    # fills is not derivable from one of them.
+    (6, f"case when msgtype in {quoted(REPORTS)} and cumqty = lastqty and lastqty > 0 then lastpx end"),
+    # Appendix D's identity read each way: what was done is what was ordered
+    # minus what is left, what was ordered is what was done plus what is
+    # left - or plus what was canceled - and nothing is left once the order
+    # is closed. A negative remainder means the two inputs were never about
+    # one order, and is silence.
+    (14, f"case when msgtype in {quoted(REPORTS)} and orderqty - leavesqty >= 0 then orderqty - leavesqty end"),
+    # Appendix O: a trade settling in the currency it was dealt in states the
+    # dealt currency once, so each states the other.
+    (15, "settlcurrency"),
+    # The `SecurityIDSource` code set names the standard each code stands
+    # for, and ISO 6166, CUSIP and SEDOL each close an identifier with a
+    # check digit: a `SecurityID` one of them closes names its own source.
+    (22, "case when try_cast(securityid as isin) is not null then '4' when try_cast(securityid as cusip) is not null then '1' when try_cast(securityid as sedol) is not null then '2' end"),
+    # A forward price is quoted as a spot rate and the points away from it,
+    # and the points are already in price units, so the two add.
+    (31, "lastspotrate + lastforwardpoints"),
+    (38, f"case when msgtype in {quoted(REPORTS)} then coalesce(cumqty + leavesqty, cumqty + cxlqty) end"),
+    # A report stating an execution type the two code sets spell alike has
+    # stated its order status; a trade has stated it in what is left and
+    # what was done: nothing left is filled, something left after something
+    # done is partially filled.
+    (39, f"case when msgtype in {quoted(REPORTS)} and exectype in {quoted(AGREED)} then exectype when msgtype in {quoted(REPORTS)} and exectype in {quoted(TRADES)} and leavesqty = 0 then '2' when msgtype in {quoted(REPORTS)} and exectype in {quoted(TRADES)} and leavesqty > 0 and cumqty > 0 then '1' end"),
+    # A message stating its ISIN and no `SecurityID` - a bridge row's
+    # `ISINCODE`, or an alternate identifier alone - has stated its primary
+    # identifier, whose validation then states the source.
+    (48, "isincode"),
+    # A `SecurityID` under an exchange's or Bloomberg's source is the symbol,
+    # and so is the `SecurityAltID` an exchange gave.
+    (55, "coalesce(case when securityidsource in ('8', 'A') then securityid end, secaltidgrp[securityaltidsource = '8'][0].securityaltid)"),
+    # `TimeInForce` defines its own absence: an order, a replace or a report
+    # stating none is a day order.
+    (59, f"case when msgtype in {quoted(TIMED)} then '0' end"),
+    # Appendix O: the settled amount is the traded amount at the stated rate.
+    (119, "grosstradeamt * settlcurrfxrate"),
+    (120, "currency"),
+    # A possible duplicate carries the clock of the send it repeats, and the
+    # session layer says that is what its original sending time is.
+    (122, "case when possdupflag then sendingtime end"),
+    # The forward quoting, read on each side of a two-sided quote.
+    (132, "bidspotrate + bidforwardpoints"),
+    (133, "offerspotrate + offerforwardpoints"),
+    (151, f"case when msgtype in {quoted(REPORTS)} and ordstatus in {quoted(CLOSED)} then 0 when msgtype in {quoted(REPORTS)} and ordstatus in {quoted(WORKING)} and orderqty - cumqty >= 0 then orderqty - cumqty end"),
+    # Appendix 6-D, both ways, and the exercise character of an option.
+    (167, prefix_case(SECURITYTYPE_OF_CFI)),
+    (201, prefix_case(PUTORCALL_OF_CFI)),
+    # A fill's worth, which Appendix O settles on and Appendix D's execution
+    # reports carry.
+    (381, f"case when msgtype in {quoted(REPORTS)} then lastqty * lastpx end"),
+    (461, cfi_case()),
+    # ISO 6166 opens a number with the ISO 3166 code of the country whose
+    # agency numbered it, where one did.
+    (470, f"case when substring(isincode, 1, 1) <> 'X' and not substring(isincode, 1, 2) between 'QM' and 'QZ' and not substring(isincode, 1, 2) in {quoted(UNASSIGNED_PREFIXES)} then try_cast(substring(isincode, 1, 2) as country) end"),
+    # A pegged order's price is the reference it pegs to plus its own
+    # offset, which is signed: a peg below the reference is a negative one.
+    (839, "peggedrefprice + pegoffsetvalue"),
+    # A contract's quantity in units is its quantity in contracts times what
+    # one contract multiplies to, an increment in money is the same product
+    # of the increment in price, and a trade covering several trading unit
+    # periods trades its quantity once in each of them.
+    (1146, "minpriceincrement * contractmultiplier"),
+    (2367, "lastqty * tradingunitperiodmultiplier"),
+    (2368, "lastqty * contractmultiplier"),
+    (2369, "lastpx * totaltradeqty"),
+    (2370, "totaltradeqty * contractmultiplier"),
+    # FIX writes a currency as ISO 4217 and in no other source, so a stated
+    # currency states its source too.
+    (2897, "case when currency is not null then '6' end"),
+)
+
+# What the expression grammar spells that is not a column: its keywords,
+# its functions, and the datatype a cast names, which follows `as`.
+EXPRESSION_WORDS = {
+    "and", "as", "between", "case", "cast", "coalesce", "concat", "else", "end", "false",
+    "ilike", "in", "is", "like", "not", "null", "or", "substring", "then", "true", "try_cast",
+    "upper", "when",
+}
+
+
+def expression_columns(text: str) -> list[str]:
+    """The column names one expression reads, in first-seen order: every bare
+    word outside a quoted string that is not a keyword, a function or the
+    datatype a cast names."""
+    unquoted = re.sub(r"'[^']*'", " ", text)
+    columns: list[str] = []
+    previous = ""
+    for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", unquoted):
+        lowered = word.lower()
+        if lowered not in EXPRESSION_WORDS and previous != "as" and lowered not in columns:
+            columns.append(lowered)
+        previous = lowered
+    return columns
+
+
+def attach_derivations(
+    catalog: dict[str, list[dict[str, Any]]], code_records: dict[int, list[dict[str, Any]]]
+) -> dict[int, str]:
+    """Write each derivation onto the field it fills, refusing one that does
+    not resolve against the dictionary it is written into.
+
+    A derivation is read at intake and evaluated on every message, so every
+    reference it makes is proven here: the target tag is a field, and every
+    column the expression names is a field, a group or a crate column of the
+    dictionary. The crate parses and types the text once more when it loads
+    the dictionary. Answers the text written per target tag.
+    """
+    by_tag = {int(field["metadata"]["fix:tag"]): field for field in catalog["fields"]}
+    names = {field["name"] for field in catalog["fields"]}
+    names.update(field["name"] for field in catalog["groups"])
+    names.update(CRATE_COLUMNS)
+    rules = list(DERIVATION_RULES)
+    rules.append((460, product_case(code_records[167])))
+    written: dict[int, str] = {}
+    for tag, text in rules:
+        if tag in written:
+            raise ValueError(f"tag {tag} derives two ways")
+        if tag not in by_tag:
+            raise ValueError(f"derivation for unknown tag {tag}")
+        for column in expression_columns(text):
+            if column not in names:
+                raise ValueError(f"tag {tag}: {column!r} is not a field, a group or a crate column")
+        metadata = by_tag[tag]["metadata"]
+        metadata["fix:derivation"] = text
+        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
+        written[tag] = text
+    return written
+
+
 # Longest first so a longer suffix is never shadowed.
 LATIN = (
     ("appendices", "appendix"),
@@ -1050,6 +1346,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     # whose value is a space-separated list of them: what a replacement rule's
     # constants and `when` are checked against.
     code_values: dict[int, set[str]] = {}
+    code_records: dict[int, list[dict[str, Any]]] = {}
     multi_valued: set[int] = set()
 
     def coded(tag: int, fix_type: str, codes: list[dict[str, Any]]) -> str | None:
@@ -1060,6 +1357,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         if not folded_codes:
             return None
         code_values[tag] = {code["value"] for code in folded_codes}
+        code_records[tag] = folded_codes
         return codes_document(folded_codes)
 
     fields: list[dict[str, Any]] = []
@@ -1168,6 +1466,7 @@ def build(parsed: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         )
     catalog = build_catalog(latest, fields)
     attach_replacements(catalog, code_values, multi_valued)
+    attach_derivations(catalog, code_records)
     return catalog
 
 

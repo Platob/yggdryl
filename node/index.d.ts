@@ -3538,6 +3538,18 @@ export declare class ProtocolField {
    * the regex crate refuses throws leaving the field unchanged.
    */
   set directions(values: Array<FixDirection>)
+  /**
+   * How this field's value is derived from the message where the message
+   * states none: one expression over the message's fields, in its
+   * canonical text, or `null` for a field nothing derives.
+   */
+  get derivation(): string | null
+  /**
+   * Record the derivation; `null` removes the property, and a text that
+   * is not a term, or one past the grammar's budget, throws leaving the
+   * field unchanged.
+   */
+  set derivation(value: string | undefined | null)
   /** The specification's own wording for this field. */
   get description(): string | null
   /** Record the specification's own wording for this field. */

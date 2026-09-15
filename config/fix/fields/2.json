@@ -25,6 +25,7 @@
       "description": "Indicates whether an option contract is a put, call, chooser or undetermined.",
       "display": "PutOrCall",
       "fix:codes": "{\"codes\":[{\"value\":\"0\",\"name\":\"Put\",\"since\":\"4.1\",\"sort\":1,\"doc\":\"Put\"},{\"value\":\"1\",\"name\":\"Call\",\"since\":\"4.1\",\"sort\":2,\"doc\":\"Call\"},{\"value\":\"2\",\"name\":\"Other\",\"since\":\"5.0.2\",\"ep\":232,\"sort\":3,\"doc\":\"Other\"},{\"value\":\"3\",\"name\":\"Chooser\",\"since\":\"5.0.2\",\"ep\":238,\"sort\":4,\"doc\":\"Chooser\"}]}",
+      "fix:derivation": "case when cficode ilike 'OC%' then 1 when cficode ilike 'OP%' then 0 when cficode ilike 'HC%' then 1 when cficode ilike 'HP%' then 0 end",
       "fix:lineage": "{\"entries\":[{\"since\":\"4.1\",\"name\":\"putorcall\",\"type\":{\"type\":\"int32\"}}]}",
       "fix:tag": "201"
     }

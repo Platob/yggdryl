@@ -15,6 +15,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::iter::FusedIterator;
+use std::sync::{Arc, OnceLock};
 
 use smol_str::format_smolstr;
 
@@ -274,7 +275,6 @@ pub(super) fn canonical_id(field: &Field) -> Result<FixId> {
 }
 
 /// FIX field definitions resolved by identity, tag or folded name.
-#[derive(Clone)]
 pub struct FixRegistry {
     fields: Vec<Field>,
     pub(super) catalog: super::catalog::Catalog,
@@ -294,6 +294,12 @@ pub struct FixRegistry {
     identities: Vec<Option<(i32, FixId)>>,
     newest: Option<FixPedigree>,
     resettle_newest: bool,
+    /// The `fix:derivation` of every field, compiled once on the first
+    /// enrichment or row fill and shared by every codec and message reading
+    /// this registry; emptied by every change to the fields or the catalog,
+    /// so an edited derivation is the one the next reader evaluates
+    /// (decision 38).
+    derivations: OnceLock<Arc<super::enrich::Derivations>>,
 }
 
 impl Default for FixRegistry {
@@ -344,6 +350,7 @@ impl FixRegistry {
             identities: Vec::new(),
             newest: None,
             resettle_newest: false,
+            derivations: OnceLock::new(),
         };
         match super::fix_crate_fields() {
             Ok(fields) => {
@@ -1244,6 +1251,7 @@ impl FixRegistry {
         }
         self.departing(position);
         self.unindex(position, position);
+        self.derivations.take();
         let removed = self.fields.swap_remove(position);
         let departed = self.identities.swap_remove(position);
         if position != last {
@@ -1484,6 +1492,9 @@ impl FixRegistry {
     }
 
     fn index(&mut self, position: usize) {
+        // Every change to the fields lands here, so what was compiled off
+        // them is forgotten here too.
+        self.derivations.take();
         let Some(field) = self.fields.get(position) else {
             return;
         };
@@ -1617,6 +1628,65 @@ impl FixRegistry {
     #[must_use]
     pub fn msgdirection(&self) -> super::MsgDirection {
         super::MsgDirection::from_registry(self)
+    }
+
+    /// The `fix:derivation` of every field, compiled once and shared
+    /// (decision 38).
+    ///
+    /// Built from what the registry holds on the first ask and kept until a
+    /// field or a definition changes, so a stream of a million messages
+    /// compiles its dictionary's derivations once and a registry edit is
+    /// what the next reader evaluates. Cached here rather than on the codec because a row
+    /// fill - [`FixMsg::into_row`](super::FixMsg::into_row), which has no
+    /// codec in hand - evaluates the crate columns' derivations through the
+    /// same compiled list, and a mutation pays a pointer reset and nothing
+    /// else. A refusal is not kept: a derivation naming a field the
+    /// dictionary lacks refuses every ask until the dictionary names it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] naming the field whose derivation
+    /// reads a column no field or group of this registry answers to, or
+    /// whose text a load did not validate.
+    pub(super) fn derivations(&self) -> Result<Arc<super::enrich::Derivations>> {
+        if let Some(held) = self.derivations.get() {
+            return Ok(Arc::clone(held));
+        }
+        let compiled = Arc::new(super::enrich::Derivations::compile(self)?);
+        Ok(Arc::clone(self.derivations.get_or_init(|| compiled)))
+    }
+
+    /// Forgets the compiled derivations: what the next reader evaluates is
+    /// compiled off the fields and the catalog as they stand then.
+    ///
+    /// Every field change reaches [`Self::index`] and forgets them there; a
+    /// catalog change that lands without staging a clone calls this.
+    pub(super) fn forget_derivations(&mut self) {
+        self.derivations.take();
+    }
+}
+
+impl Clone for FixRegistry {
+    /// A clone holds the same fields and catalog and none of what was
+    /// compiled off them: every mutation stages itself on a clone before
+    /// replacing the registry, so a compiled derivation never outlives the
+    /// dictionary it was compiled from, and a clone taken to read compiles
+    /// its own once.
+    fn clone(&self) -> Self {
+        Self {
+            fields: self.fields.clone(),
+            catalog: self.catalog.clone(),
+            ids: self.ids.clone(),
+            tags: self.tags.clone(),
+            alternate_tags: self.alternate_tags.clone(),
+            names: self.names.clone(),
+            aliases: self.aliases.clone(),
+            positions_by_id: self.positions_by_id.clone(),
+            identities: self.identities.clone(),
+            newest: self.newest,
+            resettle_newest: self.resettle_newest,
+            derivations: OnceLock::new(),
+        }
     }
 }
 

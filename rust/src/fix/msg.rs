@@ -143,6 +143,20 @@ pub(super) struct Write {
     pub(super) value: Scalar,
 }
 
+/// Adds one staged write to the batch, the later of two writes to one child
+/// standing, whether both reached it or both would append it.
+fn stage(writes: &mut Vec<Write>, write: Write) {
+    let pending = writes.iter().position(|held| match (held.at, write.at) {
+        (Some(held), Some(at)) => held == at,
+        (None, None) => held.field.name() == write.field.name(),
+        _ => false,
+    });
+    match pending {
+        Some(pending) => writes[pending] = write,
+        None => writes.push(write),
+    }
+}
+
 /// What one landed write does to the tag and group indexes.
 pub(super) struct Indexed {
     retired_tag: Option<i32>,
@@ -642,43 +656,78 @@ impl FixMsg {
         let mut writes: Vec<Write> = Vec::new();
         for (key, value) in values {
             let key = key.into();
-            let (at, mut field) = self.target(&key)?;
-            check(&key, &field)?;
-            if field
-                .as_fix()
-                .tag()?
-                .is_some_and(super::identity::is_mandatory)
-                && value.is_null()
-            {
-                return Err(super::identity::refused(
-                    field.name(),
-                    "a non-null mandatory value",
-                    "null",
-                ));
-            }
-            let value = if value.is_null() {
-                field.set_nullable(true);
-                Scalar::Null
-            } else {
-                field.scalar(value)?
-            };
-            // The later of two writes to one child stands, whether both
-            // reached it or both would append it.
-            let pending = writes.iter().position(|held| match (held.at, at) {
-                (Some(held), Some(at)) => held == at,
-                (None, None) => held.field.name() == field.name(),
-                _ => false,
-            });
-            let write = Write { at, field, value };
-            match pending {
-                Some(pending) => writes[pending] = write,
-                None => writes.push(write),
-            }
+            stage(&mut writes, self.staged(&key, value, &check)?);
         }
         if writes.is_empty() {
             return Ok(());
         }
         self.write_all(writes)
+    }
+
+    /// Writes every value the field it reaches can hold, with one rebuild,
+    /// answering how many landed.
+    ///
+    /// The lenient twin of [`Self::set_many`], for a pass whose answers are
+    /// best effort: a value the target refuses - an identifier whose check
+    /// digit does not close, a spelling its code set does not read - is
+    /// silence rather than a refusal, exactly as one refused `set` is to the
+    /// [enriching pass](super::FixCodec::enrich_message), and every other
+    /// value lands as `set_many` lands it. Nothing else is lenient: the
+    /// rebuild's refusal, which no single value causes, is still returned
+    /// and leaves the message unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the written children do
+    /// not make a root.
+    pub(super) fn set_each<'key, I, K>(&mut self, values: I) -> Result<usize>
+    where
+        I: IntoIterator<Item = (K, Scalar)>,
+        K: Into<FixKey<'key>>,
+    {
+        let mut writes: Vec<Write> = Vec::new();
+        for (key, value) in values {
+            let key = key.into();
+            if let Ok(write) = self.staged(&key, value, &|_, _| Ok(())) {
+                stage(&mut writes, write);
+            }
+        }
+        let landed = writes.len();
+        if landed > 0 {
+            self.write_all(writes)?;
+        }
+        Ok(landed)
+    }
+
+    /// One value resolved and typed for the child its key reaches, exactly
+    /// as [`Self::set`] resolves and types one, against the row as it stands.
+    fn staged<'key>(
+        &self,
+        key: &FixKey<'key>,
+        value: Scalar,
+        check: &impl Fn(&FixKey<'key>, &Field) -> Result<()>,
+    ) -> Result<Write> {
+        let (at, mut field) = self.target(key)?;
+        check(key, &field)?;
+        if field
+            .as_fix()
+            .tag()?
+            .is_some_and(super::identity::is_mandatory)
+            && value.is_null()
+        {
+            return Err(super::identity::refused(
+                field.name(),
+                "a non-null mandatory value",
+                "null",
+            ));
+        }
+        let value = if value.is_null() {
+            field.set_nullable(true);
+            Scalar::Null
+        } else {
+            field.scalar(value)?
+        };
+        Ok(Write { at, field, value })
     }
 
     /// [`Self::set`], consuming the message.

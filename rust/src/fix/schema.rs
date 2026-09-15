@@ -823,16 +823,19 @@ impl super::FixMsg {
     /// One column's value, derived where the message does not carry it.
     ///
     /// Three sources, in this order. What the message actually said, always,
-    /// because a stated value is never overridden. Then the derived facts
-    /// this crate computes - the version, the ticker and the partition.
-    /// Then the lift's own enrichment, which fills a column
-    /// the message did not state but forced: a buy order at a price is a
-    /// party willing to pay it, so a bid lane it never wrote is still true of
-    /// it, and a one-sided quote implies the side it never wrote either.
+    /// because a stated value is never overridden. Then the lift's own
+    /// enrichment, which fills a column the message did not state but
+    /// forced: a buy order at a price is a party willing to pay it, so a bid
+    /// lane it never wrote is still true of it, and a one-sided quote implies
+    /// the side it never wrote either. Then the derived facts this crate
+    /// computes - the version, the ticker and the partition here, and every
+    /// crate column whose field declares a `fix:derivation` through the one
+    /// evaluator the [enriching pass](super::enrich) runs, so `isincode`,
+    /// `miccode` and `state` fill a row of an unenriched message exactly as
+    /// the pass would fill the message (decision 38).
     ///
     /// Enrichment fills and never overwrites, so a column a venue did state
     /// is that venue's answer whatever the derivation would have said.
-    ///
     fn column_value(&self, tag: i32) -> crate::Scalar {
         // A stated value wins - a stated null is a value that would not
         // type, and the derivation still answers for it.
@@ -868,79 +871,19 @@ impl super::FixMsg {
             self.symbol_ticker()
         } else if is(super::TIMEPARTITION_TAG_NAME) {
             partition_of(self.updatedat())
-        } else if is(super::ISINCODE_TAG_NAME) {
-            self.isin_code()
-        } else if is(super::MICCODE_TAG_NAME) {
-            self.mic_code()
-        } else if is(super::STATE_TAG_NAME) {
-            self.state()
+        } else if super::is_crate_tag(tag) {
+            // The registry compiles every derivation once and a refused
+            // compile is the pass's to report; a row answers null for the
+            // column and nothing more, as it does for any derivation that
+            // answers nothing.
+            self.registry()
+                .derivations()
+                .ok()
+                .and_then(|derivations| derivations.fill(tag, self))
+                .unwrap_or(crate::Scalar::Null)
         } else {
             crate::Scalar::Null
         }
-    }
-
-    /// The instrument's ISIN: `SecurityID(48)` under an ISIN source, else the
-    /// `SecurityAltID(455)` whose source says ISIN.
-    ///
-    /// The message's own `isincode` answered before this was asked, so this
-    /// reads the standard tags a venue states one in.
-    fn isin_code(&self) -> crate::Scalar {
-        if self.get_by_tag(22).and_then(crate::Scalar::as_str) == Some("4") {
-            if let Some(held) = self.get_by_tag(48).filter(|held| !held.is_null()) {
-                return held.clone();
-            }
-        }
-        self.group_member_where(454, 455, 456, "4")
-            .unwrap_or(crate::Scalar::Null)
-    }
-
-    /// The market the message names, as the MIC it states first: the
-    /// exchange the instrument is listed on, the destination it was routed to,
-    /// or the market it last traded on.
-    fn mic_code(&self) -> crate::Scalar {
-        [207, 100, 30]
-            .into_iter()
-            .find_map(|tag| self.get_by_tag(tag).filter(|held| !held.is_null()).cloned())
-            .unwrap_or(crate::Scalar::Null)
-    }
-
-    /// The order's state: `OrdStatus(39)`, else `ExecType(150)`, both typed
-    /// as the crate's one lifecycle vocabulary.
-    fn state(&self) -> crate::Scalar {
-        [39, 150]
-            .into_iter()
-            .find_map(|tag| self.get_by_tag(tag).filter(|held| !held.is_null()).cloned())
-            .unwrap_or(crate::Scalar::Null)
-    }
-
-    /// One member of the first occurrence of a group whose other member
-    /// states `wanted`: the `455` beside a `456` of `4`, say.
-    pub(super) fn group_member_where(
-        &self,
-        group: i32,
-        member: i32,
-        by: i32,
-        wanted: &str,
-    ) -> Option<crate::Scalar> {
-        // `group` is the counter's tag, and a group is reached by the counter
-        // it declares rather than by that tag: the tag names the counter's own
-        // column, which holds a count and not the occurrences.
-        let at = self.index_of_group(group)?;
-        let declared = item_fields(self.as_field().get_field_at(at)?)?;
-        let position = |tag: i32| {
-            declared
-                .iter()
-                .position(|field| field.as_fix().tag().ok().flatten() == Some(tag))
-        };
-        let (member, by) = (position(member)?, position(by)?);
-        self.as_value()
-            .get(at)?
-            .as_sequence()?
-            .iter()
-            .filter_map(crate::Scalar::as_sequence)
-            .find(|occurrence| occurrence.get(by).and_then(crate::Scalar::as_str) == Some(wanted))
-            .and_then(|occurrence| occurrence.get(member).cloned())
-            .filter(|held| !held.is_null())
     }
 }
 

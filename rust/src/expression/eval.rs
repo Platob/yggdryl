@@ -42,6 +42,10 @@ use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 pub(crate) struct Row<'context> {
     values: Option<&'context [Scalar]>,
     holder: Option<&'context dyn Attributes>,
+    /// Whether a column past the end of `values` reads as null rather than
+    /// as a row missing a bound column: a working row that holds only the
+    /// leading columns of the schema it was bound against.
+    padded: bool,
 }
 
 impl<'context> Row<'context> {
@@ -49,7 +53,20 @@ impl<'context> Row<'context> {
         values: Option<&'context [Scalar]>,
         holder: Option<&'context dyn Attributes>,
     ) -> Self {
-        Self { values, holder }
+        Self {
+            values,
+            holder,
+            padded: false,
+        }
+    }
+
+    /// A row whose trailing columns are absent and read as null.
+    pub(crate) const fn padded(values: &'context [Scalar]) -> Self {
+        Self {
+            values: Some(values),
+            holder: None,
+            padded: true,
+        }
     }
 }
 
@@ -76,10 +93,11 @@ impl Node {
                 let values = row
                     .values
                     .ok_or_else(|| missing("a row to read a column from"))?;
-                values
-                    .get(*index)
-                    .cloned()
-                    .ok_or_else(|| missing("a row with every bound column"))
+                match values.get(*index) {
+                    Some(value) => Ok(value.clone()),
+                    None if row.padded => Ok(Scalar::Null),
+                    None => Err(missing("a row with every bound column")),
+                }
             }
             Kind::Path(base, steps) => {
                 let mut field = &base.field;
@@ -841,6 +859,19 @@ fn truncate(value: &Scalar, unit: &Scalar, dtype: &DataType) -> Result<Scalar> {
     Ok(narrow(dtype, held.div_euclid(width) * width))
 }
 
+/// A value read as the float a float target takes: a float of any width,
+/// else a whole number, which is what `price > 0` compares a float column
+/// with. A constant coerces into the operand it meets, and the bind's
+/// round-trip check is what refuses a whole number a float cannot hold.
+fn floating(value: &Scalar) -> Option<f64> {
+    value.as_f64().or_else(|| {
+        value
+            .as_i128()
+            .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
+            .map(|held| held as f64)
+    })
+}
+
 /// Convert one value into a datatype, logically rather than physically.
 ///
 /// This is the crate's one value-level conversion, and both the bind-time
@@ -912,15 +943,15 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 None => refuse("a boolean"),
             },
         },
-        DataType::Float16 => match value.as_f64() {
+        DataType::Float16 => match floating(value) {
             Some(held) => Ok(Scalar::from(half::f16::from_f64(held))),
             None => refuse("a number"),
         },
-        DataType::Float32 => match value.as_f64() {
+        DataType::Float32 => match floating(value) {
             Some(held) => Ok(Scalar::from(held as f32)),
             None => refuse("a number"),
         },
-        DataType::Float64 => match value.as_f64() {
+        DataType::Float64 => match floating(value) {
             Some(held) => Ok(Scalar::from(held)),
             None => refuse("a number"),
         },

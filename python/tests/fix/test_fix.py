@@ -207,8 +207,41 @@ def test_typed_vocabulary_is_only_on_the_fix_view() -> None:
             view.directions
         with pytest.raises(TypeError, match=scheme):
             view.directions = [{"code": "S", "patterns": ["^TX "]}]
+        with pytest.raises(TypeError, match=scheme):
+            view.derivation
+        with pytest.raises(TypeError, match=scheme):
+            view.derivation = "orderqty - cumqty"
     # The mapping protocol still works on every view, including this one.
     assert field.protocol("fix")["tag"] == "55"
+
+
+def test_a_derivation_crosses_as_canonical_text() -> None:
+    """One term over the message's fields, stored as its canonical
+    spelling; None removes it, and a text that is not a term refuses."""
+    field = Field("leavesqty", "float64")
+    field.fix.tag = 151
+    assert field.fix.derivation is None
+
+    field.fix.derivation = "orderqty-cumqty"
+    assert field.fix.derivation == "orderqty - cumqty"
+    assert field.metadata["fix:derivation"] == "orderqty - cumqty"
+
+    with pytest.raises(ValueError):
+        field.fix.derivation = "orderqty -"
+    assert field.fix.derivation == "orderqty - cumqty"
+
+    # An edited derivation is what the reader fills by (decision 38).
+    registry = FixRegistry.from_handle(SEED)
+    leaves = registry.get_field_by_tag(151)
+    leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
+    registry.update(leaves)
+    codec = _fixed(registry)
+    held = codec.enrich_message(next(codec.parse_line(b"8=FIX.4.4|35=8|37=A|38=100|14=0|10=0|")))
+    assert held.by_tag(151).as_py() == 200.0
+
+    field.fix.derivation = None
+    assert field.fix.derivation is None
+    assert "fix:derivation" not in field.metadata
 
 
 def test_direction_rules_cross_as_a_list() -> None:

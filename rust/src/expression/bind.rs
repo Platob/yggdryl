@@ -350,6 +350,33 @@ impl Bound {
         self.node.eval(&Row::new(Some(values), None))
     }
 
+    /// Evaluate this term over the leading columns of a row.
+    ///
+    /// `values` holds the bound schema's columns in order and may stop
+    /// short: a column past its end reads as null. This is the door a pass
+    /// that fills a row evaluates through - the message's own columns first,
+    /// then the columns the schema was widened with, held only where an
+    /// answer has landed - so a row is never rebuilt to be read.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `values` holds more columns than the schema, a
+    /// strict cast refuses a value, or checked arithmetic overflows, divides
+    /// by zero, or cannot represent an exact decimal result.
+    pub(crate) fn eval_padded(&self, values: &[Scalar]) -> Result<Scalar> {
+        if values.len() > self.schema.field_len() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new(self.schema.name()),
+                reason: format_smolstr!(
+                    "expected at most {} column values, got {}",
+                    self.schema.field_len(),
+                    values.len()
+                ),
+            });
+        }
+        self.node.eval(&Row::padded(values))
+    }
+
     /// Evaluate this term for one row alongside a holder.
     ///
     /// # Errors
@@ -1028,7 +1055,10 @@ fn fits(dtype: &DataType, held: &Literal) -> bool {
     };
     // Text is read, not rounded: a spelling the datatype parses is exactly
     // the value it parses to, whatever canonical spelling it prints back as.
-    if super::typing::is_text(held.dtype()) && !super::typing::is_text(dtype) {
+    // A registered code is text by kind and reads a spelling the same way -
+    // `state` reads the wire code `F` as the state it names - so it stands
+    // with the datatypes that parse rather than with the text that compares.
+    if super::typing::is_text(held.dtype()) && (!super::typing::is_text(dtype) || dtype.is_code()) {
         return true;
     }
     // A conversion that cannot be undone lost something, and a lost digit

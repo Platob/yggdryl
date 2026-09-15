@@ -631,6 +631,7 @@
     "metadata": {
       "description": "Minimum price increment amount associated with MinPriceIncrement(969). For listed derivatives, the value can be calculated by multiplying MinPriceIncrement(969) with ContractMultiplier(231).",
       "display": "MinPriceIncrementAmount",
+      "fix:derivation": "minpriceincrement * contractmultiplier",
       "fix:lineage": "{\"entries\":[{\"since\":\"5.0\",\"name\":\"minpriceincrementamount\",\"type\":{\"type\":\"float64\"}}]}",
       "fix:tag": "1146"
     }
