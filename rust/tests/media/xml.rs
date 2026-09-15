@@ -11,7 +11,7 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{DataType, Field, IOBase, IOMedia, Scalar, Url};
 
-fn handle(name: &str) -> Buffer {
+fn handle_named(name: &str) -> Buffer {
     Buffer::new().with_media_type(
         Url::from_str(&format!("file:///{name}"))
             .unwrap()
@@ -20,7 +20,7 @@ fn handle(name: &str) -> Buffer {
 }
 
 fn written(name: &str, document: &str) -> Buffer {
-    let mut handle = handle(name);
+    let mut handle = handle_named(name);
     handle.write_all_bytes(document.as_bytes()).unwrap();
     handle
 }
@@ -109,7 +109,7 @@ fn rows_written_as_xml_read_back_as_the_rows_that_were_written() {
     )
     .unwrap();
 
-    let mut handle = handle("out.xml");
+    let mut handle = handle_named("out.xml");
     let options = handle.record_options().unwrap().with_field(schema);
     handle
         .overwrite_arrow_reader(
@@ -136,7 +136,7 @@ fn rows_written_as_xml_read_back_as_the_rows_that_were_written() {
 
 #[test]
 fn an_empty_handle_is_an_empty_table_rather_than_a_refusal() {
-    let handle = handle("empty.xml");
+    let handle = handle_named("empty.xml");
     let options = handle.record_options().unwrap();
     assert_eq!(handle.row_size().unwrap(), 0);
     let rows: usize = handle
@@ -186,7 +186,7 @@ fn a_document_reads_through_the_content_coding_its_name_declares() {
         .unwrap()
         .required_field("row");
     let value = Scalar::from_sequence([Scalar::from_record([("id", Scalar::from("1"))]).unwrap()]);
-    let mut handle = handle("gzipped.xml.gz");
+    let mut handle = handle_named("gzipped.xml.gz");
     let options = handle.record_options().unwrap().with_field(schema.clone());
     handle
         .write_arrow(
@@ -206,4 +206,55 @@ fn a_field_declared_over_a_document_is_what_column_size_answers() {
     let declared = Field::from_str("r: struct<a: utf8> not null").unwrap();
     let options = handle.record_options().unwrap().with_field(declared);
     assert_eq!(handle.read_arrow_field(&options).unwrap().field_len(), 1);
+}
+
+#[test]
+fn a_list_column_survives_a_round_trip_however_many_times_a_row_repeats_it() {
+    // XML spells a repeat by repeating, so a list column arrives as one value
+    // when a row carried one and as a sequence when it carried more. Only the
+    // declaration knows which, and a list of one is the single reading.
+    let schema = Field::from_str("row: struct<L: list<item: utf8>> not null").unwrap();
+    let handle = written(
+        "list.xml",
+        "<rows><row><L>a</L></row><row><L>b</L><L>c</L></row><row/></rows>",
+    );
+    let options = handle.record_options().unwrap().with_field(schema.clone());
+    let rows: usize = handle
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(rows, 3);
+
+    // And the same value written back reads back equal.
+    let value = handle.read_arrow(Some(&options)).unwrap();
+    let mut target = handle_named("roundtrip.xml");
+    target
+        .overwrite_arrow_reader(value.into_reader().unwrap(), &options)
+        .unwrap();
+    let encoded = String::from_utf8(target.read_all_bytes().unwrap()).unwrap();
+    let back: usize = target
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(|batch| batch.unwrap().num_rows())
+        .sum();
+    assert_eq!(back, 3, "{encoded}");
+}
+
+#[test]
+fn the_byte_budget_bounds_a_record_read_as_well_as_a_value_read() {
+    let document = format!("<rows>{}</rows>", "<r><a>0123456789</a></r>".repeat(200));
+    let handle = written("big.xml", &document);
+    let mut options = handle.record_options().unwrap();
+    let RecordOptions::Xml(xml) = &mut options else {
+        panic!("expected XML options");
+    };
+    xml.limits = yggdryl::Limits::new(64, 64, 1_000_000, 1_000_000);
+    match handle.read_arrow_reader(&options) {
+        Ok(_) => panic!("expected the byte budget to bound the read"),
+        Err(error) => assert!(
+            error.to_string().contains("input byte limit exceeded"),
+            "{error}"
+        ),
+    }
 }

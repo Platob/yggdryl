@@ -178,3 +178,161 @@ fn a_name_no_element_can_be_called_is_refused_rather_than_written() {
         .to_string();
     assert!(error.contains("an XML element can be called"), "{error}");
 }
+
+#[test]
+fn characters_beside_attributes_are_the_elements_own_value() {
+    // `<Amt Ccy="EUR">9.50</Amt>` is the commonest shape in a real document
+    // and the text is the point of it; dropping it would be silent loss.
+    let value = document(r#"<Amt Ccy="EUR">9.50</Amt>"#).unwrap();
+    assert_eq!(
+        value.get_key_str("Ccy").and_then(Scalar::as_str),
+        Some("EUR")
+    );
+    assert_eq!(
+        value.get_key_str("value").and_then(Scalar::as_str),
+        Some("9.50")
+    );
+
+    // Characters beside *elements* are still mixed content and still refused.
+    let error = document("<r>text<c/></r>").unwrap_err().to_string();
+    assert!(error.contains("got both"), "{error}");
+
+    // An attribute already called `value` is claiming the name twice.
+    let error = document(r#"<Amt value="x">9.50</Amt>"#)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("got an attribute beside"), "{error}");
+}
+
+#[test]
+fn a_prefixed_sibling_is_skipped_without_eating_the_document() {
+    // `read_to_end` matches the end tag as written, so a local name would
+    // never find `</p:meta>` and would run to the end of the input.
+    let (name, rows) = read_rows(
+        b"<feed xmlns:p='u'><p:meta>x</p:meta><Trade><id>1</id></Trade></feed>",
+        Limits::default(),
+        Some("Trade"),
+    )
+    .unwrap();
+    assert_eq!(name, "Trade");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].get_key_str("id").and_then(Scalar::as_str),
+        Some("1")
+    );
+}
+
+#[test]
+fn a_named_row_element_is_found_wherever_the_wrapper_puts_it() {
+    let (_, rows) = read_rows(
+        b"<feed><data><Trade><id>1</id></Trade><Trade><id>2</id></Trade></data></feed>",
+        Limits::default(),
+        Some("Trade"),
+    )
+    .unwrap();
+    assert_eq!(rows.len(), 2);
+}
+
+#[test]
+fn the_record_walk_refuses_content_after_the_document_element() {
+    for input in [
+        "<rows><r><a>1</a></r></rows><more/>",
+        "<rows><r><a>1</a></r></rows>junk",
+        "<rows/>junk",
+        "<rows/><other/>",
+    ] {
+        let error = read_rows(input.as_bytes(), Limits::default(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("content after it"), "{input:?} gave {error}");
+    }
+}
+
+#[test]
+fn rows_bound_in_two_namespaces_are_two_vocabularies() {
+    let error = read_rows(
+        b"<rows xmlns:a='u1' xmlns:b='u2'><a:row><x>1</x></a:row><b:row><x>2</x></b:row></rows>",
+        Limits::default(),
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("expected one namespace for the row"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_prefix_nothing_declared_is_a_broken_document_rather_than_a_column() {
+    // Two undeclared prefixes would otherwise fold onto one local name and
+    // merge two vocabularies into one column without a word.
+    for input in [
+        "<r><p:x>1</p:x><q:x>2</q:x></r>",
+        "<p:a/>",
+        r#"<a p:v="1"/>"#,
+    ] {
+        let error = document(input).unwrap_err().to_string();
+        assert!(error.contains("bound to nothing"), "{input:?} gave {error}");
+    }
+}
+
+#[test]
+fn a_document_carries_only_what_xml_can_carry() {
+    // XML 1.0's Char production, on the way in and on the way out. Neither a
+    // raw byte nor a reference can spell these, so both are refused.
+    for input in [
+        "<a>\u{0}</a>",
+        "<a>&#0;</a>",
+        "<a>&#x8;</a>",
+        "<a>&#xFFFF;</a>",
+    ] {
+        assert!(document(input).is_err(), "{input:?} was accepted");
+    }
+    // A malformed reference is not a character either.
+    for input in ["<a>&#X41;</a>", "<a>&#+65;</a>", "<a>&#x+41;</a>"] {
+        assert!(document(input).is_err(), "{input:?} was accepted");
+    }
+    let error = crate::media::xml::into_utf8("a", &Scalar::from("\u{0}"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("XML can carry"), "{error}");
+}
+
+#[test]
+fn line_endings_are_normalized_before_the_document_is_read() {
+    // A conforming processor folds CRLF and a lone CR into one newline before
+    // parsing, CDATA included, so two documents differing only in line ending
+    // are one document.
+    for input in ["<a>x\r\ny</a>", "<a>x\ry</a>", "<a><![CDATA[x\ry]]></a>"] {
+        assert_eq!(document(input).unwrap(), Scalar::from("x\ny"), "{input:?}");
+    }
+}
+
+#[test]
+fn a_document_declaring_another_charset_is_refused_rather_than_misread() {
+    // Text crosses the boundary once, before this parser runs. A prolog naming
+    // a different charset is the document saying it is not the one decoded.
+    let error =
+        crate::media::xml::from_bytes(b"<?xml version=\"1.0\" encoding=\"windows-1252\"?><a>x</a>")
+            .unwrap_err()
+            .to_string();
+    assert!(error.contains("already decoded to UTF-8"), "{error}");
+
+    // The one it is in is fine, spelled either way.
+    for declaration in ["UTF-8", "utf8"] {
+        let input = format!("<?xml version=\"1.0\" encoding=\"{declaration}\"?><a>x</a>");
+        assert_eq!(document(&input).unwrap(), Scalar::from("x"));
+    }
+}
+
+#[test]
+fn every_name_a_read_can_produce_a_write_can_spell() {
+    // U+00B7 is a legal XML NameChar, so a column read under that name has to
+    // be writable again.
+    let value = document("<r><a\u{b7}b>1</a\u{b7}b></r>").unwrap();
+    assert!(value.get_key_str("a\u{b7}b").is_some());
+    let written = crate::media::xml::into_utf8("r", &value).unwrap();
+    assert!(written.contains("a\u{b7}b"), "{written}");
+    assert_eq!(document(&written).unwrap(), value);
+}

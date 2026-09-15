@@ -33,12 +33,39 @@
 
 use std::io::Write;
 
-use smol_str::format_smolstr;
+use smol_str::{SmolStr, format_smolstr};
 
 use crate::text::{Formatting, Indent};
 use crate::{Error, Result, Scalar};
 
 use super::reader::quoted;
+
+/// Refuse a value XML cannot carry at all.
+///
+/// XML 1.0's `Char` production excludes most of the C0 controls and the two
+/// non-characters at the end of the BMP, and a reference cannot spell them
+/// either - `&#0;` is as illegal as a raw NUL. So there is no escape to reach
+/// for and a refusal is the only correct answer, exactly as it is for a column
+/// name no element can be called.
+fn check_text(value: &str) -> Result<()> {
+    let Some(character) = value.chars().find(|character| {
+        let code = *character as u32;
+        !(matches!(code, 0x9 | 0xA | 0xD)
+            || matches!(code, 0x20..=0xD7FF)
+            || matches!(code, 0xE000..=0xFFFD)
+            || matches!(code, 0x10000..=0x10FFFF))
+    }) else {
+        return Ok(());
+    };
+    Err(Error::InvalidRecord {
+        path: SmolStr::new_static("$"),
+        reason: format_smolstr!(
+            "expected a value XML can carry, got U+{:04X}, which no document and no character \
+             reference can spell",
+            character as u32
+        ),
+    })
+}
 
 /// Escape one text node's characters into `out`.
 pub(crate) fn escape_text(value: &str, out: &mut String) {
@@ -53,20 +80,31 @@ pub(crate) fn escape_text(value: &str, out: &mut String) {
     }
 }
 
+/// Whether a scalar may open an XML name.
+const fn is_name_start(character: char) -> bool {
+    matches!(character as u32,
+        0x41..=0x5A | 0x5F | 0x61..=0x7A | 0xC0..=0xD6 | 0xD8..=0xF6 | 0xF8..=0x2FF
+        | 0x370..=0x37D | 0x37F..=0x1FFF | 0x200C..=0x200D | 0x2070..=0x218F
+        | 0x2C00..=0x2FEF | 0x3001..=0xD7FF | 0xF900..=0xFDCF | 0xFDF0..=0xFFFD
+        | 0x10000..=0xEFFFF)
+}
+
+/// Whether a scalar may continue an XML name.
+const fn is_name_char(character: char) -> bool {
+    is_name_start(character)
+        || matches!(character as u32,
+            0x2D | 0x2E | 0x30..=0x39 | 0xB7 | 0x300..=0x36F | 0x203F..=0x2040)
+}
+
 /// Whether a name can be written as an XML element or attribute name.
 ///
 /// The writer validates, because quick-xml's does not: it would emit an
-/// ill-formed document rather than refuse one. This is the production for
-/// `Name` narrowed to what a column can be called.
+/// ill-formed document rather than refuse one. This is XML's own `Name`
+/// production minus the colon, which would spell a namespace prefix nothing
+/// here declared. Anything a read can name a column, a write can spell.
 fn is_name(value: &str) -> bool {
     let mut characters = value.chars();
-    let Some(first) = characters.next() else {
-        return false;
-    };
-    if !(first.is_alphabetic() || first == '_') {
-        return false;
-    }
-    characters.all(|character| character.is_alphanumeric() || matches!(character, '_' | '-' | '.'))
+    characters.next().is_some_and(is_name_start) && characters.all(is_name_char)
 }
 
 /// Refuse a column whose name no document can spell.
@@ -183,6 +221,7 @@ fn write_element(
     formatting: Formatting,
 ) -> Result<()> {
     check_name(name)?;
+    let indented_start = out.len();
     indent(out, depth, formatting);
     // A null is absence, and absence is the element simply not being there -
     // except at a row's own level, where the row still has to exist.
@@ -197,7 +236,10 @@ fn write_element(
         Scalar::Sequence(values) => {
             // A sequence is a repeat of this element, not an element holding
             // a list, so the name is written once per item.
+            // The caller already indented, so the first item must not indent
+            // a second time.
             let values = values.as_slice();
+            out.truncate(indented_start);
             for (index, item) in values.iter().enumerate() {
                 if index > 0 && !matches!(formatting.indent(), Indent::None) {
                     out.push('\n');
@@ -208,6 +250,7 @@ fn write_element(
         }
         other => {
             let text = leaf_text(other)?;
+            check_text(&text)?;
             out.push('<');
             out.push_str(name);
             out.push('>');

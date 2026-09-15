@@ -77,6 +77,9 @@ fn is_namespace_declaration(name: QName<'_>) -> bool {
 pub(crate) struct Name {
     local: SmolStr,
     namespace: Option<SmolStr>,
+    /// The name exactly as the document wrote it, prefix included. The parser
+    /// matches an end tag against this, and a write spells it back.
+    raw: SmolStr,
 }
 
 impl Name {
@@ -91,6 +94,61 @@ impl Name {
     }
 }
 
+/// Whether a scalar is one XML 1.0 can carry at all.
+///
+/// XML 1.0's `Char` production excludes most of the C0 controls and the two
+/// non-characters at the end of the BMP. A document holding one is not a
+/// document, and neither a reference nor an escape can spell it, so this is
+/// the one question that has no best-effort answer.
+const fn is_xml_char(code: u32) -> bool {
+    matches!(code, 0x9 | 0xA | 0xD)
+        || matches!(code, 0x20..=0xD7FF)
+        || matches!(code, 0xE000..=0xFFFD)
+        || matches!(code, 0x10000..=0x10FFFF)
+}
+
+/// Refuse a run holding a scalar XML cannot carry.
+fn check_chars(run: &str, position: usize, what: &str) -> Result<()> {
+    match run
+        .chars()
+        .find(|character| !is_xml_char(*character as u32))
+    {
+        None => Ok(()),
+        Some(character) => Err(codec_error(
+            position,
+            format_smolstr!(
+                "expected {what} to hold characters XML can carry, got U+{:04X}",
+                character as u32
+            ),
+        )),
+    }
+}
+
+/// Apply XML 1.0 line-ending normalization to one run.
+///
+/// A conforming processor translates every `\r\n` and every remaining `\r`
+/// into a single `\n` before parsing, CDATA included, so two documents that
+/// differ only in line ending are the same document. Borrowing is the common
+/// case: a run with no carriage return is returned untouched.
+fn normalize_newlines(run: &str) -> std::borrow::Cow<'_, str> {
+    if !run.contains('\r') {
+        return std::borrow::Cow::Borrowed(run);
+    }
+    let mut out = String::with_capacity(run.len());
+    let mut characters = run.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\r' {
+            if characters.peek() == Some(&'\n') {
+                characters.next();
+            }
+            out.push('\n');
+        } else {
+            out.push(character);
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
 /// Read one borrowed byte run as the text it claims to be.
 fn text_of(bytes: &[u8], position: usize, what: &str) -> Result<SmolStr> {
     std::str::from_utf8(bytes).map(SmolStr::new).map_err(|_| {
@@ -102,12 +160,25 @@ fn text_of(bytes: &[u8], position: usize, what: &str) -> Result<SmolStr> {
 }
 
 /// Copy a resolved namespace out of the parser's resolver.
+///
+/// An *unbound* name carries no prefix and is simply in no namespace. An
+/// *unknown* one carries a prefix nothing declared, which Namespaces in XML
+/// makes a fatal error - and folding it to "no namespace" would merge two
+/// different broken vocabularies into one column, which is the very collision
+/// this codec refuses when the prefixes are bound.
 fn namespace_of(resolved: &ResolveResult<'_>, position: usize) -> Result<Option<SmolStr>> {
     match resolved {
         ResolveResult::Bound(namespace) => {
             text_of(namespace.as_ref(), position, "a namespace").map(Some)
         }
-        ResolveResult::Unbound | ResolveResult::Unknown(_) => Ok(None),
+        ResolveResult::Unbound => Ok(None),
+        ResolveResult::Unknown(prefix) => Err(codec_error(
+            position,
+            format_smolstr!(
+                "expected every namespace prefix to be declared, got {} bound to nothing",
+                quoted(&String::from_utf8_lossy(prefix))
+            ),
+        )),
     }
 }
 
@@ -254,6 +325,7 @@ impl<'a> Cursor<'a> {
             if is_namespace_declaration(attribute.key) {
                 continue;
             }
+            let raw = text_of(attribute.key.as_ref(), position, "an attribute name")?;
             let resolved = self.reader.resolver_mut().resolve_attribute(attribute.key);
             let namespace = namespace_of(&resolved.0, position)?;
             let local = text_of(resolved.1.as_ref(), position, "an attribute name")?;
@@ -274,7 +346,11 @@ impl<'a> Cursor<'a> {
                 _ => {
                     self.observe_node(position)?;
                     attributes.push(Attr {
-                        name: Name { local, namespace },
+                        name: Name {
+                            local,
+                            namespace,
+                            raw,
+                        },
                         value,
                     });
                 }
@@ -290,7 +366,10 @@ impl<'a> Cursor<'a> {
     /// inside its own state machine and builds no event for it.
     pub(crate) fn skip(&mut self, name: &Name) -> Result<()> {
         let position = self.position();
-        let raw = name.local.clone();
+        // The parser matches the end tag as it was written, prefix and all.
+        // A local name would never find `</p:meta>`, and the read would run
+        // past it to the end of the document.
+        let raw = name.raw.clone();
         self.reader
             .read_to_end(QName(raw.as_bytes()))
             .map_err(|error| codec_error(position, format_smolstr!("{error}")))?;
@@ -331,13 +410,17 @@ impl<'a> Cursor<'a> {
                 }
                 Event::Text(run) => {
                     let run = text_of(run.as_ref(), position, "character data")?;
-                    self.push_text(&run, position)?;
+                    check_chars(&run, position, "character data")?;
+                    self.push_text(&normalize_newlines(&run), position)?;
                 }
                 Event::CData(run) => {
                     // A CDATA section is content already: nothing in it is
-                    // markup and nothing in it is unescaped.
+                    // markup and nothing in it is unescaped. Line endings are
+                    // normalized there too - that happens before parsing, so
+                    // the section's own framing does not exempt it.
                     let run = text_of(run.as_ref(), position, "a CDATA section")?;
-                    self.push_text(&run, position)?;
+                    check_chars(&run, position, "a CDATA section")?;
+                    self.push_text(&normalize_newlines(&run), position)?;
                 }
                 Event::GeneralRef(reference) => {
                     // quick-xml reports an entity rather than folding it into
@@ -370,7 +453,29 @@ impl<'a> Cursor<'a> {
                         ));
                     }
                 }
-                Event::Comment(_) | Event::PI(_) | Event::Decl(_) => {}
+                Event::Decl(declaration) => {
+                    // Text crosses the boundary once, and it crossed it before
+                    // this parser ran: these bytes are already UTF-8, decoded
+                    // from whatever charset the handle's media type declared.
+                    // A prolog naming a different charset is not a third
+                    // opinion to weigh - it is a document saying it is not the
+                    // one that was decoded, and reading it anyway would be
+                    // mojibake with no error.
+                    if let Some(Ok(encoding)) = declaration.encoding() {
+                        let encoding = String::from_utf8_lossy(&encoding).into_owned();
+                        if !is_utf8_name(&encoding) {
+                            return Err(codec_error(
+                                position,
+                                format_smolstr!(
+                                    "expected a document already decoded to UTF-8, got one \
+                                     declaring {}; wrap the handle in that charset instead",
+                                    quoted(&encoding)
+                                ),
+                            ));
+                        }
+                    }
+                }
+                Event::Comment(_) | Event::PI(_) => {}
                 // A document that stops inside an element reads as a
                 // shorter document to the parser, so the refusal is this
                 // module's to raise.
@@ -401,6 +506,7 @@ impl<'a> Cursor<'a> {
         }
         self.observe_depth(position)?;
         self.observe_node(position)?;
+        let raw = text_of(element.name().as_ref(), position, "an element name")?;
         let local = text_of(element.local_name().as_ref(), position, "an element name")?;
         let (attributes, nil) = self.attributes(&element, position)?;
         if empty {
@@ -411,12 +517,21 @@ impl<'a> Cursor<'a> {
             self.text.push(String::new());
         }
         Ok(Step::Open {
-            name: Name { local, namespace },
+            name: Name {
+                local,
+                namespace,
+                raw,
+            },
             attributes,
             empty,
             nil,
         })
     }
+}
+
+/// Whether a declared encoding names the one these bytes are already in.
+fn is_utf8_name(encoding: &str) -> bool {
+    encoding.eq_ignore_ascii_case("utf-8") || encoding.eq_ignore_ascii_case("utf8")
 }
 
 /// Resolve one entity name to the text it stands for.
@@ -434,9 +549,26 @@ fn resolve_entity(name: &str) -> Option<SmolStr> {
         _ => {}
     }
     let digits = name.strip_prefix('#')?;
+    // `&#x41;` is a reference and `&#X41;` is not: the grammar spells the
+    // marker in lower case, and a sign is not part of it either.
     let code = match digits.strip_prefix('x') {
-        Some(hexadecimal) => u32::from_str_radix(hexadecimal, 16).ok()?,
-        None => digits.parse::<u32>().ok()?,
+        Some(hexadecimal) => {
+            if !hexadecimal.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return None;
+            }
+            u32::from_str_radix(hexadecimal, 16).ok()?
+        }
+        None => {
+            if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+                return None;
+            }
+            digits.parse::<u32>().ok()?
+        }
     };
+    // A reference to a scalar XML cannot carry is a fatal error, not a
+    // character - the same rule the attribute path already applies.
+    if !is_xml_char(code) {
+        return None;
+    }
     char::from_u32(code).map(|character| SmolStr::new(character.to_string()))
 }

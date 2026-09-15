@@ -46,7 +46,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlOptions) -> Resul
         return Ok(field.clone());
     }
     let (name, rows) = rows_of(handle, options)?;
-    Ok(field_of(&name, rows, options)?)
+    Ok(field_of(&name, &rows, options)?)
 }
 
 /// Count the rows a document holds.
@@ -72,7 +72,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     let (name, rows) = rows_of(handle, options)?;
     let root = match field {
         Some(field) => field.clone(),
-        None => field_of(&name, rows.clone(), options)?,
+        None => field_of(&name, &rows, options)?,
     };
     // Every row crosses the field's own value contract, which is what types
     // an all-text encoding's leaves. The batch build canonicalizes again on
@@ -80,7 +80,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     // thing that reads a document's spellings.
     let canonical = rows
         .into_iter()
-        .map(|row| root.from_natural_value(row))
+        .map(|row| root.from_natural_value(fit(row, &root)))
         .collect::<crate::Result<Vec<_>>>()?;
     let value = ArrowScalar::from_rows(&root, &Scalar::from_sequence(canonical))?;
     value.into_reader()
@@ -139,11 +139,18 @@ fn rows_of<H: IOBase + ?Sized>(
     if bytes.is_empty() {
         return Ok((SmolStr::new_static(DEFAULT_ROW_NAME), Vec::new()));
     }
+    // The byte budget bounds what a record read decodes exactly as it bounds
+    // what a value read does; a document reached through a handle is not a
+    // document the limits stop applying to.
+    crate::text::check_input_size(&bytes, options.limits, "xml")?;
     read_rows(&bytes, options.limits, options.row_element.as_deref())
 }
 
 /// Infer the Struct field a document's rows prove.
-fn field_of(name: &str, rows: Vec<Scalar>, options: &XmlOptions) -> crate::Result<Field> {
+///
+/// The rows are borrowed: inference reads their shape and a copy of every
+/// decoded row would be the largest allocation a schemaless read makes.
+fn field_of(name: &str, rows: &[Scalar], options: &XmlOptions) -> crate::Result<Field> {
     let name = if name.is_empty() {
         options.name.as_str()
     } else {
@@ -152,7 +159,49 @@ fn field_of(name: &str, rows: Vec<Scalar>, options: &XmlOptions) -> crate::Resul
     if rows.is_empty() {
         return Ok(Field::new(name, crate::DataType::from_fields([])?, false));
     }
-    let rows = Scalar::from_sequence(rows);
+    let rows = Scalar::from_sequence(rows.iter().cloned());
     let field = rows.inferred_struct_field()?;
     Ok(field.with_name(name))
+}
+
+/// Restate one decoded row in the shape the declared field asks for.
+///
+/// XML spells a repeated child by repeating it, so a column that a schema
+/// calls a list arrives as one value when the row happened to carry one, and
+/// as a sequence when it carried more. Only the declaration knows which it is,
+/// and one reading of a single occurrence under a list column is unambiguous -
+/// it is a list of one - so this is best effort rather than a refusal.
+///
+/// Nothing else is coerced: a value the field cannot take still meets the
+/// value contract and is still refused there.
+fn fit(value: Scalar, field: &Field) -> Scalar {
+    use crate::DataType;
+
+    if value.is_null() {
+        return value;
+    }
+    match field.dtype() {
+        DataType::Struct(children) => {
+            let Some(record) = value.as_record() else {
+                return value;
+            };
+            let fitted = children.iter().filter_map(|child| {
+                record
+                    .get(child.name())
+                    .map(|held| (SmolStr::new(child.name()), fit(held.clone(), child)))
+            });
+            Scalar::from_record(fitted).unwrap_or(value)
+        }
+        DataType::List(child)
+        | DataType::LargeList(child)
+        | DataType::ListView(child)
+        | DataType::LargeListView(child)
+        | DataType::FixedSizeList(child, _) => match value.as_sequence() {
+            Some(values) => {
+                Scalar::from_sequence(values.iter().map(|item| fit(item.clone(), child)))
+            }
+            None => Scalar::from_sequence([fit(value, child)]),
+        },
+        _ => value,
+    }
 }

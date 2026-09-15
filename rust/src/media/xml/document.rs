@@ -13,6 +13,11 @@
 //!   inside one element are two vocabularies, and that is refused too.
 //! - A **leaf** is an element with no attributes and no element children: its
 //!   character data is the cell.
+//! - An element carrying **attributes beside its characters** -
+//!   `<Amt Ccy="EUR">9.50</Amt>`, the commonest shape in a real document - is
+//!   not mixed content: it is one value with annotations. Its characters land
+//!   in a column named [`VALUE_COLUMN`], which is the same name the crate
+//!   already gives the payload of a root that is not a record.
 //! - **Repeated** same-named children collapse into one sequence, in document
 //!   order, because a record names each field once.
 //! - **Mixed content** - character data beside element children - is the one
@@ -93,7 +98,11 @@ pub(crate) fn read_rows(
     };
     let mut rows = Vec::new();
     let mut row_name: Option<SmolStr> = row_element.map(SmolStr::new);
+    let mut row_namespace: Option<Option<SmolStr>> = None;
     if empty {
+        // A document element that closed in its own tag still has to be the
+        // whole document.
+        finish_document(&mut cursor)?;
         return Ok((row_name.unwrap_or_default(), rows));
     }
     loop {
@@ -105,11 +114,12 @@ pub(crate) fn read_rows(
                 nil,
             } => {
                 let selected = match (row_element, &row_name) {
+                    // A named row element is the one fact a caller stated, so
+                    // it is looked for wherever it sits rather than only among
+                    // the document element's own children.
                     (Some(wanted), _) => name.local() == wanted,
                     (None, Some(held)) => {
-                        if name.local() == held.as_str() {
-                            true
-                        } else {
+                        if name.local() != held.as_str() {
                             return Err(codec_error(
                                 cursor.position(),
                                 format_smolstr!(
@@ -120,6 +130,7 @@ pub(crate) fn read_rows(
                                 ),
                             ));
                         }
+                        true
                     }
                     (None, None) => {
                         row_name = Some(SmolStr::new(name.local()));
@@ -127,15 +138,42 @@ pub(crate) fn read_rows(
                     }
                 };
                 if selected {
-                    rows.push(element(&mut cursor, &name, attributes, empty, nil)?);
-                } else if !empty {
+                    // Two rows sharing a local name but bound in different
+                    // namespaces are two vocabularies, which is the same
+                    // collision a column refuses.
+                    let namespace = name.namespace().map(SmolStr::new);
+                    match &row_namespace {
+                        None => row_namespace = Some(namespace),
+                        Some(held) if held.as_deref() == namespace.as_deref() => {}
+                        Some(held) => {
+                            return Err(codec_error(
+                                cursor.position(),
+                                format_smolstr!(
+                                    "expected one namespace for the row <{}>, got {} and {}",
+                                    quoted(name.local()),
+                                    quoted(held.as_deref().unwrap_or("none")),
+                                    quoted(namespace.as_deref().unwrap_or("none"))
+                                ),
+                            ));
+                        }
+                    }
+                    let row = element(&mut cursor, &name, attributes, empty, nil)?;
+                    rows.push(row_value(row));
+                } else if !empty && row_element.is_none() {
+                    // Nothing but rows is expected here, so a sibling costs
+                    // the bytes of its own tags and nothing more.
                     cursor.skip(&name)?;
                 }
+                // With a row element named, a sibling may still hold it, so
+                // the walk descends into it rather than skipping past it.
             }
+            // A wrapper closing while a named row is still being looked for
+            // is not the end of anything.
+            Step::Close { .. } if cursor.depth() > 0 => {}
             // The document element's own character data is not a row. Only
             // whitespace can sit between rows; anything else is content the
             // row model has no cell for.
-            Step::Close { text } if cursor.depth() == 0 => {
+            Step::Close { text } => {
                 if !text.trim().is_empty() {
                     return Err(codec_error(
                         cursor.position(),
@@ -147,11 +185,46 @@ pub(crate) fn read_rows(
                 }
                 break;
             }
-            Step::Close { .. } => break,
             Step::End => break,
         }
     }
+    finish_document(&mut cursor)?;
     Ok((row_name.unwrap_or_default(), rows))
+}
+
+/// Require that the document ended where its element did.
+///
+/// A record read has exactly the same one-document rule a value read has: a
+/// second root, or trailing text, is not rows this can publish.
+fn finish_document(cursor: &mut Cursor<'_>) -> Result<()> {
+    match cursor.next()? {
+        Step::End => Ok(()),
+        _ => Err(codec_error(
+            cursor.position(),
+            "expected one document element, got content after it",
+        )),
+    }
+}
+
+/// Restate one row's value as the record a row has to be.
+///
+/// A row is a struct by contract, but a row element can be written as a leaf -
+/// `<row>text</row>` - or carry nothing at all - `<row/>`. A leaf row takes
+/// the same wrapping a root that is not a record takes elsewhere in the crate,
+/// under [`VALUE_COLUMN`]; an empty one is a row whose every column is absent.
+fn row_value(value: Scalar) -> Scalar {
+    match &value {
+        Scalar::Record(_) | Scalar::Null => value,
+        _ => {
+            let text = value.as_str().unwrap_or_default();
+            if text.is_empty() {
+                return Scalar::from_record(std::iter::empty::<(SmolStr, Scalar)>())
+                    .unwrap_or(Scalar::Null);
+            }
+            Scalar::from_record([(SmolStr::new_static(VALUE_COLUMN), value.clone())])
+                .unwrap_or(value)
+        }
+    }
 }
 
 /// Read one open element's value, consuming up to and including its close.
@@ -165,7 +238,7 @@ fn element(
     // Columns are collected in document order and grouped once at the close,
     // because a repeat is only known to be one after the second occurrence.
     let mut columns: Vec<(SmolStr, Scalar)> = Vec::new();
-    let mut claimed: Vec<Claim> = Vec::new();
+    let mut claimed = Claims::default();
     for attribute in attributes {
         claim(
             &mut claimed,
@@ -181,7 +254,7 @@ fn element(
     let attribute_count = columns.len();
 
     if empty {
-        return Ok(finish(columns, SmolStr::default(), nil, attribute_count));
+        return finish(columns, SmolStr::default(), nil, attribute_count);
     }
 
     loop {
@@ -197,6 +270,9 @@ fn element(
                 columns.push((SmolStr::new(child.local()), value));
             }
             Step::Close { text } => {
+                // Characters beside *elements* are mixed content and have no
+                // cell; characters beside *attributes* are the element's own
+                // value, and [`finish`] gives them one.
                 if columns.len() > attribute_count && !text.trim().is_empty() {
                     return Err(codec_error(
                         cursor.position(),
@@ -208,7 +284,7 @@ fn element(
                         ),
                     ));
                 }
-                return Ok(finish(columns, text, nil, attribute_count));
+                return finish(columns, text, nil, attribute_count);
             }
             Step::End => {
                 return Err(codec_error(
@@ -238,7 +314,6 @@ impl Kind {
 
 /// One column name already claimed inside the element being read.
 struct Claim {
-    local: SmolStr,
     namespace: Option<SmolStr>,
     kind: Kind,
 }
@@ -250,10 +325,10 @@ struct Claim {
 /// it are two facts competing for one cell, and this is where that is named.
 /// A child element repeating its own name is not a competing claim: it is a
 /// sequence, which is what [`group`] makes of it.
-fn claim(seen: &mut Vec<Claim>, name: &Name, position: usize, kind: Kind) -> Result<()> {
+fn claim(seen: &mut Claims, name: &Name, position: usize, kind: Kind) -> Result<()> {
     let local = SmolStr::new(name.local());
     let namespace = name.namespace().map(SmolStr::new);
-    if let Some(held) = seen.iter().find(|candidate| candidate.local == local) {
+    if let Some(held) = seen.index.get(&local).map(|at| &seen.held[*at]) {
         if held.namespace.as_deref() != namespace.as_deref() {
             return Err(codec_error(
                 position,
@@ -265,7 +340,16 @@ fn claim(seen: &mut Vec<Claim>, name: &Name, position: usize, kind: Kind) -> Res
                 ),
             ));
         }
-        if held.kind != kind || kind == Kind::Attribute {
+        if kind == Kind::Attribute {
+            return Err(codec_error(
+                position,
+                format_smolstr!(
+                    "expected two attributes to have different names, got {} twice",
+                    quoted(&local)
+                ),
+            ));
+        }
+        if held.kind != kind {
             return Err(codec_error(
                 position,
                 format_smolstr!(
@@ -278,39 +362,70 @@ fn claim(seen: &mut Vec<Claim>, name: &Name, position: usize, kind: Kind) -> Res
         }
         return Ok(());
     }
-    seen.push(Claim {
-        local,
-        namespace,
-        kind,
-    });
+    seen.index.insert(local, seen.held.len());
+    seen.held.push(Claim { namespace, kind });
     Ok(())
+}
+
+/// The names claimed inside one element, and where each was claimed.
+#[derive(Default)]
+struct Claims {
+    held: Vec<Claim>,
+    index: std::collections::HashMap<SmolStr, usize>,
 }
 
 /// Turn one element's collected parts into the value it states.
 fn finish(
-    columns: Vec<(SmolStr, Scalar)>,
+    mut columns: Vec<(SmolStr, Scalar)>,
     text: SmolStr,
     nil: bool,
     attribute_count: usize,
-) -> Scalar {
+) -> Result<Scalar> {
     if nil {
-        return Scalar::Null;
+        return Ok(Scalar::Null);
     }
     if columns.is_empty() {
         // A leaf: no attributes, no children, so the characters are the cell.
-        return Scalar::from(text.as_str());
+        return Ok(Scalar::from(text.as_str()));
     }
-    let _ = attribute_count;
-    group(columns)
+    // Attributes beside characters: the characters are the element's value and
+    // get the name the crate already uses for one. A document that also spells
+    // an attribute `value` is claiming the name twice, which is refused where
+    // every other double claim is.
+    if columns.len() == attribute_count && !text.trim().is_empty() {
+        if columns.iter().any(|(name, _)| name == VALUE_COLUMN) {
+            return Err(codec_error(
+                0,
+                format_smolstr!(
+                    "expected the name {} once, got an attribute beside the characters it names",
+                    quoted(VALUE_COLUMN)
+                ),
+            ));
+        }
+        columns.push((
+            SmolStr::new_static(VALUE_COLUMN),
+            Scalar::from(text.as_str()),
+        ));
+    }
+    Ok(group(columns))
 }
 
 /// Collapse repeated names into sequences and answer the record.
+///
+/// Repeats are found through a name index rather than by rescanning what has
+/// been collected, so one element costs its own width rather than its width
+/// squared - which is what an element with a few hundred columns would pay.
 fn group(columns: Vec<(SmolStr, Scalar)>) -> Scalar {
     let mut named: Vec<(SmolStr, Vec<Scalar>)> = Vec::with_capacity(columns.len());
+    let mut index: std::collections::HashMap<SmolStr, usize> =
+        std::collections::HashMap::with_capacity(columns.len());
     for (name, value) in columns {
-        match named.iter_mut().find(|(held, _)| held == &name) {
-            Some((_, values)) => values.push(value),
-            None => named.push((name, vec![value])),
+        match index.get(&name) {
+            Some(at) => named[*at].1.push(value),
+            None => {
+                index.insert(name.clone(), named.len());
+                named.push((name, vec![value]));
+            }
         }
     }
     let entries = named.into_iter().map(|(name, mut values)| {
@@ -327,3 +442,9 @@ fn group(columns: Vec<(SmolStr, Scalar)>) -> Scalar {
 
 /// What a row element is called when a document proved no name.
 pub(crate) const DEFAULT_ROW_NAME: &str = "row";
+
+/// The column an element's own characters take when it also has attributes.
+///
+/// The same name the crate gives the payload of a root that is not a record,
+/// rather than a sigil invented here.
+pub const VALUE_COLUMN: &str = "value";
