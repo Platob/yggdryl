@@ -233,7 +233,7 @@ pub fn load(input: &[u8]) -> Result<Vec<u8>>
 
 ### yggdryl::root::datatype_id  [rust\src\datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 65] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, ];  (every discriminant explicit; 58 was msgdirection, retired; decision 14; Cusip = 64 and Sedol = 65 appended)
+  pub const ALL: [Self; 66] = [ Self::Null, Self::Boolean, Self::Int8, Self::Int16, Self::Int32, Self::Int64, Self::UInt8, Self::UInt16, Self::UInt32, Self::UInt64, Self::Int128, Self::UInt128, Self::Float16, Self::Float32, Self::Float64, Self::DateTime64, Self::Date32, Self::Date64, Self::Time32, Self::Time64, Self::Duration32, Self::Duration64, Self::Interval, Self::Binary, Self::FixedSizeBinary, Self::LargeBinary, Self::BinaryView, Self::String, Self::FixedString, Self::StringView, Self::LargeString, Self::LargeStringView, Self::Country, Self::Currency, Self::Mic, Self::Cfi, Self::Uuid, Self::List, Self::ListView, Self::FixedSizeList, Self::LargeList, Self::LargeListView, Self::Struct, Self::Union, Self::Dictionary, Self::Decimal32, Self::Decimal64, Self::Decimal128, Self::Decimal256, Self::Map, Self::RunEndEncoded, Self::Variant, Self::Geometry, Self::Geography, Self::Version, Self::Side, Self::State, Self::TimeInForce, Self::Url, Self::Isin, Self::Timezone, Self::MimeType, Self::MediaType, Self::Cusip, Self::Sedol, Self::Bloomberg, ];  (every discriminant explicit; 58 was msgdirection, retired; decision 14; Cusip = 64, Sedol = 65 and Bloomberg = 66 appended)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn as_u8(self) -> u8
@@ -519,6 +519,7 @@ impl<'field> FixField<'field>
   pub fn counter(&self) -> Result<Option<i32>>  (positive decimal digits only)
   pub fn replacements(&self) -> FixReplacements<'field>
   pub fn directions(&self) -> FixDirections<'field>  (tag 385's fix:directions rules in document order; nothing where absent, which reads by the defaults)
+  pub fn is_transient(&self) -> Result<bool>  (the fix:transient flag, true where absent: whether this column travels from one message of a chain to the next, so a column settled to one message says false)
   pub fn derivation(&self) -> Result<Option<Term>>  (the fix:derivation term: how this field's value is derived from the message where the message states none, one expression over the message's fields by canonical folded name, parsed through Term::from_str and budget-checked; None where absent; InvalidMetadataValue naming fix:derivation for a text that is not a term or one past the budget; decision 38)
   impl FixFieldMut<'_>
   pub fn set_branches<I, S>(&mut self, dialects: I) -> Result<()> where I: IntoIterator<Item = S>, S: AsRef<str>,  (each non-empty and comma-free, lowercased, deduplicated under the fold, sorted)
@@ -542,6 +543,7 @@ impl<'field> FixField<'field>
   pub fn remove_replacements(&mut self) -> Result<Option<Vec<FixReplacement>>>
   pub fn set_directions(&mut self, directions: &[FixDirection]) -> Result<()>  (empty removes; resolves each code as the reading does and refuses one outside the set, a code named twice under any spelling, an empty code, no pattern, an empty pattern, or a pattern regex::bytes refuses; the field is unchanged)
   pub fn remove_directions(&mut self) -> Result<Option<Vec<FixDirection>>>
+  pub fn set_transient(&mut self, transient: bool) -> Result<()>  (writes fix:transient; true is the default and is stored as stated)
   pub fn set_derivation(&mut self, term: &Term) -> Result<()>  (stores the term's canonical text; a term past the depth or node budget is Error::Parse and leaves the field unchanged; a registry validates it again at insert, update and load)
   pub fn remove_derivation(&mut self) -> Result<Option<Term>>  (answers the term it spelled; a stored text the reader refuses is InvalidMetadataValue, already removed)
   pub struct FixSpellings<'field>  (aliases and dialect memberships alike)
@@ -697,7 +699,7 @@ impl FixCodec
   pub fn write_arrow_reader(&self, source: BatchReader, sink: impl std::io::Write) -> Result<u64>  (the wire from the arrival record, the codec's separator else `SOH`; refuses a batch without `fixentries`)
 
 ### yggdryl::fix::lifecycle  [rust\src\fix\lifecycle.rs]
-pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each chain retains code, first accepted createdat, last full-message clock/UUID and highest consumed grid bucket; capacity bounded by peak live state)
+pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each chain retains its code, its highest consumed grid bucket and the message it last accepted - whose createdat is the chain's first creation instant, whose updatedat is its last clock and whose msghash is its last identity, so nothing beside it is a second owner of those; capacity bounded by peak live state)
   pub const DEFAULT_INTERVAL_NS: i64 = 1_000_000_000;
   pub fn new(registry: Arc<FixRegistry>) -> Self
   pub const fn interval_ns(&self) -> i64
@@ -705,9 +707,11 @@ pub struct FixLifecycle  (live code-hash chains; scoped identifier keys; each ch
   pub fn try_with_interval_ns(self, interval_ns: i64) -> Result<Self>
   pub fn alive(&self) -> usize
   pub fn clear(&mut self)  (forgets live chains/creation/history/buckets/keys, retains cadence)
-  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (one atomic code/creation/history/grid transition; joined messages inherit the first accepted createdat; all messages normalize updatedat, snapshotat remains the event clock; native non-null previous statements remain authoritative)
-  pub fn snapshot(&mut self, message: FixMsg) -> Result<Option<FixMsg>>  (same transition; emits only an off-grid arrival above that live chain's highest consumed bucket)
+  pub fn fill(&mut self, message: FixMsg) -> Result<FixMsg>  (one atomic code/creation/history/grid transition; joined messages inherit the first accepted createdat; all messages normalize updatedat and leave snapshotat empty, because a fill is not a reading; native non-null previous statements remain authoritative)
+  pub fn snapshot(&mut self, message: FixMsg) -> Result<Option<FixMsg>>  (same transition; emits only an off-grid arrival above that live chain's highest consumed bucket, and stamps snapshotat with the instant the reading was taken)
   pub fn snapshots<I>(self, messages: I) -> impl FusedIterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator<Item = Result<FixMsg>>  (filters successful suppression only; errors yield without advancing state; fuses exhaustion)
+impl FixMsg
+  pub fn with_previous(self, previous: Option<&FixMsg>) -> Result<Option<FixMsg>>  (this message carrying the one before it in its chain - the chain's creation instant, the predecessor's clock and its identity, each landing only where this message states nothing of its own; None where nothing moved, so replaying a stamped stream recomputes no identity; `fill` writes the same stamps beside its own in one pass)
 
 ### yggdryl::fix::messages  [rust\src\fix\messages.rs]
 pub struct FixMessages
@@ -892,6 +896,10 @@ impl FixRegistry
   pub fn remove_definition(&mut self, category: FixCategory, name: &str) -> Result<Option<Field>>
   pub fn get_group_by_tag(&self, tag: i32) -> Option<&Field>
   pub fn group_by_tag(&self, tag: i32) -> Result<&Field>
+
+### yggdryl::fix::aliases  [rust\src\fix\aliases.rs]
+impl FixRegistry
+  pub fn with_default_aliases(self) -> Result<Self>  (lends every shipped field the spellings a bridge writes it under, folded once; opt-in because the shipped dictionary re-registers every alias against every field and the pass is quadratic in the dictionary's size - minutes, not milliseconds)
 
 ### yggdryl::fix::registry  [rust\src\fix\registry.rs]
 pub struct FixRegistry
@@ -3611,7 +3619,7 @@ pub enum StringLayout  (#[non_exhaustive]; String, FixedString, StringView, Larg
   pub const fn is_fixed(self) -> bool
   pub const fn is_view(self) -> bool
   pub const fn is_large(self) -> bool
-pub use code::{Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
+pub use cfi::{CFI_CATEGORIES, CfiCategory, CfiGroup};  pub use code::{Bloomberg, Cfi, Code, CodeValue, Country, Currency, Cusip, Isin, Mic, Sedol, Side, State, TimeInForce};  pub use dictionary::StringEnum;  pub use fields::*;  pub use parameters::{STRING_EXTENSION_NAME, StringParameters};  pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at yggdryl::types; Code, CodeValue, Str, StringEnum and StringType also at the crate root)
 
 ### yggdryl::types::string::parameters  [rust\src\types\string\parameters.rs]
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
@@ -3676,7 +3684,7 @@ pub trait CodeValue: ScalarValue
   const WIDTH: usize;
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
-pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; Isin, Cusip and Sedol fold lower case and refuse a check digit that does not close them
+pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Bloomberg, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; Isin, Cusip and Sedol fold lower case and refuse a check digit that does not close them, while Bloomberg has no shape to check and only holds ASCII to its width in upper case
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -3686,7 +3694,7 @@ pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Side, State, 
   pub fn issue(&self) -> &str  // Cusip only
   pub fn check_digit(&self) -> u8  // Isin, Cusip and Sedol
   pub fn is_valid(text: &str) -> bool  // Isin, Cusip and Sedol
-  pub fn is_canonical(text: &str) -> bool  // Isin, Cusip and Sedol
+  pub fn is_canonical(text: &str) -> bool  // Isin, Cusip, Sedol and Bloomberg
   pub fn closing_digit(body: &str) -> Option<u8>  // Isin, Cusip and Sedol
   pub fn rank(&self) -> Option<u8>  // State only
   pub fn is_live(&self) -> bool  // State only
@@ -3695,7 +3703,24 @@ pub struct Country  // and Currency, Mic, Cfi, Isin, Cusip, Sedol, Side, State, 
   pub fn is_failed(&self) -> bool  // State only
   pub fn read(spelling: &str) -> Result<Self>  // State only
   pub fn from_spelling(spelling: &str) -> Option<Self>  // State only
-pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sedol, Side, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
+  // Cfi only: the ISO 10962 semantics, beside the value rather than in `fix`
+  pub const LENGTH: usize = 6
+  pub const UNKNOWN: char = 'X'
+  pub fn category_of(letter: char) -> Option<&'static CfiCategory>  // 14 categories, 78 groups; `X` is a category letter nowhere
+  pub fn is_classified(code: &str) -> bool  // six unknowns say nothing, so they are not a classification
+  pub fn merged(left: &str, right: &str) -> Option<SmolStr>  // one instrument's two readings, position by position; None across a differing category or group
+  pub fn coarse(category: char, group: Option<char>) -> Option<SmolStr>  // a category and a group a caller inferred, falling back to that category's Others
+pub const CFI_CATEGORIES: [CfiCategory; 14]  (ISO 10962's own table, 78 groups across them)
+pub struct CfiCategory  (a category letter, its name and its groups)
+  pub const fn letter(&self) -> char
+  pub const fn name(&self) -> &'static str
+  pub const fn groups(&self) -> &'static [CfiGroup]
+  pub fn group(&self, letter: char) -> Option<&'static CfiGroup>
+  pub fn attributes(&self, at: usize) -> &'static str  // what positions 3..6 mean under this category
+pub struct CfiGroup  (a group letter and its name, under one category)
+  pub const fn letter(&self) -> char
+  pub const fn name(&self) -> &'static str
+pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sedol, Bloomberg, Side, State, TimeInForce; 32 bytes; derived Eq/Ord/Hash, identity first then text; ScalarFamily with KIND = DataTypeKind::Code; Scalar::from(Code) -> Scalar::Code)
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
   pub const fn width(&self) -> usize
@@ -3704,7 +3729,7 @@ pub enum Code  (#[non_exhaustive]; Country, Currency, Mic, Cfi, Isin, Cusip, Sed
 
 ### yggdryl::types::string::codes  [rust\src\types\string\codes.rs]
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8)];
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 4), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::Bloomberg, 32)];
   pub const fn country() -> Self
   pub const fn currency() -> Self
   pub const fn mic() -> Self

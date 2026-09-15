@@ -226,7 +226,7 @@
       [...message].map(([name]) => name),
       [
         'OrderQty', 'Symbol', 'NoPartyIDs', 'Parties', '9999',
-        'updatedat', 'createdat', 'uuid', 'puuid', 'code', 'snapshotat', 'sendingtime',
+        'updatedat', 'createdat', 'msghash', 'msgphash', 'code', 'snapshotat', 'sendingtime',
       ],
     )
 

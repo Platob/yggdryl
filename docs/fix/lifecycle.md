@@ -11,7 +11,7 @@ A message says what happened; it does not say which event it belongs to beyond t
 | Chain name | a non-empty stated `code` selects its live chain globally; else the first identifier reaching a live chain supplies that chain's code; else the first identifier names a new chain `<scope>/<identifier>`, the scope rendered `-` when absent; no identifier leaves `code` empty and opens no chain |
 | Identifiers | a stated `altids` Map, else the message type's compiled [`fix:identifiers`](registry.md#component-identifiers) selection, in sorted member-name order; each keyed by the effective instrument scope: a stated `instuuid`, else the sixteen big-endian bytes of the xxh128 digest of market, CFI, ISIN - else symbol - and currency, else absent |
 | `msgphash` | the sixteen big-endian bytes of the XXH3-128 over the exact `code` bytes, so a chain's identity is its name; empty code hashes empty bytes and never opens a chain |
-| Grid | `updatedat` becomes `floor(t / interval) * interval` of the settled event clock, Euclidean and checked; `snapshotat` keeps the real instant; the interval is positive nanoseconds, `DEFAULT_INTERVAL_NS` (one second) unless set, and changes only while no chain is live |
+| Grid | `updatedat` becomes `floor(t / interval) * interval` of the settled event clock, Euclidean and checked; `createdat` keeps the real instant the chain began at; the interval is positive nanoseconds, `DEFAULT_INTERVAL_NS` (one second) unless set, and changes only while no chain is live |
 | Creation | every message joining a live chain carries the `createdat` of that chain's first accepted message |
 | History | `prevupdatedat` and `prevmsghash` are the previous accepted message's `updatedat` and `msghash` in the selected chain, null on a first message; a stated non-null value stays |
 | Snapshots | `snapshot` answers the full message only for an off-grid arrival that opens a chain or lands above its live chain's highest consumed bucket; an aligned arrival consumes its bucket silently; `snapshots` filters a stream the same way |
@@ -65,9 +65,10 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     assert!(stamped[0].by_tag(PREVMSGHASH_TAG_NAME.0)?.is_null());
     assert_eq!(stamped[1].by_tag(PREVMSGHASH_TAG_NAME.0)?, stamped[0].msghash());
     assert_eq!(stamped[1].by_tag(PREVUPDATEDAT_TAG_NAME.0)?, stamped[0].updatedat());
-    // updatedat lands on the one-second grid; snapshotat keeps the event.
+    // updatedat lands on the one-second grid; `fill` is not a snapshot, so
+    // the snapshot clock stays empty.
     assert_eq!(stamped[1].updatedat().temporal_count_at(TimeUnit::Millisecond), Some(1_767_348_930_000));
-    assert_eq!(stamped[1].by_tag(SNAPSHOTAT_TAG_NAME.0)?, stamped[1].by_tag(60)?);
+    assert!(stamped[1].by_tag(SNAPSHOTAT_TAG_NAME.0)?.is_null());
     // The fill closed the chain, and the wire is untouched.
     assert_eq!(life.alive(), 0);
     assert_eq!(stamped[3].into_bytes(b'|'), lines[3]);
@@ -131,9 +132,10 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     assert stamped[0].by_tag(PREVUUID).as_py() is None
     assert stamped[1].by_tag(PREVUUID) == stamped[0].msghash()
     assert stamped[1].by_tag(PREVUPDATEDAT) == stamped[0].updatedat()
-    # updatedat lands on the one-second grid; snapshotat keeps the event.
+    # updatedat lands on the one-second grid; `fill` is not a snapshot, so
+    # the snapshot clock stays empty.
     assert stamped[1].updatedat().as_py() == datetime(2026, 1, 2, 10, 15, 30, tzinfo=timezone.utc)
-    assert stamped[1].by_tag(SNAPSHOTAT) == stamped[1].by_tag(60)
+    assert stamped[1].by_tag(SNAPSHOTAT).is_null
     # The fill closed the chain, and the wire is untouched.
     assert life.alive() == 0
     assert stamped[3].into_bytes(ord("|")) == lines[3]
@@ -188,9 +190,10 @@ One order's life on one chain: the order, its acknowledgement under the venue's 
     assert.equal(stamped[0].byTag(PREVUUID).asJs(), null)
     assert.ok(stamped[1].byTag(PREVUUID).equals(stamped[0].msghash()))
     assert.ok(stamped[1].byTag(PREVUPDATEDAT).equals(stamped[0].updatedat()))
-    // updatedat lands on the one-second grid; snapshotat keeps the event.
+    // updatedat lands on the one-second grid; `fill` is not a snapshot, so
+    // the snapshot clock stays empty.
     assert.ok(stamped[1].updatedat().equals(stamped[0].updatedat()), 'bucket 10:15:30')
-    assert.ok(stamped[1].byTag(SNAPSHOTAT).equals(stamped[1].byTag(60)))
+    assert.equal(stamped[1].byTag(SNAPSHOTAT).kind, 'null')
     // The fill closed the chain, and the wire is untouched.
     assert.equal(life.alive, 0)
     assert.deepEqual(Buffer.from(stamped[3].intoBytes(124)), lines[3])
@@ -226,7 +229,7 @@ The first accepted message of a live chain fixes its `createdat`: first by arriv
 
 ## Snapshots are a grid, not a timer
 
-`updatedat` is truncated to `floor(t / interval) * interval` of the settled event clock and exact boundaries open their bucket; `snapshotat` keeps the real instant, so truncation can put `updatedat` before `createdat`. `fill` answers every message; `snapshot` answers the same transition's message only when it arrived off-grid and opened its chain or landed in a bucket above the chain's highest consumed one, and `None` otherwise - an aligned arrival consumes its bucket without emitting, and an unnamed message never emits. `snapshots` owns a configured lifecycle over a stream of `Result` messages and drops only those successful `None` answers; nothing is pending, no timer fires and no bucket is backfilled.
+`updatedat` is truncated to `floor(t / interval) * interval` of the settled event clock and exact boundaries open their bucket; `createdat` keeps the real instant the chain began at, so truncation can put `updatedat` before it. `snapshotat` is narrower than either: `snapshot` stamps it with the instant the reading was taken, and every row no snapshot was taken of leaves it empty, so "is this row a snapshot" is answerable from the row. `fill` answers every message; `snapshot` answers the same transition's message only when it arrived off-grid and opened its chain or landed in a bucket above the chain's highest consumed one, and `None` otherwise - an aligned arrival consumes its bucket without emitting, and an unnamed message never emits. `snapshots` owns a configured lifecycle over a stream of `Result` messages and drops only those successful `None` answers; nothing is pending, no timer fires and no bucket is backfilled.
 
 The interval is settled before the stream: `set_interval_ns` refuses zero, a negative value, or a change while a chain is live, and repeating the current interval is a no-op. `clear` forgets chains and keeps the interval.
 

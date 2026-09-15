@@ -126,7 +126,7 @@ One column of frames in, batches out, the capture's own columns still in front o
     # a capture named after a field fills it - where the row stated one.
     assert held.column("timestamp").cast(pa.timestamp("us", "UTC")).to_pylist() == clocks
     assert held.column("updatedat").null_count == 0
-    assert held.column("sendersessionid").to_pylist() == ["0123abcd", None]
+    assert held.column("bridgesessionid").to_pylist() == ["0123abcd", None]
     ```
 
 === "JavaScript"

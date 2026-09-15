@@ -278,10 +278,14 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     let schema = fix_schema(&registry, "FixMessage")?;
 
     let columns: Vec<&str> = schema.fields().iter().map(yggdryl::Field::name).collect();
-    assert_eq!(&columns[..3], ["beginstring", "bodylength", "msgtype"]);
+    // The crate's own lead the row - a table is read by time and joined by
+    // identity - and the protocol's own follow them.
+    assert_eq!(&columns[..3], ["updatedat", "prevupdatedat", "createdat"]);
+    let header = schema.index_of("beginstring").expect("the header opens");
+    assert_eq!(&columns[header..header + 3], ["beginstring", "bodylength", "msgtype"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    assert_eq!(fix_schema_tags().len(), 107);
-    assert_eq!(&fix_schema_tags()[..3], [8, 9, 35]);
+    assert_eq!(fix_schema_tags().len(), 117);
+    assert_eq!(&fix_schema_tags()[header..header + 3], [8, 9, 35]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     let held = schema.get_field_by_path("msgtype").expect("the msgtype column");
@@ -302,10 +306,14 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     schema = fix_schema(registry, "FixMessage")
 
     columns = [child.name for child in schema]
-    assert columns[:3] == ["beginstring", "bodylength", "msgtype"]
+    # The crate's own lead the row - a table is read by time and joined by
+    # identity - and the protocol's own follow them.
+    assert columns[:3] == ["updatedat", "prevupdatedat", "createdat"]
+    header = columns.index("beginstring")
+    assert columns[header:header + 3] == ["beginstring", "bodylength", "msgtype"]
     assert columns[-1] == "fixentries"
-    assert len(fix_schema_tags()) == 107
-    assert fix_schema_tags()[:3] == [8, 9, 35]
+    assert len(fix_schema_tags()) == 117
+    assert fix_schema_tags()[header:header + 3] == [8, 9, 35]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     assert schema.field("msgtype").display == "MsgType"
@@ -322,11 +330,14 @@ A List group column carries `fix:counter` beside the `fix:tag` its definition de
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     const schema = fix.schema(registry, 'FixMessage')
 
-    assert.equal(schema.fieldAt(0).name, 'beginstring')
-    assert.equal(schema.fieldAt(2).name, 'msgtype')
+    // The crate's own lead the row - a table is read by time and joined by
+    // identity - and the protocol's own follow them.
+    assert.equal(schema.fieldAt(0).name, 'updatedat')
+    const header = schema.indexOf('beginstring')
+    assert.equal(schema.fieldAt(header + 2).name, 'msgtype')
     assert.equal(schema.fieldAt(schema.fieldLen - 1).name, 'fixentries')
-    assert.equal(fix.schemaTags().length, 107)
-    assert.deepEqual(fix.schemaTags().slice(0, 3), [8, 9, 35])
+    assert.equal(fix.schemaTags().length, 117)
+    assert.deepEqual(fix.schemaTags().slice(header, header + 3), [8, 9, 35])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
     assert.equal(schema.field('msgtype').display, 'MsgType')
@@ -429,7 +440,7 @@ The root's children are the standard header in its declared order, the body as i
     // No partition column: how a layout is cut is the target's to decide.
     assert!(fields.iter().all(|field| !field.is_partition()));
     let ids = fields.iter().find(|field| field.name() == "instids").expect("the joined identifiers");
-    let members: Vec<&str> = ids.fields().iter().map(|field| field.name().as_str()).collect();
+    let members: Vec<&str> = ids.fields().iter().map(yggdryl::Field::name).collect();
     assert_eq!(members, ["cficode", "isincode", "bloombergcode", "cusipcode", "sedolcode"]);
 
     // The four identity columns are sixteen plain bytes, not a UUID.
@@ -487,7 +498,7 @@ The root's children are the standard header in its declared order, the body as i
     # No partition column: how a layout is cut is the target's to decide.
     assert not any(field.is_partition for field in fields)
     ids = next(field for field in fields if field.name == "instids")
-    assert [member.name for member in ids.fields] == [
+    assert [member.name for member in ids] == [
         "cficode",
         "isincode",
         "bloombergcode",
@@ -539,7 +550,7 @@ The root's children are the standard header in its declared order, the body as i
     assert.ok(fields.every((field) => !field.isPartition))
     const ids = fields.find((field) => field.name === 'instids')
     assert.deepEqual(
-      ids.fields.map((member) => member.name),
+      Array.from({ length: ids.fieldLen }, (_, at) => ids.getFieldAt(at).name),
       ['cficode', 'isincode', 'bloombergcode', 'cusipcode', 'sedolcode'],
     )
 
@@ -574,7 +585,7 @@ The root's children are the standard header in its declared order, the body as i
     assert.equal(sent.byTag(8).toJSON(), 'FIX.4.2')
     assert.ok(sent.updatedat().equals(sent.byTag(60)))
     assert.ok(sent.createdat().equals(sent.updatedat()))
-    assert.ok(sent.byTag(SNAPSHOTAT).isNull)
+    assert.equal(sent.byTag(SNAPSHOTAT).kind, 'null')
     ```
 
 ## What a message implied is filled in

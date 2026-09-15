@@ -217,7 +217,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,294,090 bytes. Loading it adds the 26 crate scalars, the `altids` group and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,267 scalar fields, 581 groups, 929 components and 182 message types in the live registry.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 of them messages, carrying `fix:msgtype` - and 580 groups: 1,573 JSON documents totaling 9,294,090 bytes. Loading it adds the 35 crate scalars, the `altids` group, the `instids` component and the separate `pluginconfig` component/message - its own `SendingTime` and `TransactTime` leave no clock to seed - giving 6,276 scalar fields, 581 groups, 930 components and 182 message types in the live registry.
 
 It contains 27,209 inline code records on 2,026 fields; generated names are canonical lowercase and standard display names remain metadata. Each of the 1,508 persisted named definitions states a unique derived tag - `groups/parties.json` is 209321 - and the generator declares each component's matching direct [identifiers](registry.md#component-identifiers), omitting the property when none match.
 
@@ -251,10 +251,10 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert!(registry.dialects().is_empty());
     assert!(registry.iter().all(|field| field.as_fix().branches().next().is_none()));
     // Live counts include the builtins omitted from persistence.
-    assert_eq!(fix_crate_fields()?.len(), 27);
-    assert_eq!(registry.len(), 6_267);
+    assert_eq!(fix_crate_fields()?.len(), 37);
+    assert_eq!(registry.len(), 6_276);
     assert_eq!(registry.definitions(FixCategory::Groups).count(), 581);
-    assert_eq!(registry.definitions(FixCategory::Components).count(), 929);
+    assert_eq!(registry.definitions(FixCategory::Components).count(), 930);
     assert_eq!(registry.msgtypes().count(), 182);
     ```
 
@@ -284,10 +284,10 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert registry.dialects() == []
     assert all(field.fix.branches == [] for field in registry)
     # Live counts include the builtins omitted from persistence.
-    assert len(fix_crate_fields()) == 27
-    assert len(registry) == 6_267
+    assert len(fix_crate_fields()) == 37
+    assert len(registry) == 6_276
     assert len(list(registry.definitions("groups"))) == 581
-    assert len(list(registry.definitions("components"))) == 929
+    assert len(list(registry.definitions("components"))) == 930
     assert len(list(registry.msgtypes())) == 182
     ```
 
@@ -316,10 +316,10 @@ The source is the [pinned FIX Orchestra repository](https://github.com/FIXTradin
     assert.deepEqual(registry.dialects(), [])
     assert.ok([...registry].every((field) => field.fix.branches.length === 0))
     // Live counts include the builtins omitted from persistence.
-    assert.equal(fix.crateFields().length, 27)
-    assert.equal(registry.size, 6267)
+    assert.equal(fix.crateFields().length, 37)
+    assert.equal(registry.size, 6276)
     assert.equal([...registry.definitions('groups')].length, 581)
-    assert.equal([...registry.definitions('components')].length, 929)
+    assert.equal([...registry.definitions('components')].length, 930)
     assert.equal([...registry.msgtypes()].length, 182)
     ```
 
