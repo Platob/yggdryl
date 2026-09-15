@@ -200,9 +200,13 @@ fn batches(bytes: Option<u64>) -> Vec<RecordBatch> {
     let parsed = codec
         .parse_text_arrow_reader(source().read_arrow_reader(&reading()).expect("a reader"))
         .expect("the batch reader opens");
-    codec
+    let filled = codec
         .enrich_messages_arrow_reader(parsed)
-        .expect("the filling reader opens")
+        .expect("the filling reader opens");
+    let generic = super::generic(codec.registry());
+    codec
+        .format_arrow_reader(filled, &generic)
+        .expect("the format reader opens")
         .map(|batch| batch.expect("a batch"))
         .collect()
 }

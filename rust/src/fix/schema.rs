@@ -112,9 +112,19 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 
 /// One row's columns, in order, as tags.
 ///
-/// Header, body, groups, then the crate's own derived fields. The trailer
-/// sits before the arrival list because it is still the message; the list
-/// records the message rather than a projection of its fields.
+/// The standard header and trailer, because every message has them; the
+/// fields a financial consumer reads, because they are what a table is
+/// queried by; the three repeating groups worth persisting whole; the
+/// crate's own facts; FIX's own `MsgDirection`; and last the arrival
+/// record's counter, which closes the row with the group it counts.
+///
+/// This is the shape a capture lands in, and it is a *reading* of a message
+/// rather than the message: what the codec made of a line, in columns. The
+/// message itself is the arrival record beside them, and
+/// [`fix_generic_message`](super::fix_generic_message) is the same shape
+/// registered as a message, so a
+/// [format](super::FixCodec::format_messages) has a target to name when a
+/// caller names none of its own.
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     let crated = super::fix_crate_fields().unwrap_or_default();
@@ -124,7 +134,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             + GROUP_TAGS.len()
             + TRAILER_TAGS.len()
             + crated.len()
-            + 1,
+            + 2,
     );
     tags.extend_from_slice(&HEADER_TAGS);
     tags.extend_from_slice(&BODY_TAGS);
@@ -147,6 +157,18 @@ pub fn fix_schema_tags() -> Vec<i32> {
     tags
 }
 
+/// The columns the crate's own [`GenericMessage`](super::fix_generic_message)
+/// holds, in order, as tags.
+///
+/// The fixed row's own, because a message with fewer columns than the row a
+/// capture lands in would be a target that loses what the row already
+/// carried. What makes it a message rather than a schema is the `fix:msgtype`
+/// on the root, and that is what a format needs to name it.
+#[must_use]
+pub fn fix_generic_tags() -> Vec<i32> {
+    fix_schema_tags()
+}
+
 /// BeginString and the partition supplement the identity owner's replay bundle.
 fn is_required(tag: i32) -> bool {
     tag == 8 || tag == super::TIMEPARTITION_TAG_NAME.0 || super::identity::is_mandatory(tag)
@@ -158,6 +180,12 @@ fn is_required(tag: i32) -> bool {
 /// lineage and code set - and built without reading a single message, so two
 /// captures that share a dictionary share a schema exactly.
 ///
+/// A parse lands here, an
+/// [enrichment](super::FixCodec::enrich_messages_arrow_reader) fills what
+/// each message implies, and a
+/// [format](super::FixCodec::format_arrow_reader) answers the same rows
+/// under whatever message field a consumer reads by.
+///
 /// A tag the dictionary does not have is skipped rather than invented: a
 /// column with no field behind it could not be typed, and a dictionary
 /// missing `Symbol` is a dictionary this was not meant for.
@@ -167,7 +195,15 @@ fn is_required(tag: i32) -> bool {
 /// Returns the schema grammar's refusal when the columns do not make a
 /// struct, or when this crate's own fields do not build.
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field> {
-    let tags = fix_schema_tags();
+    rooted(registry, fix_schema_tags(), name)
+}
+
+/// One root over one tag list, closed by the arrival record.
+pub(super) fn rooted(
+    registry: &FixRegistry,
+    tags: Vec<i32>,
+    name: impl Into<SmolStr>,
+) -> Result<Field> {
     let mut fields: Vec<Field> = Vec::with_capacity(tags.len() + 1);
     for tag in tags {
         if let Some(held) = registry.get_field_by_tag(tag) {
@@ -190,7 +226,12 @@ pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Fi
         if let Some(group) = registry.get_group_by_tag(tag) {
             let mut group = group.clone();
             group.set_nullable(true);
-            fields.push(group);
+            if !fields
+                .iter()
+                .any(|known| crate::types::folds_equal(known.name(), group.name()))
+            {
+                fields.push(group);
+            }
         }
     }
     fields.push(entries_field()?);
@@ -397,12 +438,14 @@ fn entries_field() -> Result<Field> {
     let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
     field.set_display("FixEntries")?;
     field.set_description("Every pair the message carried, in arrival order and untranslated.")?;
-    // A group says which counter counts it and which component one occurrence
-    // is, the way every other group in this crate says it.
+    // A group says which counter counts it, the way every other group in this
+    // crate says it. It does not name its occurrence as a component: a
+    // `fixentry` contains `fixentries`, so a catalog reference to it would be
+    // the cycle the store refuses to load. The occurrence is declared inline
+    // instead, which is also why `ENTRY_DEPTH` bounds it here.
     field
         .as_fix_mut()
         .set_counter(super::NOFIXENTRIES_TAG_NAME.0)?;
-    field.as_fix_mut().set_component(ENTRY_COMPONENT)?;
     Ok(field)
 }
 

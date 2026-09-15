@@ -462,6 +462,13 @@ impl FixRegistry {
         self.get_definition(crate::FixCategory::Groups, name)
             .filter(|group| matches!(group.dtype(), crate::DataType::Map(_)))
             .or_else(|| self.get_field_by_name(name))
+            // Last, and only for a name nothing else answers: a List group is
+            // reached by its own name - `Parties`, never `NoPartyIDs`, which
+            // names the count beside it - so a message can be written one
+            // whole, which is what lifting a group out of the arrival record
+            // needs. A scalar of that name still wins, because a field the
+            // dictionary publishes is what a caller spelling it means.
+            .or_else(|| self.get_definition(crate::FixCategory::Groups, name))
     }
 
     /// One key read as a name, and as the path it spells where it spells one.

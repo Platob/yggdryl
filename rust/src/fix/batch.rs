@@ -275,6 +275,122 @@ impl FixCodec {
         Ok(canonical_closing_reader(&root, rows)?)
     }
 
+    /// A stream of messages as the rows one message field holds them.
+    ///
+    /// The third verb, and the one a consumer reads by. A parse lands every
+    /// line in the [fixed row](super::fix_schema) and an
+    /// [enrichment](Self::enrich_messages) fills what each message implies;
+    /// this answers the same messages under a message field the registry
+    /// names - the crate's own
+    /// [`GenericMessage`](super::fix_generic_message), a venue's own type, or
+    /// any Struct root a caller built for the table it is writing.
+    ///
+    /// Each row is [`FixMsg::into_row`] under `field`: the field's columns in
+    /// its order, each filled by the tag its own field carries, the crate's
+    /// derivations answering the columns a message did not state, and a value
+    /// the column will not hold nulled rather than refused. `field` is read
+    /// once here and never per message.
+    ///
+    /// A column the message does not carry is read off its arrival record
+    /// first, which is what makes formatting a narrow row into a wider field
+    /// answer more than the narrow row did. What the record cannot say it
+    /// does not say: a bridge's packed occurrence, a composed key and a
+    /// row-header capture are the codec's readings of a dialect, recorded as
+    /// the pairs the bridge wrote (decisions 8 and 20), so a row that dropped
+    /// their columns has dropped them.
+    ///
+    /// Nothing is parsed again and nothing is collected: the iterator is the
+    /// stream, so ten million messages cost one at a time.
+    /// [`Self::format_arrow_reader`] is the same pass over batches, which is
+    /// what a capture already in Arrow uses.
+    ///
+    /// ```
+    /// # fn main() -> yggdryl::Result<()> {
+    /// # use std::sync::Arc;
+    /// # use yggdryl::holder::local::Folder;
+    /// # use yggdryl::{FixCodec, FixRegistry, fix_generic_message};
+    /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
+    /// let codec = FixCodec::new(Arc::clone(&registry));
+    /// let generic = fix_generic_message(&registry, "fix")?;
+    /// let messages = codec.parse_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|10=0|")?;
+    ///
+    /// let rows: Vec<_> = codec
+    ///     .format_messages(messages, &generic)
+    ///     .collect::<yggdryl::Result<Vec<_>>>()?;
+    /// let at = generic.index_of("symbol").expect("a symbol column");
+    /// assert_eq!(rows[0].as_sequence().expect("a row")[at].as_str(), Some("AAPL"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn format_messages<'codec, 'field, I>(
+        &'codec self,
+        messages: I,
+        field: &'field Field,
+    ) -> impl Iterator<Item = Result<Scalar>> + use<'codec, 'field, I>
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+    {
+        let registry = self.registry();
+        messages
+            .into_iter()
+            .fuse()
+            .map(move |held| super::enrich::lifted(registry, held.into()?).into_row(field))
+    }
+
+    /// A stream of batches of stable FIX rows as batches under one message field.
+    ///
+    /// The Arrow twin of [`Self::format_messages`], and the last stage of the
+    /// pipeline a capture runs: text lines in Arrow batches, parsed, enriched,
+    /// then formatted here into the columns a consumer reads. The schema is
+    /// decided before the first row, from the source's carried columns and
+    /// `field`, so a reader is written against it without a batch in hand.
+    ///
+    /// Two paths, and the source's own schema decides which. A source that
+    /// already carries `field`'s columns is cast batch by batch through the
+    /// crate's one [Arrow cast](crate::arrow::cast_reader) - column kernels,
+    /// no row loop, one plan for the whole stream, and a value that will not
+    /// convert nulled rather than refused - and a source that is already
+    /// exactly `field` is handed back untouched. A source carrying the
+    /// arrival record instead is read back as
+    /// [messages](Self::messages) and re-filled, because that is the only way
+    /// a column the row does not carry can be answered at all: the record is
+    /// the message, and lifting out of it is what the record is for.
+    ///
+    /// Batches close on the raw bytes of each message's arrival record
+    /// against [`Self::with_batch_byte_size`], exactly as
+    /// [`Self::arrow_reader`] closes them.
+    ///
+    /// # Errors
+    ///
+    /// Returns the Arrow layer's refusal when `field` does not make an Arrow
+    /// schema, and the cast's when the source's columns cannot be planned
+    /// into it; the source reader's own failure is an error batch.
+    pub fn format_arrow_reader(&self, source: BatchReader, field: &Field) -> Result<BatchReader> {
+        let read = Self::row_field(source.schema().as_ref())?;
+        // The capture's own columns lead the formatted row exactly as they
+        // lead the parsed one: where a line was read from is what a monitor
+        // orders and joins on, and a format is a reading of the message, not
+        // a reason to lose the frame around it.
+        let target = super::fix_schema_carrying(&read, field)?;
+        // A source holding the record can answer every column of every
+        // target, so it is read as messages and filled. One that does not is
+        // a projection already, and a cast is what a projection needs.
+        if read.index_of(FIXENTRIES_COLUMN).is_none() {
+            return Ok(crate::arrow::cast_reader(
+                source,
+                &target,
+                crate::ArrowCastOptions::new(),
+            )?);
+        }
+        let registry = Arc::clone(self.registry());
+        let lifted = self
+            .messages(source)
+            .map(move |held| Ok(super::enrich::lifted(&registry, held?)));
+        self.arrow_reader(target, lifted)
+    }
+
     /// Writes a stream of batches of FIX rows back to the wire, streamed.
     ///
     /// The encode direction of the same exchange: each row is the message

@@ -145,11 +145,12 @@ fn text_stage(lines: &[&str]) -> RecordBatch {
 /// The whole path, as the batches it answers - which is none where the lines
 /// carry no message at all.
 fn read_batches(lines: &[&str]) -> Vec<RecordBatch> {
-    codec()
-        .parse_text_arrow_reader(corpus(lines).read_arrow_reader(&text()).expect("a reader"))
-        .expect("the batch reader opens")
-        .map(|batch| batch.expect("a batch"))
-        .collect()
+    super::parsed_and_formatted(
+        &codec(),
+        corpus(lines).read_arrow_reader(&text()).expect("a reader"),
+    )
+    .map(|batch| batch.expect("a batch"))
+    .collect()
 }
 
 /// The whole path, as one batch: the capture is far under the byte target.
