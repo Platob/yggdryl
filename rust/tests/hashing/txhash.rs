@@ -68,25 +68,24 @@ fn canonical_bytes_are_the_instant_then_the_digest() {
 }
 
 #[test]
-fn uuid_projection_keeps_all_signed_nanoseconds_around_the_reserved_bits() {
+fn uuid_projection_packs_the_microsecond_instant_as_a_uuidv7() {
     let digest = Digest::new(DigestAlgorithm::Xxh64, 0x0123_4567_89ab_cdef);
     for (nanoseconds, expected) in [
-        (i64::MIN, "00000000-0000-8000-8123-456789abcdef"),
-        (-1, "7fffffff-ffff-8fff-bd23-456789abcdef"),
-        (0, "80000000-0000-8000-8123-456789abcdef"),
-        (1, "80000000-0000-8000-8523-456789abcdef"),
-        (15, "80000000-0000-8000-bd23-456789abcdef"),
-        (16, "80000000-0000-8001-8123-456789abcdef"),
-        (65_535, "80000000-0000-8fff-bd23-456789abcdef"),
-        (65_536, "80000000-0001-8000-8123-456789abcdef"),
-        (i64::MAX, "ffffffff-ffff-8fff-bd23-456789abcdef"),
+        (0, "00000000-0000-7000-8123-456789abcdef"),
+        // The sub-microsecond nanoseconds are floored away.
+        (999, "00000000-0000-7000-8123-456789abcdef"),
+        (1_000, "00000000-0000-7004-8123-456789abcdef"),
+        (999_999, "00000000-0000-7ffb-8123-456789abcdef"),
+        (1_000_000, "00000000-0001-7000-8123-456789abcdef"),
+        (1_000_000_000, "00000000-03e8-7000-8123-456789abcdef"),
+        (i64::MAX, "08637bd0-5af6-7c66-8123-456789abcdef"),
     ] {
         let value = TxHash::new_in(nanoseconds, TimeUnit::Nanosecond, digest).unwrap();
         let raw = value.into_bytes();
         let projected = value.into_uuid().unwrap();
         assert_eq!(projected.to_string(), expected, "{nanoseconds}");
         let bytes = projected.into_bytes();
-        assert_eq!(bytes[6] >> 4, 8);
+        assert_eq!(bytes[6] >> 4, 7);
         assert_eq!(bytes[8] >> 6, 2);
         assert_eq!(
             value.into_bytes(),
@@ -99,19 +98,15 @@ fn uuid_projection_keeps_all_signed_nanoseconds_around_the_reserved_bits() {
 }
 
 #[test]
-fn uuid_projection_orders_signed_instants_before_every_digest_bit() {
+fn uuid_projection_orders_microsecond_instants_before_every_digest_bit() {
     let instants = [
-        i64::MIN,
-        i64::MIN + 1,
-        -65_536,
-        -16,
-        -1,
         0,
-        1,
-        15,
-        16,
-        65_535,
-        65_536,
+        1_000,
+        15_000,
+        16_000,
+        65_535_000,
+        65_536_000,
+        1_000_000_000,
         i64::MAX,
     ];
     for pair in instants.windows(2) {
@@ -136,6 +131,22 @@ fn uuid_projection_orders_signed_instants_before_every_digest_bit() {
             "{pair:?}"
         );
     }
+    // Within one microsecond the instant ties, and the digest orders.
+    let low = TxHash::new_in(
+        1_000,
+        TimeUnit::Nanosecond,
+        Digest::new(DigestAlgorithm::Xxh64, 1),
+    )
+    .unwrap();
+    let high = TxHash::new_in(
+        1_999,
+        TimeUnit::Nanosecond,
+        Digest::new(DigestAlgorithm::Xxh64, 2),
+    )
+    .unwrap();
+    assert!(low.into_uuid().unwrap() < high.into_uuid().unwrap());
+    // Before the epoch there is no UUIDv7: the projection is refused at `$`,
+    // while the raw bytes still hold the two's-complement count.
     let before = TxHash::new_in(
         -1,
         TimeUnit::Nanosecond,
@@ -143,6 +154,10 @@ fn uuid_projection_orders_signed_instants_before_every_digest_bit() {
     )
     .unwrap();
     let epoch = TxHash::new_in(0, TimeUnit::Nanosecond, before.digest()).unwrap();
+    assert!(matches!(
+        before.into_uuid().unwrap_err(),
+        Error::InvalidRecord { ref path, .. } if path == "$"
+    ));
     assert!(
         before.into_bytes() > epoch.into_bytes(),
         "raw bytes retain two's-complement ordering"
@@ -152,7 +167,7 @@ fn uuid_projection_orders_signed_instants_before_every_digest_bit() {
 #[test]
 fn uuid_projection_normalizes_units_and_preserves_restatement_overflow() {
     let digest = Digest::new(DigestAlgorithm::Xxh3, 7);
-    for seconds in [-2, 0, 2] {
+    for seconds in [0, 2] {
         let expected = TxHash::new_in(seconds, TimeUnit::Second, digest)
             .unwrap()
             .into_uuid()
@@ -172,14 +187,20 @@ fn uuid_projection_normalizes_units_and_preserves_restatement_overflow() {
         (TimeUnit::Millisecond, 1_000_000),
         (TimeUnit::Microsecond, 1_000),
     ] {
-        for count in [i64::MIN / scale, i64::MAX / scale] {
-            assert!(
-                TxHash::new_in(count, unit, digest)
-                    .unwrap()
-                    .into_uuid()
-                    .is_ok()
-            );
-        }
+        assert!(
+            TxHash::new_in(i64::MAX / scale, unit, digest)
+                .unwrap()
+                .into_uuid()
+                .is_ok()
+        );
+        // A count below the epoch restates, and is then refused as a UUIDv7.
+        assert!(matches!(
+            TxHash::new_in(i64::MIN / scale, unit, digest)
+                .unwrap()
+                .into_uuid()
+                .unwrap_err(),
+            Error::InvalidRecord { ref path, .. } if path == "$"
+        ));
         for count in [i64::MIN / scale - 1, i64::MAX / scale + 1] {
             let expected = restate_unix(count, unit, TimeUnit::Nanosecond).unwrap_err();
             let error = TxHash::new_in(count, unit, digest)
@@ -199,9 +220,9 @@ fn uuid_projection_normalizes_units_and_preserves_restatement_overflow() {
 }
 
 #[test]
-fn uuid_projection_discards_only_the_high_six_digest_bits_and_algorithm() {
+fn uuid_projection_discards_only_the_high_two_digest_bits_and_algorithm() {
     let project = |algorithm, payload| {
-        TxHash::new_in(-1, TimeUnit::Nanosecond, Digest::new(algorithm, payload))
+        TxHash::new_in(1, TimeUnit::Nanosecond, Digest::new(algorithm, payload))
             .unwrap()
             .into_uuid()
             .unwrap()
@@ -209,13 +230,13 @@ fn uuid_projection_discards_only_the_high_six_digest_bits_and_algorithm() {
     let payload = 0x0123_4567_89ab_cdef;
     let expected = project(DigestAlgorithm::Xxh64, payload);
     assert_eq!(project(DigestAlgorithm::Xxh3, payload), expected);
-    for bit in 58..64 {
+    for bit in 62..64 {
         assert_eq!(
             project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
             expected
         );
     }
-    for bit in 0..58 {
+    for bit in 0..62 {
         assert_ne!(
             project(DigestAlgorithm::Xxh64, payload ^ (1_u128 << bit)),
             expected
@@ -236,7 +257,7 @@ fn uuid_projection_refuses_non_64_bit_digests_without_narrowing() {
             assert_eq!(
                 reason,
                 format!(
-                    "expected a 64-bit digest for UUIDv8, got {algorithm} ({} bits)",
+                    "expected a 64-bit digest for UUIDv7, got {algorithm} ({} bits)",
                     algorithm.width() * 8
                 )
             );

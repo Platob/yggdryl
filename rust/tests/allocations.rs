@@ -237,15 +237,13 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
         .into_iter()
         .flat_map(|algorithm| {
             [
-                (i64::MIN, TimeUnit::Nanosecond),
-                (-1, TimeUnit::Nanosecond),
                 (0, TimeUnit::Nanosecond),
                 (15, TimeUnit::Nanosecond),
                 (16, TimeUnit::Nanosecond),
                 (65_535, TimeUnit::Nanosecond),
                 (65_536, TimeUnit::Nanosecond),
                 (i64::MAX, TimeUnit::Nanosecond),
-                (-1_700_000_000, TimeUnit::Second),
+                (1_700_000_000, TimeUnit::Second),
                 (1_700_000_000_000, TimeUnit::Millisecond),
                 (1_700_000_000_000_000, TimeUnit::Microsecond),
             ]
@@ -258,7 +256,7 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
         .collect();
     for count in [1, 32, 1_024] {
         free(
-            &format!("projecting {count} TxHash values to UUIDv8"),
+            &format!("projecting {count} TxHash values to UUIDv7"),
             || {
                 for index in 0..count {
                     black_box(

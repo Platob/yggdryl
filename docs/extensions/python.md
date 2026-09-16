@@ -1174,7 +1174,7 @@ A dataclass used as a dictionary *key* reads back as the tuple of its entries, b
 
 `yggdryl.hashing` is the one owner of both digest families ([Hashing](../hashing.md)). `yggdryl.hashing.xxhash` carries the four one-shot functions, the four resumable states, and `Digest`. `IOBase.read_digest` and `Scalar.digest` reach the same native path, and a one-shot answers a plain `int` at its native width. A `bytes` or `str` is hashed in place, and any other buffer is read through one bounded 64 KiB window. Each resumable state also exposes `apply_arrow_batch(root, batch)`, which fills default digest holders row by row from the root Field's digest metadata.
 
-`yggdryl.hashing.txhash` couples an instant with that digest. Every `unix` argument is an `int`, a `datetime`, a `date`, timestamp text, or a `Scalar`, and the column functions take and answer `pyarrow` arrays. `TxHash.into_uuid()` answers the lossy UUIDv8 projection of a value with a 64-bit digest as a `uuid` `Scalar`, and raises `ValueError` for another digest width or an instant past signed 64-bit nanoseconds.
+`yggdryl.hashing.txhash` couples an instant with that digest. Every `unix` argument is an `int`, a `datetime`, a `date`, timestamp text, or a `Scalar`, and the column functions take and answer `pyarrow` arrays. `TxHash.into_uuid()` answers the lossy UUIDv7 projection of a value with a 64-bit digest as a `uuid` `Scalar`, and raises `ValueError` for another digest width, an instant past signed 64-bit nanoseconds, or one a UUIDv7 cannot hold.
 
 ```python
 import datetime as dt

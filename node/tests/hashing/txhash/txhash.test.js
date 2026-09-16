@@ -68,24 +68,23 @@ test('values order by instant then digest and never across algorithms', () => {
   assert.ok(!earlier.equals(earlier.withUnit('s')))
 })
 
-// Parity with rust/src/hashing/txhash/tests.rs `uuid_projection_*` and the
+// Parity with rust/tests/hashing/txhash.rs `uuid_projection_*` and the
 // `TxHash::into_uuid` doc example; every expectation below is pinned there.
 const I64_MIN = -(2n ** 63n)
 const I64_MAX = 2n ** 63n - 1n
 const hex = (payload, digits) => payload.toString(16).padStart(digits, '0')
 
-test('intoUuid keeps all signed nanoseconds around the reserved bits', () => {
+test('intoUuid packs the microsecond instant as a UUIDv7', () => {
   const digest = Digest.from('xxh64:0123456789abcdef')
   for (const [nanoseconds, expected] of [
-    [I64_MIN, '00000000-0000-8000-8123-456789abcdef'],
-    [-1n, '7fffffff-ffff-8fff-bd23-456789abcdef'],
-    [0n, '80000000-0000-8000-8123-456789abcdef'],
-    [1n, '80000000-0000-8000-8523-456789abcdef'],
-    [15n, '80000000-0000-8000-bd23-456789abcdef'],
-    [16n, '80000000-0000-8001-8123-456789abcdef'],
-    [65_535n, '80000000-0000-8fff-bd23-456789abcdef'],
-    [65_536n, '80000000-0001-8000-8123-456789abcdef'],
-    [I64_MAX, 'ffffffff-ffff-8fff-bd23-456789abcdef'],
+    [0n, '00000000-0000-7000-8123-456789abcdef'],
+    // The sub-microsecond nanoseconds are floored away.
+    [999n, '00000000-0000-7000-8123-456789abcdef'],
+    [1_000n, '00000000-0000-7004-8123-456789abcdef'],
+    [999_999n, '00000000-0000-7ffb-8123-456789abcdef'],
+    [1_000_000n, '00000000-0001-7000-8123-456789abcdef'],
+    [1_000_000_000n, '00000000-03e8-7000-8123-456789abcdef'],
+    [I64_MAX, '08637bd0-5af6-7c66-8123-456789abcdef'],
   ]) {
     const value = TxHash.fromParts(nanoseconds, digest, 'ns')
     const raw = Buffer.from(value.bytes())
@@ -97,18 +96,21 @@ test('intoUuid keeps all signed nanoseconds around the reserved bits', () => {
     assert.equal(raw.readBigInt64BE(0), nanoseconds)
   }
 
-  // The doc example: the UUID orders across the epoch where the raw bytes,
-  // two's complement, do not.
+  // The doc example: a UUIDv7 ordered by instant to the microsecond, and
+  // none to project before the epoch, where the raw bytes still hold the
+  // two's-complement count.
   const one = Digest.from('xxh64:0000000000000001')
   const epoch = TxHash.fromParts(0n, one, 'ns')
+  const micro = TxHash.fromParts(1n, one, 'us')
   const before = TxHash.fromParts(-1n, one, 'ns')
-  assert.equal(epoch.intoUuid().asJs(), '80000000-0000-8000-8000-000000000001')
-  assert.ok(before.intoUuid().asJs() < epoch.intoUuid().asJs())
+  assert.equal(epoch.intoUuid().asJs(), '00000000-0000-7000-8000-000000000001')
+  assert.ok(epoch.intoUuid().asJs() < micro.intoUuid().asJs())
+  assert.throws(() => before.intoUuid(), /UUIDv7/)
   assert.ok(Buffer.compare(Buffer.from(before.bytes()), Buffer.from(epoch.bytes())) > 0)
 })
 
-test('intoUuid orders signed instants before every digest bit', () => {
-  const instants = [I64_MIN, I64_MIN + 1n, -65_536n, -16n, -1n, 0n, 1n, 15n, 16n, 65_535n, 65_536n, I64_MAX]
+test('intoUuid orders microsecond instants before every digest bit', () => {
+  const instants = [0n, 1_000n, 15_000n, 16_000n, 65_535_000n, 65_536_000n, 1_000_000_000n, I64_MAX]
   const highest = Digest.from('xxh64:ffffffffffffffff')
   const lowest = Digest.from('xxh64:0000000000000000')
   for (let index = 1; index < instants.length; index += 1) {
@@ -117,11 +119,15 @@ test('intoUuid orders signed instants before every digest bit', () => {
     assert.equal(earlier.compare(later), -1, 'native ordering still compares the signed count')
     assert.ok(earlier.intoUuid().asJs() < later.intoUuid().asJs(), `${instants[index - 1]} < ${instants[index]}`)
   }
+  // Within one microsecond the instant ties, and the digest orders.
+  const low = TxHash.fromParts(1_000n, Digest.from('xxh64:0000000000000001'), 'ns')
+  const high = TxHash.fromParts(1_999n, Digest.from('xxh64:0000000000000002'), 'ns')
+  assert.ok(low.intoUuid().asJs() < high.intoUuid().asJs())
 })
 
 test('intoUuid normalizes units and keeps the restatement overflow', () => {
   const digest = Digest.from('xxh3-64:0000000000000007')
-  for (const seconds of [-2n, 0n, 2n]) {
+  for (const seconds of [0n, 2n]) {
     const expected = TxHash.fromParts(seconds, digest, 's').intoUuid()
     for (const [unit, scale] of [['s', 1n], ['ms', 1_000n], ['us', 1_000_000n], ['ns', 1_000_000_000n]]) {
       const projected = TxHash.fromParts(seconds * scale, digest, unit).intoUuid()
@@ -130,9 +136,9 @@ test('intoUuid normalizes units and keeps the restatement overflow', () => {
   }
   for (const [unit, scale] of [['s', 1_000_000_000n], ['ms', 1_000_000n], ['us', 1_000n]]) {
     // BigInt division truncates toward zero, as Rust's does.
-    for (const count of [I64_MIN / scale, I64_MAX / scale]) {
-      assert.equal(TxHash.fromParts(count, digest, unit).intoUuid().dtype.id, 'uuid')
-    }
+    assert.equal(TxHash.fromParts(I64_MAX / scale, digest, unit).intoUuid().dtype.id, 'uuid')
+    // A count below the epoch restates, and is then refused as a UUIDv7.
+    assert.throws(() => TxHash.fromParts(I64_MIN / scale, digest, unit).intoUuid(), /UUIDv7/)
     for (const count of [I64_MIN / scale - 1n, I64_MAX / scale + 1n]) {
       let expected
       assert.throws(() => txhash.restateUnix(count, unit, 'ns'), (error) => {
@@ -145,16 +151,16 @@ test('intoUuid normalizes units and keeps the restatement overflow', () => {
   }
 })
 
-test('intoUuid discards only the high six digest bits and the algorithm', () => {
+test('intoUuid discards only the high two digest bits and the algorithm', () => {
   const project = (algorithm, payload) =>
-    TxHash.fromParts(-1n, Digest.from(`${algorithm}:${hex(payload, 16)}`), 'ns').intoUuid()
+    TxHash.fromParts(1n, Digest.from(`${algorithm}:${hex(payload, 16)}`), 'ns').intoUuid()
   const payload = 0x0123_4567_89ab_cdefn
   const expected = project('xxh64', payload)
   assert.ok(project('xxh3-64', payload).equals(expected))
-  for (let bit = 58n; bit < 64n; bit += 1n) {
+  for (let bit = 62n; bit < 64n; bit += 1n) {
     assert.ok(project('xxh64', payload ^ (1n << bit)).equals(expected), String(bit))
   }
-  for (let bit = 0n; bit < 58n; bit += 1n) {
+  for (let bit = 0n; bit < 62n; bit += 1n) {
     assert.ok(!project('xxh64', payload ^ (1n << bit)).equals(expected), String(bit))
   }
 })
@@ -164,7 +170,7 @@ test('intoUuid refuses non-64-bit digests without narrowing', () => {
     for (const payload of [0n, 7n, (1n << BigInt(bits)) - 1n]) {
       const value = TxHash.fromParts(0n, Digest.from(`${algorithm}:${hex(payload, digits)}`), 'ns')
       assert.throws(() => value.intoUuid(), {
-        message: `invalid record value at $.digest: expected a 64-bit digest for UUIDv8, got ${algorithm} (${bits} bits)`,
+        message: `invalid record value at $.digest: expected a 64-bit digest for UUIDv7, got ${algorithm} (${bits} bits)`,
       })
     }
   }

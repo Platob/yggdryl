@@ -275,17 +275,19 @@ impl TxHash {
         Ok(bytes)
     }
 
-    /// Project this value to RFC 9562 UUIDv8 without allocating on success.
+    /// Project this value to RFC 9562 UUIDv7 without allocating on success.
     ///
-    /// The instant is converted exactly to signed 64-bit nanoseconds. Its
-    /// sign bit is flipped and all 64 bits are packed around the UUID's
-    /// version and variant bits, followed by the digest's low 58 bits.
-    /// UUID ordering therefore follows nanosecond instants across the epoch,
-    /// independent of digest. Neither the original unit nor the algorithm
-    /// is encoded; the discarded six digest bits cannot be recovered.
-    /// This is a lossy fingerprint, not a uniqueness guarantee or an inverse
-    /// of [`Self::into_bytes`]. The raw bytes and ordering of `TxHash` itself
-    /// are unchanged.
+    /// The instant is restated exactly to signed 64-bit nanoseconds, then
+    /// floored to the microsecond [`Uuid::from_v7`] packs: the Unix
+    /// millisecond in the leading 48 bits, the version, the twelve-bit
+    /// sub-millisecond fraction, the variant, and the digest's low 62 bits
+    /// behind. Any UUIDv7 reader therefore reads the instant, and the UUIDs
+    /// order by instant to the microsecond and by digest within one.
+    /// Neither the original unit nor the algorithm is encoded; the
+    /// sub-microsecond nanoseconds and the discarded two digest bits cannot
+    /// be recovered. This is a lossy fingerprint, not a uniqueness guarantee
+    /// or an inverse of [`Self::into_bytes`]. The raw bytes and ordering of
+    /// `TxHash` itself are unchanged.
     ///
     /// ```
     /// use yggdryl::{Digest, DigestAlgorithm, TimeUnit, hashing::txhash::TxHash};
@@ -293,9 +295,12 @@ impl TxHash {
     /// let value = TxHash::new_in(
     ///     0, TimeUnit::Nanosecond, Digest::new(DigestAlgorithm::Xxh64, 1),
     /// )?;
-    /// assert_eq!(value.into_uuid()?.to_string(), "80000000-0000-8000-8000-000000000001");
+    /// assert_eq!(value.into_uuid()?.to_string(), "00000000-0000-7000-8000-000000000001");
+    /// let later = TxHash::new_in(1, TimeUnit::Microsecond, value.digest())?;
+    /// assert!(value.into_uuid()? < later.into_uuid()?);
+    /// // Before the epoch there is no UUIDv7, so the projection is refused.
     /// let earlier = TxHash::new_in(-1, TimeUnit::Nanosecond, value.digest())?;
-    /// assert!(earlier.into_uuid()? < value.into_uuid()?);
+    /// assert!(earlier.into_uuid().is_err());
     /// assert!(earlier.into_bytes() > value.into_bytes());
     /// # Ok(())
     /// # }
@@ -304,13 +309,15 @@ impl TxHash {
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
-    /// 64 bits wide, or the existing [`Error::ArithmeticOverflow`] from
-    /// [`restate_unix`] when the instant does not fit signed 64-bit nanoseconds.
+    /// 64 bits wide, the existing [`Error::ArithmeticOverflow`] from
+    /// [`restate_unix`] when the instant does not fit signed 64-bit
+    /// nanoseconds, and [`Uuid::from_v7`]'s refusal at `$` for an instant
+    /// before the epoch or past the 48-bit millisecond count.
     pub fn into_uuid(self) -> Result<Uuid> {
         let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
             path: "$.digest".into(),
             reason: crate::text::expected_got(
-                "a 64-bit digest for UUIDv8",
+                "a 64-bit digest for UUIDv7",
                 format_args!(
                     "{} ({} bits)",
                     self.algorithm(),
@@ -319,7 +326,7 @@ impl TxHash {
             ),
         })?;
         let nanoseconds = restate_unix(self.unix, self.unit, TimeUnit::Nanosecond)?;
-        Ok(Uuid::from_time_hash(nanoseconds, digest))
+        Uuid::from_v7(nanoseconds.div_euclid(1_000), digest)
     }
 
     /// Rebuild a value from its canonical bytes.

@@ -94,22 +94,6 @@ impl Uuid {
         Self((payload & !((0xf_u128 << 76) | VARIANT_MASK)) | (8_u128 << 76) | RFC_VARIANT)
     }
 
-    /// Pack a signed nanosecond instant and the digest's low 58 bits as UUIDv8.
-    ///
-    /// Flipping the sign bit orders all instants before distributing their
-    /// 64 bits around the version/variant slots. Unit conversion and digest
-    /// width validation belong to the time/hash value's boundary.
-    pub(crate) fn from_time_hash(unix_nanoseconds: i64, digest: u64) -> Self {
-        let instant =
-            u128::from(u64::from_be_bytes(unix_nanoseconds.to_be_bytes()) ^ (1_u64 << 63));
-        Self::from_v8(
-            ((instant >> 16) << 80)
-                | (((instant >> 4) & 0xfff) << 64)
-                | ((instant & 0xf) << 58)
-                | (u128::from(digest) & ((1_u128 << 58) - 1)),
-        )
-    }
-
     /// Parse the accepted hyphenated, compact-hex, or 16-byte representation.
     pub fn from_bytes(value: &[u8]) -> Result<Self> {
         Ok(Self(u128::from_be_bytes(types::uuid_parse(value)?)))

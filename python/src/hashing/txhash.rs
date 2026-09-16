@@ -218,10 +218,11 @@ impl PyTxHash {
         }
     }
 
-    /// The RFC 9562 `UUIDv8` projection as a `uuid` `Scalar`.
+    /// The RFC 9562 `UUIDv7` projection as a `uuid` `Scalar`.
     ///
-    /// Lossy and one-way: the instant restated to signed nanoseconds, then the
-    /// digest's low 58 bits; neither the unit nor the algorithm survives.
+    /// Lossy and one-way: the instant restated to signed nanoseconds and
+    /// floored to the microsecond, then the digest's low 62 bits; neither
+    /// the unit nor the algorithm survives.
     /// Raises `ValueError` for a digest that is not 64 bits wide, or an
     /// instant that does not fit signed 64-bit nanoseconds.
     #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.

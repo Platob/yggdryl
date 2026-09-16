@@ -22,9 +22,9 @@
 | Holders | A holder's `digest:sources` selects relative to its own Struct, `["*"]` and absence both meaning every field except a `digest:role=holder`; `apply_arrow_batch` fills every holder under a non-null Struct root, and a state's running digest is untouched ([Digest holders](#digest-holders-and-row-digests)) |
 | `TxHash` | `unit`, `unix`, `digest`; the digest is exactly what `xxhash` answers for the same bytes, so `txhash` defines no second hash. Spelled `<unix>@<unit>:<algorithm>:<hex>`, `from_str` the exact inverse; two units or two algorithms are never equal |
 | TxHash bytes | The instant as a big-endian `i64`, then the digest's canonical bytes: 12, 16, or 24 bytes for XXH32, the two 64-bit algorithms, XXH3-128. Stored as `fixed_size_binary[12|16|24]`; sixteen bytes imply XXH3-64, the project default |
-| Order | A value compares unit, then signed count, then digest, and never normalizes instants across units. Its bytes sort by time only within one unit, one algorithm, and one sign range: every negative count sorts after every nonnegative one ([Order](#order-and-uuidv8-projection)) |
+| Order | A value compares unit, then signed count, then digest, and never normalizes instants across units. Its bytes sort by time only within one unit, one algorithm, and one sign range: every negative count sorts after every nonnegative one ([Order](#order-and-uuidv7-projection)) |
 | Instant | UTC always: a zoned datetime already counts from the epoch, a naive one reads as if it were UTC, a date is its midnight. The unit is a clock resolution - `s`, `ms`, `us`, `ns` - microseconds when none is named; a coarser restatement floors, a finer one scales exactly |
-| UUIDv8 | `TxHash::into_uuid` is RFC 9562 UUIDv8: all 64 bits of the instant restated to signed nanoseconds, sign bit flipped, then the digest's low 58 bits. It needs a 64-bit digest, encodes neither unit nor algorithm, allocates nothing on success, and orders by instant across the epoch; a lossy fingerprint, not an inverse, and the raw bytes and value order do not change |
+| UUIDv7 | `TxHash::into_uuid` is RFC 9562 UUIDv7, what `Uuid::from_v7` packs: the instant restated to signed nanoseconds and floored to the microsecond - the Unix millisecond in the leading 48 bits, the twelve-bit sub-millisecond fraction behind the version - then the digest's low 62 bits. It needs a 64-bit digest and an instant from the epoch to the 48-bit millisecond count, encodes neither unit nor algorithm, allocates nothing on success, and orders by instant to the microsecond; a lossy fingerprint, not an inverse, and the raw bytes and value order do not change |
 | Ordered bytes | `TxHash::into_ordered_bytes` is the same ordering with nothing spent on a layout: the instant restated to signed nanoseconds with its sign bit flipped in bytes 0..8, then all 64 digest bits in bytes 8..16. It needs a 64-bit digest, encodes neither unit nor algorithm, and is what a `fixed[16]` column holds where `into_uuid` would have given an identifier. Rust-only |
 | Coupled columns | `txhash::arrow` answers `fixed_size_binary(12|16|24)`, one coupled value per row, whose digest half is exactly `row_digests` or `column_digests` of the same rows under the same algorithm; the instant column is read once as `int64` counts at the declared unit, nulls kept; `compose` and `decompose` are inverses ([Coupled columns](#coupled-columns)) |
 | Coupled holders | `digest:time` names the field whose instant a holder stores in front of its digest; `digest:unit` is its resolution, microseconds when absent, and only beside `digest:time` ([Coupled holders](#coupled-holders)) |
@@ -767,9 +767,9 @@ The four one-shots couple a microsecond instant with the plain digest of a buffe
     assert.ok(!seconds.equals(seconds.withUnit('ms')))
     ```
 
-## Order and UUIDv8 projection
+## Order and UUIDv7 projection
 
-A value orders by unit, then signed count, then digest; its bytes agree with that order only within one unit, one algorithm, and one sign range. `into_uuid` restates the instant to signed nanoseconds and projects RFC 9562 UUIDv8, which orders by instant across the epoch in every unit and keeps only the digest's low 58 bits. `into_ordered_bytes` is the same ordering with no layout over it - sixteen bytes, the flipped instant then the whole digest - and it is what the [FIX identities](fix/message.md#clocks-and-identity) hold.
+A value orders by unit, then signed count, then digest; its bytes agree with that order only within one unit, one algorithm, and one sign range. `into_uuid` restates the instant to signed nanoseconds, floors it to the microsecond and projects RFC 9562 UUIDv7 through [`Uuid::from_v7`](types/uuid.md), which any UUIDv7 reader reads the instant out of, orders by instant to the microsecond in every unit and keeps only the digest's low 62 bits; an instant before the epoch has no UUIDv7 and is refused. `into_ordered_bytes` is the same ordering with no layout over it - sixteen bytes, the flipped instant then the whole digest - and it is what the [FIX identities](fix/message.md#clocks-and-identity) hold.
 
 === "Rust"
 
@@ -787,9 +787,12 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     let before = TxHash::new_in(-1, TimeUnit::Nanosecond, one)?;
     assert!(before < epoch && before.into_bytes() > epoch.into_bytes());
 
-    // The projection orders by nanosecond instant across the epoch.
-    assert_eq!(epoch.into_uuid()?.to_string(), "80000000-0000-8000-8000-000000000001");
-    assert!(before.into_uuid()? < epoch.into_uuid()?);
+    // The projection is a UUIDv7, ordered by instant to the microsecond;
+    // before the epoch there is none to project.
+    assert_eq!(epoch.into_uuid()?.to_string(), "00000000-0000-7000-8000-000000000001");
+    let micro = TxHash::new_in(1, TimeUnit::Microsecond, one)?;
+    assert!(epoch.into_uuid()? < micro.into_uuid()?);
+    assert!(matches!(before.into_uuid().unwrap_err(), Error::InvalidRecord { ref path, .. } if path == "$"));
 
     // One instant in two units: two values, one UUID.
     let second = TxHash::new_in(1, TimeUnit::Second, one)?;
@@ -828,8 +831,10 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     assert before < epoch and bytes(before) > bytes(epoch)
 
     projected = epoch.into_uuid()
-    assert projected.as_py() == "80000000-0000-8000-8000-000000000001"
-    assert before.into_uuid() < projected
+    assert projected.as_py() == "00000000-0000-7000-8000-000000000001"
+    assert projected < txhash.TxHash.from_parts(1, one, unit="us").into_uuid()
+    with pytest.raises(ValueError, match="UUIDv7"):
+        before.into_uuid()
 
     # One instant in two units: two values, one UUID.
     second = txhash.TxHash.from_parts(1, one, unit="s")
@@ -837,7 +842,7 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     assert second != nanos
     assert second.into_uuid() == nanos.into_uuid()
 
-    with pytest.raises(ValueError, match="expected a 64-bit digest for UUIDv8"):
+    with pytest.raises(ValueError, match="expected a 64-bit digest for UUIDv7"):
         txhash.txh128(b"AAPL", 0).into_uuid()
     ```
 
@@ -860,8 +865,9 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     assert.equal(before.compare(epoch), -1)
     assert.ok(Buffer.compare(bytesOf(before), bytesOf(epoch)) > 0)
 
-    assert.equal(epoch.intoUuid().asJs(), '80000000-0000-8000-8000-000000000001')
-    assert.ok(before.intoUuid().asJs() < epoch.intoUuid().asJs())
+    assert.equal(epoch.intoUuid().asJs(), '00000000-0000-7000-8000-000000000001')
+    assert.ok(epoch.intoUuid().asJs() < txhash.TxHash.fromParts(1n, one, 'us').intoUuid().asJs())
+    assert.throws(() => before.intoUuid(), /UUIDv7/)
 
     // One instant in two units: two values, one UUID.
     const second = txhash.TxHash.fromParts(1n, one, 's')
@@ -869,10 +875,10 @@ A value orders by unit, then signed count, then digest; its bytes agree with tha
     assert.ok(!second.equals(nanos))
     assert.ok(second.intoUuid().equals(nanos.intoUuid()))
 
-    assert.throws(() => txhash.txh128('AAPL', 0n).intoUuid(), /expected a 64-bit digest for UUIDv8/)
+    assert.throws(() => txhash.txh128('AAPL', 0n).intoUuid(), /expected a 64-bit digest for UUIDv7/)
     ```
 
-With `t = (ns as u64) XOR 2^63`, the 128-bit payload before the version (`8`) and variant (`10`) bits are fixed is `(t >> 16) << 80 | ((t >> 4) & 0xfff) << 64 | (t & 0xf) << 58 | digest_low58`. Neither the unit nor the algorithm is encoded, so XXH64 and XXH3-64 with one payload project one UUID, and the six discarded digest bits cannot be recovered. A [`uuid`](types/uuid.md) is what comes back: a value `Scalar` in Python and JavaScript.
+With `us` the instant floored to microseconds, the 128 bits are `(us / 1000) << 80 | 7 << 76 | ((us % 1000) * 4096 / 1000) << 64 | 0b10 << 62 | digest_low62`, exactly what `Uuid::from_v7` packs. Neither the unit nor the algorithm is encoded, so XXH64 and XXH3-64 with one payload project one UUID, and the sub-microsecond nanoseconds and the two discarded digest bits cannot be recovered. A [`uuid`](types/uuid.md) is what comes back: a value `Scalar` in Python and JavaScript.
 
 `into_ordered_bytes` is the layout-free twin: `t` big-endian in bytes 0..8 and the whole 64-bit digest in bytes 8..16, so nothing is discarded and nothing is reserved. It answers `[u8; 16]`, a `fixed_size_binary(16)` column holds it, and it is Rust-only - the bindings reach it through the FIX identities that use it.
 
@@ -1279,7 +1285,7 @@ A holder naming `digest:time` stores the instant it names in front of its digest
 - An instant before the epoch -> orders first as a value and as a UUID, but last as bytes: a big-endian two's-complement count sorts by time within one sign range only.
 - One instant in two units -> two values that never compare equal and are not normalized; value order compares the unit before the count.
 - A count that does not fit the finer unit -> `ArithmeticOverflow`, never a wrapped count; `into_uuid` past signed 64-bit nanoseconds answers the same `unix restatement overflows int64`.
-- `into_uuid` on an XXH32 or XXH3-128 digest -> `Error::InvalidRecord` at `$.digest`, `expected a 64-bit digest for UUIDv8, got xxh3-128 (128 bits)`; `ValueError` in Python, a thrown error in JavaScript.
+- `into_uuid` on an XXH32 or XXH3-128 digest -> `Error::InvalidRecord` at `$.digest`, `expected a 64-bit digest for UUIDv7, got xxh3-128 (128 bits)`; `ValueError` in Python, a thrown error in JavaScript. An instant before the epoch or past the 48-bit millisecond count -> `Error::InvalidRecord` at `$`, as `Uuid::from_v7` refuses it.
 - Two digests differing only in their six high bits, or XXH64 and XXH3-64 over one payload -> one UUID; the projection is a 58-bit fingerprint.
 - `d`, `year_month`, `day_time`, `month_day_nano` as a unit -> refused; a unix count is a clock resolution.
 - A time of day, a duration, an interval, a null, a boolean, or a float as an instant -> refused by kind.

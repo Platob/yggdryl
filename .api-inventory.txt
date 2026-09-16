@@ -1060,7 +1060,7 @@ pub const UNIX_WIDTH: usize = 8;
   pub const fn width(&self) -> usize
   pub const fn dtype(&self) -> DataType
   pub fn with_unit(self, unit: TimeUnit) -> Result<Self>
-  pub fn into_uuid(self) -> Result<crate::types::Uuid>  (RFC 9562 v8; exact signed i64 nanoseconds and low 58 digest bits; requires a 64-bit digest; checked unit conversion; zero successful allocations; raw TxHash bytes and ordering unchanged)
+  pub fn into_uuid(self) -> Result<crate::types::Uuid>  (RFC 9562 UUIDv7 through `Uuid::from_v7`: the instant restated to signed i64 nanoseconds then floored to the microsecond, and the low 62 digest bits; requires a 64-bit digest; checked unit conversion; refuses an instant before the epoch or past the 48-bit millisecond count at `$`; zero successful allocations; raw TxHash bytes and ordering unchanged)
   pub fn into_ordered_bytes(self) -> Result<[u8; 16]>  (the same ordering with no layout: sign-flipped signed i64 nanoseconds big-endian in 0..8, all 64 digest bits in 8..16; requires a 64-bit digest; checked unit conversion; what the FIX identity columns hold; Rust-only)
   pub fn into_bytes(self) -> TxHashBytes
   pub fn from_bytes(unit: TimeUnit, algorithm: DigestAlgorithm, bytes: &[u8]) -> Result<Self>

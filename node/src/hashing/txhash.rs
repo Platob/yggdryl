@@ -223,10 +223,11 @@ impl JsTxHash {
         JsScalar::from_core(self.inner.into_scalar())
     }
 
-    /// The RFC 9562 `UUIDv8` projection, as a `uuid` `Scalar`.
+    /// The RFC 9562 `UUIDv7` projection, as a `uuid` `Scalar`.
     ///
-    /// The instant restates exactly to signed nanoseconds, then the digest's
-    /// low 58 bits follow, so the UUIDs order by instant across the epoch.
+    /// The instant restates exactly to signed nanoseconds and floors to the
+    /// microsecond, then the digest's low 62 bits follow, so the UUIDs order
+    /// by instant to the microsecond.
     /// Lossy: neither the unit nor the algorithm is kept. Throws for a digest
     /// that is not 64 bits wide, or an instant past signed 64-bit nanoseconds.
     #[napi]

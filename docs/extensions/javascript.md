@@ -739,8 +739,9 @@ its algorithm, seed, and secret.
 `hashing.txhash` couples an instant with that digest. Every `unix` argument is
 a `bigint`, an integer `number`, a `Date`, timestamp text, or a `Scalar`; the
 coupled columns stay Rust and Python only. `TxHash.intoUuid()` answers the lossy
-UUIDv8 projection of a value with a 64-bit digest as a `uuid` `Scalar`, and
-throws for another digest width or an instant past signed 64-bit nanoseconds.
+UUIDv7 projection of a value with a 64-bit digest as a `uuid` `Scalar`, and
+throws for another digest width, an instant past signed 64-bit nanoseconds, or
+one a UUIDv7 cannot hold.
 
 ```javascript
 const assert = require('node:assert/strict')
