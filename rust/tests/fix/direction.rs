@@ -108,8 +108,9 @@ fn the_reading_is_the_registrys_code_set_and_a_dictionary_without_the_field_answ
     let reading = extended.msgdirection();
     assert_eq!(reading.sent(), "OUT");
     assert_eq!(reading.recv(), "IN");
-    // In the order the dictionary holds the set, which sorts it by value.
-    assert_eq!(reading.codes().collect::<Vec<_>>(), ["B", "IN", "OUT"]);
+    // In the order the dictionary holds the set, which is the order it was
+    // stated in: where a code sits is its rank.
+    assert_eq!(reading.codes().collect::<Vec<_>>(), ["IN", "OUT", "B"]);
     assert_eq!(reading.code("both"), Some("B"));
     assert_eq!(
         reading.read_bytes(b"sending >> 8=FIX.4.4|35=D|10=0|"),

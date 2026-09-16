@@ -3592,6 +3592,59 @@ document and keeps writing the aliases), and `config/fix/fields/*.json`, from
 which 1,603 `fix:lineage` documents are gone.
 
 
+## Second amendment to decision 39: a code set is a ranked list, and a rule is a plan
+
+Two of the three documents change what an entry says; the convention - an
+array of entries, stored as the JSON it is - is untouched.
+
+**A code set dates nothing and ranks by position.** `since`, `ep`,
+`deprecated` and `sort` are gone from a `fix:codes` record, which is
+`value`, `name`, `group`, `aliases` and `doc`. Where a code sits in the list
+is the presentation rank the specification gives it, so the writer keeps the
+caller's order rather than sorting by wire value, and the 27,209 committed
+records were reordered into the rank they used to state beside themselves.
+With no date to prefer by, `code_value_at`, `code_name_at`, `code_at` and
+`FixCodeValue::defined_at` are gone; `code_value` and `code_name` are the
+whole vocabulary, and the `Option<Version>` the builder threaded through
+every typed spelling to reach them is gone with them. A restatement can no
+longer write over a target holding a retired code, because no code is
+retired: what the message stated stands.
+
+**A replacement rule is one plan.** An entry is `plan` and `doc`. The plan is
+the crate's own expression grammar - the one `fix:derivation` already spells
+a derived column in - with a `select` naming every column the rule fills and
+the term each takes, and a `where` that is the rule's condition. The fill
+vocabulary of the first amendment is ordinary terms: a constant is a literal,
+the source is its column, another field is its column, a join is `concat`,
+and one group occurrence is a list of one record, `[{partyid: execbroker,
+partyrole: '1'}] as parties`, a member of which may itself be an occurrence.
+The message type and the enclosing group are facts about the message rather
+than columns of the level a rule fires at, so they cross as the parameters
+`:msgtype` and `:group`, supplied by the reader. A `MultipleCharValue` source
+is asked with `contains`, and a constant written over such a source replaces
+the token the condition named, which the reader reads off the condition's
+literals. `since`, `ep`, `msgtypes`, `in`, `when` and `fills` are gone, and
+so are `FixFill`, `FixFillSource`, `FixFillEntry`, `FixFillValue` and
+`FixFills`; `FixReplacement::new` takes a `Plan`.
+
+What this costs, stated: the reader evaluates a plan against a view of the
+level built by cloning it, once per rule that fires, and parses the plan from
+its stored text at every firing. A field carrying a rule and holding a value
+is rare - thirty-seven fields of six thousand - which is why that is
+tolerable for now and not why it is right; compiling the plans once per
+registry, as `fix:derivation` is, is the next step.
+
+**Written in:** `fix/codes.rs`, `fix/field.rs` (the version-dated code
+lookups and the `translate` tiers), `fix/build.rs` and `fix/memo.rs` (the
+threaded version), `fix/replacements.rs` (whole), `fix/latest.rs` (the apply
+path: `view`, `parameters`, `applies`, `plan`, `plan_projection`,
+`plan_column`, `plan_group`, `restated_tokens`, `named_literals`,
+`occurrence_members`), `fix/document.rs` (`Part` gone: every key of every
+document is a leaf), `scripts/generate_fix_dictionary.py` (`codes_document`
+keeping rank as order; `plan_text` compiling the rule table), and
+`config/fix` (2,026 code sets reordered and undated; 100 rules as plans).
+
+
 ## 40. The message identities are named for what they are: hashes
 
 Settled with the user's request to rename the two identity columns, and

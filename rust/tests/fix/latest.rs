@@ -10,7 +10,7 @@ use super::path;
 
 use std::sync::Arc;
 
-use yggdryl::fix::{FixCode, FixFill, FixFillSource, FixReplacement};
+use yggdryl::fix::{FixCode, FixReplacement};
 use yggdryl::types::State;
 use yggdryl::{
     DataType, Field, FixCategory, FixCodec, FixMsg, FixRegistry, Scalar, VERSION_TAG_NAME, Version,
@@ -259,12 +259,11 @@ fn ruled_registry() -> Arc<FixRegistry> {
     rule80a.as_fix_mut().set_tag(47).expect("a tag");
     rule80a
         .as_fix_mut()
-        .set_replacements(&[FixReplacement::new(version("4.3"))
-            .with_when("A")
-            .with_fills([FixFill::Field {
-                tag: 528,
-                value: FixFillSource::Constant("A".into()),
-            }])])
+        .set_replacements(&[FixReplacement::new(
+            "select 'A' as ordercapacity where rule80a = 'A'"
+                .parse()
+                .expect("a plan"),
+        )])
         .expect("a rule");
     let mut capacity = DataType::utf8().nullable_field("ordercapacity");
     capacity.as_fix_mut().set_tag(528).expect("a tag");
@@ -308,7 +307,7 @@ fn a_target_takes_a_value_unless_the_message_stated_one() {
     let latest = enriched(message);
     assert_eq!(
         names(&latest),
-        with_bundle(&["ordercapacity", "rule80a"], &["version"])
+        with_bundle(&["ordercapacity", "rule80a"], &[])
     );
     assert_eq!(text(&latest, 528), Some("A"));
     // A stated value stands, and blocks the rule.
@@ -667,12 +666,11 @@ fn the_dictionary_carries_the_rules_the_engine_reads() {
     let mut rule80a = registry.field_by_tag(47).expect("Rule80A").clone();
     rule80a
         .as_fix_mut()
-        .set_replacements(&[FixReplacement::new(version("4.3"))
-            .with_when("A")
-            .with_fills([FixFill::Field {
-                tag: 528,
-                value: FixFillSource::Constant("P".into()),
-            }])])
+        .set_replacements(&[FixReplacement::new(
+            "select 'P' as ordercapacity where rule80a = 'A'"
+                .parse()
+                .expect("a plan"),
+        )])
         .expect("a rule");
     registry.update(rule80a).expect("updated");
     assert!(
@@ -751,7 +749,7 @@ fn a_declared_group_stating_no_occurrence_is_opened_by_a_fill_into_it() {
     let latest = enriched(declared_parties(list, Scalar::Null));
     assert_eq!(
         names(&latest),
-        with_bundle(&["parties", "execbroker"], &["nopartyids", "version"])
+        with_bundle(&["parties", "execbroker"], &["nopartyids"])
     );
     let parties = occurrences(&latest, "parties");
     assert_eq!(parties.len(), 1);

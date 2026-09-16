@@ -3048,25 +3048,11 @@
       ],
       "fix:replacements": [
         {
-          "since": "5.0.1",
-          "when": "Y",
-          "fills": [
-            {
-              "tag": 1390,
-              "value": "1"
-            }
-          ],
+          "plan": "select '1' as tradepublishindicator where publishtrdindicator = 'Y'",
           "doc": "PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"
         },
         {
-          "since": "5.0.1",
-          "when": "N",
-          "fills": [
-            {
-              "tag": 1390,
-              "value": "0"
-            }
-          ],
+          "plan": "select '0' as tradepublishindicator where publishtrdindicator = 'N'",
           "doc": "PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"
         }
       ],

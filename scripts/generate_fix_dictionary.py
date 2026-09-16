@@ -588,44 +588,112 @@ def fold_legacy_codes(
     return held
 
 
-def replacements_document(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """`fix:replacements`, keys in the order the reader expects.
+def quoted(text: str) -> str:
+    """One text literal of the crate's expression grammar."""
+    return "'" + text.replace("'", "''") + "'"
 
-    The Python half of the Rust writer: entry keys `since, ep, msgtypes, in,
-    when, fills, doc`, fill keys `tag, value, from, join, group, members`, and
-    the same compact rendering `codes_document` uses. Entries keep the order
-    the table states them in - the first entry whose `when` matches a value
-    answers, so a catch-all without one comes last - and are never sorted.
+
+def member_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
+    """The term one fill's value spells: a literal, another column, a join,
+    or - with none of them - the source column itself."""
+    if fill.get("value") is not None:
+        return quoted(fill["value"])
+    if fill.get("from") is not None:
+        return name_of[fill["from"]]
+    if fill.get("join") is not None:
+        parts = []
+        for part in fill["join"]:
+            name = name_of[part]
+            # An integer part is spelled with two digits, which is how a day
+            # completes a month-year.
+            if dtype_of[part] in ("int8", "int16", "int32", "int64"):
+                parts.append(f"substring(concat('0', cast({name} as utf8)), -2)")
+            else:
+                parts.append(name)
+        return f"concat({', '.join(parts)})"
+    return source
+
+
+def occurrence_term(fill: dict[str, Any], name_of: dict[int, str], dtype_of: dict[int, str], source: str) -> str:
+    """One group occurrence: a list of one record, a member per fill."""
+    members = ", ".join(
+        (name_of[member["tag"]] if "tag" in member else member["group"])
+        + ": "
+        + (
+            occurrence_term(member, name_of, dtype_of, source)
+            if "group" in member
+            else member_term(member, name_of, dtype_of, source)
+        )
+        for member in fill["members"]
+    )
+    return f"[{{{members}}}]"
+
+
+def plan_text(
+    entry: dict[str, Any],
+    source_tag: int,
+    name_of: dict[int, str],
+    dtype_of: dict[int, str],
+    multi_valued: set[int],
+) -> str:
+    """One rule as a plan of the crate's expression grammar.
+
+    The `select` names every column the rule fills and the term it takes; the
+    `where` is the rule's condition: the message type as the `:msgtype`
+    parameter, the enclosing group as `:group`, and the held value as an
+    equality on the source column - a containment for a `MultipleCharValue`
+    source, whose value is several codes in one text.
     """
-    entry_order = ["since", "ep", "msgtypes", "in", "when", "fills", "doc"]
-    fill_order = ["tag", "value", "from", "join", "group", "members"]
+    source = name_of[source_tag]
+    selects = ", ".join(
+        f"{occurrence_term(fill, name_of, dtype_of, source)} as {fill['group']}"
+        if "group" in fill
+        else f"{member_term(fill, name_of, dtype_of, source)} as {name_of[fill['tag']]}"
+        for fill in entry["fills"]
+    )
+    conditions = []
+    msgtypes = entry.get("msgtypes") or []
+    if len(msgtypes) == 1:
+        conditions.append(f":msgtype = {quoted(msgtypes[0])}")
+    elif msgtypes:
+        conditions.append(f":msgtype in ({', '.join(quoted(held) for held in msgtypes)})")
+    groups = entry.get("in") or []
+    if len(groups) == 1:
+        conditions.append(f":group = {quoted(groups[0])}")
+    elif groups:
+        conditions.append(f":group in ({', '.join(quoted(held) for held in groups)})")
+    if entry.get("when") is not None:
+        when = quoted(entry["when"])
+        conditions.append(f"contains({source}, {when})" if source_tag in multi_valued else f"{source} = {when}")
+    text = f"select {selects}"
+    if conditions:
+        text += " where " + " and ".join(conditions)
+    return text
 
-    def fills(held: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        rendered = []
-        for fill in held:
-            rendered.append(
-                {
-                    key: fills(fill[key]) if key == "members" else fill[key]
-                    for key in fill_order
-                    if fill.get(key) not in (None, [])
-                }
-            )
-        return rendered
 
+def replacements_document(
+    entries: list[dict[str, Any]],
+    source_tag: int,
+    name_of: dict[int, str],
+    dtype_of: dict[int, str],
+    multi_valued: set[int],
+) -> list[dict[str, Any]]:
+    """`fix:replacements`: one plan per entry, its `doc` beside it.
+
+    Entries keep the order the table states them in - the first entry whose
+    condition a message meets answers, so a catch-all without one comes last
+    - and are never sorted.
+    """
     rendered = []
     for entry in entries:
-        rendered.append(
-            {
-                key: fills(entry[key]) if key == "fills" else entry[key]
-                for key in entry_order
-                if entry.get(key) not in (None, [])
-            }
-        )
+        held = {"plan": plan_text(entry, source_tag, name_of, dtype_of, multi_valued)}
+        if entry.get("doc"):
+            held["doc"] = entry["doc"]
+        rendered.append(held)
     return rendered
 
 
 def rule(
-    since: str,
     fills: list[dict[str, Any]],
     *,
     when: str | None = None,
@@ -633,8 +701,9 @@ def rule(
     within: list[str] | None = None,
     doc: str | None = None,
 ) -> dict[str, Any]:
-    """One replacement entry; `within` is the document's `in`."""
-    return {"since": since, "msgtypes": msgtypes, "in": within, "when": when, "fills": fills, "doc": doc}
+    """One replacement entry, as the table states it before it is compiled to
+    a plan: `within` is the enclosing repeating group."""
+    return {"msgtypes": msgtypes, "in": within, "when": when, "fills": fills, "doc": doc}
 
 
 def fill(tag: int, value: str | None = None, *, source: int | None = None, join: list[int] | None = None) -> dict[str, Any]:
@@ -670,22 +739,22 @@ PEG_PRICE_TYPES = {"L": "1", "M": "2", "O": "3", "P": "4", "R": "5", "W": "7", "
 
 # Source tag -> entries, in document order. A tag listed twice concatenates,
 # so a family's entries follow the earlier family's. A `doc` cites the
-# appendix only where the mapping is not the same value in the replacement.
+# appendix only where the mapping is not the same value in the replacement;
+# the appendix's own version is the comment above each family and nothing
+# the document states.
 REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
     # FIX 4.3 Appendix 6-F, Replaced features.
     (20, [
-        rule("4.3", [fill(150, "H")], when="1", doc="ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"),
-        rule("4.3", [fill(150, "G")], when="2", doc="ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"),
-        rule("4.3", [fill(150, "I")], when="3", doc="ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "H")], when="1", doc="ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "G")], when="2", doc="ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "I")], when="3", doc="ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"),
     ]),
     (150, [
-        rule("4.3", [fill(150, "F")], when="1", doc="ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
-        rule("4.3", [fill(150, "F")], when="2", doc="ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "F")], when="1", doc="ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
+        rule([fill(150, "F")], when="2", doc="ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"),
     ]),
     (47, [
-        rule(
-            "4.3",
-            [fill(528, capacity)] + ([fill(529, restrictions)] if restrictions else []),
+        rule([fill(528, capacity)] + ([fill(529, restrictions)] if restrictions else []),
             when=code,
             doc=f"Rule80A {code} is OrderCapacity {capacity}"
             + (f" with OrderRestrictions {restrictions}" if restrictions else "")
@@ -694,120 +763,110 @@ REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
         for code, (capacity, restrictions) in RULE80A.items()
     ]),
     (204, [
-        rule("4.3", [fill(528, "A")], when="0", doc="CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"),
-        rule("4.3", [fill(528, "P")], when="1", doc="CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"),
+        rule([fill(528, "A")], when="0", doc="CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"),
+        rule([fill(528, "P")], when="1", doc="CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"),
     ]),
-    (76, [rule("4.3", party("1"), doc="ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)")]),
-    (92, [rule("4.3", party("2"), doc="BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)")]),
-    (109, [rule("4.3", party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
-    (439, [rule("4.3", party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
+    (76, [rule(party("1"), doc="ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)")]),
+    (92, [rule(party("2"), doc="BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)")]),
+    (109, [rule(party("3"), doc="ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)")]),
+    (439, [rule(party("4"), doc="ClearingFirm is a party with PartyRole ClearingFirm (FIX 4.3 Appendix 6-F)")]),
     (440, [
-        rule(
-            "4.3",
-            [{"group": "parties", "members": [fill(452, "4"), {"group": "ptyssubgrp", "members": [fill(523)]}]}],
+        rule([{"group": "parties", "members": [fill(452, "4"), {"group": "ptyssubgrp", "members": [fill(523)]}]}],
             doc="ClearingAccount is a PartySubID of the ClearingFirm party (FIX 4.3 Appendix 6-F)",
         ),
     ]),
     (166, [
         *(
-            rule(
-                "4.3",
-                [{"group": "parties", "members": [fill(448), fill(447, "C"), fill(452, "10")]}],
+            rule([{"group": "parties", "members": [fill(448), fill(447, "C"), fill(452, "10")]}],
                 when=code,
                 doc="SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)",
             )
             for code in ("CED", "DTC", "EUR", "FED", "PNY", "PTC")
         ),
-        rule(
-            "4.3",
-            [{"group": "parties", "members": [fill(448), fill(447, "E"), fill(452, "10")]}],
+        rule([{"group": "parties", "members": [fill(448), fill(447, "E"), fill(452, "10")]}],
             doc="SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)",
         ),
     ]),
-    (46, [rule("4.3", [fill(55)])]),
-    (205, [rule("4.3", [fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
-    (314, [rule("4.3", [fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
+    (46, [rule([fill(55)])]),
+    (205, [rule([fill(541, join=[200, 205])], doc="MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)")]),
+    (314, [rule([fill(542, join=[313, 314])], doc="UnderlyingMaturityDay completes UnderlyingMaturityMonthYear into UnderlyingMaturityDate (FIX 4.3 Appendix 6-F)")]),
     (370, [
-        rule(
-            "4.3",
-            [{"group": "hopgrp", "members": [fill(629), fill(628, source=115)]}],
+        rule([{"group": "hopgrp", "members": [fill(629), fill(628, source=115)]}],
             doc="OnBehalfOfSendingTime is a hop stamped by OnBehalfOfCompID (FIX 4.3 Appendix 6-F)",
         ),
     ]),
     (71, [
-        rule("4.3", [fill(626, "1")], when="0", msgtypes=["J"], doc="A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"),
-        rule("4.3", [fill(71, "0"), fill(626, "2")], when="3", msgtypes=["J"], doc="A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"),
+        rule([fill(626, "1")], when="0", msgtypes=["J"], doc="A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"),
+        rule([fill(71, "0"), fill(626, "2")], when="3", msgtypes=["J"], doc="A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"),
     ]),
     # FIX 4.4 Appendix 6-F Replaced features and Appendix 6-E Deprecated features.
     (40, [
-        rule("4.4", [fill(40, "1"), fill(59, "7")], when="5", doc="OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", [fill(40, "1"), fill(59, "7")], when="A", doc="OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", [fill(40, "2"), fill(59, "7")], when="B", doc="OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", [fill(40, "1"), fill(460, "4")], when="C", doc="OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", [fill(40, "2"), fill(460, "4")], when="F", doc="OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", [fill(40, "D"), fill(460, "4")], when="H", doc="OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "1"), fill(59, "7")], when="5", doc="OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "1"), fill(59, "7")], when="A", doc="OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "2"), fill(59, "7")], when="B", doc="OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "1"), fill(460, "4")], when="C", doc="OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "2"), fill(460, "4")], when="F", doc="OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
+        rule([fill(40, "D"), fill(460, "4")], when="H", doc="OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"),
     ]),
-    (63, [rule("4.4", [fill(63, "2")], when="A", doc="SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)")]),
+    (63, [rule([fill(63, "2")], when="A", doc="SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)")]),
     *(
         (tag, [
-            rule("4.4", [fill(tag, "TNOTE")], when="UST", doc="SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"),
-            rule("4.4", [fill(tag, "TBILL")], when="USTB", doc="SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"),
+            rule([fill(tag, "TNOTE")], when="UST", doc="SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"),
+            rule([fill(tag, "TBILL")], when="USTB", doc="SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"),
         ])
         for tag in (167, 310, 609)
     ),
     (18, [
-        rule(
-            "4.4",
-            [fill(835, "1"), fill(840, "1"), fill(18, "R")],
+        rule([fill(835, "1"), fill(840, "1"), fill(18, "R")],
             when="T",
             doc="ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)",
         ),
     ]),
     (219, [
-        rule("4.4", benchmark("USD", "Treasury", "INTERPOLATED"), when="1", doc="Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "Treasury", "5Y"), when="2", doc="Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "Treasury", "5Y-OLD"), when="3", doc="Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "Treasury", "10Y"), when="4", doc="Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "Treasury", "10Y-OLD"), when="5", doc="Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "Treasury", "30Y"), when="6", doc="Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "Treasury", "30Y-OLD"), when="7", doc="Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "LIBOR", "3M"), when="8", doc="Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"),
-        rule("4.4", benchmark("USD", "LIBOR", "6M"), when="9", doc="Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "INTERPOLATED"), when="1", doc="Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "5Y"), when="2", doc="Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "5Y-OLD"), when="3", doc="Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "10Y"), when="4", doc="Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "10Y-OLD"), when="5", doc="Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "30Y"), when="6", doc="Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "Treasury", "30Y-OLD"), when="7", doc="Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "LIBOR", "3M"), when="8", doc="Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"),
+        rule(benchmark("USD", "LIBOR", "6M"), when="9", doc="Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"),
     ]),
-    (540, [rule("4.4", [fill(159)])]),
-    (119, [rule("4.4", [fill(737)], within=["allocgrp"])]),
-    (120, [rule("4.4", [fill(736)], within=["allocgrp"])]),
-    (240, [rule("4.4", [fill(696)])]),
-    (239, [rule("4.4", [fill(310)])]),
+    (540, [rule([fill(159)])]),
+    (119, [rule([fill(737)], within=["allocgrp"])]),
+    (120, [rule([fill(736)], within=["allocgrp"])]),
+    (240, [rule([fill(696)])]),
+    (239, [rule([fill(310)])]),
     (226, [
-        rule("4.4", [fill(788, "1")], when="1", doc="A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"),
-        rule("4.4", [fill(788, "2")], doc="A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"),
+        rule([fill(788, "1")], when="1", doc="A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"),
+        rule([fill(788, "2")], doc="A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"),
     ]),
-    (227, [rule("4.4", [fill(44)])]),
+    (227, [rule([fill(44)])]),
     (465, [
-        rule("4.4", [fill(854, "1")], when="6", doc="QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"),
+        rule([fill(854, "1")], when="6", doc="QuantityType CONTRACTS is QtyType Contracts (FIX 4.4 Appendix 6-E)"),
         *(
-            rule("4.4", [fill(854, "0")], when=code, doc="QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)")
+            rule([fill(854, "0")], when=code, doc="QuantityType SHARES, CURRENCY and PAR are QtyType Units (FIX 4.4 Appendix 6-E)")
             for code in ("1", "5", "8")
         ),
     ]),
     # FIX 5.0 Appendix 6-E, Deprecated features.
-    (111, [rule("5.0", [fill(1138)])]),
-    (210, [rule("5.0", [fill(1082)])]),
-    (575, [rule("5.0", [fill(1093, "1")], when="Y", doc="An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)")]),
+    (111, [rule([fill(1138)])]),
+    (210, [rule([fill(1082)])]),
+    (575, [rule([fill(1093, "1")], when="Y", doc="An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)")]),
     (18, [
-        rule("5.0", [fill(1094, price_type)], when=code, doc=f"ExecInst {code} is PegPriceType {price_type} (FIX 5.0 Appendix 6-E)")
+        rule([fill(1094, price_type)], when=code, doc=f"ExecInst {code} is PegPriceType {price_type} (FIX 5.0 Appendix 6-E)")
         for code, price_type in PEG_PRICE_TYPES.items()
     ]),
-    (687, [rule("5.0", [fill(685)], msgtypes=["R", "AJ", "AG", "S", "AI", "AB", "8"])]),
+    (687, [rule([fill(685)], msgtypes=["R", "AJ", "AG", "S", "AI", "AB", "8"])]),
     # FIX 5.0 SP1 Appendix 6-E, Deprecated features.
-    (687, [rule("5.0.1", [fill(1418)], msgtypes=["AE", "AR"])]),
+    (687, [rule([fill(1418)], msgtypes=["AE", "AR"])]),
     (852, [
-        rule("5.0.1", [fill(1390, "1")], when="Y", doc="PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
-        rule("5.0.1", [fill(1390, "0")], when="N", doc="PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
+        rule([fill(1390, "1")], when="Y", doc="PublishTrdIndicator Y is TradePublishIndicator PublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
+        rule([fill(1390, "0")], when="N", doc="PublishTrdIndicator N is TradePublishIndicator DoNotPublishTrade (FIX 5.0 SP1 Appendix 6-E)"),
     ]),
-    (37, [rule("5.0.1", [fill(1369)], msgtypes=["r"])]),
-    (198, [rule("5.0.1", [fill(1369)], msgtypes=["r"])]),
+    (37, [rule([fill(1369)], msgtypes=["r"])]),
+    (198, [rule([fill(1369)], msgtypes=["r"])]),
 )
 
 
@@ -828,6 +887,8 @@ def attach_replacements(
     the number of entries written per source tag.
     """
     by_tag = {int(field["metadata"]["fix:tag"]): field for field in catalog["fields"]}
+    name_of = {tag: field["name"] for tag, field in by_tag.items()}
+    dtype_of = {tag: field["dtype"]["type"] for tag, field in by_tag.items()}
     groups = {field["name"] for field in catalog["groups"]}
     msgtypes = {field["metadata"]["fix:msgtype"] for field in catalog["messages"]}
 
@@ -877,7 +938,6 @@ def attach_replacements(
             raise ValueError(f"replacements for unknown tag {tag}")
         for index, entry in enumerate(entries):
             where = f"tag {tag} entry {index}"
-            version_key(entry["since"])
             for msgtype in entry.get("msgtypes") or []:
                 if msgtype not in msgtypes:
                     raise ValueError(f"{where}: unknown MsgType {msgtype!r}")
@@ -891,7 +951,7 @@ def attach_replacements(
             for held in entry["fills"]:
                 check_fill(held, where)
         metadata = by_tag[tag]["metadata"]
-        metadata["fix:replacements"] = replacements_document(entries)
+        metadata["fix:replacements"] = replacements_document(entries, tag, name_of, dtype_of, multi_valued)
         by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
     return {tag: len(entries) for tag, entries in per_tag.items()}
 

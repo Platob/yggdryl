@@ -659,55 +659,6 @@ impl Writer {
 // spelled.
 // ---------------------------------------------------------------------------
 
-/// What one key of an entry holds, where it is not an ordinary leaf.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Part {
-    /// A text, a number, a flag, or an array of those: carried as it arrived,
-    /// because a JSON array keeps the order it was written in.
-    Leaf,
-    /// One datatype document, restated through the datatype's own writer, so
-    /// its keys come back in the order that writer states them rather than
-    /// in the order a JSON reader sorted them into.
-    /// A list of fills, whose members are a list of fills again.
-    Fills,
-}
-
-/// What each key of a code holds. The order is [`super::codes::KEYS`]'s, which
-/// stays the one owner of it; this says only which keys are not leaves.
-const CODE_PARTS: [Part; 5] = [Part::Leaf; 5];
-
-/// The same for a direction.
-const DIRECTION_PARTS: [Part; 2] = [Part::Leaf; 2];
-
-/// The same for a replacement, whose `fills` is a list of fills.
-const REPLACEMENT_PARTS: [Part; 7] = [
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Fills,
-    Part::Leaf,
-];
-
-/// The same for one fill, whose `members` is a list of fills again.
-const FILL_PARTS: [Part; 6] = [
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Leaf,
-    Part::Fills,
-];
-
-// A parts table says what each of a reader's own keys holds, so the two are
-// one table read side by side and a key added to a reader without a part is a
-// build failure rather than a key this quietly stops carrying.
-const _: () = assert!(CODE_PARTS.len() == super::codes::KEYS.len());
-const _: () = assert!(DIRECTION_PARTS.len() == super::directions::KEYS.len());
-const _: () = assert!(REPLACEMENT_PARTS.len() == super::replacements::KEYS.len());
-const _: () = assert!(FILL_PARTS.len() == super::replacements::FILL_KEYS.len());
-
 /// One `fix:` property whose stored value is a canonical document.
 ///
 /// Four properties hold one, and this is what names one of them to the pair
@@ -750,13 +701,16 @@ impl Kind {
         }
     }
 
-    /// The keys one entry states, in the order its reader walks them, beside
-    /// what each of them holds.
-    const fn entry(self) -> (&'static [&'static str], &'static [Part]) {
+    /// The keys one entry states, in the order its reader walks them.
+    ///
+    /// Every one of them is a leaf - a text, a number, a flag, or an array of
+    /// those - so an entry is restated by putting its stated keys back into
+    /// this order and carrying each value as it arrived.
+    const fn entry(self) -> &'static [&'static str] {
         match self {
-            Self::Codes => (&super::codes::KEYS, &CODE_PARTS),
-            Self::Directions => (&super::directions::KEYS, &DIRECTION_PARTS),
-            Self::Replacements => (&super::replacements::KEYS, &REPLACEMENT_PARTS),
+            Self::Codes => &super::codes::KEYS,
+            Self::Directions => &super::directions::KEYS,
+            Self::Replacements => &super::replacements::KEYS,
         }
     }
 
@@ -798,26 +752,21 @@ impl Kind {
                 value.kind(),
             ))
         })?;
-        let (keys, parts) = self.entry();
+        let keys = self.entry();
         let ordered = entries
             .iter()
-            .map(|entry| self.order_entry(keys, parts, entry))
+            .map(|entry| self.order_entry(keys, entry))
             .collect::<Result<Vec<_>>>()?;
         Ok(Scalar::from_sequence(ordered))
     }
 
     /// One entry, its stated keys in the declared order and nothing else.
-    fn order_entry(
-        self,
-        keys: &'static [&'static str],
-        parts: &'static [Part],
-        entry: &Scalar,
-    ) -> Result<Scalar> {
+    fn order_entry(self, keys: &'static [&'static str], entry: &Scalar) -> Result<Scalar> {
         if entry.as_record().is_none() && entry.as_mapping().is_none() {
             return Err(self.refused(crate::text::expected_got("an entry object", entry.kind())));
         }
         let mut held: Vec<(Scalar, Scalar)> = Vec::with_capacity(keys.len());
-        for (key, part) in keys.iter().zip(parts) {
+        for key in keys {
             let Some(value) = entry.get_key_str(key) else {
                 continue;
             };
@@ -827,26 +776,7 @@ impl Kind {
             if matches!(value, Scalar::Null) || value.as_bool() == Some(false) {
                 continue;
             }
-            let value = match part {
-                Part::Leaf => value.clone(),
-                Part::Fills => {
-                    let fills = value.as_sequence().ok_or_else(|| {
-                        self.refused(crate::text::expected_got(
-                            format_args!("{key:?} to hold a list of fills"),
-                            value.kind(),
-                        ))
-                    })?;
-                    Scalar::from_sequence(
-                        fills
-                            .iter()
-                            .map(|fill| {
-                                self.order_entry(&super::replacements::FILL_KEYS, &FILL_PARTS, fill)
-                            })
-                            .collect::<Result<Vec<_>>>()?,
-                    )
-                }
-            };
-            held.push((Scalar::from(*key), value));
+            held.push((Scalar::from(*key), value.clone()));
         }
         if let Some(unknown) = entry.keys().into_iter().find(|key| !keys.contains(key)) {
             return Err(self.refused(format_args!("unknown key {unknown:?}")));

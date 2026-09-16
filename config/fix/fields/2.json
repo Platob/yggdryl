@@ -105,25 +105,11 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.3",
-          "when": "0",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity where customerorfirm = '0'",
           "doc": "CustomerOrFirm Customer is OrderCapacity Agency (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "1",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity where customerorfirm = '1'",
           "doc": "CustomerOrFirm Firm is OrderCapacity Principal (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -140,16 +126,7 @@
       "display": "MaturityDay",
       "fix:replacements": [
         {
-          "since": "4.3",
-          "fills": [
-            {
-              "tag": 541,
-              "join": [
-                200,
-                205
-              ]
-            }
-          ],
+          "plan": "select concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate",
           "doc": "MaturityDay completes MaturityMonthYear into MaturityDate (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -255,12 +232,7 @@
       "display": "MaxShow",
       "fix:replacements": [
         {
-          "since": "5.0",
-          "fills": [
-            {
-              "tag": 1082
-            }
-          ]
+          "plan": "select maxshow as secondarydisplayqty"
         }
       ],
       "fix:tag": "210"
@@ -444,174 +416,39 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "1",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "INTERPOLATED"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, 'INTERPOLATED' as benchmarkcurvepoint where benchmark = '1'",
           "doc": "Benchmark CURVE is the interpolated USD Treasury curve (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "2",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "5Y"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y' as benchmarkcurvepoint where benchmark = '2'",
           "doc": "Benchmark 5YR is the USD Treasury 5Y point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "3",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "5Y-OLD"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '5Y-OLD' as benchmarkcurvepoint where benchmark = '3'",
           "doc": "Benchmark OLD5 is the USD Treasury 5Y-OLD point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "4",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "10Y"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y' as benchmarkcurvepoint where benchmark = '4'",
           "doc": "Benchmark 10YR is the USD Treasury 10Y point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "5",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "10Y-OLD"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '10Y-OLD' as benchmarkcurvepoint where benchmark = '5'",
           "doc": "Benchmark OLD10 is the USD Treasury 10Y-OLD point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "6",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "30Y"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y' as benchmarkcurvepoint where benchmark = '6'",
           "doc": "Benchmark 30YR is the USD Treasury 30Y point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "7",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "Treasury"
-            },
-            {
-              "tag": 222,
-              "value": "30Y-OLD"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'Treasury' as benchmarkcurvename, '30Y-OLD' as benchmarkcurvepoint where benchmark = '7'",
           "doc": "Benchmark OLD30 is the USD Treasury 30Y-OLD point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "8",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "LIBOR"
-            },
-            {
-              "tag": 222,
-              "value": "3M"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '3M' as benchmarkcurvepoint where benchmark = '8'",
           "doc": "Benchmark 3MOLIBOR is the USD LIBOR 3M point (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "9",
-          "fills": [
-            {
-              "tag": 220,
-              "value": "USD"
-            },
-            {
-              "tag": 221,
-              "value": "LIBOR"
-            },
-            {
-              "tag": 222,
-              "value": "6M"
-            }
-          ],
+          "plan": "select 'USD' as benchmarkcurvecurrency, 'LIBOR' as benchmarkcurvename, '6M' as benchmarkcurvepoint where benchmark = '9'",
           "doc": "Benchmark 6MOLIBOR is the USD LIBOR 6M point (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -993,24 +830,11 @@
       "display": "RepurchaseTerm",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "1",
-          "fills": [
-            {
-              "tag": 788,
-              "value": "1"
-            }
-          ],
+          "plan": "select '1' as terminationtype where repurchaseterm = '1'",
           "doc": "A one-day RepurchaseTerm is TerminationType Overnight (FIX 4.4 Appendix 6-E)"
         },
         {
-          "since": "4.4",
-          "fills": [
-            {
-              "tag": 788,
-              "value": "2"
-            }
-          ],
+          "plan": "select '2' as terminationtype",
           "doc": "A longer RepurchaseTerm is TerminationType Term (FIX 4.4 Appendix 6-E)"
         }
       ],
@@ -1028,12 +852,7 @@
       "display": "RepurchaseRate",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "fills": [
-            {
-              "tag": 44
-            }
-          ]
+          "plan": "select repurchaserate as price"
         }
       ],
       "fix:tag": "227"
@@ -1909,12 +1728,7 @@
       "display": "RepoCollateralSecurityType",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "fills": [
-            {
-              "tag": 310
-            }
-          ]
+          "plan": "select repocollateralsecuritytype as underlyingsecuritytype"
         }
       ],
       "fix:tag": "239"
@@ -1932,12 +1746,7 @@
       "display": "RedemptionDate",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "fills": [
-            {
-              "tag": 696
-            }
-          ]
+          "plan": "select redemptiondate as yieldredemptiondate"
         }
       ],
       "fix:tag": "240"

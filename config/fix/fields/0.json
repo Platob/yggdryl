@@ -630,110 +630,39 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "T",
-          "fills": [
-            {
-              "tag": 835,
-              "value": "1"
-            },
-            {
-              "tag": 840,
-              "value": "1"
-            },
-            {
-              "tag": 18,
-              "value": "R"
-            }
-          ],
+          "plan": "select '1' as pegmovetype, '1' as pegscope, 'R' as execinst where contains(execinst, 'T')",
           "doc": "ExecInst T is a PrimaryPeg with PegMoveType Fixed and PegScope Local (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "5.0",
-          "when": "L",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "1"
-            }
-          ],
+          "plan": "select '1' as pegpricetype where contains(execinst, 'L')",
           "doc": "ExecInst L is PegPriceType 1 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "M",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "2"
-            }
-          ],
+          "plan": "select '2' as pegpricetype where contains(execinst, 'M')",
           "doc": "ExecInst M is PegPriceType 2 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "O",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "3"
-            }
-          ],
+          "plan": "select '3' as pegpricetype where contains(execinst, 'O')",
           "doc": "ExecInst O is PegPriceType 3 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "P",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "4"
-            }
-          ],
+          "plan": "select '4' as pegpricetype where contains(execinst, 'P')",
           "doc": "ExecInst P is PegPriceType 4 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "R",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "5"
-            }
-          ],
+          "plan": "select '5' as pegpricetype where contains(execinst, 'R')",
           "doc": "ExecInst R is PegPriceType 5 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "W",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "7"
-            }
-          ],
+          "plan": "select '7' as pegpricetype where contains(execinst, 'W')",
           "doc": "ExecInst W is PegPriceType 7 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "a",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "8"
-            }
-          ],
+          "plan": "select '8' as pegpricetype where contains(execinst, 'a')",
           "doc": "ExecInst a is PegPriceType 8 (FIX 5.0 Appendix 6-E)"
         },
         {
-          "since": "5.0",
-          "when": "d",
-          "fills": [
-            {
-              "tag": 1094,
-              "value": "9"
-            }
-          ],
+          "plan": "select '9' as pegpricetype where contains(execinst, 'd')",
           "doc": "ExecInst d is PegPriceType 9 (FIX 5.0 Appendix 6-E)"
         }
       ],
@@ -780,36 +709,15 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.3",
-          "when": "1",
-          "fills": [
-            {
-              "tag": 150,
-              "value": "H"
-            }
-          ],
+          "plan": "select 'H' as exectype where exectranstype = '1'",
           "doc": "ExecTransType Cancel is ExecType TradeCancel (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "2",
-          "fills": [
-            {
-              "tag": 150,
-              "value": "G"
-            }
-          ],
+          "plan": "select 'G' as exectype where exectranstype = '2'",
           "doc": "ExecTransType Correct is ExecType TradeCorrect (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "3",
-          "fills": [
-            {
-              "tag": 150,
-              "value": "I"
-            }
-          ],
+          "plan": "select 'I' as exectype where exectranstype = '3'",
           "doc": "ExecTransType Status is ExecType OrderStatus (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -2214,15 +2122,7 @@
       "display": "OrderID",
       "fix:replacements": [
         {
-          "since": "5.0.1",
-          "msgtypes": [
-            "r"
-          ],
-          "fills": [
-            {
-              "tag": 1369
-            }
-          ]
+          "plan": "select orderid as massactionreportid where :msgtype = 'r'"
         }
       ],
       "fix:tag": "37"
@@ -2479,93 +2379,27 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "5",
-          "fills": [
-            {
-              "tag": 40,
-              "value": "1"
-            },
-            {
-              "tag": 59,
-              "value": "7"
-            }
-          ],
+          "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = '5'",
           "doc": "OrdType MarketOnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "A",
-          "fills": [
-            {
-              "tag": 40,
-              "value": "1"
-            },
-            {
-              "tag": 59,
-              "value": "7"
-            }
-          ],
+          "plan": "select '1' as ordtype, '7' as timeinforce where ordtype = 'A'",
           "doc": "OrdType OnClose is Market at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "B",
-          "fills": [
-            {
-              "tag": 40,
-              "value": "2"
-            },
-            {
-              "tag": 59,
-              "value": "7"
-            }
-          ],
+          "plan": "select '2' as ordtype, '7' as timeinforce where ordtype = 'B'",
           "doc": "OrdType LimitOnClose is Limit at TimeInForce AtTheClose (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "C",
-          "fills": [
-            {
-              "tag": 40,
-              "value": "1"
-            },
-            {
-              "tag": 460,
-              "value": "4"
-            }
-          ],
+          "plan": "select '1' as ordtype, '4' as product where ordtype = 'C'",
           "doc": "OrdType ForexMarket is Market on Product CURRENCY (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "F",
-          "fills": [
-            {
-              "tag": 40,
-              "value": "2"
-            },
-            {
-              "tag": 460,
-              "value": "4"
-            }
-          ],
+          "plan": "select '2' as ordtype, '4' as product where ordtype = 'F'",
           "doc": "OrdType ForexLimit is Limit on Product CURRENCY (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "H",
-          "fills": [
-            {
-              "tag": 40,
-              "value": "D"
-            },
-            {
-              "tag": 460,
-              "value": "4"
-            }
-          ],
+          "plan": "select 'D' as ordtype, '4' as product where ordtype = 'H'",
           "doc": "OrdType ForexPreviouslyQuoted is PreviouslyQuoted on Product CURRENCY (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -2662,12 +2496,7 @@
       "display": "RelatdSym",
       "fix:replacements": [
         {
-          "since": "4.3",
-          "fills": [
-            {
-              "tag": 55
-            }
-          ]
+          "plan": "select relatdsym as symbol"
         }
       ],
       "fix:tag": "46"
@@ -2777,316 +2606,95 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.3",
-          "when": "A",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity where rule80a = 'A'",
           "doc": "Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "B",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity where rule80a = 'B'",
           "doc": "Rule80A B is OrderCapacity A (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "C",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            },
-            {
-              "tag": 529,
-              "value": "1 3"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'C'",
           "doc": "Rule80A C is OrderCapacity P with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "D",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            },
-            {
-              "tag": 529,
-              "value": "1 2"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'D'",
           "doc": "Rule80A D is OrderCapacity P with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "E",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity where rule80a = 'E'",
           "doc": "Rule80A E is OrderCapacity P (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "F",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "W"
-            }
-          ],
+          "plan": "select 'W' as ordercapacity where rule80a = 'F'",
           "doc": "Rule80A F is OrderCapacity W (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "H",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "I"
-            }
-          ],
+          "plan": "select 'I' as ordercapacity where rule80a = 'H'",
           "doc": "Rule80A H is OrderCapacity I (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "I",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "I"
-            }
-          ],
+          "plan": "select 'I' as ordercapacity where rule80a = 'I'",
           "doc": "Rule80A I is OrderCapacity I (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "J",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "I"
-            },
-            {
-              "tag": 529,
-              "value": "1 2"
-            }
-          ],
+          "plan": "select 'I' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'J'",
           "doc": "Rule80A J is OrderCapacity I with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "K",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "I"
-            },
-            {
-              "tag": 529,
-              "value": "1 3"
-            }
-          ],
+          "plan": "select 'I' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'K'",
           "doc": "Rule80A K is OrderCapacity I with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "L",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            },
-            {
-              "tag": 529,
-              "value": "4"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'L'",
           "doc": "Rule80A L is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "M",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "W"
-            },
-            {
-              "tag": 529,
-              "value": "1 2"
-            }
-          ],
+          "plan": "select 'W' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'M'",
           "doc": "Rule80A M is OrderCapacity W with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "N",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "W"
-            },
-            {
-              "tag": 529,
-              "value": "1 3"
-            }
-          ],
+          "plan": "select 'W' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'N'",
           "doc": "Rule80A N is OrderCapacity W with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "O",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            },
-            {
-              "tag": 529,
-              "value": "4"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity, '4' as orderrestrictions where rule80a = 'O'",
           "doc": "Rule80A O is OrderCapacity P with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "P",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity where rule80a = 'P'",
           "doc": "Rule80A P is OrderCapacity P (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "R",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            },
-            {
-              "tag": 529,
-              "value": "4"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'R'",
           "doc": "Rule80A R is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "S",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "P"
-            },
-            {
-              "tag": 529,
-              "value": "5"
-            }
-          ],
+          "plan": "select 'P' as ordercapacity, '5' as orderrestrictions where rule80a = 'S'",
           "doc": "Rule80A S is OrderCapacity P with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "T",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "W"
-            },
-            {
-              "tag": 529,
-              "value": "5"
-            }
-          ],
+          "plan": "select 'W' as ordercapacity, '5' as orderrestrictions where rule80a = 'T'",
           "doc": "Rule80A T is OrderCapacity W with OrderRestrictions 5 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "U",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            },
-            {
-              "tag": 529,
-              "value": "1 2"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity, '1 2' as orderrestrictions where rule80a = 'U'",
           "doc": "Rule80A U is OrderCapacity A with OrderRestrictions 1 2 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "W",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "W"
-            }
-          ],
+          "plan": "select 'W' as ordercapacity where rule80a = 'W'",
           "doc": "Rule80A W is OrderCapacity W (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "X",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "W"
-            },
-            {
-              "tag": 529,
-              "value": "4"
-            }
-          ],
+          "plan": "select 'W' as ordercapacity, '4' as orderrestrictions where rule80a = 'X'",
           "doc": "Rule80A X is OrderCapacity W with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "Y",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            },
-            {
-              "tag": 529,
-              "value": "1 3"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity, '1 3' as orderrestrictions where rule80a = 'Y'",
           "doc": "Rule80A Y is OrderCapacity A with OrderRestrictions 1 3 (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "Z",
-          "fills": [
-            {
-              "tag": 528,
-              "value": "A"
-            },
-            {
-              "tag": 529,
-              "value": "4"
-            }
-          ],
+          "plan": "select 'A' as ordercapacity, '4' as orderrestrictions where rule80a = 'Z'",
           "doc": "Rule80A Z is OrderCapacity A with OrderRestrictions 4 (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -3532,14 +3140,7 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "A",
-          "fills": [
-            {
-              "tag": 63,
-              "value": "2"
-            }
-          ],
+          "plan": "select '2' as settltype where settltype = 'A'",
           "doc": "SettlType T+1 is NextDay (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -3692,35 +3293,11 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.3",
-          "msgtypes": [
-            "J"
-          ],
-          "when": "0",
-          "fills": [
-            {
-              "tag": 626,
-              "value": "1"
-            }
-          ],
+          "plan": "select '1' as alloctype where :msgtype = 'J' and alloctranstype = '0'",
           "doc": "A New allocation is AllocType Calculated (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "msgtypes": [
-            "J"
-          ],
-          "when": "3",
-          "fills": [
-            {
-              "tag": 71,
-              "value": "0"
-            },
-            {
-              "tag": 626,
-              "value": "2"
-            }
-          ],
+          "plan": "select '0' as alloctranstype, '2' as alloctype where :msgtype = 'J' and alloctranstype = '3'",
           "doc": "A Preliminary allocation is a New one of AllocType Preliminary (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -3787,21 +3364,7 @@
       "display": "ExecBroker",
       "fix:replacements": [
         {
-          "since": "4.3",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 452,
-                  "value": "1"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: execbroker, partyrole: '1'}] as parties",
           "doc": "ExecBroker is a party with PartyRole ExecutingFirm (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -4300,21 +3863,7 @@
       "display": "BrokerOfCredit",
       "fix:replacements": [
         {
-          "since": "4.3",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 452,
-                  "value": "2"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: brokerofcredit, partyrole: '2'}] as parties",
           "doc": "BrokerOfCredit is a party with PartyRole BrokerOfCredit (FIX 4.3 Appendix 6-F)"
         }
       ],

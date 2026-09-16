@@ -732,46 +732,46 @@ metadata documents remain on the field and round-trip through both bindings.
 
 The specification retires a field or a value and says what stands in for it: `Rule80A(47)` became `OrderCapacity(528)` beside `OrderRestrictions(529)`, the partial-fill values of `ExecType(150)` folded into `Trade`, `ExecBroker(76)` became one `Parties` occurrence with role `1`. Those rules are facts about the field being restated, so they travel on it as `fix:replacements`: one canonical document, read borrowed, that the [enriching pass's restatement](message.md#restated-under-the-dictionary) applies. A registry adds or edits a rule by editing metadata; nothing in Rust holds a table of them.
 
-Entries are in **document order**, and the order is semantic: the first entry whose conditions a held value meets answers, so a catch-all entry stating no `when` comes last.
+Entries are in **document order**, and the order is semantic: the first entry whose condition a message meets answers, so a catch-all entry stating no condition comes last.
 
 ```json
-[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"A"}],"doc":"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"}]
+[{"plan":"select 'A' as ordercapacity where rule80a = 'A'","doc":"Rule80A A is OrderCapacity A (FIX 4.3 Appendix 6-F)"}]
 ```
 
 | Entry key | Required | Value | Meaning |
 | --- | --- | --- | --- |
-| `since` | yes | dotted version | the version the specification replaced the feature at; the restatement applies every entry whatever its date |
-| `ep` | no | integer | the extension pack that dated the replacement |
-| `msgtypes` | no | wire codes, exact case | the entry applies only when the root's `MsgType(35)` is one of them; absent is every message |
-| `in` | no | folded group names | the entry applies only when the source sits inside an occurrence of one of these repeating groups; absent is wherever the field sits |
-| `when` | no | wire text | the held value the entry applies to; absent is any stated value |
-| `fills` | yes, one or more | fills | the fields that take a value, and what value |
+| `plan` | yes | expression text | one [plan](../expression/grammar.md) of the crate's own grammar: its `select` names the columns the rule fills and the term each takes, its `where` is the condition the message must meet; a plan naming no column is refused |
 | `doc` | no | text | the specification's wording, where the mapping is not the plain "same value in the replacement field" |
 
-| Fill | Keys | The target takes |
-| --- | --- | --- |
-| `{"tag":1138}` | `tag` | the source field's own value, re-typed for the target |
-| `{"tag":528,"value":"A"}` | `tag`, `value` | that constant, as wire text; a `MultipleCharValue` target takes its tokens space-separated, `"1 3"` |
-| `{"tag":628,"from":115}` | `tag`, `from` | the stated value of that tag at the same level |
-| `{"tag":541,"join":[200,205]}` | `tag`, `join` | the wire texts of those tags concatenated, two at least, every one stated; an integer part is spelled with two digits, which is how a day completes a month-year |
-| `{"group":"parties","members":[...]}` | `group`, `members` | one occurrence of that repeating group at this level, whose members are fills of their own - a member may itself be a group |
+One rule is one plan, and the plan's vocabulary is the whole of what a rule can say - the same grammar [`fix:derivation`](#a-field-carries-how-it-is-derived) spells a derived column in, with a target list and a condition:
 
-Keys are read in the order the tables list them; exactly one of `tag` and `group` is stated, `value`, `from` and `join` travel only with `tag` and at most one of them, `members` only with `group`. The scanner refuses an unknown key, a key out of order, and a missing `since` or `fills` at its byte; the writer refuses an entry with no fill, a group fill with no member, a `join` of fewer than two tags, a negative tag, and any message type, group name, held value or constant that is not a word the reader reads back.
+| The rule says | Spelled as | Meaning |
+| --- | --- | --- |
+| a constant | `'A' as ordercapacity` | the target takes that wire text, read as its field reads one; a `MultipleCharValue` target takes its tokens space-separated, `'1 3'` |
+| the source's own value | `maxfloor as displayqty` | the source column, re-typed for the target |
+| another column | `onbehalfofcompid as hopcompid` | that column's stated value at the same level; unstated, the rule does not apply |
+| a join | `concat(maturitymonthyear, substring(concat('0', cast(maturityday as utf8)), -2)) as maturitydate` | the wire texts concatenated, every part stated; a day is spelled with two digits, which is how it completes a month-year |
+| a group occurrence | `[{partyid: execbroker, partyrole: '1'}] as parties` | one occurrence of that repeating group at this level - a list of one record, a member per column - and a member may itself be an occurrence |
+| the held value | `where rule80a = 'A'` | the entry applies to that value of the source; a `MultipleCharValue` source, several codes in one text, is asked with `contains(execinst, 'T')`; a `state` column compares by the code's spelling |
+| the message type | `where :msgtype in ('8', 'AE')` | the root's `MsgType(35)`, crossing as a parameter because it is a fact about the message rather than a column of the level |
+| the enclosing group | `where :group = 'allocgrp'` | the repeating group the level is an occurrence of, the same way; null at the root |
+
+The scanner refuses an unknown key, a key out of order, and a missing `plan` at its byte; a stored plan the grammar refuses is a readable entry that refuses to be a plan when asked for one, and reads as no rule. The writer refuses a plan naming no column and one past the expression budget.
 
 How one entry is applied at one level - the root, or one occurrence of a repeating group:
 
 | Step | Rule |
 | --- | --- |
 | Source | each child whose field carries `fix:replacements`, in ascending tag order, so `ExecTransType(20)` writes `ExecType(150)` before `ExecType`'s own rule reads it |
-| Match | the first entry whose `msgtypes`, `in` and `when` hold; a held value meets `when` when its wire text equals it or one space-separated token does, and a `state` when `when` names the state held |
-| Plan | every fill computed: the source re-typed, a constant read as the target's field reads wire text, a `from` or `join` from the stated values at this level; a value the target cannot hold, or a `join` part unstated, ends the entry |
-| Check | every target writable: absent, null, already equal to what would be written, or holding a code its set no longer declares at `newest()`; the source field itself is always writable |
-| Apply | all-or-nothing: one target that cannot take its value blocks the whole entry, and no later entry fills in for it; a group fill merges into the occurrence whose constant members all equal the fill's constants, else appends one, and sets the counter to the count the group then has |
+| Match | the first entry whose `where` holds over the level, with `:msgtype` and `:group` supplied; a condition the level cannot bind does not hold |
+| Plan | every projection evaluated over the level, its value re-typed for the target's field; a value the target cannot hold, or a term that answers null, ends the entry |
+| Check | every target writable: absent, null, or already equal to what would be written; the source field itself is always writable, and a constant written over a multi-valued source replaces the token the condition named |
+| Apply | all-or-nothing: one target that cannot take its value blocks the whole entry, and no later entry fills in for it; an occurrence merges into the one whose literal members all equal the projected ones, else appends one, and sets the counter to the count the group then has |
 | Chain | an entry that rewrote the source's own value leaves a new held value, restated in turn, bounded by the rules the field states |
 
 ### Configuring a rule
 
-A rule is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it. The typed builders - `FixReplacement`, `FixFill`, `FixFillSource` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `fix:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
+A rule is metadata on the field, so it is configured the way any field fact is: edit the field, `update` the registry, and every reader linked to that registry restates by it. The typed builder - `FixReplacement`, over a `Plan` - and the borrowed read, `replacements()`, are Rust only; Python and JavaScript write the canonical text on the `fix:replacements` key. An empty list, or `remove_replacements`, takes the rules away from the field in hand; through `update` the incoming document replaces the stored one whole, because two documents have no order between them, and a stored document the incoming field does not state is kept, as every other protocol key is. So a rule is replaced through `update` by writing the document that should stand, and silenced by a registry built without it - never by omitting the key.
 
 The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows its 4.2 counterparty meant a principal one edits the field, and nothing else:
 
@@ -780,32 +780,30 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::fix::{FixFill, FixFillSource, FixReplacement};
+    use yggdryl::fix::FixReplacement;
     use yggdryl::holder::local::Folder;
-    use yggdryl::{FixCodec, FixRegistry, Version};
+    use yggdryl::{FixCodec, FixRegistry, Plan};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let mut registry = FixRegistry::from_handle(&Folder::new(root)?)?;
 
     let mut rule80a = registry.field_by_tag(47)?.clone();
-    rule80a.as_fix_mut().set_replacements(&[FixReplacement::new("4.3".parse::<Version>()?)
-        .with_when("A")
-        .with_fills([FixFill::Field { tag: 528, value: FixFillSource::Constant("P".into()) }])
+    let plan: Plan = "select 'P' as ordercapacity where rule80a = 'A'".parse()?;
+    rule80a.as_fix_mut().set_replacements(&[FixReplacement::new(plan)
         .with_doc("Rule80A A on this venue was a principal order")])?;
     // The builder writes the one canonical text the reader reads back.
     assert_eq!(
         rule80a.get_metadata("fix:replacements"),
         Some(concat!(
-            r#"[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}],"#,
+            r#"[{"plan":"select 'P' as ordercapacity where rule80a = 'A'","#,
             r#""doc":"Rule80A A on this venue was a principal order"}]"#,
         ))
     );
     registry.update(rule80a)?;
 
-    // Read back borrowed, in document order.
+    // Read back borrowed, in document order, and as the plan it is.
     let entry = registry.field_by_tag(47)?.as_fix().replacements().next().expect("one rule")?;
-    assert_eq!(entry.since(), "4.3".parse::<Version>()?);
-    assert_eq!(entry.when(), Some("A"));
+    assert_eq!(entry.parse_plan()?.to_string(), "select 'P' as ordercapacity where rule80a = 'A'");
 
     // Every reader linked to the registry restates by the edited rule.
     let reader = FixCodec::new(Arc::new(registry));
@@ -826,10 +824,10 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
     rule80a = registry.field_by_tag(47)
     rule80a.metadata["fix:replacements"] = (
-        '[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}]}]'
+        '[{"plan":"select \'P\' as ordercapacity where rule80a = \'A\'"}]'
     )
     registry.update(rule80a)
-    assert '"value":"P"' in registry.field_by_tag(47).metadata["fix:replacements"]
+    assert "'P' as ordercapacity" in registry.field_by_tag(47).metadata["fix:replacements"]
 
     # Every reader linked to the registry restates by the edited rule.
     reader = FixCodec(registry)
@@ -851,10 +849,10 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
     const rule80a = registry.fieldByTag(47)
     rule80a.set(
       'fix:replacements',
-      '[{"since":"4.3","when":"A","fills":[{"tag":528,"value":"P"}]}]',
+      '[{"plan":"select \'P\' as ordercapacity where rule80a = \'A\'"}]',
     )
     registry.update(rule80a)
-    assert.match(registry.fieldByTag(47).get('fix:replacements'), /"value":"P"/)
+    assert.match(registry.fieldByTag(47).get('fix:replacements'), /'P' as ordercapacity/)
 
     // Every reader linked to the registry restates by the edited rule.
     const reader = new fix.FixCodec(registry)
@@ -866,9 +864,9 @@ The committed rule reads `Rule80A(47)` `A` as an agency order. A desk that knows
 
 ### The rules the dictionary carries
 
-The generator writes the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - onto 37 fields as 100 entries, each validated at generation against the dictionary: the source and every target tag exist, a `when` and a constant are codes of their field's set where it has one, group and member names exist. A rule states only what the appendix states as a value mapping.
+The generator writes the replaced and deprecated features of FIX 4.3 through 5.0 SP2 - the specification's appendices "Replaced features" (6-F) and "Deprecated features" (6-E) - onto 37 fields as 100 entries, each validated at generation against the dictionary: the source and every target exist, a held value and a constant are codes of their field's set where it has one, group and member names exist. A rule states only what the appendix states as a value mapping; the appendix that stated it is named in its `doc`, and nowhere in the document as a version.
 
-| Since | Source | Restated as |
+| FIX | Source | Restated as |
 | --- | --- | --- |
 | 4.3 | `ExecTransType(20)` `1`, `2`, `3` | `ExecType(150)` `H` TradeCancel, `G` TradeCorrect, `I` OrderStatus |
 | 4.3 | `ExecType(150)` `1`, `2` | `ExecType` `F` Trade |

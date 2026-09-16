@@ -206,10 +206,7 @@ pub use plugin::{
     fix_plugin_message,
 };
 pub use registry::{FixFieldIter, FixRegistry};
-pub use replacements::{
-    FixFill, FixFillEntry, FixFillSource, FixFillValue, FixFills, FixReplacement,
-    FixReplacementEntry, FixReplacements,
-};
+pub use replacements::{FixReplacement, FixReplacementEntry, FixReplacements};
 pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{

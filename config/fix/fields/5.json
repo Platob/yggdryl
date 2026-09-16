@@ -2027,12 +2027,7 @@
       "display": "TotalAccruedInterestAmt",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "fills": [
-            {
-              "tag": 159
-            }
-          ]
+          "plan": "select totalaccruedinterestamt as accruedinterestamt"
         }
       ],
       "fix:tag": "540"
@@ -3004,14 +2999,7 @@
       ],
       "fix:replacements": [
         {
-          "since": "5.0",
-          "when": "Y",
-          "fills": [
-            {
-              "tag": 1093,
-              "value": "1"
-            }
-          ],
+          "plan": "select '1' as lottype where oddlot = 'Y'",
           "doc": "An OddLot is LotType OddLot (FIX 5.0 Appendix 6-E)"
         }
       ],

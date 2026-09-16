@@ -457,7 +457,7 @@ fn every_date_is_an_instant_and_every_zone_is_the_one_its_name_states() {
 #[test]
 fn the_committed_dictionary_hashes_to_one_pinned_value() {
     let registry = seed();
-    assert_eq!(registry.stable_hash(), 5_337_224_848_900_906_647);
+    assert_eq!(registry.stable_hash(), 11_371_237_979_410_291_568);
     assert_eq!(registry.msgtypes().count(), 181 + super::crated_messages());
     assert_eq!(
         registry.definitions(FixCategory::Components).count(),

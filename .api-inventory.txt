@@ -560,54 +560,22 @@ pub struct Numbers<'doc>
   impl Clone, Debug for Numbers<'_>
 
 ### yggdryl::fix::replacements  [rust\src\fix\replacements.rs]
-pub enum FixFillSource  (Source | Constant(SmolStr) | From(i32) | Join(Vec<i32>))
-  impl Clone, Debug, PartialEq, Eq for FixFillSource
-pub enum FixFill
-  Field { tag: i32, value: FixFillSource }
-  Group { name: SmolStr, members: Vec<FixFill> }
-  impl Clone, Debug, PartialEq, Eq for FixFill
-  impl From<FixFillEntry<'_>> for FixFill
-pub struct FixReplacement
-  pub const fn new(since: Version) -> Self
-  pub const fn with_ep(mut self, ep: u32) -> Self
-  pub fn with_msgtypes<I, S>(mut self, msgtypes: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
-  pub fn with_in<I, S>(mut self, groups: I) -> Self where I: IntoIterator<Item = S>, S: Into<SmolStr>,
-  pub fn with_when(mut self, when: impl Into<SmolStr>) -> Self
-  pub fn with_fills<I>(mut self, fills: I) -> Self where I: IntoIterator<Item = FixFill>,
+pub struct FixReplacement  (one rule: a Plan whose `select` names the columns it fills and their terms and whose `where` is its condition - `:msgtype` and `:group` cross as parameters - beside the specification's `doc`; re-exported at the crate root)
+  pub const fn new(plan: Plan) -> Self
   pub fn with_doc(mut self, doc: impl Into<SmolStr>) -> Self
-  pub const fn since(&self) -> Version
-  pub const fn ep(&self) -> Option<u32>
-  pub fn msgtypes(&self) -> &[SmolStr]
-  pub fn in_groups(&self) -> &[SmolStr]
-  pub fn when(&self) -> Option<&str>
-  pub fn fills(&self) -> &[FixFill]
+  pub const fn plan(&self) -> &Plan
   pub fn doc(&self) -> Option<&str>
   impl Clone, Debug, PartialEq, Eq for FixReplacement
-  impl From<FixReplacementEntry<'_>> for FixReplacement
-pub enum FixFillValue<'field>  (Source | Constant(&'field str) | From(i32) | Join(Numbers<'field>))
-  impl Clone, Debug for FixFillValue<'_>
-pub enum FixFillEntry<'field>
-  Field { tag: i32, value: FixFillValue<'field> }
-  Group { name: &'field str, members: FixFills<'field> }
-  impl Clone, Debug for FixFillEntry<'_>
+  impl From<FixReplacementEntry<'_>> for FixReplacement  (a stored plan the grammar refuses falls to the empty plan, which render then refuses)
 pub struct FixReplacementEntry<'field>
-  pub const fn since(self) -> Version
-  pub const fn ep(self) -> Option<u32>
-  pub const fn msgtypes(self) -> Words<'field>
-  pub const fn in_groups(self) -> Words<'field>
-  pub const fn when(self) -> Option<&'field str>
-  pub const fn fills(self) -> FixFills<'field>
+  pub const fn plan(self) -> &'field str  (the canonical text, still escaped as stored)
+  pub fn parse_plan(self) -> Result<Plan>  (decodes, parses and budget-checks it)
   pub const fn doc(self) -> Option<&'field str>
   pub fn parse_doc(self) -> Result<Option<String>>
-  impl Clone, Copy, Debug, PartialEq, Eq for FixReplacementEntry<'_>
-pub struct FixFills<'field>
-  pub fn next_ok(&mut self) -> Option<FixFillEntry<'field>>
-  impl<'field> Iterator for FixFills<'field>  (Item = Result<FixFillEntry<'field>>; also FusedIterator)
-  impl Clone, Debug for FixFills<'_>
-pub struct FixReplacements<'field>
+  impl Clone, Copy, Debug for FixReplacementEntry<'_>
+pub struct FixReplacements<'field>  (the entries one field carries, in document order: the first whose condition holds answers)
   pub fn next_ok(&mut self) -> Option<FixReplacementEntry<'field>>
   impl<'field> Iterator for FixReplacements<'field>  (Item = Result<FixReplacementEntry<'field>>; also FusedIterator)
-  impl Clone, Debug for FixReplacements<'_>
 
 ### yggdryl::fix::directions  [rust\src\fix\directions.rs]
 pub struct FixDirection  (one rule of tag 385's fix:directions: a code of the set and the regex::bytes patterns that name it; re-exported at the crate root beside FixDirectionEntry, FixDirections and FixPatterns)

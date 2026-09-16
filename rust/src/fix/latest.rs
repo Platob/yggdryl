@@ -39,11 +39,11 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::build::{stated as stated_field, typed_spelling};
 use super::msg::FixMsg;
-use super::replacements::{FixFillEntry, FixFillValue, FixFills, FixReplacementEntry};
 use super::schema::item_fields;
 use super::{FixRegistry, occurrence_name};
-use crate::types::{Code, State};
-use crate::{DataType, Field, Result, Scalar};
+use crate::expression::Term;
+use crate::types::Code;
+use crate::{DataType, Field, Plan, Result, Scalar};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
 ///
@@ -52,12 +52,13 @@ use crate::{DataType, Field, Result, Scalar};
 /// member written into one occurrence is an ordinary child write, and the
 /// List is rebuilt once at the end as the union of what its occurrences
 /// hold, exactly as the builder rebuilds one.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Level {
     children: Vec<Child>,
 }
 
 /// One child of a level.
+#[derive(Clone)]
 enum Child {
     /// A scalar child, or a nested value no repeating group declares, which
     /// is kept exactly as it is.
@@ -78,12 +79,10 @@ enum Decision {
     Untouched,
 }
 
-/// The value one rule is restating: what it holds, its tag, and the `when`
-/// the rule matched it by.
+/// The value one rule is restating: what it holds and its tag.
 struct Source<'rule> {
     value: &'rule Scalar,
     tag: i32,
-    when: Option<&'rule str>,
 }
 
 /// One write a rule plans: replaced where `at` names a child, appended
@@ -366,51 +365,83 @@ fn wire_text(value: &Scalar) -> Option<SmolStr> {
     }
 }
 
-/// One part of a `join`: an integer spelled with two digits, which is how a
-/// day completes a month-year; anything else its wire text.
-fn joined_part(value: &Scalar) -> Option<SmolStr> {
-    if value.is_integer() {
-        return value.as_i128().map(|held| format_smolstr!("{held:02}"));
-    }
-    wire_text(value)
-}
-
-/// Whether a held value is the one a rule's `when` names.
+/// The source's own value under a constant its rule writes back to it: the
+/// constant where the whole value is one the rule's condition named, else the
+/// held tokens with the named one replaced - `ExecInst` `G T` restated at `T`
+/// is `G R`, the other instruction kept. A `state` never renders back to a
+/// code, so it takes the constant whole.
 ///
-/// The wire text equals it, or one of the space-separated tokens does - a
-/// `MultipleCharValue` such as `ExecInst` states several codes in one value
-/// - and a `state` matches when the code names the state held.
-fn matches(held: &Scalar, when: &str) -> bool {
-    if let Scalar::Code(Code::State(state)) = held {
-        return State::from_spelling(when).as_ref() == Some(state);
-    }
-    let Some(text) = wire_text(held) else {
-        return false;
-    };
-    text == when || text.split(' ').any(|token| token == when)
-}
-
-/// The source's own value under a constant fill: the constant where the
-/// whole value matched the rule's `when`, else the held tokens with the
-/// matched one replaced - `ExecInst` `G T` restated at `T` is `G R`, the
-/// other instruction kept. A `state` never renders back to a code, so it
-/// takes the constant whole.
-fn restated_tokens(held: &Scalar, when: Option<&str>, text: &str) -> SmolStr {
-    let Some(when) = when else {
-        return SmolStr::new(text);
-    };
+/// `named` are the literals the rule's condition compared against, which is
+/// how a rule over a `MultipleCharValue` says which of several held codes it
+/// is about without a grammar of its own for one.
+fn restated_tokens(held: &Scalar, named: &[SmolStr], text: &str) -> SmolStr {
     if matches!(held, Scalar::Code(Code::State(_))) {
         return SmolStr::new(text);
     }
-    match wire_text(held) {
-        Some(spelled) if spelled != when && spelled.split(' ').any(|token| token == when) => {
-            let tokens: Vec<&str> = spelled
-                .split(' ')
-                .map(|token| if token == when { text } else { token })
-                .collect();
-            SmolStr::new(tokens.join(" "))
+    let Some(spelled) = wire_text(held) else {
+        return SmolStr::new(text);
+    };
+    let Some(when) = named
+        .iter()
+        .find(|when| spelled.split(' ').any(|token| token == when.as_str()))
+    else {
+        return SmolStr::new(text);
+    };
+    if spelled == *when {
+        return SmolStr::new(text);
+    }
+    let tokens: Vec<&str> = spelled
+        .split(' ')
+        .map(|token| if token == when { text } else { token })
+        .collect();
+    SmolStr::new(tokens.join(" "))
+}
+
+/// Every text literal a term holds: for a rule's condition, every value it
+/// named.
+fn named_literals(term: &Term) -> Vec<SmolStr> {
+    let mut held = Vec::new();
+    // The walk is the point; the term it rebuilds is dropped.
+    let _ = term.map(&mut |node| {
+        if let Term::Literal(literal) = node {
+            if let Some(text) = literal.value().as_str() {
+                held.push(SmolStr::new(text));
+            }
         }
-        _ => SmolStr::new(text),
+        Ok(None)
+    });
+    held
+}
+
+/// The members of the one occurrence a group projection states.
+///
+/// A group occurrence is spelled `[{member: term, ...}] as group`: a list of
+/// exactly one record, because a rule fills one occurrence and the List is
+/// what the row holds a group as. The grammar reads `{member: term}` as a
+/// map whose keys are paths, and a member is the one name its key spells;
+/// anything else names no occurrence.
+fn occurrence_members(term: &Term) -> Option<Vec<(SmolStr, &Term)>> {
+    let Term::List(items) = term else {
+        return None;
+    };
+    match items.as_ref() {
+        [Term::Struct(members)] => Some(
+            members
+                .iter()
+                .map(|(name, term)| (name.clone(), term))
+                .collect(),
+        ),
+        [Term::Map(entries)] => entries
+            .iter()
+            .map(|(key, term)| match key {
+                Term::Path(steps) => match steps.as_ref() {
+                    [crate::FieldSegment::Field(name)] => Some((name.clone(), term)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect(),
+        _ => None,
     }
 }
 
@@ -591,11 +622,12 @@ impl<'msg> Restater<'msg> {
     }
 
     /// Every child of `level` whose field carries replacement rules, in
-    /// ascending tag order, restated by the first rule its value meets.
+    /// ascending tag order, restated by the first rule whose condition the
+    /// level meets.
     ///
     /// Ascending, so `ExecTransType(20)` writes `ExecType(150)` before
-    /// `ExecType`'s own value rule reads it. The first rule whose conditions
-    /// hold answers, applied or blocked: a later rule never fills in for one
+    /// `ExecType`'s own value rule reads it. The first rule whose condition
+    /// holds answers, applied or blocked: a later rule never fills in for one
     /// a stated value refused. A rule that rewrote the source's own value
     /// leaves a new held value, which is restated in turn - `ExecInst` `T`
     /// becomes `R`, which FIX 5.0 retired for `PegPriceType` - so one pass
@@ -614,10 +646,11 @@ impl<'msg> Restater<'msg> {
             })
             .collect();
         sources.sort_unstable();
+        let parameters = self.parameters(group);
         for (tag, at) in sources {
             let mut remaining = usize::MAX;
             while remaining > 0 {
-                let mut plan = None;
+                let mut planned = None;
                 // Copied only where a rule answered, because only the write
                 // that rule plans has anything to compare against. A field
                 // with no replacement rule - which is nearly every field of
@@ -632,21 +665,34 @@ impl<'msg> Restater<'msg> {
                     }
                     let mut rules = field.as_fix().replacements();
                     let mut count = 0;
+                    // The level's view is built on the first rule that has
+                    // to be read against it and never before, so a field
+                    // with no rule costs no clone at all.
+                    let mut view = None;
                     while let Some(rule) = rules.next_ok() {
                         count += 1;
-                        if plan.is_none() && self.applies(rule, value, group) {
-                            let source = Source {
-                                value,
-                                tag,
-                                when: rule.when(),
-                            };
-                            before = Some(value.clone());
-                            plan = Some(self.plan(level, &source, rule.fills()));
+                        if planned.is_some() {
+                            continue;
                         }
+                        let Ok(plan) = rule.parse_plan() else {
+                            continue;
+                        };
+                        if view.is_none() {
+                            view = Self::view(level);
+                        }
+                        let Some((root, row)) = view.as_ref() else {
+                            break;
+                        };
+                        if !Self::applies(&plan, root, row, &parameters) {
+                            continue;
+                        }
+                        let source = Source { value, tag };
+                        before = Some(value.clone());
+                        planned = Some(self.plan(level, root, row, &source, &plan, &parameters));
                     }
                     remaining = remaining.min(count);
                 }
-                let Some(Some(writes)) = plan else {
+                let Some(Some(writes)) = planned else {
                     break;
                 };
                 for write in writes {
@@ -660,128 +706,169 @@ impl<'msg> Restater<'msg> {
         }
     }
 
-    /// Whether one rule's conditions hold for a held value at a level.
-    fn applies(&self, rule: FixReplacementEntry<'_>, held: &Scalar, group: Option<&str>) -> bool {
-        let mut msgtypes = rule.msgtypes();
-        if let Some(first) = msgtypes.next() {
-            let Some(msgtype) = self.msgtype else {
-                return false;
-            };
-            if !std::iter::once(first)
-                .chain(msgtypes)
-                .any(|known| known == msgtype)
-            {
-                return false;
-            }
-        }
-        let mut in_groups = rule.in_groups();
-        if let Some(first) = in_groups.next() {
-            let Some(group) = group else {
-                return false;
-            };
-            if !std::iter::once(first)
-                .chain(in_groups)
-                .any(|known| crate::types::folds_equal(known, group))
-            {
-                return false;
-            }
-        }
-        rule.when().is_none_or(|when| matches(held, when))
+    /// One level's schema and row, as a term reads them.
+    ///
+    /// Built only where a field carries a rule and holds a value - which is
+    /// thirty-seven fields of six thousand - so the clone it costs is paid
+    /// once per firing rather than once per child. Rebuilt after a rule's
+    /// writes land, because the next rule reads the level as it then is.
+    fn view(level: &Level) -> Option<(Field, Scalar)> {
+        let (fields, values) = level.clone().pack().ok()?;
+        let root = DataType::from_fields(fields).ok()?.required_field("row");
+        Some((root, Scalar::from_sequence(values)))
+    }
+
+    /// The parameters a rule's condition may name: `:msgtype`, the root's
+    /// `MsgType(35)`, and `:group`, the repeating group the level is an
+    /// occurrence of. Both are facts about the message rather than columns
+    /// of the level, which is why they cross as parameters.
+    fn parameters(&self, group: Option<&str>) -> [(&'static str, Scalar); 2] {
+        [
+            ("msgtype", self.msgtype.map_or(Scalar::Null, Scalar::from)),
+            ("group", group.map_or(Scalar::Null, Scalar::from)),
+        ]
+    }
+
+    /// Whether one rule's condition holds at a level.
+    ///
+    /// A condition the level cannot bind - a column it does not hold, a
+    /// comparison with no common type - does not hold, rather than refusing
+    /// the pass: a rule is data, and one that does not apply here applies
+    /// nowhere.
+    fn applies(plan: &Plan, root: &Field, row: &Scalar, parameters: &[(&str, Scalar)]) -> bool {
+        plan.filter_section()
+            .bind_with(root, parameters)
+            .and_then(|bound| bound.matches(row))
+            .unwrap_or(false)
     }
 
     /// Every write one rule makes at `level`, or nothing when one target
     /// cannot take its value.
-    fn plan(&self, level: &Level, source: &Source<'_>, fills: FixFills<'_>) -> Option<Vec<Write>> {
+    fn plan(
+        &self,
+        level: &Level,
+        root: &Field,
+        row: &Scalar,
+        source: &Source<'_>,
+        plan: &Plan,
+        parameters: &[(&str, Scalar)],
+    ) -> Option<Vec<Write>> {
+        let named = named_literals(plan.filter_section().term());
         let mut writes = Vec::new();
-        let mut fills = fills;
-        while let Some(fill) = fills.next_ok() {
-            writes.push(self.plan_fill(level, level, source, fill)?);
+        for projection in plan.selector().projections() {
+            let name = projection.name();
+            let term = projection.term();
+            writes.push(self.plan_projection(
+                level,
+                Some(source),
+                &named,
+                &name,
+                term,
+                root,
+                row,
+                parameters,
+            )?);
         }
         Some(writes)
     }
 
-    /// One fill planned: its value read at `reads`, the rule's own level,
-    /// and its target found at `writes` - the same level, or the group
-    /// occurrence a group fill lands its members in. A constant written
-    /// over the source itself replaces the token the rule matched.
-    fn plan_fill(
+    /// One projection planned at `writes`: an occurrence of a repeating
+    /// group where the name is a group's and the term spells one, else one
+    /// column. Every term is read at the rule's own level - `root` and `row`
+    /// - whatever level it is written into.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one rule's whole context, threaded"
+    )]
+    fn plan_projection(
         &self,
-        reads: &Level,
         writes: &Level,
-        source: &Source<'_>,
-        fill: FixFillEntry<'_>,
+        source: Option<&Source<'_>>,
+        named: &[SmolStr],
+        name: &str,
+        term: &Term,
+        root: &Field,
+        row: &Scalar,
+        parameters: &[(&str, Scalar)],
     ) -> Option<Write> {
-        match fill {
-            FixFillEntry::Field { tag, value } => {
-                let target = stated_field(self.msg.known_by_tag(tag)?);
-                let own = tag == source.tag && std::ptr::eq(reads, writes);
-                let value = match value {
-                    FixFillValue::Source => converted(&target, source.value),
-                    FixFillValue::Constant(text) if own => {
-                        typed_spelling(&target, &restated_tokens(source.value, source.when, text))
-                    }
-                    FixFillValue::Constant(text) => typed_spelling(&target, text),
-                    FixFillValue::From(from) => converted(&target, self.stated_at(reads, from)?),
-                    FixFillValue::Join(tags) => {
-                        let mut joined = String::new();
-                        for tag in tags {
-                            joined.push_str(&joined_part(self.stated_at(reads, tag)?)?);
-                        }
-                        typed_spelling(&target, &joined)
-                    }
-                };
-                if value.is_null() {
-                    return None;
-                }
-                let at = self.position_of(writes, tag);
-                if at.is_none() && writes.names(target.name()) {
-                    return None;
-                }
-                let writable =
-                    own || Self::writable(&target, at.and_then(|at| writes.value_at(at)), &value);
-                writable.then_some(Write::Field(FieldWrite {
-                    at,
-                    field: target,
-                    value,
-                }))
-            }
-            FixFillEntry::Group { name, members } => {
-                self.plan_group(reads, writes, source, name, members)
-            }
+        if let Some(definition) = self
+            .registry
+            .get_definition(crate::FixCategory::Groups, name)
+        {
+            let members = occurrence_members(term)?;
+            return self.plan_group(writes, definition, &members, root, row, parameters);
         }
+        let value = term.bind_with(root, parameters).ok()?.eval(row).ok()?;
+        self.plan_column(writes, source, named, name, term, value)
     }
 
-    /// One group fill planned: the occurrence whose constant members all
-    /// equal the fill's constants is merged into, else one is appended, and
-    /// the counter child takes the count the group then has.
+    /// One column planned at `writes`: the projected value re-typed for the
+    /// target, and the target found at that level. A constant written over
+    /// the rule's own source replaces the token the condition named.
+    fn plan_column(
+        &self,
+        writes: &Level,
+        source: Option<&Source<'_>>,
+        named: &[SmolStr],
+        name: &str,
+        term: &Term,
+        value: Scalar,
+    ) -> Option<Write> {
+        let target = stated_field(self.msg.known_by_name(name)?);
+        let tag = target.as_fix().tag().ok().flatten()?;
+        let own = source.is_some_and(|source| source.tag == tag);
+        let value = match (source, term) {
+            (Some(source), Term::Literal(literal)) if own => match literal.value().as_str() {
+                Some(text) => typed_spelling(&target, &restated_tokens(source.value, named, text)),
+                None => converted(&target, &value),
+            },
+            _ => converted(&target, &value),
+        };
+        if value.is_null() {
+            return None;
+        }
+        let at = self.position_of(writes, tag);
+        if at.is_none() && writes.names(target.name()) {
+            return None;
+        }
+        let writable =
+            own || Self::writable(&target, at.and_then(|at| writes.value_at(at)), &value);
+        writable.then_some(Write::Field(FieldWrite {
+            at,
+            field: target,
+            value,
+        }))
+    }
+
+    /// One group occurrence planned: the occurrence whose literal members
+    /// all equal the projected ones is merged into, else one is appended,
+    /// and the counter child takes the count the group then has.
     ///
-    /// A fill stating no constant matches the first occurrence there is,
-    /// so a second pass finds what the first wrote rather than appending it
-    /// again.
+    /// An occurrence stating no literal matches the first occurrence there
+    /// is, so a second pass finds what the first wrote rather than appending
+    /// it again.
     fn plan_group(
         &self,
-        reads: &Level,
-        writes: &Level,
-        source: &Source<'_>,
-        name: &str,
-        members: FixFills<'_>,
+        level: &Level,
+        definition: &Field,
+        members: &[(SmolStr, &Term)],
+        root: &Field,
+        row: &Scalar,
+        parameters: &[(&str, Scalar)],
     ) -> Option<Write> {
-        let definition = self
-            .registry
-            .get_definition(crate::FixCategory::Groups, name)?;
         let counter_tag = definition.as_fix().counter().ok().flatten()?;
         let counter_field = stated_field(self.msg.known_by_tag(counter_tag)?);
-        let at = writes.position_of_group(counter_tag, definition.name());
+        let at = level.position_of_group(counter_tag, definition.name());
         let empty: Vec<Option<Level>> = Vec::new();
         let (list, occurrences) = match at {
-            Some(at) => match &writes.children[at] {
+            Some(at) => match &level.children[at] {
                 Child::Group(_, occurrences) => (None, occurrences),
                 // A declared group stating no occurrence, opened on apply.
                 Child::Flat(_, value) if value.is_null() => (None, &empty),
                 Child::Flat(..) => return None,
             },
             None => {
-                if writes.names(definition.name()) {
+                if level.names(definition.name()) {
                     return None;
                 }
                 let mut list = definition.clone();
@@ -789,19 +876,16 @@ impl<'msg> Restater<'msg> {
                 (Some(list), &empty)
             }
         };
-        // The constants, typed as their fields hold them, decide which
-        // occurrence this fill is about.
+        // The literal members, typed as their fields hold them, decide which
+        // occurrence this rule is about.
         let mut constants: Vec<(i32, Scalar)> = Vec::new();
-        let mut walk = members.clone();
-        while let Some(member) = walk.next_ok() {
-            if let FixFillEntry::Field {
-                tag,
-                value: FixFillValue::Constant(text),
-            } = member
-            {
-                let target = stated_field(self.msg.known_by_tag(tag)?);
-                constants.push((tag, typed_spelling(&target, text)));
-            }
+        for (name, term) in members {
+            let Term::Literal(literal) = term else {
+                continue;
+            };
+            let known = self.msg.known_by_name(name)?;
+            let tag = known.as_fix().tag().ok().flatten()?;
+            constants.push((tag, converted(&stated_field(known), literal.value())));
         }
         let matched = occurrences.iter().position(|occurrence| {
             occurrence.as_ref().is_some_and(|held| {
@@ -815,17 +899,25 @@ impl<'msg> Restater<'msg> {
         let target = matched
             .and_then(|at| occurrences[at].as_ref())
             .unwrap_or(&blank);
-        let mut planned = Vec::new();
-        let mut walk = members;
-        while let Some(member) = walk.next_ok() {
-            planned.push(self.plan_fill(reads, target, source, member)?);
+        let mut planned = Vec::with_capacity(members.len());
+        for (name, term) in members {
+            planned.push(self.plan_projection(
+                target,
+                None,
+                &[],
+                name,
+                term,
+                root,
+                row,
+                parameters,
+            )?);
         }
         let count = occurrences.len() + usize::from(matched.is_none());
         let value = counter_field
             .scalar(Scalar::from(i64::try_from(count).ok()?))
             .ok()?;
         let counter = FieldWrite {
-            at: self.position_of(writes, counter_tag),
+            at: self.position_of(level, counter_tag),
             field: counter_field,
             value,
         };

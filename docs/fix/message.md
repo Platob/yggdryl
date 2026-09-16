@@ -513,7 +513,7 @@ Restatement is a step of that pass and not a door of its own: the order is the p
 | Row only | the entries are what arrived and are carried through untouched, so `into_bytes` re-emits the bytes this message arrived as, byte for byte, and `anomalies` answers the same; `BeginString(8)` stays what the message said of itself |
 | Canonicalizes | every child the registry knows - by its `fix:tag`, else its name or alias, else the decimal tag its name spells - is re-expressed under the registry's field: canonical name, datatype, tag, in the position it held; a child no dictionary knows stays exactly as it is |
 | Merges | children reaching one field become one: the canonical-named child's value when stated, else the first stated among the rest; a child whose stated value disagrees with the kept one is left in place, so nothing that arrived is lost |
-| Restates | each child whose field carries `fix:replacements`, in ascending tag order, by the first entry whose `msgtypes`, `in` and `when` hold; a group fill makes or completes one occurrence and sets its counter |
+| Restates | each child whose field carries `fix:replacements`, in ascending tag order, by the first entry whose plan's `where` holds over the level, `:msgtype` and `:group` supplied; a group occurrence in the `select` makes or completes one occurrence and sets its counter |
 | All or nothing | every target an entry fills is computed and checked before any is written; one target that cannot take its value blocks the whole entry, and no later entry fills in for it |
 | Never overwrites | a value the message stated: a target takes a value only when it is absent, null or already equal; the source field itself is the one exception, because it is what is being restated |
 | Keeps | a removed field the specification named no replacement for, and the source of every rule that did not write it - the row says what was sent and what it means |
@@ -670,17 +670,17 @@ A FIX 4.2 execution report, read as it was sent and then enriched, which restate
 
 ### What a held value is, to a rule
 
-A rule reads and writes wire text, because that is what the specification's appendices are written in; the row holds typed values. One reading joins them.
+A rule's plan reads the row's typed values through the [expression grammar](../expression/grammar.md) and writes wire text, because that is what the specification's appendices are written in. The two meet at the condition and at the target.
 
-| held value | reads as | so |
+| held value | in the `where` | so |
 | --- | --- | --- |
-| text, ASCII | itself | `when` equals it, or one of its space-separated tokens does - `ExecInst` `G T` meets a `when` of `T` |
-| boolean | `Y` / `N` | `OddLot` `Y` meets a `when` of `Y` |
-| integer, float, decimal | its decimal | an `int8` `MaturityDay` of `5` joins a month-year as `05` - a `join` spells an integer part with two digits |
-| temporal | its canonical rendering | `OnBehalfOfSendingTime` lands in `HopSendingTime` as the instant it is |
-| `state` | never rendered back to a code | `when` matches when `State::from_spelling(when)` is the state held, so `1` and `PartiallyFilled` both meet a `40PARTFILL` |
+| text, ASCII | compared as text | `rule80a = 'A'`; a `MultipleCharValue` holds several codes in one text, so `ExecInst` `G T` is asked with `contains(execinst, 'T')` |
+| boolean | `'Y'` coerces to it | `OddLot` `Y` meets `oddlot = 'Y'` |
+| integer, float, decimal | a literal coerces to the column's type | `repurchaseterm = '1'`; a join spells an integer with two digits through `substring(concat('0', cast(maturityday as utf8)), -2)`, which is how a day completes a month-year |
+| temporal | itself | `onbehalfofsendingtime as hopsendingtime` lands the instant it is |
+| `state` | compared by the code's spelling | `exectype = '1'` meets the `40PARTFILL` a `1` was read into, as `exectype in ('1', '2')` meets either |
 
-A value written into a target is re-typed for the target's field through the codec's own text-to-typed reading: a constant `1` lands in `PartyRole(452)` as an integer, `F` in `ExecType(150)` as the `Trade` state, `A` in `OrderCapacity(528)` as the text it is. A value the target cannot hold blocks the entry rather than landing as null.
+A value written into a target is re-typed for the target's field through the codec's own text-to-typed reading: a constant `'1'` lands in `PartyRole(452)` as an integer, `'F'` in `ExecType(150)` as the `Trade` state, `'A'` in `OrderCapacity(528)` as the text it is. A constant written over a multi-valued source replaces the token the condition named - `G T` restated at `T` is `G R`. A value the target cannot hold blocks the entry rather than landing as null.
 
 ## Edges
 

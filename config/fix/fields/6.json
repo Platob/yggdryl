@@ -1625,25 +1625,11 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "UST",
-          "fills": [
-            {
-              "tag": 609,
-              "value": "TNOTE"
-            }
-          ],
+          "plan": "select 'TNOTE' as legsecuritytype where legsecuritytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "USTB",
-          "fills": [
-            {
-              "tag": 609,
-              "value": "TBILL"
-            }
-          ],
+          "plan": "select 'TBILL' as legsecuritytype where legsecuritytype = 'USTB'",
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -3957,33 +3943,10 @@
       "display": "LegQty",
       "fix:replacements": [
         {
-          "since": "5.0",
-          "msgtypes": [
-            "R",
-            "AJ",
-            "AG",
-            "S",
-            "AI",
-            "AB",
-            "8"
-          ],
-          "fills": [
-            {
-              "tag": 685
-            }
-          ]
+          "plan": "select legqty as legorderqty where :msgtype in ('R', 'AJ', 'AG', 'S', 'AI', 'AB', '8')"
         },
         {
-          "since": "5.0.1",
-          "msgtypes": [
-            "AE",
-            "AR"
-          ],
-          "fills": [
-            {
-              "tag": 1418
-            }
-          ]
+          "plan": "select legqty as leglastqty where :msgtype in ('AE', 'AR')"
         }
       ],
       "fix:tag": "687"

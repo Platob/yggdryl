@@ -523,21 +523,7 @@
       "display": "ClientID",
       "fix:replacements": [
         {
-          "since": "4.3",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 452,
-                  "value": "3"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: clientid, partyrole: '3'}] as parties",
           "doc": "ClientID is a party with PartyRole ClientID (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -567,12 +553,7 @@
       "display": "MaxFloor",
       "fix:replacements": [
         {
-          "since": "5.0",
-          "fills": [
-            {
-              "tag": 1138
-            }
-          ]
+          "plan": "select maxfloor as displayqty"
         }
       ],
       "fix:tag": "111"
@@ -704,15 +685,7 @@
       "fix:derivation": "grosstradeamt * settlcurrfxrate",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "in": [
-            "allocgrp"
-          ],
-          "fills": [
-            {
-              "tag": 737
-            }
-          ]
+          "plan": "select settlcurramt as allocsettlcurramt where :group = 'allocgrp'"
         }
       ],
       "fix:tag": "119"
@@ -730,15 +703,7 @@
       "fix:derivation": "currency",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "in": [
-            "allocgrp"
-          ],
-          "fills": [
-            {
-              "tag": 736
-            }
-          ]
+          "plan": "select settlcurrency as allocsettlcurrency where :group = 'allocgrp'"
         }
       ],
       "fix:tag": "120"
@@ -1529,25 +1494,11 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.3",
-          "when": "1",
-          "fills": [
-            {
-              "tag": 150,
-              "value": "F"
-            }
-          ],
+          "plan": "select 'F' as exectype where exectype = '1'",
           "doc": "ExecType PartiallyFilled is ExecType Trade (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "2",
-          "fills": [
-            {
-              "tag": 150,
-              "value": "F"
-            }
-          ],
+          "plan": "select 'F' as exectype where exectype = '2'",
           "doc": "ExecType Filled is ExecType Trade (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -1858,163 +1809,31 @@
       ],
       "fix:replacements": [
         {
-          "since": "4.3",
-          "when": "CED",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "C"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'CED'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "DTC",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "C"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'DTC'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "EUR",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "C"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'EUR'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "FED",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "C"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'FED'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "PNY",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "C"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PNY'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "when": "PTC",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "C"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'C', partyrole: '10'}] as parties where settllocation = 'PTC'",
           "doc": "SettlLocation is a SettlementLocation party with a market participant identifier (FIX 4.3 Appendix 6-F)"
         },
         {
-          "since": "4.3",
-          "fills": [
-            {
-              "group": "parties",
-              "members": [
-                {
-                  "tag": 448
-                },
-                {
-                  "tag": 447,
-                  "value": "E"
-                },
-                {
-                  "tag": 452,
-                  "value": "10"
-                }
-              ]
-            }
-          ],
+          "plan": "select [{partyid: settllocation, partyidsource: 'E', partyrole: '10'}] as parties",
           "doc": "SettlLocation is a SettlementLocation party identified by ISO country code (FIX 4.3 Appendix 6-F)"
         }
       ],
@@ -3176,25 +2995,11 @@
       "fix:derivation": "case when cficode ilike 'ES%' then 'CS' when cficode ilike 'EP%' then 'PS' when cficode ilike 'ED%' then 'DR' when cficode ilike 'EU%' then 'MF' when cficode ilike 'CE%' then 'ETF' when cficode ilike 'CI%' then 'MF' when cficode ilike 'F%' then 'FUT' when cficode ilike 'O_F%' then 'OOF' when cficode ilike 'O%' then 'OPT' when cficode ilike 'H%' then 'OPT' when cficode ilike 'DC%' then 'CB' when cficode ilike 'DT%' then 'MTN' when cficode ilike 'DA%' then 'ABS' when cficode ilike 'DG%' then 'MBS' when cficode ilike 'SR%' then 'IRS' when cficode ilike 'SC%' then 'CDS' when cficode ilike 'ST%' then 'CMDTYSWAP' when cficode ilike 'SF%' then 'FXSWAP' when cficode ilike 'IF%' then 'FXSPOT' when cficode ilike 'JF%' then 'FXFWD' when cficode ilike 'JR%' then 'FRA' when cficode ilike 'JE%' then 'EQFWD' when cficode ilike 'LR%' then 'REPO' when cficode ilike 'LS%' then 'SECLOAN' when cficode ilike 'TI%' then 'INDEX' end",
       "fix:replacements": [
         {
-          "since": "4.4",
-          "when": "UST",
-          "fills": [
-            {
-              "tag": 167,
-              "value": "TNOTE"
-            }
-          ],
+          "plan": "select 'TNOTE' as securitytype where securitytype = 'UST'",
           "doc": "SecurityType UST is TNOTE (FIX 4.4 Appendix 6-F)"
         },
         {
-          "since": "4.4",
-          "when": "USTB",
-          "fills": [
-            {
-              "tag": 167,
-              "value": "TBILL"
-            }
-          ],
+          "plan": "select 'TBILL' as securitytype where securitytype = 'USTB'",
           "doc": "SecurityType USTB is TBILL (FIX 4.4 Appendix 6-F)"
         }
       ],
@@ -3622,15 +3427,7 @@
       "display": "SecondaryOrderID",
       "fix:replacements": [
         {
-          "since": "5.0.1",
-          "msgtypes": [
-            "r"
-          ],
-          "fills": [
-            {
-              "tag": 1369
-            }
-          ]
+          "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
         }
       ],
       "fix:tag": "198"
