@@ -91,11 +91,10 @@ fn spellings_of(name: &str) -> Vec<SmolStr> {
 impl FixRegistry {
     /// Lends every field the other spellings of its own name.
     ///
-    /// Registered on demand rather than by [`FixRegistry::new`], for the
-    /// reason [`with_generic_message`](FixRegistry::with_generic_message) is:
-    /// the spellings are the *dictionary's* names, and a registry with no
-    /// fields in it would lend nothing and still count as done once a
-    /// dictionary was loaded over it.
+    /// Registered on demand rather than by [`FixRegistry::new`], because the
+    /// spellings are the *dictionary's* names: a registry with no fields in
+    /// it would lend nothing and still count as done once a dictionary was
+    /// loaded over it.
     ///
     /// Idempotent: a field already carrying a spelling keeps the one it has,
     /// and a spelling another field answers for stays with that field.

@@ -101,12 +101,13 @@ converters every stage composes over batches:
 messages that made it and :meth:`FixCodec.arrow_reader` writes messages as
 batches under a schema. :meth:`FixCodec.write_arrow_reader` is the encode
 direction, re-emitting every row's wire. :meth:`FixCodec.format_messages` and
-:meth:`FixCodec.format_arrow_reader` answer the same messages under a message
-field of the registry - :func:`fix_generic_message` is the crate's own default
-target. A pin - ``default_sending_time``, ``separator``, ``payload_column``,
-``null_values``, ``direction``, ``batch_byte_size`` - is on the codec; a stage
-is a call, and no pin decides a version: a row states one in its
-``beginstring`` capture, else the line implies it.
+:meth:`FixCodec.format_arrow_reader` answer the same messages under whatever
+field a consumer reads by - a venue's own message type, :func:`fix_schema`
+itself, which keeps every column a capture lands in, or any Struct root a
+caller built. A pin - ``default_sending_time``, ``separator``,
+``payload_column``, ``null_values``, ``direction``, ``batch_byte_size`` - is on
+the codec; a stage is a call, and no pin decides a version: a row states one in
+its ``beginstring`` capture, else the line implies it.
 :func:`fix_schema` is the one fixed row a whole capture lands in - columns
 spelled by the dictionary's folded canonical names, ``msgtype`` and never
 ``35``, so a column is found with ``schema.index_of("msgtype")`` and nothing has
@@ -215,7 +216,6 @@ from ._native import (
     Plugins,
     fix_cfb_fields,
     fix_crate_fields,
-    fix_generic_message,
     fix_schema,
     fix_schema_carrying,
     fix_schema_tags,
@@ -238,7 +238,6 @@ __all__ = [
     "Plugins",
     "fix_cfb_fields",
     "fix_crate_fields",
-    "fix_generic_message",
     "fix_schema",
     "fix_schema_carrying",
     "fix_schema_tags",

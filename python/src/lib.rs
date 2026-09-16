@@ -533,7 +533,6 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(coding::zstd_dumps, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_install_global_registry, module)?)?;
-    module.add_function(wrap_pyfunction!(fix::fix_generic_message, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_carrying, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;

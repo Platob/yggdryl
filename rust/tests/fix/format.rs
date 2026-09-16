@@ -2,18 +2,16 @@
 //!
 //! A parse lands a capture in the fixed row and an enrichment fills what each
 //! message implies. This is where the same messages answer under a *message
-//! field* a consumer names - the crate's own `GenericMessage`, a venue's own
-//! type, or a projection of either - and where a column the source row did
-//! not carry is lifted back out of the arrival record.
+//! field* a consumer names - the fixed row itself, which keeps every column a
+//! capture lands in, a venue's own message type, or a projection of either -
+//! and where a column the source row did not carry is lifted back out of the
+//! arrival record.
 
 use std::sync::Arc;
 
 use super::SoleMessage;
 
-use yggdryl::{
-    DataType, Field, FixCodec, FixMsg, FixRegistry, GENERICMESSAGE_CODE_NAME, Scalar,
-    fix_generic_message, fix_schema,
-};
+use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -33,54 +31,21 @@ fn at<'row>(row: &'row Scalar, field: &Field, name: &str) -> &'row Scalar {
 const ORDER: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|44=12.5|38=100|207=XLON|10=0|";
 
 #[test]
-fn the_generic_message_is_the_row_registered_as_a_message() {
-    let (registry, _) = reader();
-    let schema = fix_schema(&registry, "fix").unwrap();
-    let generic = fix_generic_message(&registry, "fix").unwrap();
-
-    // The same columns, in the same order: a target with fewer than the row
-    // a capture lands in would lose what the row already carried.
-    let columns = |held: &Field| -> Vec<String> {
-        held.fields()
-            .iter()
-            .map(|column| column.name().to_owned())
-            .collect()
-    };
-    assert_eq!(columns(&schema), columns(&generic));
-
-    // What makes it a message is the code on the root, which is what a
-    // format names it by.
-    assert_eq!(schema.as_fix().msgtype(), None);
-    assert_eq!(generic.as_fix().msgtype(), Some(GENERICMESSAGE_CODE_NAME.0));
-
-    // And a registry that registered it answers the code like any other.
-    let registered = FixRegistry::clone(&registry)
-        .with_generic_message()
-        .unwrap();
-    let held = registered.msgtype(GENERICMESSAGE_CODE_NAME.0).unwrap();
-    assert_eq!(held.name(), GENERICMESSAGE_CODE_NAME.1);
-    assert!(held.as_field().index_of("symbol").is_some());
-    // Registering twice keeps the one that is there.
-    let again = registered.clone().with_generic_message().unwrap();
-    assert_eq!(again.msgtypes().count(), registered.msgtypes().count());
-}
-
-#[test]
 fn format_messages_answers_one_row_per_message_under_the_field() {
     let (registry, codec) = reader();
-    let generic = fix_generic_message(&registry, "fix").unwrap();
+    let target = fix_schema(&registry, "fix").unwrap();
     let messages = codec.parse_line(ORDER).unwrap();
 
     let rows: Vec<Scalar> = codec
-        .format_messages(messages, &generic)
+        .format_messages(messages, &target)
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(rows.len(), 1);
-    assert_eq!(at(&rows[0], &generic, "symbol").as_str(), Some("AAPL"));
-    assert_eq!(at(&rows[0], &generic, "price").as_f64(), Some(12.5));
-    assert_eq!(at(&rows[0], &generic, "orderqty").as_f64(), Some(100.0));
+    assert_eq!(at(&rows[0], &target, "symbol").as_str(), Some("AAPL"));
+    assert_eq!(at(&rows[0], &target, "price").as_f64(), Some(12.5));
+    assert_eq!(at(&rows[0], &target, "orderqty").as_f64(), Some(100.0));
     // The record closes a formatted row exactly as it closes a parsed one.
-    assert!(!at(&rows[0], &generic, "fixentries").is_null());
+    assert!(!at(&rows[0], &target, "fixentries").is_null());
 }
 
 /// A target of a caller's own, and the columns it does not name are gone.
@@ -125,7 +90,6 @@ fn a_format_target_is_any_message_field_a_caller_names() {
 fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
     let (registry, codec) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let generic = fix_generic_message(&registry, "fix").unwrap();
 
     // A row carrying the record and the settled bundle, and nothing of the
     // message's own fields - what a capture stored as little as it could.
@@ -162,17 +126,14 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
     // narrow row never carried come back off the record, typed.
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &stored).unwrap();
     let row = codec
-        .format_messages([Ok(held)], &generic)
+        .format_messages([Ok(held)], &schema)
         .next()
         .unwrap()
         .unwrap();
-    assert_eq!(at(&row, &generic, "symbol").as_str(), Some("AAPL"));
-    assert_eq!(at(&row, &generic, "price").as_f64(), Some(12.5));
-    assert_eq!(
-        at(&row, &generic, "securityexchange").as_str(),
-        Some("XLON")
-    );
-    assert_eq!(at(&row, &generic, "side"), parsed.by_tag(54).unwrap());
+    assert_eq!(at(&row, &schema, "symbol").as_str(), Some("AAPL"));
+    assert_eq!(at(&row, &schema, "price").as_f64(), Some(12.5));
+    assert_eq!(at(&row, &schema, "securityexchange").as_str(), Some("XLON"));
+    assert_eq!(at(&row, &schema, "side"), parsed.by_tag(54).unwrap());
 }
 
 /// A group comes back off the record whole, occurrence by occurrence.
@@ -180,7 +141,6 @@ fn a_column_the_source_row_dropped_is_lifted_out_of_the_record() {
 fn a_group_is_lifted_out_of_the_record_with_its_members() {
     let (registry, codec) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    let generic = fix_generic_message(&registry, "fix").unwrap();
     let line =
         b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|453=2|448=P1|447=D|452=1|448=P2|447=D|452=11|10=0|";
 
@@ -213,15 +173,15 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
         .unwrap();
     let held = FixMsg::from_row(Arc::clone(&registry), &narrow, &stored).unwrap();
     let row = codec
-        .format_messages([Ok(held)], &generic)
+        .format_messages([Ok(held)], &schema)
         .next()
         .unwrap()
         .unwrap();
 
     // Two parties, each member where the group definition puts it, and the
     // counter counting them.
-    assert_eq!(at(&row, &generic, "nopartyids").as_i128(), Some(2));
-    let parties = at(&row, &generic, "parties")
+    assert_eq!(at(&row, &schema, "nopartyids").as_i128(), Some(2));
+    let parties = at(&row, &schema, "parties")
         .as_sequence()
         .expect("the parties");
     assert_eq!(parties.len(), 2);
@@ -236,8 +196,7 @@ fn a_group_is_lifted_out_of_the_record_with_its_members() {
 #[test]
 fn format_arrow_reader_answers_the_batches_format_messages_answers_rows() {
     let (registry, codec) = reader();
-    let generic = fix_generic_message(&registry, "fix").unwrap();
-    let schema = fix_schema(&registry, "fix").unwrap();
+    let target = fix_schema(&registry, "fix").unwrap();
     let messages: Vec<FixMsg> = codec
         .parse_line(ORDER)
         .unwrap()
@@ -245,19 +204,19 @@ fn format_arrow_reader_answers_the_batches_format_messages_answers_rows() {
         .unwrap();
 
     let source = codec
-        .arrow_reader(schema, messages.clone().into_iter().map(Ok))
+        .arrow_reader(target.clone(), messages.clone().into_iter().map(Ok))
         .unwrap();
-    let formatted = codec.format_arrow_reader(source, &generic).unwrap();
+    let formatted = codec.format_arrow_reader(source, &target).unwrap();
 
     // The schema is decided before the first row, from the field alone.
     let held = Field::from_arrow_schema("fix", &formatted.schema()).unwrap();
-    assert_eq!(held.fields().len(), generic.fields().len());
+    assert_eq!(held.fields().len(), target.fields().len());
 
     let batches: Vec<_> = formatted.map(|batch| batch.unwrap()).collect();
     let rows = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
     let batched = &rows.as_sequence().expect("rows")[0];
     let direct = codec
-        .format_messages(messages.into_iter().map(Ok).collect::<Vec<_>>(), &generic)
+        .format_messages(messages.into_iter().map(Ok).collect::<Vec<_>>(), &target)
         .next()
         .unwrap()
         .unwrap();

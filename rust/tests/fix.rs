@@ -409,17 +409,18 @@ fn tag_index(batch: &arrow_array::RecordBatch, tag: i32) -> usize {
     yggdryl::fix_column_of(&schema, tag).unwrap_or_else(|| panic!("a column for tag {tag}"))
 }
 
-/// The crate's own `GenericMessage` over one dictionary.
+/// The format target a suite reads a whole capture under.
 ///
 /// The shape a consumer reads: what a parse lands in is the
-/// [stable row](yggdryl::fix_schema), and this is what a
-/// [format](yggdryl::FixCodec::format_arrow_reader) lifts it into.
-fn generic(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
-    yggdryl::fix_generic_message(registry, "fix").expect("the generic message")
+/// [stable row](yggdryl::fix_schema), and a
+/// [format](yggdryl::FixCodec::format_arrow_reader) into that same row keeps
+/// every column the capture landed in.
+fn format_target(registry: &yggdryl::FixRegistry) -> yggdryl::Field {
+    yggdryl::fix_schema(registry, "fix").expect("the fixed row")
 }
 
 /// One capture read the whole way: parsed into the stable row, then formatted
-/// into the crate's own `GenericMessage`.
+/// into that same row, which keeps every column it landed in.
 ///
 /// The two stages a reader of typed columns runs, spelled once so a suite
 /// asserting what a capture answers is asserting the pipeline rather than one
@@ -428,7 +429,7 @@ fn parsed_and_formatted(
     codec: &yggdryl::FixCodec,
     source: yggdryl::arrow::BatchReader,
 ) -> yggdryl::arrow::BatchReader {
-    let held = generic(codec.registry());
+    let held = format_target(codec.registry());
     let parsed = codec
         .parse_text_arrow_reader(source)
         .expect("the batch reader opens");

@@ -3600,7 +3600,6 @@ const fix = Object.freeze({
   FixMessages: binding.FixMessages,
   FixLifecycle: binding.FixLifecycle,
   schema: binding.fixSchema,
-  genericMessage: binding.fixGenericMessage,
   schemaCarrying: binding.fixSchemaCarrying,
   schemaTags: binding.fixSchemaTags,
   crateFields: binding.fixCrateFields,

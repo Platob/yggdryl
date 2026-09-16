@@ -197,9 +197,9 @@ fn a_mixed_capture_reads_row_by_row_and_batched_to_the_same_messages() {
     let filled = codec
         .enrich_messages_arrow_reader(parsed)
         .expect("the filling reader opens");
-    let generic = super::generic(codec.registry());
+    let target = super::format_target(codec.registry());
     let batched: Vec<_> = codec
-        .format_arrow_reader(filled, &generic)
+        .format_arrow_reader(filled, &target)
         .expect("the format reader opens")
         .map(|batch| batch.expect("a batch"))
         .collect();

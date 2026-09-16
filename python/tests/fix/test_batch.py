@@ -24,7 +24,6 @@ from yggdryl.fix import (
     FixMessages,
     FixMsg,
     FixRegistry,
-    fix_generic_message,
     fix_schema,
     fix_schema_carrying,
 )
@@ -760,47 +759,26 @@ def test_format_answers_the_rows_one_message_field_holds(seed: FixRegistry) -> N
     in ``rust/tests/fix/format.rs``.
     """
     codec = _fixed(seed)
-    generic = fix_generic_message(seed)
-    # The crate's own target is the fixed row registered as a message, so a
-    # formatted row is still a FIX row.
-    assert [column.name for column in generic] == [column.name for column in fix_schema(seed)]
-    assert generic.metadata["fix:msgtype"] == "UGEN"
+    # The fixed row itself as the target, so a formatted row keeps every
+    # column the capture landed in.
+    target = fix_schema(seed)
 
     messages = list(codec.parse_line(ORDER))
-    rows = codec.format_messages(messages, generic)
+    rows = codec.format_messages(messages, target)
     assert len(rows) == 1
     held = rows[0].as_py()
-    assert held[generic.index_of("symbol")] == "AAPL"
+    assert held[target.index_of("symbol")] == "AAPL"
     # The record closes a formatted row exactly as it closes a parsed one.
-    assert held[generic.index_of("fixentries")]
+    assert held[target.index_of("fixentries")]
 
     # The Arrow twin answers the same row, one batch at a time, and decides
     # its schema before a row is read.
     source = codec.arrow_reader(fix_schema(seed), messages)
-    formatted = codec.format_arrow_reader(source, generic)
-    assert [field.name for field in formatted.schema] == [column.name for column in generic]
+    formatted = codec.format_arrow_reader(source, target)
+    assert [field.name for field in formatted.schema] == [column.name for column in target]
     batched = formatted.read_all()
     assert batched.num_rows == 1
     assert batched.column("symbol").to_pylist() == ["AAPL"]
-
-
-def test_a_registry_takes_the_generic_message_by_code(seed: FixRegistry) -> None:
-    """The default format target is reachable as a registered message.
-
-    Pinned by ``the_generic_message_is_the_row_registered_as_a_message`` in
-    ``rust/tests/fix/format.rs``. Registration adds a component, so the
-    scalar length a registry answers does not move.
-    """
-    registry = copy.copy(seed)
-    before = len(registry)
-    registry.with_generic_message()
-    assert len(registry) == before
-    # Idempotent: a registry already answering the code keeps what it has, and
-    # a second call is not the refusal a shared registry answers with.
-    registry.with_generic_message()
-    held = registry.msgtype("UGEN")
-    assert held.name == "genericmessage"
-    assert held.field.index_of("symbol") is not None
 
 
 def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegistry) -> None:
@@ -835,6 +813,5 @@ def test_a_column_a_narrow_row_dropped_is_lifted_out_of_the_record(seed: FixRegi
     parsed = _one(codec, ORDER)
     stored = parsed.into_row(narrow)
     held = FixMsg.from_row(narrow, stored, seed)
-    row = codec.format_messages([held], fix_generic_message(seed)).pop().as_py()
-    generic = fix_generic_message(seed)
-    assert row[generic.index_of("symbol")] == "AAPL"
+    row = codec.format_messages([held], wide).pop().as_py()
+    assert row[wide.index_of("symbol")] == "AAPL"

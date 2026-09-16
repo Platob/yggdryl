@@ -434,22 +434,6 @@ impl PyFixRegistry {
         Ok(())
     }
 
-    /// Register the crate's own `GenericMessage`, the default format target.
-    ///
-    /// The fixed row's own columns under a `fix:msgtype`, so a
-    /// `format_messages` with no message type of its own has one to name.
-    /// Built against this dictionary rather than declared once, because the
-    /// columns are the dictionary's; idempotent, so a registry that already
-    /// answers the code keeps what it has.
-    fn with_generic_message(&mut self) -> PyResult<()> {
-        let registry = self.inner_mut()?;
-        *registry = registry
-            .clone()
-            .with_generic_message()
-            .map_err(value_error)?;
-        Ok(())
-    }
-
     /// Register a message definition and borrow its immutable singleton view.
     #[pyo3(signature = (spelling, name=None, description=None))]
     fn register_msgtype(
@@ -2219,9 +2203,10 @@ impl PyFixCodec {
     ///
     /// The third verb, and the one a consumer reads by: `parse_*` turns a
     /// capture into messages, `enrich_*` fills what each implies, and this
-    /// answers them under a message field the registry names -
-    /// `fix_generic_message` for the crate's own, a venue's own type, or any
-    /// Struct root a caller built for the table it is writing.
+    /// answers them under whatever field a consumer reads by - a venue's own
+    /// message type, `fix_schema` itself, which keeps every column a capture
+    /// lands in, or any Struct root a caller built for the table it is
+    /// writing.
     ///
     /// `messages` is any iterable of `FixMsg`, pulled one at a time; `field`
     /// is anything `Field` accepts, read once here rather than per message.
@@ -2510,25 +2495,6 @@ pub(crate) fn fix_schema(
 ) -> PyResult<PyField> {
     let registry = registry_or_global(registry)?;
     yggdryl::fix_schema(&registry, name.to_owned())
-        .map(PyField::from_inner)
-        .map_err(value_error)
-}
-
-/// The crate's own `GenericMessage`, built against one dictionary.
-///
-/// The target a `format_messages` or `format_arrow_reader` uses when a caller
-/// names no message of its own: the fixed row's own columns, carrying the
-/// `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
-/// what FIX reserves for a counterparty's own types. `name` is the root's
-/// name, which a caller spells for the table it is writing.
-#[pyfunction]
-#[pyo3(name = "fix_generic_message", signature = (registry=None, name="fix"))]
-pub(crate) fn fix_generic_message(
-    registry: Option<PyRef<'_, PyFixRegistry>>,
-    name: &str,
-) -> PyResult<PyField> {
-    let registry = registry_or_global(registry)?;
-    yggdryl::fix_generic_message(&registry, name.to_owned())
         .map(PyField::from_inner)
         .map_err(value_error)
 }

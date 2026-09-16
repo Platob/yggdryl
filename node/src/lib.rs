@@ -50,8 +50,8 @@ pub use expression::{
 pub use fix::{
     FixCodecOptions, JsFixCodec, JsFixDefinitionIterator, JsFixFieldIterator, JsFixMessages,
     JsFixMsg, JsFixMsgEntries, JsFixRegistry, JsMsgType, JsMsgTypeIterator, JsPlugin, JsPlugins,
-    fix_crate_fields, fix_generic_message, fix_global_registry, fix_install_global_registry,
-    fix_plugin_fields, fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags,
+    fix_crate_fields, fix_global_registry, fix_install_global_registry, fix_plugin_fields,
+    fix_plugin_message, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};

@@ -1258,7 +1258,6 @@ test('the fix namespace is frozen and the raw exports are gone', () => {
       'Plugin',
       'Plugins',
       'crateFields',
-      'genericMessage',
       'globalRegistry',
       'installGlobalRegistry',
       'pluginFields',

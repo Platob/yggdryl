@@ -130,11 +130,12 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 ///
 /// This is the shape a capture lands in, and it is a *reading* of a message
 /// rather than the message: what the codec made of a line, in columns. The
-/// message itself is the arrival record beside them, and
-/// [`fix_generic_message`](super::fix_generic_message) is the same shape
-/// registered as a message, so a
-/// [format](super::FixCodec::format_messages) has a target to name when a
-/// caller names none of its own.
+/// message itself is the arrival record beside them, and it is what lets a
+/// [format](super::FixCodec::format_messages) answer a target this row does
+/// not hold: a narrower one is the caller's own choice of what to keep, and
+/// a wider one - a capture's own columns in front of these, through
+/// [`fix_schema_carrying`](super::fix_schema_carrying) - reads the record
+/// for the rest.
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     let crated = super::fix_crate_fields().unwrap_or_default();
@@ -186,18 +187,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
     tags.push(super::MSGDIRECTION_TAG_NAME.0);
     tags.push(counter);
     tags
-}
-
-/// The columns the crate's own [`GenericMessage`](super::fix_generic_message)
-/// holds, in order, as tags.
-///
-/// The fixed row's own, because a message with fewer columns than the row a
-/// capture lands in would be a target that loses what the row already
-/// carried. What makes it a message rather than a schema is the `fix:msgtype`
-/// on the root, and that is what a format needs to name it.
-#[must_use]
-pub fn fix_generic_tags() -> Vec<i32> {
-    fix_schema_tags()
 }
 
 /// BeginString and the partition supplement the identity owner's replay bundle.

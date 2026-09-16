@@ -156,7 +156,6 @@ mod document;
 mod enrich;
 mod entry;
 mod field;
-mod generic;
 mod global;
 mod group_plan;
 mod identity;
@@ -201,7 +200,6 @@ pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns
 pub use document::{Numbers, Words, from_fix_document, into_fix_document};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
-pub use generic::{GENERICMESSAGE_CODE_NAME, fix_generic_message};
 pub use lifecycle::FixLifecycle;
 pub use lift::{FixLift, FixParty, fix_lift, fix_lifts};
 pub use lineage::{FixLineage, FixLineageEntry, FixPedigree};
@@ -221,8 +219,7 @@ pub use ulbridge::ULBRIDGE_ROWHEADER;
 
 pub use schema::{
     BODY_TAGS, FIXENTRIES_COLUMN, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS, UNNAMED_ENTRY,
-    fix_column_of, fix_column_tags, fix_generic_tags, fix_schema, fix_schema_carrying,
-    fix_schema_tags,
+    fix_column_of, fix_column_tags, fix_schema, fix_schema_carrying, fix_schema_tags,
 };
 
 /// A digest as everything outside this crate holds it.

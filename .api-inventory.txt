@@ -945,19 +945,12 @@ pub const GROUP_TAGS: [i32; 3]
 pub const FIXENTRIES_COLUMN: &str = "fixentries";  (the arrival record group, counted by NOFIXENTRIES_TAG_NAME (65027); the one group the registry does not define, because a fixentry contains fixentries; one occurrence is tagnum/tagname/tagvalue/tagkey/fixentries, the arrival beside what the dictionary made of it)
 pub const UNNAMED_ENTRY: &str = "yggdryl:unnamed";  (what non-null tagname holds for an arrival that carried no key at all - the decision-8 row-header fills and decision-20 restatements, recorded with tag 0)
 pub fn fix_schema_tags() -> Vec<i32>
-pub fn fix_generic_tags() -> Vec<i32>  (the columns the crate's own GenericMessage holds: the fixed row's own)
 pub fn fix_schema(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>
 pub fn fix_schema_carrying(carrier: &Field, read: &Field) -> Result<Field>
 impl FixMsg
   pub fn from_row(registry: Arc<FixRegistry>, schema: &Field, row: &Scalar) -> Result<Self>  (the inverse of `into_row`: root = schema, value = row, entries rebuilt from `fixentries`; a row without that column has no entries)
   pub fn into_row(&self, schema: &Field) -> Result<Scalar>  (a column is named by its tag, so `schema.index_of("35")` is where one sits; a column with no tag and no counter takes the child of its name, else null; a value a column will not hold is that column's null, reported through `log` at warn level, and a nested column keeps every leaf that does read)
   pub fn symbol_ticker(&self) -> Scalar
-
-### yggdryl::fix::generic  [rust\src\fix\generic.rs]
-pub const GENERICMESSAGE_CODE_NAME: (&str, &str) = ("UGEN", "genericmessage");  (the crate's own generic message: `U` opens every type FIX reserves for a counterparty's own, as `UCFG` did for pluginconfig)
-pub fn fix_generic_message(registry: &FixRegistry, name: impl Into<SmolStr>) -> Result<Field>  (the fixed row's own columns carrying fix:msgtype, so a format has a target to name when a caller names none)
-impl FixRegistry
-  pub fn with_generic_message(self) -> Result<Self>  (registers it under Components, idempotent under the guard with_plugin_fields uses)
 
 ### yggdryl::fix::store  [rust\src\fix\store.rs]
 impl FixRegistry

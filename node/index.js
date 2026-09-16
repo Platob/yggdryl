@@ -569,7 +569,6 @@ module.exports.codecNormalizeFormat = nativeBinding.codecNormalizeFormat
 module.exports.expressionNeedsQuoting = nativeBinding.expressionNeedsQuoting
 module.exports.expressionVocabularies = nativeBinding.expressionVocabularies
 module.exports.fixCrateFields = nativeBinding.fixCrateFields
-module.exports.fixGenericMessage = nativeBinding.fixGenericMessage
 module.exports.fixPluginFields = nativeBinding.fixPluginFields
 module.exports.fixPluginMessage = nativeBinding.fixPluginMessage
 module.exports.fixSchema = nativeBinding.fixSchema

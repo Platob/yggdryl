@@ -280,10 +280,10 @@ impl FixCodec {
     /// The third verb, and the one a consumer reads by. A parse lands every
     /// line in the [fixed row](super::fix_schema) and an
     /// [enrichment](Self::enrich_messages) fills what each message implies;
-    /// this answers the same messages under a message field the registry
-    /// names - the crate's own
-    /// [`GenericMessage`](super::fix_generic_message), a venue's own type, or
-    /// any Struct root a caller built for the table it is writing.
+    /// this answers the same messages under whatever field a consumer reads
+    /// by - a venue's own message type, the [fixed row](super::fix_schema)
+    /// itself, which keeps every column a capture lands in, or any Struct
+    /// root a caller built for the table it is writing.
     ///
     /// Each row is [`FixMsg::into_row`] under `field`: the field's columns in
     /// its order, each filled by the tag its own field carries, the crate's
@@ -308,17 +308,17 @@ impl FixCodec {
     /// # fn main() -> yggdryl::Result<()> {
     /// # use std::sync::Arc;
     /// # use yggdryl::holder::local::Folder;
-    /// # use yggdryl::{FixCodec, FixRegistry, fix_generic_message};
+    /// # use yggdryl::{FixCodec, FixRegistry, fix_schema};
     /// # let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     /// # let registry = Arc::new(FixRegistry::from_handle(&Folder::new(root)?)?);
     /// let codec = FixCodec::new(Arc::clone(&registry));
-    /// let generic = fix_generic_message(&registry, "fix")?;
+    /// let target = fix_schema(&registry, "fix")?;
     /// let messages = codec.parse_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|54=1|10=0|")?;
     ///
     /// let rows: Vec<_> = codec
-    ///     .format_messages(messages, &generic)
+    ///     .format_messages(messages, &target)
     ///     .collect::<yggdryl::Result<Vec<_>>>()?;
-    /// let at = generic.index_of("symbol").expect("a symbol column");
+    /// let at = target.index_of("symbol").expect("a symbol column");
     /// assert_eq!(rows[0].as_sequence().expect("a row")[at].as_str(), Some("AAPL"));
     /// # Ok(())
     /// # }

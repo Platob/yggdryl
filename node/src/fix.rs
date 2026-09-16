@@ -307,24 +307,6 @@ impl JsFixRegistry {
         Ok(())
     }
 
-    /// Register the crate's own `GenericMessage`, the default format target.
-    ///
-    /// The fixed row's own columns under a `fix:msgtype`, so a
-    /// `formatMessages` with no message type of its own has one to name.
-    /// Built against this dictionary rather than declared once, because the
-    /// columns are the dictionary's; idempotent, so a registry that already
-    /// answers the code keeps what it has.
-    #[napi]
-    pub fn with_generic_message(&mut self) -> Result<()> {
-        let registry = self
-            .inner_mut()?
-            .clone()
-            .with_generic_message()
-            .map_err(napi_error)?;
-        self.inner = Arc::new(registry);
-        Ok(())
-    }
-
     /// A registry holding the built-in definitions.
     ///
     /// Every registry holds the thirty-four scalar fields, the sorted
@@ -1902,9 +1884,10 @@ impl JsFixCodec {
     ///
     /// The third verb, and the one a consumer reads by: `parse*` turns a
     /// capture into messages, `enrich*` fills what each implies, and this
-    /// answers them under a message field the registry names -
-    /// `fix.genericMessage` for the crate's own, a venue's own type, or any
-    /// Struct root a caller built for the table it is writing.
+    /// answers them under whatever field a consumer reads by - a venue's own
+    /// message type, `fix.schema` itself, which keeps every column a capture
+    /// lands in, or any Struct root a caller built for the table it is
+    /// writing.
     ///
     /// Each row is `FixMsg.intoRow` under `field`, read once here rather than
     /// per message, so a column the message did not state is derived where
@@ -2282,25 +2265,6 @@ pub fn fix_schema(
     let registry = registry_or_global(registry)?;
     let name = name.unwrap_or_else(|| "fix".to_owned());
     yggdryl::fix_schema(&registry, name)
-        .map(JsField::from_core)
-        .map_err(napi_error)
-}
-
-/// The crate's own `GenericMessage`, built against one dictionary.
-///
-/// The target `formatMessages` and `formatArrowReader` use when a caller
-/// names no message of its own: the fixed row's own columns, carrying the
-/// `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
-/// what FIX reserves for a counterparty's own types. `name` is the root's
-/// name, which a caller spells for the table it is writing.
-#[napi(js_name = "fixGenericMessage")]
-pub fn fix_generic_message(
-    registry: Option<ClassInstance<'_, JsFixRegistry>>,
-    name: Option<String>,
-) -> Result<JsField> {
-    let registry = registry_or_global(registry)?;
-    let name = name.unwrap_or_else(|| "fix".to_owned());
-    yggdryl::fix_generic_message(&registry, name)
         .map(JsField::from_core)
         .map_err(napi_error)
 }

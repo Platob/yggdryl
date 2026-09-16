@@ -584,11 +584,11 @@ declare module './index' {
      *
      * The third verb, and the one a consumer reads by: `parse*` turns a
      * capture into messages, `enrich*` fills what each implies, and this
-     * answers them under a message field the registry names -
-     * `fix.genericMessage` for the crate's own, a venue's own type, or any
-     * Struct root a caller built. A column the message does not carry is
-     * read off its arrival record first, which is what lets a narrow row be
-     * formatted into a wider field.
+     * answers them under whatever field a consumer reads by - a venue's own
+     * message type, `fix.schema` itself, which keeps every column a capture
+     * lands in, or any Struct root a caller built. A column the message does
+     * not carry is read off its arrival record first, which is what lets a
+     * narrow row be formatted into a wider field.
      */
     formatMessages(messages: Iterable<FixMsg>, field: Field): Scalar[]
     /** The batch twins take whatever `BatchReader.from` accepts. */
@@ -3218,14 +3218,6 @@ export interface Fix {
    * each column's identity, on its `fix:tag`, and is what fills it.
    */
   schema(registry?: FixRegistry | null, name?: string | null): Field
-  /**
-   * The crate's own `GenericMessage`, built against one dictionary.
-   *
-   * The target `formatMessages` and `formatArrowReader` use when a caller
-   * names no message of its own: the fixed row's own columns, carrying the
-   * `fix:msgtype` that makes them a message, under the code `UGEN`.
-   */
-  genericMessage(registry?: FixRegistry | null, name?: string | null): Field
   /**
    * The fixed root behind a capture's own columns, which lead the row.
    *

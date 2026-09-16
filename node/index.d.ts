@@ -1909,16 +1909,6 @@ export declare class FixRegistry {
   /** Add the native scalar plugin fields atomically. */
   withPluginFields(): void
   /**
-   * Register the crate's own `GenericMessage`, the default format target.
-   *
-   * The fixed row's own columns under a `fix:msgtype`, so a
-   * `formatMessages` with no message type of its own has one to name.
-   * Built against this dictionary rather than declared once, because the
-   * columns are the dictionary's; idempotent, so a registry that already
-   * answers the code keeps what it has.
-   */
-  withGenericMessage(): void
-  /**
    * A registry holding the built-in definitions.
    *
    * Every registry holds the thirty-four scalar fields, the sorted
@@ -5921,17 +5911,6 @@ export interface FixDirection {
   /** The `regex::bytes` patterns, any of which names the code in the prose before a payload. */
   patterns: Array<string>
 }
-
-/**
- * The crate's own `GenericMessage`, built against one dictionary.
- *
- * The target `formatMessages` and `formatArrowReader` use when a caller
- * names no message of its own: the fixed row's own columns, carrying the
- * `fix:msgtype` that makes them a message, under the code `UGEN` - `U` being
- * what FIX reserves for a counterparty's own types. `name` is the root's
- * name, which a caller spells for the table it is writing.
- */
-export declare function fixGenericMessage(registry?: FixRegistry | undefined | null, name?: string | undefined | null): JsField
 
 /** How a lifecycle is configured, where a caller configures it at all. */
 export interface FixLifecycleOptions {
